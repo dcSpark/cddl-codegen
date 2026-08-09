@@ -12372,78 +12372,85 @@ fn nested_cbor_payload_generates_on_every_profile() {
 }
 
 /// A CBOR tag riding an ANONYMOUS choice RULE under `--preserve-encodings` — `t = #6.10(int / tstr)`
-/// and its group-choice and all-fixed spellings — used to abort at exit 101 on an explicit
-/// `assert!(!cli.preserve_encodings)` in the tagged-enum serialize path. An assert on a FLAG is a
-/// crash, not a boundary: the shape is valid CDDL and the profile is a user choice. It is now a
-/// graceful rejection recorded in `IntermediateTypes::finalize`, on the same struct-KIND walk the
-/// `@custom_serialize`/`@custom_deserialize` enum rejections use, and keyed on exactly the assert's
-/// own predicate — `generate_enum` is reached from precisely two places, the `TypeChoice` and
-/// `GroupChoice` arms of the rust-struct dispatch, each passing `rust_struct.tag()` straight
-/// through. The assert stays in place as the guard that re-earns the retired
-/// `PRESERVE_ONLY_PANIC_CLASSES` entry if some future path reaches it another way.
+/// and its group-choice and all-fixed spellings — stores the RULE's tag-head width in the one
+/// `tag_encoding` field repeated on each physical Rust variant. Rust has no enum-level instance
+/// fields; repeating the one owner-defined field makes every variant able to replay the same
+/// rule-level fact without deriving it from an arm. The deserialize prelude reads it exactly once,
+/// before dispatch/backtracking, and each successful constructor receives that binding.
 ///
 /// The all-fixed vector is not redundant with the other two: `RustStruct::new_type_choice` denies a
 /// TAGGED fixed-value choice the `CStyleEnum` lowering under this profile (`cant_store_tag`), so
-/// `#6.10(0 / 1 / 2)` registers as a `TypeChoice` and reaches the same path — while the SAME choice
-/// named and referenced from a tagged member is the supported spelling the message advertises. Both
-/// advertised remedies are asserted as controls, and the tagged-wrapper one was additionally probed
-/// to build and round-trip byte-exact through a generated preserve crate (a non-minimal `d8 0a` tag
-/// head over a 2-byte uint, and an indefinite-length text arm).
+/// `#6.10(0 / 1 / 2)` registers as a `TypeChoice` and reaches the data-carrying enum path. Named
+/// wrappers and a c-style enum tagged at a member remain controls outside this ownership change.
 #[test]
-fn tagged_anonymous_choice_rejects_gracefully_under_preserve() {
+fn tagged_anonymous_choice_preserves_rule_tag_under_preserve() {
     let vectors = [
-        ("type_choice", "t = #6.10(int / tstr)\n", "a type choice"),
+        ("type_choice", "t = #6.10(int / tstr)\n", "a type choice", 2),
         (
             "type_choice_three_arm",
             "t = #6.10(int / tstr / bytes)\n",
             "a type choice",
+            3,
         ),
         (
             "type_choice_all_fixed",
             "t = #6.10(1 / 2 / 3)\n",
             "a type choice",
+            3,
         ),
         (
             "type_choice_referenced",
             "t = #6.10(int / tstr)\nholder = [x: t]\n",
             "a type choice",
+            2,
         ),
         (
             "group_choice_array",
             "t = #6.10([ a: uint // b: tstr ])\n",
             "a group choice",
+            2,
         ),
         (
             "group_choice_map",
             "t = #6.10({ a: uint // b: tstr })\n",
             "a group choice",
+            2,
         ),
     ];
-    for (tag, spec, shape) in vectors {
-        let msg = expect_graceful_rejection(
-            &format!("tagged_anon_choice_{tag}"),
-            spec,
-            &["--wasm", "false", "--preserve-encodings", "true"],
+    for (tag, spec, shape, variant_count) in vectors {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_tagged_anon_choice_preserve_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let preserve = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "tagged_anon_choice_preserve_unused",
+            "--wasm",
+            "false",
+            "--preserve-encodings",
+            "true",
+        ]));
+        std::fs::remove_file(&path).ok();
+        let src = preserve.unwrap_or_else(|e| {
+            panic!("{tag} ({shape}) must generate under preserve encodings: {e}")
+        });
+        let src = src.into_values().collect::<Vec<_>>().join("\n");
+        assert_eq!(
+            src.matches("tag_encoding: Option<cbor_event::Sz>").count(),
+            variant_count,
+            "{tag} must repeat exactly one rule-tag encoding field on every enum variant, got:\n{src}"
         );
         assert!(
-            msg.starts_with("rule `T`: a CBOR tag (`#6.10`) directly over ") && msg.contains(shape),
-            "the rejection must name the rule, the tag and the choice shape ({tag}), got: {msg}"
-        );
-        assert!(
-            msg.contains("is unsupported under `--preserve-encodings`")
-                && msg.contains("the encoding metadata preserve records is per-VARIANT"),
-            "the rejection must name the profile and why the enum cannot carry the tag ({tag}), \
-             got: {msg}"
-        );
-        assert!(
-            msg.contains("Name the choice and tag the NAME instead")
-                && msg.contains("Tags over structs, arrays and maps are unaffected")
-                && msg.contains("without `--preserve-encodings` this rule generates"),
-            "the rejection must point at the working alternatives and the profile that works \
-             ({tag}), got: {msg}"
+            src.contains("let (tag, tag_encoding) = raw.tag_sz()?;")
+                && src.contains("write_tag_sz(10u64, fit_sz(10u64, *tag_encoding))"),
+            "{tag} must bind the mandatory tag once and replay its recorded width, got:\n{src}"
         );
         // The DEFAULT profile is untouched: this is a preserve-only refusal, so every vector above
-        // must still generate without the flag. A profile-blind key would silently drop support.
+        // must still generate without the flag. A profile-blind implementation would silently drop support.
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_tagged_anon_choice_default_{tag}_{}.cddl",
             std::process::id()

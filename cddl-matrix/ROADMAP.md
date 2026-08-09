@@ -23,7 +23,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
-(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->2 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
+(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->1 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->93 `class="constraint"` enforcement reject vectors over 73 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
 rejectable constraint projects `enforce = yes (bounded-reject)` — `+`/`1*` is honored as a non-empty
@@ -683,33 +683,6 @@ entry, so the atomicity is the rule).
   nint shapes land as graceful rejections + enumeration cells; when one does, the work is the
   runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
   flip the pinned rejection rows (record path first, then the group-choice arm).
-- **A CBOR tag over a type-choice enum is unimplemented under `--preserve-encodings`** — a non-float
-  preserve gap, now bounded by a refusal rather than a crash. `t = #6.10(int / tstr)` (and the
-  group-choice spellings, and the all-fixed one this profile denies the C-style lowering) is
-  **refused gracefully in `IntermediateTypes::finalize`**, on the struct-KIND walk, keyed on exactly
-  the predicate the tagged-enum serialize path's `assert!(!cli.preserve_encodings)` has — that assert
-  is reached from precisely two places, the `TypeChoice` and `GroupChoice` arms of the rust-struct
-  dispatch, and stays in place as the backstop guard behind the refusal. Pinned by
-  `tagged_anonymous_choice_rejects_gracefully_under_preserve`.
-  SUPPORT is what remains, and its shape is why it is parked: the tag belongs to the enum RULE while
-  the encoding metadata preserve records is per-VARIANT, so support means giving the tag a home of
-  its own on the enum (the serialize path's standing `TODO: how to even store these?`). Everything
-  around it already works and is what the refusal points at: tags over structs/arrays/maps; the same
-  choice NAMED and tagged by name (`inner = int / tstr`, `t = #6.10(inner)` — a tagged wrapper over
-  the enum, verified to build and round-trip byte-exact through a generated preserve crate, including
-  a non-minimal `d8 0a` tag head and an indefinite-length text arm); and a tag over a NAMED c-style
-  enum at a member (`t1: #6.42(myenum)` with `myenum = 0 / 1 / 2`), whose encoding rides the owner's
-  sidecar through the inlined dispatch (`tests/corpus/cbor_enum_payload.cddl`). Without
-  `--preserve-encodings` the anonymous form generates.
-  **Reopening signal:** a consumer's own wire format (one they do not control) tags an anonymous
-  choice AND that consumer needs `--preserve-encodings` — i.e. they must re-emit bytes they decoded.
-  Both halves are things they can check against a spec and a build flag they already hold; either
-  alone is served today, by the naming remedy or by the default profile. Recorded by the
-  decode-conformance replay gate's preserve leg (skip-listed in `PRESERVE_SKIP`, stale-guarded), by
-  the emission axis (`contain.tag-content.type.choice` → `emission.preserve = unsupported`) alongside
-  `prelude.number` / `prelude.time` and the two float-range wrapper rows
-  `rangeop.{inclusive,exclusive}.float`, and by `EXPECTED_GENERATION_FAIL` in the wasm API parity
-  sweep, which pins `tests/core`'s `tagged_type_choice` on the preserve leg.
 - **The wasm extern re-export glue demands a wrapper the wasm crate never uses.** Every in-crate
   `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule gets `pub use crate::<Name>;`
   emitted into the wasm crate's generated module, and the "Own-spec extern re-export contract"

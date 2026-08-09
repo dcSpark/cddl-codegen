@@ -75,7 +75,7 @@ impl GenerationScope {
                 }
                 wrapper.s_impl.push_fn(new_func);
             }
-            add_wasm_enum_getters(&mut wrapper.s_impl, types, name, variants, None, cli);
+            add_wasm_enum_getters(&mut wrapper.s_impl, types, name, variants, None, tag, cli);
             wrapper.push(self, types);
         }
     }
@@ -225,7 +225,15 @@ pub(super) fn codegen_group_choices(
             wrapper.s_impl.push_fn(new_func);
         }
         // enum-getters
-        add_wasm_enum_getters(&mut wrapper.s_impl, types, name, variants, Some(rep), cli);
+        add_wasm_enum_getters(
+            &mut wrapper.s_impl,
+            types,
+            name,
+            variants,
+            Some(rep),
+            tag,
+            cli,
+        );
         wrapper.push(gen_scope, types);
     }
 }
@@ -236,16 +244,19 @@ fn add_wasm_enum_getters(
     name: &RustIdent,
     variants: &[EnumVariant],
     rep: Option<Representation>,
+    tag: Option<usize>,
     cli: &Cli,
 ) {
     assert!(cli.wasm);
+    let rule_tag_encoding = enum_rule_tag_encoding_name(types, variants, rep, tag, cli);
     // kind() getter
     let kind_name = format!("{name}Kind");
     let mut get_kind = codegen::Function::new("kind");
     get_kind.arg_ref_self().vis("pub").ret(&kind_name);
     let mut get_kind_match = Block::new("match &self.0");
     for variant in variants.iter() {
-        let enum_gen_info = EnumVariantInRust::new(types, variant, rep, cli);
+        let enum_gen_info =
+            EnumVariantInRust::new(types, variant, rep, tag, rule_tag_encoding.as_deref(), cli);
         get_kind_match.line(format!(
             "{}::{}{} => {}::{},",
             rust_crate_struct_from_wasm(types, name, cli),
@@ -261,7 +272,8 @@ fn add_wasm_enum_getters(
     // as_{variant} conversions (returns None -> undefined when not the type)
     for variant in variants.iter() {
         let mut add_variant_functions = |ty: &RustType| {
-            let enum_gen_info = EnumVariantInRust::new(types, variant, rep, cli);
+            let enum_gen_info =
+                EnumVariantInRust::new(types, variant, rep, tag, rule_tag_encoding.as_deref(), cli);
             let mut as_variant = codegen::Function::new(format!("as_{}", variant.name_as_var()));
             as_variant.arg_ref_self().vis("pub");
             let mut variant_match = Block::new("match &self.0");
@@ -359,6 +371,45 @@ pub(super) struct EnumVariantInRust {
     pub(super) names: Vec<String>,
     types: Vec<String>,
     outer_vars: usize,
+    /// The rule-owned mandatory tag's physical field, repeated on every variant. `None` outside
+    /// preserve-tagged enums; the field remains one ownership decision in `generate_enum`.
+    rule_tag_encoding: Option<String>,
+}
+
+/// Choose the one physical name used for a mandatory tag owned by the enum rule. A variant may
+/// already have a value or encoding field named `tag_encoding` (an arm explicitly named `tag` is
+/// enough), so reserve a deterministic suffix against EVERY variant before emission. The resulting
+/// name is still shared by all variants; it is never selected arm-by-arm.
+pub(super) fn enum_rule_tag_encoding_name(
+    types: &IntermediateTypes,
+    variants: &[EnumVariant],
+    rep: Option<Representation>,
+    tag: Option<usize>,
+    cli: &Cli,
+) -> Option<String> {
+    if !cli.preserve_encodings || tag.is_none() {
+        return None;
+    }
+    let occupied: BTreeSet<String> = variants
+        .iter()
+        .flat_map(|variant| {
+            EnumVariantInRust::new(types, variant, rep, None, None, cli)
+                .names
+                .into_iter()
+        })
+        .collect();
+    let mut suffix = 1usize;
+    loop {
+        let candidate = if suffix == 1 {
+            "tag_encoding".to_owned()
+        } else {
+            format!("tag_encoding{suffix}")
+        };
+        if !occupied.contains(&candidate) {
+            return Some(candidate);
+        }
+        suffix += 1;
+    }
 }
 
 impl EnumVariantInRust {
@@ -366,6 +417,8 @@ impl EnumVariantInRust {
         types: &IntermediateTypes,
         variant: &EnumVariant,
         rep: Option<Representation>,
+        tag: Option<usize>,
+        rule_tag_encoding: Option<&str>,
         cli: &Cli,
     ) -> Self {
         let name = variant.name_as_var();
@@ -406,6 +459,20 @@ impl EnumVariantInRust {
                     });
                     outer_vars += 1;
                 }
+                if cli.preserve_encodings && tag.is_some() {
+                    let field_name = rule_tag_encoding.expect(
+                        "a preserve-tagged enum chooses one shared rule-tag field before variants",
+                    );
+                    enc_fields.push(EncodingField {
+                        field_name: field_name.to_owned(),
+                        type_name: "Option<cbor_event::Sz>".to_owned(),
+                        default_expr: "None",
+                        enc_conversion_before: "",
+                        enc_conversion_after: "",
+                        is_copy: true,
+                    });
+                    outer_vars += 1;
+                }
                 for enc_field in &enc_fields {
                     enum_types.push(enc_field.type_name.clone());
                     names.push(enc_field.field_name.clone());
@@ -417,6 +484,7 @@ impl EnumVariantInRust {
                     names,
                     types: enum_types,
                     outer_vars,
+                    rule_tag_encoding: rule_tag_encoding.map(str::to_owned),
                 }
             }
             EnumVariantData::Inlined(record) => {
@@ -443,6 +511,19 @@ impl EnumVariantInRust {
                             cli,
                         ));
                     }
+                    if tag.is_some() {
+                        let field_name = rule_tag_encoding.expect(
+                            "a preserve-tagged enum chooses one shared rule-tag field before variants",
+                        );
+                        enc_fields.push(EncodingField {
+                            field_name: field_name.to_owned(),
+                            type_name: "Option<cbor_event::Sz>".to_owned(),
+                            default_expr: "None",
+                            enc_conversion_before: "",
+                            enc_conversion_after: "",
+                            is_copy: true,
+                        });
+                    }
                 }
                 for field in record.fields.iter() {
                     if !field.rust_type.is_fixed_value() {
@@ -464,7 +545,11 @@ impl EnumVariantInRust {
                     enc_fields,
                     names,
                     types: enum_types,
-                    outer_vars: 0,
+                    // The outer rule tag is read before the group-choice arm dispatch, while the
+                    // arm probe returns only its own fields. Keep it out of that tuple exactly as
+                    // `len_encoding` is handled on the RustType arm above.
+                    outer_vars: usize::from(cli.preserve_encodings && tag.is_some()),
+                    rule_tag_encoding: rule_tag_encoding.map(str::to_owned),
                 }
             }
         }
@@ -472,6 +557,10 @@ impl EnumVariantInRust {
 
     fn names_without_outer(&self) -> &[String] {
         &self.names[..self.names.len() - self.outer_vars]
+    }
+
+    fn rule_tag_encoding(&self) -> Option<&str> {
+        self.rule_tag_encoding.as_deref()
     }
 
     fn names_with_macros(
@@ -745,17 +834,19 @@ fn surround_in_len_checks(
 fn make_inline_deser_code(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
-    tag: Option<usize>,
     record: &RustRecord,
     enum_gen_info: &EnumVariantInRust,
     cli: &Cli,
 ) -> DeserializationCode {
     let mut variant_deser_code =
-        generate_array_struct_deserialization(gen_scope, types, record, tag, false, false, cli);
+        // The enclosing enum has already read and validated its RULE tag before choosing an arm.
+        // This record helper must see no tag of its own: passing it through would add a second
+        // `tag_encoding` constructor slot and (under preserve) attempt to read the tag again.
+        generate_array_struct_deserialization(gen_scope, types, record, None, false, false, cli);
     // generate_constructor zips the expressions with the names in the enum_gen_info
     // so just make sure we're in the same order as returned above
     assert_eq!(
-        enum_gen_info.names.len(),
+        enum_gen_info.names_without_outer().len(),
         variant_deser_code.deser_ctor_fields.len()
             + variant_deser_code.encoding_struct_ctor_fields.len()
     );
@@ -763,12 +854,20 @@ fn make_inline_deser_code(
         .deser_ctor_fields
         .into_iter()
         .chain(variant_deser_code.encoding_struct_ctor_fields)
-        .zip(enum_gen_info.names.iter())
+        .zip(enum_gen_info.names_without_outer().iter())
         .map(|((var, expr), name)| {
             assert_eq!(var, *name);
             expr
         })
-        .collect();
+        .collect::<Vec<_>>();
+    let ctor_exprs = if let Some(rule_tag_encoding) = enum_gen_info.rule_tag_encoding() {
+        ctor_exprs
+            .into_iter()
+            .chain(std::iter::once(format!("Some({rule_tag_encoding})")))
+            .collect()
+    } else {
+        ctor_exprs
+    };
     variant_deser_code.deser_code = surround_in_len_checks(
         variant_deser_code.deser_code,
         record.cbor_len_info(types),
@@ -982,6 +1081,7 @@ fn generate_enum(
     config: &RustStructConfig,
     cli: &Cli,
 ) {
+    let rule_tag_encoding = enum_rule_tag_encoding_name(types, variants, rep, tag, cli);
     if cli.wasm {
         // also create a wasm-exposed enum just to distinguish the type
         let mut kind = codegen::Enum::new(format!("{name}Kind"));
@@ -1013,9 +1113,11 @@ fn generate_enum(
     );
     let mut ser_impl = make_serialization_impl(name.as_ref(), cli);
     let mut ser_func = make_serialization_function("serialize", cli);
-    if let Some(tag) = tag {
-        // TODO: how to even store these? (maybe it could be a new field in every enum variant)
-        assert!(!cli.preserve_encodings);
+    if let Some(tag) = tag
+        && !cli.preserve_encodings
+    {
+        // Preserve writes below, inside every variant arm: Rust enums have no enum-level
+        // instance field, so the rule-owned width is physically repeated on each variant.
         ser_func.line(format!("serializer.write_tag({tag}u64)?;"));
     }
     let mut ser_array_match_block = Block::new("match self");
@@ -1029,7 +1131,30 @@ fn generate_enum(
     let mut deser_impl = if generate_deserialize_directly {
         // this is handled in create_deseriaize_impls in the other case, and it MUST be handled there to ensure that
         // the tag check is done BEFORE reading the array/map CBOR
-        generate_tag_check(deser_body, name, tag, cli.annotate_fields);
+        if let Some(tag) = tag {
+            if cli.preserve_encodings {
+                let rule_tag_encoding = rule_tag_encoding.as_ref().expect(
+                    "a preserve-tagged enum chooses one shared rule-tag field before deserializing",
+                );
+                if cli.annotate_fields {
+                    deser_body.line("let (tag, tag_encoding) = raw.tag_sz()?;");
+                } else {
+                    deser_body.line(&format!(
+                        "let (tag, tag_encoding) = raw.tag_sz().map_err(|e| DeserializeError::from(e).annotate(\"{name}\"))?;"
+                    ));
+                }
+                let mut tag_check = Block::new(format!("if tag != {tag}"));
+                if cli.annotate_fields {
+                    tag_check.line(format!("return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}.into());"));
+                } else {
+                    tag_check.line(format!("return Err(DeserializeError::new(\"{name}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
+                }
+                deser_body.push_block(tag_check);
+                deser_body.line(&format!("let {rule_tag_encoding} = Some(tag_encoding);"));
+            } else {
+                generate_tag_check(deser_body, name, Some(tag), cli.annotate_fields);
+            }
+        }
         let mut deser_impl = codegen::Impl::new(name.to_string());
         deser_impl.impl_trait("Deserialize");
         deser_impl
@@ -1055,6 +1180,12 @@ fn generate_enum(
             cli.annotate_fields,
             cli,
         );
+        // `create_deserialize_impls` deliberately keeps its tag read as the raw `Sz`, shared with
+        // record callers. The enum's repeated field is `Option<Sz>`, so make that conversion here,
+        // once, in the rule-owner scope before any arm probe can rewind the cursor.
+        if let Some(rule_tag_encoding) = rule_tag_encoding.as_ref() {
+            deser_body.line(&format!("let {rule_tag_encoding} = Some(tag_encoding);"));
+        }
         deser_impl
     };
     // We avoid checking ALL variants if we can figure it out by instead checking the type.
@@ -1115,7 +1246,8 @@ fn generate_enum(
             .line("let mut errs = Vec::new();");
     }
     for variant in variants.iter() {
-        let enum_gen_info = EnumVariantInRust::new(types, variant, rep, cli);
+        let enum_gen_info =
+            EnumVariantInRust::new(types, variant, rep, tag, rule_tag_encoding.as_deref(), cli);
         let variant_var_name = variant.name_as_var();
         let mut v = codegen::Variant::new(variant.name.to_string());
         match enum_gen_info.names.len() {
@@ -1256,17 +1388,42 @@ fn generate_enum(
 
         // serialize
         if variant.serialize_as_embedded_group {
-            assert_eq!(enum_gen_info.names.len(), 1);
-            // we use serialize() instead of serialize_as_embedded_group() to count as the outer array tag here
-            // to simplify things (the size logic is there already)
-            ser_array_match_block.line(format!(
-                "{}::{}({}) => {}.serialize(serializer{}),",
-                name,
-                variant.name,
-                variant_var_name,
-                variant_var_name,
-                canonical_param(cli)
-            ));
+            if let (Some(tag), Some(rule_tag_encoding)) = (tag, enum_gen_info.rule_tag_encoding()) {
+                let mut case_block = Block::new(format!(
+                    "{}::{}{} =>",
+                    name,
+                    variant.name,
+                    enum_gen_info.capture_all()
+                ));
+                write_using_sz(
+                    &mut case_block,
+                    "write_tag",
+                    "serializer",
+                    &format!("{tag}u64"),
+                    &format!("{tag}u64"),
+                    "?;",
+                    &format!("*{rule_tag_encoding}"),
+                    cli,
+                );
+                // We use `serialize()` instead of `serialize_as_embedded_group()` to count as the
+                // outer array tag here, exactly as the previous direct match arm did.
+                case_block.line(format!(
+                    "{}.serialize(serializer{}),",
+                    variant_var_name,
+                    canonical_param(cli)
+                ));
+                ser_array_match_block.push_block(case_block);
+            } else {
+                assert_eq!(enum_gen_info.names.len(), 1);
+                ser_array_match_block.line(format!(
+                    "{}::{}({}) => {}.serialize(serializer{}),",
+                    name,
+                    variant.name,
+                    variant_var_name,
+                    variant_var_name,
+                    canonical_param(cli)
+                ));
+            }
         } else {
             let mut case_block = Block::new(format!(
                 "{}::{}{} =>",
@@ -1274,6 +1431,18 @@ fn generate_enum(
                 variant.name,
                 enum_gen_info.capture_all()
             ));
+            if let (Some(tag), Some(rule_tag_encoding)) = (tag, enum_gen_info.rule_tag_encoding()) {
+                write_using_sz(
+                    &mut case_block,
+                    "write_tag",
+                    "serializer",
+                    &format!("{tag}u64"),
+                    &format!("{tag}u64"),
+                    "?;",
+                    &format!("*{rule_tag_encoding}"),
+                    cli,
+                );
+            }
             match &variant.data {
                 EnumVariantData::RustType(ty) => {
                     if cli.preserve_encodings {
@@ -1515,7 +1684,7 @@ fn generate_enum(
                         variant_deser_code
                     }
                     EnumVariantData::Inlined(record) => {
-                        make_inline_deser_code(gen_scope, types, tag, record, &enum_gen_info, cli)
+                        make_inline_deser_code(gen_scope, types, record, &enum_gen_info, cli)
                     }
                 };
                 let cbor_types_str = variant
@@ -1627,14 +1796,8 @@ fn generate_enum(
                         return_if_deserialized
                     }
                     EnumVariantData::Inlined(record) => {
-                        let variant_deser_code = make_inline_deser_code(
-                            gen_scope,
-                            types,
-                            tag,
-                            record,
-                            &enum_gen_info,
-                            cli,
-                        );
+                        let variant_deser_code =
+                            make_inline_deser_code(gen_scope, types, record, &enum_gen_info, cli);
                         let mut variant_deser = Block::new(
                             "let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError>",
                         );

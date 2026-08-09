@@ -707,8 +707,9 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   the *full* output incl. `Cargo.toml`s. Covers cross-feature interactions, the scope/module path,
   and the edition/deps logic. It's also the home for inputs that need a *profile-limited* snapshot,
   which routes a single CONSTRUCT into such an input's `.cddl` rather than the corpus:
-  `tagged_type_choice` (tag over a whole type choice) lives in `core` because tagging a type-choice
-  enum is unimplemented under preserve-encodings, and the corpus snapshots span all three profiles.
+  `tagged_type_choice` (tag over a whole type choice) lives in `core` as the direct-deserialize
+  annotation control; anonymous enum-rule tags now also execute under preserve in the rich preserve
+  and canonical fixtures.
   No float constraint of that kind survives — floats carry their head width as an encoding variable,
   so `tests/corpus/homogeneous_array.cddl`'s `float_holder` and `tests/corpus/optional_fixed_float.cddl`
   are ordinary corpus fixtures snapshotted under preserve like everything else. What keeps
@@ -4096,12 +4097,8 @@ classes already defined in `mod.rs`, so it introduces no boundary API for the di
 parse), so a future emission surface can't silently escape the differential — it caught
 `key_demand_assertions.rs`'s widening to bare roots exactly this way before the file was
 classified. One (profile, input)
-pair is pinned in `EXPECTED_GENERATION_FAIL`: (preserve, tests/core) — `#6.11(uint / text)`, a CBOR
-tag directly over an anonymous choice rule, which `IntermediateTypes::finalize` refuses gracefully
-under `--preserve-encodings` (the enum has nowhere to store the tag's encoding, since preserve's
-metadata is per-variant) — with a resurfaced guard both directions (a listed pair that generates
-fails as "gap closed — remove the pin"; an unlisted abort fails normally). The pin treats a graceful
-`Err` and a panic alike, so it kept holding when that class became a diagnosis.
+the `EXPECTED_GENERATION_FAIL` ledger is currently empty; an unlisted generation abort is a normal
+parity failure, while any future deliberate pin is guarded in both directions.
 
 Findings reconcile against a `PARITY_EXEMPT` ledger keyed `(profile, input, item, reason)`, the same
 `WASM_MATRIX_SKIP` idiom: a finding matching an entry is expected (no failure); an entry matching no

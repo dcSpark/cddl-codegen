@@ -704,6 +704,75 @@ pub enum GroupChoiceKind {
     Plain,
 }
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Int(pub(crate) cddl_lib::Int);
+
+#[wasm_bindgen]
+impl Int {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
+    }
+
+    pub fn to_canonical_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_canonical_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Int, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(x: i64) -> Self {
+        if x >= 0 {
+            Self(cddl_lib::Int::new_uint(x as u64))
+        } else {
+            Self(cddl_lib::Int::new_nint((x + 1).unsigned_abs()))
+        }
+    }
+
+    pub fn new_uint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_uint(value))
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_nint(value))
+    }
+
+    pub fn to_str(&self) -> String {
+        self.0.to_string()
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(string: &str) -> Result<Int, JsError> {
+        std::str::FromStr::from_str(string)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("Int.from_str({}): {:?}", string, e)))
+    }
+}
+
+impl From<cddl_lib::Int> for Int {
+    fn from(native: cddl_lib::Int) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Int> for cddl_lib::Int {
+    fn from(wasm: Int) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Int> for Int {
+    fn as_ref(&self) -> &cddl_lib::Int {
+        &self.0
+    }
+}
+
+pub type IntError = JsError;
+
 pub type MapBytesToMapU64ToMapU64ToArrArrText = Data;
 
 #[derive(Clone, Debug)]
@@ -1106,6 +1175,80 @@ impl AsRef<cddl_lib::TableArrMembers> for TableArrMembers {
     fn as_ref(&self) -> &cddl_lib::TableArrMembers {
         &self.0
     }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedAnonymousChoice(pub(crate) cddl_lib::TaggedAnonymousChoice);
+
+#[wasm_bindgen]
+impl TaggedAnonymousChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
+    }
+
+    pub fn to_canonical_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_canonical_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedAnonymousChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_int(int: &Int) -> Self {
+        Self(cddl_lib::TaggedAnonymousChoice::new_int(int.clone().into()))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::TaggedAnonymousChoice::new_text(text))
+    }
+
+    pub fn kind(&self) -> TaggedAnonymousChoiceKind {
+        match &self.0 {
+            cddl_lib::TaggedAnonymousChoice::Int { .. } => TaggedAnonymousChoiceKind::Int,
+            cddl_lib::TaggedAnonymousChoice::Text { .. } => TaggedAnonymousChoiceKind::Text,
+        }
+    }
+
+    pub fn as_int(&self) -> Option<Int> {
+        match &self.0 {
+            cddl_lib::TaggedAnonymousChoice::Int { int, .. } => Some(int.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TaggedAnonymousChoice::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TaggedAnonymousChoice> for TaggedAnonymousChoice {
+    fn from(native: cddl_lib::TaggedAnonymousChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedAnonymousChoice> for cddl_lib::TaggedAnonymousChoice {
+    fn from(wasm: TaggedAnonymousChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedAnonymousChoice> for TaggedAnonymousChoice {
+    fn as_ref(&self) -> &cddl_lib::TaggedAnonymousChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TaggedAnonymousChoiceKind {
+    Int,
+    Text,
 }
 
 #[derive(Clone, Debug)]

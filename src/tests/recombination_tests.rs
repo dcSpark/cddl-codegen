@@ -1777,18 +1777,6 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
     // written by the `write_float` runtime helper (`write_float_width` for a name that constrains
     // the value class), so those compositions batch into the preserve gate like any other primitive. Pinned by `preserve_encodings_supports_floats` and the
     // golden_hex_preserve / golden_hex_canonical float KATs.
-    // (retired when the tagged anonymous choice gained a graceful refusal) a CBOR tag over a
-    // type-choice / group-choice rule (`#6.11(int / tstr)`, the group-choice spellings, and the
-    // all-fixed one that this profile denies the C-style lowering) no longer panics under
-    // --preserve-encodings: `IntermediateTypes::finalize` refuses it on the struct-KIND walk before
-    // generation runs, so the composition classifies Graceful rather than Panic. Support is still
-    // absent — the per-variant encoding metadata has no home on the enum — so these compositions
-    // remain out of the executed set; what changed is that the boundary is a diagnosis instead of
-    // an `assert!` on a flag. The assert stays in the tagged-enum serialize path as the guard that
-    // re-earns this entry. Pinned by
-    // `tagged_anonymous_choice_rejects_gracefully_under_preserve`; cddl-matrix/ROADMAP.md §
-    // findings, `A CBOR tag over a type-choice enum is unimplemented under --preserve-encodings`
-    // entry.
     // (retired when `any` gained runtime support) a CBOR tag wrapping `any` (`#6.11(any)`) under
     // --preserve-encodings no longer panics building the tag's encoding field: `any` lowers to the
     // self-carried `AnyCbor` runtime type (contributes ZERO owner encoding fields via

@@ -66,6 +66,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::String64>();
     _assert_serialize::<crate::generated::TableArrMembers>();
     _assert_deserialize::<crate::generated::TableArrMembers>();
+    _assert_serialize::<crate::generated::TaggedAnonymousChoice>();
+    _assert_deserialize::<crate::generated::TaggedAnonymousChoice>();
     _assert_serialize::<crate::generated::TaggedText>();
     _assert_deserialize::<crate::generated::TaggedText>();
     _assert_serialize::<crate::generated::TypeChoice>();

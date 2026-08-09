@@ -64,3 +64,7 @@ clippy_wrapped_map = { * uint => text } ; @newtype
 ; `.into()` may be emitted at the boundary (clippy::useless_conversion).
 clippy_enum = 0 / 1 / 2
 clippy_enum_record = [ tag: clippy_enum, rest: uint ]
+
+; A mandatory tag owned by an anonymous enum rule. The canonical test proves the decoded non-minimal
+; tag head is retained for ordinary replay but minimized by the canonical serializer.
+tagged_anonymous_choice = #6.10(int / tstr)

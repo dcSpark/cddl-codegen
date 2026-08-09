@@ -2121,6 +2121,71 @@ impl AsRef<Vec<Vec<u8>>> for HexTableStrList {
     }
 }
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Int(pub(crate) cddl_lib::Int);
+
+#[wasm_bindgen]
+impl Int {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Int, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(x: i64) -> Self {
+        if x >= 0 {
+            Self(cddl_lib::Int::new_uint(x as u64))
+        } else {
+            Self(cddl_lib::Int::new_nint((x + 1).unsigned_abs()))
+        }
+    }
+
+    pub fn new_uint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_uint(value))
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_nint(value))
+    }
+
+    pub fn to_str(&self) -> String {
+        self.0.to_string()
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(string: &str) -> Result<Int, JsError> {
+        std::str::FromStr::from_str(string)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("Int.from_str({}): {:?}", string, e)))
+    }
+}
+
+impl From<cddl_lib::Int> for Int {
+    fn from(native: cddl_lib::Int) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Int> for cddl_lib::Int {
+    fn from(wasm: Int) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Int> for Int {
+    fn as_ref(&self) -> &cddl_lib::Int {
+        &self.0
+    }
+}
+
+pub type IntError = JsError;
+
 pub type MapBytesToMapU64ToMapU64ToArrArrText = Data;
 
 #[derive(Clone, Debug)]
@@ -4521,6 +4586,138 @@ impl AsRef<cddl_lib::TableArrMembers> for TableArrMembers {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct TaggedAllFixed(pub(crate) cddl_lib::TaggedAllFixed);
+
+#[wasm_bindgen]
+impl TaggedAllFixed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedAllFixed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_i1() -> Self {
+        Self(cddl_lib::TaggedAllFixed::new_i1())
+    }
+
+    pub fn new_i2() -> Self {
+        Self(cddl_lib::TaggedAllFixed::new_i2())
+    }
+
+    pub fn new_i3() -> Self {
+        Self(cddl_lib::TaggedAllFixed::new_i3())
+    }
+
+    pub fn kind(&self) -> TaggedAllFixedKind {
+        match &self.0 {
+            cddl_lib::TaggedAllFixed::I1 { .. } => TaggedAllFixedKind::I1,
+            cddl_lib::TaggedAllFixed::I2 { .. } => TaggedAllFixedKind::I2,
+            cddl_lib::TaggedAllFixed::I3 { .. } => TaggedAllFixedKind::I3,
+        }
+    }
+}
+
+impl From<cddl_lib::TaggedAllFixed> for TaggedAllFixed {
+    fn from(native: cddl_lib::TaggedAllFixed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedAllFixed> for cddl_lib::TaggedAllFixed {
+    fn from(wasm: TaggedAllFixed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedAllFixed> for TaggedAllFixed {
+    fn as_ref(&self) -> &cddl_lib::TaggedAllFixed {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TaggedAllFixedKind {
+    I1,
+    I2,
+    I3,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedChoice(pub(crate) cddl_lib::TaggedChoice);
+
+#[wasm_bindgen]
+impl TaggedChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_int(int: &Int) -> Self {
+        Self(cddl_lib::TaggedChoice::new_int(int.clone().into()))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::TaggedChoice::new_text(text))
+    }
+
+    pub fn kind(&self) -> TaggedChoiceKind {
+        match &self.0 {
+            cddl_lib::TaggedChoice::Int { .. } => TaggedChoiceKind::Int,
+            cddl_lib::TaggedChoice::Text { .. } => TaggedChoiceKind::Text,
+        }
+    }
+
+    pub fn as_int(&self) -> Option<Int> {
+        match &self.0 {
+            cddl_lib::TaggedChoice::Int { int, .. } => Some(int.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TaggedChoice::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TaggedChoice> for TaggedChoice {
+    fn from(native: cddl_lib::TaggedChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedChoice> for cddl_lib::TaggedChoice {
+    fn from(wasm: TaggedChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedChoice> for TaggedChoice {
+    fn as_ref(&self) -> &cddl_lib::TaggedChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TaggedChoiceKind {
+    Int,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct TaggedFooBytes(pub(crate) cddl_lib::TaggedFooBytes);
 
 #[wasm_bindgen]
@@ -4560,6 +4757,216 @@ impl AsRef<cddl_lib::TaggedFooBytes> for TaggedFooBytes {
     fn as_ref(&self) -> &cddl_lib::TaggedFooBytes {
         &self.0
     }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedGroupArray(pub(crate) cddl_lib::TaggedGroupArray);
+
+#[wasm_bindgen]
+impl TaggedGroupArray {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedGroupArray, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_n(n: u64) -> Self {
+        Self(cddl_lib::TaggedGroupArray::new_n(n))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::TaggedGroupArray::new_text(text))
+    }
+
+    pub fn kind(&self) -> TaggedGroupArrayKind {
+        match &self.0 {
+            cddl_lib::TaggedGroupArray::N { .. } => TaggedGroupArrayKind::N,
+            cddl_lib::TaggedGroupArray::Text { .. } => TaggedGroupArrayKind::Text,
+        }
+    }
+
+    pub fn as_n(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::TaggedGroupArray::N { n, .. } => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TaggedGroupArray::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TaggedGroupArray> for TaggedGroupArray {
+    fn from(native: cddl_lib::TaggedGroupArray) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedGroupArray> for cddl_lib::TaggedGroupArray {
+    fn from(wasm: TaggedGroupArray) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedGroupArray> for TaggedGroupArray {
+    fn as_ref(&self) -> &cddl_lib::TaggedGroupArray {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TaggedGroupArrayKind {
+    N,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedGroupMap(pub(crate) cddl_lib::TaggedGroupMap);
+
+#[wasm_bindgen]
+impl TaggedGroupMap {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedGroupMap, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_n(n: u64) -> Self {
+        Self(cddl_lib::TaggedGroupMap::new_n(n))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::TaggedGroupMap::new_text(text))
+    }
+
+    pub fn kind(&self) -> TaggedGroupMapKind {
+        match &self.0 {
+            cddl_lib::TaggedGroupMap::N { .. } => TaggedGroupMapKind::N,
+            cddl_lib::TaggedGroupMap::Text { .. } => TaggedGroupMapKind::Text,
+        }
+    }
+
+    pub fn as_n(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::TaggedGroupMap::N { n, .. } => Some(*n),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TaggedGroupMap::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TaggedGroupMap> for TaggedGroupMap {
+    fn from(native: cddl_lib::TaggedGroupMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedGroupMap> for cddl_lib::TaggedGroupMap {
+    fn from(wasm: TaggedGroupMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedGroupMap> for TaggedGroupMap {
+    fn as_ref(&self) -> &cddl_lib::TaggedGroupMap {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TaggedGroupMapKind {
+    N,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TaggedTagFieldCollision(pub(crate) cddl_lib::TaggedTagFieldCollision);
+
+#[wasm_bindgen]
+impl TaggedTagFieldCollision {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TaggedTagFieldCollision, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_tag(tag: u64) -> Self {
+        Self(cddl_lib::TaggedTagFieldCollision::new_tag(tag))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::TaggedTagFieldCollision::new_text(text))
+    }
+
+    pub fn kind(&self) -> TaggedTagFieldCollisionKind {
+        match &self.0 {
+            cddl_lib::TaggedTagFieldCollision::Tag { .. } => TaggedTagFieldCollisionKind::Tag,
+            cddl_lib::TaggedTagFieldCollision::Text { .. } => TaggedTagFieldCollisionKind::Text,
+        }
+    }
+
+    pub fn as_tag(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::TaggedTagFieldCollision::Tag { tag, .. } => Some(*tag),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TaggedTagFieldCollision::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TaggedTagFieldCollision> for TaggedTagFieldCollision {
+    fn from(native: cddl_lib::TaggedTagFieldCollision) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TaggedTagFieldCollision> for cddl_lib::TaggedTagFieldCollision {
+    fn from(wasm: TaggedTagFieldCollision) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TaggedTagFieldCollision> for TaggedTagFieldCollision {
+    fn as_ref(&self) -> &cddl_lib::TaggedTagFieldCollision {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TaggedTagFieldCollisionKind {
+    Tag,
+    Text,
 }
 
 #[derive(Clone, Debug)]

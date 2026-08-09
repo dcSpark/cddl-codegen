@@ -376,6 +376,21 @@ fixed_special_group_choice = { flag: true // absent: null // label: tstr }
 fixed_special_type_choice = true / tstr
 fixed_special_type_choice_brute = true / null / tstr
 
+; --- mandatory RULE tags over anonymous choices under --preserve-encodings ---
+; A tag wrapping the whole choice belongs to the ENUM RULE rather than to any arm. Rust enums have
+; no enum-level instance storage, so every physical variant carries the same rule-owned tag-width
+; field. The tag is read and checked ONCE before type dispatch/backtracking, then every successful
+; arm construction receives it. `tagged_choice` carries an arm-specific StringEncoding beside that
+; shared field; `tagged_all_fixed` proves the preserve-only data-carrying lowering of an otherwise
+; C-style all-fixed choice.
+tagged_choice = #6.10(int / tstr)
+tagged_group_array = #6.11([ n: uint // text: tstr ])
+tagged_group_map = #6.12({ n: uint // text: tstr })
+tagged_all_fixed = #6.13(1 / 2 / 3)
+; The `tag` arm already owns `tag_encoding` for its uint width. The enum-rule tag width must choose
+; one collision-free name across every variant rather than colliding or choosing arm-by-arm.
+tagged_tag_field_collision = #6.14([ tag: uint // text: tstr ])
+
 ; --- a c-style enum under an encoding-carrying wrapper, under --preserve-encodings ---
 ; A c-style enum is inlined at every use site (no `Deserialize` impl of its own — a fieldless Copy
 ; enum has nowhere to store an encoding, so the sidecar lives in the OWNER's encoding struct). That

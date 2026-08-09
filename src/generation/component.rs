@@ -36,7 +36,7 @@
 //! that expanded `generate!`. The per-scope map is plumbed anyway (`GenerationScope::component_scopes`)
 //! so a later phase can split without touching the write loop.
 
-use super::enums::EnumVariantInRust;
+use super::enums::{EnumVariantInRust, enum_rule_tag_encoding_name};
 use super::wit::{
     ImportedDepType, WitAccumulator, WitAccumulatorRef, WitConstructor, WitEnum, WitFunc,
     WitFuncOp, WitInterface, WitMember, WitMemberOp, WitPackage, WitParam, WitResource, WitType,
@@ -1513,10 +1513,13 @@ impl Emitter<'_, '_> {
     fn choice_variants(
         &self,
         ident: &RustIdent,
-    ) -> Option<(&[EnumVariant], Option<Representation>)> {
-        match self.types.rust_struct(ident).map(|s| s.variant()) {
-            Some(RustStructType::TypeChoice { variants }) => Some((variants, None)),
-            Some(RustStructType::GroupChoice { variants, rep }) => Some((variants, Some(*rep))),
+    ) -> Option<(&[EnumVariant], Option<Representation>, Option<usize>)> {
+        let rust_struct = self.types.rust_struct(ident)?;
+        match rust_struct.variant() {
+            RustStructType::TypeChoice { variants } => Some((variants, None, rust_struct.tag())),
+            RustStructType::GroupChoice { variants, rep } => {
+                Some((variants, Some(*rep), rust_struct.tag()))
+            }
             _ => None,
         }
     }
@@ -1672,9 +1675,11 @@ impl Emitter<'_, '_> {
             // wasm face's own `kind()` reads, so a preserve/non-preserve arm-shape fork can never
             // exist here in one spelling and there in another.
             WitMemberOp::VariantKind => {
-                let (variants, variant_rep) = self
+                let (variants, variant_rep, tag) = self
                     .choice_variants(ident)
                     .expect("a `kind` member is only projected for a choice");
+                let rule_tag_encoding =
+                    enum_rule_tag_encoding_name(self.types, variants, variant_rep, tag, self.cli);
                 let kind = self
                     .kind_enum(ident)
                     .expect("a `kind` member is projected beside its `<name>-kind` enum");
@@ -1682,7 +1687,14 @@ impl Emitter<'_, '_> {
                 lines.push("let me = self.0.borrow();".to_owned());
                 lines.push("match &*me {".to_owned());
                 for (variant, case) in variants.iter().zip(&kind.cases) {
-                    let arm = EnumVariantInRust::new(self.types, variant, variant_rep, self.cli);
+                    let arm = EnumVariantInRust::new(
+                        self.types,
+                        variant,
+                        variant_rep,
+                        tag,
+                        rule_tag_encoding.as_deref(),
+                        self.cli,
+                    );
                     lines.push(format!(
                         "    {rust}::{}{} => {wit_kind}::{},",
                         variant.name,
@@ -1695,14 +1707,23 @@ impl Emitter<'_, '_> {
             // `as-<variant>`: the payload as a SNAPSHOT (every composite arm of `rust_to_wit`
             // clones), `None` on every other arm.
             WitMemberOp::AsVariant { rust_variant } => {
-                let (variants, variant_rep) = self
+                let (variants, variant_rep, tag) = self
                     .choice_variants(ident)
                     .expect("an `as-` member is only projected for a choice");
                 let variant = variants
                     .iter()
                     .find(|v| v.name.to_string() == *rust_variant)
                     .expect("the projection named a variant of this choice");
-                let arm = EnumVariantInRust::new(self.types, variant, variant_rep, self.cli);
+                let rule_tag_encoding =
+                    enum_rule_tag_encoding_name(self.types, variants, variant_rep, tag, self.cli);
+                let arm = EnumVariantInRust::new(
+                    self.types,
+                    variant,
+                    variant_rep,
+                    tag,
+                    rule_tag_encoding.as_deref(),
+                    self.cli,
+                );
                 let Some(WitType::Option(payload)) = member.result.as_ref() else {
                     unreachable!("an `as-` member always returns an option of its payload");
                 };
