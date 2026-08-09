@@ -599,6 +599,11 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   third, independent splitter: an occurrence marker over an UNKEYED fixed value (`[* 5]`, `[? 5]`,
   `[+ 5]`, `{ * uint => 5 }`) is unsupported while the keyed optional forms above generate — which is
   why `type2.value` × `role.occurrence-target` renders ◐ in the grid.
+- **The expected-conversion prelude names are fixed tagged-`AnyCbor` wrappers, not text codecs.**
+  `eb64url`, `eb64legacy`, and `eb16` retain and require tags 21, 22, and 23 around one arbitrary
+  CBOR item; their Rust, wasm, JSON, WIT, and component projections use the ordinary tagged-`any`
+  surfaces and expose no base64/base16 rendering API. `cbor-any` is a separate stream marker and
+  remains the permanent graceful refusal described below.
 - **Containment cell-example hygiene.** The `type2.map`-in-a-role cells (`array-element` /
   `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
   any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs
