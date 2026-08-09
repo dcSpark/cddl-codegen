@@ -9,7 +9,7 @@
 //   * decode — the spec bytes must deserialize and re-encode back to themselves.
 //
 // Coverage spans every CBOR major type the generator emits under default flags:
-//   0 unsigned, 1 negative, 2 bytes, 3 text, 4 array, 5 map, 6 tag, 7 simple (bool/null) + float.
+//   0 unsigned, 1 negative, 2 bytes, 3 text, 4 array, 5 map, 6 tag, 7 simple (bool/null/undefined) + float.
 //
 // AUTHORING CONVENTION: write `expected` bytes as two-digit `0x??` literals only (no decimal, no
 // single-digit hex). cddl-matrix/project_golden_hex.ts extracts these arrays to build the coverage
@@ -218,6 +218,7 @@ mod golden_hex {
     // ---- major type 7: simple values + float ----
     kat!(boolean_true, OneBool, OneBool::new(true), &[0x81, 0xf5]);
     kat!(boolean_false, OneBool, OneBool::new(false), &[0x81, 0xf4]);
+    kat!(undefined_value, OneUndefined, OneUndefined::new(), &[0x81, 0xf7]);
     kat!(null_value, Nullable, Nullable::new(None), &[0x81, 0xf6]);
     kat!(
         nullable_present,

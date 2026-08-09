@@ -202,6 +202,36 @@ impl Deserialize for TrueValue {
     }
 }
 
+impl cbor_event::se::Serialize for UndefinedValue {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            UndefinedValue::ValueUndefined => {
+                serializer.write_special(cbor_event::Special::Undefined)
+            }
+        }
+    }
+}
+
+impl Deserialize for UndefinedValue {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    if raw.special()? != cbor_event::Special::Undefined {
+                        return Err(DeserializeFailure::ExpectedUndefined.into());
+                    }
+                    Ok(UndefinedValue::ValueUndefined)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("UndefinedValue"))
+    }
+}
+
 impl cbor_event::se::Serialize for Version {
     fn serialize<'se>(
         &self,

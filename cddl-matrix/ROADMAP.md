@@ -24,7 +24,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->1 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->101 `class="constraint"` enforcement reject vectors over 81 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->104 `class="constraint"` enforcement reject vectors over 84 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
 rejectable constraint projects `enforce = yes (bounded-reject)` — `+`/`1*` is honored as a non-empty
 container and the other count-permitting table markers
@@ -516,25 +516,15 @@ entry, so the atomicity is the rule).
   executes the encoded-null cross-product: `Tagged` and `CBORBytes`, rule and member positions,
   both source orders and wire arms, reason-bearing rejection, preserve replay and canonical
   minimization.
-  `true / false` has no null arm and remains the ordinary multi-value C-style enum path. `undefined`
-  and byte-string literal fixed kinds are separate deferred representation work.
-- **`undefined` has no member REPRESENTATION, so a spec that constrains a position to it must be
-  hand-rewritten.** `undefined` is refused gracefully in every position — `[v: undefined, x: uint]`,
-  `{ k: undefined, j: uint }` and the rule body `x = undefined` all exit 1 naming the type, under the
-  default and `--preserve-encodings` profiles alike (pinned by
-  `undefined_prelude_rejects_gracefully_in_every_position` and
-  `tests/robustness/undefined_member.cddl`). That refusal is the correct posture and is not the
-  deferred work; what is deferred is REPRESENTING the constraint. `undefined` differs from its
-  major-type-7 siblings `true` / `false` / `null` in exactly one way that matters here: those have a
-  `FixedValue` and so ride the member-position flip (`README.md` § "Gotchas"), reading and verifying
-  the constant on deserialize without storing it, while `undefined` has none — giving it one is the
-  work. The widening a user can reach for today is not equivalent: `any` carries an arbitrary CBOR
-  item (`undefined` included) but constrains nothing, which is a different spec. The cells
-  `contain.array-element.prelude.undefined` and `contain.map-value.prelude.undefined` keep the member
-  half visible beside the rule-body row. Reopening signal on the magnitude axis: a spec brought to us
-  contains an `undefined` member, i.e. the count of members its owner must hand-rewrite to keep
-  generating reaches 1; today the entry's evidence is synthetic probes only, and a synthetic probe
-  costs nobody a rewrite.
+  `true / false` has no null arm and remains the ordinary multi-value C-style enum path.
+- **`undefined` is a supported fixed simple value (B3-024B).** It is a unit-valued
+  `FixedValue::Undefined`: named rules are nominal singletons that write/verify `0xf7`; mandatory
+  members store nothing and optional keyed members carry their presence bit; `undefined / null`
+  keeps two states as `Option<FixedUndefined>`; and mixed-special dispatch, tag and `.cbor` wrapper
+  chains retain the existing fixed-value behavior. It has no encoding-width sidecar of its own, but
+  enclosing tags and byte strings preserve/canonicalize their heads normally. The fixed-singleton
+  execution fixture, decode catalog and golden KAT cover its acceptance and rejection paths. The
+  remaining fixed-value representation work is byte-string literals (B3-024C), not `undefined`.
 - **The `eb*` expected-conversion tags advertise a rendering, not a type, so a spec that uses one
   must widen it by hand.** `eb64url` (`#6.21(any)`), `eb64legacy` (`#6.22`) and `eb16` (`#6.23`)
   each wrap an ARBITRARY CBOR item in a tag whose whole content is advice to a consumer rendering

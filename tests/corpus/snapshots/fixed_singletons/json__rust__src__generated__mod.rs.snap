@@ -84,6 +84,17 @@ impl TrueValue {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum UndefinedValue {
+    ValueUndefined,
+}
+
+impl UndefinedValue {
+    pub fn new_value_undefined() -> Self {
+        Self::ValueUndefined
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub enum Version {
     ValueUint5,
 }

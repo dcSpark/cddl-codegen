@@ -467,7 +467,9 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       FixedValueMismatch; both oracles certify.
   //   (d) The fixed-selector containment cells, in their three rejection semantics. MEMBER equality
   //       covers literal members plus the explicit tagged-fixed members: each vector changes ONLY the
-  //       fixed payload while retaining its tag, outer head, keys, and siblings. ARM selection covers
+  //       fixed payload while retaining its tag, outer head, keys, and siblings. The undefined rows
+  //       additionally prove that the special-value decoder compares the exact simple value, rather
+  //       than accepting any CBOR special. ARM selection covers
   //       group-choice selectors (bareword/fixed keys and fixed members) plus `tstr / null` and the
   //       same-major `true / null / tstr` choice; a wrong selector leaves no legal alternative. REQUIRED
   //       KEY lookup covers supported literal colon and literal-arrow spellings: each vector omits the
@@ -498,7 +500,7 @@ function vacuityProblems(rs: Directional[]): string[] {
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
     "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint",
     "contain.array-element.prelude.false", "contain.array-element.prelude.null",
-    "contain.array-element.prelude.true", "contain.array-element.type2.value",
+    "contain.array-element.prelude.true", "contain.array-element.prelude.undefined", "contain.array-element.type2.value",
     "contain.array-element.type2.tag.fixed_bool", "contain.array-element.type2.tag.fixed_null",
     "contain.array-element.type2.value.bare_exactly_once", "contain.array-element.value.number",
     "contain.array-element.value.number.float",
@@ -522,7 +524,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.map-key.memberkey.value.uint_colon_multi",
     "contain.map-key.memberkey.value.uint_colon_single",
     "contain.map-value.prelude.false", "contain.map-value.prelude.null",
-    "contain.map-value.prelude.true", "contain.map-value.type2.value",
+    "contain.map-value.prelude.true", "contain.map-value.prelude.undefined", "contain.map-value.type2.value",
     "contain.map-value.type2.tag.fixed_bool", "contain.map-value.type2.tag.fixed_null",
     "contain.map-value.value.number", "contain.map-value.value.text",
     "contain.occurrence-target.memberkey.type1.plus_table",
@@ -530,7 +532,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.occurrence-target.type2.value.optional_keyed_map", "memberkey.cut",
     "occur.bounded", "occur.bounded.lower", "occur.bounded.upper", "occur.one_or_more",
     "prelude.false", "prelude.float16", "prelude.float16-32", "prelude.float32", "prelude.float32-64", "prelude.float64",
-    "prelude.nil", "prelude.null", "prelude.true",
+    "prelude.nil", "prelude.null", "prelude.true", "prelude.undefined",
     "rangeop.exclusive", "rangeop.exclusive.float", "rangeop.exclusive.int", "rangeop.exclusive.nint",
     "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint",
     "type2.value", "value.number", "value.number.bin", "value.number.hex", "value.number.hexfloat", "value.text"];

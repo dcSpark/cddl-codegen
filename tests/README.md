@@ -3966,7 +3966,7 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > is the narrower-float delivery: the refusal shipped at `IntermediateTypes::new_type`'s
 > unresolved-reserved fallback, and `x = float16 .size 4` still generated at exit 0 because a control
 > operator resolves its head through `parsing::ident_to_primitive` and never calls `new_type`. The
-> per-name position sweeps (`undefined_prelude_rejects_gracefully_in_every_position` and siblings)
+> per-name position sweeps (`undefined_prelude_generates_in_every_position` plus the refusal siblings)
 > vary the POSITION and hold the resolution MECHANISM constant, so a second path is invisible to them
 > by construction; those sweeps stay as the WORDING pins and this module owns only the closure
 > property, which keeps its cells cheap (one-rule specs, generation-only, one profile — a refusal

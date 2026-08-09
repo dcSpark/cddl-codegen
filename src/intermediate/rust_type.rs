@@ -17,6 +17,7 @@ pub enum Representation {
 #[derive(Clone, Debug, PartialEq)]
 pub enum FixedValue {
     Null,
+    Undefined,
     Bool(bool),
     Nint(i128),
     Uint(u64),
@@ -39,6 +40,7 @@ impl FixedValue {
     pub fn singleton_name_fragment(&self) -> String {
         match self {
             Self::Null => "Null".to_owned(),
+            Self::Undefined => "Undefined".to_owned(),
             Self::Bool(true) => "BoolTrue".to_owned(),
             Self::Bool(false) => "BoolFalse".to_owned(),
             Self::Uint(value) => format!("Uint{value}"),
@@ -59,6 +61,7 @@ impl FixedValue {
     fn for_variant(&self) -> VariantIdent {
         match self {
             FixedValue::Null => VariantIdent::new_custom("Null"),
+            FixedValue::Undefined => VariantIdent::new_custom("Undefined"),
             FixedValue::Bool(b) => VariantIdent::new_custom(match b {
                 true => "True",
                 false => "False",
@@ -80,6 +83,7 @@ impl FixedValue {
         let mut buf = cbor_event::se::Serializer::new_vec();
         match self {
             FixedValue::Null => buf.write_special(cbor_event::Special::Null),
+            FixedValue::Undefined => buf.write_special(cbor_event::Special::Undefined),
             FixedValue::Bool(b) => buf.write_special(cbor_event::Special::Bool(*b)),
             // Nint holds i128, whose values below i64::MIN don't fit the plain
             // write_negative_integer endpoint's i64 argument; the _sz form
@@ -103,6 +107,9 @@ impl FixedValue {
     pub fn to_primitive_str_assign(&self) -> String {
         match self {
             FixedValue::Null => "None".to_owned(),
+            // `undefined` has no Rust primitive representation.  This helper only serves the
+            // primitive-default/comparison paths, which reject it before rendering an expression.
+            FixedValue::Undefined => unreachable!("undefined is not a Rust primitive"),
             FixedValue::Bool(b) => b.to_string(),
             FixedValue::Nint(i) => i.to_string(),
             FixedValue::Uint(u) => u.to_string(),
@@ -123,6 +130,7 @@ impl FixedValue {
     pub fn cddl_source_desc(&self) -> String {
         match self {
             FixedValue::Null => "null".to_owned(),
+            FixedValue::Undefined => "undefined".to_owned(),
             FixedValue::Bool(b) => b.to_string(),
             FixedValue::Nint(i) => i.to_string(),
             FixedValue::Uint(u) => u.to_string(),
@@ -496,6 +504,7 @@ impl RustType {
                 FixedValue::Uint(_) => p.cbor_types().contains(&CBORType::UnsignedInteger),
                 FixedValue::Float(_) => p.is_float(),
                 FixedValue::Null => false,
+                FixedValue::Undefined => false,
                 FixedValue::Text(_) => *p == Primitive::Str,
             }
         } else {
@@ -726,6 +735,7 @@ impl RustType {
                     FixedValue::Float(_) => CBORType::Special,
                     FixedValue::Text(_) => CBORType::Text,
                     FixedValue::Null => CBORType::Special,
+                    FixedValue::Undefined => CBORType::Special,
                     FixedValue::Bool(_) => CBORType::Special,
                 }],
                 ConceptualRustType::Primitive(p) => p.cbor_types(),

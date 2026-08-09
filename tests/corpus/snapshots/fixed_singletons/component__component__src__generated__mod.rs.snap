@@ -23,6 +23,7 @@ impl wit_types::Guest for Component {
     type NilValue = WitNilValue;
     type NullValue = WitNullValue;
     type TrueValue = WitTrueValue;
+    type UndefinedValue = WitUndefinedValue;
     type Version = WitVersion;
 }
 
@@ -194,6 +195,36 @@ impl wit_types::GuestTrueValue for WitTrueValue {
     fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TrueValue, String> {
         <cddl_lib::TrueValue as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
             .map(|v| wit_types::TrueValue::new(WitTrueValue(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitUndefinedValue(pub RefCell<cddl_lib::UndefinedValue>);
+
+impl wit_types::GuestUndefinedValue for WitUndefinedValue {
+    fn new_value_undefined() -> wit_types::UndefinedValue {
+        let inner = cddl_lib::UndefinedValue::new_value_undefined();
+        wit_types::UndefinedValue::new(WitUndefinedValue(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::UndefinedValueKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::UndefinedValue::ValueUndefined => {
+                wit_types::UndefinedValueKind::ValueUndefined
+            }
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::UndefinedValue as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::UndefinedValue, String> {
+        <cddl_lib::UndefinedValue as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::UndefinedValue::new(WitUndefinedValue(RefCell::new(v))))
             .map_err(err)
     }
 }

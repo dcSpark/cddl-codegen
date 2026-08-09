@@ -1718,6 +1718,7 @@ fn unmappable_default_head_rejection(
 fn fixed_value_as_written(value: &FixedValue) -> String {
     match value {
         FixedValue::Null => "null".to_owned(),
+        FixedValue::Undefined => "undefined".to_owned(),
         FixedValue::Bool(b) => b.to_string(),
         FixedValue::Nint(i) => i.to_string(),
         FixedValue::Uint(u) => u.to_string(),
@@ -2718,6 +2719,7 @@ fn type2_to_fixed_value(type2: &Type2) -> Option<FixedValue> {
         Type2::TextValue { value, .. } => Some(FixedValue::Text(value.to_string())),
         Type2::Typename { ident, .. } if ident.ident == "true" => Some(FixedValue::Bool(true)),
         Type2::Typename { ident, .. } if ident.ident == "false" => Some(FixedValue::Bool(false)),
+        Type2::Typename { ident, .. } if ident.ident == "undefined" => Some(FixedValue::Undefined),
         // Lowered so the head check owns the verdict: `FixedValue::Null` never matches a primitive,
         // so `try_default` refuses it with the message that names the head and the value — which is
         // the accurate account of `? f: uint .default null`, where the value IS a literal and the

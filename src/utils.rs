@@ -164,7 +164,7 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
         // All six float prelude names are alias-handled — `IntermediateTypes::aliases()` registers
         // one primitive per name, because each names a different set of float VALUES.
         "uint" | "nint" | "int" | "bool" | "tstr" | "text" |
-        "bstr" | "bytes" | "null" | "nil" | "true"  | "false" |
+        "bstr" | "bytes" | "null" | "nil" | "undefined" | "true"  | "false" |
         "float16" | // #7.25
         "float32" | // #7.26
         "float64" | // #7.27
@@ -202,9 +202,6 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
         "eb64url" | // #6.21(any)
         "eb64legacy" | // #6.22(any)
         "eb16" => panic!("unsupported cddl prelude type: {}", name), // #6.23(any)
-        // `undefined` (#7.23) is NOT listed above: it is refused gracefully at the same seam, for
-        // the same reason. Reaching `_ => None` from here is therefore unreachable in practice, and
-        // harmless if it ever were.
         _ => None,
     }
 }

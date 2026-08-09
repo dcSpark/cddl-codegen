@@ -7,18 +7,19 @@ sidebar_position: 3
 ## Types
 
 * Primitives - `bytes`, `bstr`, `tstr`, `text`, `uint`, `nint`
-* Fixed values - `null`, `nil`, `true`, `false`, integers, floats, and text literals. A named
+* Fixed values - `null`, `nil`, `undefined`, `true`, `false`, integers, floats, and text literals. A named
   fixed-value rule is a nominal singleton with its own CBOR codec (`answer = 42`,
   `enabled = true`, `label = "ok"`); it can consequently be a record member, homogeneous-array
   element, table value, or standalone root. A two-arm `T / null` whose non-null arm is fixed uses
   `Option<ThatSingleton>`; bare `null / null` normalizes to the one null singleton rather than
   exposing two equivalent Rust states, while an encoded-null arm (`#6.7(null)` or
-  `bytes .cbor null`) remains distinct from bare null. `undefined` and byte-string literals remain
-  unsupported fixed kinds.
+  `bytes .cbor null`) remains distinct from bare null. `undefined` is its own unit-valued fixed
+  singleton (not an alias of null): it writes `0xf7`, has no inner preserve sidecar, and
+  `undefined / null` is `Option<FixedUndefined>`. Byte-string literals remain unsupported.
 * Optional fixed-value members - `foo = [x: uint, ? v: true]`, `{? k: 5, x: uint}` — the one-bit
   present/absent state is stored as a `bool` presence field (see
   [Output format](output_format#optional-fixed-value-members)); covers bool, null, uint, nint,
-  text, and float (`[x: uint, ? f: 2.5, label: text]`) fixed values in both array and map
+  text, float, and undefined (`[x: uint, ? u: undefined, label: text]`) fixed values in both array and map
   representations
 * `int` (signed integer, `uint / nint`) - maps to a generated `Int` enum covering the full CBOR
   integer range, in any position: as a member, an array element, a table value, or a bare
@@ -465,7 +466,6 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | eb16 | `x = eb16` | rejected gracefully at parse |
 | eb64legacy | `x = eb64legacy` | rejected gracefully at parse |
 | eb64url | `x = eb64url` | rejected gracefully at parse |
-| undefined | `x = undefined` | rejected gracefully at parse |
 | Any (#) | `foo = #` | rejected gracefully at parse |
 | Choice from named group (&) | `color = &colors; colors = (red: 0, green: 1)` | rejected gracefully at parse |
 | Choice from inline group (&) | `color = &(red: 0, green: 1, blue: 2)` | rejected gracefully at parse |
@@ -535,10 +535,6 @@ both directions, so read a row as "unsupported *as a rule body*" rather than "un
   constrains the value, so it is a different spec; carrying the constraint would need a fixed-bytes
   member representation, tracked in `cddl-matrix/ROADMAP.md` under "A byte-string literal has no
   fixed-MEMBER representation".
-
-`undefined` is the one constant with no such split in the other direction either: it is refused
-gracefully in every position, member and rule body alike, for the same reason — it has no value a
-member could carry and no type a rule could name.
 
 The "Contextual gaps" table covers only the constructs that are supported as a rule body *and*
 unsupported in some nesting role. A construct unsupported in both places appears once, above, and its

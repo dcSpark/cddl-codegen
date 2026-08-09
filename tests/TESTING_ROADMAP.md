@@ -2820,7 +2820,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   detail — including the `{ k => v }`-as-bounds-`(1, 1)` revisit — lives in the two
   candidate-feature entries in `cddl-matrix/ROADMAP.md` (the "Real bounded `?` / `n*m` table
   cardinality" entry and its two-type sibling).
-- **Top-level scalar/text/bool/null fixed rules are nominal singleton TypeChoices** (`foo = 5`,
+- **Top-level scalar/text/bool/null/undefined fixed rules are nominal singleton TypeChoices** (`foo = 5`,
   `foo = "text"`, `foo = true`/`null`, and their mandatory-tag/`bytes .cbor` forms). They own
   direct codecs rather than taking the inline-only C-style enum path, so a named constant has the
   same standalone and embedded wire shape. `T / null` first nominalizes a fixed `T`, preserving the
@@ -2831,8 +2831,10 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   minimization; its encoded-null leg exhausts the `Tagged` and `CBORBytes` operations currently
   reachable on a fixed value at both collapse sites and in both source orders (`OptionallyTagged`
   is collection-only). Projected feature rows and the fixed/null containment cell have
-  reason-bearing decode pins. `undefined` and byte-string literals remain refused: neither is a
-  `FixedValue`, and B3-024B/C own their representation decisions.
+  reason-bearing decode pins. B3-024B added `undefined` as its own unit fixed value: it writes and
+  verifies `0xf7`, has no inner sidecar, uses `Option<FixedUndefined>` beside null, and is exercised
+  through array/map members, mixed-special dispatch, tags and `.cbor` wrappers. Byte-string literals
+  remain refused and are B3-024C.
 - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
   fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
   `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining

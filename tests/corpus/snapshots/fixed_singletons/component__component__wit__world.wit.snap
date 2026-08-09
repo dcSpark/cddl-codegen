@@ -62,6 +62,15 @@ interface types {
   enum true-value-kind {
     value-bool-true,
   }
+  resource undefined-value {
+    new-value-undefined: static func() -> undefined-value;
+    kind: func() -> undefined-value-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<undefined-value, string>;
+  }
+  enum undefined-value-kind {
+    value-undefined,
+  }
   resource version {
     new-value-uint5: static func() -> version;
     kind: func() -> version-kind;

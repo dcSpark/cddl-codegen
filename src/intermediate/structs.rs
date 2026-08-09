@@ -257,6 +257,7 @@ fn fixed_value_cbor_type(value: &FixedValue) -> CBORType {
         FixedValue::Float(_) => CBORType::Special,
         FixedValue::Text(_) => CBORType::Text,
         FixedValue::Null => CBORType::Special,
+        FixedValue::Undefined => CBORType::Special,
         FixedValue::Bool(_) => CBORType::Special,
     }
 }
@@ -1844,8 +1845,8 @@ pub fn enum_variants_have_same_encoding_var(variants: &[EnumVariant]) -> bool {
                     (Some(FixedValue::Text(_)), Some(FixedValue::Text(_))) => acc,
                     // these don't have any encoding vars
                     (
-                        Some(FixedValue::Bool(_) | FixedValue::Null),
-                        Some(FixedValue::Bool(_) | FixedValue::Null),
+                        Some(FixedValue::Bool(_) | FixedValue::Null | FixedValue::Undefined),
+                        Some(FixedValue::Bool(_) | FixedValue::Null | FixedValue::Undefined),
                     ) => acc,
                     _ => None,
                 }

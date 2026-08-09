@@ -5,6 +5,7 @@ true_value = true
 false_value = false
 nil_value = nil
 null_value = null
+undefined_value = undefined
 answer = 42
 version = 5
 marker = "v1"

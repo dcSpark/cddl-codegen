@@ -29,11 +29,11 @@ primitive encoding regardless of the `0x81` framing.
 
 ## Summary
 
-- Appendix A vectors: **82** — ✅ 40 covered · ✅* 24 redundant · ➖ 18 N/A · ➕ 0 unexplained
+- Appendix A vectors: **82** — ✅ 41 covered · ✅* 24 redundant · ➖ 17 N/A · ➕ 0 unexplained
 - Legal **leaf** cells: **45** — 20 covered, 25 unexercised:
   - 6 **never emitted** under default flags (indefinite-length, float16/32, extended-simple, break)
   - 19 **emittable but no Appendix A vector lands here** (e.g. wide-argument length/count heads) — not a generator gap, just outside the App-A example set
-- Golden tests: 47 default-flags · sibling sets: 63 preserve + 30 canonical (below)
+- Golden tests: 48 default-flags · sibling sets: 63 preserve + 30 canonical (below)
 
 **Sibling golden sets (not in this grid):** the encodings the default-flags set can never
 exercise — the ➖ `.indef` cells, the non-minimal float spellings of a value whose shortest form is narrower, and non-minimal header arguments — have their own spec-anchored
@@ -140,7 +140,7 @@ redundant or has no canonical RFC vector.
 | `f4` | false | ✅ | `boolean_false` |
 | `f5` | true | ✅ | `boolean_true` |
 | `f6` | null | ✅ | `null_value` |
-| `f7` | undefined | ➖ | cddl-codegen has no `undefined` construct; the simple-value immediate cell is otherwise covered by false/true/null |
+| `f7` | undefined | ✅ | `undefined_value` |
 | `f818` | simple(24) | ➖ | extended simple values are not a CDDL construct the generator emits |
 | `f8ff` | simple(255) | ➖ | extended simple values are not a CDDL construct the generator emits |
 | `f90000` | 0.0 | ✅* | same f16 path (head 0xf9) as 1.5, covered by float_half |
@@ -174,7 +174,7 @@ golden vector asserts. Each declared ref is expanded through the master's parent
 (`cddl-matrix/encodings.toml` — a PARENT row names its leaves in `cells`; a leaf ref is itself).
 
 **The fixture floor comes first.** `input.cddl` is what the golden vectors are generated from, so a
-construct it never mentions has nothing asserted about it at all — **32** of the
+construct it never mentions has nothing asserted about it at all — **31** of the
 48 rows are in that position, marked ✗ below, and their whole legal set is
 untested. This matters because coverage is derived as a union over every `kat!` in the file: without
 the floor, a construct would be credited for a cell some *other* construct's vector happened to land
@@ -217,8 +217,8 @@ construct*, so a globally covered cell is still untested here. An earlier draft 
 agreeing exactly — that was an artifact of crediting every construct for every other construct's
 vectors, and restoring the agreement would mean restoring the over-credit.
 
-- Exercised by `input.cddl`: **16** of 48 (✗ rows below have their full legal set untested)
-- Constructs with at least one untested-and-emittable cell: **41** of 48
+- Exercised by `input.cddl`: **17** of 48 (✗ rows below have their full legal set untested)
+- Constructs with at least one untested-and-emittable cell: **40** of 48
 - Both counts are **conservative in one known direction**: a construct the fixture reaches only
   through a wider type the generator narrows at emission (`float` → the `float64` cell) counts as
   ✗ here, so *exercised* is a floor and *with gaps* is a ceiling. Cited alone, they overstate the
@@ -262,7 +262,7 @@ vectors, and restoring the agreement would mean restoring the over-credit.
 | `prelude.true` | ✗ | 1 | 0 | 0 | `enc.major7.simple_imm` |
 | `prelude.tstr` | ✓ | 6 | 1 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27` |
 | `prelude.uint` | ✓ | 5 | 5 | 0 | — |
-| `prelude.undefined` | ✗ | 1 | 0 | 0 | `enc.major7.simple_imm` |
+| `prelude.undefined` | ✓ | 1 | 1 | 0 | — |
 | `prelude.unsigned` | ✗ | 10 | 0 | 0 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major6.ai24`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27`, `enc.major6.imm` |
 | `prelude.uri` | ✗ | 1 | 0 | 0 | `enc.major6.ai24` |
 | `type2.array` | ✓ | 6 | 2 | 1 | `enc.major4.ai25`, `enc.major4.ai26`, `enc.major4.ai27` |

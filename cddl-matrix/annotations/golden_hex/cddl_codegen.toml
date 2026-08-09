@@ -107,11 +107,6 @@ reason = "outer definite array covered; embeds an indefinite inner map (see enc.
 # ---- out_of_scope: cddl-codegen never emits this encoding under default flags ----
 
 [[note]]
-hex = "f7"   # undefined (in the otherwise-covered simple_imm cell)
-status = "out_of_scope"
-reason = "cddl-codegen has no `undefined` construct; the simple-value immediate cell is otherwise covered by false/true/null"
-
-[[note]]
 hex = "f0"   # simple(16) (in the otherwise-covered simple_imm cell)
 status = "out_of_scope"
 reason = "unassigned simple value 16 is not a CDDL construct the generator emits; simple-value immediate cell is covered by false/true/null"

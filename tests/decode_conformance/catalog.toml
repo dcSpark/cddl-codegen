@@ -416,6 +416,27 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.array-element.prelude.undefined"
+axis = "containment"
+example = "a = [v: undefined, x: uint]"
+spec = "a = [v: undefined, x: uint]"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "82f6184f"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value null is not undefined — violates the fixed-value array member `v: undefined` in `a = [v: undefined, x: uint]`; the instance is a spec-valid `[undefined, 79]` with only the special value changed (`f7`->`f6`)"
+expect_err = "Expected undefined"
+
+[[row.vector]]
+hex = "82f7184f"
+source = "hand"
+expect = "accept"
+
+[[row]]
 id = "contain.array-element.type.choice"
 axis = "containment"
 example = "a = [int / tstr]"
@@ -3009,6 +3030,27 @@ expect = "accept"
 [[row.vector]]
 hex = "a2616bf5616a19121b"
 source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.map-value.prelude.undefined"
+axis = "containment"
+example = "m = { k: undefined, j: uint }"
+spec = "m = { k: undefined, j: uint }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a2616bf6616a18cb"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value null is not undefined — violates the fixed-value map member `k: undefined` in `m = { k: undefined, j: uint }`; the instance is a spec-valid `{\"k\": undefined, \"j\": 203}` with only the special value changed (`f7`->`f6`)"
+expect_err = "Expected undefined"
+
+[[row.vector]]
+hex = "a2616bf7616a18cb"
+source = "hand"
 expect = "accept"
 
 [[row]]
@@ -8664,6 +8706,27 @@ expect = "accept"
 [[row.vector]]
 hex = "8200190c0f"
 source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "prelude.undefined"
+axis = "feature"
+example = "x = undefined"
+spec = "x = undefined"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "f6"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "null is not the nominal fixed value undefined in `x = undefined`; the decoder must reject another CBOR special value rather than only checking the special major type"
+expect_err = "Expected undefined"
+
+[[row.vector]]
+hex = "f7"
+source = "hand"
 expect = "accept"
 
 [[row]]

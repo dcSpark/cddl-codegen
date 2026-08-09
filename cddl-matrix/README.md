@@ -168,7 +168,7 @@ excluded-endpoint number, NaN against a float window — each a valid instance o
 certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
 REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
 replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is
-<!-- gen:sh:readme-enforce-green -->81 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+<!-- gen:sh:readme-enforce-green -->84 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
 the guard that replaced the silent truncation this row's vector exposed; pinned by the
@@ -546,7 +546,7 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   group carrying an occurrence marker (`[* (int, tstr)]`) is a distinct path: it is rejected
   gracefully (not a panic — `ROADMAP.md` § findings), with the same "name the group" remedy.
 - **Supported fixed values are nominal at the TOP level and inline at MEMBER position.** A named
-  scalar/text/bool/null fixed rule (`x = true`, `x = 5`, `x = "v"`) is now a singleton type with a
+  scalar/text/bool/null/undefined fixed rule (`x = true`, `x = undefined`, `x = 5`, `x = "v"`) is now a singleton type with a
   standalone codec; the same constants are also supported as array elements and map values:
   a fixed/null choice nominalizes the fixed arm, and only bare `null / null` is one-state — tagged
   or `bytes .cbor` null beside bare null remains two distinct wire arms.
@@ -554,15 +554,15 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   optional keyed forms `[x: uint, ? v: 5, label: tstr]` / `{ ? k: 5, j: uint }`. So a reader who
   generalizes the *feature-row* verdict to member position generalizes wrongly — which is what the
   per-cell (role × feature) verdict is for. Two kinds do NOT flip and are the reason the cells exist:
-  `undefined` and a byte-string literal (`h'0102'`) stay **unsupported in member position too**,
-  refused gracefully (exit 1, naming the construct) there exactly as at the top level. Both refusals
-  are for the same structural reason — neither has a `FixedValue`, so there is no constant for the
-  member path to verify against — which is why no position rescues them and why the deferred work is
-  a REPRESENTATION, not a rejection (`ROADMAP.md` § findings). Cardinality is a
+  A byte-string literal (`h'0102'`) stays **unsupported in member position too**, refused gracefully
+  (exit 1, naming the construct) there exactly as at the top level, because it has no `FixedValue`
+  for the member path to verify. `undefined` is instead a supported unit fixed value (`0xf7`) with
+  no inner encoding sidecar; it participates in nominal fixed/null choices without collapsing into
+  null. Cardinality is a
   third, independent splitter: an occurrence marker over an UNKEYED fixed value (`[* 5]`, `[? 5]`,
   `[+ 5]`, `{ * uint => 5 }`) is unsupported while the keyed optional forms above generate — which is
-  why `type2.value` × `role.occurrence-target` renders ◐ in the grid. `undefined` and byte-string
-  literals remain unsupported fixed kinds; B3-024B/C own those representation decisions.
+  why `type2.value` × `role.occurrence-target` renders ◐ in the grid. Byte-string literals remain
+  unsupported fixed kinds; B3-024C owns that representation decision.
 - **Containment cell-example hygiene.** The `type2.map`-in-a-role cells (`array-element` /
   `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
   any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs

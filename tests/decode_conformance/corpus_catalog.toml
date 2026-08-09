@@ -4498,6 +4498,37 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "fixed_singletons.undefined_value"
+axis = "corpus"
+example = "undefined_value = undefined"
+fixture = "fixed_singletons"
+rule = "undefined_value"
+spec = "__probe_holder = [0, undefined_value]\nundefined_value = undefined"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200f6"
+source = "spec-derived"
+expect = "reject"
+class = "constraint"
+reason = "The holder requires the `undefined` simple value (0xf7), not null (0xf6)."
+expect_err = "Expected undefined"
+
+[[row.vector]]
+hex = "8200f7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f820"
+source = "spec-derived"
+expect = "reject"
+class = "constraint"
+reason = "The holder requires the `undefined` simple value (0xf7), not unassigned simple value 32."
+expect_err = "Expected undefined"
+
+[[row]]
 id = "fixed_singletons.version"
 axis = "corpus"
 example = "version = 5"

@@ -13,6 +13,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.add::<cddl_lib::NilValue>();
     reg.add::<cddl_lib::NullValue>();
     reg.add::<cddl_lib::TrueValue>();
+    reg.add::<cddl_lib::UndefinedValue>();
     reg.add::<cddl_lib::Version>();
 }
 
