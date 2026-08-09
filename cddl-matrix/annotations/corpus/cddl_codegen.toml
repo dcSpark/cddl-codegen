@@ -15,11 +15,8 @@
 #    construct under test (e.g. mixed struct+table maps, still unsupported), so minimal
 #    feature-isolating examples are used (memberkey.bareword, occur.optional -> single-field ARRAYS;
 #    type2.map -> a table) — now correctly `supported`. (The construct itself always worked.)
-#  * 4 were GENUINE GAPS: top-level fixed-value / null types (`answer = 42`, `x = null`) are rejected
-#    gracefully — cddl-codegen only uses Fixed for serialization as a struct member, not as an exposed
-#    standalone type. These stay `unsupported`, REPORTED as real gaps (the ➖ notes below), not papered
-#    over. The corpus touches them only as MEMBERS — a different aspect; the directional reality the
-#    single support-bit can't hold (F3).
+#  * The former top-level fixed-value/null gap is delivered by B3-024A: a nominal singleton owns
+#    the constant and direct codecs, while member-position fixed values retain their unstored path.
 
 # ---- primitives (RFC 8610 §2.2.3 / prelude) ----
 [[cover]]
@@ -58,10 +55,23 @@ fixture = "bool.cddl"
 id = "prelude.float64"
 fixture = "homogeneous_array.cddl"
 
-# prelude.null is ➖ at TOP LEVEL (a `x = null` type panics — see the ➖ note below) but SUPPORTED as a
-# choice-member (the `T / null` -> Option<T> pattern). That per-cell coverage is a role-keyed [[cover]] in
-# the "per-cell (role × feature) coverage" section below — verified against the AST role floor AND the
-# matrix's per-cell support verdict (contain.choice-member.prelude.null = supported).
+# Standalone fixed values are nominal singleton TypeChoices (B3-024A).  The same fixture below
+# covers their top-level feature rows; nullable fixed presence has its own robustness fixture.
+[[cover]]
+id = "prelude.true"
+fixture = "fixed_singletons.cddl"
+
+[[cover]]
+id = "prelude.false"
+fixture = "fixed_singletons.cddl"
+
+[[cover]]
+id = "prelude.nil"
+fixture = "fixed_singletons.cddl"
+
+[[cover]]
+id = "prelude.null"
+fixture = "fixed_singletons.cddl"
 
 # ---- extended prelude (tagged/nested aliases) ----
 [[cover]]
@@ -194,10 +204,19 @@ fixture = "c_style_enum.cddl"
 id = "assignt.extend"
 fixture = "assignt_extend.cddl"
 
-# literal-value features type2.value / value.number / value.text are ➖ at TOP LEVEL (a `version = 5` /
-#  `answer = 42` type panics — see the ➖ notes below) but SUPPORTED as array-element members. That
-#  per-cell coverage is role-keyed in the "per-cell (role × feature) coverage" section below (fixed_value.cddl
-#  exercises them as members; verified against the AST floor + contain.array-element.* = supported).
+# Literal values are supported as standalone nominal singleton types (B3-024A); member-role
+# coverage remains separately attributed below because it exercises the unstored fixed-value path.
+[[cover]]
+id = "type2.value"
+fixture = "fixed_singletons.cddl"
+
+[[cover]]
+id = "value.number"
+fixture = "fixed_singletons.cddl"
+
+[[cover]]
+id = "value.text"
+fixture = "fixed_singletons.cddl"
 
 # ---- tags ----
 [[cover]]
@@ -476,28 +495,8 @@ status = "unsupported"
 reason = "the `undefined` simple value has no `FixedValue` and no generated representation, so it is rejected gracefully in every position — member and rule body alike"
 code_anchor = "the CDDL prelude type `undefined`"
 
-# fixed-value simple-value types (true/false/nil) — same standalone Fixed-type gap as `null`/value literals.
-# These REJECT GRACEFULLY (they used to panic; the graceful path landed with the top-level fixed-value
-# reject and is pinned by the tests/matrix_reject/ expect-reject catalog). Fixed values as struct/array
-# MEMBERS work — tests/corpus/fixed_bool_member.cddl — so the old "fails as a member too" claim is dropped.
-[[note]]
-id = "prelude.true"
-status = "unsupported"
-reason = "the fixed boolean `true` used as a standalone top-level type is rejected gracefully (it used to panic); a fixed value has no standalone type representation, only meaning as a struct/array member — which DOES work (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.true.cddl`. Same Fixed-type gap as `null`."
-code_anchor = "a top-level rule whose entire body is a bare fixed value"
-
-[[note]]
-id = "prelude.false"
-status = "unsupported"
-reason = "the fixed boolean `false` used as a standalone top-level type is rejected gracefully — same graceful path as `true`/`null`; works as a struct/array member (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.false.cddl`."
-code_anchor = "a top-level rule whose entire body is a bare fixed value"
-
-[[note]]
-id = "prelude.nil"
-status = "unsupported"
-reason = "top-level `x = nil` (fixed null value) is rejected gracefully — same graceful path as `null`; works as a struct member (`[x: nil]`) but not as a standalone type. Pinned by `tests/matrix_reject/prelude.nil.cddl`."
-code_anchor = "a top-level rule whose entire body is a bare fixed value"
-
+# Fixed simple-value types are nominal singleton TypeChoices (B3-024A), with direct codecs and
+# preserve metadata ownership just like a non-fixed TypeChoice.
 [[note]]
 id = "genericparm.group"
 status = "unsupported"
@@ -546,33 +545,7 @@ status = "unsupported"
 reason = "choice-from-inline-group `&(...)` — unmatched"
 code_anchor = "Type2::ChoiceFromInlineGroup"
 
-# ➖ genuine gaps: a top-level fixed-value/null TYPE is rejected gracefully (Fixed is only used for
-# serialization as a struct member, not as an exposed standalone type). Works as a member (fixed_value.cddl)
-# — directional. The graceful rejection is pinned by the tests/matrix_reject/ expect-reject catalog.
-[[note]]
-id = "type2.value"
-status = "unsupported"
-reason = "a literal used as a top-level type (`answer = 42`) is rejected gracefully; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap; pinned by `tests/matrix_reject/type2.value.cddl`. Its supported array-element role is the [[cover]] above."
-code_anchor = "a top-level rule whose entire body is a bare fixed value"
-
-[[note]]
-id = "value.number"
-status = "unsupported"
-reason = "top-level numeric-literal type (`version = 5`) is rejected gracefully — same Fixed-type gap; pinned by `tests/matrix_reject/value.number.cddl`. Its supported array-element role is the [[cover]] above."
-code_anchor = "a top-level rule whose entire body is a bare fixed value"
-
-[[note]]
-id = "value.text"
-status = "unsupported"
-reason = "top-level text-literal type (`marker = \"v1\"`) is rejected gracefully — same Fixed-type gap; pinned by `tests/matrix_reject/value.text.cddl`. Its supported array-element role is the [[cover]] above."
-code_anchor = "a top-level rule whose entire body is a bare fixed value"
-
-[[note]]
-id = "prelude.null"
-status = "unsupported"
-reason = "top-level `x = null` type is rejected gracefully — cddl-codegen exposes Fixed only as a struct member, not as a standalone type (same Fixed-type gap as the literal values); pinned by `tests/matrix_reject/prelude.null.cddl`. Its supported choice-member role is the [[cover]] above."
-code_anchor = "a top-level rule whose entire body is a bare fixed value"
-
+# B3-024A closes the top-level scalar/text/null fixed representation gap with nominal TypeChoices.
 # ---- doc-level notable findings (rendered as a narrative section; not per-id) ----
 [[finding]]
 text = "Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms + the control-op panic). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness)."
@@ -591,9 +564,6 @@ text = "Float works in every position under every profile, `--preserve-encodings
 
 [[finding]]
 text = "Methodology — the support probe is EXECUTION-GATED (generate + `cargo test` of the emitted round-trip surface), not exit-code-only, so a spec that exits 0 but emits code that does not compile (or does not round-trip) is correctly ➖. A row whose generated code names USER-SUPPLIED items (the extern/raw-bytes sentinels, a @custom_serialize/@custom_deserialize pair) gets that code written for it rather than an exemption — the probe appends a name-parameterized definition from tests/def_templates/ into the crate roots and then runs the ordinary verdict on both faces plus, under the json profile, the emitted json-gen crate. Only a row whose missing piece is a whole OTHER CRATE stays exempt (see cddl-matrix/README.md § the execution-gate discussion)."
-
-[[finding]]
-text = "Gap — top-level fixed-value / null TYPES (`answer = 42`, `x = null`) have no standalone type representation, so the generator REJECTS them gracefully (not a panic), pinned by the `tests/matrix_reject/` expect-reject catalog (`tests/matrix_reject/prelude.null.cddl`, `tests/matrix_reject/type2.value.cddl`, `tests/matrix_reject/value.number.cddl`, `tests/matrix_reject/value.text.cddl`) via `robustness_tests::unsupported_construct_reject_catalog`. The same fixed values serialize fine as struct/array MEMBERS (`tests/corpus/fixed_bool_member.cddl`). A singleton-value type that materializes the constant is still a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)"
 
 [[finding]]
 text = "Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both (now rejected gracefully). Candidate cddl-codegen feature."

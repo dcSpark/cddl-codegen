@@ -1,0 +1,225 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Answer = WitAnswer;
+    type FalseValue = WitFalseValue;
+    type Marker = WitMarker;
+    type NilValue = WitNilValue;
+    type NullValue = WitNullValue;
+    type TrueValue = WitTrueValue;
+    type Version = WitVersion;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitAnswer(pub RefCell<cddl_lib::Answer>);
+
+impl wit_types::GuestAnswer for WitAnswer {
+    fn new_value_uint42() -> wit_types::Answer {
+        let inner = cddl_lib::Answer::new_value_uint42();
+        wit_types::Answer::new(WitAnswer(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::AnswerKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Answer::ValueUint42 => wit_types::AnswerKind::ValueUint42,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Answer as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Answer, String> {
+        <cddl_lib::Answer as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Answer::new(WitAnswer(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitFalseValue(pub RefCell<cddl_lib::FalseValue>);
+
+impl wit_types::GuestFalseValue for WitFalseValue {
+    fn new_value_bool_false() -> wit_types::FalseValue {
+        let inner = cddl_lib::FalseValue::new_value_bool_false();
+        wit_types::FalseValue::new(WitFalseValue(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::FalseValueKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::FalseValue::ValueBoolFalse => wit_types::FalseValueKind::ValueBoolFalse,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::FalseValue as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::FalseValue, String> {
+        <cddl_lib::FalseValue as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::FalseValue::new(WitFalseValue(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitMarker(pub RefCell<cddl_lib::Marker>);
+
+impl wit_types::GuestMarker for WitMarker {
+    fn new_value_text7631() -> wit_types::Marker {
+        let inner = cddl_lib::Marker::new_value_text7631();
+        wit_types::Marker::new(WitMarker(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::MarkerKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Marker::ValueText7631 => wit_types::MarkerKind::ValueText7631,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Marker as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Marker, String> {
+        <cddl_lib::Marker as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Marker::new(WitMarker(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitNilValue(pub RefCell<cddl_lib::NilValue>);
+
+impl wit_types::GuestNilValue for WitNilValue {
+    fn new_value_null() -> wit_types::NilValue {
+        let inner = cddl_lib::NilValue::new_value_null();
+        wit_types::NilValue::new(WitNilValue(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::NilValueKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::NilValue::ValueNull => wit_types::NilValueKind::ValueNull,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::NilValue as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::NilValue, String> {
+        <cddl_lib::NilValue as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::NilValue::new(WitNilValue(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitNullValue(pub RefCell<cddl_lib::NullValue>);
+
+impl wit_types::GuestNullValue for WitNullValue {
+    fn new_value_null() -> wit_types::NullValue {
+        let inner = cddl_lib::NullValue::new_value_null();
+        wit_types::NullValue::new(WitNullValue(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::NullValueKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::NullValue::ValueNull => wit_types::NullValueKind::ValueNull,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::NullValue as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::NullValue, String> {
+        <cddl_lib::NullValue as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::NullValue::new(WitNullValue(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitTrueValue(pub RefCell<cddl_lib::TrueValue>);
+
+impl wit_types::GuestTrueValue for WitTrueValue {
+    fn new_value_bool_true() -> wit_types::TrueValue {
+        let inner = cddl_lib::TrueValue::new_value_bool_true();
+        wit_types::TrueValue::new(WitTrueValue(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::TrueValueKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::TrueValue::ValueBoolTrue => wit_types::TrueValueKind::ValueBoolTrue,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::TrueValue as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::TrueValue, String> {
+        <cddl_lib::TrueValue as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::TrueValue::new(WitTrueValue(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitVersion(pub RefCell<cddl_lib::Version>);
+
+impl wit_types::GuestVersion for WitVersion {
+    fn new_value_uint5() -> wit_types::Version {
+        let inner = cddl_lib::Version::new_value_uint5();
+        wit_types::Version::new(WitVersion(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::VersionKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Version::ValueUint5 => wit_types::VersionKind::ValueUint5,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Version as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Version, String> {
+        <cddl_lib::Version as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Version::new(WitVersion(RefCell::new(v))))
+            .map_err(err)
+    }
+}

@@ -2,8 +2,8 @@
   "v": 1,
   "note": "Outcome counts measured by src/tests/recombination_tests.rs `recombination_generation_sweep`, asserted EXACTLY (the vacuity floors in that test answer \"did the composer rot\"; this datum answers \"did a class migrate\"). `swept` is the composition count, `ok`/`graceful`/`panic` its three generation outcomes, and `observed_classes` maps each observed KNOWN_PANIC_CLASSES ledger key to the number of compositions that panicked into it. Deterministic: the sweep asserts its enumeration is reproducible. Re-bless after any change that legitimately moves a column (an abort-to-rejection conversion, an ingredient addition) with `BLESS_RECOMB_COUNTS=1 cargo test --bin cddl-codegen recombination_generation_sweep`, and say in the commit message WHY the numbers moved.",
   "swept": 1624,
-  "ok": 1012,
-  "graceful": 597,
+  "ok": 1033,
+  "graceful": 576,
   "panic": 15,
   "observed_classes": {
     "doubly nested tags are not supported": 4,

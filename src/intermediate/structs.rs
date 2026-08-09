@@ -547,6 +547,35 @@ impl RustStruct {
         }
     }
 
+    /// A nominal owner for one fixed value.  Deliberately bypasses `new_type_choice`'s all-fixed
+    /// C-style-enum optimization: only `TypeChoice` owns standalone codecs and preserve encoding
+    /// metadata, which a named fixed rule (and a fixed/null inner) needs.
+    pub fn new_fixed_singleton(
+        ident: RustIdent,
+        tag: Option<usize>,
+        rule_metadata: Option<&RuleMetadata>,
+        fixed_type: RustType,
+    ) -> Self {
+        let fixed = match fixed_type.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Fixed(fixed) => fixed,
+            other => panic!("fixed singleton must resolve to Fixed, got {other:?}"),
+        };
+        Self {
+            ident,
+            tag,
+            tag_optional: false,
+            config: RustStructConfig::from(rule_metadata),
+            variant: RustStructType::TypeChoice {
+                variants: vec![EnumVariant::new(
+                    VariantIdent::new_custom(format!("Value{}", fixed.singleton_name_fragment())),
+                    fixed_type,
+                    false,
+                    None,
+                )],
+            },
+        }
+    }
+
     pub fn new_group_choice(
         ident: RustIdent,
         tag: Option<usize>,

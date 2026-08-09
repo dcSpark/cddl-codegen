@@ -20,8 +20,8 @@ cbor_ref_rule_body         ok
 choice_any_arm             error (graceful)
 choice_array_any_arm       ok
 choice_cbor_ref_arm        ok
-choice_fixed_null_collapse error (graceful)
-choice_fixed_null_collapse_member error (graceful)
+choice_fixed_null_collapse ok
+choice_fixed_null_collapse_member ok
 choice_float_arm_variant_name error (graceful)
 choice_group_array_arm     ok
 choice_keyword_arm_variant_name error (graceful)
@@ -86,8 +86,8 @@ recursive_union_keyed_table_nominal ok
 self_recursive             error (graceful)
 single_bareword_map_field  ok
 table_domain_plain_group   error (graceful)
-tagged_literal             error (graceful)
-tagged_prelude_constant    error (graceful)
+tagged_literal             ok
+tagged_prelude_constant    ok
 undefined_generic          error (graceful)
 undefined_member           error (graceful)
 undefined_reference        error (graceful)

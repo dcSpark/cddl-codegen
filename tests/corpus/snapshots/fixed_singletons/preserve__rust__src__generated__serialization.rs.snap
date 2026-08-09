@@ -1,0 +1,254 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::string::String;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Answer {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Answer::ValueUint42 {
+                value_uint42_encoding,
+            } => serializer.write_unsigned_integer_sz(42u64, fit_sz(42u64, *value_uint42_encoding)),
+        }
+    }
+}
+
+impl Deserialize for Answer {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let (value_uint42_value, value_uint42_encoding) = raw.unsigned_integer_sz()?;
+                    if value_uint42_value != 42 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(value_uint42_value),
+                            expected: Key::Uint(42),
+                        }
+                        .into());
+                    }
+                    let value_uint42_encoding = Some(value_uint42_encoding);
+                    Ok(Self::ValueUint42 {
+                        value_uint42_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Answer"))
+    }
+}
+
+impl cbor_event::se::Serialize for FalseValue {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            FalseValue::ValueBoolFalse => {
+                serializer.write_special(cbor_event::Special::Bool(false))
+            }
+        }
+    }
+}
+
+impl Deserialize for FalseValue {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    let value_bool_false_value = raw.bool()?;
+                    if value_bool_false_value {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bool(value_bool_false_value),
+                            expected: Key::Bool(false),
+                        }
+                        .into());
+                    }
+                    Ok(FalseValue::ValueBoolFalse)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("FalseValue"))
+    }
+}
+
+impl cbor_event::se::Serialize for Marker {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Marker::ValueText7631 {
+                value_text7631_encoding,
+            } => serializer.write_text_sz(
+                "v1",
+                value_text7631_encoding.to_str_len_sz("v1".len() as u64),
+            ),
+        }
+    }
+}
+
+impl Deserialize for Marker {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Text => {
+                    let (value_text7631_value, value_text7631_encoding) = raw.text_sz()?;
+                    if value_text7631_value != "v1" {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Str(value_text7631_value),
+                            expected: Key::Str(String::from("v1")),
+                        }
+                        .into());
+                    }
+                    let value_text7631_encoding = StringEncoding::from(value_text7631_encoding);
+                    Ok(Self::ValueText7631 {
+                        value_text7631_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Marker"))
+    }
+}
+
+impl cbor_event::se::Serialize for NilValue {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            NilValue::ValueNull => serializer.write_special(cbor_event::Special::Null),
+        }
+    }
+}
+
+impl Deserialize for NilValue {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    if raw.special()? != cbor_event::Special::Null {
+                        return Err(DeserializeFailure::ExpectedNull.into());
+                    }
+                    Ok(NilValue::ValueNull)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("NilValue"))
+    }
+}
+
+impl cbor_event::se::Serialize for NullValue {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            NullValue::ValueNull => serializer.write_special(cbor_event::Special::Null),
+        }
+    }
+}
+
+impl Deserialize for NullValue {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    if raw.special()? != cbor_event::Special::Null {
+                        return Err(DeserializeFailure::ExpectedNull.into());
+                    }
+                    Ok(NullValue::ValueNull)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("NullValue"))
+    }
+}
+
+impl cbor_event::se::Serialize for TrueValue {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            TrueValue::ValueBoolTrue => serializer.write_special(cbor_event::Special::Bool(true)),
+        }
+    }
+}
+
+impl Deserialize for TrueValue {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    let value_bool_true_value = raw.bool()?;
+                    if !value_bool_true_value {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bool(value_bool_true_value),
+                            expected: Key::Bool(true),
+                        }
+                        .into());
+                    }
+                    Ok(TrueValue::ValueBoolTrue)
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("TrueValue"))
+    }
+}
+
+impl cbor_event::se::Serialize for Version {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Version::ValueUint5 {
+                value_uint5_encoding,
+            } => serializer.write_unsigned_integer_sz(5u64, fit_sz(5u64, *value_uint5_encoding)),
+        }
+    }
+}
+
+impl Deserialize for Version {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let (value_uint5_value, value_uint5_encoding) = raw.unsigned_integer_sz()?;
+                    if value_uint5_value != 5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(value_uint5_value),
+                            expected: Key::Uint(5),
+                        }
+                        .into());
+                    }
+                    let value_uint5_encoding = Some(value_uint5_encoding);
+                    Ok(Self::ValueUint5 {
+                        value_uint5_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Version"))
+    }
+}

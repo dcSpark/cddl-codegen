@@ -1726,6 +1726,90 @@ fn fixed_value_as_written(value: &FixedValue) -> String {
     }
 }
 
+/// Register the nominal owner required when a fixed value must itself be a Rust value.  Member
+/// fixed values remain unstored and use the existing inline path; this seam is only for a named
+/// rule and the synthesized inner of the `T / null` collapse.
+#[allow(clippy::too_many_arguments)]
+fn register_fixed_singleton(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    owner: RustIdent,
+    fixed_type: RustType,
+    tag: Option<usize>,
+    rule_metadata: Option<&RuleMetadata>,
+    generic_params: Option<&[RustIdent]>,
+    cli: &Cli,
+    synthesized: bool,
+) -> RustType {
+    let fixed = match fixed_type.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Fixed(fixed) => fixed.clone(),
+        other => panic!("fixed singleton owner `{owner}` must resolve to Fixed, got {other:?}"),
+    };
+
+    if generic_params.is_some() {
+        types.record_rejection(format!(
+            "generic rule `{owner}`: a fixed-value body has no occurrence of its generic \
+             parameter to substitute, and a singleton TypeChoice is a concrete nominal type rather \
+             than a generic definition. Remove `<…>` from this constant rule, or put the parameter \
+             in a supported structural body. {SUPPORTED_GENERIC_DEF_BODIES}"
+        ));
+        return RustType::new(ConceptualRustType::Rust(owner));
+    }
+
+    if !synthesized && rule_metadata.is_some_and(|metadata| metadata.newtype.is_some()) {
+        types.record_rejection(format!(
+            "@newtype on `{owner}` is redundant and unsupported: a fixed-value rule is already a nominal singleton TypeChoice with its own codec. Remove @newtype."
+        ));
+    }
+
+    // `api::with_types` predeclares every authored rule's scope before parsing begins.  Consult it
+    // rather than parse order so a later `fixed_bool_true = uint` cannot silently overwrite the
+    // earlier synthesized owner (or vice versa).
+    if synthesized && types.is_toplevel_rule(&owner) {
+        let claimant = types
+            .source_rule_name(&owner)
+            .map(str::to_owned)
+            .unwrap_or_else(|| owner.to_string());
+        types.record_rejection(format!(
+            "fixed singleton `{owner}` for {} collides with the authored rule `{}`. Rename the rule; synthesized fixed/null owners reserve this deterministic name.",
+            fixed.cddl_source_desc(),
+            claimant,
+        ));
+        return RustType::new(ConceptualRustType::Rust(owner));
+    }
+
+    if let Some(existing) = types.rust_struct(&owner) {
+        let same_singleton = matches!(existing.variant(), RustStructType::TypeChoice { variants }
+            if variants.len() == 1
+                && matches!(variants[0].rust_type().conceptual_type.resolve_alias_shallow(),
+                    ConceptualRustType::Fixed(existing_fixed)
+                        if existing_fixed.singleton_name_fragment() == fixed.singleton_name_fragment()
+                            && variants[0].rust_type().fixed_singleton_name_fragment()
+                                == fixed_type.fixed_singleton_name_fragment()));
+        if !same_singleton {
+            types.record_rejection(format!(
+                "fixed singleton `{owner}` for {} collides with an existing generated type. Rename the authored rule that caused the collision.",
+                fixed.cddl_source_desc()
+            ));
+        }
+        return RustType::new(ConceptualRustType::Rust(owner));
+    }
+
+    types.register_rust_struct(
+        parent_visitor,
+        RustStruct::new_fixed_singleton(owner.clone(), tag, rule_metadata, fixed_type),
+        cli,
+    );
+    RustType::new(ConceptualRustType::Rust(owner))
+}
+
+fn synthesized_fixed_singleton_ident(fixed_type: &RustType) -> RustIdent {
+    RustIdent::new(CDDLIdent::new(format!(
+        "fixed_{}",
+        fixed_type.fixed_singleton_name_fragment()
+    )))
+}
+
 /// A range bound (`a..b` / `a...b`) that is not a numeric LITERAL.
 ///
 /// A range lowers a `(min, max)` pair of VALUES onto the rust primitive backing the constrained
@@ -1922,33 +2006,40 @@ fn parse_type_choices(
             ));
             return;
         }
-        let inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type2, cli);
-        // A collapse over a FIXED inner (`t = true / null`, `5 / null`, `"v1" / null`, `null /
-        // null`) has nowhere to put the value: the collapse builds `Optional(Fixed(..))`, and a
-        // `Fixed` in member position is a hard panic at render time (`for_rust_member_ct`), under
-        // every profile. Refuse gracefully instead. `resolve_alias_shallow` is the value-carrying
-        // form of `is_fixed_value` — both unwrap aliases, so a prelude spelling that arrives
-        // alias-wrapped is still recognized (same guard shape as the fixed-array-element one).
-        //
-        // Registering NOTHING is correct here, unlike the bare-fixed-rule seam in
-        // `register_type_alias`, which must keep its alias so a sibling reference can still resolve
-        // during parse: this rule registers no rust struct either way, and finalize's
-        // registered-nothing check is what already turns a struct-less rule into a loud rejection —
-        // so a reference to this rule cannot outrun the rejection recorded here.
-        if let ConceptualRustType::Fixed(fixed) =
-            inner_rust_type.conceptual_type.resolve_alias_shallow()
+        let raw_inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type2, cli);
+        // A fixed inner needs a nominal value before the ordinary Option lowering can carry it.
+        // The degenerate null/null shape has no presence bit at all, so normalize it directly to
+        // the singleton-null owner rather than exposing Option<FixedNull> (two Rust states for one
+        // CBOR value).
+        let (inner_rust_type, null_singleton) = if let ConceptualRustType::Fixed(fixed) =
+            raw_inner_rust_type.conceptual_type.resolve_alias_shallow()
         {
-            // The `anonymous` fallback is unreachable at this site — a rule-level collapse always
-            // has its rule name.
-            let site = rejection_site(types, Some(name), "anonymous");
-            let message = format!(
-                "{site}: the two-arm choice `{} / null` is unsupported {}",
-                fixed.cddl_source_desc(),
-                fixed_null_collapse_reason(fixed)
-            );
-            types.record_rejection(message);
-            return;
-        }
+            if matches!(fixed, FixedValue::Null) {
+                // Do not register yet: the rest of this branch is the one rule-position directive
+                // reader for `T / null`.  Returning here used to make directives on `null / null`
+                // silently inert.  It has a TypeChoice owner rather than an Option alias, but it
+                // still needs the common validation before that owner is registered.
+                (raw_inner_rust_type.clone(), Some(raw_inner_rust_type))
+            } else {
+                let singleton_ident = synthesized_fixed_singleton_ident(&raw_inner_rust_type);
+                let inner_rust_type = register_fixed_singleton(
+                    types,
+                    parent_visitor,
+                    singleton_ident,
+                    raw_inner_rust_type,
+                    None,
+                    None,
+                    None,
+                    cli,
+                    true,
+                );
+                // Replace the unstorable fixed value with its nominal singleton before the
+                // ordinary Option lowering below.
+                (inner_rust_type, None)
+            }
+        } else {
+            (raw_inner_rust_type, None)
+        };
         // The collapse's PLAIN-GROUP inner (`u = kv / null`), sibling of the fixed guard above and
         // refused for the reason `reject_plain_group_type_choice_arm` carries. This site is the one
         // that mattered most: the other six spellings of a plain-group arm panicked, while this one
@@ -1975,6 +2066,12 @@ fn parse_type_choices(
         // for all four placements), so that slot is dead and the `@duplicates` / `@ignore`
         // rejections written right below could not fire, nor could `@no_json_schema_export` mark.
         let rule_metadata = rule_position_metadata(type_choices);
+        if let Some(doc) = &rule_metadata.comment {
+            types.mark_rule_doc(name.clone(), doc.clone());
+        }
+        if rule_metadata.custom_json {
+            types.mark_custom_json_rule(name.clone());
+        }
         // A `T / null` rule collapses to an `Option<T>` alias — a non-collection, so `@duplicates`
         // can never apply here (and `@ignore` never applies at a rule position).
         if rule_metadata.duplicates.is_some() {
@@ -2016,7 +2113,7 @@ fn parse_type_choices(
         // wasm map-key / loose-list minters for a wrapper over an `Optional` inner is its own work,
         // and until it exists the honest answer is still a refusal, with the reason the tagged shape
         // actually has rather than the untagged one's.
-        if rule_metadata.key_demand.is_some() {
+        if null_singleton.is_none() && rule_metadata.key_demand.is_some() {
             types.record_rejection(if tag.is_some() {
                 format!(
                     "@used_as_key on `{name}`: a tagged `T / null` rule wraps into a struct over an \
@@ -2032,7 +2129,7 @@ fn parse_type_choices(
                 )
             });
         }
-        if rule_metadata.used_as_elem {
+        if null_singleton.is_none() && rule_metadata.used_as_elem {
             types.record_rejection(if tag.is_some() {
                 format!(
                     "@used_as_elem on `{name}`: a tagged `T / null` rule wraps into a struct over an \
@@ -2058,7 +2155,7 @@ fn parse_type_choices(
         // a `.cbor` rule body — and this rejection was never reached on the tagged path anyway, so
         // `#6.10(uint / null) ; @newtype` used to be a SILENT drop (exit 0, empty stderr, no
         // wrapper). Force-wrapping dissolves that drop by construction.
-        if tag.is_none() && rule_metadata.newtype.is_some() {
+        if null_singleton.is_none() && tag.is_none() && rule_metadata.newtype.is_some() {
             types.record_rejection(format!(
                 "@newtype on `{name}`: a `T / null` rule collapses to a transparent `Option<T>` \
                  alias, and no wrapper struct is generated for it, so the directive would silently \
@@ -2090,6 +2187,28 @@ fn parse_type_choices(
                     misplaced.join(" / ")
                 ));
             }
+        }
+        if let Some(fixed_null) = null_singleton {
+            // `null / null` has one CBOR and Rust state.  It is a named singleton, not a nullable
+            // alias, so rule-scoped class directives remain meaningful just as on `x = null`.
+            if let Some(demand) = rule_metadata.key_demand {
+                types.mark_key_demand(name.clone(), demand);
+            }
+            if rule_metadata.used_as_elem {
+                types.mark_used_as_elem(name.clone());
+            }
+            register_fixed_singleton(
+                types,
+                parent_visitor,
+                name.clone(),
+                fixed_null,
+                tag,
+                Some(&rule_metadata),
+                None,
+                cli,
+                false,
+            );
+            return;
         }
         // A TAGGED `T / null` rule WRAPS: the tag rides `final_type`, and a transparent
         // `pub type Topt = Option<u64>;` mints no type to hang it on — `Topt::to_cbor_bytes` would
@@ -3769,21 +3888,26 @@ fn parse_type(
                                     // wrapped rule's `@custom_serialize`/`@custom_deserialize` pair
                                     // from.
                                     //
-                                    // A bare-fixed payload (`bytes .cbor 5`, `bytes .cbor true`)
-                                    // is refused at this seam for the same reason the plain-typename
-                                    // tag arm below refuses `#6.11(true)`: `Fixed` has no member Rust
-                                    // representation, so rendering it as the wrapper's inner type
-                                    // panics `for_rust_member` during generation. The alias seam used
-                                    // to catch it through `register_type_alias`'s own guard; now that
-                                    // this arm never reaches that seam, it carries the guard itself,
-                                    // through the one shared message. Registration still happens (a
-                                    // sibling rule may reference this one, and `finalize` never
-                                    // generates once a rejection is recorded).
-                                    if let ConceptualRustType::Fixed(fixed) =
-                                        cbor_bytes_type.conceptual_type.resolve_alias_shallow()
-                                    {
-                                        let fixed = fixed.clone();
-                                        types.record_bare_fixed_rule_rejection(type_name, &fixed);
+                                    // A fixed payload needs the same direct-codec owner as a bare
+                                    // literal rule.  Keep the complete `.cbor`/tag operation chain
+                                    // on its one arm, so preserve encoding metadata belongs to this
+                                    // nominal owner rather than to a non-existent wrapper member.
+                                    if matches!(
+                                        cbor_bytes_type.conceptual_type.resolve_alias_shallow(),
+                                        ConceptualRustType::Fixed(_)
+                                    ) {
+                                        register_fixed_singleton(
+                                            types,
+                                            parent_visitor,
+                                            type_name.clone(),
+                                            cbor_bytes_type,
+                                            None,
+                                            Some(&rule_metadata),
+                                            generic_params.as_deref(),
+                                            cli,
+                                            false,
+                                        );
+                                        return;
                                     }
                                     types.register_rust_struct(
                                         parent_visitor,
@@ -3864,7 +3988,25 @@ fn parse_type(
                         }
                     }
                     None => {
-                        let concrete_type = types.new_type(&cddl_ident, cli).tag_if(outer_tag);
+                        let concrete_type = types.new_type(&cddl_ident, cli);
+                        if matches!(
+                            concrete_type.conceptual_type.resolve_alias_shallow(),
+                            ConceptualRustType::Fixed(_)
+                        ) {
+                            register_fixed_singleton(
+                                types,
+                                parent_visitor,
+                                type_name.clone(),
+                                concrete_type,
+                                outer_tag,
+                                Some(&rule_metadata),
+                                generic_params.as_deref(),
+                                cli,
+                                false,
+                            );
+                            return;
+                        }
+                        let concrete_type = concrete_type.tag_if(outer_tag);
                         // Remember the aliased ident after stripping its `Alias` wrapper. The wasm
                         // alias can point at its wrapper struct if it has one (resolved at emission
                         // via `has_wasm_wrapper`, so forward references work), while the recursive
@@ -4154,12 +4296,16 @@ fn parse_type(
                     );
                 }
                 _ => {
-                    types.register_type_alias(
+                    register_fixed_singleton(
+                        types,
+                        parent_visitor,
                         type_name.clone(),
-                        AliasInfo::new_from_metadata(
-                            RustType::from(fallback_type).tag_if(outer_tag),
-                            rule_metadata,
-                        ),
+                        RustType::from(fallback_type),
+                        outer_tag,
+                        Some(&rule_metadata),
+                        generic_params.as_deref(),
+                        cli,
+                        false,
                     );
                 }
             }
@@ -4206,26 +4352,33 @@ fn parse_type(
                     );
                 }
                 _ => {
-                    types.register_type_alias(
+                    register_fixed_singleton(
+                        types,
+                        parent_visitor,
                         type_name.clone(),
-                        AliasInfo::new_from_metadata(
-                            RustType::from(fallback_type).tag_if(outer_tag),
-                            rule_metadata,
-                        ),
+                        RustType::from(fallback_type),
+                        outer_tag,
+                        Some(&rule_metadata),
+                        generic_params.as_deref(),
+                        cli,
+                        false,
                     );
                 }
             }
         }
         Type2::TextValue { value, .. } => {
-            types.register_type_alias(
+            register_fixed_singleton(
+                types,
+                parent_visitor,
                 type_name.clone(),
-                AliasInfo::new_from_metadata(
-                    RustType::new(ConceptualRustType::Fixed(FixedValue::Text(
-                        value.to_string(),
-                    )))
-                    .tag_if(outer_tag),
-                    rule_metadata,
-                ),
+                RustType::new(ConceptualRustType::Fixed(FixedValue::Text(
+                    value.to_string(),
+                ))),
+                outer_tag,
+                Some(&rule_metadata),
+                generic_params.as_deref(),
+                cli,
+                false,
             );
         }
         Type2::FloatValue { value, .. } => {
@@ -4271,12 +4424,16 @@ fn parse_type(
                     );
                 }
                 _ => {
-                    types.register_type_alias(
+                    register_fixed_singleton(
+                        types,
+                        parent_visitor,
                         type_name.clone(),
-                        AliasInfo::new_from_metadata(
-                            RustType::from(fallback_type).tag_if(outer_tag),
-                            rule_metadata,
-                        ),
+                        RustType::from(fallback_type),
+                        outer_tag,
+                        Some(&rule_metadata),
+                        generic_params.as_deref(),
+                        cli,
+                        false,
                     );
                 }
             }
@@ -4597,42 +4754,6 @@ fn rejection_site(
                 .unwrap_or_else(|| name.to_string())
         ),
         None => anonymous.to_owned(),
-    }
-}
-
-/// The shared explanation behind both `T / null` fixed-inner refusals — the tail that follows
-/// "… is unsupported" at each of the TWO sites where a two-arm null choice collapses to an
-/// `Option<T>` (the rule-level one in `parse_type_choices`, the member-level one in `rust_type`).
-/// The sites word their own subject differently because their roles differ (one has a rule name to
-/// quote back, the other is a member/element position), but WHY the shape has no representation and
-/// WHAT to write instead are one text, so the two spellings of the same defect can't drift apart in
-/// what they teach.
-///
-/// The advertised remedy is probed, not assumed: `bool / null` and `uint / null` generate (exit 0)
-/// under both the default and `--preserve-encodings` profiles, and `bool / null` lowers to
-/// `Option<bool>`. It carries the same honesty caveat every fixed-value message in this file
-/// carries — widening drops the constraint, so the result is a different spec.
-fn fixed_null_collapse_reason(fixed: &FixedValue) -> String {
-    // `null / null` is a genuinely different sentence: there is no fixed value sitting in the `T`
-    // slot, there is no non-`null` arm AT ALL. Sharing the widening remedy would be dishonest —
-    // `null` names no CDDL type to widen to (a rule body of bare `null` is itself rejected).
-    match fixed {
-        FixedValue::Null => "— a two-arm choice with a `null` arm collapses to an `Option<T>` \
-             rather than an enum, and with `null` on both arms there is no type left to put in the \
-             `T` slot. If a nullable value was meant, one arm must be a non-`null` type (`bool / \
-             null` lowers to `Option<bool>`)."
-            .to_owned(),
-        _ => {
-            let value_desc = fixed.cddl_source_desc();
-            format!(
-                "— a two-arm choice with a `null` arm collapses to an `Option<T>` rather than an \
-                 enum, and a fixed value is unstored (it has meaning only as a member whose value \
-                 the schema fixes), so there is nothing to put in the `T` slot. Widening the fixed \
-                 arm to the CDDL type the constant inhabits generates (`bool / null` lowers to \
-                 `Option<bool>`), but it no longer constrains that arm to {value_desc}, so it is a \
-                 different spec, not an equivalent one."
-            )
-        }
     }
 }
 
@@ -6094,6 +6215,32 @@ fn rust_type(
             get_comment_after(parent_visitor, &CDDLType::from(t), None).as_ref(),
         );
         if t.type_choices.len() == 2 {
+            // A non-last arm's directives belong to a would-be variant.  The `/ null` collapse
+            // has no variants, so leaving them for the fixed-singleton early return would accept
+            // and discard them.  The LAST arm is the containing field's normal directive slot and
+            // is consumed by `parse_record_from_group_choice`; do not reject it here.
+            for choice in &t.type_choices[..1] {
+                let arm_metadata = merge_metadata(
+                    &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
+                    &RuleMetadata::from(choice.comments_after_type.as_ref()),
+                );
+                let mut misplaced = arm_metadata.non_variant_directives();
+                if arm_metadata.name.is_some() {
+                    misplaced.push("@name");
+                }
+                if arm_metadata.comment.is_some() {
+                    misplaced.push("@doc");
+                }
+                if !misplaced.is_empty() {
+                    types.record_rejection(format!(
+                        "{} on a non-last arm of an inline `T / null` choice: the choice lowers \
+                         to an optional field rather than variants, so that arm owns no directive \
+                         slot. Move a field directive to the entry's trailing comment, or put the \
+                         annotation on a named type rule.",
+                        misplaced.join(" / ")
+                    ));
+                }
+            }
             // T / null   or   null / T   should map to Option<T>
             let a = &t.type_choices[0].type1;
             let b = &t.type_choices[1].type1;
@@ -6106,23 +6253,28 @@ fn rust_type(
             };
             if let Some(inner_type1) = collapse_inner {
                 let inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type1, cli);
-                // The member-position sibling of the rule-level collapse guard in
-                // `parse_type_choices`: `a = [v: true / null, x: uint]` builds the same
-                // `Optional(Fixed(..))` and panics at the same render site. Reject gracefully with
-                // an inert `Fixed(FixedValue::Null)` placeholder — exactly like the other graceful
-                // arms in `rust_type_from_type2` — so `finalize` drains it into one clean `Err`.
-                // Role-generic wording: no rule name is available here.
+                // Member/element twin of the rule-level fixed/null lowering.  The singleton is
+                // synthesized once per exact fixed identity and then the established Optional
+                // lowering stores that nominal value.
                 if let ConceptualRustType::Fixed(fixed) =
                     inner_rust_type.conceptual_type.resolve_alias_shallow()
                 {
-                    let message = format!(
-                        "a two-arm `{} / null` choice used as a member or element type is \
-                         unsupported {}",
-                        fixed.cddl_source_desc(),
-                        fixed_null_collapse_reason(fixed)
+                    let fixed = fixed.clone();
+                    let singleton = register_fixed_singleton(
+                        types,
+                        parent_visitor,
+                        synthesized_fixed_singleton_ident(&inner_rust_type),
+                        inner_rust_type,
+                        None,
+                        None,
+                        None,
+                        cli,
+                        true,
                     );
-                    types.record_rejection(message);
-                    return ConceptualRustType::Fixed(FixedValue::Null).into();
+                    if matches!(fixed, FixedValue::Null) {
+                        return singleton;
+                    }
+                    return ConceptualRustType::Optional(Box::new(singleton)).into();
                 }
                 // The member-position sibling of the rule-level plain-group arm guard in
                 // `parse_type_choices` (`x: kv / null`). Both collapse branches need it because the

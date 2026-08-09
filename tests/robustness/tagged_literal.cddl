@@ -1,15 +1,5 @@
-; A top-level rule whose entire body is a TAG-WRAPPED bare fixed value (`#6.5(5)`). The tag is
-; irrelevant to the gap: unwrapping the single-type tag head lands on the same bare `Fixed` inner as
-; `foo = 5`, which has no standalone Rust representation (a `Fixed` only ever exists as an unstored
-; struct/array member), so generation used to panic in `for_rust_member`/`for_wasm_member`. It is now
-; rejected GRACEFULLY at rule registration (`intermediate::register_type_alias`) via the normal
-; rejection channel, surfaced as an `Err` at `finalize` — hence `error (graceful)` in the catalog.
-;
-; The bare (untagged) variants of this same gap are pinned as matrix rows (`value.number`,
-; `value.text`, `type2.value`, `prelude.true`/`false`/`nil`/`null`), projected into
-; `tests/matrix_reject/`; this hand fixture pins the tag-wrapped shape, which no matrix row covers.
-; Supporting these (a wrapper newtype carrying the constant) is future work. The auto-wrapping
-; tag-inner variants that ARE supported carry a `.default` or a range on the inner (pinned by
-; `tests/corpus/tagged_default_inner.cddl` / `tagged_ranged_inner.cddl`) — those resolve to a
-; primitive wrapper, not a bare `Fixed`, so they stay untouched.
+; A tag-wrapped fixed literal owns a one-variant nominal TypeChoice. Its direct codecs own both the
+; mandatory tag and fixed value, including preserve-encoding metadata, rather than routing through
+; a transparent alias or C-style enum. This fixture covers the literal route; tagged prelude
+; constants have their own sibling fixture.
 tagged = #6.5(5)

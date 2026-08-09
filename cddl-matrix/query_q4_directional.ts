@@ -504,6 +504,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.array-element.value.number.float",
     "contain.array-element.value.number.nint", "contain.array-element.value.text",
     "contain.choice-member.prelude.null", "contain.choice-member.prelude.true.same_major_brute",
+    "contain.choice-member.type2.value.fixed_null",
     "contain.group-choice-arm.memberkey.bareword.map",
     "contain.group-choice-arm.memberkey.bareword.record_map",
     "contain.group-choice-arm.memberkey.value.map",
@@ -528,10 +529,11 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.occurrence-target.type2.value.optional_keyed_array",
     "contain.occurrence-target.type2.value.optional_keyed_map", "memberkey.cut",
     "occur.bounded", "occur.bounded.lower", "occur.bounded.upper", "occur.one_or_more",
-    "prelude.float16", "prelude.float16-32", "prelude.float32", "prelude.float32-64", "prelude.float64",
+    "prelude.false", "prelude.float16", "prelude.float16-32", "prelude.float32", "prelude.float32-64", "prelude.float64",
+    "prelude.nil", "prelude.null", "prelude.true",
     "rangeop.exclusive", "rangeop.exclusive.float", "rangeop.exclusive.int", "rangeop.exclusive.nint",
     "rangeop.inclusive", "rangeop.inclusive.float", "rangeop.inclusive.int", "rangeop.inclusive.nint",
-    "value.number.bin", "value.number.hex", "value.number.hexfloat"];
+    "type2.value", "value.number", "value.number.bin", "value.number.hex", "value.number.hexfloat", "value.text"];
   // The unverified set is pinned EXACTLY like the green set (same decay argument, opposite
   // direction): a NEW supported enforcement-bearing row landing vectorless would otherwise slide
   // into `unverified` with no gate noticing — the variation-row lesson (ROADMAP § Expansion) is that an unenumerated/unvectored

@@ -18,13 +18,13 @@ cross-module input since 2023) until a pickup probe caught it. Pickup re-probing
 enforcement (a prose rule cannot enforce itself); naming the pin is what gives the probe a target
 and the reader a checkable referent.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->123 features (95 RFC8610 + 1 RFC9682 + 27 `CDDL_CODEGEN` vendor profile), 135 containment cells, and 292 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->123 features (95 RFC8610 + 1 RFC9682 + 27 `CDDL_CODEGEN` vendor profile), 136 containment cells, and 293 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->1 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->93 `class="constraint"` enforcement reject vectors over 73 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->101 `class="constraint"` enforcement reject vectors over 81 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries NO unverified rows and NO certified over-acceptances at HEAD: every supported row with a
 rejectable constraint projects `enforce = yes (bounded-reject)` — `+`/`1*` is honored as a non-empty
 container and the other count-permitting table markers
@@ -502,36 +502,16 @@ entry, so the atomicity is the rule).
   `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
-- **A fixed-value inner under the `T / null` Option-collapse (`true / null`) has no member
-  REPRESENTATION, so a spec that pins one arm of a nullable to a constant must be hand-rewritten.**
-  A two-arm choice with a null arm never becomes an enum: the collapse lowers it to an `Option<T>`
-  (the same lowering that makes `t = null / tstr` an `Option<String>`). With `T` itself a fixed
-  value there is nothing to put in the `T` slot — a `Fixed` is unstored, carrying meaning only as a
-  member whose value the schema pins — so BOTH collapse sites refuse the shape gracefully rather
-  than building an unrenderable `Optional(Fixed(..))`: the rule-level site (`parse_type_choices`)
-  names the rule by its source spelling, and the member-level one (`rust_type`'s two-arm null
-  checks, reached by `[v: true / null]`, `{? k: true / null}`, `{* uint => (true / null)}`) is
-  role-generic. Both quote the offending value back in CDDL form and offer the one remedy probed to
-  work — widening the fixed arm, `bool / null` lowering to `Option<bool>` — with the standing caveat
-  that widening drops the constraint, so it is a different spec. Pinned by
-  `tests/robustness/choice_fixed_null_collapse.cddl` and its `_member` sibling, which are hand
-  fixtures because the recombination sweep cannot spell the shape (its ingredient list carries
-  `prelude.null` as a choice-member but no special-literal filler for the other arm). Probe scope:
-  every fixed KIND the collapse can carry — bool (`true`/`false`), uint, nint, float, text, and the
-  degenerate `null / null`, which gets its own sentence because it has no non-`null` arm to widen —
-  each exit 1 under BOTH the default and `--preserve-encodings` profiles. Not probed: the
-  `--wasm=true` emission path (the refusal is recorded in the parse walk, before any emission
-  profile is consulted, so profile-independence there is reasoning rather than measurement).
-  `true / false` — no null arm, so no collapse — is a DIFFERENT path that generates an ordinary
-  `pub enum T { True, False }`, and is not this item.
-  What remains open is REPRESENTATION: a fixed-value inner carries only PRESENCE, so a
-  presence-shaped lowering (a newtype whose `Option` is the whole information content) would make
-  the shape generate instead of refuse. It stays deferred because a refusal naming the shape and a
-  working remedy costs its owner one rewritten rule, while a presence lowering adds a
-  representation to every downstream surface (rust, wasm, json) that nobody has yet asked for. The
-  shape is still uncatalogued as a matrix cell. **Reopening signal**, on the magnitude axis: a spec
-  brought to us contains a fixed-value/null two-arm choice, i.e. the count of rules its owner must
-  hand-rewrite to keep generating reaches 1; today the evidence is synthetic probes only.
+- **Fixed/null now has a nominal presence representation.** A two-arm `T / null` still lowers to
+  `Option<T>`, but when `T` is a fixed value the generator first mints a zero-sized nominal
+  singleton: `true / null` is `Option<FixedBoolTrue>`. This is applied at both former collapse
+  sites — a rule body and every inline member/element/table-value role — and the singleton owns its
+  constant verification plus any mandatory-tag/`.cbor` wire chain. `null / null` normalizes to the
+  one null singleton rather than exposing `Option<FixedNull>`'s two equivalent states. The coverage
+  is `choice_fixed_null_collapse{,_member}` plus the fixed-singleton corpus and decode-conformance
+  accepts/reject; the latter pins both legal arms and a reason-bearing third-value rejection.
+  `true / false` has no null arm and remains the ordinary multi-value C-style enum path. `undefined`
+  and byte-string literal fixed kinds are separate deferred representation work.
 - **`undefined` has no member REPRESENTATION, so a spec that constrains a position to it must be
   hand-rewritten.** `undefined` is refused gracefully in every position — `[v: undefined, x: uint]`,
   `{ k: undefined, j: uint }` and the rule body `x = undefined` all exit 1 naming the type, under the

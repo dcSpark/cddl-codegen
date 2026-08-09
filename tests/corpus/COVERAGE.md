@@ -137,7 +137,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.eb64legacy` | ➖ | eb64legacy | the expected-conversion tag `#6.22(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
 | `prelude.eb64url` | ➖ | eb64url | the expected-conversion tag `#6.21(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
 | `prelude.encoded-cbor` | ✅ | encoded-cbor | `prelude.cddl` |
-| `prelude.false` | ➖ | false | the fixed boolean `false` used as a standalone top-level type is rejected gracefully — same graceful path as `true`/`null`; works as a struct/array member (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.false.cddl`.  [`a top-level rule whose entire body is a bare fixed value`] |
+| `prelude.false` | ✅ | false | `fixed_singletons.cddl` |
 | `prelude.float` | ➕ | float | supported, no corpus fixture (cddl-codegen exit 0) |
 | `prelude.float16` | ➕ | float16 | supported, no corpus fixture (cddl-codegen exit 0) |
 | `prelude.float16-32` | ➕ | float16-32 | supported, no corpus fixture (cddl-codegen exit 0) |
@@ -147,15 +147,15 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.int` | ✅ | int | `primitives.cddl` |
 | `prelude.integer` | ✅ | integer | `prelude.cddl` |
 | `prelude.mime-message` | ✅ | mime-message | `prelude.cddl` |
-| `prelude.nil` | ➖ | nil | top-level `x = nil` (fixed null value) is rejected gracefully — same graceful path as `null`; works as a struct member (`[x: nil]`) but not as a standalone type. Pinned by `tests/matrix_reject/prelude.nil.cddl`.  [`a top-level rule whose entire body is a bare fixed value`] |
+| `prelude.nil` | ✅ | nil | `fixed_singletons.cddl` |
 | `prelude.nint` | ✅ | nint | `primitives.cddl` |
-| `prelude.null` | ➖ | null | top-level `x = null` type is rejected gracefully — cddl-codegen exposes Fixed only as a struct member, not as a standalone type (same Fixed-type gap as the literal values); pinned by `tests/matrix_reject/prelude.null.cddl`. Its supported choice-member role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @choice-member (`nullable.cddl`: the `T / null` -> Option<T> nullable pattern) |
+| `prelude.null` | ✅ | null | `fixed_singletons.cddl` — also ✅ @choice-member (`nullable.cddl`: the `T / null` -> Option<T> nullable pattern) |
 | `prelude.number` | ➕ | number | supported, no corpus fixture (cddl-codegen exit 0) |
 | `prelude.regexp` | ✅ | regexp | `prelude.cddl` |
 | `prelude.tdate` | ✅ | tdate | `prelude.cddl` |
 | `prelude.text` | ✅ | text | `primitives.cddl` |
 | `prelude.time` | ➕ | time | supported, no corpus fixture (cddl-codegen exit 0) |
-| `prelude.true` | ➖ | true | the fixed boolean `true` used as a standalone top-level type is rejected gracefully (it used to panic); a fixed value has no standalone type representation, only meaning as a struct/array member — which DOES work (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.true.cddl`. Same Fixed-type gap as `null`.  [`a top-level rule whose entire body is a bare fixed value`] |
+| `prelude.true` | ✅ | true | `fixed_singletons.cddl` |
 | `prelude.tstr` | ✅ | tstr | `prelude.cddl` |
 | `prelude.uint` | ✅ | uint | `primitives.cddl` |
 | `prelude.undefined` | ➖ | undefined | the `undefined` simple value has no `FixedValue` and no generated representation, so it is rejected gracefully in every position — member and rule body alike  [`the CDDL prelude type `undefined``] |
@@ -217,18 +217,18 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `type2.tag` | ✅ | Tagged data item (#6.n) | `tagged.cddl` |
 | `type2.typename` | ✅ | Type reference (with optional generic args) | `type_alias.cddl` |
 | `type2.unwrap` | ➖ | Unwrap (~) | unwrap `~` — the construct splices a group's contents, so there is no type to store; rejected gracefully in both rule-body and member position, pointing at the one remedy that works (inline the referenced rule by hand)  [`Type2::Unwrap`] |
-| `type2.value` | ➖ | Literal value as a type | a literal used as a top-level type (`answer = 42`) is rejected gracefully; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap; pinned by `tests/matrix_reject/type2.value.cddl`. Its supported array-element role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @array-element (`fixed_value.cddl`: a literal as a fixed array-element value (`c: 5`)) |
+| `type2.value` | ✅ | Literal value as a type | `fixed_singletons.cddl` — also ✅ @array-element (`fixed_value.cddl`: a literal as a fixed array-element value (`c: 5`)) |
 
 ### `value` (6)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/'..') as a value — the value is fixed by the schema and `FixedValue` has no bytes variant, so it is rejected gracefully in both rule-body and member position; widening to `bytes` is a different spec, not an equivalent one (the b64'..' spelling and lowercase hex in h'..' additionally fail in the rust parser before generation: ruby/ABNF accept)  [`a byte-string literal`] |
-| `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) is rejected gracefully — same Fixed-type gap; pinned by `tests/matrix_reject/value.number.cddl`. Its supported array-element role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
+| `value.number` | ✅ | Numeric literal value | `fixed_singletons.cddl` — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
 | `value.number.bin` | ➕ | Binary integer literal (0b…) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `value.number.hex` | ➕ | Hexadecimal integer literal (0x…) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `value.number.hexfloat` | ➕ | Hexadecimal float literal (hexfloat) | supported, no corpus fixture (cddl-codegen exit 0) |
-| `value.text` | ➖ | Text literal value | top-level text-literal type (`marker = "v1"`) is rejected gracefully — same Fixed-type gap; pinned by `tests/matrix_reject/value.text.cddl`. Its supported array-element role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @array-element (`fixed_value.cddl`: text literal member (`b: "marker"`)) |
+| `value.text` | ✅ | Text literal value | `fixed_singletons.cddl` — also ✅ @array-element (`fixed_value.cddl`: text literal member (`b: "marker"`)) |
 
 ## RFC 9682 additions (newer than cddl-codegen's RFC 8610 target — out of profile)
 
@@ -392,17 +392,18 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.bytes` | · | · | · | · | · | · |  | · | · | · |
 | `prelude.decfrac` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.encoded-cbor` |  | · |  |  |  |  |  |  |  |  |
-| `prelude.false` |  | ✅ | ✅ |  |  |  |  | · |  |  |
+| `prelude.false` | · | ✅ | ✅ |  |  |  |  | · |  |  |
 | `prelude.float64` |  | · | · |  |  |  |  | · |  |  |
 | `prelude.int` | · | · | · | · | · | · |  | · | · |  |
 | `prelude.integer` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.mime-message` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.nil` | · |  |  |  |  |  |  |  |  |  |
 | `prelude.nint` | · | · |  |  |  | · |  |  |  |  |
-| `prelude.null` |  | ✅ | ✅ |  | · | ✅ |  | · |  |  |
+| `prelude.null` | · | ✅ | ✅ |  | · | ✅ |  | · |  |  |
 | `prelude.regexp` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.tdate` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.text` | · | · | · | · | · | · |  | · |  | · |
-| `prelude.true` |  | ✅ | ✅ |  | · | ✅ |  | · |  |  |
+| `prelude.true` | · | ✅ | ✅ |  | · | ✅ |  | · |  |  |
 | `prelude.tstr` |  | · | · | · |  | · |  | · |  | · |
 | `prelude.uint` | · | · | · | · | · | · |  | · | · | · |
 | `prelude.undefined` |  | ➖ | ➖ |  |  |  |  |  |  |  |
@@ -419,14 +420,14 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `type2.tag` | · | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | · | ✅ |  |
 | `type2.typename` | · | · | · | · | · | · |  | · | · | · |
 | `type2.unwrap` | ➖ | ➖ | ➖ |  |  |  |  |  |  |  |
-| `type2.value` | · | ✅ | ✅ | · | · | · | ✅ | ◐ | · | · |
+| `type2.value` | · | ✅ | ✅ | · | · | ✅ | ✅ | ◐ | · | · |
 | `value.bytes` |  | ➖ | ➖ |  |  |  |  |  |  |  |
 | `value.number` | · | ✅ | ✅ | · | · | · |  | · | · | · |
-| `value.text` |  | ✅ | ✅ | · |  |  |  | · |  |  |
+| `value.text` | · | ✅ | ✅ | · |  |  |  | · |  |  |
 
-- Modelled `(role × feature)` cells: **68** (over 135 shape-granular containment rows).
-- Exercised by the corpus **and** modelled: **34**.
-- Exercised by the corpus, modelled by **nothing**: **158** (the `·` cells).
+- Modelled `(role × feature)` cells: **69** (over 136 shape-granular containment rows).
+- Exercised by the corpus **and** modelled: **35**.
+- Exercised by the corpus, modelled by **nothing**: **162** (the `·` cells).
 - Modelled but not exercised by any corpus fixture: **34**.
 
 ## Notable findings
@@ -437,14 +438,13 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 4. Socket NAMES aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. The `/=` half of the plug idiom IS honored: every `/=` statement for one name contributes its arms to a single type-choice rule, in statement order, generating byte-identically to the folded spelling (`tests/corpus/assignt_extend.cddl`; pinned by `incremental_type_choice_extension_equals_the_folded_spelling`). The `//=` group half stays refused gracefully — in either statement order — because merging its arms mints the multi-choice plain-group shape that is itself unsupported (see the assigng.extend note).
 5. Float works in every position under every profile, `--preserve-encodings` included: the CBOR head width (`0xf9`/`0xfa`/`0xfb`) is an `Option<cbor_event::Sz>` encoding variable, and a float window is enforced on the same value in both profiles. The corpus carries floats accordingly — `tests/corpus/optional_fixed_float.cddl` (an optional fixed FLOAT member, presence bit plus width) and `homogeneous_array.cddl`'s `float_holder` (per-element widths). Spec-anchored wire vectors live in the `golden_hex_preserve` / `golden_hex_canonical` KAT suites.
 6. Methodology — the support probe is EXECUTION-GATED (generate + `cargo test` of the emitted round-trip surface), not exit-code-only, so a spec that exits 0 but emits code that does not compile (or does not round-trip) is correctly ➖. A row whose generated code names USER-SUPPLIED items (the extern/raw-bytes sentinels, a @custom_serialize/@custom_deserialize pair) gets that code written for it rather than an exemption — the probe appends a name-parameterized definition from tests/def_templates/ into the crate roots and then runs the ordinary verdict on both faces plus, under the json profile, the emitted json-gen crate. Only a row whose missing piece is a whole OTHER CRATE stays exempt (see cddl-matrix/README.md § the execution-gate discussion).
-7. Gap — top-level fixed-value / null TYPES (`answer = 42`, `x = null`) have no standalone type representation, so the generator REJECTS them gracefully (not a panic), pinned by the `tests/matrix_reject/` expect-reject catalog (`tests/matrix_reject/prelude.null.cddl`, `tests/matrix_reject/type2.value.cddl`, `tests/matrix_reject/value.number.cddl`, `tests/matrix_reject/value.text.cddl`) via `robustness_tests::unsupported_construct_reject_catalog`. The same fixed values serialize fine as struct/array MEMBERS (`tests/corpus/fixed_bool_member.cddl`). A singleton-value type that materializes the constant is still a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)
-8. Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both (now rejected gracefully). Candidate cddl-codegen feature.
+7. Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both (now rejected gracefully). Candidate cddl-codegen feature.
 
 ## Summary
 
-- Features: **123** — ✅ 68 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 23 not supported
+- Features: **123** — ✅ 75 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 16 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 100
+- Corpus fixtures: 101
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

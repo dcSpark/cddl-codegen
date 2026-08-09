@@ -1,0 +1,78 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource answer {
+    new-value-uint42: static func() -> answer;
+    kind: func() -> answer-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<answer, string>;
+  }
+  enum answer-kind {
+    value-uint42,
+  }
+  resource false-value {
+    new-value-bool-false: static func() -> false-value;
+    kind: func() -> false-value-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<false-value, string>;
+  }
+  enum false-value-kind {
+    value-bool-false,
+  }
+  resource marker {
+    new-value-text7631: static func() -> marker;
+    kind: func() -> marker-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<marker, string>;
+  }
+  enum marker-kind {
+    value-text7631,
+  }
+  resource nil-value {
+    new-value-null: static func() -> nil-value;
+    kind: func() -> nil-value-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nil-value, string>;
+  }
+  enum nil-value-kind {
+    value-null,
+  }
+  resource null-value {
+    new-value-null: static func() -> null-value;
+    kind: func() -> null-value-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<null-value, string>;
+  }
+  enum null-value-kind {
+    value-null,
+  }
+  resource true-value {
+    new-value-bool-true: static func() -> true-value;
+    kind: func() -> true-value-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<true-value, string>;
+  }
+  enum true-value-kind {
+    value-bool-true,
+  }
+  resource version {
+    new-value-uint5: static func() -> version;
+    kind: func() -> version-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<version, string>;
+  }
+  enum version-kind {
+    value-uint5,
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

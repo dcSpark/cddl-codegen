@@ -102,7 +102,7 @@ id = "contain.array-element.type2.value"
 role = "role.array-element"
 feature = "type2.value"
 spec = "allowed"
-note = "A literal value as a member type (`[w: uint, v: 5]`) — supported in-composite; the standalone `answer = 42` type is not. RFC8610 §2.1, §3.4."
+note = "A literal value as a member type (`[w: uint, v: 5]`) — the inline fixed-value path, distinct from the nominal standalone `answer = 42` singleton. RFC8610 §2.1, §3.4."
 example = "a = [w: uint, v: 5]"
 
 [[contain]]

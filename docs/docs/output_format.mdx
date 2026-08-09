@@ -30,9 +30,9 @@ The consuming set of a file is not "every descendant" but the descendants an unb
 **Not every type gets its own (de)serialization in `serialization.rs`.** Some constructs carry their CBOR framing at the point of *use* rather than as a standalone impl on the type:
 
 - **Type aliases** — homogeneous arrays (`-> Vec`), tables (`-> BTreeMap`), and plain aliases (`foo = bar`) are (de)serialized through the aliased type. (Top-level single-type *tag* rules like `tagged = #6.42(text)` are NOT aliases — they auto-wrap into a tag-writing/tag-checking newtype; see `current_capacities`.)
-- **C-style enums** — all-fixed-value choices (`foo = 0 / 1 / 2`) are encoded *inline wherever they are used*, not via an `impl` on the enum. The exception is a mandatory tag directly on the choice rule under `--preserve-encodings`: that rule uses the data-carrying union shape below so the enum can retain the tag head's width.
+- **C-style enums** — multi-value all-fixed choices (`foo = 0 / 1 / 2`) are encoded *inline wherever they are used*, not via an `impl` on the enum. The exception is a mandatory tag directly on the choice rule under `--preserve-encodings`: that rule uses the data-carrying union shape below so the enum can retain the tag head's width. A **one-value named rule** (`answer = 42`, including a tagged or `bytes .cbor` spelling) is different: it is a nominal singleton TypeChoice with direct codecs, precisely so its standalone API has the declared wire shape.
 
-So the tag / fixed-value encoding for these is emitted at each use site. A consequence worth knowing: a type of one of these kinds that is a root rule **referenced by nothing else** has no standalone (de)serialization, and can only be (de)serialized as part of a containing type.
+So the tag / fixed-value encoding for these is emitted at each use site. A multi-value C-style enum root **referenced by nothing else** has no standalone (de)serialization, and can only be (de)serialized as part of a containing type; named singletons are the deliberate exception above.
 
 **Union (type-choice) enum variants change *shape* with the profile.** Under the default profile a
 payload-carrying variant is a **tuple** variant (`Md::Map(PairMap<Md, Md>)`); under

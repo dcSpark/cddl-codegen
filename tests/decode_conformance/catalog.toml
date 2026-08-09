@@ -1369,6 +1369,32 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.choice-member.type2.value.fixed_null"
+axis = "containment"
+example = "t = true / null"
+spec = "__probe_holder = [0, t]\nt = true / null"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200f4"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the holder framing and choice shape are unchanged, but false is neither accepted arm of `t = true / null`; the dedicated fixed/null Option lowering rejects its third value after the fixed-true presence check"
+expect_err = "Expected fixed value true found false"
+
+[[row.vector]]
+hex = "8200f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.group-choice-arm.grpchoice.sequence.array"
 axis = "containment"
 example = "t = [ a: uint, b: tstr // c: bytes ]"
@@ -7540,6 +7566,27 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "prelude.false"
+axis = "feature"
+example = "x = false"
+spec = "x = false"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "f5"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "true is not the nominal fixed value false in `x = false`; this is the same-major boolean counterexample and must surface FixedValueMismatch"
+expect_err = "Expected fixed value false found true"
+
+[[row]]
 id = "prelude.float"
 axis = "feature"
 example = "x = float"
@@ -8133,6 +8180,27 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "prelude.nil"
+axis = "feature"
+example = "x = nil"
+spec = "x = nil"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "f5"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "true is not the nil/null fixed value in `x = nil`; null singleton rejection is a type contract, pinned as ExpectedNull rather than a generic choice failure"
+expect_err = "Expected null, found other type"
+
+[[row.vector]]
+hex = "f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "prelude.nint"
 axis = "feature"
 example = "x = nint"
@@ -8182,6 +8250,27 @@ expect = "accept"
 
 [[row.vector]]
 hex = "82003902e6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "prelude.null"
+axis = "feature"
+example = "x = null"
+spec = "x = null"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "f4"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "false is not null in `x = null`; null singleton rejection is a type contract, pinned as ExpectedNull rather than a generic choice failure"
+expect_err = "Expected null, found other type"
+
+[[row.vector]]
+hex = "f6"
 source = "ruby-generate"
 expect = "accept"
 
@@ -8437,6 +8526,27 @@ expect = "accept"
 
 [[row.vector]]
 hex = "8200c1fb2be72c0f750c72ee"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "prelude.true"
+axis = "feature"
+example = "x = true"
+spec = "x = true"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "f4"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "false is not the nominal fixed value true in `x = true`; this is the same-major boolean counterexample and must surface FixedValueMismatch"
+expect_err = "Expected fixed value true found false"
+
+[[row.vector]]
+hex = "f5"
 source = "ruby-generate"
 expect = "accept"
 
@@ -9667,6 +9777,48 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "type2.value"
+axis = "feature"
+example = "answer = 42"
+spec = "answer = 42"
+mode = "standalone"
+type_name = "Answer"
+
+[[row.vector]]
+hex = "182a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "182b"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "43 is not the nominal fixed uint 42 in `answer = 42`; identical uint wire kind isolates the fixed-value comparison"
+expect_err = "Expected fixed value 42 found 43"
+
+[[row]]
+id = "value.number"
+axis = "feature"
+example = "version = 5"
+spec = "version = 5"
+mode = "standalone"
+type_name = "Version"
+
+[[row.vector]]
+hex = "05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "06"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "6 is not the nominal fixed uint 5 in `version = 5`; identical uint wire kind isolates the fixed-value comparison"
+expect_err = "Expected fixed value 5 found 6"
+
+[[row]]
 id = "value.number.bin"
 axis = "feature"
 example = "m = [v: 0b1010]"
@@ -9749,3 +9901,24 @@ expect = "reject"
 class = "constraint"
 reason = "the value 3.5 differs from the fixed value 3.0 (0x1.8p+1) — violates the fixed-value member (FixedValueMismatch); both oracles certify the violation (the rust oracle enforces fixed float values at this shape)"
 expect_err = "Expected fixed value 3 found 3.5"
+
+[[row]]
+id = "value.text"
+axis = "feature"
+example = "marker = \"v1\""
+spec = "marker = \"v1\""
+mode = "standalone"
+type_name = "Marker"
+
+[[row.vector]]
+hex = "627631"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "627632"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the text \"v2\" is not the nominal fixed text \"v1\" in `marker = \"v1\"`; the text head and length are unchanged, isolating FixedValueMismatch"
+expect_err = "Expected fixed value \"v1\" found \"v2\""

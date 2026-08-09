@@ -355,6 +355,46 @@ fn i64_min_fixed_value_emits_width_correct_nint() {
     );
 }
 
+/// A standalone fixed rule and a fixed/null choice need nominal owners: a fixed value cannot be
+/// stored directly, while `Option<()>` would lose the declared constant (and its preserve sidecar).
+/// This is deliberately an IR/emission-shaped contract, not merely an exit-0 probe.
+#[test]
+fn standalone_fixed_and_fixed_null_generate_nominal_type_choices() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_fixed_singleton_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "five = 5\npresent = true / null\nempty = null / null\n",
+    )
+    .unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "fixed_singleton_unused",
+        "--wasm=false",
+    ]);
+    let output = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+    let output = output.expect("standalone fixed and fixed/null rules must generate");
+    let joined = output.into_values().collect::<Vec<_>>().join("\n");
+    assert!(
+        joined.contains("pub enum Five"),
+        "expected a nominal singleton enum: {joined}"
+    );
+    assert!(
+        joined.contains("pub type Present = Option<FixedBoolTrue>"),
+        "fixed/null must retain the Option<singleton> API: {joined}"
+    );
+    assert!(
+        joined.contains("pub enum Empty") && !joined.contains("pub type Empty = Option"),
+        "null/null must normalize to one nominal null singleton: {joined}"
+    );
+}
+
 /// A keyless map entry (`{ bytes, uint }`) is rejected BY DESIGN — each map field needs a key — but
 /// via a GRACEFUL `Err` (deferred through `IntermediateTypes::record_rejection` → drained by
 /// `finalize`), never a `panic!`. This pins that the error is real and its message is actionable:
@@ -671,11 +711,8 @@ fn unsupported_member_type2_rejects_gracefully() {
 /// `prelude.any` row) and by `tests/robustness/any_member.cddl` — `any` really does carry an
 /// arbitrary CBOR item, `undefined` included, in member position.
 ///
-/// The top-level vector additionally emits a SECOND, cascade line: the inert `Fixed(Null)`
-/// placeholder the refusal returns reaches the bare-fixed-rule guard in `register_type_alias`. That
-/// is accepted deliberately — the `undefined` diagnosis leads, and suppressing the cascade would
-/// need either a non-inert placeholder (which cascades WORSE in a type-choice arm) or a
-/// cross-seam flag. This asserts the ORDER, so a future change that buries the real cause fails.
+/// The top-level vector has no fixed-value follow-on: fixed values now have a nominal owner, so an
+/// undefined placeholder must remain a single, focused rejection.
 #[test]
 fn undefined_prelude_rejects_gracefully_in_every_position() {
     let vectors = [
@@ -706,18 +743,12 @@ fn undefined_prelude_rejects_gracefully_in_every_position() {
         }
     }
 
-    // Cascade order for the rule-body vector: the real cause first, the placeholder's follow-on
-    // second.
+    // The rule-body vector remains one focused rejection after fixed values gained their own
+    // nominal representation; do not reintroduce an unrelated fixed-value cascade.
     let body_msg = expect_graceful_rejection("undef_rule_body_order", "x = undefined\n", &[]);
-    let cause = body_msg
-        .find("prelude type `undefined`")
-        .expect("undefined rejection must be present");
-    let cascade = body_msg
-        .find("bare fixed value")
-        .expect("the placeholder's bare-fixed cascade is expected on the rule-body vector");
     assert!(
-        cause < cascade,
-        "the `undefined` diagnosis must lead the placeholder's cascade, got: {body_msg}"
+        !body_msg.contains("bare fixed value"),
+        "undefined must not gain a fixed-value cascade, got: {body_msg}"
     );
 }
 
@@ -3853,139 +3884,127 @@ fn unsupported_unwrap_rule_body_names_remedy() {
     );
 }
 
-/// A two-arm `T / null` choice whose non-`null` arm is a bare fixed value is unsupported at BOTH
-/// collapse sites — rejected BY DESIGN via a GRACEFUL `Err`, never the `for_rust_member_ct` abort
-/// the shape used to hit under every profile. The catalog above only records the
-/// `error (graceful)` LABEL for the two committed fixtures; this pins what each message actually
-/// SAYS: the rule-level one names the rule by its SOURCE spelling and quotes the offending value
-/// back in CDDL form, the member-level one uses role-generic wording (no rule name exists there),
-/// and both carry the shared explanation plus a remedy that was probed to generate.
-///
-/// Every fixed kind the collapse can carry is swept, not just bool — the guard keys on
-/// "is a fixed value", not on any one variant — including the degenerate `null / null`, which gets
-/// the distinct sentence it needs (there is no non-`null` arm to widen).
+/// Fixed/null choices lower at both former collapse sites through a nominal singleton.  This keeps
+/// `Some` meaningful, leaves `null / null` with exactly one Rust state, and prevents directives or
+/// generic parameters from becoming silently inert as the old refusal is removed.
 #[test]
-fn fixed_inner_null_collapse_rejects_gracefully_at_both_sites() {
-    fn run(spec: &str, tag: &str) -> String {
-        let path = std::env::temp_dir().join(format!(
-            "cddl_codegen_nullcollapse_{}_{}.cddl",
-            tag,
-            std::process::id()
-        ));
-        std::fs::write(&path, spec).unwrap();
-        let cli = Cli::parse_from([
-            "cddl-codegen",
-            "--input",
-            path.to_str().unwrap(),
-            "--output",
-            "nullcollapse_unused",
-        ]);
-        let result = crate::api::generated_strings(&cli);
-        std::fs::remove_file(&path).ok();
-        result
-            .expect_err(&format!(
-                "a fixed inner under the `T / null` collapse ({tag}) must be a graceful Err, not a panic"
-            ))
-            .to_string()
-    }
-
-    // Rule-level site: names the rule by its SOURCE spelling (`t`, not the camel-cased `T`).
-    let rule = run("a = [x: uint]\nt = true / null\n", "rule");
-    assert!(
-        rule.contains("rule `t`: the two-arm choice `true / null` is unsupported"),
-        "rule-level rejection should name the rule and quote the choice back, got: {rule}"
-    );
-    assert!(
-        rule.contains("collapses to an `Option<T>` rather than an enum"),
-        "rule-level rejection should explain the collapse, got: {rule}"
-    );
-    assert!(
-        rule.contains("`bool / null` lowers to `Option<bool>`")
-            && rule.contains("different spec, not an equivalent one"),
-        "rule-level rejection should carry the probed remedy and its honesty caveat, got: {rule}"
-    );
-
-    // Member-level site: role-generic wording, no rule name available.
-    let member = run("a = [v: true / null, x: uint]\n", "member");
-    assert!(
-        member.contains(
-            "a two-arm `true / null` choice used as a member or element type is unsupported"
+fn fixed_inner_null_collapse_generates_nominal_presence_at_both_sites() {
+    for (spec, needle) in [
+        (
+            "a = [x: uint]\nt = true / null\n",
+            "pub type T = Option<FixedBoolTrue>",
         ),
-        "member-level rejection should use role-generic wording, got: {member}"
-    );
-    assert!(
-        member.contains("collapses to an `Option<T>` rather than an enum")
-            && member.contains("`bool / null` lowers to `Option<bool>`"),
-        "member-level rejection should share the rule-level explanation and remedy, got: {member}"
-    );
-
-    // The guard keys on fixed-ness, not on bool: every other fixed kind refuses the same way, with
-    // the value quoted back in its CDDL spelling.
-    for (spec, tag, quoted) in [
+        ("a = [v: true / null, x: uint]\n", "pub enum FixedBoolTrue"),
+        ("a = [x: uint]\nt = null / null\n", "pub enum T"),
         (
             "a = [x: uint]\nt = false / null\n",
-            "false",
-            "`false / null`",
+            "Option<FixedBoolFalse>",
         ),
-        ("a = [x: uint]\nt = 5 / null\n", "uint", "`5 / null`"),
-        ("a = [x: uint]\nt = -1 / null\n", "nint", "`-1 / null`"),
-        ("a = [x: uint]\nt = 3.0 / null\n", "float", "`3.0 / null`"),
+        ("a = [x: uint]\nt = -1 / null\n", "Option<FixedNint1>"),
         (
             "a = [x: uint]\nt = \"v1\" / null\n",
-            "text",
-            "`\"v1\" / null`",
+            "Option<FixedText7631>",
         ),
     ] {
-        let msg = run(spec, tag);
-        assert!(
-            msg.contains(quoted),
-            "the {tag} rejection should quote {quoted} back in CDDL form, got: {msg}"
-        );
+        let output = expect_generates("fixed-null-presence", spec, &[])
+            .into_values()
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(output.contains(needle), "expected `{needle}` in: {output}");
     }
 
-    // `null / null` is the degenerate spelling: no non-`null` arm exists, so the widening remedy
-    // would be dishonest and the message must NOT offer it.
-    let both_null = run("a = [x: uint]\nt = null / null\n", "nullnull");
-    assert!(
-        both_null.contains("`null / null`") && both_null.contains("`null` on both arms"),
-        "the null/null rejection should say both arms are null, got: {both_null}"
-    );
-    assert!(
-        !both_null.contains("Widening the fixed arm"),
-        "the null/null rejection must not offer the widening remedy, got: {both_null}"
-    );
-
-    // Control: the SAME two-arm shape over a non-fixed inner still collapses to a real `Option<T>`,
-    // and a two-arm choice with no `null` arm still takes the enum path — the guard must not widen
-    // into either.
-    for supported in [
-        "a = [x: uint]\nt = bool / null\n",
-        "a = [x: uint]\nt = uint / null\n",
-        "a = [x: uint]\nt = null / tstr\n",
-        "a = [x: uint]\nt = true / false\n",
-        "a = [v: bool / null, x: uint]\n",
+    let output = expect_generates(
+        "fixed-null-composition",
+        "five = 5\nrec = [f: five]\narr = [* five]\ntab = {* uint => five}\n",
+        &[],
+    )
+    .into_values()
+    .collect::<Vec<_>>()
+    .join("\n");
+    for needle in [
+        "pub enum Five",
+        "pub struct Rec",
+        "Vec<Five>",
+        "BTreeMap<u64, Five>",
     ] {
-        let path = std::env::temp_dir().join(format!(
-            "cddl_codegen_nullcollapse_ok_{}.cddl",
-            std::process::id()
-        ));
-        std::fs::write(&path, supported).unwrap();
-        let cli = Cli::parse_from([
-            "cddl-codegen",
-            "--input",
-            path.to_str().unwrap(),
-            "--output",
-            "nullcollapse_unused",
-        ]);
-        let result = crate::api::generated_strings(&cli);
-        std::fs::remove_file(&path).ok();
+        assert!(output.contains(needle), "expected `{needle}` in: {output}");
+    }
+
+    let newtype =
+        expect_graceful_rejection("fixed-singleton-newtype", "x = true ; @newtype\n", &[]);
+    assert!(
+        newtype.contains("redundant and unsupported"),
+        "got: {newtype}"
+    );
+    let generic = expect_graceful_rejection("fixed-singleton-generic", "x<T> = 5\n", &[]);
+    assert!(generic.contains("fixed-value body"), "got: {generic}");
+
+    // The authored-rule pre-scan, not parse order, owns synthesized-name collision detection.
+    for spec in [
+        "fixed_bool_true = uint\nx = true / null\n",
+        "x = true / null\nfixed_bool_true = uint\n",
+    ] {
+        let collision = expect_graceful_rejection("fixed-singleton-collision", spec, &[]);
         assert!(
-            result.is_ok(),
-            "`{}` must still generate, got: {:?}",
-            supported.trim(),
-            result.err()
+            collision.contains("collides with the authored rule"),
+            "synthesized singleton collision must reject in either source order, got: {collision}"
         );
     }
+    for spec in [
+        "fixed_bool_true_tag7 = uint\nx = #6.7(true) / null\n",
+        "x = #6.7(true) / null\nfixed_bool_true_tag7 = uint\n",
+    ] {
+        let collision = expect_graceful_rejection("fixed-singleton-tagged-collision", spec, &[]);
+        assert!(
+            collision.contains("collides with the authored rule"),
+            "encoded singleton collision must reject in either source order, got: {collision}"
+        );
+    }
+
+    // A synthesized singleton owns the COMPLETE wire chain.  The bare and tagged constants have
+    // equal values but different bytes; if their owners deduplicated by `FixedValue` alone, the
+    // first field parsed would silently decide the other field's encoding.
+    for spec in [
+        "a = [x: true / null, y: #6.7(true) / null]\n",
+        "a = [y: #6.7(true) / null, x: true / null]\n",
+    ] {
+        let output = expect_generates("fixed-singleton-wire-identity", spec, &[])
+            .into_values()
+            .collect::<Vec<_>>()
+            .join("\n");
+        for needle in [
+            "pub enum FixedBoolTrue",
+            "pub enum FixedBoolTrueTag7",
+            "write_tag(7u64)",
+        ] {
+            assert!(
+                output.contains(needle),
+                "encoded and bare fixed/null arms need distinct owners `{needle}` in either field order: {output}"
+            );
+        }
+    }
+
+    let field_doc = expect_generates(
+        "fixed-null-field-doc",
+        "a = [v: true / null, ; @doc fixed nullable field\n]\n",
+        &[],
+    )
+    .into_values()
+    .collect::<Vec<_>>()
+    .join("\n");
+    assert!(
+        field_doc.contains("fixed nullable field"),
+        "the entry trailing @doc must remain a field directive, got: {field_doc}"
+    );
+    let arm_doc = expect_graceful_rejection(
+        "fixed-null-arm-doc",
+        "a = [v: true ; @doc arm documentation\n / null]\n",
+        &[],
+    );
+    assert!(
+        arm_doc.contains("non-last arm of an inline `T / null` choice"),
+        "an arm @doc with no variant owner must reject, got: {arm_doc}"
+    );
 }
 
 /// A choice arm whose variant name is DERIVED from a fixed value's LEXEME (`1.5` → `F1.5`, `-1` →
@@ -7911,13 +7930,13 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
     );
     // An aliased literal key `one = 1` resolves through the alias to a Fixed domain, so it diverts to
     // the record path where it is classified NonFixed (a Type1 typename key). As the SOLE entry it is
-    // now seen by the open struct-map front door (loose CBOR) as a lone non-fixed row — rejected
-    // because an open struct needs a fixed key before its rest row (a bare `* k => v` is a table). Any
-    // record-path rejection message is acceptable; we pin the fixed-key-prefix one that fires.
+    // rejected rather than silently widened as a table. The exact diagnostic depends on which record
+    // path reaches it first: the fixed-key-prefix front door or the exact-once arrow-occurrence guard.
     let aliased = run("one = 1\nm = { one => uint }\n", "aliased")
         .expect_err("an aliased literal arrow key domain must reject gracefully, not panic");
     assert!(
-        aliased.contains("rule `m`") && aliased.contains("fixed key"),
+        aliased.contains("rule `m`")
+            && (aliased.contains("fixed key") || aliased.contains("no occurrence indicator")),
         "an aliased literal arrow key hits the open-map front door as a lone non-fixed row, got: {aliased}"
     );
 
