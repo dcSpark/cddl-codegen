@@ -4,7 +4,7 @@
 ; compensating way); exact-byte assertions can, because the bytes are anchored to the spec.
 ;
 ; Coverage spans every CBOR major type the generator emits under default flags:
-;   0 uint, 1 nint, 2 bstr, 3 tstr, 4 array, 5 map, 6 tag, 7 simple (bool/null) + float.
+;   0 uint, 1 nint, 2 bstr, 3 tstr, 4 array, 5 map, 6 tag, 7 simple (bool/null/undefined) + float.
 
 ; major type 0 (unsigned) + 4 (array) + nesting
 triple    = [a: uint, b: uint, c: uint]

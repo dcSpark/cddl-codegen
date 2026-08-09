@@ -8,11 +8,12 @@
 ; accept a single-element array for a `0..N` spec — a certified over-acceptance, which is worse
 ; than a refusal. Its table sibling is the same class: a fixed VALUE domain (`{ * uint => 5 }`, and
 ; the parenthesized `{ * (uint => 5) }`) has no per-row type either, and is rejected by the same
-; guard family. The message names no false remedy — naming the constant as its own rule resolves to
-; the same `Fixed` (and is itself rejected at the alias seam), so it offers only what really works,
-; the EXACTLY-ONCE placement (`[5]`, tests/robustness/fixed_bool_member.cddl), which stays supported
-; and is deliberately outside the guard — and it says plainly that widening to the constant's CDDL
-; type is a different spec, not an equivalent one.
+; guard family. Naming the constant as its own rule now creates a nominal singleton, so it IS a
+; valid repeated-element route (`five = 5` then `[* five]`) with the same wire constant but a
+; value-bearing wrapper API; the diagnostic names that alternative. The bare exactly-once placement
+; (`[5]`, tests/robustness/fixed_bool_member.cddl) stays supported and is deliberately outside the
+; guard. Widening to the constant's CDDL primitive type is a different schema, not an equivalent
+; workaround.
 ;
 ; A fixed KEY domain (`{ 1 => uint }`) is deliberately NOT this class: per RFC 8610 it is the same
 ; wire entry as the colon spelling, so it diverts to the record path and generates.

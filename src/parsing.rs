@@ -4825,11 +4825,13 @@ fn record_fixed_table_value_rejection(
     types.record_rejection(format!(
         "{site}: the table entry `{entry_src}` has a bare fixed value ({value_desc}) as its VALUE \
          domain, which is unsupported — a fixed value has no type to store per table row, it only \
-         has meaning as a single (unstored) member whose value the schema fixes. Naming it as its \
-         own rule does not help: a top-level bare fixed value is rejected for the same reason. \
-         Widening the value to the CDDL type the constant inhabits (`uint` / `bool` / `tstr` / …) \
-         generates, but it no longer constrains the value to {value_desc}, so it is a different \
-         spec, not an equivalent one."
+         has meaning as a single (unstored) member whose value the schema fixes. If a repeated \
+         nominal singleton is wanted, name the constant in its own rule (for example `five = \
+         {value_desc}`) and use that rule as the VALUE domain (`{{ * uint => five }}`); it preserves \
+         the wire constant but gives the generated API a stored singleton wrapper. Widening the \
+         value to the CDDL type the constant inhabits (`uint` / `bool` / `tstr` / …) generates, \
+         but it no longer constrains the value to {value_desc}, so it is a different spec, not an \
+         equivalent one."
     ));
 }
 
@@ -5086,13 +5088,14 @@ fn parse_group_type<'a>(
                          ({value_desc}) under a count-permitting occurrence marker (`*` / `+` / \
                          `?` / `n*m`), which is unsupported — a fixed value has no element type to \
                          store per repetition, it only has meaning as a single (unstored) member \
-                         whose value the schema fixes. Naming it as its own rule does not help: a \
-                         top-level bare fixed value is rejected for the same reason. If exactly \
-                         one element is meant, drop the marker (`[{elem_src}]`) — that placement \
-                         IS supported. Widening the element to the CDDL type the constant \
-                         inhabits (`uint` / `bool` / `tstr` / …) generates, but it no longer \
-                         constrains the element to {value_desc}, so it is a different spec, not \
-                         an equivalent one."
+                         whose value the schema fixes. If a repeated nominal singleton is wanted, \
+                         name the constant in its own rule and use that rule as the element type; \
+                         it preserves the wire constant but gives the generated API a stored \
+                         singleton wrapper. If exactly one element is meant, drop the marker \
+                         (`[{elem_src}]`) — that placement IS supported. Widening the element to \
+                         the CDDL type the constant inhabits (`uint` / `bool` / `tstr` / …) \
+                         generates, but it no longer constrains the element to {value_desc}, so \
+                         it is a different spec, not an equivalent one."
                     ));
                 }
                 match bounds {
@@ -6424,16 +6427,19 @@ fn group_entry_map_key_kind(entry: &GroupEntry) -> MapKeyKind {
                     MapKeyKind::Fixed(FixedValue::Text(value.to_string()))
                 }
                 Type2::FloatValue { value, .. } => MapKeyKind::Fixed(FixedValue::Float(*value)),
-                // `true`/`false` are boolean literals spelled as typenames; classify them as fixed
-                // Bool so a routed `{ true => uint }` gets the honest "unsupported fixed map key
-                // Bool(true)" rejection instead of the misleading non-fixed message (this also
-                // upgrades the group-choice-arm message for bool keys). Other typename keys stay
-                // NonFixed.
+                // `true`/`false`/`undefined` are fixed literals spelled as typenames; classify
+                // them as Fixed so a routed `{ true => uint }` or `{ undefined => uint }` gets
+                // the honest unsupported-fixed-map-key rejection instead of the misleading
+                // non-fixed message (this also upgrades the group-choice-arm message for these
+                // keys). Other typename keys stay NonFixed.
                 Type2::Typename { ident, .. } if ident.ident == "true" => {
                     MapKeyKind::Fixed(FixedValue::Bool(true))
                 }
                 Type2::Typename { ident, .. } if ident.ident == "false" => {
                     MapKeyKind::Fixed(FixedValue::Bool(false))
+                }
+                Type2::Typename { ident, .. } if ident.ident == "undefined" => {
+                    MapKeyKind::Fixed(FixedValue::Undefined)
                 }
                 _ => MapKeyKind::NonFixed,
             },

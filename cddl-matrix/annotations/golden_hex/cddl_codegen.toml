@@ -109,7 +109,7 @@ reason = "outer definite array covered; embeds an indefinite inner map (see enc.
 [[note]]
 hex = "f0"   # simple(16) (in the otherwise-covered simple_imm cell)
 status = "out_of_scope"
-reason = "unassigned simple value 16 is not a CDDL construct the generator emits; simple-value immediate cell is covered by false/true/null"
+reason = "unassigned simple value 16 is not a CDDL construct the generator emits; simple-value immediate cell is covered by false/true/null/undefined"
 
 [[note]]
 cell = "enc.major7.ai24"   # simple(24), simple(255)

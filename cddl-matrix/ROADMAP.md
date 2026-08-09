@@ -756,6 +756,16 @@ remains is deleting the notes that explain why we do not have it yet.
   30-test suite on the fork; README gap #6): prune the fix-provenance notes (README gap #6, the
   `RUST_ORACLE_SKIP` past-resident note, the two `bignint-*` fingerprint probes' provenance
   wording).
+- When the pinned rust `cddl` validator accepts `validate_cbor_from_slice("x = undefined",
+  &[0xf7], None)` (README gap #16): the exact-signature stale probe in
+  `ir_conformance_corpus` will fail first. Confirm the fixed behavior is the intended RFC 8949
+  undefined value, remove the sole `(fixed_singletons, undefined_value)`
+  `RUST_ORACLE_RULE_SKIP` triple so all eight emitted rust calls run again, and replace the
+  stale-rejection preflight with an acceptance probe for the new pinned behavior. Then run
+  `bun run check.ts full --only ir_conformance_corpus`, update the current-state coverage/cost
+  wording in `tests/README.md` and README gap #16, and delete this close-out entry. A changed
+  rejection signature is not a fix: investigate it and retain or revise the ledger only with a
+  new exact probe; never promote this one-rule gap to fixture-level `RUST_ORACLE_SKIP`.
 - When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
   `ac1b98e` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
   `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row

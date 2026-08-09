@@ -500,6 +500,19 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     `upstream-reports/rust-cddl-incremental-extension-reference-resolution.md`. No upstream
     issue filed yet.
 
+16. **`undefined` validates as null** (OPEN at pinned `ac1b98ec07184236517da4511b1bbea239e35190`):
+    `validate_cbor_from_slice("x = undefined", &[0xf7], None)` rejects the valid CBOR undefined
+    value with `expected type undefined, got Null`. cddl-codegen's `fixed_singletons` fixture still
+    generates normally and retains its eight emitted rust conformance calls; only the exact
+    `undefined_value` call is neutralized in the gate's scratch generated module. Its other seven
+    rust calls, ordinary round trips, dumps, ruby sweep, and reference-codec differential remain
+    enforced. The latter normalizes ciborium's f7-to-null value-model collapse against minicbor's
+    explicit undefined only after both fully decode the bytes, pinned by its f7 self-check.
+    `ir_conformance_corpus` directly pins this rejection and exact signature during its
+    oracle preflight, so an acceptance or signature change fails rather than silently preserving the
+    one-rule ledger. This is an oracle limitation, not a generated-code behavior: the fixture's own
+    codec writes and verifies `f7` and rejects null/other special values.
+
 ## Gotchas (read before touching the support seam or probe examples)
 
 The recurring rule: **a panic/compile-failure on minimal *valid* CDDL is a finding to surface
