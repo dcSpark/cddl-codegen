@@ -3325,6 +3325,15 @@ decoding the rust twin's bytes with a loud skip of the ctor differential. A wrap
 a ctor arg with no wasm build (a name-erased wrapper collection, a `Fixed`/`Alias`/`any` inner) and
 the same-class wrapper-entry ctor differential, plus the whole module under any
 `--wasm-*-macro` flag (those replace the wrapper method surface) — each a `crate::warn!` to stderr.
+
+The tagged-`any` fallback still renders its independently minted rust twin through the private
+`__AnyCborMint` spelling. The module therefore imports
+`cddl_lib::any_cbor::AnyCbor as __AnyCborMint` only when the finalized IR uses `AnyCbor`, keeping
+any-free output byte-identical. `expected_conversion_wasm_emit_tests_import_the_rust_any_mint`
+pins the import directly; the ordinary `cddl-matrix/verify.ts` wasm round-trip leg is the systematic
+execution catcher — before the import was added, all three `eb64url`/`eb64legacy`/`eb16` rows failed
+to compile with E0433.
+
 **Extern / raw-bytes never reach this renderer at all**, so their skip is the RUST half's, not this
 one's: the shared minter (`emit_tests::mint_struct`) produces no `MintValue` for
 `RustStructType::Extern` (other than the reserved `Int`) or `RustStructType::RawBytesType`, so a type
@@ -4557,6 +4566,13 @@ instance on its first run: the wasm `Int` wrapper's `from_str` body carried an o
 self-perpetuating `compile_error!` sentinel in `wasm/src/generated/mod.rs` on three fixtures. Fixed
 where the class is always fixed — emitter-side (`generation/wrappers.rs`); the rationale moved into
 the generator's own source, which is where a maintainer note belongs.
+
+The same static floor later caught six more generated-row violations when the expected-conversion
+fixture first exercised `AnyCbor`: comments beside the full-domain `NInt` variant, the
+wire-order/duplicate-preserving `Map` variant, and the bounded-allocation `Vec::new()` appeared on a
+code row in each of the preserve and non-preserve runtime flavors. They were moved onto standalone
+rows in `static/any_cbor_{preserve,non_preserve}.rs`. No new roadmap item was needed: the local-tier
+`regen_over_prior_output_corpus` gate caught the entire class before wrap-up.
 
 Three legs, all over the tool-owned trees (`rust/src/generated`, `wasm/src/generated`,
 `wasm/json-gen/src/generated`). Legs 1 and 2 sweep TWO emission profiles — the default and
