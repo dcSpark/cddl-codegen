@@ -709,7 +709,13 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   which routes a single CONSTRUCT into such an input's `.cddl` rather than the corpus:
   `tagged_type_choice` (tag over a whole type choice) lives in `core` as the direct-deserialize
   annotation control; anonymous enum-rule tags now also execute under preserve in the rich preserve
-  and canonical fixtures.
+  and canonical fixtures. The preserve fixture deliberately names one group-choice arm `tag`: its
+  integer-width sidecar already claims `tag_encoding`, so the rule-owned tag width must take the
+  shared collision-free name `tag_encoding2`. The compiled/runtime
+  `tagged_anonymous_choices_replay_the_rule_tag_head` test gives the outer tag, array head, and inner
+  integer independent non-minimal widths and requires byte-exact replay. That is the standing pin
+  for a codegen-injected enum field colliding with an arm-owned field; the ordinary identifier-hazard
+  and recombination axes do not construct this post-IR name interaction.
   No float constraint of that kind survives — floats carry their head width as an encoding variable,
   so `tests/corpus/homogeneous_array.cddl`'s `float_holder` and `tests/corpus/optional_fixed_float.cddl`
   are ordinary corpus fixtures snapshotted under preserve like everything else. What keeps
@@ -2411,18 +2417,20 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   deliberate three-way reject split: `bug`/`limitation` are wrong rejections that may be unpinned when
   fixed; `constraint` is spec-invalid authored-CDDL enforcement; policy-rejected is spec-valid input
   intentionally narrowed by a documented library policy and must never enter Q4 enforcement.
-  `PRESERVE_SKIP` (stale-guarded) carries two entry classes: the tag-over-a-type-choice preserve
-  gap, and the BY-DESIGN rejection class (`dsl.ignore` — `@ignore` under `--preserve-encodings` is a
-  contract rejection, not a gap, so its stale-entry guard is a regression tripwire: that leg starting
-  to generate is the finding). Anything new there is a finding either way. The same stale guard also
+  `PRESERVE_SKIP` (stale-guarded) currently carries only the BY-DESIGN rejection class
+  (`dsl.ignore` — `@ignore` under `--preserve-encodings` is a contract rejection, not a gap, so its
+  stale-entry guard is a regression tripwire: that leg starting to generate is the finding). The
+  former tag-over-a-type-choice gap is supported and no longer ledgered. Anything new there is a
+  finding either way. The same stale guard also
   requires every listed id to name an ACTIVE (vectored) row, so a skip entry cannot be pre-landed
   against a still-PINNED one — it fails the gate outright. A row whose preserve leg is a by-design
   rejection therefore lands ACTIVE, with a hand-derived accept vector, so its skip entry is valid in
   the same commit that adds the row rather than becoming due at activation. It stays a hand list on
   purpose, for two reasons that outlive any single entry. WHICH class an entry belongs to is what its
   stale guard means — a gap closing versus a contract regressing — and the matrix's
-  `emission.preserve` verdict is one boolean that cannot carry that distinction: both residents are
-  annotated `unsupported`. And that verdict comes from a bare-alias probe while the replay specs
+  `emission.preserve` verdict is one boolean that cannot carry that distinction: today's
+  `dsl.ignore` resident is annotated `unsupported`, as a future gap-class resident would be. And
+  that verdict comes from a bare-alias probe while the replay specs
   embed rows as members, so a shape the alias never reaches can be preserve-broken under a
   `supported` verdict; the retired float class was exactly that divergence, and nothing about the
   probe shape has changed since. The corpus twin gate below has no annotation axis at all — its rows

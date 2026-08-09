@@ -30,7 +30,7 @@ The consuming set of a file is not "every descendant" but the descendants an unb
 **Not every type gets its own (de)serialization in `serialization.rs`.** Some constructs carry their CBOR framing at the point of *use* rather than as a standalone impl on the type:
 
 - **Type aliases** — homogeneous arrays (`-> Vec`), tables (`-> BTreeMap`), and plain aliases (`foo = bar`) are (de)serialized through the aliased type. (Top-level single-type *tag* rules like `tagged = #6.42(text)` are NOT aliases — they auto-wrap into a tag-writing/tag-checking newtype; see `current_capacities`.)
-- **C-style enums** — all-fixed-value choices (`foo = 0 / 1 / 2`) are encoded *inline wherever they are used*, not via an `impl` on the enum.
+- **C-style enums** — all-fixed-value choices (`foo = 0 / 1 / 2`) are encoded *inline wherever they are used*, not via an `impl` on the enum. The exception is a mandatory tag directly on the choice rule under `--preserve-encodings`: that rule uses the data-carrying union shape below so the enum can retain the tag head's width.
 
 So the tag / fixed-value encoding for these is emitted at each use site. A consequence worth knowing: a type of one of these kinds that is a root rule **referenced by nothing else** has no standalone (de)serialization, and can only be (de)serialized as part of a containing type.
 
@@ -43,7 +43,13 @@ both, or hand-written test fragments spliced into both export crates) should the
 variants profile-invariantly: match with braced patterns (`matches!(v, Md::Map { .. })`) or go
 through the emitted methods/serialized bytes, never tuple-destructure
 (`Md::Map(m)` compiles in one profile and is E0164 in the other). Variant *names* and their wire
-behavior are identical across profiles — only the binding shape differs.
+behavior are identical across profiles — only the binding shape differs. A mandatory tag directly
+on the choice rule adds the same `Option<cbor_event::Sz>` tag-width field to every preserve-profile
+variant. It is named `tag_encoding` unless an arm already owns that value/encoding name; the
+generator then selects the first free numeric suffix across the whole enum (`tag_encoding2`, …), so
+every variant still uses one shared spelling. Emitted constructors initialize it to `None` (the
+fit-minimal head); decoded values carry the observed width. This is part of the public enum-variant
+shape, so the `..` pattern advice above applies to it too.
 
 **Item ordering within a file is alphabetical by name, not by kind.** Top-level items are emitted sorted **name-primary, kind-secondary**: alphabetically by the type's bare name (module path and generics ignored), interleaving structs, enums, impls, type aliases, and modules — so a type's `struct`/`enum` and its `impl`s sit together, and `type Foo` is placed alphabetically among everything rather than grouped with the other aliases. Within a single name the struct/enum definition comes first, then its impls. This canonical ordering is stable across unrelated changes to the input, which keeps diffs of generated code small. (It is independent of run-to-run determinism, which holds regardless.)
 
