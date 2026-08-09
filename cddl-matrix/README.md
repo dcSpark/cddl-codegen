@@ -603,7 +603,7 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
   any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs
   a name), with no single-field-map shape to confound it.
-- **Some `unsupported` rows are PERMANENT by decision, not pending — don't re-litigate them.** Three
+- **Some `unsupported` rows are PERMANENT by decision, not pending — don't re-litigate them.** Four
   graceful rejections are boundaries the matrix keeps deliberately, so a row flipping green would be
   a regression, not progress. (1) A bare `any` type-choice arm in a NON-LAST position
   (`a = any / tstr`): a bare `any` accepts every CBOR item, so any arm after it is unreachable dead
@@ -613,9 +613,12 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `tests/robustness/choice_any_arm.cddl` and `tests/robustness/choice_last_any_arm.cddl`). (2) `.ne`
   over a float — the integer min>max exclusion hack has no principled float encoding. (3) A decimal
   bound on an integer-primitive head (`uint .le 10.5`) — silently flooring it onto the int head would
-  mis-enforce. The last two route through `record_rejection` and are pinned alongside the float-window
-  enforcement in the `tests/core` `float_bounds` fixtures. Everything else in this section's
-  neighbourhood is a candidate fix, and lives in `ROADMAP.md` § findings.
+  mis-enforce. (4) `cbor-any` (`#6.55799(any)`) self-describes a complete CBOR stream rather than a
+  value, so it remains a role-neutral graceful refusal (pinned by
+  `cbor_any_prelude_tag_rejects_gracefully_in_every_position`). Items (2) and (3) route through
+  `record_rejection` and are pinned alongside the float-window enforcement in the `tests/core`
+  `float_bounds` fixtures. Everything else in this section's neighbourhood is a candidate fix, and
+  lives in `ROADMAP.md` § findings.
 - **`@custom_json` is a CONTRACT, and its can't-compile-STANDALONE class is the correct record of
   it.** The directive suppresses the serde/schemars derives on the type it names precisely so the
   spec author owns its JSON form, while every JSON surface the tool emits over that type keeps

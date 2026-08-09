@@ -1,0 +1,198 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type ExpectedConversionTags = WitExpectedConversionTags;
+    type PreludeEb16 = WitPreludeEb16;
+    type PreludeEb64legacy = WitPreludeEb64legacy;
+    type PreludeEb64url = WitPreludeEb64url;
+
+    fn cbor_kind(v: Vec<u8>) -> Result<wit_types::AnyCborKind, String> {
+        <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&v)
+            .map(|v| any_cbor_kind_to_wit_types(&v.kind()))
+            .map_err(err)
+    }
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn any_cbor_kind_to_wit_types(v: &cddl_lib::any_cbor::AnyCborKind) -> wit_types::AnyCborKind {
+    match v {
+        cddl_lib::any_cbor::AnyCborKind::UInt => wit_types::AnyCborKind::Uint,
+        cddl_lib::any_cbor::AnyCborKind::NInt => wit_types::AnyCborKind::Nint,
+        cddl_lib::any_cbor::AnyCborKind::Bytes => wit_types::AnyCborKind::Bytes,
+        cddl_lib::any_cbor::AnyCborKind::Text => wit_types::AnyCborKind::Text,
+        cddl_lib::any_cbor::AnyCborKind::Array => wit_types::AnyCborKind::Array,
+        cddl_lib::any_cbor::AnyCborKind::Map => wit_types::AnyCborKind::Map,
+        cddl_lib::any_cbor::AnyCborKind::Tag => wit_types::AnyCborKind::Tag,
+        cddl_lib::any_cbor::AnyCborKind::Bool => wit_types::AnyCborKind::Bool,
+        cddl_lib::any_cbor::AnyCborKind::Null => wit_types::AnyCborKind::Null,
+        cddl_lib::any_cbor::AnyCborKind::Undefined => wit_types::AnyCborKind::Undefined,
+        cddl_lib::any_cbor::AnyCborKind::Unassigned => wit_types::AnyCborKind::Unassigned,
+        cddl_lib::any_cbor::AnyCborKind::Float => wit_types::AnyCborKind::Float,
+    }
+}
+
+pub struct WitExpectedConversionTags(pub RefCell<cddl_lib::ExpectedConversionTags>);
+
+impl wit_types::GuestExpectedConversionTags for WitExpectedConversionTags {
+    fn new(
+        url: wit_types::PreludeEb64urlBorrow<'_>,
+        legacy: wit_types::PreludeEb64legacyBorrow<'_>,
+        hex: wit_types::PreludeEb16Borrow<'_>,
+    ) -> Self {
+        let url = url.get::<WitPreludeEb64url>().0.borrow().clone();
+        let legacy = legacy.get::<WitPreludeEb64legacy>().0.borrow().clone();
+        let hex = hex.get::<WitPreludeEb16>().0.borrow().clone();
+        let inner = cddl_lib::ExpectedConversionTags::new(url, legacy, hex);
+        WitExpectedConversionTags(RefCell::new(inner))
+    }
+
+    fn url(&self) -> wit_types::PreludeEb64url {
+        let me = self.0.borrow();
+        wit_types::PreludeEb64url::new(WitPreludeEb64url(RefCell::new(me.url.clone())))
+    }
+
+    fn legacy(&self) -> wit_types::PreludeEb64legacy {
+        let me = self.0.borrow();
+        wit_types::PreludeEb64legacy::new(WitPreludeEb64legacy(RefCell::new(me.legacy.clone())))
+    }
+
+    fn hex(&self) -> wit_types::PreludeEb16 {
+        let me = self.0.borrow();
+        wit_types::PreludeEb16::new(WitPreludeEb16(RefCell::new(me.hex.clone())))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ExpectedConversionTags as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ExpectedConversionTags, String> {
+        <cddl_lib::ExpectedConversionTags as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::ExpectedConversionTags::new(WitExpectedConversionTags(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitPreludeEb16(pub RefCell<cddl_lib::PreludeEb16>);
+
+impl wit_types::GuestPreludeEb16 for WitPreludeEb16 {
+    fn new(inner: Vec<u8>) -> Result<Self, String> {
+        let inner =
+            <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+                &inner,
+            )
+            .map_err(err)?;
+        let inner = cddl_lib::PreludeEb16::new(inner);
+        Ok(WitPreludeEb16(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&inner)
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeEb16 as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeEb16, String> {
+        <cddl_lib::PreludeEb16 as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeEb16::new(WitPreludeEb16(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitPreludeEb64legacy(pub RefCell<cddl_lib::PreludeEb64legacy>);
+
+impl wit_types::GuestPreludeEb64legacy for WitPreludeEb64legacy {
+    fn new(inner: Vec<u8>) -> Result<Self, String> {
+        let inner =
+            <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+                &inner,
+            )
+            .map_err(err)?;
+        let inner = cddl_lib::PreludeEb64legacy::new(inner);
+        Ok(WitPreludeEb64legacy(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&inner)
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeEb64legacy as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeEb64legacy, String> {
+        <cddl_lib::PreludeEb64legacy as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::PreludeEb64legacy::new(WitPreludeEb64legacy(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitPreludeEb64url(pub RefCell<cddl_lib::PreludeEb64url>);
+
+impl wit_types::GuestPreludeEb64url for WitPreludeEb64url {
+    fn new(inner: Vec<u8>) -> Result<Self, String> {
+        let inner =
+            <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+                &inner,
+            )
+            .map_err(err)?;
+        let inner = cddl_lib::PreludeEb64url::new(inner);
+        Ok(WitPreludeEb64url(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> Vec<u8> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        <cddl_lib::any_cbor::AnyCbor as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&inner)
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::PreludeEb64url as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::PreludeEb64url, String> {
+        <cddl_lib::PreludeEb64url as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::PreludeEb64url::new(WitPreludeEb64url(RefCell::new(v))))
+            .map_err(err)
+    }
+}

@@ -4144,6 +4144,66 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "expected_conversion_tags.expected_conversion_tags"
+axis = "corpus"
+example = "expected_conversion_tags = [\n  url: eb64url,\n  legacy: eb64legacy,\n  hex: eb16,\n]"
+fixture = "expected_conversion_tags"
+rule = "expected_conversion_tags"
+spec = "__probe_holder = [0, expected_conversion_tags]\nexpected_conversion_tags = [\n  url: eb64url,\n  legacy: eb64legacy,\n  hex: eb16,\n]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820083d565646563616cd669646f776e706f757273d76a636176616c72796d656e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d566507572616e61d6664a65726f6d65d7677365656d696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d56773706163696572d667636f6e66757365d769646566726179696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d5686368696c6472656ed66761726d61646173d7656375727279"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d5687265626174652773d66661746f6d6963d76a627574746f6e686f6c65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d569626172726574746573d667726f7567696e67d7685175656265632773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d56c62756c6c7368697474696e67d6624665d76b6a75676765726e61757473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d56c7175696e7475706c65742773d667686f6d65722773d76b666f726761746865726564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d56c737069746566756c6e657373d669636f78737761696e73d76963726564656e7a6173"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d56d696e737472756374696f6e616cd668636f636b70697473d76c616e6e6f746174696f6e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "extern_generic_raw_bytes.ext_set"
 axis = "corpus"
 example = "ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor"

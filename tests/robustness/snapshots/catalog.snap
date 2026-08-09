@@ -32,7 +32,7 @@ ctl_cbor_non_bytes_head_member error (graceful)
 ctl_default_supported_head error (graceful)
 ctl_default_unmapped_head  error (graceful)
 duplicate_rule             error (graceful)
-eb64url_member             error (graceful)
+eb64url_member             ok
 empty                      ok
 empty_array                ok
 empty_group                ok

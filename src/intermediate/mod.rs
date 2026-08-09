@@ -2241,11 +2241,6 @@ impl<'a> IntermediateTypes<'a> {
         })
     }
 
-    /// The four `any`-content prelude tags, read BY the interception arm below rather than
-    /// mirrored beside it — see [`Self::REFUSED_PRELUDE_NAMES`] for why the list is a constant.
-    pub const ANY_CONTENT_PRELUDE_TAGS: &'static [&'static str] =
-        &["cbor-any", "eb16", "eb64legacy", "eb64url"];
-
     /// **The refusal inventory**: every prelude name [`Self::new_type`]'s interception arms REFUSE
     /// (`record_rejection` + an inert placeholder), as opposed to resolving to a type. Sorted, so
     /// the list reads as a set.
@@ -2266,8 +2261,7 @@ impl<'a> IntermediateTypes<'a> {
     /// describes, not in the test module that reads it — a list living in the test tree is exactly
     /// the mirror this design exists to avoid.
     #[allow(dead_code)]
-    pub const REFUSED_PRELUDE_NAMES: &'static [&'static str] =
-        &["cbor-any", "eb16", "eb64legacy", "eb64url"];
+    pub const REFUSED_PRELUDE_NAMES: &'static [&'static str] = &["cbor-any"];
 
     // note: this is mut so the unregistered-reserved fallback can mark which reserved idents
     // are in the CDDL prelude so we don't generate code for all of them, potentially
@@ -2289,46 +2283,23 @@ impl<'a> IntermediateTypes<'a> {
                     // We define an Int rust struct in prelude.rs
                     ConceptualRustType::Rust(RustIdent::new(raw.clone())).into()
                 }
-                // The four `any`-content prelude tags: `cbor-any` (#6.55799), `eb64url` (#6.21),
-                // `eb64legacy` (#6.22) and `eb16` (#6.23). Each tags an ARBITRARY CBOR item with
-                // advice ABOUT that item — "this byte stream is CBOR", or "a consumer rendering
-                // this item as text should use base64url / base64 / base16" — so the payload is
-                // `any` and the tag constrains nothing a generated type could hold. There is
-                // therefore no Rust representation to emit, exactly as for `undefined` above, and
-                // for the same three reasons this is intercepted HERE rather than in
-                // `cddl_prelude`: this fallback is the one seam every position funnels through, a
-                // user rule of the same name still shadows it (a registered alias resolves in
-                // `resolve_alias` above and never reaches this arm), and `cddl_prelude` — a pure
-                // `&str -> Option<&str>` — holds no `IntermediateTypes` handle a rejection could
-                // be recorded through. Same consequence too: the message is ROLE-NEUTRAL by
-                // construction, naming the type and never the position it was written in. The
-                // `Fixed(FixedValue::Null)` placeholder is the inert stand-in the sibling
-                // rejections use, so the walk continues and `finalize` reports this alongside
-                // anything else it finds.
+                // `cbor-any` (#6.55799(any)) is a self-described STREAM marker, not an ordinary
+                // value tag: it says the entire serialized item stream is CBOR. It therefore has
+                // no value-wrapper representation. Intercept it HERE rather than in
+                // `cddl_prelude` because this fallback is the seam every ordinary type position
+                // funnels through, a registered user alias still resolves above it, and this
+                // `IntermediateTypes` handle is where the role-neutral permanent-exclusion
+                // diagnostic can be recorded. The `Fixed(FixedValue::Null)` placeholder is the
+                // inert stand-in the sibling rejections use, so the walk continues and `finalize`
+                // reports this alongside anything else it finds.
                 AliasIdent::Reserved(reserved)
-                    if Self::ANY_CONTENT_PRELUDE_TAGS.contains(&reserved.as_str()) =>
+                    if Self::REFUSED_PRELUDE_NAMES.contains(&reserved.as_str()) =>
                 {
-                    let tag = match reserved.as_str() {
-                        "cbor-any" => "#6.55799(any)",
-                        "eb64url" => "#6.21(any)",
-                        "eb64legacy" => "#6.22(any)",
-                        _ => "#6.23(any)",
-                    };
-                    let disposition = if reserved == "cbor-any" {
-                        "Support for `cbor-any` is permanently excluded: the self-describe tag \
+                    self.record_rejection(format!(
+                        "the CDDL prelude type `{reserved}` (#6.55799(any)) is unsupported — \
+                         Support for `cbor-any` is permanently excluded: the self-describe tag \
                          marks a byte stream as CBOR, which is a property of the stream and not \
                          of any value a generated type could hold."
-                    } else {
-                        "Support for the expected-conversion tags `eb64url` / `eb64legacy` / \
-                         `eb16` is not built."
-                    };
-                    self.record_rejection(format!(
-                        "the CDDL prelude type `{reserved}` ({tag}) is unsupported — it tags an \
-                         arbitrary CBOR item with advice about that item, and generated code has \
-                         no representation for the advice. A position that only needs to carry an \
-                         arbitrary CBOR item can use the supported `any` type; that widening drops \
-                         the tag and the meaning it carries, so it is a different spec. \
-                         {disposition}"
                     ));
                     ConceptualRustType::Fixed(FixedValue::Null).into()
                 }

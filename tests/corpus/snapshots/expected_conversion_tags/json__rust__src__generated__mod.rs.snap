@@ -1,0 +1,207 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+pub mod any_cbor;
+pub mod error;
+mod extern_interface_check;
+pub mod json_schema_gen;
+pub mod json_value_ser;
+pub mod serialization;
+
+impl From<PreludeEb16> for crate::generated::any_cbor::AnyCbor {
+    fn from(wrapper: PreludeEb16) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<PreludeEb64legacy> for crate::generated::any_cbor::AnyCbor {
+    fn from(wrapper: PreludeEb64legacy) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<PreludeEb64url> for crate::generated::any_cbor::AnyCbor {
+    fn from(wrapper: PreludeEb64url) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct ExpectedConversionTags {
+    pub url: PreludeEb64url,
+    pub legacy: PreludeEb64legacy,
+    pub hex: PreludeEb16,
+}
+
+impl ExpectedConversionTags {
+    pub fn new(url: PreludeEb64url, legacy: PreludeEb64legacy, hex: PreludeEb16) -> Self {
+        Self { url, legacy, hex }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeEb16(pub(crate) crate::generated::any_cbor::AnyCbor);
+
+impl PreludeEb16 {
+    pub fn get(&self) -> &crate::generated::any_cbor::AnyCbor {
+        &self.0
+    }
+
+    pub fn new(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<crate::generated::any_cbor::AnyCbor> for PreludeEb16 {
+    fn from(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        PreludeEb16::new(inner)
+    }
+}
+
+impl serde::Serialize for PreludeEb16 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        crate::generated::any_cbor::natural_any_cbor::serialize(&self.0, serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeEb16 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = crate::generated::any_cbor::natural_any_cbor::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for PreludeEb16 {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeEb16")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        crate::generated::any_cbor::natural_any_cbor_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        false
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeEb64legacy(pub(crate) crate::generated::any_cbor::AnyCbor);
+
+impl PreludeEb64legacy {
+    pub fn get(&self) -> &crate::generated::any_cbor::AnyCbor {
+        &self.0
+    }
+
+    pub fn new(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<crate::generated::any_cbor::AnyCbor> for PreludeEb64legacy {
+    fn from(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        PreludeEb64legacy::new(inner)
+    }
+}
+
+impl serde::Serialize for PreludeEb64legacy {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        crate::generated::any_cbor::natural_any_cbor::serialize(&self.0, serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeEb64legacy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = crate::generated::any_cbor::natural_any_cbor::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for PreludeEb64legacy {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeEb64legacy")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        crate::generated::any_cbor::natural_any_cbor_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        false
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeEb64url(pub(crate) crate::generated::any_cbor::AnyCbor);
+
+impl PreludeEb64url {
+    pub fn get(&self) -> &crate::generated::any_cbor::AnyCbor {
+        &self.0
+    }
+
+    pub fn new(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<crate::generated::any_cbor::AnyCbor> for PreludeEb64url {
+    fn from(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        PreludeEb64url::new(inner)
+    }
+}
+
+impl serde::Serialize for PreludeEb64url {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        crate::generated::any_cbor::natural_any_cbor::serialize(&self.0, serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for PreludeEb64url {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = crate::generated::any_cbor::natural_any_cbor::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for PreludeEb64url {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeEb64url")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        crate::generated::any_cbor::natural_any_cbor_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        false
+    }
+}

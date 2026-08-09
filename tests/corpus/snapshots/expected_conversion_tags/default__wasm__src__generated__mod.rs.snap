@@ -1,0 +1,274 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct AnyCbor(pub(crate) cddl_lib::any_cbor::AnyCbor);
+
+#[wasm_bindgen]
+impl AnyCbor {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<AnyCbor, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn kind(&self) -> AnyCborKind {
+        self.0.kind().into()
+    }
+}
+
+impl From<cddl_lib::any_cbor::AnyCbor> for AnyCbor {
+    fn from(native: cddl_lib::any_cbor::AnyCbor) -> Self {
+        Self(native)
+    }
+}
+
+impl From<AnyCbor> for cddl_lib::any_cbor::AnyCbor {
+    fn from(wasm: AnyCbor) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::any_cbor::AnyCbor> for AnyCbor {
+    fn as_ref(&self) -> &cddl_lib::any_cbor::AnyCbor {
+        &self.0
+    }
+}
+
+#[derive(Copy, Clone)]
+#[wasm_bindgen]
+pub enum AnyCborKind {
+    UInt,
+    NInt,
+    Bytes,
+    Text,
+    Array,
+    Map,
+    Tag,
+    Bool,
+    Null,
+    Undefined,
+    Unassigned,
+    Float,
+}
+
+impl From<cddl_lib::any_cbor::AnyCborKind> for AnyCborKind {
+    fn from(native: cddl_lib::any_cbor::AnyCborKind) -> Self {
+        match native {
+            cddl_lib::any_cbor::AnyCborKind::UInt => Self::UInt,
+            cddl_lib::any_cbor::AnyCborKind::NInt => Self::NInt,
+            cddl_lib::any_cbor::AnyCborKind::Bytes => Self::Bytes,
+            cddl_lib::any_cbor::AnyCborKind::Text => Self::Text,
+            cddl_lib::any_cbor::AnyCborKind::Array => Self::Array,
+            cddl_lib::any_cbor::AnyCborKind::Map => Self::Map,
+            cddl_lib::any_cbor::AnyCborKind::Tag => Self::Tag,
+            cddl_lib::any_cbor::AnyCborKind::Bool => Self::Bool,
+            cddl_lib::any_cbor::AnyCborKind::Null => Self::Null,
+            cddl_lib::any_cbor::AnyCborKind::Undefined => Self::Undefined,
+            cddl_lib::any_cbor::AnyCborKind::Unassigned => Self::Unassigned,
+            cddl_lib::any_cbor::AnyCborKind::Float => Self::Float,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ExpectedConversionTags(pub(crate) cddl_lib::ExpectedConversionTags);
+
+#[wasm_bindgen]
+impl ExpectedConversionTags {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ExpectedConversionTags, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn url(&self) -> PreludeEb64url {
+        self.0.url.clone().into()
+    }
+
+    pub fn legacy(&self) -> PreludeEb64legacy {
+        self.0.legacy.clone().into()
+    }
+
+    pub fn hex(&self) -> PreludeEb16 {
+        self.0.hex.clone().into()
+    }
+
+    pub fn new(url: &PreludeEb64url, legacy: &PreludeEb64legacy, hex: &PreludeEb16) -> Self {
+        Self(cddl_lib::ExpectedConversionTags::new(
+            url.clone().into(),
+            legacy.clone().into(),
+            hex.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::ExpectedConversionTags> for ExpectedConversionTags {
+    fn from(native: cddl_lib::ExpectedConversionTags) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ExpectedConversionTags> for cddl_lib::ExpectedConversionTags {
+    fn from(wasm: ExpectedConversionTags) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ExpectedConversionTags> for ExpectedConversionTags {
+    fn as_ref(&self) -> &cddl_lib::ExpectedConversionTags {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeEb16(pub(crate) cddl_lib::PreludeEb16);
+
+#[wasm_bindgen]
+impl PreludeEb16 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeEb16, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &AnyCbor) -> Self {
+        Self(cddl_lib::PreludeEb16::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> AnyCbor {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::PreludeEb16> for PreludeEb16 {
+    fn from(native: cddl_lib::PreludeEb16) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeEb16> for cddl_lib::PreludeEb16 {
+    fn from(wasm: PreludeEb16) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeEb16> for PreludeEb16 {
+    fn as_ref(&self) -> &cddl_lib::PreludeEb16 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeEb64legacy(pub(crate) cddl_lib::PreludeEb64legacy);
+
+#[wasm_bindgen]
+impl PreludeEb64legacy {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeEb64legacy, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &AnyCbor) -> Self {
+        Self(cddl_lib::PreludeEb64legacy::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> AnyCbor {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::PreludeEb64legacy> for PreludeEb64legacy {
+    fn from(native: cddl_lib::PreludeEb64legacy) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeEb64legacy> for cddl_lib::PreludeEb64legacy {
+    fn from(wasm: PreludeEb64legacy) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeEb64legacy> for PreludeEb64legacy {
+    fn as_ref(&self) -> &cddl_lib::PreludeEb64legacy {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreludeEb64url(pub(crate) cddl_lib::PreludeEb64url);
+
+#[wasm_bindgen]
+impl PreludeEb64url {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreludeEb64url, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &AnyCbor) -> Self {
+        Self(cddl_lib::PreludeEb64url::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> AnyCbor {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::PreludeEb64url> for PreludeEb64url {
+    fn from(native: cddl_lib::PreludeEb64url) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreludeEb64url> for cddl_lib::PreludeEb64url {
+    fn from(wasm: PreludeEb64url) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreludeEb64url> for PreludeEb64url {
+    fn as_ref(&self) -> &cddl_lib::PreludeEb64url {
+        &self.0
+    }
+}

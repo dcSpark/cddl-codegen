@@ -26,6 +26,15 @@
 use crate::cli::Cli;
 use clap::Parser;
 
+/// RFC 8610 Appendix D's expected-conversion prelude names and their fixed CBOR tag numbers.
+///
+/// This is a TEST contract, not a second production dispatch table: `utils::cddl_prelude` remains
+/// the one implementation seam that expands these names. Keeping the normative pairs together
+/// lets the name-resolution sweep and the authored-spelling equivalence pin share the same
+/// anti-vacuity axis.
+pub(crate) const EXPECTED_CONVERSION_PRELUDE_TAGS: &[(&str, usize)] =
+    &[("eb64url", 21), ("eb64legacy", 22), ("eb16", 23)];
+
 /// The global panic hook is process-wide, so every test that silences it must not run its
 /// take/set/restore concurrently — an interleave could leave the silent hook installed for the rest
 /// of the run. Serialize them on this lock (poison-tolerant: a panic mid-section only means the
@@ -942,75 +951,203 @@ fn control_operator_path_maps_every_float_name_and_refuses_unmapped_heads() {
     }
 }
 
-/// The four `any`-content prelude tags — `cbor-any` (#6.55799), `eb64url` (#6.21), `eb64legacy`
-/// (#6.22), `eb16` (#6.23) — are refused GRACEFULLY in every position, never aborted. Each tags an
-/// arbitrary CBOR item with advice ABOUT that item, so the payload is `any` and the tag constrains
-/// nothing a generated type could hold; there is no representation to emit, which is the same
-/// fixed-simple shape `undefined_prelude_generates_in_every_position` pins one seam
-/// over. They share that seam (`IntermediateTypes::new_type`'s unresolved-reserved fallback), so
-/// the message is likewise ROLE-NEUTRAL — it names the type and its tag, never the position — and
-/// this asserts one wording across all three vectors rather than a per-role one.
-///
-/// The tag NUMBER is asserted per name because it is the part a reader checks the message against;
-/// a copy-paste that gave `eb16` the `eb64url` tag would otherwise read fine. The remedy the
-/// message advertises is asserted honest by `all_supported_constructs_generate` (the matrix's
-/// `prelude.any` row) and by `tests/robustness/any_member.cddl` — `any` really does carry an
-/// arbitrary CBOR item in member position.
-///
-/// The two dispositions are pinned apart because they are decisions, not phrasing: `cbor-any` is a
-/// permanent exclusion (`tests/TESTING_ROADMAP.md` § North star's exclude list), while the three
-/// `eb*` names are merely unbuilt. A future delivery of `eb*` support flips exactly one of these
-/// assertions.
+/// `cbor-any` (#6.55799(any)) remains a GRACEFUL permanent refusal in every ordinary position,
+/// never an abort. Unlike the expected-conversion tags, it marks a complete serialized CBOR stream
+/// as self-described rather than adding advice to one ordinary value, so it has no value-wrapper
+/// representation. Its unresolved-reserved fallback is role-neutral by construction: the message
+/// names the type and its tag, never a position it cannot know.
 #[test]
-fn any_content_prelude_tags_reject_gracefully_in_every_position() {
-    let names = [
-        ("cbor-any", "#6.55799(any)"),
-        ("eb64url", "#6.21(any)"),
-        ("eb64legacy", "#6.22(any)"),
-        ("eb16", "#6.23(any)"),
+fn cbor_any_prelude_tag_rejects_gracefully_in_every_position() {
+    let name = "cbor-any";
+    let tag = "#6.55799(any)";
+    let vectors = [
+        ("elem", format!("a = [v: {name}, x: uint]\n")),
+        ("map_val", format!("m = {{ k: {name}, j: uint }}\n")),
+        ("rule_body", format!("x = {name}\n")),
     ];
-    for (name, tag) in names {
-        let vectors = [
+    for (pos, spec) in vectors {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(&format!("cbor_any_{pos}"), &spec, extra);
+            assert!(
+                msg.contains(&format!(
+                    "the CDDL prelude type `{name}` ({tag}) is unsupported"
+                )),
+                "rejection should name the type AND its tag ({pos}, {extra:?}), got: {msg}"
+            );
+            assert!(
+                msg.contains("permanently excluded"),
+                "`cbor-any`'s refusal must carry the permanent-exclusion ruling ({pos}, {extra:?}), \
+                 got: {msg}"
+            );
+            // The role-neutral seam can NOT name the position, so it must not pretend to.
+            assert!(
+                !msg.contains("as a member") && !msg.contains("as a rule body"),
+                "role-neutral message must not claim a position it cannot know ({pos}, {extra:?}), \
+                 got: {msg}"
+            );
+        }
+    }
+}
+
+/// The RFC 8610 expected-conversion prelude names are the already-supported tagged-`any` shape:
+/// a nominal wrapper over `AnyCbor` whose serializer writes the fixed tag and whose deserializer
+/// requires it. The tag advice stays on CBOR; this is deliberately NOT a base16/base64 rendering
+/// API. Cover rule, member and map-value uses under both native encoding modes; the wider
+/// name-resolution product lives in `refused_name_closure_tests`.
+#[test]
+fn expected_conversion_prelude_tags_generate_and_emit_exact_tags_in_every_position() {
+    let tags: std::collections::BTreeSet<usize> = EXPECTED_CONVERSION_PRELUDE_TAGS
+        .iter()
+        .map(|(_, tag)| *tag)
+        .collect();
+    assert_eq!(
+        tags,
+        std::collections::BTreeSet::from([21, 22, 23]),
+        "the expected-conversion tag axis must stay complete before this test can prove its codecs"
+    );
+
+    for (name, tag) in EXPECTED_CONVERSION_PRELUDE_TAGS {
+        for (position, spec) in [
             ("elem", format!("a = [v: {name}, x: uint]\n")),
             ("map_val", format!("m = {{ k: {name}, j: uint }}\n")),
             ("rule_body", format!("x = {name}\n")),
-        ];
-        for (pos, spec) in vectors {
-            for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
-                let msg = expect_graceful_rejection(&format!("ebtag_{name}_{pos}"), &spec, extra);
-                assert!(
-                    msg.contains(&format!(
-                        "the CDDL prelude type `{name}` ({tag}) is unsupported"
-                    )),
-                    "rejection should name the type AND its tag ({name}/{pos}, {extra:?}), got: \
-                     {msg}"
+        ] {
+            for (profile, extra) in [
+                ("default", &["--wasm=false"][..]),
+                (
+                    "preserve",
+                    &["--wasm=false", "--preserve-encodings=true"][..],
+                ),
+            ] {
+                let files = expect_generates(
+                    &format!("expected_conversion_{name}_{position}_{profile}"),
+                    &spec,
+                    extra,
                 );
-                assert!(
-                    msg.contains("the supported `any` type"),
-                    "rejection should point at the `any` remedy ({name}/{pos}, {extra:?}), got: \
-                     {msg}"
+                let source = files.values().cloned().collect::<Vec<_>>().join("\n");
+                assert_eq!(
+                    tagged_any_codec_facts(&source, *tag),
+                    TaggedAnyCodecFacts::fixed_tagged_any(),
+                    "`{name}` must retain its exact #6.{tag} tagged-AnyCbor facts in \
+                     {position}/{profile}:\n{source}"
                 );
-                // The role-neutral seam can NOT name the position, so it must not pretend to.
-                assert!(
-                    !msg.contains("as a member") && !msg.contains("as a rule body"),
-                    "role-neutral message must not claim a position it cannot know ({name}/{pos}, \
-                     {extra:?}), got: {msg}"
-                );
-                if name == "cbor-any" {
-                    assert!(
-                        msg.contains("permanently excluded"),
-                        "`cbor-any`'s refusal must carry the permanent-exclusion ruling \
-                         ({pos}, {extra:?}), got: {msg}"
-                    );
-                } else {
-                    assert!(
-                        msg.contains("is not built"),
-                        "an `eb*` refusal must read as unbuilt, not as a ruling ({name}/{pos}, \
-                         {extra:?}), got: {msg}"
-                    );
-                }
             }
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct TaggedAnyCodecFacts {
+    any_cbor_payload: bool,
+    writes_declared_tag: bool,
+    checks_declared_tag: bool,
+    reports_declared_tag: bool,
+}
+
+impl TaggedAnyCodecFacts {
+    const fn fixed_tagged_any() -> Self {
+        Self {
+            any_cbor_payload: true,
+            writes_declared_tag: true,
+            checks_declared_tag: true,
+            reports_declared_tag: true,
+        }
+    }
+}
+
+fn tagged_any_codec_facts(source: &str, tag: usize) -> TaggedAnyCodecFacts {
+    let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+    TaggedAnyCodecFacts {
+        any_cbor_payload: source.contains("crate::generated::any_cbor::AnyCbor"),
+        // Default mode has no tag-width sidecar; preserve mode does, so it deliberately uses the
+        // `_sz` pair. Both must retain THIS declared number, not a generic tag acceptance.
+        writes_declared_tag: compact.contains(&format!("serializer.write_tag({tag}u64)?"))
+            || compact.contains(&format!("serializer.write_tag_sz({tag}u64,")),
+        checks_declared_tag: compact.contains(&format!(
+            "matchraw.tag()?{{{tag}=>crate::generated::any_cbor::AnyCbor::deserialize(raw)?"
+        )) || (compact
+            .contains(&format!("matchraw.tag_sz()?{{({tag},tag_enc)=>("))
+            && compact.contains("crate::generated::any_cbor::AnyCbor::deserialize(raw)?")),
+        reports_declared_tag: compact.contains(&format!("expected:{tag},")),
+    }
+}
+
+/// A prelude expansion must be semantically the authored spelling it promises, not merely a name
+/// that happens to generate. Compare only the representation and codec facts whose identifiers may
+/// legitimately differ (`prelude_eb64url` versus an authored rule named `x`).
+#[test]
+fn expected_conversion_preludes_match_authored_tagged_any_codecs() {
+    for (name, tag) in EXPECTED_CONVERSION_PRELUDE_TAGS {
+        for (profile, extra) in [
+            ("default", &["--wasm=false"][..]),
+            (
+                "preserve",
+                &["--wasm=false", "--preserve-encodings=true"][..],
+            ),
+        ] {
+            let prelude = expect_generates(
+                &format!("expected_conversion_prelude_{name}_{profile}"),
+                &format!("x = {name}\n"),
+                extra,
+            );
+            let authored = expect_generates(
+                &format!("expected_conversion_authored_{name}_{profile}"),
+                &format!("x = #6.{tag}(any)\n"),
+                extra,
+            );
+            let prelude_source = prelude.values().cloned().collect::<Vec<_>>().join("\n");
+            let authored_source = authored.values().cloned().collect::<Vec<_>>().join("\n");
+            let prelude_facts = tagged_any_codec_facts(&prelude_source, *tag);
+            let authored_facts = tagged_any_codec_facts(&authored_source, *tag);
+            let expected = TaggedAnyCodecFacts::fixed_tagged_any();
+            assert_eq!(
+                prelude_facts, expected,
+                "`{name}` must retain every fixed-tag AnyCbor fact under {profile}"
+            );
+            assert_eq!(
+                authored_facts, expected,
+                "the authored #6.{tag}(any) control lost a tagged-AnyCbor fact under {profile}"
+            );
+            assert_eq!(
+                prelude_facts, authored_facts,
+                "`{name}` must agree with authored #6.{tag}(any) under {profile}"
+            );
+        }
+    }
+}
+
+/// `--emit-tests` exercises the wasm wrapper through an independent rust-side mint. A tagged-`any`
+/// wrapper cannot construct its `AnyCbor` payload through the byte-oriented wasm API, so that shared
+/// fallback uses `__AnyCborMint` before decoding the bytes. Pin the import and its live use together:
+/// without the import the generated wasm crate fails E0433 even though ordinary wasm compilation is
+/// green. The matrix's wasm probe then executes the emitted test; this source pin makes its required
+/// dependency local and immediate for all three RFC 8610 names.
+#[test]
+fn expected_conversion_wasm_emit_tests_import_the_rust_any_mint() {
+    for (name, tag) in EXPECTED_CONVERSION_PRELUDE_TAGS {
+        let files = expect_generates(
+            &format!("expected_conversion_{name}_wasm_emit_tests"),
+            &format!("x = {name}\n"),
+            &["--wasm=true", "--emit-tests=true"],
+        );
+        let wasm = files
+            .get("wasm/src/generated/mod.rs")
+            .unwrap_or_else(|| panic!("`{name}` must emit the wasm generated-test module"));
+        assert!(
+            wasm.contains("use cddl_lib::any_cbor::AnyCbor as __AnyCborMint;"),
+            "`{name}`'s wasm test module must import the rust-side AnyCbor mint alias:\n{wasm}"
+        );
+        assert!(
+            wasm.contains(&format!("fn wasm_roundtrip_prelude_{name}()")),
+            "`{name}` must retain a live wasm round-trip test rather than merely its import:\n{wasm}"
+        );
+        assert!(
+            wasm.contains(&format!(
+                "cddl_lib::Prelude{}::new(__AnyCborMint::new_array",
+                crate::utils::convert_to_camel_case(name)
+            )),
+            "`{name}` must use the alias to mint its #6.{tag} tagged AnyCbor rust twin:\n{wasm}"
+        );
     }
 }
 

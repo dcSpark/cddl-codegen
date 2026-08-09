@@ -1,0 +1,134 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for ExpectedConversionTags {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(3))?;
+        self.url.serialize(serializer)?;
+        self.legacy.serialize(serializer)?;
+        self.hex.serialize(serializer)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ExpectedConversionTags {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
+            let url = PreludeEb64url::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("url"))?;
+            let legacy = PreludeEb64legacy::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("legacy"))?;
+            let hex =
+                PreludeEb16::deserialize(raw).map_err(|e: DeserializeError| e.annotate("hex"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ExpectedConversionTags { url, legacy, hex })
+        })()
+        .map_err(|e| e.annotate("ExpectedConversionTags"))
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeEb16 {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_tag(23u64)?;
+        self.0.serialize(serializer)
+    }
+}
+
+impl Deserialize for PreludeEb16 {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                23 => crate::generated::any_cbor::AnyCbor::deserialize(raw)?,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 23,
+                    }
+                    .into());
+                }
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeEb16"))
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeEb64legacy {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_tag(22u64)?;
+        self.0.serialize(serializer)
+    }
+}
+
+impl Deserialize for PreludeEb64legacy {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                22 => crate::generated::any_cbor::AnyCbor::deserialize(raw)?,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 22,
+                    }
+                    .into());
+                }
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeEb64legacy"))
+    }
+}
+
+impl cbor_event::se::Serialize for PreludeEb64url {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_tag(21u64)?;
+        self.0.serialize(serializer)
+    }
+}
+
+impl Deserialize for PreludeEb64url {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            Ok(Self(match raw.tag()? {
+                21 => crate::generated::any_cbor::AnyCbor::deserialize(raw)?,
+                tag => {
+                    return Err(DeserializeFailure::TagMismatch {
+                        found: tag,
+                        expected: 21,
+                    }
+                    .into());
+                }
+            }))
+        })()
+        .map_err(|e| e.annotate("PreludeEb64url"))
+    }
+}

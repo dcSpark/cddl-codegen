@@ -1,0 +1,57 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  type any-cbor = list<u8>;
+  enum any-cbor-kind {
+    uint,
+    nint,
+    bytes,
+    text,
+    array,
+    %map,
+    tag,
+    %bool,
+    null,
+    undefined,
+    unassigned,
+    float,
+  }
+  resource expected-conversion-tags {
+    constructor(url: borrow<prelude-eb64url>, legacy: borrow<prelude-eb64legacy>, hex: borrow<prelude-eb16>);
+    url: func() -> prelude-eb64url;
+    legacy: func() -> prelude-eb64legacy;
+    hex: func() -> prelude-eb16;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<expected-conversion-tags, string>;
+  }
+  resource prelude-eb16 {
+    constructor(inner: any-cbor) -> result<prelude-eb16, string>;
+    get: func() -> any-cbor;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-eb16, string>;
+  }
+  resource prelude-eb64legacy {
+    constructor(inner: any-cbor) -> result<prelude-eb64legacy, string>;
+    get: func() -> any-cbor;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-eb64legacy, string>;
+  }
+  resource prelude-eb64url {
+    constructor(inner: any-cbor) -> result<prelude-eb64url, string>;
+    get: func() -> any-cbor;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<prelude-eb64url, string>;
+  }
+  cbor-kind: func(v: any-cbor) -> result<any-cbor-kind, string>;
+}
+
+world cddl-lib-world {
+  export types;
+}

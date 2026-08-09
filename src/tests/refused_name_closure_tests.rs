@@ -1,4 +1,5 @@
-//! Refused-name × resolution-context CLOSURE sweep — the closure gate for the side-door class.
+//! Refused-name and expected-conversion-prelude × resolution-context CLOSURE sweeps — the
+//! closure gates for the side-door class.
 //!
 //! A refusal recorded at ONE name-resolution seam does not bind the others. The worked example that
 //! forced this module: the narrower-float-name refusal shipped at
@@ -17,13 +18,19 @@
 //!
 //! # Both axes are DERIVED, not transcribed
 //!
-//! **Names.** [`IntermediateTypes::REFUSED_PRELUDE_NAMES`] is the inventory, read BY the interception
-//! arms themselves (not mirrored beside them), and [`the_refused_name_axis_is_the_refusal_inventory`]
+//! **Refused names.** [`IntermediateTypes::REFUSED_PRELUDE_NAMES`] is the inventory, read BY the
+//! interception arms themselves (not mirrored beside them), and [`the_refused_name_axis_is_the_refusal_inventory`]
 //! re-derives it empirically: it probes EVERY member of [`crate::utils::RESERVED_IDENTS`] (plus
 //! `any`, which is not reserved but is intercepted one arm earlier) at the canonical member position
 //! and requires the names that refuse to be exactly that constant. A new refusal arm therefore fails
 //! that derivation until the name is added to the inventory, and adding it to the inventory demands a
 //! cell in every context here — the forcing shape `KNOWN_RULE_METADATA_TAGS` uses for directives.
+//!
+//! **Expected-conversion names.** The RFC 8610 `eb64url` / `eb64legacy` / `eb16` names use the
+//! inverse product over the `new_type` and field-name seams: every context where an authored
+//! tagged-`any` wrapper is valid must generate the corresponding fixed-tag `AnyCbor` wrapper. The
+//! control-operator seam is deliberately outside this product — controls on `any` remain a separate
+//! permanent exclusion.
 //!
 //! **Contexts.** [`SEAMS`] is a registry of the RESOLUTION MECHANISMS with their caller classes
 //! listed (enumerated by reading each mechanism's call sites, never by keyword grep — a grep can
@@ -58,7 +65,9 @@
 use crate::cli::Cli;
 use crate::intermediate::IntermediateTypes;
 use crate::tests::dsl_position_tests::generate;
-use crate::tests::robustness_tests::with_thread_silenced_panics;
+use crate::tests::robustness_tests::{
+    EXPECTED_CONVERSION_PRELUDE_TAGS, with_thread_silenced_panics,
+};
 use clap::Parser;
 
 /// The head every context is proven LIVE with: a supported prelude name that reaches the same seams
@@ -502,6 +511,14 @@ fn swept_contexts() -> impl Iterator<Item = &'static Context> {
         .filter(|c| matches!(c.attribution, Attribution::Swept))
 }
 
+/// The contexts whose written type name resolves through the same two mechanisms an explicit
+/// `#6.n(any)` supports. Control-operator heads are intentionally excluded: that syntax asks for a
+/// primitive constraint over `any`, which is a separate permanent exclusion rather than a prelude
+/// expansion seam.
+fn expected_conversion_contexts() -> impl Iterator<Item = &'static Context> {
+    swept_contexts().filter(|c| matches!(c.seam, "new_type" | "field_name"))
+}
+
 fn pin(
     name: &str,
     ctx: &str,
@@ -622,18 +639,16 @@ fn refused_name_closure_sweep() {
 /// demands a cell in every context of the sweep above — the shape `KNOWN_RULE_METADATA_TAGS` uses to
 /// make a new directive unclassifiable-by-default.
 ///
-/// The inventory is keyed directly by `ANY_CONTENT_PRELUDE_TAGS`; every other reserved name is
-/// either alias-resolved or emitted from the prelude.
+/// The production inventory is deliberately just `cbor-any`; every other reserved name is either
+/// alias-resolved or emitted from the prelude. The three expected-conversion names have their
+/// positive product below, rather than staying in a stale refusal mirror.
 #[test]
 fn the_refused_name_axis_is_the_refusal_inventory() {
-    let mut union = vec![];
-    union.extend_from_slice(IntermediateTypes::ANY_CONTENT_PRELUDE_TAGS);
-    union.sort_unstable();
     assert_eq!(
-        union,
-        IntermediateTypes::REFUSED_PRELUDE_NAMES.to_vec(),
-        "the refusal inventory must be exactly the names the interception ARMS key on — a name in \
-         an arm but not in the inventory is refused at one seam and swept at none"
+        IntermediateTypes::REFUSED_PRELUDE_NAMES,
+        ["cbor-any"],
+        "only the self-described-stream `cbor-any` prelude name may remain in the production \
+         refusal inventory; expected-conversion names must enter through cddl_prelude"
     );
 
     let mut refused: Vec<&str> = Vec::new();
@@ -667,6 +682,58 @@ fn the_refused_name_axis_is_the_refusal_inventory() {
          is not in the constant is refused at one seam and swept at NONE — add it to the constant, \
          which is what makes the closure sweep cover it. A name in the constant that no longer \
          refuses is a stale inventory entry — remove it, and retire its cells."
+    );
+}
+
+/// The three expected-conversion names must resolve through every ordinary type-name seam where
+/// an authored tagged `any` wrapper is valid. This is deliberately a source-level fact as well as
+/// an exit-0 sweep: a route that accidentally resolves the name to bare `any` would generate, but
+/// lose the RFC-mandated tag on the wire.
+#[test]
+fn expected_conversion_preludes_generate_through_every_supported_name_resolution_context() {
+    let contexts: Vec<&Context> = expected_conversion_contexts().collect();
+    assert!(
+        !contexts.is_empty(),
+        "the expected-conversion positive product lost every new_type/field-name context"
+    );
+
+    let mut cells = 0usize;
+    for (name, tag) in EXPECTED_CONVERSION_PRELUDE_TAGS {
+        for ctx in &contexts {
+            let spec = ctx.cddl.replace("%N%", name);
+            let files = generate(
+                &spec,
+                &[],
+                false,
+                &format!("expected_conversion_{name}_{}", ctx.id),
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "`{name}` must generate through {} ({}) as #6.{tag}(any), got: {e}\n{spec}",
+                    ctx.id, ctx.seam
+                )
+            });
+            let source = files.values().cloned().collect::<Vec<_>>().join("\n");
+            for needle in [
+                format!("write_tag({tag}u64)"),
+                format!("{tag} => crate::generated::any_cbor::AnyCbor::deserialize(raw)?"),
+                format!("expected: {tag}"),
+            ] {
+                assert!(
+                    source.contains(&needle),
+                    "`{name}` through {} ({}) generated without fixed #6.{tag} tagged-AnyCbor \
+                     evidence `{needle}`:\n{source}",
+                    ctx.id,
+                    ctx.seam
+                );
+            }
+            cells += 1;
+        }
+    }
+    assert_eq!(
+        cells,
+        EXPECTED_CONVERSION_PRELUDE_TAGS.len() * contexts.len(),
+        "the expected-conversion product changed while its iteration did not"
     );
 }
 

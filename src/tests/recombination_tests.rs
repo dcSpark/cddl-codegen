@@ -894,18 +894,18 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // explicit field name — and its remaining twin (`group_entry_to_field_name`) is unreachable
     // behind the same record-path guard. Both messages stay worded lead-constant so a future ledger
     // entry can key on them.
-    // (retired when the four `any`-content prelude tags became graceful rejections) The
-    // `"unsupported cddl prelude type:"` class held `cbor-any` / `eb64url` / `eb64legacy` /
-    // `eb16` — each an arbitrary CBOR item tagged with advice ABOUT that item, so there is
-    // nothing for a generated type to hold. All four are now refused at `new_type`'s
-    // unresolved-reserved fallback, one arm earlier, exactly where `undefined` had already
-    // moved: the refusal names the type and its tag, points at the `any` widening, and
-    // separates `cbor-any`'s permanent exclusion from the `eb*` names' merely-unbuilt state.
-    // Message identity is pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`
-    // and the outcome category by the four `tests/matrix_reject/prelude.*.cddl` rows that
-    // replaced the panic-catalog ones. The `panic!` arm in `cddl_prelude` is deliberately LEFT
-    // IN PLACE — it is the guard that would catch a future position routed around `new_type`,
-    // and reaching it re-earns this entry rather than being papered over.
+    // (retired when `cbor-any` became a graceful rejection and the expected-conversion names became
+    // supported) The `"unsupported cddl prelude type:"` class originally held `cbor-any` /
+    // `eb64url` / `eb64legacy` / `eb16`. `cbor-any` remains refused at `new_type`'s
+    // unresolved-reserved fallback: its #6.55799 tag self-describes the whole serialized CBOR stream,
+    // not a value. The three `eb*` names instead expand through `cddl_prelude` to their normative
+    // fixed-tag `AnyCbor` wrappers (#6.21/#6.22/#6.23), so their advice stays on CBOR without an
+    // invented base64/base16 API. The `cbor-any` message is pinned by
+    // `cbor_any_prelude_tag_rejects_gracefully_in_every_position`; the expected-conversion codec and
+    // context facts are pinned by the two `expected_conversion_prelude_*` tests. Projection owns the
+    // remaining `tests/matrix_reject/prelude.cbor-any.cddl` row. The `panic!` arm in `cddl_prelude`
+    // is deliberately LEFT IN PLACE only for `any`/`cbor-any`: it guards a future position routed
+    // around `new_type`, and reaching it re-earns this entry rather than being papered over.
     // (retired when the narrower float prelude names became REGISTRATIONS)
     // The `"should be handled by the alias system instead"` class held `float16`, `float16-32` and
     // `float32-64` — the float names that contain only SOME of the float values. Each is now its
@@ -1174,11 +1174,13 @@ fn recombination_generation_sweep() {
     // abort-to-rejection conversion migrates a block of compositions panic -> graceful without
     // touching a floor, because the floors bound `ok` and the swept total, and neither changes.
     // Attribution for the largest such movement to date (106 panic / 546 graceful -> 18 / 634):
-    // two conversions moved the 88 — the prelude-name refusals at the name-resolution seam
-    // (`cbor-any` / `eb64url` / `eb64legacy` / `eb16`, then the narrower float names) and
+    // two conversions moved the 88 — the then-four prelude-name refusals at the name-resolution
+    // seam (`cbor-any` / `eb64url` / `eb64legacy` / `eb16`, then the narrower float names) and
     // the parse-seam conversions beside them (the four unsupported generic-definition bodies, the
     // control-operator path's own copy of the float refusal, and its unmapped-head sibling). The
-    // split between the two was not measured.
+    // split between the two was not measured. Later, B3-024D promoted the three `eb*` names to
+    // fixed-tag `AnyCbor` wrappers; 32 cells migrated graceful -> ok (556/1053 -> 524/1085), while
+    // `cbor-any` remains the one permanent prelude exclusion.
     //
     // The `graceful` column also moves the OTHER way when a refusal becomes support, and that is
     // the only thing that moves `ok` without an ingredient change: 29 compositions migrated

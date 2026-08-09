@@ -1,0 +1,137 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod any_cbor;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use cbor_encodings::{
+    ExpectedConversionTagsEncoding, PreludeEb16Encoding, PreludeEb64legacyEncoding,
+    PreludeEb64urlEncoding,
+};
+
+impl From<PreludeEb16> for crate::generated::any_cbor::AnyCbor {
+    fn from(wrapper: PreludeEb16) -> Self {
+        wrapper.inner
+    }
+}
+
+impl From<PreludeEb64legacy> for crate::generated::any_cbor::AnyCbor {
+    fn from(wrapper: PreludeEb64legacy) -> Self {
+        wrapper.inner
+    }
+}
+
+impl From<PreludeEb64url> for crate::generated::any_cbor::AnyCbor {
+    fn from(wrapper: PreludeEb64url) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ExpectedConversionTags {
+    pub url: PreludeEb64url,
+    pub legacy: PreludeEb64legacy,
+    pub hex: PreludeEb16,
+    pub encodings: Option<ExpectedConversionTagsEncoding>,
+}
+
+impl ExpectedConversionTags {
+    pub fn new(url: PreludeEb64url, legacy: PreludeEb64legacy, hex: PreludeEb16) -> Self {
+        Self {
+            url,
+            legacy,
+            hex,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeEb16 {
+    pub(crate) inner: crate::generated::any_cbor::AnyCbor,
+    pub encodings: Option<PreludeEb16Encoding>,
+}
+
+impl PreludeEb16 {
+    pub fn get(&self) -> &crate::generated::any_cbor::AnyCbor {
+        &self.inner
+    }
+
+    pub fn new(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<crate::generated::any_cbor::AnyCbor> for PreludeEb16 {
+    fn from(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        PreludeEb16::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeEb64legacy {
+    pub(crate) inner: crate::generated::any_cbor::AnyCbor,
+    pub encodings: Option<PreludeEb64legacyEncoding>,
+}
+
+impl PreludeEb64legacy {
+    pub fn get(&self) -> &crate::generated::any_cbor::AnyCbor {
+        &self.inner
+    }
+
+    pub fn new(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<crate::generated::any_cbor::AnyCbor> for PreludeEb64legacy {
+    fn from(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        PreludeEb64legacy::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PreludeEb64url {
+    pub(crate) inner: crate::generated::any_cbor::AnyCbor,
+    pub encodings: Option<PreludeEb64urlEncoding>,
+}
+
+impl PreludeEb64url {
+    pub fn get(&self) -> &crate::generated::any_cbor::AnyCbor {
+        &self.inner
+    }
+
+    pub fn new(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<crate::generated::any_cbor::AnyCbor> for PreludeEb64url {
+    fn from(inner: crate::generated::any_cbor::AnyCbor) -> Self {
+        PreludeEb64url::new(inner)
+    }
+}
