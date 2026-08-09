@@ -466,9 +466,6 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | _CDDL_CODEGEN_RAW_BYTES_TYPE_ generic base — refused at parse time | `rb_gen<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_; bar = [x: rb_gen<uint>]` | rejected gracefully at parse |
 | Generic group definition | `set<a> = (* a)` | rejected gracefully at parse |
 | cbor-any | `x = cbor-any` | rejected gracefully at parse |
-| eb16 | `x = eb16` | rejected gracefully at parse |
-| eb64legacy | `x = eb64legacy` | rejected gracefully at parse |
-| eb64url | `x = eb64url` | rejected gracefully at parse |
 | Any (#) | `foo = #` | rejected gracefully at parse |
 | Choice from named group (&) | `color = &colors; colors = (red: 0, green: 1)` | rejected gracefully at parse |
 | Choice from inline group (&) | `color = &(red: 0, green: 1, blue: 2)` | rejected gracefully at parse |

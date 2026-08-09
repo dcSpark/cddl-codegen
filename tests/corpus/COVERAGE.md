@@ -131,11 +131,11 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.bool` | ✅ | bool | `bool.cddl` |
 | `prelude.bstr` | ✅ | bstr | `prelude.cddl` |
 | `prelude.bytes` | ✅ | bytes | `primitives.cddl` |
-| `prelude.cbor-any` | ➖ | cbor-any | the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/TESTING_ROADMAP.md` § North star). Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
+| `prelude.cbor-any` | ➖ | cbor-any | the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/TESTING_ROADMAP.md` § North star). Pinned by `cbor_any_prelude_tag_rejects_gracefully_in_every_position`.  [`self-described STREAM marker`] |
 | `prelude.decfrac` | ✅ | decfrac | `prelude.cddl` |
-| `prelude.eb16` | ➖ | eb16 | the expected-conversion tag `#6.23(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
-| `prelude.eb64legacy` | ➖ | eb64legacy | the expected-conversion tag `#6.22(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
-| `prelude.eb64url` | ➖ | eb64url | the expected-conversion tag `#6.21(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`.  [`no representation for the advice`] |
+| `prelude.eb16` | ✅ | eb16 | `expected_conversion_tags.cddl` |
+| `prelude.eb64legacy` | ✅ | eb64legacy | `expected_conversion_tags.cddl` |
+| `prelude.eb64url` | ✅ | eb64url | `expected_conversion_tags.cddl` |
 | `prelude.encoded-cbor` | ✅ | encoded-cbor | `prelude.cddl` |
 | `prelude.false` | ✅ | false | `fixed_singletons.cddl` |
 | `prelude.float` | ➕ | float | supported, no corpus fixture (cddl-codegen exit 0) |
@@ -391,6 +391,9 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.bstr` |  | · |  | · |  |  |  |  |  |  |
 | `prelude.bytes` | · | · | · | · | · | · |  | · | · | · |
 | `prelude.decfrac` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.eb16` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.eb64legacy` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.eb64url` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.encoded-cbor` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.false` | · | ✅ | ✅ |  |  |  |  | · |  |  |
 | `prelude.float64` |  | · | · |  |  |  |  | · |  |  |
@@ -427,7 +430,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Modelled `(role × feature)` cells: **69** (over 136 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **37**.
-- Exercised by the corpus, modelled by **nothing**: **169** (the `·` cells).
+- Exercised by the corpus, modelled by **nothing**: **172** (the `·` cells).
 - Modelled but not exercised by any corpus fixture: **32**.
 
 ## Notable findings
@@ -442,9 +445,9 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 ## Summary
 
-- Features: **123** — ✅ 77 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 14 not supported
+- Features: **123** — ✅ 80 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 11 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 101
+- Corpus fixtures: 102
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

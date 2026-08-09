@@ -1,19 +1,14 @@
-; An `any`-content prelude TAG in MEMBER position — `eb64url` (#6.21(any)), standing for its three
-; siblings `eb64legacy` (#6.22), `eb16` (#6.23) and `cbor-any` (#6.55799). Each tags an ARBITRARY
-; CBOR item with advice ABOUT that item (a self-describe marker, or the base64url/base64/base16
-; conversion a consumer should use when rendering it as text), so the payload is `any` and the tag
-; constrains nothing a generated type could hold. It is REJECTED GRACEFULLY, in every position, at
-; `IntermediateTypes::new_type`'s unresolved-reserved fallback — the one seam every position funnels
-; through, which is why the message names the TYPE and its TAG and never the position.
+; RFC 8610's `eb64url` expected-conversion prelude tag in MEMBER position. It expands to
+; `#6.21(any)`: a nominal tagged-`AnyCbor` wrapper that retains the fixed CBOR tag around an arbitrary
+; payload. It is advice for a consumer rendering the item, not a base64 API invented by the generated
+; crate. `eb64legacy` (#6.22) and `eb16` (#6.23) use the same shared representation with their own
+; fixed tags; `cbor-any` (#6.55799(any)) is deliberately different and remains permanently refused,
+; because it self-describes an entire serialized CBOR stream rather than an ordinary value.
 ;
-; It gets a catalog row rather than riding the message pin alone because the row is what catches a
-; regression back to an ABORT: the refusal replaced a `panic!` in `cddl_prelude` that is still
-; present as a guard, and a future refactor routing a member around `new_type` would restore the
-; abort silently. The rule-body siblings are the `tests/matrix_reject/prelude.*.cddl` rows; the
-; message text for all four names is pinned by
-; `any_content_prelude_tags_reject_gracefully_in_every_position` (src/tests/robustness_tests.rs).
-;
-; NOT a widening: `any` is the supported way to carry an arbitrary CBOR item in this position — see
-; tests/robustness/any_member.cddl — but it drops the tag and the conversion it advertises, so it is
-; a different spec, which is why this stays a refusal.
+; This catalog row executes the member path in a fresh process, catching a regression to a graceful
+; rejection or an abort. The exact default/preserve tag codecs, all three siblings, and the wider
+; name-resolution product are pinned by
+; `expected_conversion_prelude_tags_generate_and_emit_exact_tags_in_every_position` and
+; `expected_conversion_preludes_generate_through_every_supported_name_resolution_context`
+; (src/tests/robustness_tests.rs and src/tests/refused_name_closure_tests.rs).
 a = [v: eb64url, x: uint]

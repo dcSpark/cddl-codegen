@@ -261,6 +261,14 @@ in probing:
   `cbor-from-json` join it, both fallible for the same reason. Invalid bytes always cross as a
   normal `Err`, never as a trap.
 
+RFC 8610's `eb64url`, `eb64legacy`, and `eb16` prelude names project as nominal resources over the
+same `any-cbor` door. For example, `prelude-eb64url` has
+`constructor(inner: any-cbor) -> result<prelude-eb64url, string>`, `get: func() -> any-cbor`, and
+the usual `to-cbor-bytes` / `from-cbor-bytes` doors. The constructor and getter exchange exactly one
+arbitrary CBOR item; the wrapper-byte doors retain and require the fixed `#6.21` tag (respectively
+`#6.22` and `#6.23` for the siblings). These resources expose no base64/base16 rendering algorithm:
+the tags remain CBOR advice around the opaque item.
+
 ## Fallible doors return the rust error text
 
 Anything that can refuse — a bounds-checking constructor, a despecialized collection door, a

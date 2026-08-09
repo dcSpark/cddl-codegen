@@ -17,11 +17,13 @@
 #[derive(Clone, Debug)]
 pub enum AnyCbor {
     UInt(u64),
-    NInt(i128), // full CBOR nint domain (-2^64..=-1)
+    // Full CBOR nint domain (-2^64..=-1).
+    NInt(i128),
     Bytes(Vec<u8>),
     Text(String),
     Array(Vec<AnyCbor>),
-    Map(Vec<(AnyCbor, AnyCbor)>), // wire order AND duplicate keys preserved
+    // Wire order AND duplicate keys preserved.
+    Map(Vec<(AnyCbor, AnyCbor)>),
     Tag(u64, Box<AnyCbor>),
     Special(AnySpecial),
 }
@@ -298,7 +300,8 @@ impl AnyCbor {
             cbor_event::Type::Text => Ok(AnyCbor::Text(raw.text_sz()?.0)),
             cbor_event::Type::Array => {
                 let len = raw.array_sz()?;
-                let mut elems = Vec::new(); // never with_capacity(claimed len)
+                // Never with_capacity(claimed len).
+                let mut elems = Vec::new();
                 read_sequence(raw, len, |raw| {
                     elems.push(AnyCbor::read(raw)?);
                     Ok(())

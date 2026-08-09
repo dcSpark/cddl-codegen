@@ -313,6 +313,26 @@ flavors; under `--preserve-encodings` they fill default (minimal-width, definite
 value built by hand serializes canonically. Read back through `kind() -> AnyCborKind` and the
 `as_uint()`/`as_bytes()`/… accessors (each returning `Option<T>`).
 
+### RFC 8610 expected-conversion tags over `any`
+
+The RFC 8610 prelude names `eb64url`, `eb64legacy`, and `eb16` are supported as the fixed tagged
+forms `#6.21(any)`, `#6.22(any)`, and `#6.23(any)`. A use of one emits a nominal wrapper such as
+`PreludeEb64url` around `AnyCbor`: native Rust constructs it with `PreludeEb64url::new(inner)` (or
+`From<AnyCbor>`) and reads its payload with `get()`. Its encoder always writes, and its decoder
+requires, that wrapper's declared tag. Default mode treats the arbitrary payload like any other
+`AnyCbor`; preserve mode also retains the payload and tag encodings it decoded.
+
+The tags are **advice for rendering a CBOR item**, not a request for this crate to choose a base64 or
+base16 text syntax. No base64/base16 string API is invented: callers retain the opaque `AnyCbor`
+payload, and the declared advice remains on the CBOR wire. `cbor-any` is intentionally different and
+remains unsupported because its self-describe tag marks a whole serialized CBOR stream rather than an
+ordinary value.
+
+Under JSON, these wrappers use the same natural `any` adapter as an authored `#6.21(any)` wrapper:
+the CBOR-only tag is omitted and the contained item is rendered naturally (or fails where natural
+`any` rendering cannot represent it). The standalone `AnyCbor` tagged JSON value codec remains
+available as the escape hatch described below.
+
 ### JSON representation (`--json-serde-derives` / `--json-schema-export`)
 
 There are two JSON surfaces for `any`, and which one a value uses depends on **where** it sits:

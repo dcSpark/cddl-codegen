@@ -201,8 +201,17 @@ pub fn emit_generated_wasm_tests(
         .iter()
         .map(|path| format!("    use super::{path}::*;\n"))
         .collect();
+    // A tagged wrapper around `any` has no value-destructuring wasm ctor. Its test therefore
+    // decodes the rust twin's bytes, and that twin's shared `MintValue::Any` renderer uses the
+    // same `__AnyCborMint` alias as the rust generated-test module. Keep this conditional so an
+    // any-free wasm test module remains byte-identical.
+    let any_import = if types.uses_any_cbor() {
+        "    use cddl_lib::any_cbor::AnyCbor as __AnyCborMint;\n"
+    } else {
+        ""
+    };
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\n#[allow(unused_imports)]\nmod cddl_generated_wasm_tests {{\n    use super::*;\n{scope_globs}    use cddl_lib::serialization::*;\n{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\n#[allow(unused_imports)]\nmod cddl_generated_wasm_tests {{\n    use super::*;\n{scope_globs}    use cddl_lib::serialization::*;\n{any_import}{}\n}}\n",
         fns.join("\n")
     ))
 }
@@ -325,9 +334,9 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
         }
         MintValue::TableEmpty { ident } => format!("{}::new()", sc(ident)),
         MintValue::IntExtern { ident, value } => format!("{}::new_uint({value})", sc(ident)),
-        // Unreachable in the wasm crate: `wasm_value` maps `ConceptualRustType::Any` to `None` (loud
-        // skip at the caller — the wasm AnyCbor wrapper exposes no composite `new_*` ctors), so an
-        // `Any` mint never reaches this scoped renderer. Delegate for exhaustiveness only.
+        // The wasm wrapper has no composite `new_*` ctors for `AnyCbor`, so the wrapper round-trip
+        // fallback builds its independent rust twin from an `Any` mint then decodes its bytes on the
+        // wasm side. The generated module conditionally imports the alias this shared renderer uses.
         MintValue::Any => emit_tests::render_rust(mv),
     }
 }

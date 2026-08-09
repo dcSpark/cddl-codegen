@@ -139,6 +139,20 @@ fixture = "prelude.cddl"
 id = "prelude.decfrac"
 fixture = "prelude.cddl"
 
+# RFC 8610 expected-conversion tags are fixed tagged-`any` wrappers. Keep their arbitrary payloads
+# isolated from `prelude.cddl` so that fixture's ordinary emitted-test minter remains active.
+[[cover]]
+id = "prelude.eb64url"
+fixture = "expected_conversion_tags.cddl"
+
+[[cover]]
+id = "prelude.eb64legacy"
+fixture = "expected_conversion_tags.cddl"
+
+[[cover]]
+id = "prelude.eb16"
+fixture = "expected_conversion_tags.cddl"
+
 [[cover]]
 id = "prelude.bigfloat"
 fixture = "prelude.cddl"
@@ -470,28 +484,10 @@ reason = "a generic raw-bytes BASE (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_`) is
 code_anchor = "element type for a parameter to name"
 
 [[note]]
-id = "prelude.eb64url"
-status = "unsupported"
-reason = "the expected-conversion tag `#6.21(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`."
-code_anchor = "no representation for the advice"
-
-[[note]]
-id = "prelude.eb64legacy"
-status = "unsupported"
-reason = "the expected-conversion tag `#6.22(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`."
-code_anchor = "no representation for the advice"
-
-[[note]]
-id = "prelude.eb16"
-status = "unsupported"
-reason = "the expected-conversion tag `#6.23(any)` advertises a rendering for an arbitrary CBOR item, not a type a generated struct could hold, so it is rejected gracefully in every position — member and rule body alike. `any` carries the item but drops the advice, so it is a different spec. Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`."
-code_anchor = "no representation for the advice"
-
-[[note]]
 id = "prelude.cbor-any"
 status = "unsupported"
-reason = "the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/TESTING_ROADMAP.md` § North star). Pinned by `any_content_prelude_tags_reject_gracefully_in_every_position`."
-code_anchor = "no representation for the advice"
+reason = "the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/TESTING_ROADMAP.md` § North star). Pinned by `cbor_any_prelude_tag_rejects_gracefully_in_every_position`."
+code_anchor = "self-described STREAM marker"
 
 # Fixed simple-value types are nominal singleton TypeChoices (B3-024A), with direct codecs and
 # preserve metadata ownership just like a non-fixed TypeChoice.

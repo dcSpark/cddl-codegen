@@ -278,6 +278,14 @@ Its v1 surface is intentionally byte-oriented rather than field-destructuring:
 Value-destructuring accessors (`as_uint()`, `as_bytes()`, …) are deliberately **not** on the wasm
 class in v1 (they follow demand): to inspect a value, read `kind()` and take its bytes or JSON.
 
+The RFC 8610 expected-conversion names `eb64url`, `eb64legacy`, and `eb16` surface as their own
+tagged-wrapper classes (`PreludeEb64url`, `PreludeEb64legacy`, `PreludeEb16`) around this same
+`AnyCbor` class. Each has `new(inner: &AnyCbor)` / `get() -> AnyCbor` plus its own
+`to_cbor_bytes()` / `from_cbor_bytes()` pair; the wrapper bytes retain and require its fixed
+`#6.21`/`#6.22`/`#6.23` tag while the inner byte door is one arbitrary CBOR item. These are not
+base64/base16 text converters — the tags carry CBOR rendering advice only. Their JSON posture is the
+natural tagged-`any` wrapper posture described in [Output format](output_format#rfc-8610-expected-conversion-tags-over-any).
+
 Containers of `any` surface their ordinary List/Map wrapper classes: `[* any]` is `AnyList` (full
 `new`/`add`/`get`/`len` array API), and a table is `MapAnyToAny` / `MapU64ToAny` / `MapAnyToU64` for
 the `{ * any => any }` / `{ * uint => any }` / `{ * any => uint }` domain-range combinations (the same

@@ -7562,6 +7562,180 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "prelude.eb16"
+axis = "feature"
+example = "x = eb16"
+spec = "__probe_holder = [0, x]\nx = eb16"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200d7636c6969"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d765526f642773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d766737472616665"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d768636176616c696572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d7696163636c696d617465"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d769646562617461626c65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d76965617461626c652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d7697374726f6c6c657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d76b6361706974616c697a6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d76b7475726e61726f756e6473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "prelude.eb64legacy"
+axis = "feature"
+example = "x = eb64legacy"
+spec = "__probe_holder = [0, x]\nx = eb64legacy"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200d6657370696e79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d66664616d736f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d667707265747a656c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d66861737369676e6564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d6696d6973737461746564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d6696f646462616c6c2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d66a63757274736579696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d66a7661706f72697a657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d66b73686f727466616c6c2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d66d7065646573747269616e697a65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "prelude.eb64url"
+axis = "feature"
+example = "x = eb64url"
+spec = "__probe_holder = [0, x]\nx = eb64url"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200d56666756d696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d566686f67616e73"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d56754616970696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d5687371756173682773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d568756e746964696572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d5696f6666656e64657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d56970616e6e6965722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d569707265706172696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d56a73746174656d656e7473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d56c6d616e6970756c61746f7273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "prelude.encoded-cbor"
 axis = "feature"
 example = "x = encoded-cbor"

@@ -1,0 +1,13 @@
+; RFC 8610 Appendix D expected-conversion tags. Each is a fixed tag around an arbitrary CBOR item:
+; native code keeps the payload as AnyCbor, while wasm/component surfaces reuse the existing
+; byte-oriented tagged-wrapper boundary. The tag is CBOR advice only — no base16/base64 rendering
+; type is invented, and JSON follows AnyCbor's established natural representation without the tag.
+;
+; This is deliberately its own corpus fixture rather than extra fields on prelude.cddl: AnyCbor has
+; no one obvious value for the emitted-test minter, so isolating it cannot suppress that established
+; fixture's otherwise-mintable prelude round trips.
+expected_conversion_tags = [
+  url: eb64url,
+  legacy: eb64legacy,
+  hex: eb16,
+]

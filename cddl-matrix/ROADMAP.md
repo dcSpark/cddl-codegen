@@ -504,28 +504,11 @@ entry, so the atomicity is the rule).
   `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
-- **The `eb*` expected-conversion tags advertise a rendering, not a type, so a spec that uses one
-  must widen it by hand.** `eb64url` (`#6.21(any)`), `eb64legacy` (`#6.22`) and `eb16` (`#6.23`)
-  each wrap an ARBITRARY CBOR item in a tag whose whole content is advice to a consumer rendering
-  that item as text; the payload is `any` and the tag constrains nothing a generated type could
-  hold. All three are refused gracefully in every position — `x = eb64url`, `[v: eb64url, x: uint]`
-  and `{ k: eb64url, j: uint }` alike exit 1 naming the type and its tag under the default and
-  `--preserve-encodings` profiles (pinned by
-  `any_content_prelude_tags_reject_gracefully_in_every_position`,
-  `tests/robustness/eb64url_member.cddl` and the `tests/matrix_reject/prelude.eb64url.cddl` row
-  and its two siblings).
-  That refusal is the correct posture and is not the deferred work; what is deferred is
-  REPRESENTING the tag. With `any` first-class the mechanical route would be the prelude-expansion
-  path the supported tags already ride (`eb64url` → `#6.21(any)`, as `encoded-cbor` →
-  `#6.24(bstr)` does today), and the open design question is what the emitted type does with the
-  advice once the payload is an opaque item. The widening a user can reach for today is not
-  equivalent: `any` carries the item but drops the tag and the conversion it advertises, which is
-  a different spec. Their fourth sibling `cbor-any` (`#6.55799(any)`) shares the refusal but not
-  this entry — its support is a decided permanent exclusion (`tests/TESTING_ROADMAP.md` § North
-  star's exclude list), the self-describe tag being a property of a byte stream rather than of a
-  value. Reopening signal on the magnitude axis: a spec brought to us uses one of the three names,
-  i.e. the count of rules its owner must widen to `any` to keep generating reaches 1; today the
-  entry's evidence is synthetic probes only, and a synthetic probe costs nobody a rewrite.
+- **`cbor-any` is a decided permanent exclusion, not a candidate feature.** Its
+  `#6.55799(any)` self-describe tag is a property of a complete serialized CBOR stream, not an
+  ordinary value a generated wrapper can hold. Keep its role-neutral graceful refusal and the
+  `tests/TESTING_ROADMAP.md` § North star exclusion; do not reopen it without an explicit maintainer
+  decision.
 - **Decode-disambiguate a non-final `?` optional array-record field whose CBOR major types OVERLAP
   a later field's.** `a = [ ? f0: uint, f1: uint ]` generates at exit 0 and the crate builds, but
   `f0` gets no decoder: the refusal is recorded (`dont_generate_deserialize`, loud
