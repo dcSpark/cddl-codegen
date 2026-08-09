@@ -1488,11 +1488,15 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   reason the observed-baseline entry below records. The match rule is statement-scoped, not
   line-scoped: these files are rustfmt-shaped, so a site wraps across lines the moment its byte
   vector grows, and a line-scoped count would drop it for free (the two rules read the same files as
-  27+20 and 30+24 respectively). Two residues, stated as plainly as the catalog fingerprint's:
+  27+20 and 30+24 respectively). Three residues, stated as plainly as the catalog fingerprint's:
   a message substring discriminates failures whose messages DIFFER, so two defects sharing one
-  message stay indistinguishable to it; and the ratchet counts SAME-STATEMENT sites only, so a
+  message stay indistinguishable to it; the ratchet counts SAME-STATEMENT sites only, so a
   decode routed through a local closure — body holds the `from_cbor_bytes`, the `is_err()` is on the
-  call — is neither counted nor converted.
+  call — is neither counted nor converted; and the helper checks message-against-substring, never
+  substring-against-CLAIM — an author who copies the substring from the observed message rather
+  than deriving it from the claimed boundary pins provenance to whatever it already was, so the
+  derive-then-confirm order in the conversion guidance above is load-bearing, not stylistic
+  (review checks it; no gate can).
   What is left there is volume, not design: **41 undiscriminated sites across 13 fixtures still
   carry baseline rows** (largest `open-struct-map-e2e` at 12), each convertible exactly as
   `tests/core` and `tests/preserve-encodings` were — derive the substring from the boundary the

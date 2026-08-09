@@ -978,6 +978,23 @@ A fixture dir may also ship a `tests_wasm.rs`: its contents are appended into th
 *wasm* crate and `cargo test`ed there (host target — the wasm-bindgen wrapper types are plain Rust,
 so no node/wasm-pack is needed).
 
+**Negative decode vectors carry their rejection REASON, enforced by a ratchet.** A hand-derived
+reject vector asserted with a bare `T::from_cbor_bytes(&bytes).is_err()` passes for ANY failure —
+a vector one byte off fails on the wrong boundary and stays green while the boundary it claims to
+pin goes unexercised (this shipped once, and the conversion pass that retired the pattern found
+three more). The discriminated form is `assert_decode_reject_reason::<T>(&bytes, "<substring>")`,
+a helper defined per fixture file (spelled identically in each `tests.rs` that uses it — the files
+are appended standalone into their generated crates, so nothing can be imported). The substring
+must be DERIVED from the boundary the vector claims and then confirmed against the real message —
+that confirmation, not the helper, is what catches a wrong-reason vector.
+`src/tests/decode_reject_reason_tests.rs` (`local` tier) holds every `tests/*/tests*.rs` file's
+count of remaining bare same-statement `from_cbor_bytes(..)…is_err()` sites at an exact per-file
+baseline (`BARE_DECODE_REJECT_BASELINE`), failing in BOTH directions: a new bare site names the
+helper to use, a converted site (or a deleted file) says lower/delete the row in the same commit.
+The match rule is statement-scoped (rustfmt wrapping cannot hide a site) and is pinned by the
+module's own synthetic self-test; constructor range checks and closure-routed decodes are
+deliberately out of scope — the module doc states the full rule and both residues.
+
 A hand fragment compiled under BOTH profiles (any `tests.rs` in a fixture that has default and
 preserve export crates) must bind union enum variants profile-invariantly: payload-carrying
 variants are tuple variants under the default profile and STRUCT variants under
