@@ -179,9 +179,9 @@
     },
     {
       "gate": "component_wit",
-      "warm_ms": 23000,
-      "n": 10,
-      "measured": "2026-08-01",
+      "warm_ms": 28000,
+      "n": 20,
+      "measured": "2026-08-09",
       "machine": "86216c55",
       "history": [
         {
@@ -191,6 +191,10 @@
         {
           "date": "2026-08-01",
           "warm_ms": 23000
+        },
+        {
+          "date": "2026-08-09",
+          "warm_ms": 28000
         }
       ]
     },
@@ -848,14 +852,18 @@
     },
     {
       "gate": "regen_over_prior_output_corpus",
-      "warm_ms": 55000,
-      "n": 3,
-      "measured": "2026-08-04",
+      "warm_ms": 67000,
+      "n": 20,
+      "measured": "2026-08-09",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-08-04",
           "warm_ms": 55000
+        },
+        {
+          "date": "2026-08-09",
+          "warm_ms": 67000
         }
       ]
     },
