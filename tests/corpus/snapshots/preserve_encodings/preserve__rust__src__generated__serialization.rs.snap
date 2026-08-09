@@ -5068,6 +5068,46 @@ impl Deserialize for Hash {
     }
 }
 
+impl cbor_event::se::Serialize for Int {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Self::Uint { value, encoding } => {
+                serializer.write_unsigned_integer_sz(*value, fit_sz(*value, *encoding))
+            }
+            Self::Nint { value, encoding } => serializer
+                .write_negative_integer_sz(-((*value as i128) + 1), fit_sz(*value, *encoding)),
+        }
+    }
+}
+
+impl Deserialize for Int {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => raw
+                    .unsigned_integer_sz()
+                    .map(|(x, enc)| Self::Uint {
+                        value: x,
+                        encoding: Some(enc),
+                    })
+                    .map_err(core::convert::Into::into),
+                cbor_event::Type::NegativeInteger => raw
+                    .negative_integer_sz()
+                    .map(|(x, enc)| Self::Nint {
+                        value: (-1 - x) as u64,
+                        encoding: Some(enc),
+                    })
+                    .map_err(core::convert::Into::into),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Int"))
+    }
+}
+
 impl cbor_event::se::Serialize for MapStructWithCustomSerialization {
     fn serialize<'se>(
         &self,
@@ -9990,6 +10030,182 @@ impl Deserialize for TableArrMembers {
     }
 }
 
+impl cbor_event::se::Serialize for TaggedAllFixed {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            TaggedAllFixed::I1 {
+                i1_encoding,
+                tag_encoding,
+            } => {
+                serializer.write_tag_sz(13u64, fit_sz(13u64, *tag_encoding))?;
+                serializer.write_unsigned_integer_sz(1u64, fit_sz(1u64, *i1_encoding))
+            }
+            TaggedAllFixed::I2 {
+                i2_encoding,
+                tag_encoding,
+            } => {
+                serializer.write_tag_sz(13u64, fit_sz(13u64, *tag_encoding))?;
+                serializer.write_unsigned_integer_sz(2u64, fit_sz(2u64, *i2_encoding))
+            }
+            TaggedAllFixed::I3 {
+                i3_encoding,
+                tag_encoding,
+            } => {
+                serializer.write_tag_sz(13u64, fit_sz(13u64, *tag_encoding))?;
+                serializer.write_unsigned_integer_sz(3u64, fit_sz(3u64, *i3_encoding))
+            }
+        }
+    }
+}
+
+impl Deserialize for TaggedAllFixed {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (tag, tag_encoding) = raw.tag_sz()?;
+            if tag != 13 {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 13,
+                }
+                .into());
+            }
+            let tag_encoding = Some(tag_encoding);
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let (i1_value, i1_encoding) = raw.unsigned_integer_sz()?;
+                if i1_value != 1 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(i1_value),
+                        expected: Key::Uint(1),
+                    }
+                    .into());
+                }
+                Ok(Some(i1_encoding))
+            })(raw);
+            match deser_variant {
+                Ok(i1_encoding) => {
+                    return Ok(Self::I1 {
+                        i1_encoding,
+                        tag_encoding,
+                    });
+                }
+                Err(e) => {
+                    errs.push(e.annotate("I1"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let (i2_value, i2_encoding) = raw.unsigned_integer_sz()?;
+                if i2_value != 2 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(i2_value),
+                        expected: Key::Uint(2),
+                    }
+                    .into());
+                }
+                Ok(Some(i2_encoding))
+            })(raw);
+            match deser_variant {
+                Ok(i2_encoding) => {
+                    return Ok(Self::I2 {
+                        i2_encoding,
+                        tag_encoding,
+                    });
+                }
+                Err(e) => {
+                    errs.push(e.annotate("I2"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let (i3_value, i3_encoding) = raw.unsigned_integer_sz()?;
+                if i3_value != 3 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(i3_value),
+                        expected: Key::Uint(3),
+                    }
+                    .into());
+                }
+                Ok(Some(i3_encoding))
+            })(raw);
+            match deser_variant {
+                Ok(i3_encoding) => {
+                    return Ok(Self::I3 {
+                        i3_encoding,
+                        tag_encoding,
+                    });
+                }
+                Err(e) => {
+                    errs.push(e.annotate("I3"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("TaggedAllFixed"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedChoice {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            TaggedChoice::Int { int, tag_encoding } => {
+                serializer.write_tag_sz(10u64, fit_sz(10u64, *tag_encoding))?;
+                int.serialize(serializer)
+            }
+            TaggedChoice::Text {
+                text,
+                text_encoding,
+                tag_encoding,
+            } => {
+                serializer.write_tag_sz(10u64, fit_sz(10u64, *tag_encoding))?;
+                serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64))
+            }
+        }
+    }
+}
+
+impl Deserialize for TaggedChoice {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (tag, tag_encoding) = raw.tag_sz()?;
+            if tag != 10 {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 10,
+                }
+                .into());
+            }
+            let tag_encoding = Some(tag_encoding);
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger | cbor_event::Type::NegativeInteger => {
+                    let int = Int::deserialize(raw)?;
+                    Ok(Self::Int { int, tag_encoding })
+                }
+                cbor_event::Type::Text => {
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                        tag_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("TaggedChoice"))
+    }
+}
+
 impl cbor_event::se::Serialize for TaggedFooBytes {
     fn serialize<'se>(
         &self,
@@ -10055,6 +10271,335 @@ impl Deserialize for TaggedFooBytes {
             })
         })()
         .map_err(|e| e.annotate("TaggedFooBytes"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedGroupArray {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            TaggedGroupArray::N {
+                n,
+                n_encoding,
+                len_encoding,
+                tag_encoding,
+            } => {
+                serializer.write_tag_sz(11u64, fit_sz(11u64, *tag_encoding))?;
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_unsigned_integer_sz(*n, fit_sz(*n, *n_encoding))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            TaggedGroupArray::Text {
+                text,
+                text_encoding,
+                len_encoding,
+                tag_encoding,
+            } => {
+                serializer.write_tag_sz(11u64, fit_sz(11u64, *tag_encoding))?;
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for TaggedGroupArray {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (tag, tag_encoding) = raw.tag_sz()?;
+            if tag != 11 {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 11,
+                }
+                .into());
+            }
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let tag_encoding = Some(tag_encoding);
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let mut read_len = CBORReadLen::new(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let (n, n_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    match len {
+                        cbor_event::LenSz::Len(_, _) => (),
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Self::N {
+                        n,
+                        n_encoding,
+                        len_encoding,
+                        tag_encoding,
+                    })
+                }
+                cbor_event::Type::Text => {
+                    let mut read_len = CBORReadLen::new(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    match len {
+                        cbor_event::LenSz::Len(_, _) => (),
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                        len_encoding,
+                        tag_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("TaggedGroupArray"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedGroupMap {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            TaggedGroupMap::N {
+                n,
+                n_encoding,
+                n_key_encoding,
+                len_encoding,
+                tag_encoding,
+            } => {
+                serializer.write_tag_sz(12u64, fit_sz(12u64, *tag_encoding))?;
+                serializer.write_map_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_text_sz("n", n_key_encoding.to_str_len_sz("n".len() as u64))?;
+                serializer.write_unsigned_integer_sz(*n, fit_sz(*n, *n_encoding))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            TaggedGroupMap::Text {
+                text,
+                text_encoding,
+                text_key_encoding,
+                len_encoding,
+                tag_encoding,
+            } => {
+                serializer.write_tag_sz(12u64, fit_sz(12u64, *tag_encoding))?;
+                serializer.write_map_sz(len_encoding.to_len_sz(1))?;
+                serializer
+                    .write_text_sz("text", text_key_encoding.to_str_len_sz("text".len() as u64))?;
+                serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for TaggedGroupMap {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (tag, tag_encoding) = raw.tag_sz()?;
+            if tag != 12 {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 12,
+                }
+                .into());
+            }
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let tag_encoding = Some(tag_encoding);
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let (n_key, n_key_encoding) = raw.text_sz()?;
+                if n_key != "n" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(n_key),
+                        expected: Key::Str(String::from("n")),
+                    }
+                    .into());
+                }
+                let n_key_encoding = StringEncoding::from(n_key_encoding);
+                let (n, n_encoding) = raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(Self::N {
+                    n,
+                    n_encoding,
+                    n_key_encoding,
+                    len_encoding,
+                    tag_encoding,
+                })
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("N"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let (text_key, text_key_encoding) = raw.text_sz()?;
+                if text_key != "text" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(text_key),
+                        expected: Key::Str(String::from("text")),
+                    }
+                    .into());
+                }
+                let text_key_encoding = StringEncoding::from(text_key_encoding);
+                let (text, text_encoding) = raw
+                    .text_sz()
+                    .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(Self::Text {
+                    text,
+                    text_encoding,
+                    text_key_encoding,
+                    len_encoding,
+                    tag_encoding,
+                })
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Text"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("TaggedGroupMap"))
+    }
+}
+
+impl cbor_event::se::Serialize for TaggedTagFieldCollision {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            TaggedTagFieldCollision::Tag {
+                tag,
+                tag_encoding,
+                len_encoding,
+                tag_encoding2,
+            } => {
+                serializer.write_tag_sz(14u64, fit_sz(14u64, *tag_encoding2))?;
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_unsigned_integer_sz(*tag, fit_sz(*tag, *tag_encoding))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            TaggedTagFieldCollision::Text {
+                text,
+                text_encoding,
+                len_encoding,
+                tag_encoding2,
+            } => {
+                serializer.write_tag_sz(14u64, fit_sz(14u64, *tag_encoding2))?;
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for TaggedTagFieldCollision {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (tag, tag_encoding) = raw.tag_sz()?;
+            if tag != 14 {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 14,
+                }
+                .into());
+            }
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let tag_encoding2 = Some(tag_encoding);
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let mut read_len = CBORReadLen::new(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let (tag, tag_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    match len {
+                        cbor_event::LenSz::Len(_, _) => (),
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Self::Tag {
+                        tag,
+                        tag_encoding,
+                        len_encoding,
+                        tag_encoding2,
+                    })
+                }
+                cbor_event::Type::Text => {
+                    let mut read_len = CBORReadLen::new(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    match len {
+                        cbor_event::LenSz::Len(_, _) => (),
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                        len_encoding,
+                        tag_encoding2,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("TaggedTagFieldCollision"))
     }
 }
 

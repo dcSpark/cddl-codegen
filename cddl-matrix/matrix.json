@@ -2988,8 +2988,8 @@
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen rejected at parse/lex (exit 1)",
-            "status": "unsupported"
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
           }
         },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",

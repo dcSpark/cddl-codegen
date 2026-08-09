@@ -1679,6 +1679,48 @@ impl Deserialize for GroupChoice {
     }
 }
 
+impl Serialize for Int {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+        force_canonical: bool,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Self::Uint { value, encoding } => serializer
+                .write_unsigned_integer_sz(*value, fit_sz(*value, *encoding, force_canonical)),
+            Self::Nint { value, encoding } => serializer.write_negative_integer_sz(
+                -((*value as i128) + 1),
+                fit_sz(*value, *encoding, force_canonical),
+            ),
+        }
+    }
+}
+
+impl Deserialize for Int {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => raw
+                    .unsigned_integer_sz()
+                    .map(|(x, enc)| Self::Uint {
+                        value: x,
+                        encoding: Some(enc),
+                    })
+                    .map_err(core::convert::Into::into),
+                cbor_event::Type::NegativeInteger => raw
+                    .negative_integer_sz()
+                    .map(|(x, enc)| Self::Nint {
+                        value: (-1 - x) as u64,
+                        encoding: Some(enc),
+                    })
+                    .map_err(core::convert::Into::into),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Int"))
+    }
+}
+
 impl Serialize for MixedLenKeys {
     fn serialize<'se>(
         &self,
@@ -2497,6 +2539,66 @@ impl Deserialize for TableArrMembers {
             })
         })()
         .map_err(|e| e.annotate("TableArrMembers"))
+    }
+}
+
+impl Serialize for TaggedAnonymousChoice {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+        force_canonical: bool,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            TaggedAnonymousChoice::Int { int, tag_encoding } => {
+                serializer.write_tag_sz(10u64, fit_sz(10u64, *tag_encoding, force_canonical))?;
+                int.serialize(serializer, force_canonical)
+            }
+            TaggedAnonymousChoice::Text {
+                text,
+                text_encoding,
+                tag_encoding,
+            } => {
+                serializer.write_tag_sz(10u64, fit_sz(10u64, *tag_encoding, force_canonical))?;
+                serializer.write_text_sz(
+                    text,
+                    text_encoding.to_str_len_sz(text.len() as u64, force_canonical),
+                )
+            }
+        }
+    }
+}
+
+impl Deserialize for TaggedAnonymousChoice {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (tag, tag_encoding) = raw.tag_sz()?;
+            if tag != 10 {
+                return Err(DeserializeFailure::TagMismatch {
+                    found: tag,
+                    expected: 10,
+                }
+                .into());
+            }
+            let tag_encoding = Some(tag_encoding);
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger | cbor_event::Type::NegativeInteger => {
+                    let int = Int::deserialize(raw)?;
+                    Ok(Self::Int { int, tag_encoding })
+                }
+                cbor_event::Type::Text => {
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                        tag_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("TaggedAnonymousChoice"))
     }
 }
 

@@ -158,8 +158,18 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::StructWithCustomSerialization>();
     _assert_serialize::<crate::generated::TableArrMembers>();
     _assert_deserialize::<crate::generated::TableArrMembers>();
+    _assert_serialize::<crate::generated::TaggedAllFixed>();
+    _assert_deserialize::<crate::generated::TaggedAllFixed>();
+    _assert_serialize::<crate::generated::TaggedChoice>();
+    _assert_deserialize::<crate::generated::TaggedChoice>();
     _assert_serialize::<crate::generated::TaggedFooBytes>();
     _assert_deserialize::<crate::generated::TaggedFooBytes>();
+    _assert_serialize::<crate::generated::TaggedGroupArray>();
+    _assert_deserialize::<crate::generated::TaggedGroupArray>();
+    _assert_serialize::<crate::generated::TaggedGroupMap>();
+    _assert_deserialize::<crate::generated::TaggedGroupMap>();
+    _assert_serialize::<crate::generated::TaggedTagFieldCollision>();
+    _assert_deserialize::<crate::generated::TaggedTagFieldCollision>();
     _assert_serialize::<crate::generated::TaggedText>();
     _assert_deserialize::<crate::generated::TaggedText>();
     _assert_serialize::<crate::generated::TopLevelNegRange>();

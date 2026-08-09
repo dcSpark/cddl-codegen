@@ -1015,6 +1015,77 @@ impl From<Hash> for Vec<u8> {
 }
 
 #[derive(Clone, Debug)]
+pub enum Int {
+    Uint {
+        value: u64,
+        encoding: Option<cbor_event::Sz>,
+    },
+    Nint {
+        value: u64,
+        encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl Int {
+    pub fn new_uint(value: u64) -> Self {
+        Self::Uint {
+            value,
+            encoding: None,
+        }
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self::Nint {
+            value,
+            encoding: None,
+        }
+    }
+}
+
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Uint { value, .. } => write!(f, "{}", value),
+            Self::Nint { value, .. } => write!(f, "{}", -((*value as i128) + 1)),
+        }
+    }
+}
+
+impl core::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = core::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(|x| Self::Uint {
+                value: x,
+                encoding: None,
+            })
+        } else {
+            u64::try_from((x + 1).unsigned_abs()).map(|x| Self::Nint {
+                value: x,
+                encoding: None,
+            })
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
+}
+
+#[derive(Clone, Debug)]
 pub struct MapStructWithCustomSerialization {
     pub chunked: Vec<u8>,
     pub hexed: Vec<u8>,
@@ -1978,6 +2049,75 @@ impl TableArrMembers {
 }
 
 #[derive(Clone, Debug)]
+pub enum TaggedAllFixed {
+    I1 {
+        i1_encoding: Option<cbor_event::Sz>,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+    I2 {
+        i2_encoding: Option<cbor_event::Sz>,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+    I3 {
+        i3_encoding: Option<cbor_event::Sz>,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl TaggedAllFixed {
+    pub fn new_i1() -> Self {
+        Self::I1 {
+            i1_encoding: None,
+            tag_encoding: None,
+        }
+    }
+
+    pub fn new_i2() -> Self {
+        Self::I2 {
+            i2_encoding: None,
+            tag_encoding: None,
+        }
+    }
+
+    pub fn new_i3() -> Self {
+        Self::I3 {
+            i3_encoding: None,
+            tag_encoding: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TaggedChoice {
+    Int {
+        int: Int,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl TaggedChoice {
+    pub fn new_int(int: Int) -> Self {
+        Self::Int {
+            int,
+            tag_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+            tag_encoding: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct TaggedFooBytes {
     pub(crate) inner: Foo,
     pub encodings: Option<TaggedFooBytesEncoding>,
@@ -1999,6 +2139,118 @@ impl TaggedFooBytes {
 impl From<Foo> for TaggedFooBytes {
     fn from(inner: Foo) -> Self {
         TaggedFooBytes::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TaggedGroupArray {
+    N {
+        n: u64,
+        n_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl TaggedGroupArray {
+    pub fn new_n(n: u64) -> Self {
+        Self::N {
+            n,
+            n_encoding: None,
+            len_encoding: LenEncoding::default(),
+            tag_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+            tag_encoding: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TaggedGroupMap {
+    N {
+        n: u64,
+        n_encoding: Option<cbor_event::Sz>,
+        n_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+        text_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+        tag_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl TaggedGroupMap {
+    pub fn new_n(n: u64) -> Self {
+        Self::N {
+            n,
+            n_encoding: None,
+            n_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+            tag_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+            text_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+            tag_encoding: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TaggedTagFieldCollision {
+    Tag {
+        tag: u64,
+        tag_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+        tag_encoding2: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+        tag_encoding2: Option<cbor_event::Sz>,
+    },
+}
+
+impl TaggedTagFieldCollision {
+    pub fn new_tag(tag: u64) -> Self {
+        Self::Tag {
+            tag,
+            tag_encoding: None,
+            len_encoding: LenEncoding::default(),
+            tag_encoding2: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+            tag_encoding2: None,
+        }
     }
 }
 

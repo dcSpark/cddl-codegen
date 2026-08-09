@@ -2761,4 +2761,90 @@ mod tests {
             assert_decode_reject_reason::<FixedSpecialTypeChoiceBrute>(bad, expect);
         }
     }
+
+    #[test]
+    fn tagged_anonymous_choices_replay_the_rule_tag_head() {
+        // The tag head is deliberately non-minimal (`d8 0a` etc.) while the payloads independently
+        // exercise their own width/length sidecars. The one enum-rule field must preserve the tag
+        // without replacing or reordering those arm-owned fields.
+        let type_bytes = [
+            cbor_tag_sz(10, Sz::One),
+            cbor_str_sz("hi", StringLenSz::Len(Sz::Two)),
+        ]
+        .concat();
+        let group_array_bytes = [
+            cbor_tag_sz(11, Sz::One),
+            arr_sz(1, Sz::Two),
+            cbor_int(7, Sz::Four),
+        ]
+        .concat();
+        let group_map_bytes = [
+            cbor_tag_sz(12, Sz::One),
+            map_sz(1, Sz::Two),
+            cbor_str_sz("text", StringLenSz::Len(Sz::One)),
+            cbor_str_sz("hi", StringLenSz::Len(Sz::Two)),
+        ]
+        .concat();
+        let all_fixed_bytes = [cbor_tag_sz(13, Sz::One), cbor_int(1, Sz::Two)].concat();
+        let collision_bytes = [
+            cbor_tag_sz(14, Sz::One),
+            arr_sz(1, Sz::Two),
+            cbor_int(7, Sz::Four),
+        ]
+        .concat();
+
+        for (label, replay) in [
+            ("type choice", TaggedChoice::from_cbor_bytes(&type_bytes).unwrap().to_cbor_bytes()),
+            (
+                "array group choice",
+                TaggedGroupArray::from_cbor_bytes(&group_array_bytes)
+                    .unwrap()
+                    .to_cbor_bytes(),
+            ),
+            (
+                "map group choice",
+                TaggedGroupMap::from_cbor_bytes(&group_map_bytes)
+                    .unwrap()
+                    .to_cbor_bytes(),
+            ),
+            (
+                "all-fixed choice",
+                TaggedAllFixed::from_cbor_bytes(&all_fixed_bytes)
+                    .unwrap()
+                    .to_cbor_bytes(),
+            ),
+            (
+                "arm-field collision",
+                TaggedTagFieldCollision::from_cbor_bytes(&collision_bytes)
+                    .unwrap()
+                    .to_cbor_bytes(),
+            ),
+        ] {
+            let expected = match label {
+                "type choice" => &type_bytes,
+                "array group choice" => &group_array_bytes,
+                "map group choice" => &group_map_bytes,
+                "all-fixed choice" => &all_fixed_bytes,
+                _ => &collision_bytes,
+            };
+            assert_eq!(replay, *expected, "{label} must replay its recorded tag head exactly");
+        }
+
+        // New values have no captured width, so the mandatory tag uses its fit-minimal form.
+        assert_eq!(
+            TaggedChoice::new_text(String::from("hi")).to_cbor_bytes(),
+            [cbor_tag(10), cbor_string("hi")].concat()
+        );
+
+        // The tag remains mandatory and discriminating; pin WHY these two inputs reject.
+        assert_decode_reject_reason::<TaggedChoice>(
+            &[cbor_tag(9), cbor_string("hi")].concat(),
+            "Expected tag 10, found 9",
+        );
+        assert_decode_reject_reason::<TaggedChoice>(
+            &cbor_string("hi"),
+            "expected `Tag' byte received `Text'",
+        );
+
+    }
 }

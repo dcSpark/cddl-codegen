@@ -550,6 +550,22 @@ mod tests {
         assert_eq!(decoded.a, 2);
     }
 
+    #[test]
+    fn tagged_anonymous_choice_canonicalizes_its_stored_tag_width() {
+        let non_minimal = [
+            cbor_tag_sz(10, Sz::One),
+            cbor_str_sz("hi", StringLenSz::Len(Sz::Two)),
+        ]
+        .concat();
+        let decoded = TaggedAnonymousChoice::from_cbor_bytes(&non_minimal).unwrap();
+        assert_eq!(decoded.to_cbor_bytes(), non_minimal, "ordinary preserve replay keeps both heads");
+        assert_eq!(
+            decoded.to_canonical_cbor_bytes(),
+            [cbor_tag(10), cbor_string("hi")].concat(),
+            "canonical serialization minimizes the enum rule tag just like every other mandatory tag"
+        );
+    }
+
     // Negative half of the suite: malformed / out-of-contract CBOR into the canonical crate's
     // from_cbor_bytes must be REJECTED, with the reason pinned as an error-message substring
     // (mirroring tests/core structural_rejects) so a reject can't pass for the wrong reason.

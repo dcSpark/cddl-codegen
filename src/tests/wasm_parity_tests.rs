@@ -112,14 +112,6 @@
 //! scratch dirs, no cargo check/test of the generated crates. Always-on (no `#[ignore]`), so it joins
 //! the plain `cargo test` / check.ts local tier.
 //!
-//! **Generation-fail pin (the `WASM_MATRIX_SKIP` idiom).** One `(profile, input)` pair aborts
-//! generation — a CBOR tag over an anonymous type-choice rule under `--preserve-encodings`, which
-//! `IntermediateTypes::finalize` refuses gracefully (the pin covers a graceful `Err` and a panic
-//! alike, so it survived that class becoming a diagnosis).
-//! It is pinned in `EXPECTED_GENERATION_FAIL` with a resurfaced guard both
-//! directions: a listed pair that now generates fails ("gap closed — remove the pin"); an unlisted
-//! abort fails as a normal generation failure.
-//!
 //! **Ledger + anti-rot (the `WASM_MATRIX_SKIP` idiom).** `PARITY_EXEMPT` holds deliberately-accepted
 //! asymmetries by `(profile, input, "Type" | "Type::member", reason)`. A finding matching a ledger
 //! entry is expected (no failure); a ledger entry matching NO live finding fails as "resurfaced" (a
@@ -186,17 +178,7 @@ const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
 /// `(profile, input label, reason)` pairs whose generation deliberately aborts. Four-state verdict
 /// with a resurfaced guard: a listed pair that now generates fails ("gap closed — remove the pin");
 /// an unlisted abort fails as a normal generation failure.
-const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
-    "preserve",
-    "tests/core",
-    "`tagged_type_choice = #6.11(uint / text)` — a CBOR tag directly over an anonymous choice RULE \
-     is unsupported under --preserve-encodings (the per-variant encoding metadata has no home on the \
-     enum) and is REFUSED gracefully in IntermediateTypes::finalize, so this pair still aborts \
-     generation, now with a diagnosis instead of an assert. Pinned by \
-     robustness_tests::tagged_anonymous_choice_rejects_gracefully_under_preserve. Note this pin used \
-     to name the float member on this input, which no longer aborts — floats carry their head width \
-     as an encoding variable",
-)];
+const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[];
 
 /// `tests/<dir>` fixture dirs swept by the corpus axis: (dir, per-dir committed profile rows).
 /// Each row is (profile label, flags) — the flag set the dir's integration gate commits to
