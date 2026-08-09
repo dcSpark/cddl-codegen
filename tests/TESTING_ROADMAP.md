@@ -1548,7 +1548,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   convert the rest rather than let the ratchet hold them: **that count rising**, or a wrong-reason
   vector surfacing in any file that still has a row.
 - **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind
-  gate branches) have untested first-use paths — six review-caught instances recorded, no
+  gate branches) have untested first-use paths — seven review-caught instances recorded, no
   machinery yet.** The decode-conformance family deliberately keeps machinery armed for residents
   that don't exist at HEAD (the over-acceptance flow, the exempt ledgers, the stale guards), so a
   scoping or preservation bug in such an arm is invisible to every gate until the first real
@@ -1566,7 +1566,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   a pin's justification green until the next re-mint (fixed: pinned rows check the example half).
   The shipped exemplar of the fix pattern is the drift gate's § 8 synthetic all-fields sample —
   but it covers only the writer/reader schema, not ledgers, mint buckets, or per-row-kind gate
-  branches. The mechanical layer on the NEXT instance (especially one that survives review):
+  branches. The general mechanical layer when the build trigger below fires:
   extend the drift gate's self-check section with synthetic residents and synthetic
   perturbations — a fake entry per empty-at-HEAD ledger asserting exactly its own guard (and no
   sibling's) reacts; a pure preservation check of the mint bucket logic over a synthetic
@@ -1590,7 +1590,16 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   entry consumed with zero reproduction attempt", and the layer as sketched above is
   DRIFT-gate-scoped — the replay gates' rust-side skip ledgers need a sibling arm (a synthetic
   always-passing resident driven through the leg driver, asserting exactly the stale-pin failure
-  fires and no other). Count: six review-caught instances, zero escapes; the build trigger stays
+  fires and no other). A SEVENTH first-use preservation gap surfaced in the B3-024C corpus mint:
+  the known rust-cddl `undefined`/`f7` oracle defect made the mint drop the spec-valid
+  `fixed_singletons.undefined_value/8200f7` accept vector while still returning PASS; review of the
+  dropped-vector report restored it manually. A future scoped re-mint can repeat that loss because
+  there is no accept-side oracle-gap ledger. Add a per-catalog `(row, hex, expected failing
+  oracle(s), reason)` exemption that retains only a vector the non-exempt oracle still accepts,
+  fails stale when the cited oracle starts accepting or changes its failure signature, and is
+  covered by the synthetic mint-bucket resident above; then migrate `8200f7` onto it. Do not weaken
+  the ordinary two-oracle accept rule or create a row-wide exemption. Count: seven review-caught
+  instances, zero escapes; the build trigger stays
   the first instance that survives review, with the layer owing BOTH homes when built. Related,
   smaller catch from the same review with its own
   trivial layer: a machine-written catalog `pinned_reason` cited a run artifact ("see mint

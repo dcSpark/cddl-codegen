@@ -13435,7 +13435,9 @@ fn bool_and_null_defaults_lower_from_their_typename_spelling() {
 
 /// A `.default` operand that is not a literal at all (a rule name, a group reference) has no value
 /// to lower. That is ordinary user CDDL, so it is a recorded rejection naming the operand — never an
-/// abort, and never routed into the head check, which has nothing to say about a non-value.
+/// abort, and never routed into the head check, which has nothing to say about a non-value. The
+/// remedy enumerates the accepted literal kinds; keep the byte example pinned so adding
+/// `FixedValue::Bytes` cannot leave that user-facing list stale again.
 #[test]
 fn non_literal_default_operand_rejects_gracefully() {
     let err = run_spec(
@@ -13446,6 +13448,10 @@ fn non_literal_default_operand_rejects_gracefully() {
     assert!(
         err.contains("`.default other`") && err.contains("is not a default VALUE"),
         "the rejection must name the operand and say it is not a value, got:\n{err}"
+    );
+    assert!(
+        err.contains("a byte string (`h'CAFE'`)"),
+        "the accepted-literal remedy must include the supported byte-string kind, got:\n{err}"
     );
     assert!(
         !err.contains("cannot be applied to"),

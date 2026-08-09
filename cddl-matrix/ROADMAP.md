@@ -576,7 +576,7 @@ entry, so the atomicity is the rule).
   key domain. Real float-key support (e.g. an ordered-float wrapper) is a candidate feature.
   Reopening signal: a consumer reports a spec whose table keys are floats in a wire format they do
   not control — i.e. the integer/text/bytes remedy is not theirs to apply.
-- Nint/float fixed map keys are **rejected gracefully** — only uint and text fixed keys are
+- Bytes/nint/float fixed map keys are **rejected gracefully** — only uint and text fixed keys are
   implemented on the struct-map record path (pinned by
   `contain.map-key.memberkey.value.{nint,float}_colon_single`,
   `contain.map-key.memberkey.value.{nint,float}_colon_multi`, and the matching group-choice-arm rows
