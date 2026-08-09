@@ -1,20 +1,5 @@
-; A tag wrapping a PRELUDE CONSTANT (`#6.11(true)`; equally `nil` / `false`, and the parenthesized
-; `#6.11((true))`) is REJECTED GRACEFULLY, with the SAME message as its literal-inner sibling
-; `#6.5(5)` (tests/robustness/tagged_literal.cddl): a rule whose whole body is a bare fixed value
-; has no standalone type representation, so there is nothing for the tag to wrap.
-;
-; The two spellings reach that message from two different registration seams, which is why each
-; carries its own guard over one shared message helper (`record_bare_fixed_rule_rejection`). A
-; literal inner lands on the transparent-ALIAS seam (`register_type_alias`), which has always
-; classified a bare `Fixed`. A prelude-constant inner resolves through the prelude alias
-; (`true` -> Fixed(Bool)), and its tag head (or `@newtype`) forces the WRAPPER seam instead —
-; `RustStruct::new_wrapper`, which would render the `Fixed` as the wrapper's inner member type.
-; Guarding both seams is what makes the classification independent of which spelling the user
-; picked. The tag itself is irrelevant to the gap: `#6.11([true])` wraps a GROUP, which does have a
-; representation, and generates.
-;
-; Same underlying reason as the occurrence shape (tests/robustness/fixed_value_occurrence.cddl); the
-; auto-wrapping tag-inner variants that ARE supported carry a `.default` or a range on the inner
-; (tests/corpus/tagged_default_inner.cddl / tagged_ranged_inner.cddl) — those resolve to a primitive
-; wrapper, not a bare `Fixed`.
+; A tag wrapping a prelude constant (`#6.11(true)`, and likewise nil/false or parenthesized true)
+; uses the same nominal singleton representation as tagged literals. The singleton's direct codecs
+; own the tag, inner fixed-value check, and preserve-encoding sidecars. This is the prelude route;
+; tagged_literal.cddl covers the literal route.
 t = #6.11(true)

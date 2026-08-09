@@ -390,6 +390,11 @@ const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   // gap in the row — the per-arm evidence is the emitted round-trip (`fixed_special_type_choice_brute`
   // in tests/preserve-encodings), and the row carries `f5` AND `f6` anyway.
   "contain.choice-member.prelude.true.same_major_brute": ["3", "7"],
+  // The two-arm fixed/null shape lowers to `Option<FixedBoolTrue>` and therefore has only the
+  // special wire class, but its catalog explicitly carries both legal specials (`f5`, `f6`) plus
+  // the third-special rejection. Keep it in the floor so a future mint cannot silently lose that
+  // decode evidence.
+  "contain.choice-member.type2.value.fixed_null": ["7"],
   "contain.choice-member.type2.tag": ["6"],
   // The tag-set idiom rows spell the two WIRE arms (`#6.258([..]) → major 6`, `[..] → major 4`)
   // regardless of whether codegen collapses (set_idiom) or retains the enum (set_idiom_near_miss), so

@@ -3854,7 +3854,7 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > generate clean), **panic** (`unsupported_construct_panic_catalog` — tracked-known generator panics),
 > and **reject** (`unsupported_construct_reject_catalog` — the rows the matrix marks off-limits that mint
 > no other test: parse-rejected control ops, constructs with no standalone Rust representation such as
-> top-level fixed-value rules (`value.number`, `prelude.true`) and the `#` any-type (`type2.any`), and
+> the `#` any-type (`type2.any`), and
 > out-of-profile constructs). Containment cells (`contain.*`) are included in this projection; spec-disallowed
 > cells without annotation rows are naturally absent, while supported/reject/panic cells get generated
 > fixtures and subsume the older hand pins for map-key spelling/arity, group-choice-arm, and

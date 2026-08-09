@@ -588,6 +588,10 @@
       "role": "role.choice-member"
     },
     {
+      "feature": "type2.value",
+      "role": "role.choice-member"
+    },
+    {
       "feature": "type2.map",
       "role": "role.generic-arg"
     },

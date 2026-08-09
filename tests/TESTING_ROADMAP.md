@@ -519,7 +519,14 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     residuals "Nothing asserts that two IR sites cannot mint the SAME `RustIdent`" (uniqueness)
     and the synthesized-name referenced-but-never-minted (E0425) flavor want predicates over the
     same emitted-name registry — whichever is built first, the others become added predicates
-    rather than fresh enumerations.
+    rather than fresh enumerations. **Activated by B3-024A (2026-08-09):** its synthesized
+    fixed-singleton owner is the third minting site and initially deduplicated `true` with
+    `#6.7(true)` by `FixedValue` alone, making parse order choose the wrong wire codec. The local
+    owner check now keys the complete `RustType` wire shape and rejects authored collisions in both
+    source orders, but this is exactly the residual's evidence: it prevents this mint path from
+    overwriting while it does not provide the finalized-IR, all-minter uniqueness floor. Arm that
+    shared registry next; its arming run must measure and name every legitimate re-registration
+    seam before any overwrite is rejected globally.
 
 15. **A rejection message's remedy string is an executable claim — pin each one with a
     generates-green vector, and execute a findings entry's operative claims at pickup.** The
@@ -2807,25 +2814,16 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   detail — including the `{ k => v }`-as-bounds-`(1, 1)` revisit — lives in the two
   candidate-feature entries in `cddl-matrix/ROADMAP.md` (the "Real bounded `?` / `n*m` table
   cardinality" entry and its two-type sibling).
-- **Top-level fixed-value / bare-literal rules are rejected, not yet supported** (`foo = 5`,
-  `foo = "text"`, `foo = true`/`null`, and equally `#6.n(5)` — the tag is irrelevant). These
-  resolve to a standalone `Fixed` conceptual type, which has no member/standalone Rust
-  representation, so they are rejected gracefully at rule registration
-  (`intermediate::register_type_alias`, surfaced as `Err` at `finalize`) instead of panicking
-  `for_rust_member`; pinned as `error (graceful)` by the `tests/matrix_reject/` rows
-  `value.number` / `value.text` / `type2.value` / `prelude.true` / `prelude.false` /
-  `prelude.nil` / `prelude.null` and the hand fixture `tests/robustness/tagged_literal.cddl`.
-  The open FEATURE is full support — a one-field wrapper that stores nothing and re-emits the
-  constant on serialize. The auto-wrapping model already exists for the tag-inner variants that
-  stay supported and must not be caught by the rejection: a `.default`-carrying inner
-  `#6.n(uint .default 5)` and a range that collapses exactly onto a rust primitive
-  `#6.n(uint .le 255)` auto-wrap (pinned by `tests/corpus/tagged_default_inner.cddl` and
-  `tests/corpus/tagged_ranged_inner.cddl`); literal-headed range inners — `#6.5(3..10)` — wrap
-  too, pinned by `top_level_ranges` in `tests/core`. (Separately, `foo = undefined` is refused
-  gracefully — a distinct gap, unsupported cddl-prelude `#7.23` with no `FixedValue`, not the
-  `Fixed`-member path; pinned by `undefined_prelude_rejects_gracefully_in_every_position` and
-  `tests/matrix_reject/prelude.undefined.cddl`, with the representation deferral ledgered in
-  `cddl-matrix/ROADMAP.md` § findings.)
+- **Top-level scalar/text/bool/null fixed rules are nominal singleton TypeChoices** (`foo = 5`,
+  `foo = "text"`, `foo = true`/`null`, and their mandatory-tag/`bytes .cbor` forms). They own
+  direct codecs rather than taking the inline-only C-style enum path, so a named constant has the
+  same standalone and embedded wire shape. `T / null` first nominalizes a fixed `T`, preserving the
+  established `Option<Singleton>` surface; `null / null` is one singleton state. The executable
+  B3-024A fixture exercises wrong-value reasons, record/Vec/table composition, fixed/null's two
+  accepts plus third reject, fixed/tag/`.cbor` non-minimal preserve replay and canonical
+  minimization; projected feature rows and the fixed/null containment cell have reason-bearing
+  decode pins. `undefined` and byte-string literals remain refused: neither is a `FixedValue`, and
+  B3-024B/C own their representation decisions.
 - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
   fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
   `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining

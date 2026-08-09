@@ -1,0 +1,10 @@
+; Nominal one-value types: every rule owns direct codecs (including preserve sidecars) rather than
+; relying on the inline-only C-style fixed enum path.  The fixed/null presence lowering is pinned
+; separately by tests/robustness/choice_fixed_null_collapse.cddl.
+true_value = true
+false_value = false
+nil_value = nil
+null_value = null
+answer = 42
+version = 5
+marker = "v1"

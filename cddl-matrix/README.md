@@ -17,8 +17,8 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > **Entry points (in order):** *this README* (the model + current state, incl. the gotchas and
 > upstream-oracle-gap state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->123 features and 135 containment cells<!-- /gen:sh:readme-counts -->
-> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->292 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->123 features and 136 containment cells<!-- /gen:sh:readme-counts -->
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->293 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
@@ -168,7 +168,7 @@ excluded-endpoint number, NaN against a float window — each a valid instance o
 certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
 REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
 replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is
-<!-- gen:sh:readme-enforce-green -->73 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+<!-- gen:sh:readme-enforce-green -->81 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
 the guard that replaced the silent truncation this row's vector exposed; pinned by the
@@ -545,9 +545,9 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   per-(feature, role) verdict genuinely differs, which is the whole point. An inline parenthesized
   group carrying an occurrence marker (`[* (int, tstr)]`) is a distinct path: it is rejected
   gracefully (not a panic — `ROADMAP.md` § findings), with the same "name the group" remedy.
-- **Fixed values flip on MEMBER position — and two kinds do not flip with the rest.** Every
-  fixed-value feature row is `unsupported` at the TOP level (`x = true`, `x = 5`, `x = "v"` are
-  rejected as a rule body), yet the same constants are `supported` as array elements and map values:
+- **Supported fixed values are nominal at the TOP level and inline at MEMBER position.** A named
+  scalar/text/bool/null fixed rule (`x = true`, `x = 5`, `x = "v"`) is now a singleton type with a
+  standalone codec; the same constants are also supported as array elements and map values:
   `a = [v: true, x: uint]`, `m = { k: 5, j: uint }`, the bare unkeyed `a = [5, x: uint]`, and the
   optional keyed forms `[x: uint, ? v: 5, label: tstr]` / `{ ? k: 5, j: uint }`. So a reader who
   generalizes the *feature-row* verdict to member position generalizes wrongly — which is what the
@@ -559,9 +559,8 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   a REPRESENTATION, not a rejection (`ROADMAP.md` § findings). Cardinality is a
   third, independent splitter: an occurrence marker over an UNKEYED fixed value (`[* 5]`, `[? 5]`,
   `[+ 5]`, `{ * uint => 5 }`) is unsupported while the keyed optional forms above generate — which is
-  why `type2.value` × `role.occurrence-target` renders ◐ in the grid. Grounding these 19 cells landed
-  11 supported / 8 unsupported — the two non-flipping kinds are among the 8, and their verdict is
-  unchanged by the refusal being graceful.
+  why `type2.value` × `role.occurrence-target` renders ◐ in the grid. `undefined` and byte-string
+  literals remain unsupported fixed kinds; B3-024B/C own those representation decisions.
 - **Containment cell-example hygiene.** The `type2.map`-in-a-role cells (`array-element` /
   `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
   any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs

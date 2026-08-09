@@ -1,15 +1,5 @@
-; The MEMBER-position spelling of the fixed-inner `T / null` collapse (`[v: true / null]`; equally
-; a map value `{? k: true / null}` and a table value `{* uint => (true / null)}`) is REJECTED
-; GRACEFULLY at the member-level collapse site (`rust_type`'s two-arm null checks), the role-sibling
-; of the rule-level site pinned by tests/robustness/choice_fixed_null_collapse.cddl.
-;
-; It is a genuinely separate site, not a duplicate: a member has no rule name to quote back, so the
-; message is role-generic ("used as a member or element type"), and the guard must return an inert
-; placeholder rather than registering nothing — the record path around it still expects a type back
-; for the field. WHY the shape has no representation, and what to write instead, are shared text
-; with the rule-level site so the two spellings of one defect cannot drift apart in what they teach.
-;
-; Without this guard the shape aborts generation at the same internal render invariant the
-; rule-level spelling hit; the neighbouring supported shapes (`[v: bool / null]`, `[v: uint / null]`)
-; are unaffected and still lower to `Option<bool>` / `Option<u64>` members.
+; The member/element spelling of fixed/null (`[v: true / null]`, map values, and table values) uses
+; the same deterministic singleton owner as the rule-level form, so this field is
+; `Option<FixedBoolTrue>`. It is deliberately a separate parse path from the rule-level collapse;
+; both must continue to generate under default and preserve-encodings profiles.
 a = [v: true / null, x: uint]

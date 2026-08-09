@@ -662,8 +662,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "prelude.false"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "prelude.float"
@@ -748,8 +752,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "prelude.nil"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "prelude.nint"
@@ -762,8 +770,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "prelude.null"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "prelude.number"
@@ -812,8 +824,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "prelude.true"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "prelude.tstr"
@@ -1037,8 +1053,12 @@ evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.value"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "value.bytes"
@@ -1047,8 +1067,12 @@ evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=fai
 
 [[support]]
 id = "value.number"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "value.number.bin"
@@ -1079,8 +1103,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "value.text"
-status = "unsupported"
-evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 # --- per-cell support (role × feature), keyed by containment id (see containment/*.toml) ---
 
@@ -1345,6 +1373,15 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "contain.choice-member.type2.tag.set_idiom_near_miss"
 status = "supported"
 evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
+
+[[support]]
+id = "contain.choice-member.type2.value.fixed_null"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 2 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"

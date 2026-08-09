@@ -1,33 +1,10 @@
-; A two-arm `T / null` choice whose non-`null` arm is a bare FIXED VALUE (`t = true / null`;
-; equally `false / null`, `5 / null`, `-1 / null`, `3.0 / null`, `"v1" / null`, and the degenerate
-; `null / null`) is REJECTED GRACEFULLY at the RULE-level collapse site (`parse_type_choices`), so
-; the generator exits 1 with an actionable message rather than aborting.
+; A rule-level fixed/null choice owns its fixed arm through a deterministic nominal singleton, then
+; uses the existing presence API: `t = true / null` becomes `Option<FixedBoolTrue>`. `Some` writes
+; only `true`; `None` writes null. This preserves a fixed constraint without pretending the value is
+; an unstored field-only sentinel. `null / null` is one singleton null type, not `Option<...>`, so it
+; has exactly one semantic state.
 ;
-; The refusal is what the shape actually means. A two-arm choice with a `null` arm never becomes an
-; enum: it collapses to an `Option<T>` (that collapse is what makes `t = uint / null` an
-; `Option<u64>` and `t = null / tstr` an `Option<String>`). A `Fixed` has no `T` — it exists only
-; as an unstored member whose value the schema pins — so the collapse produces an
-; `Optional(Fixed(..))` with nothing to put in the slot, and rendering a `Fixed` in member position
-; is a hard abort at generation time. Refusing at the collapse itself is what keeps the diagnosis
-; on the user's CDDL instead of on an internal render invariant.
-;
-; The message names the offending value back in its CDDL spelling and offers only a remedy that was
-; probed to work: widening the fixed arm to the CDDL type the constant inhabits (`bool / null`
-; lowers to `Option<bool>`; `uint / null` likewise) generates under both the default and
-; `--preserve-encodings` profiles. It says plainly that widening drops the constraint, so the
-; result is a different spec, not an equivalent one. The `null / null` spelling gets a different
-; sentence, because there is no fixed value in the `T` slot at all — there is no non-`null` arm to
-; widen, and a rule body of bare `null` is itself rejected at the alias seam.
-;
-; Neighbouring shapes that are deliberately NOT this class, and must stay as they are:
-;   - `t = true / false` — no `null` arm, so no collapse; it becomes a `pub enum T { True, False }`.
-;   - `t = null / tstr`, `t = uint / null` — a non-fixed inner collapses to a real `Option<T>`.
-;   - `t = true / null / tstr` — THREE arms never reach the collapse; it takes the enum path and is
-;     a separately tracked defect (see cddl-matrix/ROADMAP.md § findings), untouched by this guard.
-; The MEMBER-position spelling of this same shape has its own collapse site and its own fixture,
-; tests/robustness/choice_fixed_null_collapse_member.cddl.
-;
-; The second rule is deliberate: it proves the refusal fires on an otherwise-generatable spec, not
-; only on a spec that has nothing else to emit.
+; The member-position sibling is covered by choice_fixed_null_collapse_member.cddl. Three-or-more
+; arm choices remain ordinary enums and are outside this two-arm collapse.
 a = [x: uint]
 t = true / null

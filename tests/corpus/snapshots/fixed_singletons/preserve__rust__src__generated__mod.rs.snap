@@ -1,0 +1,109 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::serialization::StringEncoding;
+
+#[derive(Clone, Debug)]
+pub enum Answer {
+    ValueUint42 {
+        value_uint42_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl Answer {
+    pub fn new_value_uint42() -> Self {
+        Self::ValueUint42 {
+            value_uint42_encoding: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum FalseValue {
+    ValueBoolFalse,
+}
+
+impl FalseValue {
+    pub fn new_value_bool_false() -> Self {
+        Self::ValueBoolFalse
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Marker {
+    ValueText7631 {
+        value_text7631_encoding: StringEncoding,
+    },
+}
+
+impl Marker {
+    pub fn new_value_text7631() -> Self {
+        Self::ValueText7631 {
+            value_text7631_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NilValue {
+    ValueNull,
+}
+
+impl NilValue {
+    pub fn new_value_null() -> Self {
+        Self::ValueNull
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NullValue {
+    ValueNull,
+}
+
+impl NullValue {
+    pub fn new_value_null() -> Self {
+        Self::ValueNull
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TrueValue {
+    ValueBoolTrue,
+}
+
+impl TrueValue {
+    pub fn new_value_bool_true() -> Self {
+        Self::ValueBoolTrue
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Version {
+    ValueUint5 {
+        value_uint5_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl Version {
+    pub fn new_value_uint5() -> Self {
+        Self::ValueUint5 {
+            value_uint5_encoding: None,
+        }
+    }
+}

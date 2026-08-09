@@ -967,9 +967,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "prelude.false",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -1107,9 +1117,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "prelude.nil",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -1127,9 +1147,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "prelude.null",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -1207,9 +1237,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "prelude.true",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -1552,9 +1592,19 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "type2.value",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=fail (rust parser limitation: reference/ABNF accept)",
@@ -1562,9 +1612,19 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "value.number",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -1612,9 +1672,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "value.text",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -2024,6 +2094,21 @@
         },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.choice-member.type2.tag.set_idiom_near_miss",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 2 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.fixed_null",
         "status": "supported"
       },
       {
@@ -3406,7 +3491,7 @@
       "example": "a = [w: uint, v: 5]",
       "feature": "type2.value",
       "id": "contain.array-element.type2.value",
-      "note": "A literal value as a member type (`[w: uint, v: 5]`) — supported in-composite; the standalone `answer = 42` type is not. RFC8610 §2.1, §3.4.",
+      "note": "A literal value as a member type (`[w: uint, v: 5]`) — the inline fixed-value path, distinct from the nominal standalone `answer = 42` singleton. RFC8610 §2.1, §3.4.",
       "role": "role.array-element",
       "spec": "allowed"
     },
@@ -3534,7 +3619,15 @@
       "example": "a = tstr / null",
       "feature": "prelude.null",
       "id": "contain.choice-member.prelude.null",
-      "note": "`null` as a `/` alternative (`tstr / null`) — the canonical nullable pattern (Option<T>). Contrast contain.top-level via the per-feature bit: a standalone `x = null` type panics. RFC8610 §2.2.2, App. D.",
+      "note": "`null` as a `/` alternative (`tstr / null`) — the canonical nullable pattern (Option<T>). A standalone `x = null` is instead the nominal null singleton; the feature and containment rows deliberately cover their distinct representations. RFC8610 §2.2.2, App. D.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = true / null",
+      "feature": "type2.value",
+      "id": "contain.choice-member.type2.value.fixed_null",
+      "note": "A two-arm fixed/null choice (`t = true / null`) uses the nullable Option lowering, but its fixed arm is a nominal singleton (`Option<FixedBoolTrue>`) rather than an unstorable inline Fixed. Both legal special values decode; a third special value reaches FixedValueMismatch. This is distinct from the three-arm same-major brute-force cell below: two arms select the dedicated nullable lowering. RFC8610 §2.2.2, §2.2.4.",
       "role": "role.choice-member",
       "spec": "allowed"
     },
@@ -3566,7 +3659,7 @@
       "example": "t = true / null / tstr",
       "feature": "prelude.true",
       "id": "contain.choice-member.prelude.true.same_major_brute",
-      "note": "A three-arm type choice whose two FIXED arms share a CBOR major type (`t = true / null / tstr`): `true` and `null` are both major 7 specials, so the arm discriminant cannot be the wire major. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize anchors `raw.position()`, runs each arm's reader in source order (the `true` arm verifying its constant as `FixedValueMismatch`, the `null` arm as `ExpectedNull`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch every other fixed-arm cell in this matrix takes (`contain.group-choice-arm.type2.value.map` and its array-rep siblings), which is why the kind axis has to be probed on both: a fixed kind proven on one path certifies nothing about the other. Deliberately three arms — the two-arm `true / null` is not this shape at all: a null arm in a two-arm choice triggers the `Option<T>` collapse, which refuses a fixed-value inner (see `cddl-matrix/ROADMAP.md` § findings, \"A fixed-value inner under the `T / null` Option-collapse (`true / null`) has no member REPRESENTATION…\"). Executed under the flag that reaches the site by `fixed_special_type_choice_brute` in `tests/preserve-encodings/input.cddl`. RFC8610 §2.2.2, App. D.",
+      "note": "A three-arm type choice whose two FIXED arms share a CBOR major type (`t = true / null / tstr`): `true` and `null` are both major 7 specials, so the arm discriminant cannot be the wire major. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize anchors `raw.position()`, runs each arm's reader in source order (the `true` arm verifying its constant as `FixedValueMismatch`, the `null` arm as `ExpectedNull`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch every other fixed-arm cell in this matrix takes (`contain.group-choice-arm.type2.value.map` and its array-rep siblings), which is why the kind axis has to be probed on both: a fixed kind proven on one path certifies nothing about the other. Deliberately three arms — the two-arm `true / null` is not this shape at all: it now uses the nominal fixed/null Option lowering pinned by `contain.choice-member.type2.value.fixed_null`. Executed under the flag that reaches the site by `fixed_special_type_choice_brute` in `tests/preserve-encodings/input.cddl`. RFC8610 §2.2.2, App. D.",
       "role": "role.choice-member",
       "spec": "allowed"
     },
@@ -6325,7 +6418,7 @@
     },
     {
       "alt": "number",
-      "desc": "Radix variation of value.number: the uint hexadecimal lexeme (`\"0x\" 1*HEXDIG`), value 0x10 = 16. Member-position (`m = [v: 0x10]`) rather than the base row's top-level form, which would be refused on the orthogonal graceful top-level-fixed-value rejection and hide the radix axis; member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Radix variation of value.number: the uint hexadecimal lexeme (`\"0x\" 1*HEXDIG`), value 0x10 = 16. Member-position (`m = [v: 0x10]`) isolates the radix lexeme from the nominal standalone-singleton representation used by the base row. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "m = [v: 0x10]",
       "id": "value.number.hex",
       "production": "value",
@@ -6335,7 +6428,7 @@
     },
     {
       "alt": "number",
-      "desc": "Radix variation of value.number: the uint binary lexeme (`\"0b\" 1*BINDIG`), value 0b1010 = 10. Member-position (`m = [v: 0b1010]`) rather than the base row's top-level form, which would be refused on the orthogonal graceful top-level-fixed-value rejection and hide the radix axis; member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Radix variation of value.number: the uint binary lexeme (`\"0b\" 1*BINDIG`), value 0b1010 = 10. Member-position (`m = [v: 0b1010]`) isolates the radix lexeme from the nominal standalone-singleton representation used by the base row. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "m = [v: 0b1010]",
       "id": "value.number.bin",
       "production": "value",
@@ -6345,7 +6438,7 @@
     },
     {
       "alt": "number",
-      "desc": "Lexeme variation of value.number: the `hexfloat` alternative of `number` (`0x1.8p+1` = 3.0). Member-position (`m = [v: 0x1.8p+1]`) rather than the base row's top-level form, which would be refused on the orthogonal graceful top-level-fixed-value rejection and hide the lexeme axis; member position isolates it. Verdict genuinely unknown — float fixed values as members may not generate — so the probe records the outcome honestly either way. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "Lexeme variation of value.number: the `hexfloat` alternative of `number` (`0x1.8p+1` = 3.0). Member-position (`m = [v: 0x1.8p+1]`) isolates the float lexeme from the nominal standalone-singleton representation used by the base row. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "m = [v: 0x1.8p+1]",
       "id": "value.number.hexfloat",
       "production": "value",

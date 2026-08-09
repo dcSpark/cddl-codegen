@@ -9639,6 +9639,176 @@ fn same_major_arms_round_trip_byte_exactly() {{{body}}}
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// Named fixed rules and fixed/null choices have a real, directly executable value surface rather
+/// than merely source snapshots.  This exercises every B3-024A scalar kind directly, its failure
+/// reason, nominal composition, the `T / null` and `null / null` normalizations, and every wire
+/// owner which can carry an encoding (fixed head, tag head, and `.cbor` byte-string head).
+///
+/// The three profiles deliberately use foreign, hand-derived non-minimal bytes.  Default proves
+/// ordinary direct/embedded construction and mismatch behavior; preserve has to replay each width
+/// byte-for-byte; canonical has to minimize the same value.  This is a local-tier scratch test:
+/// it generates a throwaway crate and runs its tests, because a generated-only assertion could not
+/// catch a singleton that compiles but drops a codec or an encoding sidecar.
+#[test]
+fn fixed_singletons_execute_across_default_preserve_and_canonical_profiles() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_fixed_singletons_e2e_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let target_dir = scratch.join("target");
+
+    const SPEC: &str = "answer = 42\n\
+                        debt = -7\n\
+                        ratio = 1.5\n\
+                        marker = \"s\"\n\
+                        enabled = true\n\
+                        absent = null\n\
+                        maybe_enabled = true / null\n\
+                        maybe_enabled_holder = [maybe_enabled]\n\
+                        only_null = null / null\n\
+                        composition = [a: answer, vs: [* answer], ms: {* uint => answer}]\n\
+                        tagged_enabled = #6.7(true)\n\
+                        cbor_answer = bytes .cbor 42\n";
+
+    const COMMON: &str = r#"
+#[test]
+fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
+    assert_eq!(bytes(&Answer::new_value_uint42()), [0x18, 0x2a]);
+    assert_eq!(bytes(&Debt::new_value_nint7()), [0x26]);
+    assert_eq!(bytes(&Ratio::new_value_float3_ff8000000000000()), [0xf9, 0x3e, 0x00]);
+    assert_eq!(bytes(&Marker::new_value_text73()), [0x61, 0x73]);
+    assert_eq!(bytes(&Enabled::new_value_bool_true()), [0xf5]);
+    assert_eq!(bytes(&Absent::new_value_null()), [0xf6]);
+
+    // A nominal fixed rule composes in a record, Vec and table. Decode rather than construct this
+    // value so the same vector covers the default BTreeMap and preserve OrderedHashMap surfaces.
+    let composition_bytes = [0x83, 0x18, 0x2a, 0x81, 0x18, 0x2a, 0xa1, 0x01, 0x18, 0x2a];
+    assert_eq!(bytes(&Composition::from_cbor_bytes(&composition_bytes).unwrap()), composition_bytes);
+
+    reject::<Answer>(&[0x18, 0x2b], "Expected fixed value 42 found 43");
+    reject::<Debt>(&[0x27], "Expected fixed value -7 found -8");
+    reject::<Ratio>(&[0xf9, 0x41, 0x00], "Expected fixed value");
+    reject::<Marker>(&[0x61, 0x74], "Expected fixed value");
+    reject::<Enabled>(&[0xf4], "Expected fixed value true found false");
+    reject::<Absent>(&[0xf7], "Expected null");
+
+    // Both nullable wire arms decode, while a third same-major value does not.  `only_null` is
+    // direct and has just the singleton state — its enum cannot expose Option's extra None state.
+    assert_eq!(bytes(&MaybeEnabledHolder::from_cbor_bytes(&[0x81, 0xf5]).unwrap()), [0x81, 0xf5]);
+    assert_eq!(bytes(&MaybeEnabledHolder::from_cbor_bytes(&[0x81, 0xf6]).unwrap()), [0x81, 0xf6]);
+    reject::<MaybeEnabledHolder>(&[0x81, 0xf4], "Expected fixed value true found false");
+    assert_eq!(bytes(&OnlyNull::from_cbor_bytes(&[0xf6]).unwrap()), [0xf6]);
+    reject::<OnlyNull>(&[0xf7], "Expected null");
+
+    assert_eq!(bytes(&TaggedEnabled::from_cbor_bytes(&[0xc7, 0xf5]).unwrap()), [0xc7, 0xf5]);
+    reject::<TaggedEnabled>(&[0xc7, 0xf4], "Expected fixed value true found false");
+    assert_eq!(bytes(&CborAnswer::from_cbor_bytes(&[0x42, 0x18, 0x2a]).unwrap()), [0x42, 0x18, 0x2a]);
+    reject::<CborAnswer>(&[0x42, 0x18, 0x2b], "Expected fixed value 42 found 43");
+}
+"#;
+    const PRESERVE: &str = r#"
+#[test]
+fn preserve_replays_nonminimal_fixed_tag_and_cbor_heads() {
+    replay::<Answer>(&[0x19, 0x00, 0x2a]);
+    replay::<Debt>(&[0x39, 0x00, 0x06]);
+    replay::<Ratio>(&[0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    replay::<Marker>(&[0x78, 0x01, 0x73]);
+    replay::<TaggedEnabled>(&[0xd8, 0x07, 0xf5]);
+    replay::<CborAnswer>(&[0x58, 0x03, 0x19, 0x00, 0x2a]);
+}
+"#;
+    const CANONICAL: &str = r#"
+#[test]
+fn canonical_minimizes_the_same_fixed_tag_and_cbor_heads() {
+    canonical::<Answer>(&[0x19, 0x00, 0x2a], &[0x18, 0x2a]);
+    canonical::<Debt>(&[0x39, 0x00, 0x06], &[0x26]);
+    canonical::<Ratio>(&[0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], &[0xf9, 0x3e, 0x00]);
+    canonical::<Marker>(&[0x78, 0x01, 0x73], &[0x61, 0x73]);
+    canonical::<TaggedEnabled>(&[0xd8, 0x07, 0xf5], &[0xc7, 0xf5]);
+    canonical::<CborAnswer>(&[0x58, 0x03, 0x19, 0x00, 0x2a], &[0x42, 0x18, 0x2a]);
+}
+"#;
+
+    for (label, flags, profile_tests, profile_imports, profile_helpers) in [
+        (
+            "default",
+            &["--preserve-encodings=false"][..],
+            "",
+            "use cbor_event::se::{Serialize, Serializer};",
+            "fn bytes<T: Serialize>(value: &T) -> Vec<u8> {\n    let mut serializer = Serializer::new_vec();\n    value.serialize(&mut serializer).unwrap();\n    serializer.finalize()\n}\n",
+        ),
+        (
+            "preserve",
+            &["--preserve-encodings=true"][..],
+            PRESERVE,
+            "use cbor_event::se::Serialize;\nuse cddl_lib::serialization::ToCBORBytes;",
+            "fn bytes<T: Serialize>(value: &T) -> Vec<u8> { value.to_cbor_bytes() }\nfn replay<T: Deserialize + Serialize>(bytes: &[u8]) {\n    let value = T::from_cbor_bytes(bytes).unwrap();\n    assert_eq!(value.to_cbor_bytes(), bytes);\n}\n",
+        ),
+        (
+            "canonical",
+            &["--preserve-encodings=true", "--canonical-form=true"][..],
+            CANONICAL,
+            "use cddl_lib::serialization::Serialize;",
+            "fn bytes<T: Serialize>(value: &T) -> Vec<u8> { value.to_cbor_bytes() }\nfn canonical<T: Deserialize + Serialize>(bytes: &[u8], expected: &[u8]) {\n    let value = T::from_cbor_bytes(bytes).unwrap();\n    assert_eq!(value.to_canonical_cbor_bytes(), expected);\n}\n",
+        ),
+    ] {
+        let case_root = scratch.join(label);
+        std::fs::create_dir_all(&case_root).unwrap();
+        let input = case_root.join("input.cddl");
+        std::fs::write(&input, SPEC).unwrap();
+        let out = case_root.join("out");
+        let generated = codegen_cmd()
+            .arg(format!("--input={}", input.display()))
+            .arg(format!("--output={}", out.display()))
+            .args(flags)
+            .arg("--wasm=false")
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{label}: fixed singleton generation failed\n{}\n{}",
+            String::from_utf8_lossy(&generated.stdout),
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        std::fs::create_dir_all(out.join("rust/tests")).unwrap();
+        std::fs::write(
+            out.join("rust/tests/fixed_singletons.rs"),
+            format!(
+                r#"{profile_imports}
+use cddl_lib::serialization::Deserialize;
+use cddl_lib::*;
+
+fn reject<T: Deserialize + core::fmt::Debug>(bytes: &[u8], expected: &str) {{
+    let err = T::from_cbor_bytes(bytes).expect_err("vector unexpectedly decoded");
+    assert!(err.to_string().contains(expected), "expected {{expected:?}}, got {{err}}");
+}}
+{COMMON}
+{profile_helpers}
+{profile_tests}
+"#
+            ),
+        )
+        .unwrap();
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "{label}: generated fixed singleton crate failed behavior tests\n{}\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// A `.cbor` payload whose target is a FIXED value — bare, or behind any number of mandatory tags —
 /// generates, builds and round-trips under every profile, not just the `--preserve-encodings` one.
 ///

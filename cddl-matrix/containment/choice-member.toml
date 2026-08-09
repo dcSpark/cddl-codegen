@@ -52,8 +52,16 @@ id = "contain.choice-member.prelude.null"
 role = "role.choice-member"
 feature = "prelude.null"
 spec = "allowed"
-note = "`null` as a `/` alternative (`tstr / null`) — the canonical nullable pattern (Option<T>). Contrast contain.top-level via the per-feature bit: a standalone `x = null` type panics. RFC8610 §2.2.2, App. D."
+note = "`null` as a `/` alternative (`tstr / null`) — the canonical nullable pattern (Option<T>). A standalone `x = null` is instead the nominal null singleton; the feature and containment rows deliberately cover their distinct representations. RFC8610 §2.2.2, App. D."
 example = "a = tstr / null"
+
+[[contain]]
+id = "contain.choice-member.type2.value.fixed_null"
+role = "role.choice-member"
+feature = "type2.value"
+spec = "allowed"
+note = "A two-arm fixed/null choice (`t = true / null`) uses the nullable Option lowering, but its fixed arm is a nominal singleton (`Option<FixedBoolTrue>`) rather than an unstorable inline Fixed. Both legal special values decode; a third special value reaches FixedValueMismatch. This is distinct from the three-arm same-major brute-force cell below: two arms select the dedicated nullable lowering. RFC8610 §2.2.2, §2.2.4."
+example = "t = true / null"
 
 # The `any`-arm POSITION axis. A bare `any` accepts EVERY CBOR item, so where the arm sits decides
 # whether the choice is well-formed at all — the three cells below are the same construct at the two
@@ -91,5 +99,5 @@ id = "contain.choice-member.prelude.true.same_major_brute"
 role = "role.choice-member"
 feature = "prelude.true"
 spec = "allowed"
-note = "A three-arm type choice whose two FIXED arms share a CBOR major type (`t = true / null / tstr`): `true` and `null` are both major 7 specials, so the arm discriminant cannot be the wire major. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize anchors `raw.position()`, runs each arm's reader in source order (the `true` arm verifying its constant as `FixedValueMismatch`, the `null` arm as `ExpectedNull`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch every other fixed-arm cell in this matrix takes (`contain.group-choice-arm.type2.value.map` and its array-rep siblings), which is why the kind axis has to be probed on both: a fixed kind proven on one path certifies nothing about the other. Deliberately three arms — the two-arm `true / null` is not this shape at all: a null arm in a two-arm choice triggers the `Option<T>` collapse, which refuses a fixed-value inner (see `cddl-matrix/ROADMAP.md` § findings, \"A fixed-value inner under the `T / null` Option-collapse (`true / null`) has no member REPRESENTATION…\"). Executed under the flag that reaches the site by `fixed_special_type_choice_brute` in `tests/preserve-encodings/input.cddl`. RFC8610 §2.2.2, App. D."
+note = "A three-arm type choice whose two FIXED arms share a CBOR major type (`t = true / null / tstr`): `true` and `null` are both major 7 specials, so the arm discriminant cannot be the wire major. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize anchors `raw.position()`, runs each arm's reader in source order (the `true` arm verifying its constant as `FixedValueMismatch`, the `null` arm as `ExpectedNull`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch every other fixed-arm cell in this matrix takes (`contain.group-choice-arm.type2.value.map` and its array-rep siblings), which is why the kind axis has to be probed on both: a fixed kind proven on one path certifies nothing about the other. Deliberately three arms — the two-arm `true / null` is not this shape at all: it now uses the nominal fixed/null Option lowering pinned by `contain.choice-member.type2.value.fixed_null`. Executed under the flag that reaches the site by `fixed_special_type_choice_brute` in `tests/preserve-encodings/input.cddl`. RFC8610 §2.2.2, App. D."
 example = "t = true / null / tstr"

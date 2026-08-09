@@ -4408,6 +4408,111 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "fixed_singletons.answer"
+axis = "corpus"
+example = "answer = 42"
+fixture = "fixed_singletons"
+rule = "answer"
+spec = "__probe_holder = [0, answer]\nanswer = 42"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200182a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_singletons.false_value"
+axis = "corpus"
+example = "false_value = false"
+fixture = "fixed_singletons"
+rule = "false_value"
+spec = "__probe_holder = [0, false_value]\nfalse_value = false"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_singletons.marker"
+axis = "corpus"
+example = "marker = \"v1\""
+fixture = "fixed_singletons"
+rule = "marker"
+spec = "__probe_holder = [0, marker]\nmarker = \"v1\""
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200627631"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_singletons.nil_value"
+axis = "corpus"
+example = "nil_value = nil"
+fixture = "fixed_singletons"
+rule = "nil_value"
+spec = "__probe_holder = [0, nil_value]\nnil_value = nil"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_singletons.null_value"
+axis = "corpus"
+example = "null_value = null"
+fixture = "fixed_singletons"
+rule = "null_value"
+spec = "__probe_holder = [0, null_value]\nnull_value = null"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_singletons.true_value"
+axis = "corpus"
+example = "true_value = true"
+fixture = "fixed_singletons"
+rule = "true_value"
+spec = "__probe_holder = [0, true_value]\ntrue_value = true"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_singletons.version"
+axis = "corpus"
+example = "version = 5"
+fixture = "fixed_singletons"
+rule = "version"
+spec = "__probe_holder = [0, version]\nversion = 5"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820005"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "fixed_value.fixed_fields"
 axis = "corpus"
 example = "fixed_fields = [a: uint, b: \"marker\", c: 5, d: \"he\\\"llo\\\\world\"]"

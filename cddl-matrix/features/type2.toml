@@ -50,11 +50,8 @@ encodings = ["enc.major0", "enc.major1", "enc.major7.float"]
 # enumeration, so a radix/lexeme form with no row is an enforcement blind spot.
 #
 # Each example is MEMBER-position (`m = [v: …]`), NOT the top-level `x = <lit>` form the base row uses,
-# deliberately: a top-level fixed-value TYPE is rejected gracefully at rule registration (a standalone
-# `Fixed` has no Rust representation — cddl-codegen uses `Fixed` only for member serialization; the
-# candidate-feature entry is "Top-level fixed-value / bare-literal rules" in tests/TESTING_ROADMAP.md
-# § Deferred features), which would refuse every example on that orthogonal boundary and hide the radix
-# axis entirely. Placing the literal at a member position isolates the radix/lexeme axis from it.
+# deliberately: the base row already exercises the nominal top-level singleton. Placing these literals
+# at member position isolates the radix/lexeme axis from that representation choice.
 [[feature]]
 id = "value.number.hex"
 production = "value"
@@ -62,7 +59,7 @@ alt = "number"
 rfc = "RFC8610 §2.1 + App. B (number/uint/hexfloat lexemes); ABNF value / number"
 profile = "RFC8610"
 title = "Hexadecimal integer literal (0x…)"
-desc = "Radix variation of value.number: the uint hexadecimal lexeme (`\"0x\" 1*HEXDIG`), value 0x10 = 16. Member-position (`m = [v: 0x10]`) rather than the base row's top-level form, which would be refused on the orthogonal graceful top-level-fixed-value rejection and hide the radix axis; member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
+desc = "Radix variation of value.number: the uint hexadecimal lexeme (`\"0x\" 1*HEXDIG`), value 0x10 = 16. Member-position (`m = [v: 0x10]`) isolates the radix lexeme from the nominal standalone-singleton representation used by the base row. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "m = [v: 0x10]"
 
 [[feature]]
@@ -72,7 +69,7 @@ alt = "number"
 rfc = "RFC8610 §2.1 + App. B (number/uint/hexfloat lexemes); ABNF value / number"
 profile = "RFC8610"
 title = "Binary integer literal (0b…)"
-desc = "Radix variation of value.number: the uint binary lexeme (`\"0b\" 1*BINDIG`), value 0b1010 = 10. Member-position (`m = [v: 0b1010]`) rather than the base row's top-level form, which would be refused on the orthogonal graceful top-level-fixed-value rejection and hide the radix axis; member position isolates the radix axis. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
+desc = "Radix variation of value.number: the uint binary lexeme (`\"0b\" 1*BINDIG`), value 0b1010 = 10. Member-position (`m = [v: 0b1010]`) isolates the radix lexeme from the nominal standalone-singleton representation used by the base row. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "m = [v: 0b1010]"
 
 [[feature]]
@@ -82,7 +79,7 @@ alt = "number"
 rfc = "RFC8610 §2.1 + App. B (number/uint/hexfloat lexemes); ABNF value / number"
 profile = "RFC8610"
 title = "Hexadecimal float literal (hexfloat)"
-desc = "Lexeme variation of value.number: the `hexfloat` alternative of `number` (`0x1.8p+1` = 3.0). Member-position (`m = [v: 0x1.8p+1]`) rather than the base row's top-level form, which would be refused on the orthogonal graceful top-level-fixed-value rejection and hide the lexeme axis; member position isolates it. Verdict genuinely unknown — float fixed values as members may not generate — so the probe records the outcome honestly either way. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
+desc = "Lexeme variation of value.number: the `hexfloat` alternative of `number` (`0x1.8p+1` = 3.0). Member-position (`m = [v: 0x1.8p+1]`) isolates the float lexeme from the nominal standalone-singleton representation used by the base row. Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "m = [v: 0x1.8p+1]"
 
 [[feature]]

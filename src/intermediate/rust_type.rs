@@ -33,6 +33,29 @@ fn convert_to_alphanumeric(input: &str) -> String {
 }
 
 impl FixedValue {
+    /// A total, Rust-identifier-safe spelling for a nominal fixed-value singleton.  This is an
+    /// identity, not a display label: text uses UTF-8 bytes and floats use their IEEE bits so that
+    /// values which happen to print alike (notably `-0.0`) cannot share an owner.
+    pub fn singleton_name_fragment(&self) -> String {
+        match self {
+            Self::Null => "Null".to_owned(),
+            Self::Bool(true) => "BoolTrue".to_owned(),
+            Self::Bool(false) => "BoolFalse".to_owned(),
+            Self::Uint(value) => format!("Uint{value}"),
+            Self::Nint(value) => format!("Nint{}", value.unsigned_abs()),
+            Self::Float(value) => format!("Float{:016X}", value.to_bits()),
+            Self::Text(value) if value.is_empty() => "TextEmpty".to_owned(),
+            Self::Text(value) => format!(
+                "Text{}",
+                value
+                    .as_bytes()
+                    .iter()
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<String>()
+            ),
+        }
+    }
+
     fn for_variant(&self) -> VariantIdent {
         match self {
             FixedValue::Null => VariantIdent::new_custom("Null"),
@@ -117,6 +140,64 @@ impl FixedValue {
             FixedValue::Text(s) => format!("\"{}\"", escape_rust_str(s)),
             _ => self.to_primitive_str_assign(),
         }
+    }
+}
+
+impl RustType {
+    /// A total identifier fragment for a synthesized nominal fixed-value owner.  It includes the
+    /// entire wire shape, not merely the CBOR value: `true` and `#6.7(true)` are distinct Rust
+    /// values with distinct codecs, and must never deduplicate to one owner based on parse order.
+    ///
+    /// This deliberately spells the small, closed encoding-operation vocabulary rather than using
+    /// a hash.  The spelling is injective (and therefore cannot turn a hash collision into a
+    /// silent wire change), Rust-identifier-safe, and preserves the historic bare-value names.
+    pub fn fixed_singleton_name_fragment(&self) -> String {
+        let fixed = match self.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Fixed(fixed) => fixed,
+            other => panic!("fixed singleton name requested for {other:?}"),
+        };
+        let mut out = fixed.singleton_name_fragment();
+        for operation in &self.encodings {
+            match operation {
+                CBOREncodingOperation::Tagged(tag) => out.push_str(&format!("__Tag{tag}")),
+                CBOREncodingOperation::OptionallyTagged(tag) => {
+                    out.push_str(&format!("__OptionalTag{tag}"));
+                }
+                CBOREncodingOperation::CBORBytes => out.push_str("__CborBytes"),
+            }
+        }
+        // Fixed values normally have default config, but retaining every field makes this identity
+        // correct if a future fixed-value control operator attaches one.  The delimiters and
+        // fixed-width float bits keep this spelling structurally injective.
+        if let Some(default) = &self.config.default {
+            out.push_str("__Default");
+            out.push_str(&default.singleton_name_fragment());
+        }
+        if let Some((min, max)) = self.config.bounds {
+            out.push_str(&format!(
+                "__Bounds{}_{}",
+                min.map_or_else(|| "None".to_owned(), |value| format!("Some{value}")),
+                max.map_or_else(|| "None".to_owned(), |value| format!("Some{value}")),
+            ));
+        }
+        if let Some((min, max)) = self.config.float_bounds {
+            let bound = |value: Option<(f64, bool)>| match value {
+                Some((value, exclusive)) => format!(
+                    "Some{:016X}{}",
+                    value.to_bits(),
+                    if exclusive { "Exclusive" } else { "Inclusive" }
+                ),
+                None => "None".to_owned(),
+            };
+            out.push_str(&format!("__FloatBounds{}_{}", bound(min), bound(max)));
+        }
+        if let Some(policy) = self.config.duplicates {
+            out.push_str(&format!("__Duplicates{policy:?}"));
+        }
+        if self.config.basic_override {
+            out.push_str("__BasicOverride");
+        }
+        out
     }
 }
 

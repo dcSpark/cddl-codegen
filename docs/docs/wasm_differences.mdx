@@ -35,6 +35,12 @@ The door belongs to classes that wrap a rust type. A **collection wrapper class*
 `MapTextToFoo`, …) carries its collection API (`new`/`add`/`get`/`len`/`insert`/`keys`) and no door
 member in any posture — cross the boundary through the owning type instead.
 
+A named fixed-value rule is one of those owning classes, even though its Rust value is zero-sized:
+`answer = 42` exports an opaque `Answer` class with the CBOR/JSON door, and
+`maybe-answer = 42 / null` uses that class for its present value. This keeps a singleton's constant
+validation and any tag or `bytes .cbor` framing at the same boundary as its Rust codec; it is not a
+wasm-visible C-style enum.
+
 Under `--wasm-cbor-json-api-macro` the generator emits your macro invocation in place of all six, so
 the door's contents there are the macro's contract rather than the generator's.
 
