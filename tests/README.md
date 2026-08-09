@@ -1993,11 +1993,10 @@ because it compiles the guest resource glue rather than the general fixture suit
   `wasm_api_parity` differentials the generated wasm wrapper, and
   `extern_interface_projects_whole_custom_table_pair_opaque` proves opaque projection plus
   consumer re-import rather than reconstruction as a transparent map alias.
-- **Named collection boundary (remaining product finding)** —
-  `single_half_custom_codec_on_record_rule_rejects_gracefully` also pins that a pair on
-  `items = [* uint]` remains inert in both directions, so record delegation cannot accidentally
-  widen into a writer-only collection change. This is not support evidence: the accepted-but-dead
-  position remains in `cddl-matrix/ROADMAP.md` § "Findings — open" until it is honored or refused.
+- **Named collection-rule rejection** — the `dsl_position_tests` array-rule family covers loose,
+  non-empty, bounded, `@duplicates reject`, and `@duplicates preserve` collections with a complete
+  pair. Each is loudly rejected because the rule remains a transparent collection typedef with no
+  whole-item owner; unlike the supported whole-table rule, no complete-pair nominalization exists.
 - **Table key/value positions** — `custom_table_positions` (+ `_sidecar_shape`,
   `_reject_default_shape`) in `tests/preserve-encodings`: a width sweep byte-exact through the
   custom fns in both positions, the decoded-key sidecar keying, and the reject-default-shape

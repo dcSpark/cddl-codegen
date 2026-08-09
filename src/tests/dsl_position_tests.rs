@@ -833,8 +833,8 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("@custom_encodings on `T`: this rule mints a STRUCT"),
     },
-    // 23g-ii / 23g-iii. Each half ALONE on a table rule, rejected on its own — the record rule's
-    //      both-halves escape (23o) has no table counterpart, so neither spelling may slip through.
+    // 23g-ii / 23g-iii. Each half ALONE on a table rule is rejected. The preceding complete-pair
+    //      control is the supported whole-table owner, so neither lone half may bypass it.
     Cell {
         directive: "@custom_serialize",
         position: "table-rule-alone",
@@ -902,15 +902,12 @@ const GRID: &[Cell] = &[
             must_not: &["pub type T", "serializer.write_map"],
         },
     },
-    // 23g-iv .. 23g-viii. The ARRAY-bodied siblings of the table rule (23g). A named collection rule
-    //      lowers to a transparent collection typedef exactly as a table lowers to a transparent map
-    //      alias — `AliasInfo::new_manual` drops the rule metadata, so neither emission site can see
-    //      the pair and it reaches neither the collection's standalone codec nor a holder's field
-    //      call sites. ANY presence rejects, like the table, because there are no impls for either
-    //      half to suppress. One cell per shape that reaches the `Array` struct variant, since each
-    //      is a distinct lowering (loose `Vec`, `NonEmptyVec`, bounded, and the two `@duplicates`
-    //      flavors — `OrderedSet` for reject, `Vec` for preserve): the whole family has to be closed
-    //      at once or the uncovered flavor stays a silent carrier.
+    // 23g-iv .. 23g-viii. Named ARRAY collection rules remain transparent typedefs: unlike the
+    //      supported whole-table owner, they have no complete-pair nominalization. Their metadata
+    //      does not reach a whole-item codec, so every pair spelling is loudly rejected. One cell per
+    //      distinct `Array` lowering (loose `Vec`, `NonEmptyVec`, bounded, and the two `@duplicates`
+    //      flavors — `OrderedSet` for reject, `Vec` for preserve) closes the full family rather than
+    //      leaving an uncovered flavor as a silent carrier.
     Cell {
         directive: "@custom_serialize+deserialize",
         position: "array-rule-loose",

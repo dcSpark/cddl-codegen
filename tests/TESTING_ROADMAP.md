@@ -608,11 +608,23 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
     to enumerate by hand (loose/non-empty/bounded/`@duplicates` collection flavors): a coherence
     sweep that misses a flavor leaves that flavor exactly the silent carrier the pair rejections
     just closed.
-    Add the complete-item-owner × `@custom_encodings`/`@custom_wire_major` modifier axis: each
-    modifier must be honored where its codec-visible channel exists or rejected where it does not.
-    In particular, the whole-table wrapper is self-carrying, so `@custom_encodings` must reject
-    rather than silently claim an absent tuple; `@custom_wire_major` already rejects every
-    struct-owning rule because only a transparent alias keying an open table can consume it.
+    **Pending implementation phase — add the modifier matrix.** Cross EVERY accepted complete-pair
+    placement (at minimum the named-record and complete whole-table rule-level owners) with BOTH
+    `@custom_encodings` and `@custom_wire_major`. The test's expected-outcome table must make each
+    cell prove one of two results: the modifier changes an emitted signature/storage slot at a real
+    consumption channel, or generation rejects. Exit-0 generation is a FAILURE for every cell that
+    names no such channel. The rule-level-owner minimum is:
+
+    | owner | `@custom_encodings` | `@custom_wire_major` |
+    | --- | --- | --- |
+    | named record | reject: self-carrying struct, no encoding tuple crosses the codec call | reject: only a transparent alias keying an open table can consume a major |
+    | complete whole-table wrapper | reject: self-carrying wrapper, no encoding tuple crosses the codec call | reject: only a transparent alias keying an open table can consume a major |
+
+    The table owner’s `@custom_encodings` row is the inspection escape that prompted this phase:
+    acceptance at exit 0 is specifically a silent-directive failure, not a pass. Add equivalent
+    expected-outcome rows for the remaining accepted alias/field/table-position/open-row channels;
+    those that are honored must assert the actual emitted signature and storage change, not merely a
+    round trip.
 
 17. **The warm-up should REFRESH the dep-universe lock, not trust it: a fresh-resolving scratch
     crate outruns `tests/warmup/Cargo.lock` at every upstream release.** Proven 2026-08-06 (the
