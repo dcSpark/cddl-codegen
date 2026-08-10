@@ -25,8 +25,6 @@ use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use cbor_encodings::HolderEncoding;
 
-pub type ArrU64List = Vec<NonEmptyVec<u64>>;
-
 #[derive(Clone, Debug)]
 pub struct Holder {
     pub table: T,
@@ -41,5 +39,7 @@ impl Holder {
         }
     }
 }
+
+pub type NonEmptyU64ListList = Vec<NonEmptyVec<u64>>;
 
 pub type T = OrderedHashMap<NonEmptyVec<u64>, u64>;

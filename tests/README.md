@@ -4086,6 +4086,17 @@ colliding user name or a named+inline coexistence, so a bug in this class ships 
   `feature_corpus_compiles` shared-target pattern), with per-cell `present`/`absent` assertions
   pinning the dedup semantics (dedup target defined once, the deduped-away twin never emitted).
 
+The cheap cross-composition pins beside that sweep are
+`table_keys_list_syntheses_unify_only_exact_native_carriers` and
+`nested_collection_structural_names_retain_restricted_inner_carriers` (`robustness_tests.rs`). The
+first is the minimized pairwise closure for two full-tier `recombination_wasm_crates_check`
+failures: independent table rules reuse one `keys()` class exactly when their native key carriers
+match. The second recurses the same invariant through loose/non-empty/bounded lists, loose/bounded
+reject sets, default maps, preserve pair-maps, and deeper list/map nesting. Together they prevent a
+single structural class name from being re-used for incompatible `Vec`, `NonEmptyVec`,
+`BoundedVec`, ordered-set, map, or pair-map carriers without paying a generated-crate build per
+case; the full-tier wasm recombination leg remains the broad compile oracle.
+
 Expectations are seeded by the **probe-then-pin** rule: run the generator on the cell's CDDL, inspect
 the outcome, then pin the observed-AND-correct behavior. A cell that lands exit-0 + non-compiling is a
 NEW instance of the class — fix it if the fix is small and clearly correct, otherwise pin it in a

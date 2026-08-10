@@ -531,7 +531,10 @@ impl GenerationScope {
         // (no named owner) branch of `RustType::non_empty_wasm_wrapper_name`, which cannot be called
         // here because an owner-named wrapper must never look deferrable. If that helper's
         // synthesized spelling changes, change this format! too (and the map twin below).
-        let structural_name = format!("NonEmpty{}List", element_type.conceptual_type.for_variant());
+        let structural_name = format!(
+            "NonEmpty{}List",
+            element_type.wasm_structural_variant(types)
+        );
         let shape = format!("[+ {}]", render_wrapper_shape(&element_type));
         if self.try_defer_wrapper(
             types,
@@ -664,13 +667,11 @@ impl GenerationScope {
         } else {
             max.to_string()
         };
+        let variant = element_type.wasm_structural_variant(types);
         let structural_name = match (min, max == u64::MAX) {
-            (0, false) => format!("{}ListMax{max}", element_type.conceptual_type.for_variant()),
-            (_, true) => format!("{}ListMin{min}", element_type.conceptual_type.for_variant()),
-            _ => format!(
-                "{}ListMin{min}Max{max}",
-                element_type.conceptual_type.for_variant()
-            ),
+            (0, false) => format!("{variant}ListMax{max}"),
+            (_, true) => format!("{variant}ListMin{min}"),
+            _ => format!("{variant}ListMin{min}Max{max}"),
         };
         // The request/index shape must go through the one canonical renderer: in particular its
         // `[? T]` and `[*N T]` spellings are also what the strict sidecar parser reconstructs.
@@ -870,7 +871,7 @@ impl GenerationScope {
         // reject set, which cannot be called here because a rule-named wrapper must never look
         // deferrable. If that helper's synthesized spelling changes, change this format! too (and the
         // list/map twins above).
-        let variant = element_type.conceptual_type.for_variant();
+        let variant = element_type.wasm_structural_variant(types);
         let structural_name = if let Some((min, max)) = bounds {
             match (min, max == u64::MAX) {
                 (0, false) => format!("{variant}BoundedOrderedSetMax{max}"),
@@ -1095,15 +1096,15 @@ impl GenerationScope {
         let structural_name = match (min, max == u64::MAX) {
             (0, false) => format!(
                 "{}Max{max}",
-                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
+                RustType::name_for_wasm_map(types, &key_type, &value_type, preserve_pair_map)
             ),
             (_, true) => format!(
                 "{}Min{min}",
-                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
+                RustType::name_for_wasm_map(types, &key_type, &value_type, preserve_pair_map)
             ),
             _ => format!(
                 "{}Min{min}Max{max}",
-                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
+                RustType::name_for_wasm_map(types, &key_type, &value_type, preserve_pair_map)
             ),
         };
         let bounded: RustType =
@@ -1157,7 +1158,7 @@ impl GenerationScope {
         };
         let inner_type = format!("{core}<{kv}, {min}, {max_token}>");
         let loose_ident =
-            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map);
+            RustType::name_for_wasm_map(types, &key_type, &value_type, preserve_pair_map);
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
         wrapper.s.doc(format!(
             "`{shape}`: inclusive entry window enforced by core `{core}`; use `try_from` on the loose `{loose_ident}` builder. `insert` returns an error before an entry could exceed the maximum."
@@ -1243,7 +1244,7 @@ impl GenerationScope {
         // synthesized spelling changes, change this format! too (and the list twin above).
         let structural_name = format!(
             "NonEmpty{}",
-            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
+            RustType::name_for_wasm_map(types, &key_type, &value_type, preserve_pair_map)
         );
         // preserve marker: same shape-column contract as the loose twin in `codegen_table_type`
         let shape = format!(
@@ -1307,12 +1308,12 @@ impl GenerationScope {
         // incrementally (`new(first_key, first_value)` + `insert`).
         // the loose source is the SAME-flavored builder (`PairMapKToV` for preserve, `MapKToV` else)
         let loose_ident =
-            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map);
+            RustType::name_for_wasm_map(types, &key_type, &value_type, preserve_pair_map);
         let self_named = loose_ident.to_string() == wrapper_ident.to_string();
 
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
         let map_wasm =
-            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map);
+            RustType::name_for_wasm_map(types, &key_type, &value_type, preserve_pair_map);
         let entry_doc = if self_named {
             "The rule name coincides with the loose builder name, so no `try_from` source class \
              exists — build incrementally from the first entry (`new(first_key, first_value)` + \
@@ -1818,9 +1819,15 @@ pub(super) fn push_table_accessors(
     }
     // keys
     let keys_type = ConceptualRustType::Array(Box::new(key_type.clone()));
+    let keys_exposable = keys_type.directly_wasm_exposable_ct(types);
+    let keys_wrapper = key_type.name_as_wasm_array(types);
     let mut keys = codegen::Function::new("keys");
     keys.arg_ref_self()
-        .ret(keys_type.for_wasm_return_ct(types))
+        .ret(if keys_exposable {
+            keys_type.for_wasm_return_ct(types)
+        } else {
+            keys_wrapper.clone()
+        })
         .vis("pub");
     let key_clone = if key_type.is_copy(types) {
         ".keys().copied()"
@@ -1831,17 +1838,17 @@ pub(super) fn push_table_accessors(
     // (`generate_array_type`) may run AFTER this map class, so consulting `deferred_wrappers` alone
     // would miss it. `try_defer_wrapper` is idempotent, so this both records the decision (the later
     // emitter re-runs it, suppresses, and the import is routed) and drives the `.into()` here.
-    let keys_deferred = !keys_type.directly_wasm_exposable_ct(types)
+    let keys_deferred = !keys_exposable
         && gen_scope.try_defer_wrapper(
             types,
-            &RustIdent::new(CDDLIdent::new(key_type.name_as_wasm_array(types))),
-            &key_type.name_as_wasm_array(types),
+            &RustIdent::new(CDDLIdent::new(keys_wrapper.clone())),
+            &keys_wrapper,
             &[&key_type.conceptual_type],
             &format!("[* {}]", render_wrapper_shape(key_type)),
             false,
             cli,
         );
-    if keys_type.directly_wasm_exposable_ct(types) {
+    if keys_exposable {
         keys.line(format!("{receiver}{key_clone}.collect::<Vec<_>>()"));
     } else if keys_deferred {
         // R3d: the keys-list wrapper is deferred to a dependency (`--extern-wrapper-index`); its tuple
@@ -1851,7 +1858,7 @@ pub(super) fn push_table_accessors(
     } else {
         keys.line(format!(
             "{}({receiver}{key_clone}.collect::<Vec<_>>())",
-            keys_type.for_wasm_return_ct(types)
+            keys_wrapper
         ));
     }
     wrapper.s_impl.push_fn(keys);
@@ -2013,7 +2020,7 @@ pub(super) fn mint_wasm_wrapper_for_visited_type(
             }
         }
         ConceptualRustType::Map(k, v) => {
-            let map_ident = ConceptualRustType::name_for_wasm_map(k, v, preserve_pair_map);
+            let map_ident = RustType::name_for_wasm_map(types, k, v, preserve_pair_map);
             match table_shape_sole_owner.get(&map_ident.to_string()) {
                 // A single named rule owns this shape: this embedded/resolved use
                 // shares that rule-named class (JS-visible under the CDDL
@@ -2170,8 +2177,7 @@ pub(super) fn codegen_table_type(
         && gen_scope.try_defer_wrapper(
             types,
             name,
-            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
-                .as_ref(),
+            RustType::name_for_wasm_map(types, &key_type, &value_type, preserve_pair_map).as_ref(),
             &[&key_type.conceptual_type, &value_type.conceptual_type],
             &shape,
             // Only the anonymous STRUCTURAL map wrapper reaches here (`!exists_in_rust`); a

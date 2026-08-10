@@ -948,7 +948,8 @@ impl GenerationScope {
                             // mints below are `exists_in_rust` paths), so the one thing the defer
                             // seam would have said about a dep-indexed name has to be said here.
                             self.warn_rule_declared_table_shadows_index(rust_ident);
-                            let map_ident = ConceptualRustType::name_for_wasm_map(
+                            let map_ident = RustType::name_for_wasm_map(
+                                types,
                                 domain,
                                 range,
                                 rust_struct.config().duplicates
