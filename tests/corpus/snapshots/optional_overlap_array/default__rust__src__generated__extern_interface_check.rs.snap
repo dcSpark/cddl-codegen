@@ -20,9 +20,6 @@ expression: content
 #[allow(dead_code)]
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
-fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
-#[allow(dead_code)]
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::OptionalOverlapArray>();
-    _assert_deserialize::<crate::generated::OptionalOverlapArray>();
 }

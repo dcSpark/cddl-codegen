@@ -223,6 +223,12 @@ pub(super) struct ArrayStructDeserializeCode {
 /// Callers: the record's own struct, and an INLINED group-choice arm record (whose refusals are
 /// attributed to the enum that inlines it, since that is the type whose deserialize would break).
 ///
+/// We can support optional fields, but only when they're immediately non-ambiguous, i.e. when the
+/// next type (possibly skipping subsequent optional fields) is different from the current type.
+/// Supporting the general case 100% is extremely complicated without a combinatorial backtrack but
+/// for most sane real-world cases this wouldn't be necessary. Think purposefully written
+/// edge-cases with multiple optional fields, possibly nested in other structs, and with many of
+/// the same types, e.g. `[ ? uint, uint, ? (uint, text), ? text]`.
 pub(super) fn array_record_deser_refusals(
     types: &IntermediateTypes,
     record: &RustRecord,
@@ -240,6 +246,17 @@ pub(super) fn array_record_deser_refusals(
         // from "the first tail element", so the same refusal fires.
         let mut reaches_tail = true;
         for i in (field_index + 1)..record.fields.len() {
+            if record.fields[i]
+                .rust_type
+                .cbor_types(types)
+                .iter()
+                .any(|ct| field_cbor_types.contains(ct))
+            {
+                reasons.push(format!(
+                    "Array struct with potentially-ambiguous optional field {}: {:?}",
+                    field.name, field.rust_type,
+                ));
+            }
             if !record.fields[i].optional {
                 reaches_tail = false;
                 break;
@@ -378,7 +395,7 @@ pub(super) fn generate_array_struct_deserialization(
             }
             // we also need to be careful if we're possibly the last field in the CBOR
             // buffer to avoid raw.cbor_type()? throwing an error for CBOR(NotEnough(0, 0))
-            let type_check_predicate = if field_cbor_types.len() == 1 {
+            let type_check_cond = if field_cbor_types.len() == 1 {
                 let type_str = cbor_type_code_str(field_cbor_types[0]);
                 if possibly_last_field {
                     // We also need to be careful if the last one is a non-Break special
@@ -386,12 +403,12 @@ pub(super) fn generate_array_struct_deserialization(
                     // There's no nice way to access this as Deserializer::special_break() consumes
                     // the byte so we'll just inline this ugly code instead
                     if field_cbor_types.contains(&cbor_event::Type::Special) {
-                        "raw.as_slice().first().map(|byte: &u8| cbor_event::Type::from(*byte) == cbor_event::Type::Special && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)".to_owned()
+                        "if raw.as_slice().first().map(|byte: &u8| cbor_event::Type::from(*byte) == cbor_event::Type::Special && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)".to_owned()
                     } else {
-                        format!("raw.cbor_type().map(|ty| ty == {type_str}).unwrap_or(false)")
+                        format!("if raw.cbor_type().map(|ty| ty == {type_str}).unwrap_or(false)")
                     }
                 } else {
-                    format!("raw.cbor_type()? == {type_str}")
+                    format!("if raw.cbor_type()? == {type_str}")
                 }
             } else {
                 let types_str = field_cbor_types
@@ -406,26 +423,16 @@ pub(super) fn generate_array_struct_deserialization(
                     // the byte so we'll just inline this ugly code instead
                     if field_cbor_types.contains(&cbor_event::Type::Special) {
                         format!(
-                            "raw.as_slice().first().map(|byte: &u8| vec![{types_str}].contains(&cbor_event::Type::from(*byte)) && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)",
+                            "if raw.as_slice().first().map(|byte: &u8| vec![{types_str}].contains(&cbor_event::Type::from(*byte)) && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)",
                         )
                     } else {
                         format!(
-                            "raw.cbor_type().map(|ty| vec![{types_str}].contains(&ty)).unwrap_or(false)"
+                            "if raw.cbor_type().map(|ty| vec![{types_str}].contains(&ty)).unwrap_or(false)"
                         )
                     }
                 } else {
-                    format!("vec![{types_str}].contains(&raw.cbor_type()?)")
+                    format!("if vec![{types_str}].contains(&raw.cbor_type()?)")
                 }
-            };
-            let type_check_cond = if record.optional_overlaps_later_mandatory(types, field_index) {
-                let mut indefinite_rejection = Block::new("if read_len.is_indefinite()");
-                indefinite_rejection.line(
-                    "return Err(DeserializeFailure::IndefiniteLengthAmbiguousOptionalField.into());",
-                );
-                deser_code.content.push_block(indefinite_rejection);
-                format!("if read_len.remaining() != Some(0) && ({type_check_predicate})")
-            } else {
-                format!("if {type_check_predicate}")
             };
             if field.rust_type.is_fixed_value() {
                 // === OPTIONAL FIXED value (any kind, including float) -> `bool` presence field ===

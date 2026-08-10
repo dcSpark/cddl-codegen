@@ -50,8 +50,8 @@
 
 use crate::cli::Cli;
 use crate::intermediate::{
-    ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, Primitive, Representation,
-    RestKind, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
+    ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, Primitive, RustField,
+    RustIdent, RustRecord, RustStruct, RustStructType, RustType,
 };
 use crate::utils::convert_to_snake_case;
 
@@ -415,10 +415,6 @@ pub fn emit_generated_tests(
             value_eq: !cli.preserve_encodings,
             preserve: cli.preserve_encodings && !uses_custom,
             canonical: cli.canonical_form && !uses_custom,
-            indefinite_optional_policy: struct_rejects_indefinite_ambiguous_optional(
-                types,
-                rust_struct,
-            ),
         };
         let roundtrip = match rust_struct.variant() {
             RustStructType::Record(record) => {
@@ -716,113 +712,6 @@ fn type_uses_custom_ser(
     walk(types, &ty.conceptual_type, visited)
 }
 
-/// Whether this type's generated decoder can reach the deliberate refusal for an indefinite ARRAY
-/// carrying a non-final optional member whose CBOR major overlaps a later mandatory member.
-///
-/// The encoding-fidelity mutator turns every definite container in the minted baseline indefinite
-/// for `indef_containers` and `everything`. That is normally a valid irregular encoding which the
-/// preserve oracle must round-trip, but this one shape has a documented encoding policy: only a
-/// definite count can reserve the mandatory suffix and disambiguate presence. The emitted test
-/// therefore needs a per-root reachability fact so it can accept exactly that policy error for
-/// exactly those two transforms, without weakening any other mutator/type/error combination.
-fn struct_rejects_indefinite_ambiguous_optional(
-    types: &IntermediateTypes,
-    rust_struct: &RustStruct,
-) -> bool {
-    fn record_has_direct_policy(types: &IntermediateTypes, record: &RustRecord) -> bool {
-        record.rep == Representation::Array
-            && record.fields.iter().enumerate().any(|(field_index, _)| {
-                record.optional_overlaps_later_mandatory(types, field_index)
-            })
-    }
-
-    fn record_reaches_policy(
-        types: &IntermediateTypes,
-        record: &RustRecord,
-        visited: &mut std::collections::BTreeSet<RustIdent>,
-    ) -> bool {
-        record_has_direct_policy(types, record)
-            || record
-                .fields
-                .iter()
-                .any(|field| type_reaches_policy(types, &field.rust_type, visited))
-            || record.dynamic_rows().any(|row| match &row.kind {
-                RestKind::MapEntries { domain, range, .. } => {
-                    type_reaches_policy(types, domain, visited)
-                        || type_reaches_policy(types, range, visited)
-                }
-                RestKind::ArrayTail { element } => type_reaches_policy(types, element, visited),
-            })
-    }
-
-    fn type_reaches_policy(
-        types: &IntermediateTypes,
-        ty: &RustType,
-        visited: &mut std::collections::BTreeSet<RustIdent>,
-    ) -> bool {
-        fn walk(
-            types: &IntermediateTypes,
-            conceptual: &ConceptualRustType,
-            visited: &mut std::collections::BTreeSet<RustIdent>,
-        ) -> bool {
-            match conceptual {
-                ConceptualRustType::Alias(_, inner) => walk(types, inner, visited),
-                ConceptualRustType::Optional(inner) | ConceptualRustType::Array(inner) => {
-                    walk(types, &inner.conceptual_type, visited)
-                }
-                ConceptualRustType::Map(key, value) => {
-                    walk(types, &key.conceptual_type, visited)
-                        || walk(types, &value.conceptual_type, visited)
-                }
-                ConceptualRustType::Rust(ident) => {
-                    if !visited.insert(ident.clone()) {
-                        return false;
-                    }
-                    types.rust_struct(ident).is_some_and(|rust_struct| {
-                        struct_reaches_policy(types, rust_struct, visited)
-                    })
-                }
-                ConceptualRustType::Fixed(_)
-                | ConceptualRustType::Primitive(_)
-                | ConceptualRustType::Any => false,
-            }
-        }
-        walk(types, &ty.conceptual_type, visited)
-    }
-
-    fn struct_reaches_policy(
-        types: &IntermediateTypes,
-        rust_struct: &RustStruct,
-        visited: &mut std::collections::BTreeSet<RustIdent>,
-    ) -> bool {
-        match rust_struct.variant() {
-            RustStructType::Record(record) => record_reaches_policy(types, record, visited),
-            RustStructType::Wrapper { wrapped, .. } => type_reaches_policy(types, wrapped, visited),
-            RustStructType::Table { domain, range, .. } => {
-                type_reaches_policy(types, domain, visited)
-                    || type_reaches_policy(types, range, visited)
-            }
-            RustStructType::Array { element_type, .. } => {
-                type_reaches_policy(types, element_type, visited)
-            }
-            RustStructType::TypeChoice { variants }
-            | RustStructType::GroupChoice { variants, .. } => {
-                variants.iter().any(|variant| match &variant.data {
-                    EnumVariantData::RustType(ty) => type_reaches_policy(types, ty, visited),
-                    EnumVariantData::Inlined(record) => {
-                        record_reaches_policy(types, record, visited)
-                    }
-                })
-            }
-            RustStructType::CStyleEnum { .. }
-            | RustStructType::Extern
-            | RustStructType::RawBytesType => false,
-        }
-    }
-
-    struct_reaches_policy(types, rust_struct, &mut std::collections::BTreeSet::new())
-}
-
 // ============================================================================================
 // ROUND-TRIP half. Each fn returns the body of one `roundtrip_<type>` test: a set of IR-derived
 // value cases, each pushed through the full wire cycle and asserted byte-identical.
@@ -834,7 +723,6 @@ struct RtEmit {
     value_eq: bool,
     preserve: bool,
     canonical: bool,
-    indefinite_optional_policy: bool,
 }
 
 /// What an enum's round-trip needs to assert the property the WIRE has, rather than the one the
@@ -893,7 +781,6 @@ fn roundtrip_body(
         value_eq,
         preserve,
         canonical,
-        indefinite_optional_policy,
     } = rt;
     let conf_line = conf
         .map(|rule| format!("        cddl_conformance::validate(&bytes, \"{rule}\");\n"))
@@ -971,23 +858,10 @@ fn roundtrip_body(
                 } else {
                     (String::new(), String::new())
                 };
-                let decode_line = if indefinite_optional_policy {
-                    format!(
-                        "let back = match {name}::from_cbor_bytes(&mutated) {{
-                Ok(back) => back,
-                Err(e) if matches!(mut_label, \"indef_containers\" | \"everything\") && matches!(e.failure(), DeserializeFailure::IndefiniteLengthAmbiguousOptionalField) => continue,
-                Err(e) => panic!(\"{name} ({label})/{{mut_label}}: irregular encoding must deserialize: {{e:?}}\"),
-            }};"
-                    )
-                } else {
-                    format!(
-                        "let back = {name}::from_cbor_bytes(&mutated).unwrap_or_else(|e| panic!(\"{name} ({label})/{{mut_label}}: irregular encoding must deserialize: {{e:?}}\"));"
-                    )
-                };
                 format!(
                     "{canon_hoist}
         for (mut_label, mutated) in cddl_encoding_fidelity::variants(&bytes) {{
-            {decode_line}
+            let back = {name}::from_cbor_bytes(&mutated).unwrap_or_else(|e| panic!(\"{name} ({label})/{{mut_label}}: irregular encoding must deserialize: {{e:?}}\"));
             assert_eq!(back.to_cbor_bytes(), mutated, \"{name} ({label})/{{mut_label}}: preserve-encodings must re-encode irregular input byte-identically\");{canon_assert}
         }}"
                 )

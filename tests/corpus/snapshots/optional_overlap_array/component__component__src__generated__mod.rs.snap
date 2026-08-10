@@ -55,12 +55,4 @@ impl wit_types::GuestOptionalOverlapArray for WitOptionalOverlapArray {
             &self.0.borrow(),
         )
     }
-
-    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OptionalOverlapArray, String> {
-        <cddl_lib::OptionalOverlapArray as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
-            &bytes,
-        )
-        .map(|v| wit_types::OptionalOverlapArray::new(WitOptionalOverlapArray(RefCell::new(v))))
-        .map_err(err)
-    }
 }

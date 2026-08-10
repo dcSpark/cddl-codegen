@@ -4511,7 +4511,7 @@
       "example": "a = [x: uint, ? v: 5, label: tstr]",
       "feature": "type2.value",
       "id": "contain.occurrence-target.type2.value.optional_keyed_array",
-      "note": "The KEYED side of the fixed-value cardinality boundary in array representation: an optional occurrence on a LABELLED array member whose type is a literal (`[x: uint, ? v: 5, label: tstr]`). Its bare counterpart is `contain.occurrence-target.type2.value.optional_array` (`[? 5]`) and its map twin is `.optional_keyed_map`. The trailing `label: tstr` is deliberate: its Text-classed successor keeps this cell on the fixed-value-under-occurrence axis rather than exercising the count-disambiguation policy for an overlapping mandatory suffix. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] memberkey S type.",
+      "note": "The KEYED side of the fixed-value cardinality boundary in array representation: an optional occurrence on a LABELLED array member whose type is a literal (`[x: uint, ? v: 5, label: tstr]`). Its bare counterpart is `contain.occurrence-target.type2.value.optional_array` (`[? 5]`) and its map twin is `.optional_keyed_map`. The trailing `label: tstr` is deliberate: an array optional whose CBOR major type overlaps the FOLLOWING field trips the ambiguity guard documented in `tests/corpus/optional_fixed_member.cddl`, so a Text-classed successor to the Uint-classed optional keeps this cell on the fixed-value-under-occurrence axis rather than on the guard. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] memberkey S type.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },

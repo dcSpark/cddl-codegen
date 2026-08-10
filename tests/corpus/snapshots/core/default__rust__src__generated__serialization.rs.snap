@@ -149,12 +149,7 @@ impl Deserialize for ArrayOptFields {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(2)?;
-            if read_len.is_indefinite() {
-                return Err(DeserializeFailure::IndefiniteLengthAmbiguousOptionalField.into());
-            }
-            let x = if read_len.remaining() != Some(0)
-                && (raw.cbor_type()? == cbor_event::Type::Special)
-            {
+            let x = if raw.cbor_type()? == cbor_event::Type::Special {
                 (|| -> Result<_, DeserializeError> {
                     read_len.read_elems(1)?;
                     let x_value = raw.float()?;

@@ -14,7 +14,6 @@ interface types {
     set-a: func(a: u64);
     b: func() -> u64;
     to-cbor-bytes: func() -> list<u8>;
-    from-cbor-bytes: static func(bytes: list<u8>) -> result<optional-overlap-array, string>;
   }
 }
 

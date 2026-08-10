@@ -35,9 +35,6 @@ pub enum DeserializeFailure {
     DefiniteLenMismatch(u64, Option<u64>),
     DuplicateKey(Key),
     EndingBreakMissing,
-    /// A non-final optional array member overlaps a later mandatory member. Definite arrays use
-    /// their element count to reserve that suffix; an indefinite array has no equivalent signal.
-    IndefiniteLengthAmbiguousOptionalField,
     ExpectedNull,
     ExpectedUndefined,
     FixedValueMismatch{
@@ -138,7 +135,6 @@ impl DeserializeError {
             },
             DeserializeFailure::DuplicateKey(key) => write!(f, "Duplicate key: {}", key),
             DeserializeFailure::EndingBreakMissing => write!(f, "Missing ending CBOR Break"),
-            DeserializeFailure::IndefiniteLengthAmbiguousOptionalField => write!(f, "Cannot decode an indefinite-length array with an optional field overlapping a later mandatory field"),
             DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
             DeserializeFailure::ExpectedUndefined => write!(f, "Expected undefined, found other special value"),
             DeserializeFailure::FixedValueMismatch{ found, expected } => write!(f, "Expected fixed value {} found {}", expected, found),

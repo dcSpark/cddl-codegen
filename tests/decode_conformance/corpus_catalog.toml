@@ -8480,42 +8480,7 @@ axis = "corpus"
 example = "optional_overlap_array = [? a: uint, b: uint]"
 fixture = "optional_overlap_array"
 rule = "optional_overlap_array"
-spec = "__probe_holder = [0, optional_overlap_array]\noptional_overlap_array = [? a: uint, b: uint]"
-mode = "holder"
-type_name = "ProbeHolder"
-
-[[row.vector]]
-hex = "82008219053f190a95"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200821909b519063c"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "820082190a8c191008"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "820082190c7e190db9"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "820082190ea319108a"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "82009f0607ff"
-source = "hand"
-expect = "reject"
-class = "policy-rejected"
-reason = "non-final optional array fields overlapping a mandatory suffix require a definite array length"
-expect_err = "indefinite-length array with an optional field overlapping a later mandatory field"
+pinned_reason = "synthetic holder minted no standalone decode surface"
 
 [[row]]
 id = "parenthesized.basic"
