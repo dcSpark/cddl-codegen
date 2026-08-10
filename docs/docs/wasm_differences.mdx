@@ -185,7 +185,10 @@ A unique-key bounded table (`{ ? K => V }`, `{ N*M K => V }`, `{ N* K => V }`, o
 exact-once occurrence) owns a restricted `MapKToVMaxN`, `MapKToVMinN`, or `MapKToVMinNMaxM` class
 (an authored same-shape rule owns the inline surface). It wraps `BoundedMap`; `try_from(looseMap)`
 and checked `insert` re-enter the core range-check door, and only a zero-minimum class has `new()`.
-`*` and `+` retain the loose and NonEmptyMap APIs. A bounded `@duplicates preserve` table is refused.
+`*` and `+` retain their loose and non-empty APIs. A bounded `@duplicates preserve` table instead
+uses the identically-windowed `PairMapKToVMaxN` / `…MinN` / `…MinNMaxM` class over
+`BoundedPairMap`; its loose `PairMapKToV` source is borrowed by `try_from`, and its checked `insert`
+appends duplicate entries without mutation on range failure.
 
 ## Reject-duplicates containers
 

@@ -999,12 +999,16 @@ impl RustType {
             && self.config.bounds == Some((Some(1), None))
     }
 
-    /// A finite, optional, exact-once, or lower-bounded unique-key table represented by BoundedMap.
-    /// `+` retains the compatibility NonEmptyMap representation; pair maps stay distinct.
+    /// A finite, optional, exact-once, or lower-bounded table represented by a type-enforced bounded
+    /// carrier. `@duplicates preserve` selects `BoundedPairMap`; unique-key tables select
+    /// `BoundedMap`. `+` retains the compatibility NonEmpty* representations.
     pub fn is_bounded_map(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
-            && !self.is_preserve_pair_map()
             && matches!(self.config.bounds, Some(bounds) if bounds != (None, None) && bounds != (Some(1), None))
+    }
+
+    pub fn is_bounded_pair_map(&self) -> bool {
+        self.is_bounded_map() && self.is_preserve_pair_map()
     }
 
     pub fn bounded_map_u64_bounds(&self) -> Option<(u64, u64)> {
@@ -1026,9 +1030,6 @@ impl RustType {
             ConceptualRustType::Map(_, _)
         )
         .then_some(())?;
-        if self.is_preserve_pair_map() {
-            return None;
-        }
         let (min, max) = self.config.bounds?;
         if (min, max) == (None, None) || (min, max) == (Some(1), None) {
             return None;
@@ -1117,9 +1118,9 @@ impl RustType {
         }
     }
 
-    /// Whether any nested position needs the BoundedMap runtime module.
+    /// Whether any nested position needs the unique-key BoundedMap runtime module.
     pub fn contains_bounded_map(&self) -> bool {
-        if self.is_bounded_map() {
+        if self.is_bounded_map() && !self.is_bounded_pair_map() {
             return true;
         }
         match &self.conceptual_type {
@@ -1127,6 +1128,22 @@ impl RustType {
                 inner.contains_bounded_map()
             }
             ConceptualRustType::Map(k, v) => k.contains_bounded_map() || v.contains_bounded_map(),
+            _ => false,
+        }
+    }
+
+    /// Whether any nested position needs the bounded duplicate-preserving pair-map carrier.
+    pub fn contains_bounded_pair_map(&self) -> bool {
+        if self.is_bounded_pair_map() {
+            return true;
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                inner.contains_bounded_pair_map()
+            }
+            ConceptualRustType::Map(k, v) => {
+                k.contains_bounded_pair_map() || v.contains_bounded_pair_map()
+            }
             _ => false,
         }
     }
@@ -1278,14 +1295,16 @@ impl RustType {
         }
     }
 
-    /// Mechanical wasm name for a finite/exact unique-key table. The bounds are part of the
-    /// structural identity, so a loose `MapKToV` source can never be mistaken for this wrapper.
+    /// Mechanical wasm name for a finite/exact table. Both bounds and duplicate policy are part of
+    /// the structural identity, so a loose source can never be mistaken for this wrapper.
     pub fn bounded_wasm_map_structural_name(&self) -> String {
         let (min, max) = self
             .bounded_map_u64_bounds()
             .expect("bounded map wasm wrapper has representable bounds");
         let base = match &self.conceptual_type {
-            ConceptualRustType::Map(k, v) => ConceptualRustType::name_for_wasm_map(k, v, false),
+            ConceptualRustType::Map(k, v) => {
+                ConceptualRustType::name_for_wasm_map(k, v, self.is_preserve_pair_map())
+            }
             _ => unreachable!("bounded_wasm_map_wrapper_name on a non-map"),
         };
         match (min, max == u64::MAX) {
@@ -1306,7 +1325,7 @@ impl RustType {
             .bounds
             .expect("bounded map has occurrence bounds");
         types
-            .bounded_map_named_owner(key, value, bounds)
+            .bounded_map_named_owner(key, value, bounds, self.is_preserve_pair_map())
             .map(ToString::to_string)
             .unwrap_or_else(|| self.bounded_wasm_map_structural_name())
     }
@@ -1380,8 +1399,13 @@ impl RustType {
                     } else {
                         max.to_string()
                     };
+                    let carrier = if self.is_bounded_pair_map() {
+                        "BoundedPairMap"
+                    } else {
+                        "BoundedMap"
+                    };
                     return format!(
-                        "BoundedMap<{}, {}, {min}, {max}>",
+                        "{carrier}<{}, {}, {min}, {max}>",
                         k.for_rust_member(types, from_wasm, cli),
                         v.for_rust_member(types, from_wasm, cli)
                     );

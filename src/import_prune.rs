@@ -157,7 +157,7 @@ use syn::{Item, ItemUse, UseTree};
 /// The built-in concrete-type import names this pass may remove by name-scan, always available (the
 /// per-run [`PruneConfig::extra_candidates`] add to these). These are exactly the blindly-pushed
 /// types the emission sites in `generation/` add unconditionally (or gated only on spec-global
-/// facts): the six collection helpers plus the three `--preserve-encodings` encoding enums. Every
+/// facts): the collection helpers plus the three `--preserve-encodings` encoding enums. Every
 /// entry must be a concrete type (never a trait/macro/glob), or the "ident absent from the module
 /// family ⇒ unused" implication that makes name-scanning sound breaks — the three encoding enums are
 /// concrete enums (`static/serialization_preserve.rs`) only ever consumed by being named.
@@ -172,6 +172,7 @@ pub(crate) const ALLOWLIST: &[&str] = &[
     "BoundedOrderedSet",
     "PairMap",
     "NonEmptyPairMap",
+    "BoundedPairMap",
     "LenEncoding",
     "StringEncoding",
     "TagPresenceEncoding",
@@ -1517,6 +1518,25 @@ mod tests {
         assert!(
             !out.contains("NonEmptyOrderedSet"),
             "unused NonEmptyOrderedSet sibling dropped: {out}"
+        );
+    }
+
+    /// The bounded pair-map core is pushed together with the loose/non-empty request-host imports.
+    /// A host that requests only the established loose twins must not retain the unused bounded
+    /// sibling merely because another request shape can use it.
+    #[test]
+    fn prunes_unused_bounded_pair_map_sibling() {
+        let src = "use crate::generated::pair_map::{BoundedPairMap, NonEmptyPairMap, PairMap};\n\
+                   pub type Loose = PairMap<u8, u8>;\n\
+                   pub type NonEmpty = NonEmptyPairMap<u8, u8>;\n";
+        let out = prune(src);
+        assert!(
+            out.contains("PairMap<u8, u8>"),
+            "used loose twins kept: {out}"
+        );
+        assert!(
+            !out.contains("BoundedPairMap"),
+            "unused bounded pair-map sibling removed: {out}"
         );
     }
 

@@ -189,9 +189,9 @@ plain comment of yours whose anchor falls inside a span some replace block delet
 move it into the block.
 
 **Imports and your block's code.** The generated struct modules import the collection helper types
-(`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `BoundedVec`, `NonEmptyMap`, `OrderedSet`,
-`NonEmptyOrderedSet`, `BoundedOrderedSet`) only when the file — or one of its
-descendant modules — references them (see [Output format](./output_format)). The relationship to
+(`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `BoundedVec`, `NonEmptyMap`, `BoundedMap`, `OrderedSet`,
+`NonEmptyOrderedSet`, `BoundedOrderedSet`, `PairMap`, `NonEmptyPairMap`, `BoundedPairMap`) only when
+the file — or one of its descendant modules — references them (see [Output format](./output_format)). The relationship to
 your block's code is asymmetric. Your block cannot make an import *appear*: the initial import
 derivation runs over the pristine generated content, before your edits are applied, so a file whose
 generated code never justified `BTreeMap` won't gain the `use` just because your block names it —

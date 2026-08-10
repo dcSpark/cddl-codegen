@@ -499,6 +499,7 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       leaving a permanent carve-out.
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
     "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint",
+    "dsl.duplicates.preserve",
     "contain.array-element.prelude.false", "contain.array-element.prelude.null",
     "contain.array-element.prelude.true", "contain.array-element.prelude.undefined", "contain.array-element.type2.value",
     "contain.array-element.type2.tag.fixed_bool", "contain.array-element.type2.tag.fixed_null",
@@ -562,8 +563,9 @@ function vacuityProblems(rs: Directional[]): string[] {
   //   - `+` / `1*` is now HONORED — the entry decodes as a `NonEmptyMap` whose single TryFrom door
   //     rejects the empty map, so `plus_table`'s empty-map vector was promoted to class="constraint"
   //     and its row id moved to EXPECTED_ENFORCE_YES above (the decoder-fix branch);
-  //   - `?` / `n*m` / `*n` / `0*n` and omitted exact-once arrows are now BoundedMap windows; their
-  //     hand below/above-window vectors are class="constraint" and project enforce=yes.
+  //   - `?` / `n*m` / `*n` / `0*n` and omitted exact-once arrows are now BoundedMap windows, while
+  //     the preserve flavor enters the same inclusive window through BoundedPairMap; their hand
+  //     below/above-window vectors are class="constraint" and project enforce=yes.
   // The machinery stays armed: a NEW certified over-acceptance lands as a class="over-acceptance"
   // vector and its row id here; a decoder FIX flips the replay pin loudly, promotes the vector to
   // class="constraint", and moves the row id to EXPECTED_ENFORCE_YES.

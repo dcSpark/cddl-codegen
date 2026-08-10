@@ -2819,7 +2819,7 @@ impl AsRef<BTreeMap<u64, u64>> for MapU64ToU64 {
     }
 }
 
-/// `{*3 uint => uint}`: inclusive entry window enforced by core `BoundedMap`; use `try_from` on the loose `MapU64ToU64` builder. `insert` returns an error before a new key could exceed the maximum, while replacement remains legal.
+/// `{*3 uint => uint}`: inclusive entry window enforced by core `BoundedMap`; use `try_from` on the loose `MapU64ToU64` builder. `insert` returns an error before an entry could exceed the maximum.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct MapU64ToU64Max3(pub(crate) BoundedMap<u64, u64, 0, 3>);

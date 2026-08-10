@@ -477,6 +477,11 @@ const COMPONENT_PROBE_ROWS: string[] = [
   // collides with what `wit_bindgen::generate!` binds in the emitted glue's scope, so those crates
   // do not compile at all (see this cycle's report; renaming the rule compiles clean).
   "dsl.duplicates.reject",
+  // VALIDATES/BOUNDARY — a bounded preserve table despecializes to the same `list<tuple<u64,
+  // string>>` as a loose table, but ONLY the guest glue can re-enter BoundedPairMap's checked door.
+  // The duplicate-bearing accept plus below/above-minimum rejects therefore prove both the WIT
+  // projection's faithful pair ordering and the otherwise invisible cardinality boundary.
+  "dsl.duplicates.preserve",
   // BOUNDARY — a cut-marked map member (`{ "a" ^ => int }`): the cut is a decode-time rejection
   // rule with no representation on the boundary at all. Its reject vector is the wrong-typed value.
   "memberkey.cut",

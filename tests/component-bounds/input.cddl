@@ -23,6 +23,13 @@ unique = [* uint] ; @duplicates reject
 ; compound carrier rather than selecting BoundedVec for cardinality or OrderedSet for uniqueness.
 bounded_unique = [2*3 uint] ; @duplicates reject
 
+; Bounded preserve tables cross WIT as list<tuple<u64, string>> and must re-enter the pair-map
+; checked door. The alias/nested use deliberately repeats the same loose builder: wasm must mint it
+; once even when both the rule visitor and the nested boundary request it.
+bounded_pairs = { 2*3 uint => tstr } ; @duplicates preserve
+bounded_pairs_alias = bounded_pairs
+nested_bounded_pairs = [bounded_pairs_alias]
+
 bounded = {
   ; mandatory and bounded: the rust `new` takes an already-checked BoundedVec and is infallible, so
   ; the guest re-enters `TryFrom` before calling it. A second inline check would duplicate the door.
@@ -50,6 +57,8 @@ bounded = {
   ? ids: non_empty,
   ? tags: unique,
   ? bounded_unique: bounded_unique,
+  ? pairs: bounded_pairs,
+  ? nested_pairs: nested_bounded_pairs,
 }
 
 ; A direct table's WIT spelling is `list<tuple<K, V>>`; its bounded VALUE must still re-enter

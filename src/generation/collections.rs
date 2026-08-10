@@ -1089,29 +1089,34 @@ impl GenerationScope {
         wrapper_ident: &RustIdent,
         (min, max): (u64, u64),
         rule_declared: bool,
+        preserve_pair_map: bool,
         cli: &Cli,
     ) {
         let structural_name = match (min, max == u64::MAX) {
             (0, false) => format!(
                 "{}Max{max}",
-                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, false)
+                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
             ),
             (_, true) => format!(
                 "{}Min{min}",
-                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, false)
+                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
             ),
             _ => format!(
                 "{}Min{min}Max{max}",
-                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, false)
+                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map)
             ),
         };
         let bounded: RustType =
             ConceptualRustType::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))
                 .into();
-        let bounded = bounded.with_bounds((
-            (min != 0).then_some(i128::from(min)),
-            (max != u64::MAX).then_some(i128::from(max)),
-        ));
+        let bounded = bounded
+            .with_bounds((
+                (min != 0).then_some(i128::from(min)),
+                (max != u64::MAX).then_some(i128::from(max)),
+            ))
+            .with_duplicates_policy(
+                preserve_pair_map.then_some(crate::comment_ast::DuplicatesPolicy::Preserve),
+            );
         let shape = render_wrapper_shape(&bounded);
         if self.try_defer_wrapper(
             types,
@@ -1134,17 +1139,28 @@ impl GenerationScope {
             ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
         let open = map_inner.find('<').expect("map type has generics");
         let close = map_inner.rfind('>').expect("map type has generics");
-        let kv = &map_inner[open + 1..close];
+        let kv = map_inner[open + 1..close].to_owned();
         let max_token = if max == u64::MAX {
             "{ u64::MAX }".to_owned()
         } else {
             max.to_string()
         };
-        let inner_type = format!("BoundedMap<{kv}, {min}, {max_token}>");
-        let loose_ident = ConceptualRustType::name_for_wasm_map(&key_type, &value_type, false);
+        let map_inner = if preserve_pair_map {
+            format!("PairMap<{kv}>")
+        } else {
+            map_inner
+        };
+        let core = if preserve_pair_map {
+            "BoundedPairMap"
+        } else {
+            "BoundedMap"
+        };
+        let inner_type = format!("{core}<{kv}, {min}, {max_token}>");
+        let loose_ident =
+            ConceptualRustType::name_for_wasm_map(&key_type, &value_type, preserve_pair_map);
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
         wrapper.s.doc(format!(
-            "`{shape}`: inclusive entry window enforced by core `BoundedMap`; use `try_from` on the loose `{loose_ident}` builder. `insert` returns an error before a new key could exceed the maximum, while replacement remains legal."
+            "`{shape}`: inclusive entry window enforced by core `{core}`; use `try_from` on the loose `{loose_ident}` builder. `insert` returns an error before an entry could exceed the maximum."
         ));
         wrapper.push_inner_field(&inner_type);
         if min == 0 {
@@ -1153,7 +1169,7 @@ impl GenerationScope {
                 .new_fn("new")
                 .vis("pub")
                 .ret("Self")
-                .line("Self(BoundedMap::new())");
+                .line(format!("Self({core}::new())"));
         }
         wrapper
             .s_impl
@@ -1182,7 +1198,7 @@ impl GenerationScope {
             key_type.clone(),
             value_type.clone(),
             false,
-            false,
+            preserve_pair_map,
             cli,
         );
         wrapper
@@ -1192,9 +1208,9 @@ impl GenerationScope {
             .ret(format!("Result<{wrapper_ident}, JsError>"))
             .arg("map", format!("&{loose_ident}"))
             .line(format!("let inner: {map_inner} = map.clone().into();"))
-            .line(
-                "BoundedMap::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))",
-            );
+            .line(format!(
+                "{core}::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))"
+            ));
         wrapper.add_conversion_methods(&inner_type, cli);
         wrapper.push(self, types);
     }
@@ -1509,6 +1525,7 @@ impl GenerationScope {
                         &ident,
                         bounds,
                         false,
+                        rt.is_preserve_pair_map(),
                         cli,
                     );
                 } else if rt.is_non_empty_map() {
@@ -1916,6 +1933,16 @@ fn transitive_owner_set(
     owners
 }
 
+/// A bounded named table owns its restricted wasm class, never the loose structural builder that
+/// `try_from` needs. Treating it as the sole owner of `PairMapKToV` would emit both that alias and
+/// the required loose class on a repeated/aliased visit (duplicate top-level ident).
+pub(super) fn is_loose_table_owner(types: &IntermediateTypes, owner: &RustIdent) -> bool {
+    matches!(
+        types.rust_structs().get(owner).map(|rs| rs.variant()),
+        Some(RustStructType::Table { bounds: None, .. })
+    )
+}
+
 /// Where a collection wrapper is hosted, given its transitive element owners. Factored as one
 /// function so the placement rule can generalize (plan decision 4): today `Borrow(dep)` iff the
 /// wrapper has EXACTLY ONE owner, that owner is a named dependency, and that dependency is a
@@ -1991,7 +2018,7 @@ pub(super) fn mint_wasm_wrapper_for_visited_type(
                 // A single named rule owns this shape: this embedded/resolved use
                 // shares that rule-named class (JS-visible under the CDDL
                 // identifier) rather than minting an anonymous structural class.
-                Some(owner) => mint_sole_owner_table(
+                Some(owner) if is_loose_table_owner(types, owner) => mint_sole_owner_table(
                     gen_scope,
                     types,
                     owner,
@@ -2001,7 +2028,7 @@ pub(super) fn mint_wasm_wrapper_for_visited_type(
                 ),
                 // Anonymous-only shape (or a same-shape rule pair): mint the
                 // structural class, whose inner is the raw map (not a rust rule).
-                None => {
+                None | Some(_) => {
                     if wasm_wrappers_generated.insert(map_ident.to_string()) {
                         codegen_table_type(
                             gen_scope,

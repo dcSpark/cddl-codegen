@@ -634,7 +634,9 @@ impl<'a> IntermediateTypes<'a> {
     /// `Table` rule's policy lives on the STRUCT config and its registered alias).
     pub fn uses_pair_map(&self) -> bool {
         let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.contains_pair_map());
+        self.visit_all_rust_types(&mut |rt| {
+            found |= rt.contains_pair_map() || rt.contains_bounded_pair_map()
+        });
         found
             || self.rust_structs.values().any(|rs| {
                 matches!(rs.variant(), RustStructType::Table { .. })
@@ -653,6 +655,14 @@ impl<'a> IntermediateTypes<'a> {
                         })
                 )
             })
+    }
+
+    /// Whether a generated type needs the bounded preserve-table carrier. Kept distinct from
+    /// `uses_pair_map` so loose preserve tables do not receive an unused `BoundedPairMap` import.
+    pub fn uses_bounded_pair_map(&self) -> bool {
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.contains_bounded_pair_map());
+        found
     }
 
     /// Whether ANY generated record carries a CAPTURING open struct-map rest row (`* k => v` after
@@ -816,6 +826,7 @@ impl<'a> IntermediateTypes<'a> {
         key: &RustType,
         value: &RustType,
         bounds: (Option<i128>, Option<i128>),
+        preserve: bool,
     ) -> Option<&RustIdent> {
         let normalized = Self::normalized_bounded_map_window(bounds)?;
         let key_resolved = key.clone().resolve_aliases();
@@ -828,8 +839,9 @@ impl<'a> IntermediateTypes<'a> {
                     range,
                     bounds: Some(candidate),
                 } if Self::normalized_bounded_map_window(*candidate) == Some(normalized)
-                    && rs.config().duplicates
-                        != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    && (rs.config().duplicates
+                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve))
+                        == preserve
                     && !self.is_anonymous_collection_instance(ident)
                     && domain.clone().resolve_aliases() == key_resolved
                     && range.clone().resolve_aliases() == value_resolved =>
@@ -3987,6 +3999,9 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.bounded_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            for msg in self.bounded_pair_map_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
             // `@duplicates reject` uniqueness-twin wasm-wrapper name collisions — the third container
             // kind's sibling of the two detectors above (the reject twin is the new container kind
             // AGENTS.md's twin-detector note reserved as the trigger for this expansion).
@@ -5233,12 +5248,15 @@ impl<'a> IntermediateTypes<'a> {
             let Some(bounds) = rt.bounded_map_u64_bounds() else {
                 return;
             };
+            if rt.is_bounded_pair_map() {
+                return;
+            }
             let source_bounds = rt
                 .config
                 .bounds
                 .expect("bounded map occurrence carries bounds");
             if self
-                .bounded_map_named_owner(key, value, source_bounds)
+                .bounded_map_named_owner(key, value, source_bounds, rt.is_preserve_pair_map())
                 .is_some()
             {
                 return;
@@ -5255,6 +5273,51 @@ impl<'a> IntermediateTypes<'a> {
                     "name collision: rule '{restricted}' collides with the '{restricted}' wasm \
                      wrapper generated for an inline bounded `{{{window} …}}` table occurrence — \
                      rename the rule to avoid shadowing the restricted BoundedMap wrapper"
+                ));
+            }
+        });
+        msgs.into_iter().collect()
+    }
+
+    /// Bounded preserve tables mint a distinct `PairMap…MinN/MaxN` class. This stays a parallel
+    /// detector so its remedy names the duplicate-preserving carrier rather than the keyed-map twin.
+    fn bounded_pair_map_wrapper_name_collisions(&self) -> Vec<String> {
+        let mut msgs = BTreeSet::new();
+        self.visit_all_rust_types(&mut |rt| {
+            let ConceptualRustType::Map(key, value) = &rt.conceptual_type else {
+                return;
+            };
+            let Some(bounds) = rt.bounded_map_u64_bounds() else {
+                return;
+            };
+            if !rt.is_bounded_pair_map() {
+                return;
+            }
+            let source_bounds = rt
+                .config
+                .bounds
+                .expect("bounded pair-map occurrence carries bounds");
+            // A same-shape preserve table is the authored owner of this class, just as a bounded
+            // unique-key table is for `BoundedMap`; only an unrelated rule is a collision.
+            if self
+                .bounded_map_named_owner(key, value, source_bounds, true)
+                .is_some()
+            {
+                return;
+            }
+            let restricted = rt.bounded_wasm_map_structural_name();
+            if self.wasm_ident_claimed_by_user_rule(&restricted) {
+                let (min, max) = bounds;
+                let window = if max == u64::MAX {
+                    format!("{min}*")
+                } else {
+                    format!("{min}*{max}")
+                };
+                msgs.insert(format!(
+                    "name collision: rule '{restricted}' collides with the '{restricted}' wasm \
+                     wrapper generated for an inline bounded `@duplicates preserve` `{{{window} …}}` \
+                     table occurrence — \
+                     rename the rule to avoid shadowing the restricted BoundedPairMap wrapper"
                 ));
             }
         });

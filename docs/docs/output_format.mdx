@@ -893,8 +893,9 @@ occurrence limits. Unique-key tables now have the matching `BoundedMap<K, V, MIN
 finite/lower-bounded windows retain their inclusive endpoints (`*` stays loose and `+` stays
 `NonEmptyMap`). Its `TryFrom<BTreeMap<_, _>>`/`TryFrom<Vec<(K, V)>>` door, checked `insert`/`extend`/
 `remove`, and read/value-mutation-only API have the same no-invalid-state rule; JSON schemas publish
-`minProperties`/`maxProperties`. Bounded `@duplicates preserve` tables are refused until a bounded
-pair-map carrier exists.
+`minProperties`/`maxProperties`. A bounded `@duplicates preserve` table instead uses
+`BoundedPairMap<K, V, MIN, MAX>`: its checked door counts entries (including duplicate keys), and
+its array-of-pairs schema publishes `minItems`/`maxItems`, never object properties.
 
 Because the invalid state is unrepresentable, a struct whose only rejectable constraint is an
 occurrence lower bound gets an **infallible `new()`**: every argument is already valid by
@@ -1040,6 +1041,9 @@ self-documenting no-op. `preserve` swaps the transparent-alias target to a **pai
   `pub type Meta = PairMap<u64, Vec<u8>>`).
 - `{ + k => v }` → **`NonEmptyPairMap<K, V>`**, whose single `TryFrom` door composes the min-1 check
   on top of the same vec-of-pairs shape.
+- Every other homogeneous occurrence window (`?`, exact-one, `N*M`, `*M`, or `N*`) →
+  **`BoundedPairMap<K, V, MIN, MAX>`**. Its checked `TryFrom<Vec<_>>` / `TryFrom<PairMap<_, _>>`
+  door enforces the inclusive entry count; duplicate keys still count separately.
 
 A table rule that [owns an encoding operation](#type-spelling-at-member-positions) — a tagged body
 (`#6.n({* k => v})`, the optional-tag idiom included) or a `@newtype` rule — mints a **wrapper
@@ -1059,10 +1063,12 @@ vec-of-pairs is the only faithful shape.
 Unlike the ordered-set twins, a `PairMap` has **no invariant** — any vec of pairs is valid — so its
 conversion contract is unguarded:
 
-- **`From<Vec<(K, V)>>` / `into_inner() -> Vec<(K, V)>` — free both ways.** No checked door on the
-  loose flavor (there is nothing to reject). `NonEmptyPairMap` instead has the single fallible
-  **`TryFrom<Vec<(K, V)>>`** door (and a `TryFrom<PairMap<K, V>>` that re-uses it), returning the same
-  `0 not at least 1` `RangeCheck` as the other non-empty twins for an empty input.
+- **Construction imports the concrete twin you need.** Generated/hand-written code imports
+  `PairMap`, `NonEmptyPairMap`, and `BoundedPairMap` from the shared `pair_map` helper; the loose
+  flavor has free **`From<Vec<(K, V)>>` / `into_inner() -> Vec<(K, V)>`** conversions because there is
+  nothing to reject. `NonEmptyPairMap` and `BoundedPairMap` instead expose the fallible
+  **`TryFrom<Vec<(K, V)>>`** and **`TryFrom<PairMap<K, V>>`** doors, returning the same `RangeCheck`
+  contract as the other non-empty/bounded twins.
 - **`insert(key, value)` APPENDS and never replaces.** It always returns `None` (nothing is displaced,
   because nothing is overwritten) — a replacing insert would silently drop a duplicate, defeating the
   point. The `Option<V>` return exists only so the read surface matches the loose table's.
@@ -1084,12 +1090,14 @@ preserved input encodings.
 **JSON** (`--json-serde-derives` / `--json-schema-export`): a preserve table serializes as an **array
 of `[key, value]` pairs**, not a JSON object — a JSON object cannot carry duplicate keys any more than
 a `BTreeMap` can, so the array-of-pairs shape is the faithful one. The generated `schemars` schema is
-therefore an **array** schema, not an object/`additionalProperties` one, and the `{+}` flavor's door
-refuses an empty `[]` on the JSON path with the same min-1 error as the wire path.
+therefore an **array** schema, not an object/`additionalProperties` one. Bounded pair maps add
+`minItems`/`maxItems` to that pair sequence, and the `{+}` flavor's door refuses an empty `[]` on the
+JSON path with the same min-1 error as the wire path.
 
 The wasm boundary mirrors the set twins' two-wrapper pattern, except the loose `PairMap`'s `insert`
 **appends** (returning `Option`) rather than rejecting. The synthesized wasm class name carries the
-container flavor — `PairMap<K>To<V>` and `NonEmptyPairMap<K>To<V>`, against the default flavor's
+container flavor — `PairMap<K>To<V>`, `NonEmptyPairMap<K>To<V>`, and bounded
+`PairMap<K>To<V>MaxN` / `…MinN` / `…MinNMaxM`, against the default flavor's
 `Map<K>To<V>` / `NonEmptyMap<K>To<V>` — so a preserve and a non-preserve map of the identical
 key/value are two distinct classes. See
 [Wasm Differences](./wasm_differences.mdx#preserve-duplicates-tables).

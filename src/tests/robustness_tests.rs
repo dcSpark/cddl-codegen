@@ -3375,6 +3375,102 @@ fn generic_table_instance_lowers_to_structural_wrapper_under_wasm() {
 /// `pub type PtblU64Text = PairMap<u64, String>` (a keyed wrapper here would be a silently-broken
 /// wasm crate). A scratch e2e (rust+wasm+json-gen cargo-check) backs this.
 #[test]
+fn bounded_preserve_tables_cover_named_inline_generic_tagged_newtype_nested_and_optional() {
+    const CDDL: &str = "bounded = { 2*3 uint => tstr } ; @duplicates preserve\n\
+                        generic<a> = { ? a => bool } ; @duplicates preserve\n\
+                        tagged = #6.24({ ? int => bytes }) ; @duplicates preserve\n\
+                        wrapped = { uint => bool } ; @newtype @duplicates preserve\n\
+                        nested = [bounded]\n\
+                        holder = [a: bounded, b: generic<uint>, c: tagged, d: wrapped,\n\
+                                  e: { *5 bytes => tstr ; @duplicates preserve\n\
+                                  }, ? f: bounded, nested: nested]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_preserve_shapes_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "bounded_preserve_shapes_unused",
+        "--wasm=true",
+    ]))
+    .expect("bounded preserve shapes must generate across rust and wasm");
+    std::fs::remove_file(&path).ok();
+    let rust = &out["rust/src/generated/mod.rs"];
+    for carrier in [
+        "BoundedPairMap<u64, String, 2, 3>",
+        "BoundedPairMap<u64, bool, 0, 1>",
+        "BoundedPairMap<u64, bool, 1, 1>",
+        "BoundedPairMap<Int, Vec<u8>, 0, 1>",
+        "BoundedPairMap<Vec<u8>, String, 0, 5>",
+    ] {
+        assert!(
+            rust.contains(carrier),
+            "missing bounded preserve carrier `{carrier}`:\n{rust}"
+        );
+    }
+    let wasm = &out["wasm/src/generated/mod.rs"];
+    assert!(
+        wasm.contains("BoundedPairMap<u64, String, 2, 3>")
+            && wasm.contains("BoundedPairMap::try_from(inner)")
+            && wasm.contains("`insert` returns an error before an entry could exceed the maximum"),
+        "bounded preserve wasm wrapper must expose its actual checked append semantics:\n{wasm}"
+    );
+}
+
+#[test]
+fn bounded_preserve_pair_map_wrapper_ident_collision_rejects_gracefully() {
+    const CDDL: &str = "pair_map_u64_to_text_min2_max3 = [x: uint]\n\
+                        holder = [p: { 2*3 uint => tstr ; @duplicates preserve\n\
+                        }]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_preserve_collision_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let err = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "bounded_preserve_collision_unused",
+        "--wasm=true",
+    ]))
+    .expect_err("an unrelated rule may not shadow the restricted bounded pair-map wasm class");
+    std::fs::remove_file(&path).ok();
+    let err = err.to_string();
+    assert!(
+        err.contains("PairMapU64ToTextMin2Max3") && err.contains("BoundedPairMap wrapper"),
+        "the preserve-specific collision detector must name its windowed remedy: {err}"
+    );
+
+    const OWNER_CDDL: &str =
+        "pair_map_u64_to_text_min2_max3 = { 2*3 uint => tstr } ; @duplicates preserve\n";
+    let owner_path = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_preserve_owner_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&owner_path, OWNER_CDDL).unwrap();
+    let owner = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        owner_path.to_str().unwrap(),
+        "--output",
+        "bounded_preserve_owner_unused",
+        "--wasm=true",
+    ]))
+    .expect("a same-shaped positive-minimum preserve rule owns its restricted wasm class");
+    std::fs::remove_file(&owner_path).ok();
+    assert!(
+        owner["wasm/src/generated/mod.rs"].contains("pub struct PairMapU64ToTextMin2Max3"),
+        "the authored same-shape owner must retain its bounded preserve class"
+    );
+}
+
+#[test]
 fn generic_preserve_table_instance_lowers_to_pair_map_under_wasm() {
     const CDDL: &str = "ptbl<k, v> = { * k => v } ; @duplicates preserve\n\
                         holder = [t: ptbl<uint, tstr>]\n";

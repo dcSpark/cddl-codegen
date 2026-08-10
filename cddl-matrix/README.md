@@ -168,7 +168,7 @@ excluded-endpoint number, NaN against a float window — each a valid instance o
 certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
 REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
 replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is
-<!-- gen:sh:readme-enforce-green -->88 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+<!-- gen:sh:readme-enforce-green -->89 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
 the guard that replaced the silent truncation this row's vector exposed; pinned by the
@@ -750,7 +750,8 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `contain.occurrence-target.memberkey.type1.plus_table` carried the pin. The fix made `+`/`1*` a
   `NonEmptyMap` and every other unique-key window — including `?`, `n*m`, and omitted exact-once — a
   checked `BoundedMap`; their boundary vectors are now `class="constraint"` and the rows are Q4
-  enforce-green. Bounded `@duplicates preserve` tables remain the targeted unsupported boundary.
+  enforce-green. Bounded `@duplicates preserve` tables use the same inclusive-window contract over
+  entry-ordered `BoundedPairMap`, so duplicate keys count as separate entries.
 - **Constraint-vector SHAPE is load-bearing: a `class="constraint"` vector for a `standalone` row
   must be a bare in-type instance of the row's type** — decodable all the way up to the constraint
   itself, so the emitted range/size check is the ONLY thing that can reject it. A holder-wrapped

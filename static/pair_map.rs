@@ -123,6 +123,120 @@ impl<K, V> FromIterator<(K, V)> for PairMap<K, V> {
     }
 }
 
+/// An entry-ordered, duplicate-permitting table with an inclusive occurrence window encoded in its
+/// type.  Unlike a keyed `BoundedMap`, every pair counts: equal keys are separate entries and stay
+/// in their original order.
+///
+/// The private vector has one checked construction door (`TryFrom<Vec<_>>` / `TryFrom<PairMap>`),
+/// and the mutators check before changing it.  In particular, a failed append or removal leaves the
+/// receiver untouched; no mutable slice or carrier escape hatch is exposed.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BoundedPairMap<K, V, const MIN: u64, const MAX: u64>(Vec<(K, V)>);
+
+impl<K, V, const MIN: u64, const MAX: u64> BoundedPairMap<K, V, MIN, MAX> {
+    fn range_error(found: usize) -> DeserializeError {
+        DeserializeFailure::RangeCheck {
+            found: found as i128,
+            min: Some(MIN as i128),
+            max: if MAX == u64::MAX { None } else { Some(MAX as i128) },
+        }
+        .into()
+    }
+
+    fn valid_len(len: usize) -> bool {
+        let len = len as u64;
+        MIN <= MAX && len >= MIN && len <= MAX
+    }
+
+    pub fn len(&self) -> usize { self.0.len() }
+    pub fn is_empty(&self) -> bool { self.0.is_empty() }
+    pub fn get(&self, key: &K) -> Option<&V> where K: PartialEq {
+        self.0.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+    pub fn get_all(&self, key: &K) -> Vec<&V> where K: PartialEq {
+        self.0.iter().filter(|(k, _)| k == key).map(|(_, v)| v).collect()
+    }
+    pub fn contains_key(&self, key: &K) -> bool where K: PartialEq {
+        self.0.iter().any(|(k, _)| k == key)
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.0.iter().map(|(k, v)| (k, v))
+    }
+    pub fn keys(&self) -> impl Iterator<Item = &K> { self.0.iter().map(|(k, _)| k) }
+    pub fn values(&self) -> impl Iterator<Item = &V> { self.0.iter().map(|(_, v)| v) }
+    pub fn as_slice(&self) -> &[(K, V)] { self.0.as_slice() }
+
+    /// Append an entry, including a duplicate key, unless that would exceed `MAX`.
+    pub fn insert(&mut self, key: K, value: V) -> Result<Option<V>, DeserializeError> {
+        let next = self.0.len().saturating_add(1);
+        if !Self::valid_len(next) { return Err(Self::range_error(next)); }
+        self.0.push((key, value));
+        Ok(None)
+    }
+
+    /// Remove one entry by its entry-order index unless that would go below `MIN`.
+    pub fn remove(&mut self, index: usize) -> Result<Option<(K, V)>, DeserializeError> {
+        if index >= self.0.len() { return Ok(None); }
+        let next = self.0.len().saturating_sub(1);
+        if !Self::valid_len(next) { return Err(Self::range_error(next)); }
+        Ok(Some(self.0.remove(index)))
+    }
+}
+
+impl<K, V, const MAX: u64> BoundedPairMap<K, V, 0, MAX> {
+    /// Empty is valid only for a zero-minimum window.
+    pub fn new() -> Self { Self(Vec::new()) }
+}
+
+impl<K, V, const MIN: u64, const MAX: u64> TryFrom<Vec<(K, V)>>
+    for BoundedPairMap<K, V, MIN, MAX>
+{
+    type Error = DeserializeError;
+    fn try_from(entries: Vec<(K, V)>) -> Result<Self, Self::Error> {
+        if Self::valid_len(entries.len()) { Ok(Self(entries)) } else { Err(Self::range_error(entries.len())) }
+    }
+}
+
+impl<K, V, const MIN: u64, const MAX: u64> TryFrom<PairMap<K, V>>
+    for BoundedPairMap<K, V, MIN, MAX>
+{
+    type Error = DeserializeError;
+    fn try_from(entries: PairMap<K, V>) -> Result<Self, Self::Error> {
+        Self::try_from(entries.into_inner())
+    }
+}
+
+impl<K, V, const MIN: u64, const MAX: u64> From<BoundedPairMap<K, V, MIN, MAX>> for PairMap<K, V> {
+    fn from(value: BoundedPairMap<K, V, MIN, MAX>) -> Self { PairMap::from(value.0) }
+}
+
+#[cfg(test)]
+mod bounded_tests {
+    use super::*;
+
+    #[test]
+    fn bounded_pair_map_keeps_duplicates_and_checks_without_mutation() {
+        let mut map = BoundedPairMap::<u64, u64, 2, 3>::try_from(vec![(1, 10), (1, 11)]).unwrap();
+        assert_eq!(map.get(&1), Some(&10));
+        assert_eq!(map.get_all(&1), vec![&10, &11]);
+        assert_eq!(map.insert(2, 20).unwrap(), None);
+        let err = map.insert(3, 30).unwrap_err();
+        assert!(matches!(err.failure(), DeserializeFailure::RangeCheck { found: 4, min: Some(2), max: Some(3) }));
+        assert_eq!(map.len(), 3);
+        assert!(map.remove(0).unwrap().is_some());
+        let err = map.remove(0).unwrap_err();
+        assert!(matches!(err.failure(), DeserializeFailure::RangeCheck { found: 1, min: Some(2), max: Some(3) }));
+        assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn bounded_pair_map_zero_and_invalid_windows_use_the_checked_door() {
+        assert!(BoundedPairMap::<u64, u64, 0, 0>::new().is_empty());
+        assert!(BoundedPairMap::<u64, u64, 0, 0>::try_from(vec![(1, 1)]).is_err());
+        assert!(BoundedPairMap::<u64, u64, 2, 1>::try_from(vec![(1, 1)]).is_err());
+    }
+}
+
 /// A `PairMap` guaranteed to hold at least one entry — the `@duplicates preserve` twin of
 /// `NonEmptyMap` for a `{ + k => v }` rule. Composes the min-1 invariant with the vec-of-pairs
 /// representation.

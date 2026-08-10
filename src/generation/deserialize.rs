@@ -2532,24 +2532,29 @@ impl GenerationScope {
                                 deser_code.content.line(&format!(
                                     "let {table_var} = NonEmptyPairMap::try_from({table_var})?;"
                                 ));
+                            } else if let Some((min, max)) = RustType::new(ConceptualRustType::Map(
+                                Box::new((**key_type).clone()),
+                                Box::new((**value_type).clone()),
+                            ))
+                            .with_bounds(type_cfg.bounds.unwrap_or((None, None)))
+                            .with_duplicates_policy(Some(
+                                crate::comment_ast::DuplicatesPolicy::Preserve,
+                            ))
+                            .bounded_map_u64_bounds()
+                            {
+                                let max = if max == u64::MAX {
+                                    "{ u64::MAX }".to_owned()
+                                } else {
+                                    max.to_string()
+                                };
+                                deser_code.content.line(&format!(
+                                    "let {table_var} = BoundedPairMap::<_, _, {min}, {max}>::try_from({table_var})?;"
+                                ));
                             } else {
                                 // `{* k => v}` preserve: any vec of pairs is valid (infallible `From`).
                                 deser_code.content.line(&format!(
                                     "let {table_var} = PairMap::from({table_var});"
                                 ));
-                                // A non-`+` preserve table may still carry OTHER occurrence bounds
-                                // (`2*5` etc); those stay a runtime length check on the pair-map.
-                                if let Some(bounds) = &type_cfg.bounds {
-                                    deser_code.content.line(&bounds_check_if_block(
-                                        bounds,
-                                        &format!("{table_var}.len()"),
-                                        true,
-                                        true,
-                                        None,
-                                        // `.len()` is usize — the widening cast is real
-                                        false,
-                                    ));
-                                }
                             }
                             if cli.preserve_encodings {
                                 config
