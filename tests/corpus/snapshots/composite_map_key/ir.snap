@@ -4,6 +4,54 @@ expression: ir
 ---
 {
     RustIdent(
+        "ArrU64List",
+    ): RustStruct {
+        ident: RustIdent(
+            "ArrU64List",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Array {
+            element_type: RustType {
+                conceptual_type: Array(
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    duplicates: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            bounds: None,
+        },
+    },
+    RustIdent(
         "Holder",
     ): RustStruct {
         ident: RustIdent(
@@ -141,61 +189,6 @@ expression: ir
             set_nominal: false,
         },
         variant: Extern,
-    },
-    RustIdent(
-        "NonEmptyU64ListList",
-    ): RustStruct {
-        ident: RustIdent(
-            "NonEmptyU64ListList",
-        ),
-        tag: None,
-        tag_optional: false,
-        config: RustStructConfig {
-            custom_json: false,
-            custom_serialize: None,
-            custom_deserialize: None,
-            custom_encodings: None,
-            custom_wire_major: None,
-            doc: None,
-            newtype_getter: None,
-            duplicates: None,
-            set_nominal: false,
-        },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Array(
-                    RustType {
-                        conceptual_type: Primitive(
-                            U64,
-                        ),
-                        encodings: [],
-                        config: RustTypeSerializeConfig {
-                            default: None,
-                            bounds: None,
-                            duplicates: None,
-                            float_bounds: None,
-                            basic_override: false,
-                        },
-                    },
-                ),
-                encodings: [],
-                config: RustTypeSerializeConfig {
-                    default: None,
-                    bounds: Some(
-                        (
-                            Some(
-                                1,
-                            ),
-                            None,
-                        ),
-                    ),
-                    duplicates: None,
-                    float_bounds: None,
-                    basic_override: false,
-                },
-            },
-            bounds: None,
-        },
     },
     RustIdent(
         "T",

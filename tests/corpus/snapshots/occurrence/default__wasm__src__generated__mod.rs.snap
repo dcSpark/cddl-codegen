@@ -16,6 +16,47 @@ use cddl_lib::bounded::BoundedVec;
 use cddl_lib::non_empty::NonEmptyVec;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrU64List(pub(crate) Vec<BoundedVec<u64, 0, 2>>);
+
+#[wasm_bindgen]
+impl ArrU64List {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> U64ListMax2 {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &U64ListMax2) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<BoundedVec<u64, 0, 2>>> for ArrU64List {
+    fn from(native: Vec<BoundedVec<u64, 0, 2>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrU64List> for Vec<BoundedVec<u64, 0, 2>> {
+    fn from(wasm: ArrU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<BoundedVec<u64, 0, 2>>> for ArrU64List {
+    fn as_ref(&self) -> &Vec<BoundedVec<u64, 0, 2>> {
+        &self.0
+    }
+}
+
 /// `[2*5 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -217,7 +258,7 @@ impl NestedBounded {
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
-    pub fn try_from(list: &U64ListMax2List) -> Result<NestedBounded, JsError> {
+    pub fn try_from(list: &ArrU64List) -> Result<NestedBounded, JsError> {
         let inner: Vec<BoundedVec<u64, 0, 2>> = list.clone().into();
         BoundedVec::try_from(inner)
             .map(Self)
@@ -541,47 +582,6 @@ impl From<U64ListMax2> for BoundedVec<u64, 0, 2> {
 
 impl AsRef<BoundedVec<u64, 0, 2>> for U64ListMax2 {
     fn as_ref(&self) -> &BoundedVec<u64, 0, 2> {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct U64ListMax2List(pub(crate) Vec<BoundedVec<u64, 0, 2>>);
-
-#[wasm_bindgen]
-impl U64ListMax2List {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> U64ListMax2 {
-        self.0[index].clone().into()
-    }
-
-    pub fn add(&mut self, elem: &U64ListMax2) {
-        self.0.push(elem.clone().into());
-    }
-}
-
-impl From<Vec<BoundedVec<u64, 0, 2>>> for U64ListMax2List {
-    fn from(native: Vec<BoundedVec<u64, 0, 2>>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<U64ListMax2List> for Vec<BoundedVec<u64, 0, 2>> {
-    fn from(wasm: U64ListMax2List) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<Vec<BoundedVec<u64, 0, 2>>> for U64ListMax2List {
-    fn as_ref(&self) -> &Vec<BoundedVec<u64, 0, 2>> {
         &self.0
     }
 }

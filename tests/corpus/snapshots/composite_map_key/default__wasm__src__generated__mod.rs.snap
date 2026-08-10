@@ -18,6 +18,47 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct ArrU64List(pub(crate) Vec<Vec<u64>>);
+
+#[wasm_bindgen]
+impl ArrU64List {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u64> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u64>) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<Vec<u64>>> for ArrU64List {
+    fn from(native: Vec<Vec<u64>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrU64List> for Vec<Vec<u64>> {
+    fn from(wasm: ArrU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<Vec<u64>>> for ArrU64List {
+    fn as_ref(&self) -> &Vec<Vec<u64>> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Holder(pub(crate) cddl_lib::Holder);
 
 #[wasm_bindgen]
@@ -59,7 +100,7 @@ impl AsRef<cddl_lib::Holder> for Holder {
     }
 }
 
-pub type MapNonEmptyU64ListToU64 = T;
+pub type MapArrU64ToU64 = T;
 
 /// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation.
 /// Enter via `try_from` or `new(first)`.
@@ -113,47 +154,6 @@ impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyU64ListList(pub(crate) Vec<NonEmptyVec<u64>>);
-
-#[wasm_bindgen]
-impl NonEmptyU64ListList {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> NonEmptyU64List {
-        self.0[index].clone().into()
-    }
-
-    pub fn add(&mut self, elem: &NonEmptyU64List) {
-        self.0.push(elem.clone().into());
-    }
-}
-
-impl From<Vec<NonEmptyVec<u64>>> for NonEmptyU64ListList {
-    fn from(native: Vec<NonEmptyVec<u64>>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<NonEmptyU64ListList> for Vec<NonEmptyVec<u64>> {
-    fn from(wasm: NonEmptyU64ListList) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<Vec<NonEmptyVec<u64>>> for NonEmptyU64ListList {
-    fn as_ref(&self) -> &Vec<NonEmptyVec<u64>> {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
 pub struct T(pub(crate) cddl_lib::T);
 
 #[wasm_bindgen]
@@ -174,8 +174,8 @@ impl T {
         self.0.get(key.as_ref()).copied()
     }
 
-    pub fn keys(&self) -> NonEmptyU64ListList {
-        NonEmptyU64ListList(self.0.keys().cloned().collect::<Vec<_>>())
+    pub fn keys(&self) -> ArrU64List {
+        ArrU64List(self.0.keys().cloned().map(Into::into).collect::<Vec<_>>())
     }
 }
 

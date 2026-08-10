@@ -313,10 +313,10 @@ expression: ir
         variant: Extern,
     },
     RustIdent(
-        "NestedPlus",
+        "MapU64ToU64List",
     ): RustStruct {
         ident: RustIdent(
-            "NestedPlus",
+            "MapU64ToU64List",
         ),
         tag: None,
         tag_optional: false,
@@ -333,7 +333,20 @@ expression: ir
         },
         variant: Array {
             element_type: RustType {
-                conceptual_type: Array(
+                conceptual_type: Map(
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
                     RustType {
                         conceptual_type: Primitive(
                             U64,
@@ -368,10 +381,10 @@ expression: ir
         },
     },
     RustIdent(
-        "NonEmptyMapU64ToU64List",
+        "NestedPlus",
     ): RustStruct {
         ident: RustIdent(
-            "NonEmptyMapU64ToU64List",
+            "NestedPlus",
         ),
         tag: None,
         tag_optional: false,
@@ -388,20 +401,7 @@ expression: ir
         },
         variant: Array {
             element_type: RustType {
-                conceptual_type: Map(
-                    RustType {
-                        conceptual_type: Primitive(
-                            U64,
-                        ),
-                        encodings: [],
-                        config: RustTypeSerializeConfig {
-                            default: None,
-                            bounds: None,
-                            duplicates: None,
-                            float_bounds: None,
-                            basic_override: false,
-                        },
-                    },
+                conceptual_type: Array(
                     RustType {
                         conceptual_type: Primitive(
                             U64,

@@ -236,13 +236,12 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
        each argument from bounds-blind `for_variant()`: two uses of the SAME generic definition,
        `set<([* uint])>` and `set<([*5 uint])>`, both become `SetArrU64`, so the later registration
        can replace the former even though their native carriers are `Vec<u64>` and
-       `BoundedVec<u64, 0, 5>`. This was exposed while building the recursive wasm structural-name
-       regression; that wasm family is now carrier-aware, but generic identity is minted earlier in
-       parsing and is a separate namespace contract. Until the canonical spelling becomes
-       occurrence-aware, bind each argument shape to a distinctly named rule before instantiation
-       (or use distinct generic definitions). Add a focused rust+wasm compile regression with the
-       fix; a generation-only same-definition probe is insufficient because last-registration-wins
-       can still exit 0 with the wrong carrier.
+       `BoundedVec<u64, 0, 5>`. This is a separate parsing-time namespace contract, not part of the
+       table-keys boundary normalization. Until the canonical spelling becomes occurrence-aware,
+       bind each argument shape to a distinctly named rule before instantiation (or use distinct
+       generic definitions). Add a focused rust+wasm compile regression with the fix; a
+       generation-only same-definition probe is insufficient because last-registration-wins can
+       still exit 0 with the wrong carrier.
      - *Dedicated collision message for the generic-instantiation naming family.* An inline
        shape-derived nominal name colliding with a user rule or a structurally-different generic
        instantiation is refused with a set-specific message
