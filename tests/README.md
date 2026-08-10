@@ -2390,8 +2390,10 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     starts decoding green FAILS the gate** — a re-bless can't silently launder a bug). Each
     `class="constraint"` or `class="policy-rejected"` vector additionally asserts the error Display
     CONTAINS the catalog's `expect_err`, pinning the rejection REASON — a wrong-reason rejection fails
-    the gate with the captured Display (a vacuity floor keeps ≥ 40 constraint reason asserts live, with
-    policy pins counted separately). A `class="over-acceptance"`
+    the gate with the captured Display. The four unique-key bounded-table boundary pins additionally
+    have a cheap runtime↔catalog lockstep test in `bounded_map_runtime_tests`, so a `BoundedMap`
+    diagnostic drift fails before the multi-minute replay (a vacuity floor keeps ≥ 40 constraint
+    reason asserts live, with policy pins counted separately). A `class="over-acceptance"`
     vector emits its own `over_accept_N` test asserting the decoder STILL (wrongly) decodes it Ok; a
     rejection is the pin FLIP (the fix landed), attributed by `classify_over_acceptance_failure` with a
     marker naming the promotion flow, and a completeness guard asserts the emitted `over_accept_*` count
