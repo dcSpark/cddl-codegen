@@ -116,7 +116,7 @@ serde_json = "1"
 schemars = "1.2.1"
 # Harness-side ONLY: `gate_cache` content-addresses generated-crate trees (memoize-and-skip for
 # the nested-cargo gates). Already in-tree transitively, so this adds no lockfile weight.
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Harness-side ONLY (never a generated-crate dep): the WIT-validity gate's ORACLE. The component
 # face's emitted `.wit` is parsed and resolved (`wit-parser`), encoded to a component-model package
