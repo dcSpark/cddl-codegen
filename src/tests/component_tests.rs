@@ -1762,11 +1762,15 @@ fn component_glue_unwraps_a_fallible_record_new() {
     );
 }
 
-/// A count-disambiguated optional array record retains `from-cbor-bytes` through the component
-/// projection and guest glue. The direct record is the same one the Rust count-boundary test uses;
-/// a missing bridge would make this accepted Rust surface unavailable to component consumers.
+/// A type the rust face declined to give a `Deserialize` impl carries NO `from-cbor-bytes` — and the
+/// WIT and the glue must drop it TOGETHER: a func the world declares but the guest does not
+/// implement does not satisfy the world, and glue naming a trait impl that does not exist does not
+/// compile. The verdict is reached during GENERATION, not at IR finalization, which is why the
+/// projection takes it as an input rather than re-deriving it.
 #[test]
-fn count_disambiguated_array_record_carries_from_cbor_bytes() {
+fn a_type_with_no_deserialize_impl_carries_no_from_cbor_bytes() {
+    // An array struct whose optional field has the same CBOR type as the field after it: a peek
+    // cannot tell them apart, so the rust face emits `Serialize` and refuses `Deserialize`.
     const SPEC: &str = "ambiguous = [? b: uint, c: uint]\nplain = [n: text]\n";
     let dir = scratch_dir("nodeser");
     let path = dir.join("input.cddl");
@@ -1778,8 +1782,8 @@ fn count_disambiguated_array_record_carries_from_cbor_bytes() {
     std::fs::remove_dir_all(&dir).ok();
 
     assert!(
-        rust.contains("impl Deserialize for Ambiguous"),
-        "the count-disambiguated record lost its Deserialize impl:\n{rust}"
+        !rust.contains("impl Deserialize for Ambiguous"),
+        "the fixture no longer reaches the no-deserialize verdict, so this pin is vacuous:\n{rust}"
     );
     let ambiguous_body = wit
         .split("resource ambiguous {")
@@ -1787,18 +1791,19 @@ fn count_disambiguated_array_record_carries_from_cbor_bytes() {
         .and_then(|rest| rest.split('}').next())
         .expect("the WIT must still carry the resource itself");
     assert!(
-        ambiguous_body.contains("to-cbor-bytes") && ambiguous_body.contains("from-cbor-bytes"),
-        "the WIT lost one CBOR bridge for the count-disambiguated record:\n{wit}"
+        ambiguous_body.contains("to-cbor-bytes") && !ambiguous_body.contains("from-cbor-bytes"),
+        "the WIT still declares `from-cbor-bytes` for a type with no `Deserialize` impl (or lost \
+         the `to-` half too):\n{wit}"
     );
     assert!(
-        glue.contains("cddl_lib::Ambiguous as cddl_lib::serialization::Deserialize"),
-        "the glue lost the supported record's Deserialize bridge:\n{glue}"
+        !glue.contains("cddl_lib::Ambiguous as cddl_lib::serialization::Deserialize"),
+        "the glue still names a `Deserialize` impl the rust crate does not emit:\n{glue}"
     );
     // The unaffected type keeps both halves, so the gating is per-type and not a blanket drop.
     assert!(
         wit.contains("from-cbor-bytes")
             && glue.contains("cddl_lib::Plain as cddl_lib::serialization::Deserialize"),
-        "the ordinary control lost its bytes seam:\n{wit}\n{glue}"
+        "the deserializable type lost its bytes seam too — the gate is not per-type:\n{wit}\n{glue}"
     );
 }
 

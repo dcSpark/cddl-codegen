@@ -133,20 +133,16 @@ impl Deserialize for InlineHolder {
             let mut read_len = CBORReadLen::new(len);
             read_len.read_elems(3)?;
             let a = SetU64::deserialize(raw).map_err(|e: DeserializeError| e.annotate("a"))?;
-            if read_len.is_indefinite() {
-                return Err(DeserializeFailure::IndefiniteLengthAmbiguousOptionalField.into());
-            }
-            let b =
-                if read_len.remaining() != Some(0) && (raw.cbor_type()? == cbor_event::Type::Tag) {
-                    (|| -> Result<_, DeserializeError> {
-                        read_len.read_elems(1)?;
-                        SetText::deserialize(raw)
-                    })()
-                    .map_err(|e| e.annotate("b"))
-                    .map(Some)
-                } else {
-                    Ok(None)
-                }?;
+            let b = if raw.cbor_type()? == cbor_event::Type::Tag {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    SetText::deserialize(raw)
+                })()
+                .map_err(|e| e.annotate("b"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
             let (c, c_encoding) = (|| -> Result<_, DeserializeError> {
                 let mut c_arr = Vec::new();
                 let len = raw.array_sz()?;

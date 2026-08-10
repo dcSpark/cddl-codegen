@@ -3242,13 +3242,7 @@ minted value's canonical bytes — `widen_step`/`widen_max` (non-minimal header 
 (a major-type-7 float head re-encoded one IEEE width up, f16→f32→f64 — reachable since the `any`
 (`AnyCbor`) mint deliberately includes a float head), `indef_containers`, `chunk_strings`,
 `reverse_maps`, and `everything` (all composed) — and asserts each
-decodes and re-encodes byte-identically. One IR-derived exception keeps this aligned with the
-decoder's documented policy: a root which can reach a non-final optional ARRAY member overlapping
-a mandatory suffix expects `IndefiniteLengthAmbiguousOptionalField` from `indef_containers` and
-`everything`, because those transforms erase the definite count needed to disambiguate presence.
-The guard is per root, per transform and per exact error variant; every other mutator failure stays
-red (`emit_tests_optional_overlap_indefinite_policy_execute` is the local execution pin).
-Whole-tree (not per-position) because a single dropped
+decodes and re-encodes byte-identically. Whole-tree (not per-position) because a single dropped
 encoding-capture fails the whole variant anyway; identity variants are skipped so the loop never
 asserts vacuously. With `--canonical-form` also set it adds the canonical **differential** (every
 encoding canonicalizes to the same bytes) plus a per-case canonical fixed point — the KATs stay the

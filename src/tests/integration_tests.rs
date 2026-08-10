@@ -6169,130 +6169,142 @@ type_choice_special_brute = true / null / undefined / tstr
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
-/// A non-final optional array member which overlaps a later mandatory member is disambiguated by
-/// a definite array's count. The mandatory suffix is reserved before the optional peeks: a one-item
-/// `[? uint, uint]` is absent, a two-item one is present, and an indefinite form rejects rather
-/// than choosing an encoding-dependent interpretation. The exercise includes direct, type-choice,
-/// and inlined-group-choice consumers, a disjoint control, and a two-mandatory-member suffix.
+/// A deserialize the generator REFUSES must be refused all the way out: the containing enum loses
+/// its own `Deserialize` (both flavors, transitively), and `--emit-tests` mints no decode test for
+/// what has no decoder. The invariant is honesty, not capability — whatever deserialize surface the
+/// crate actually exposes, the crate and its emitted tests must build and pass.
 ///
-/// Tier: a plain `#[test]`, so `local` and later — `fast` type-checks it through clippy but does not
-/// execute it. `feature_corpus_compiles` (local) independently sweeps the corpus fixture added for
-/// this spelling through default/preserve/canonical generation and generated-crate execution.
+/// Each leg was RED before the propagation landed, at plain `cargo check` / `cargo test`:
+/// - `foo = [? f0: uint, f1: uint]` + `--emit-tests`: E0599 `from_cbor_bytes` ×2 (the round-trip and
+///   reject mints both decode).
+/// - `gc = [ f0: uint, ? f1: uint, f2: uint // tstr ]`: E0599 `deserialize_as_embedded_group` for
+///   `Gc0` — the group-choice enum's own Deserialize called its arm's never-emitted embedded fn.
+/// - `ch = foo / tstr`: E0599 `deserialize` for `Foo` from the type-choice brute-force dispatch.
+///   BOTH enum flavors were defective, and the transitive `ch2 = ch / bytes` with them.
+///
+/// Tier: a plain `#[test]`, so `local` and later — `fast` runs only `snapshot_tests`, and CI runs
+/// only `fast`. This gate will not be seen by CI.
 #[test]
-fn count_disambiguates_nonfinal_optional_array_fields() {
+fn deserialize_refusal_propagates_through_enums_and_emitted_tests() {
     if !tool_exists("cargo") {
         return;
     }
     let scratch = std::env::temp_dir().join(format!(
-        "cddl_codegen_optional_array_count_{:016x}",
+        "cddl_codegen_no_deser_propagation_{:016x}",
         checkout_hash()
     ));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).unwrap();
+    // ONE shared target dir across both legs (same shape as the clippy gate) — the two generated
+    // crates share every dependency, so the second leg is a cache hit.
     let target_dir = scratch.join("target");
-    let input = scratch.join("input.cddl");
+
+    // ---- leg 1: the refused record + --emit-tests -------------------------------------------
+    // `bar` is the control: a type WITH a deserialize must still get its mints, or a skip that
+    // swallowed the whole module would pass vacuously.
+    let emit_input = scratch.join("emit.cddl");
     std::fs::write(
-        &input,
-        "overlap = [? a: uint, b: uint]\n\
-         disjoint = [? a: tstr, b: uint]\n\
-         multi = [? a: uint, ? s: tstr, b: uint, c: uint]\n\
-         choice = overlap / tstr\n\
-         group = [ ? a: uint, b: uint // tstr ]\n",
+        &emit_input,
+        "foo = [? f0: uint, f1: uint]\nbar = [a: uint, b: tstr]\n",
     )
     .unwrap();
-    let rust_test = |serialize_trait: &str| {
-        format!(
-            r#"
-use cddl_lib::*;
-use cddl_lib::serialization::{{Deserialize, {serialize_trait}}};
-
-fn assert_roundtrip<T: Deserialize + {serialize_trait}>(bytes: &[u8]) {{
-    let value = T::from_cbor_bytes(bytes).unwrap();
-    assert_eq!(value.to_cbor_bytes(), bytes);
-}}
-
-#[test]
-fn definite_count_disambiguates_optional_members() {{
-    let absent = [0x81, 0x07];
-    let present = [0x82, 0x06, 0x07];
-    // Fresh values cannot mint the ambiguous indefinite form: every profile computes the actual
-    // optional-member count for the array header, including preserve's no-sidecar default.
-    let fresh_absent = Overlap::new(7);
-    assert_eq!(fresh_absent.to_cbor_bytes(), absent);
-    let mut fresh_present = Overlap::new(7);
-    fresh_present.a = Some(6);
-    assert_eq!(fresh_present.to_cbor_bytes(), present);
-    assert_roundtrip::<Overlap>(&absent);
-    assert_roundtrip::<Overlap>(&present);
-    assert_roundtrip::<Choice>(&present);
-    assert_roundtrip::<Group>(&present);
-    assert_roundtrip::<Disjoint>(&[0x81, 0x07]);
-
-    // `b` and `c` are the entire mandatory suffix. The first uint is not claimed by `a` when
-    // their two slots exhaust the header, but is claimed when the header supplies an extra slot.
-    assert_roundtrip::<Multi>(&[0x82, 0x06, 0x07]);
-    assert_roundtrip::<Multi>(&[0x83, 0x05, 0x06, 0x07]);
-
-    let short = Overlap::from_cbor_bytes(&[0x80]).unwrap_err().to_string();
-    assert!(short.contains("Definite length mismatch: found 0"), "{{short}}");
-    let long = Overlap::from_cbor_bytes(&[0x83, 0x05, 0x06, 0x07]).unwrap_err().to_string();
-    assert!(long.contains("Definite length mismatch: found 3, expected: 2"), "{{long}}");
-    let indefinite = Overlap::from_cbor_bytes(&[0x9f, 0x06, 0x07, 0xff]).unwrap_err().to_string();
-    assert!(indefinite.contains("indefinite-length array with an optional field overlapping a later mandatory field"), "{{indefinite}}");
-}}
-"#
-        )
-    };
-
-    for (profile, extra) in [
-        ("default", &[][..]),
-        ("preserve", &["--preserve-encodings=true"][..]),
-        (
-            "canonical",
-            &["--preserve-encodings=true", "--canonical-form=true"][..],
-        ),
-    ] {
-        let out = scratch.join(profile);
-        let gen_out = codegen_cmd()
-            .arg(format!("--input={}", input.to_str().unwrap()))
-            .arg(format!("--output={}", out.to_str().unwrap()))
-            .arg("--static-dir")
-            .arg(format!("{}/static", env!("CARGO_MANIFEST_DIR")))
-            .arg("--wasm=false")
-            .args(extra)
-            .output()
-            .unwrap();
-        assert!(
-            gen_out.status.success(),
-            "{profile}: generation failed:\n{}",
-            String::from_utf8_lossy(&gen_out.stderr)
-        );
-        let integration_dir = out.join("rust/tests");
-        std::fs::create_dir_all(&integration_dir).unwrap();
-        std::fs::write(
-            integration_dir.join("count.rs"),
-            rust_test(if profile == "canonical" {
-                "Serialize"
-            } else {
-                "ToCBORBytes"
-            }),
-        )
+    let emit_out = scratch.join("emit");
+    let gen_out = codegen_cmd()
+        .arg(format!("--input={}", emit_input.to_str().unwrap()))
+        .arg(format!("--output={}", emit_out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--emit-tests=true")
+        .output()
         .unwrap();
-        let executed = tool_cmd("cargo")
-            .arg("test")
-            .arg("--test")
-            .arg("count")
-            .current_dir(out.join("rust"))
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .output()
-            .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "emit-tests generation failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+    let gen_stderr = String::from_utf8_lossy(&gen_out.stderr).to_string();
+    // The skip is LOUD and names the type — a silent skip reads as a passing test surface that
+    // does not exist.
+    assert!(
+        gen_stderr.contains(
+            "cddl-codegen --emit-tests: Foo skipped (no Deserialize impl was generated for it)"
+        ),
+        "--emit-tests must announce the skipped type, got stderr:\n{gen_stderr}"
+    );
+    assert!(
+        !gen_stderr.contains("Bar skipped"),
+        "the deserializable control type must still be minted, got stderr:\n{gen_stderr}"
+    );
+    let emit_test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(emit_out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    let emit_test_out = format!(
+        "--- stdout ---\n{}\n--- stderr ---\n{}",
+        String::from_utf8_lossy(&emit_test.stdout),
+        String::from_utf8_lossy(&emit_test.stderr)
+    );
+    assert!(
+        emit_test.status.success(),
+        "the emitted test crate must build and pass:\n{emit_test_out}"
+    );
+    assert!(
+        emit_test_out.contains("roundtrip_bar"),
+        "the control type's round-trip must still have been minted and run:\n{emit_test_out}"
+    );
+
+    // ---- leg 2: both enum flavors over a refused arm, plus transitivity ----------------------
+    let enum_input = scratch.join("enums.cddl");
+    std::fs::write(
+        &enum_input,
+        "foo = [? f0: uint, f1: uint]\n\
+         gc = [ f0: uint, ? f1: uint, f2: uint // tstr ]\n\
+         ch = foo / tstr\n\
+         ch2 = ch / bytes\n",
+    )
+    .unwrap();
+    let enum_out = scratch.join("enums");
+    let gen_out = codegen_cmd()
+        .arg(format!("--input={}", enum_input.to_str().unwrap()))
+        .arg(format!("--output={}", enum_out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "enum generation failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+    let enum_stderr = String::from_utf8_lossy(&gen_out.stderr).to_string();
+    // The enum's own refusal reason NAMES the arm that caused it, so the existing loud
+    // `Not generating X::deserialize()` warning is actionable.
+    for (ty, arm) in [
+        ("Ch", "variant Foo: Foo couldn't generate deserialize"),
+        ("Gc", "variant Gc0: Gc0 couldn't generate deserialize"),
+        ("Ch2", "variant Ch: Ch couldn't generate deserialize"),
+    ] {
         assert!(
-            executed.status.success(),
-            "{profile}: generated-crate execution failed:\n--- stdout ---\n{}\n--- stderr ---\n{}",
-            String::from_utf8_lossy(&executed.stdout),
-            String::from_utf8_lossy(&executed.stderr)
+            enum_stderr.contains(&format!("Not generating {ty}::deserialize()")),
+            "{ty} must lose its deserialize, got stderr:\n{enum_stderr}"
+        );
+        assert!(
+            enum_stderr.contains(arm),
+            "{ty}'s refusal must name the arm that caused it ({arm}), got stderr:\n{enum_stderr}"
         );
     }
+    let enum_check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(enum_out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        enum_check.status.success(),
+        "the enum crate must `cargo check` clean:\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        String::from_utf8_lossy(&enum_check.stdout),
+        String::from_utf8_lossy(&enum_check.stderr)
+    );
 }
 
 /// A type choice's decoder returns the FIRST arm that accepts the bytes, so "which arm produced
@@ -11572,105 +11584,6 @@ fn emit_tests_execute() {
         n_fidelity >= 20,
         "emitted only {n_fidelity} encoding-fidelity assertions for the preserve fixture — the oracle silently shrank"
     );
-}
-
-/// The preserve encoding-fidelity oracle keeps every mutator failure loud except the one
-/// combination the decoder's documented policy deliberately refuses: `indef_containers` or
-/// `everything` applied to a root which can reach a non-final optional ARRAY member overlapping a
-/// mandatory suffix. Generate a direct record, a containing choice (reachability), and a disjoint
-/// control; inspect the per-type emitted guard and execute the generated crate. This is the focused
-/// local-tier pin for the class `feature_corpus_roundtrips_nondefault_profiles` found at full-tier
-/// corpus breadth. The nested array tail, open struct-map and both open-table row positions also
-/// pin the representation-aware rest-row traversal: map rows walk domain/range, array tails walk
-/// their element, and open tables walk both the typed row and catch-all.
-#[test]
-fn emit_tests_optional_overlap_indefinite_policy_execute() {
-    if !tool_exists("cargo") {
-        return;
-    }
-    let root = std::env::temp_dir().join(format!(
-        "cddl_codegen_optional_overlap_emit_tests_{:016x}",
-        checkout_hash()
-    ));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
-    let input = root.join("input.cddl");
-    std::fs::write(
-        &input,
-        "overlap = [? a: uint, b: uint]\n\
-         disjoint = [? a: tstr, b: uint]\n\
-         choice = overlap / tstr\n\
-         array-tail = [head: uint, * overlap]\n\
-         open-map = { 1: uint, * tstr => overlap }\n\
-         domain-map = { 1: uint, * overlap => tstr }\n\
-         disjoint-open-map = { 1: uint, * tstr => disjoint }\n\
-         md = uint / tstr\n\
-         typed-table = { * bstr => overlap, * md => disjoint }\n\
-         catchall-table = { * bstr => disjoint, * md => overlap }\n",
-    )
-    .unwrap();
-    let out = root.join("crate");
-    let generate = codegen_cmd()
-        .arg(format!("--input={}", input.to_str().unwrap()))
-        .arg(format!("--output={}", out.to_str().unwrap()))
-        .arg("--static-dir")
-        .arg(format!("{}/static", env!("CARGO_MANIFEST_DIR")))
-        .arg("--wasm=false")
-        .arg("--preserve-encodings=true")
-        .arg("--emit-tests=true")
-        .output()
-        .unwrap();
-    assert!(
-        generate.status.success(),
-        "generation failed:\n{}",
-        String::from_utf8_lossy(&generate.stderr)
-    );
-
-    let src =
-        std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
-    let test_body = |name: &str| {
-        src.split(&format!("fn roundtrip_{name}()"))
-            .nth(1)
-            .and_then(|rest| rest.split("\n    #[test]\n").next())
-            .unwrap_or_else(|| panic!("missing emitted roundtrip_{name}"))
-    };
-    for name in [
-        "overlap",
-        "choice",
-        "array_tail",
-        "open_map",
-        "domain_map",
-        "typed_table",
-        "catchall_table",
-    ] {
-        let body = test_body(name);
-        assert!(
-            body.contains("IndefiniteLengthAmbiguousOptionalField")
-                && body.contains("indef_containers")
-                && body.contains("everything"),
-            "{name}'s emitted oracle lacks the exact policy/error/transform guard:\n{body}"
-        );
-    }
-    for name in ["disjoint", "disjoint_open_map"] {
-        let body = test_body(name);
-        assert!(
-            !body.contains("IndefiniteLengthAmbiguousOptionalField"),
-            "the {name} control received the policy escape hatch:\n{body}"
-        );
-    }
-
-    let test = tool_cmd("cargo")
-        .arg("test")
-        .current_dir(out.join("rust"))
-        .output()
-        .unwrap();
-    assert!(
-        test.status.success(),
-        "generated optional-overlap preserve tests failed:\n--- stdout ---\n{}\n--- stderr ---\n{}",
-        String::from_utf8_lossy(&test.stdout),
-        String::from_utf8_lossy(&test.stderr)
-    );
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// End-to-end proof of the CDDL `any` (`AnyCbor`) emit-tests mint and the `--preserve-encodings`

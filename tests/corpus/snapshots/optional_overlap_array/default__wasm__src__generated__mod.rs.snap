@@ -12,7 +12,7 @@ expression: content
 )]
 pub mod collections;
 
-use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -22,12 +22,6 @@ pub struct OptionalOverlapArray(pub(crate) cddl_lib::OptionalOverlapArray);
 impl OptionalOverlapArray {
     pub fn to_cbor_bytes(&self) -> Vec<u8> {
         cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
-    }
-
-    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptionalOverlapArray, JsError> {
-        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
-            .map(Self)
-            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
     pub fn set_a(&mut self, a: u64) {
