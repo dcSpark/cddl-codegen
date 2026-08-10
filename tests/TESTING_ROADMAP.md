@@ -390,29 +390,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
       stop being cheaper than the grid row, and the cross-axis coverage the grid gives for free
       (placement × reference mode × profile) is coverage three constructs are each doing without.
 
-8. **A member-expression `.cbor` STRIPS its inner alias from the IR, so the declared spelling is
-    lost one layer above where the spelling rule operates.** `holder = [j: bytes .cbor
-    stake_credential]` emits `pub j: Credential` — not `StakeCredential` — while the tag form of the
-    same shape (`f: #6.9(stake_credential)`) keeps `Alias(StakeCredential, Rust(Credential))` and
-    therefore keeps its declared field type. Both forms attach an encoding operation at the member's
-    own type expression; only `.cbor` drops the alias node.
-    - **Not fixable in the emitter, which is why it is here and not a spelling bug.** The
-      declared-spelling rule (`docs/docs/output_format.mdx` § "Type spelling at member positions")
-      names a member position's type from the IR it is handed; if parsing already replaced
-      `Alias(StakeCredential, …)` with the bare target, every downstream position — field,
-      constructor parameter, accessor, encoding sidecar, call target — agrees on `Credential`, and
-      that self-consistency is why nothing fails. The fix is in `parsing.rs`, at whatever builds the
-      member's `RustType` for a `.cbor` controller over a typename.
-    - **What it costs today: nothing observable, which is the argument for recording rather than
-      building.** The output compiles and round-trips; the only loss is the spec author's chosen name
-      at a shape that no committed fixture uses (found by probing the tag/`.cbor` asymmetry while
-      ruling on the ownership carve-out, not by any gate).
-    - **Reopening signal, measurable by a consumer who already has the problem:** a spec declares a
-      `bytes .cbor <alias>` member and the generated field's type is not the alias — i.e. their
-      public API loses a name they wrote. That is one grep of their own generated source, and it does
-      not require anyone to recognise it as a parse-layer issue.
-
-9. **The generated-local collision class is refused, not mangled — and the refusal's shape scope
+8. **The generated-local collision class is refused, not mangled — and the refusal's shape scope
     comes from a bounded probe matrix, so a position that matrix never touched can still ship an
     uncompilable crate.** A field whose emitted identifier is one of the fixed locals the generated
     serialization bodies bind now rejects at parse time (`parsing::GENERATED_LOCAL_RESERVED`, seven
@@ -2805,18 +2783,12 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   absorbed silently. The mechanical layer when a release actually bites: a pinned-latest or
   `--minimal-versions`-style resolve check over one generated crate, red when the resolved
   `cbor_event` version drifts from the one the vectors were blessed against.
-- **Bounded duplicate-preserving tables remain future work.** The delivered unique-key table carrier
-  does not represent repeated keys, so a bounded `@duplicates preserve` table remains a targeted
+- **Bounded duplicate-preserving tables remain future work.** The unique-key table carrier does not
+  represent repeated keys, so a bounded `@duplicates preserve` table remains a targeted
   generation refusal until a bounded pair-map can preserve both the occurrence window and wire order.
   Reopen only for a consumer that needs that combination; add API/CBOR/JSON/wasm/component and
   cross-crate checked-door coverage together. Bounded `@duplicates reject` arrays likewise remain on
   their established runtime-check path until a compound bounded-unique carrier is deliberately designed.
-- **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
-  fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
-  `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining
-  asymmetry is on the WRITE side: wasm setters/constructors always wrap the argument in an outer
-  `Some`, so a JS caller can produce absent and present-value but not present-null. Revisit only
-  when a consumer asks.
 - **Transparent tag-set idiom — recognized-shape boundary (REQUEST-08).** The collapse of a two-arm
   tagged-or-untagged collection choice into one transparent optionally-tagged alias
   (user doc: `docs/docs/current_capacities.mdx` § "Transparent tag-set idiom") is narrow by design;

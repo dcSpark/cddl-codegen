@@ -446,9 +446,12 @@ overlap what can follow it** — a later declared field reachable through any ru
 the open rest tail when it is reachable: `foo = [? f0: uint, f1: uint]`. The decoder decides
 presence by peeking at the next element's major type, so a type-disjoint non-final optional
 (`foo = [? f0: uint, f1: tstr]`) decodes fine; on overlap the peek cannot decide and the generator
-refuses the decoder rather than emitting one that guesses. Remedy: make the types distinct, drop
-the optional, or restructure (an optional-**last** field never needs the peek disambiguated against
-a follower).
+refuses the decoder rather than emitting one that guesses. RFC 8610 occurrence matching is greedy
+and non-backtracking: for `[? uint, uint]`, a one-item `[uint]` is invalid because the optional
+consumes it and the mandatory field is then missing. The decoder must not reserve the suffix and
+reinterpret that wire form as an absent optional. Remedy: make the types distinct, drop the
+optional, or restructure (an optional-**last** field never needs the peek disambiguated against a
+follower).
 
 The refusal **propagates to every container of such a type**: an enum with it in any arm (both
 type-choice and group-choice flavors, transitively), a wrapper over it, and a collection or table
