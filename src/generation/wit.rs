@@ -2511,8 +2511,7 @@ pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) 
     }
     // No final shape match, deliberately: unlike [`wit_param_validates`], the only despecialized
     // carriers are the two read above, and both are read through `resolve_alias_shallow` already.
-    // Nested arrays re-enter their doors in the typed component conversion walk; the remaining
-    // table-key despecialization residue is ledgered in `component_tests::EXPECTED_COMPILE_FAIL`.
+    // Nested arrays and table rows re-enter their doors in the typed component conversion walk.
     false
 }
 

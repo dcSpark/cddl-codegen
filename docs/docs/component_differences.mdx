@@ -487,28 +487,6 @@ hand before a wasip2 build. The posture table, the exact failure signature and t
 documented on the [`--component` flag](command_line_flags.mdx), which is where a user turning this
 face on meets it; that account is the single source for it and is not restated here.
 
-## Known limitation: shapes whose glue does not yet compile
-
-One shape class (two corpus fixtures) currently emits a component crate whose glue does not
-compile. The failure is loud — the generated component crate's own build fails; the `rust/` and
-`wasm/` faces are unaffected — the WIT itself is valid, and the shape is pinned with its
-diagnosis in the corpus compile gate's ledger (`EXPECTED_COMPILE_FAIL`, gate
-`component_corpus_compiles`), so a fix announces itself by turning the pin stale rather than
-needing rediscovery:
-
-- **Nested non-empty table key**: a `NonEmptyVec` or `NonEmptyMap` used as the map key of a named
-  table rule. Direct table rows recurse through their WIT tuple columns, so constrained list keys
-  and values (including `BoundedVec`) re-enter their `TryFrom` doors there; the residual named-table
-  key conversion walk still sees WIT types only, so this constrained rust type's door is not re-entered.
-
-Until this closes, a spec relying on it should keep `--component` off or restructure the
-shape; every other corpus shape compiles and validates. (Two further classes lived here and are
-fixed: a transparent alias of `any` used from a member position — an infallible constructor over a
-`?`-decoding body, now given the same fallible door as a directly-written `any`, pinned by the
-`component-any-alias` corpus fixture; and `.default` fields, whose plain rust storage the
-projection now mirrors, described under
-[Setters exist only for optional fields](#setters-exist-only-for-optional-fields).)
-
 ## Known limitation: a rule named `t` is unexported on this face
 
 A rule whose WIT resource name would be exactly `t` — a CDDL identifier `t` or `T`, whatever its

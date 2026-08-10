@@ -2499,33 +2499,10 @@ fn component_crate_builds_for_wasm32_wasip2() {
 /// staleness is guarded BOTH ways, a listed fixture that starts compiling fails as "the bug is
 /// fixed — remove the pin", an unlisted one that stops compiling fails as a regression.
 ///
-/// One class remains, in `component/src/generated/mod.rs` and reproducing under `--wasm=true` and
-/// `--wasm=false` alike. It is not a nested-position accident the emitter can spell its way out of:
-/// it needs a fact the projection does not carry today, which is why it is ledgered rather than
-/// fixed.
-///
-/// 1. **A despecialized non-empty container in a map KEY.** A `[+ T]` / `{+ K => V}` reached as
-///    the key of a named table rule makes the glue `.collect()` straight into `NonEmptyVec` /
-///    `NonEmptyMap`, which have no `FromIterator` (E0277). Nested arrays (including
-///    `NonEmptyVec` and `BoundedVec`) now thread their rust type beside the WIT list and re-enter
-///    `TryFrom`; tables still need the equivalent typed conversion walk.
-///
 /// A fixture that fails to GENERATE belongs in `snapshot_tests::PROFILE_GENERATION_SKIP` instead;
 /// a fixture whose RUST crate cannot compile standalone belongs in
 /// `integration_tests::COMPILE_SKIP`, which this gate shares rather than restating.
-const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
-    (
-        "composite_map_key",
-        "class 1: the map KEY of a named table rule is a `NonEmptyVec<u64>`, and the glue \
-         `.collect()`s into it (E0277) — table-key despecialization remains outside the typed \
-         list conversion walk",
-    ),
-    (
-        "nonempty_nested_positions",
-        "class 1: the `NonEmptyMap<u64, u64>` map KEY remains; its `NonEmptyVec<u64>` list \
-         element sibling now compiles through the typed list conversion walk",
-    ),
-];
+const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[];
 
 /// Corpus-breadth companion to [`component_crate_builds_for_wasm32_wasip2`]: every
 /// `tests/corpus/*.cddl` fixture's emitted component crate, type-checked for `wasm32-wasip2`.
@@ -2541,11 +2518,10 @@ const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
 /// **`check`, not `build`.** The link is already asserted on representative fixtures by the build
 /// smoke, and the class that matters at corpus breadth — glue naming a trait, method or macro that
 /// does not exist — is a TYPE-check failure. Probed rather than assumed: `cargo check
-/// --target wasm32-wasip2` expands `wit_bindgen::generate!` and reports every one of the four
-/// failure classes ledgered above, three of which are exactly "the glue names something the
-/// bindings never minted".
+/// --target wasm32-wasip2` expands `wit_bindgen::generate!` and reaches those type-level failures
+/// before linking.
 ///
-/// **No sharding.** Measured 89 cells in 100 s wall end to end (generation included): ~10 s for the
+/// **No sharding.** Measured about 100 s wall end to end (generation included): ~10 s for the
 /// first cell, which builds the shared dependency graph, then ~0.4 s each. `feature_corpus_compiles`
 /// shards because its cells cost seconds apiece; sizing this one from that curve rather than from
 /// its own measurement would buy process overhead and nothing else.
@@ -2582,7 +2558,7 @@ fn component_corpus_compiles() {
     let mut cache_hit = 0usize;
 
     // EVERY cell GENERATES IMMEDIATELY BEFORE IT CHECKS, and that ordering is load-bearing rather
-    // than incidental. All 89 emitted component crates are `cddl-lib-component v0.1.0`, and cargo
+    // than incidental. All emitted component crates are `cddl-lib-component v0.1.0`, and cargo
     // does not tell two of them apart across the shared target dir: a batch that generated every
     // fixture first and checked afterwards was measured serving one fixture's `Finished` — warnings
     // replayed and all — for the NEXT fixture's check, turning a real failure into a silent pass.
