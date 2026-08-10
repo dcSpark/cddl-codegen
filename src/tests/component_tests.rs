@@ -910,9 +910,9 @@ fn component_glue_bridges_raw_bytes_through_raw_bytes_encoding() {
 /// the wasm one, which emits the range check at the same site.
 ///
 /// Per shape, because the check expression differs per shape and a single-row test would pass while
-/// the others silently did nothing. The controls matter as much as the checks: a bounded array, a
-/// `[+ T]`, and an `@duplicates reject` set enforce their invariant in the TYPE system, so they must
-/// re-enter their `TryFrom` door and emit NO inline check.
+/// the others silently did nothing. The controls matter as much as the checks: bounded arrays and
+/// maps, `[+ T]`, and an `@duplicates reject` set enforce their invariant in the TYPE system, so
+/// they must re-enter their `TryFrom` door and emit NO inline check.
 #[test]
 fn component_glue_bounded_setters_check_their_window() {
     let glue = component_glue("tests/component-bounds/input.cddl", &[]);
@@ -931,7 +931,6 @@ fn component_glue_bounded_setters_check_their_window() {
         ),
         ("set_digest", "if digest.len() != 4 {"),
         ("set_label", "if label.len() < 3 || label.len() > 14 {"),
-        ("set_counts", "if counts.len() > 3 {"),
     ] {
         let body = body(setter);
         assert!(
@@ -953,6 +952,11 @@ fn component_glue_bounded_setters_check_their_window() {
         ("set_span", "span.into_iter().collect::<Vec<_>>()"),
         ("set_ids", "ids.into_iter().collect::<Vec<_>>()"),
         ("set_tags", "tags.into_iter().collect::<Vec<_>>()"),
+        ("set_counts", "counts.into_iter().collect::<Vec<_>>()"),
+        (
+            "set_exact_counts",
+            "exact_counts.into_iter().collect::<Vec<_>>()",
+        ),
     ] {
         let body = body(setter);
         assert!(

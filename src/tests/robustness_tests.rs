@@ -8206,10 +8206,9 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
 
     // Graceful rejections once on the record path: nint/float get the unsupported-fixed-kind message,
     // Every current fixed-literal class and fixed prelude spelling takes the shared
-    // `type2_to_fixed_value` route and names its fixed value, a zero-permitting occurrence gets
-    // f18d764's occurrence message, and an aliased literal domain (`one = 1`) rejects (formerly a
-    // for_rust_member panic). The shared lowering — rather than a duplicate per-seam match — makes a
-    // future fixed-literal Type2 join this classifier when its central lowering lands.
+    // `type2_to_fixed_value` route and names its fixed value, and a zero-permitting occurrence gets
+    // f18d764's occurrence message. The shared lowering — rather than a duplicate per-seam match —
+    // makes a future fixed-literal Type2 join this classifier when its central lowering lands.
     let nint =
         run("m = { -1 => uint }\n", "nint").expect_err("nint arrow key must reject gracefully");
     assert!(
@@ -8264,16 +8263,14 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
         star.contains("zero-permitting occurrence"),
         "a `*` arrow key should get the zero-permitting occurrence message, got: {star}"
     );
-    // An aliased literal key `one = 1` resolves through the alias to a Fixed domain, so it diverts to
-    // the record path where it is classified NonFixed (a Type1 typename key). As the SOLE entry it is
-    // rejected rather than silently widened as a table. The exact diagnostic depends on which record
-    // path reaches it first: the fixed-key-prefix front door or the exact-once arrow-occurrence guard.
-    let aliased = run("one = 1\nm = { one => uint }\n", "aliased")
-        .expect_err("an aliased literal arrow key domain must reject gracefully, not panic");
+    // A NAMED singleton key is a type domain, not the direct fixed-literal record spelling above.
+    // It therefore takes the exact-table path and retains both the nominal key and the 1..=1 window.
+    let aliased = gen_out("one = 1\nm = { one => uint }\n", "aliased");
     assert!(
-        aliased.contains("rule `m`")
-            && (aliased.contains("fixed key") || aliased.contains("no occurrence indicator")),
-        "an aliased literal arrow key hits the open-map front door as a lone non-fixed row, got: {aliased}"
+        aliased
+            .values()
+            .any(|file| file.contains("pub type M = BoundedMap<One, u64, 1, 1>;")),
+        "a named singleton arrow-key domain must retain its nominal exact-map carrier: {aliased:?}"
     );
 
     // Boundaries that must KEEP generating: a multi-entry fixed-key arrow map, ordinary tables, and a

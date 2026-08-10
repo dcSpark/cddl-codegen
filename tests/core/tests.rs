@@ -1282,13 +1282,13 @@ mod tests {
 
     #[test]
     fn bounds() {
-        deser_test(&Bounds::new(10, 5, 4, "abc".to_owned(), vec![5].try_into().unwrap(), [(0, 1), (2, 3)].into()).unwrap());
+        deser_test(&Bounds::new(10, 5, 4, "abc".to_owned(), vec![5].try_into().unwrap(), vec![(0, 1), (2, 3)].try_into().unwrap()).unwrap());
         // y is `nint .ge -5`, stored as the u64 magnitude m = |v + 1| (m = 4 ⇒ v = -5). new() enforces
         // the bound in magnitude space; regression for the inverted-nint-constructor-bound bug where the
         // check was `m < 4` (rejecting valid values, accepting invalid ones) instead of `m > 4`.
-        Bounds::new(10, 5, 0, "abc".to_owned(), vec![5].try_into().unwrap(), [(0, 1), (2, 3)].into()).unwrap(); // m=0 ⇒ v=-1, in range
-        Bounds::new(10, 5, 4, "abc".to_owned(), vec![5].try_into().unwrap(), [(0, 1), (2, 3)].into()).unwrap(); // m=4 ⇒ v=-5, boundary
-        assert!(Bounds::new(10, 5, 5, "abc".to_owned(), vec![5].try_into().unwrap(), [(0, 1), (2, 3)].into()).is_err()); // m=5 ⇒ v=-6, below min
+        Bounds::new(10, 5, 0, "abc".to_owned(), vec![5].try_into().unwrap(), vec![(0, 1), (2, 3)].try_into().unwrap()).unwrap(); // m=0 ⇒ v=-1, in range
+        Bounds::new(10, 5, 4, "abc".to_owned(), vec![5].try_into().unwrap(), vec![(0, 1), (2, 3)].try_into().unwrap()).unwrap(); // m=4 ⇒ v=-5, boundary
+        assert!(Bounds::new(10, 5, 5, "abc".to_owned(), vec![5].try_into().unwrap(), vec![(0, 1), (2, 3)].try_into().unwrap()).is_err()); // m=5 ⇒ v=-6, below min
         // Same magnitude-space bound on the Wrapper (`@newtype`) path — regression for the standalone
         // bounded-nint-newtype bug, where new()/deserialize emitted `if inner < -5` on a u64 `inner`
         // (E0600, didn't compile). Also round-trips a valid value through the deserializer's own check.

@@ -1152,6 +1152,7 @@ impl GenerationScope {
         wrapper.push(self, types);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn generate_non_empty_map_type(
         &mut self,
         types: &IntermediateTypes,
@@ -1544,6 +1545,7 @@ fn push_list_accessors(
 /// `t.get(k)` beats `t.entries().get(k)`. Flattening is also what keeps the typed row from minting a
 /// `MapKToV` class of its own — see the collision-detector family's note on why no fifth sibling
 /// detector is owed.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn push_table_accessors(
     gen_scope: &mut GenerationScope,
     wrapper: &mut WasmWrapper,

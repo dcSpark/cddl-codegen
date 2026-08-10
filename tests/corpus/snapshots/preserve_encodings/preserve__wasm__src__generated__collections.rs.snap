@@ -22,6 +22,7 @@ pub use crate::generated::MapU64ToArrArrText;
 pub use crate::generated::MapU64ToHexTableStr;
 pub use crate::generated::MapU64ToMapU64ToArrArrText;
 pub use crate::generated::MapU64ToU64;
+pub use crate::generated::MapU64ToU64Max3;
 pub use crate::generated::NonEmptyMapU64ToText;
 pub use crate::generated::NonEmptyU64List;
 pub use crate::generated::PlainList;
