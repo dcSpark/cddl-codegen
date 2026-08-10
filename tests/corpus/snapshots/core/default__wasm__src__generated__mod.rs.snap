@@ -76,47 +76,6 @@ impl AsRef<cddl_lib::A> for A {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ArrU64List(pub(crate) Vec<NonEmptyVec<u64>>);
-
-#[wasm_bindgen]
-impl ArrU64List {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> NevInts {
-        self.0[index].clone().into()
-    }
-
-    pub fn add(&mut self, elem: &NevInts) {
-        self.0.push(elem.clone().into());
-    }
-}
-
-impl From<Vec<NonEmptyVec<u64>>> for ArrU64List {
-    fn from(native: Vec<NonEmptyVec<u64>>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<ArrU64List> for Vec<NonEmptyVec<u64>> {
-    fn from(wasm: ArrU64List) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<Vec<NonEmptyVec<u64>>> for ArrU64List {
-    fn as_ref(&self) -> &Vec<NonEmptyVec<u64>> {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
 pub struct ArrayOptFields(pub(crate) cddl_lib::ArrayOptFields);
 
 #[wasm_bindgen]
@@ -3245,7 +3204,7 @@ impl NevHolder {
         self.0.maybe.clone().map(std::convert::Into::into)
     }
 
-    pub fn nested(&self) -> NonEmptyArrU64List {
+    pub fn nested(&self) -> NonEmptyNevIntsList {
         self.0.nested.clone().into()
     }
 
@@ -3259,7 +3218,7 @@ impl NevHolder {
 
     pub fn new(
         tags: &NonEmptyNevBarList,
-        nested: &NonEmptyArrU64List,
+        nested: &NonEmptyNevIntsList,
         plain: Vec<String>,
         ints: &NevInts,
     ) -> Self {
@@ -3391,6 +3350,47 @@ impl From<NevInts> for NonEmptyVec<u64> {
 
 impl AsRef<NonEmptyVec<u64>> for NevInts {
     fn as_ref(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NevIntsList(pub(crate) Vec<NonEmptyVec<u64>>);
+
+#[wasm_bindgen]
+impl NevIntsList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NevInts {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NevInts) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<NonEmptyVec<u64>>> for NevIntsList {
+    fn from(native: Vec<NonEmptyVec<u64>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NevIntsList> for Vec<NonEmptyVec<u64>> {
+    fn from(wasm: NevIntsList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<NonEmptyVec<u64>>> for NevIntsList {
+    fn as_ref(&self) -> &Vec<NonEmptyVec<u64>> {
         &self.0
     }
 }
@@ -3797,50 +3797,6 @@ impl AsRef<cddl_lib::NoAlias> for NoAlias {
     }
 }
 
-/// `[+ NevInts]`: at least one element, enforced by the `NonEmptyVec` representation.
-/// Enter via `try_from` or `new(first)`.
-/// `add` can never violate the bound; removal is checked in the core type.
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct NonEmptyArrU64List(pub(crate) NonEmptyVec<NonEmptyVec<u64>>);
-
-#[wasm_bindgen]
-impl NonEmptyArrU64List {
-    pub fn new(first: &NevInts) -> Self {
-        Self(NonEmptyVec::new(first.clone().into()))
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> NevInts {
-        self.0[index].clone().into()
-    }
-
-    pub fn add(&mut self, elem: &NevInts) {
-        self.0.push(elem.clone().into());
-    }
-}
-
-impl From<NonEmptyVec<NonEmptyVec<u64>>> for NonEmptyArrU64List {
-    fn from(native: NonEmptyVec<NonEmptyVec<u64>>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<NonEmptyArrU64List> for NonEmptyVec<NonEmptyVec<u64>> {
-    fn from(wasm: NonEmptyArrU64List) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<NonEmptyVec<NonEmptyVec<u64>>> for NonEmptyArrU64List {
-    fn as_ref(&self) -> &NonEmptyVec<NonEmptyVec<u64>> {
-        &self.0
-    }
-}
-
 /// `{+ k => v}` (`MapTextToU64`): at least one entry, enforced by the `NonEmptyMap` representation.
 /// Enter via `try_from` or `new(first_key, first_value)`.
 /// `insert` can never violate the bound; removal is checked in the core type.
@@ -4053,6 +4009,50 @@ impl From<NonEmptyNevBarList> for NonEmptyVec<cddl_lib::NevBar> {
 
 impl AsRef<NonEmptyVec<cddl_lib::NevBar>> for NonEmptyNevBarList {
     fn as_ref(&self) -> &NonEmptyVec<cddl_lib::NevBar> {
+        &self.0
+    }
+}
+
+/// `[+ NevInts]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyNevIntsList(pub(crate) NonEmptyVec<NonEmptyVec<u64>>);
+
+#[wasm_bindgen]
+impl NonEmptyNevIntsList {
+    pub fn new(first: &NevInts) -> Self {
+        Self(NonEmptyVec::new(first.clone().into()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NevInts {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NevInts) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<NonEmptyVec<NonEmptyVec<u64>>> for NonEmptyNevIntsList {
+    fn from(native: NonEmptyVec<NonEmptyVec<u64>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyNevIntsList> for NonEmptyVec<NonEmptyVec<u64>> {
+    fn from(wasm: NonEmptyNevIntsList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<NonEmptyVec<u64>>> for NonEmptyNevIntsList {
+    fn as_ref(&self) -> &NonEmptyVec<NonEmptyVec<u64>> {
         &self.0
     }
 }

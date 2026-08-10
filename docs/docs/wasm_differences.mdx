@@ -61,6 +61,15 @@ A named rule may deliberately claim a structural name: writing `foo_list = [* fo
 (below). The two must agree on the element: a rule of that ident with any *other* shape is rejected
 by name at generation time, naming the use that mints the class, rather than shadowing it.
 
+Structural names include the **native carrier of nested collections**. A restriction or policy that
+changes the stored Rust type therefore participates recursively: a list of `[*5 uint]` values uses
+`U64ListMax5List` (over `Vec<BoundedVec<u64, 0, 5>>`), not the `ArrU64List` used by a list of loose
+`[* uint]` values; map/pair-map and ordered-set names follow the same rule for their keys, values,
+and elements. Constraints or encodings that leave the native carrier unchanged still unify: for
+example, `[* uint]` and `[* 0...10]` table keys both use the one `ArrU64List` keys class because both
+are stored as `Vec<u64>`. Thus one structural JS class always denotes one native Rust carrier, while
+genuinely identical carriers continue to share it.
+
 A structural class is not *always* minted here, though: when its element/key/value is a type this
 crate declares `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` and a sibling wasm
 crate already publishes that class,
@@ -120,7 +129,7 @@ named rule.
 
 ## Tables
 
-Map literals also generate a type for them with `new()`, `len() -> usize`, `insert(K, V) -> Option<V>`, `get(K) -> Option<V>` and `keys() -> Vec<K>`. An anonymously-inlined map member gets a structural `MapKeyToValue` name derived from its `Key` and `Value` types. A named table rule **always** surfaces as a JS class under its own identifier, independent of what else the spec contains. When that rule is the sole owner of its map shape, the structural `MapKeyToValue` name becomes a rust-source-level `pub type` alias to the rule's class (`wasm_bindgen` does not export type aliases, so anonymous/embedded uses of the same shape resolve to the rule's JS class); if two or more named rules share one shape, each still gets its own class and anonymous inline uses of that shape get the structural `MapKeyToValue` class.
+Map literals also generate a type for them with `new()`, `len() -> usize`, `insert(K, V) -> Option<V>`, `get(K) -> Option<V>` and `keys() -> Vec<K>`. An anonymously-inlined map member gets a structural `MapKeyToValue` name derived from its `Key` and `Value` carrier types (including nested collection restrictions, as above). A named table rule **always** surfaces as a JS class under its own identifier, independent of what else the spec contains. When that rule is the sole owner of its map shape, the structural `MapKeyToValue` name becomes a rust-source-level `pub type` alias to the rule's class (`wasm_bindgen` does not export type aliases, so anonymous/embedded uses of the same shape resolve to the rule's JS class); if two or more named rules share one shape, each still gets its own class and anonymous inline uses of that shape get the structural `MapKeyToValue` class.
 
 ## Non-empty containers (the two-wrapper pattern)
 

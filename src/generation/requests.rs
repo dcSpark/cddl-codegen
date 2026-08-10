@@ -872,16 +872,16 @@ fn requested_structural_name(
                 // for it resolves to (or subtracts against) the identical structural name.
                 rt.reject_ordered_set_wasm_wrapper_name(types)
             } else if rt.is_non_empty_array() {
-                format!("NonEmpty{}List", inner.conceptual_type.for_variant())
+                format!("NonEmpty{}List", inner.wasm_structural_variant(types))
             } else if let Some((min, max)) = rt.bounded_array_u64_bounds() {
-                let base = inner.conceptual_type.for_variant();
+                let base = inner.wasm_structural_variant(types);
                 match (min, max == u64::MAX) {
                     (0, false) => format!("{base}ListMax{max}"),
                     (_, true) => format!("{base}ListMin{min}"),
                     _ => format!("{base}ListMin{min}Max{max}"),
                 }
             } else {
-                inner.conceptual_type.name_as_wasm_array_ct(types)
+                rt.name_as_wasm_array(types)
             }
         }
         ConceptualRustType::Map(k, v) => {
@@ -890,14 +890,14 @@ fn requested_structural_name(
             // SAME `PairMapKToV` / `NonEmptyPairMapKToV` spelling the consumer's emitter deferred on.
             let preserve = rt.is_preserve_pair_map();
             if rt.is_bounded_map() {
-                rt.bounded_wasm_map_structural_name()
+                rt.bounded_wasm_map_structural_name(types)
             } else if rt.is_non_empty_map() {
                 format!(
                     "NonEmpty{}",
-                    ConceptualRustType::name_for_wasm_map(k, v, preserve)
+                    RustType::name_for_wasm_map(types, k, v, preserve)
                 )
             } else {
-                ConceptualRustType::name_for_wasm_map(k, v, preserve).to_string()
+                RustType::name_for_wasm_map(types, k, v, preserve).to_string()
             }
         }
         other => panic!(

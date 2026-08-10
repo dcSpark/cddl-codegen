@@ -936,12 +936,14 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    /// Whether `name` is claimed by a user-defined rule (a generated rust struct or a user type
-    /// alias) — the namespace the synthesized wasm wrapper names must not silently shadow.
+    /// Whether `name` is claimed by an exported source rule this crate owns — the namespace a
+    /// synthesized wasm wrapper must not silently shadow. Read source-rule ownership from `scopes`,
+    /// not the finalized struct/alias registries: those also contain generator-synthesized
+    /// structural wrappers, and two compatible uses of one structural class must unify rather than
+    /// mistake the first synthesis for a user claim when the second registers.
     fn wasm_ident_claimed_by_user_rule(&self, name: &str) -> bool {
         let ident = RustIdent::new(CDDLIdent::new(name));
-        self.rust_structs.contains_key(&ident)
-            || self.type_aliases.contains_key(&AliasIdent::Rust(ident))
+        self.is_toplevel_rule(&ident) && self.scope(&ident).export()
     }
 
     /// Whether rule `name` provides a COMPATIBLE loose list wrapper for `element_resolved`: only a
@@ -995,7 +997,7 @@ impl<'a> IntermediateTypes<'a> {
                     range,
                     bounds,
                 } if *bounds == Some((Some(1), None))
-                    && ConceptualRustType::name_for_wasm_map(domain, range, preserve).to_string()
+                    && RustType::name_for_wasm_map(self, domain, range, preserve).to_string()
                         == name
             )
         })
@@ -1116,7 +1118,8 @@ impl<'a> IntermediateTypes<'a> {
                 // rule owns `PairMapKToV` while a default rule of the identical key/value owns
                 // `MapKToV` — two independent sole-owner entries that cannot interfere. The flavor is
                 // read from this rule's own config: local information, never a crate-wide lookup.
-                let structural = ConceptualRustType::name_for_wasm_map(
+                let structural = RustType::name_for_wasm_map(
+                    self,
                     domain,
                     range,
                     rust_struct.config().duplicates
@@ -1166,7 +1169,7 @@ impl<'a> IntermediateTypes<'a> {
             // The occurrence's own carried policy selects the flavor (`MapKToV` / `PairMapKToV`) —
             // the same local signal `for_wasm_member` uses, so name resolution here and at the
             // emitter cannot disagree.
-            let ident = ConceptualRustType::name_for_wasm_map(k, v, ty.is_preserve_pair_map());
+            let ident = RustType::name_for_wasm_map(self, k, v, ty.is_preserve_pair_map());
             let scope = sole_owners
                 .get(&ident.to_string())
                 .map(|owner| self.scope(owner).clone())
@@ -1330,7 +1333,7 @@ impl<'a> IntermediateTypes<'a> {
             // the SAME flavor (`PairMapKToV` for a `@duplicates preserve` `{+ …}`, `MapKToV` otherwise)
             preserve: bool,
         ) {
-            let loose_ident = ConceptualRustType::name_for_wasm_map(key, value, preserve);
+            let loose_ident = RustType::name_for_wasm_map(types, key, value, preserve);
             if loose_ident.as_ref() == wrapper_ident.as_ref()
                 || sole_owners.contains_key(&loose_ident.to_string())
             {
@@ -1456,7 +1459,7 @@ impl<'a> IntermediateTypes<'a> {
             if !wasm {
                 return;
             }
-            let loose_ident = ConceptualRustType::name_for_wasm_map(key, value, preserve);
+            let loose_ident = RustType::name_for_wasm_map(types, key, value, preserve);
             if loose_ident.as_ref() == wrapper_ident.as_ref() || deferred.contains_key(&loose_ident)
             {
                 return;
@@ -2289,7 +2292,8 @@ impl<'a> IntermediateTypes<'a> {
                                 value,
                                 rt.is_preserve_pair_map(),
                             );
-                            let loose = ConceptualRustType::name_for_wasm_map(
+                            let loose = RustType::name_for_wasm_map(
+                                self,
                                 key,
                                 value,
                                 rt.is_preserve_pair_map(),
@@ -2748,7 +2752,7 @@ impl<'a> IntermediateTypes<'a> {
                     self.create_and_register_array_type(
                         parent_visitor,
                         domain.clone(),
-                        &domain.conceptual_type.name_as_wasm_array_ct(self),
+                        &domain.name_as_wasm_array(self),
                         cli,
                     );
                 }
@@ -3218,7 +3222,7 @@ impl<'a> IntermediateTypes<'a> {
             .iter()
             .filter_map(|(ident, rs)| match rs.variant() {
                 RustStructType::Table { domain, .. } if self.scope(ident).export() => {
-                    let name = domain.conceptual_type.name_as_wasm_array_ct(self);
+                    let name = domain.name_as_wasm_array(self);
                     // A directly-exposable KEYS-LIST (`{ * uint => v }` -> bare `Vec<u64>` keys) mints
                     // no wrapper; `create_and_register_array_type` returns early on it, so only a real
                     // wrapper name that is not already registered identifies a deferred mint.
@@ -3233,7 +3237,7 @@ impl<'a> IntermediateTypes<'a> {
             })
             .collect();
         for domain in deferred {
-            let name = domain.conceptual_type.name_as_wasm_array_ct(self);
+            let name = domain.name_as_wasm_array(self);
             self.create_and_register_array_type(parent_visitor, domain, &name, cli);
         }
     }
@@ -3265,19 +3269,24 @@ impl<'a> IntermediateTypes<'a> {
             );
         }
         if cli.wasm {
-            // Whether an AUTHORED rule of this exact structural ident (`foo_list = [* foo]`) already
-            // registered its own Array struct. When it did, THIS synthesis re-mints a byte-identical
-            // entry (the last-wins idiom) but must NOT stamp the `synthesized_collection` marker over
-            // the authored provenance: an authored keys-list is a rule-declared class that must still
-            // survive `--no-synthesized-rust-collection-aliases` AND still trip the criterion-9 shadow
-            // warning. Only a purely-synthesized keys-list (no authored rule) gets the marker.
+            // Whether anything already occupies the structural ident, and independently whether an
+            // EXPORTED SOURCE RULE claims it. The distinction is load-bearing: another table may
+            // have synthesized the same wasm boundary class first (for example an unconstrained
+            // `[* uint]` key and a `[* 0...10]` key both use the native `Vec<u64>` carrier and
+            // therefore project to `ArrU64List`). That is compatible structural reuse, not an
+            // authored collision. An authored compatible `foo_list = [* foo]` remains deliberate aliasing;
+            // an authored incompatible shape is recorded below before last-wins registration erases
+            // it. Source ownership is pre-populated in `scopes`, so this remains true whichever rule
+            // registration happens first.
             let already_registered = self.rust_structs.contains_key(&array_type_ident);
+            let authored_claim = self.wasm_ident_claimed_by_user_rule(array_type_name);
             // ...and whether that prior registration is INCOMPATIBLE — a rule of this ident that is
             // not the same-element loose builder. The `register_rust_struct` below is last-wins, so
             // it is about to delete that rule outright: record the claim while it is still visible,
             // for `non_empty_wrapper_name_collisions` to reject in `finalize`. Nothing else can see
             // it afterwards — the overwritten entry is byte-identical to a purely synthesized one.
             if already_registered
+                && authored_claim
                 && !self.provides_compatible_loose_list(
                     array_type_name,
                     &element_type.clone().resolve_aliases(),
@@ -3301,12 +3310,14 @@ impl<'a> IntermediateTypes<'a> {
             );
             // register_rust_struct's Array arm just registered this keys-list's transparent rust
             // alias (`pub type XxxList = Vec<Elem>;`) via `new_manual` — indistinguishable from an
-            // authored `foo_list = [* foo]` by provenance alone. Mark it here (the sole synthesis
+            // authored `foo_list = [* foo]` by registry shape alone. Mark it here (the sole synthesis
             // site) so `--no-synthesized-rust-collection-aliases` can suppress only it, AND so the
             // wasm struct walk's Array arm does not pass `rule_declared: true` for it (a false
-            // criterion-9 shadow warning over a keys-list no rule declares). Suppressed when an
-            // authored rule registered first, preserving that rule's provenance.
-            if !already_registered
+            // criterion-9 shadow warning over a keys-list no rule declares). Re-apply the marker on
+            // every synthesis-only re-mint: `register_rust_struct` just replaced the alias record,
+            // so testing only `already_registered` would lose provenance on the second compatible
+            // table. Suppress it only for a real authored claim.
+            if !authored_claim
                 && let Some(alias) = self.type_aliases.get_mut(&array_type_ident.into())
             {
                 alias.synthesized_collection = true;
@@ -4994,7 +5005,7 @@ impl<'a> IntermediateTypes<'a> {
                 inline_non_empty.push(rt.clone());
             } else if let ConceptualRustType::Map(k, v) = &rt.conceptual_type {
                 let preserve = rt.is_preserve_pair_map();
-                let name = ConceptualRustType::name_for_wasm_map(k, v, preserve).to_string();
+                let name = RustType::name_for_wasm_map(self, k, v, preserve).to_string();
                 plain_loose_needs
                     .insert(name.clone(), "a plain (`*`-occurrence) map use".to_owned());
                 if !preserve {
@@ -5021,8 +5032,8 @@ impl<'a> IntermediateTypes<'a> {
                     if *bounds != Some((Some(1), None)) {
                         let preserve = rs.config().duplicates
                             == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-                        let name = ConceptualRustType::name_for_wasm_map(domain, range, preserve)
-                            .to_string();
+                        let name =
+                            RustType::name_for_wasm_map(self, domain, range, preserve).to_string();
                         plain_loose_needs.insert(
                             name.clone(),
                             "a plain (`*`-occurrence) table rule".to_owned(),
@@ -5060,12 +5071,8 @@ impl<'a> IntermediateTypes<'a> {
                         unreachable!("a map rest row's container is a Map");
                     };
                     plain_loose_needs.insert(
-                        ConceptualRustType::name_for_wasm_map(
-                            k,
-                            v,
-                            container.is_preserve_pair_map(),
-                        )
-                        .to_string(),
+                        RustType::name_for_wasm_map(self, k, v, container.is_preserve_pair_map())
+                            .to_string(),
                         "an open struct-map rest row".to_owned(),
                     );
                 }
@@ -5079,7 +5086,7 @@ impl<'a> IntermediateTypes<'a> {
                                 preserve: bool,
                                 needed_by: &str,
                                 msgs: &mut BTreeSet<String>| {
-            let loose = ConceptualRustType::name_for_wasm_map(key, value, preserve).to_string();
+            let loose = RustType::name_for_wasm_map(self, key, value, preserve).to_string();
             if self.wasm_ident_claimed_by_user_rule(&loose)
                 && !self.provides_compatible_loose_table(
                     &loose,
@@ -5136,7 +5143,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             let preserve =
                 rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-            let loose = ConceptualRustType::name_for_wasm_map(domain, range, preserve).to_string();
+            let loose = RustType::name_for_wasm_map(self, domain, range, preserve).to_string();
             if loose == ident.to_string() {
                 // self-named rule: it owns the ident as its RESTRICTED class (no try_from); any
                 // OTHER use needing the loose builder of this shape now has no class to name
@@ -5181,8 +5188,7 @@ impl<'a> IntermediateTypes<'a> {
                 continue;
             };
             let structural =
-                ConceptualRustType::name_for_wasm_map(rest.domain(), rest.range(), false)
-                    .to_string();
+                RustType::name_for_wasm_map(self, rest.domain(), rest.range(), false).to_string();
             if self.wasm_ident_claimed_by_user_rule(&structural)
                 && !self.provides_compatible_loose_table(
                     &structural,
@@ -5261,7 +5267,7 @@ impl<'a> IntermediateTypes<'a> {
             {
                 return;
             }
-            let restricted = rt.bounded_wasm_map_structural_name();
+            let restricted = rt.bounded_wasm_map_structural_name(self);
             if self.wasm_ident_claimed_by_user_rule(&restricted) {
                 let (min, max) = bounds;
                 let window = if max == u64::MAX {
@@ -5305,7 +5311,7 @@ impl<'a> IntermediateTypes<'a> {
             {
                 return;
             }
-            let restricted = rt.bounded_wasm_map_structural_name();
+            let restricted = rt.bounded_wasm_map_structural_name(self);
             if self.wasm_ident_claimed_by_user_rule(&restricted) {
                 let (min, max) = bounds;
                 let window = if max == u64::MAX {
@@ -5352,7 +5358,7 @@ impl<'a> IntermediateTypes<'a> {
             {
                 continue;
             }
-            let variant = element_type.conceptual_type.for_variant();
+            let variant = element_type.wasm_structural_variant(self);
             let structural = if *bounds == Some((Some(1), None)) {
                 format!("NonEmpty{variant}OrderedSet")
             } else {
@@ -5382,7 +5388,7 @@ impl<'a> IntermediateTypes<'a> {
             let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type else {
                 continue;
             };
-            let variant = element_type.conceptual_type.for_variant();
+            let variant = element_type.wasm_structural_variant(self);
             let structural = if wrapped.is_non_empty_array() {
                 format!("NonEmpty{variant}OrderedSet")
             } else {
@@ -5480,7 +5486,7 @@ impl<'a> IntermediateTypes<'a> {
                         continue;
                     }
                     let structural =
-                        ConceptualRustType::name_for_wasm_map(domain, range, true).to_string();
+                        RustType::name_for_wasm_map(self, domain, range, true).to_string();
                     // A self-named rule legitimately owns the ident for its own class.
                     if structural == ident.to_string() {
                         continue;
@@ -5510,7 +5516,7 @@ impl<'a> IntermediateTypes<'a> {
                         continue;
                     };
                     let structural =
-                        ConceptualRustType::name_for_wasm_map(rest.domain(), rest.range(), true)
+                        RustType::name_for_wasm_map(self, rest.domain(), rest.range(), true)
                             .to_string();
                     check(
                         structural,
@@ -5538,7 +5544,7 @@ impl<'a> IntermediateTypes<'a> {
                         unreachable!("is_preserve_pair_map implies a Map conceptual type");
                     };
                     let structural =
-                        ConceptualRustType::name_for_wasm_map(domain, range, true).to_string();
+                        RustType::name_for_wasm_map(self, domain, range, true).to_string();
                     check(
                         structural,
                         domain,
@@ -5628,7 +5634,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             let structural = format!(
                 "NonEmpty{}",
-                ConceptualRustType::name_for_wasm_map(domain, range, true)
+                RustType::name_for_wasm_map(self, domain, range, true)
             );
             if self.wasm_ident_claimed_by_user_rule(&structural) {
                 msgs.insert(format!(

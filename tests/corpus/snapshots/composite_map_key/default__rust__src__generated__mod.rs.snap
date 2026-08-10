@@ -21,8 +21,6 @@ pub mod serialization;
 
 use crate::generated::non_empty::NonEmptyVec;
 
-pub type ArrU64List = Vec<NonEmptyVec<u64>>;
-
 #[derive(Clone, Debug)]
 pub struct Holder {
     pub table: T,
@@ -33,5 +31,7 @@ impl Holder {
         Self { table }
     }
 }
+
+pub type NonEmptyU64ListList = Vec<NonEmptyVec<u64>>;
 
 pub type T = BTreeMap<NonEmptyVec<u64>, u64>;
