@@ -2724,6 +2724,7 @@ pub(super) fn codegen_struct(
                 typed.domain(),
                 typed.range(),
                 &format!("self.0.{}", typed.field_name),
+                false,
                 cli,
             );
         }

@@ -888,7 +888,13 @@ and schemars publishes `minItems`/`maxItems`. The wasm class is named `<Elem>Lis
 `<Elem>ListMaxN`, or `<Elem>ListMinNMaxN` (a named CDDL rule wins); its `try_from`/`add` doors are
 fallible for the same reason, and only a zero-minimum class exposes an infallible empty `new()` seed.
 Positive-minimum instantiations have no `new` method at all. Tables remain outside this representation and retain their documented
-occurrence limits.
+occurrence limits. Unique-key tables now have the matching `BoundedMap<K, V, MIN, MAX>` carrier:
+`{ k => v }` is `BoundedMap<K, V, 1, 1>`, `{ ? k => v }` is `BoundedMap<K, V, 0, 1>`, and other
+finite/lower-bounded windows retain their inclusive endpoints (`*` stays loose and `+` stays
+`NonEmptyMap`). Its `TryFrom<BTreeMap<_, _>>`/`TryFrom<Vec<(K, V)>>` door, checked `insert`/`extend`/
+`remove`, and read/value-mutation-only API have the same no-invalid-state rule; JSON schemas publish
+`minProperties`/`maxProperties`. Bounded `@duplicates preserve` tables are refused until a bounded
+pair-map carrier exists.
 
 Because the invalid state is unrepresentable, a struct whose only rejectable constraint is an
 occurrence lower bound gets an **infallible `new()`**: every argument is already valid by

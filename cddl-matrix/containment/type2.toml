@@ -53,7 +53,7 @@ id = "contain.map-key.type2.tag"
 role = "role.map-key"
 feature = "type2.tag"
 spec = "allowed"
-note = "A tagged type as a map key (memberkey can be a type). `*`-spelled: the no-occurrence spelling is spec-exactly-once and rejected gracefully at generation (the tstr_arrow_nooccur map-key row owns that boundary)."
+note = "A tagged type as a map key (memberkey can be a type). In a non-literal homogeneous table, the omitted occurrence is RFC-exactly-once and generates a checked BoundedMap; spelling `*` expressly selects a loose map (the tstr_arrow_nooccur map-key row owns that boundary)."
 example = "m = { * #6.24(uint) => tstr }"
 
 [[contain]]

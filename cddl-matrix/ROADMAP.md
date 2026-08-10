@@ -24,13 +24,15 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->1 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->105 `class="constraint"` enforcement reject vectors over 85 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->109 `class="constraint"` enforcement reject vectors over 88 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries three temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
 every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
 the pinned rust-cddl validator panic prevents the two fixed-byte member rows and their top-level
 feature row from gaining independently certified reject vectors until upstream gap #17 closes.
-`+`/`1*` is honored as a non-empty container and the other count-permitting table markers
-are rejected gracefully (§ findings); the green, three-row unverified, and over-accepts (empty) sets are
+For unique-key homogeneous tables, `*` is loose, `+`/`1*` is non-empty, and every other
+occurrence window (including omitted exact-once) is a checked `BoundedMap`; only bounded
+duplicate-preserving tables and bounded rows in open-table/open-struct contexts remain rejected.
+The green, three-row unverified, and over-accepts (empty) sets are
 each pinned exactly by `query_q4_directional.ts --check` (the over-acceptance vector class stays armed
 for the next certified instance).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
@@ -430,33 +432,11 @@ entry, so the atomicity is the rule).
   overlap below. RFC 8610's greedy PEG occurrence semantics do not permit reserving a mandatory
   suffix or backtracking; repeated occurrences additionally need a representation and residue
   policy of their own.
-- **Real bounded `?` / `n*m` table cardinality is a candidate feature.** A count-permitting occurrence
-  marker on a single non-literal arrow map entry never silently widens to an unbounded `*` table —
-  the widening the rejections below exist to prevent, since `HomogenousMap` — unlike
-  `HomogenousArray` — carries no bounds, so a decoder built from the widened form wrongly accepts
-  out-of-window maps.
-  `+` / `1*` is honored as a `NonEmptyMap<K, V>` whose single `TryFrom` door rejects the empty map
-  identically at the API and the wire (`4fa3041`; enforcement model:
-  `docs/docs/output_format.mdx` § "Non-empty containers"). That empty-map rejection is pinned by the
-  `contain.occurrence-target.memberkey.type1.plus_table` `class="constraint"` decode vector, projected
-  `enforce = yes`. The other count-permitting markers — the `?`, `n*m`, `*n`, `n*`, and `0*n` spellings
-  such as `{ ? tstr => uint }` and `{ 2*3 tstr => uint }` — are **rejected gracefully**, pinned by
-  `contain.occurrence-target.memberkey.type1.optional_table` and
-  `contain.occurrence-target.memberkey.type1.bounded_table` in `tests/matrix_reject/` and by
-  `no_occurrence_arrow_map_entry_rejects_gracefully`. Honoring `?` / `n*m` as real map-size bounds (a
-  bounds slot on `HomogenousMap` mirroring `HomogenousArray`'s, plus the `MinN`/`MaxN`/`BoundedMap`
-  shapes the design doc phases after `NonEmptyMap`) is the remaining candidate feature. If that bounds
-  slot lands, also revisit the rejected no-occurrence spelling `{ k => v }` — it becomes implementable
-  as bounds `(1, 1)`, so flip its reject row (`contain.map-key.memberkey.type1.tstr_arrow_nooccur`) on
-  merit rather than keeping the rejection out of inertia.
-- **Bounded table cardinality remains the type-level constraint residue beyond `+`.** Ordinary and
-  preserve homogeneous ARRAY windows now use the `BoundedVec` sibling and Min/Max wasm wrappers;
-  bounded `@duplicates reject` arrays remain runtime-checked `OrderedSet` values until a compound
-  bounded-unique representation is designed; do not reopen that
-  delivered representation. The rejected `?`/`n*m` table spellings owned by "Real bounded `?` /
-  `n*m` table cardinality" would require a `BoundedMap` sibling. Rust cannot vary method fallibility
-  by const parameter, so it remains separate from `NonEmptyMap`; reopen when a table consumer needs
-  bounded cardinality rather than a parser refusal.
+- **Bounded `@duplicates preserve` tables remain a future boundary.** A duplicate-preserving table
+  needs a bounded pair-map carrier that retains both occurrence cardinality and wire order across
+  Rust, JSON, wasm, component, and cross-crate wrapper requests. Until that carrier exists, bounded
+  preserve tables stay a targeted refusal. Reopen only when a consumer needs bounded duplicate keys;
+  the acceptance change must include checked-door and preserve-fidelity vectors for every face.
   - **An open table's min-1 typed row** (`t = { + K_t => V_t, * K_r => V_r }`): the one min-1 shape
     that does NOT use the unrepresentable model, because the container it bounds is one `pub` member
     of a struct whose OTHER member is an unbounded sibling. It is enforced at a seeded door

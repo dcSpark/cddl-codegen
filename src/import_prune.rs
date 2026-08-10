@@ -165,6 +165,7 @@ pub(crate) const ALLOWLIST: &[&str] = &[
     "BTreeMap",
     "OrderedHashMap",
     "NonEmptyVec",
+    "BoundedMap",
     "NonEmptyMap",
     "OrderedSet",
     "NonEmptyOrderedSet",

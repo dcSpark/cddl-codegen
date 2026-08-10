@@ -140,6 +140,7 @@ pub(crate) enum MintValue {
         val: Box<MintValue>,
         count: i128,
         non_empty: bool,
+        bounded: Option<(u64, u64)>,
         /// `@duplicates preserve`: the target is `PairMap<K, V>` (or `NonEmptyPairMap` when also
         /// non-empty). Duplicates are permitted, so N distinct-key entries synthesize fine; the
         /// non-empty flavor still routes through its `new`/`insert` door.
@@ -236,11 +237,14 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             val,
             count,
             non_empty,
+            bounded,
             preserve,
         } => {
             let k = map_key_expr(key, *key_base);
             let v = render_rust(val);
-            if *non_empty {
+            if let Some((min, max)) = bounded {
+                format!("BoundedMap::<_, _, {min}, {max}>::try_from((0u64..{count}).map(|__i| ({k}, {v})).collect::<Vec<_>>()).unwrap()")
+            } else if *non_empty {
                 // build via `new(first_key, first_value)` + `insert` (flavor-agnostic and
                 // unambiguous). A bare `try_from((..).collect())` can't infer the collect target here:
                 // the reflexive `TryFrom<Self>` blanket competes with `TryFrom<{table_type}>`, so the
@@ -1437,7 +1441,8 @@ fn record_deser_reject(
             (f.rust_type.config.bounds.is_some()
                 && measure_kind(&f.rust_type).is_some()
                 && !f.rust_type.is_type_enforced_non_empty()
-                && !f.rust_type.is_type_enforced_bounded_array())
+                && !f.rust_type.is_type_enforced_bounded_array()
+                && !f.rust_type.is_type_enforced_bounded_map())
                 || f.rust_type.config.float_bounds.is_some()
         })
         .collect();
@@ -1578,7 +1583,7 @@ fn choice_construct_reject(
                 // own `try_from(..).unwrap()`, not exercise the ctor (the same skip
                 // `record_deser_reject` applies). Rejection via the TryFrom door is covered by
                 // the hand-written fixture tests.
-                if arg_ty.is_type_enforced_non_empty() {
+                if arg_ty.is_type_enforced_non_empty() || arg_ty.is_type_enforced_bounded_map() {
                     continue;
                 }
                 (
@@ -2453,6 +2458,7 @@ fn materialize_at(
                 val: Box::new(val),
                 count: measure,
                 non_empty: ty.is_type_enforced_non_empty(),
+                bounded: ty.bounded_map_u64_bounds(),
                 preserve: ty.config.duplicates
                     == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
             })

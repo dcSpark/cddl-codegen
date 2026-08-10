@@ -998,6 +998,51 @@ impl RustType {
             && self.config.bounds == Some((Some(1), None))
     }
 
+    /// A finite, optional, exact-once, or lower-bounded unique-key table represented by BoundedMap.
+    /// `+` retains the compatibility NonEmptyMap representation; pair maps stay distinct.
+    pub fn is_bounded_map(&self) -> bool {
+        matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
+            && !self.is_preserve_pair_map()
+            && matches!(self.config.bounds, Some(bounds) if bounds != (None, None) && bounds != (Some(1), None))
+    }
+
+    pub fn bounded_map_u64_bounds(&self) -> Option<(u64, u64)> {
+        if !self.is_bounded_map() {
+            return None;
+        }
+        let (min, max) = self.config.bounds?;
+        let min = min.unwrap_or(0).try_into().ok()?;
+        let max = max.map(|v| v.try_into().ok()).unwrap_or(Some(u64::MAX))?;
+        (min <= max).then_some((min, max))
+    }
+
+    /// Alias-aware counterpart used for invariant decisions. Naming deliberately retains the raw
+    /// predicate above, so a field referring to a named bounded table keeps its rule-derived name
+    /// while the BoundedMap target remains the single occurrence-window enforcement door.
+    pub fn type_enforced_bounded_map_u64_bounds(&self) -> Option<(u64, u64)> {
+        matches!(
+            self.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Map(_, _)
+        )
+        .then_some(())?;
+        if self.is_preserve_pair_map() {
+            return None;
+        }
+        let (min, max) = self.config.bounds?;
+        if (min, max) == (None, None) || (min, max) == (Some(1), None) {
+            return None;
+        }
+        let min = min.unwrap_or(0).try_into().ok()?;
+        let max = max
+            .map(|value| value.try_into().ok())
+            .unwrap_or(Some(u64::MAX))?;
+        (min <= max).then_some((min, max))
+    }
+
+    pub fn is_type_enforced_bounded_map(&self) -> bool {
+        self.type_enforced_bounded_map_u64_bounds().is_some()
+    }
+
     /// Like `is_non_empty_array`/`is_non_empty_map` but alias-resolving and covering BOTH containers:
     /// true for an inline `[+ T]` / `{+ k => v}` and for a field that *references* a named `[+ …]` /
     /// `{+ …}` rule (an `Alias` whose target is the non-empty container). Used only for the
@@ -1072,6 +1117,20 @@ impl RustType {
         }
     }
 
+    /// Whether any nested position needs the BoundedMap runtime module.
+    pub fn contains_bounded_map(&self) -> bool {
+        if self.is_bounded_map() {
+            return true;
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                inner.contains_bounded_map()
+            }
+            ConceptualRustType::Map(k, v) => k.contains_bounded_map() || v.contains_bounded_map(),
+            _ => false,
+        }
+    }
+
     /// Whether this type, at ANY nesting level, contains CDDL `any` (the `AnyCbor` runtime type), so
     /// `export`/import wiring pulls in the `any_cbor` runtime module + `AnyCbor` import only for
     /// crates that need it (keeping every non-`any` crate's output byte-identical). Recurses into
@@ -1088,7 +1147,10 @@ impl RustType {
         // TryFrom door, so it emits NO constructor/setter length check and does NOT make new()
         // fallible — the invalid (empty) state is unrepresentable, not runtime-rejected. Covers both
         // inline `[+ T]` and a field referencing a named `[+ …]` rule (alias-resolving).
-        if self.is_type_enforced_non_empty() || self.is_type_enforced_bounded_array() {
+        if self.is_type_enforced_non_empty()
+            || self.is_type_enforced_bounded_array()
+            || self.is_type_enforced_bounded_map()
+        {
             return false;
         }
         self.config.bounds.is_some() || self.config.float_bounds.is_some()
@@ -1195,6 +1257,39 @@ impl RustType {
         }
     }
 
+    /// Mechanical wasm name for a finite/exact unique-key table. The bounds are part of the
+    /// structural identity, so a loose `MapKToV` source can never be mistaken for this wrapper.
+    pub fn bounded_wasm_map_structural_name(&self) -> String {
+        let (min, max) = self
+            .bounded_map_u64_bounds()
+            .expect("bounded map wasm wrapper has representable bounds");
+        let base = match &self.conceptual_type {
+            ConceptualRustType::Map(k, v) => ConceptualRustType::name_for_wasm_map(k, v, false),
+            _ => unreachable!("bounded_wasm_map_wrapper_name on a non-map"),
+        };
+        match (min, max == u64::MAX) {
+            (0, false) => format!("{base}Max{max}"),
+            (_, true) => format!("{base}Min{min}"),
+            _ => format!("{base}Min{min}Max{max}"),
+        }
+    }
+
+    /// Bounded maps follow bounded arrays' owner rule: a matching authored table owns an inline
+    /// occurrence's wasm surface, otherwise the structural `MapKToVMinN/MaxN` name is minted.
+    pub fn bounded_wasm_map_wrapper_name(&self, types: &IntermediateTypes) -> String {
+        let ConceptualRustType::Map(key, value) = &self.conceptual_type else {
+            unreachable!("bounded_wasm_map_wrapper_name on a non-map");
+        };
+        let bounds = self
+            .config
+            .bounds
+            .expect("bounded map has occurrence bounds");
+        types
+            .bounded_map_named_owner(key, value, bounds)
+            .map(ToString::to_string)
+            .unwrap_or_else(|| self.bounded_wasm_map_structural_name())
+    }
+
     /// The wasm-boundary name of the LOOSE `@duplicates preserve` map wrapper (`PairMapKToV`) — the
     /// pair-map twin of the default `MapKToV` structural class. Unlike the NonEmpty/reject twins there
     /// is no dedup-to-named lookup: a named preserve `{* …}` table that SOLELY owns the shape has its
@@ -1249,8 +1344,22 @@ impl RustType {
                 format!("Option<{}>", inner.for_rust_member(types, from_wasm, cli))
             }
             ConceptualRustType::Map(k, v)
-                if self.is_preserve_pair_map() || self.is_non_empty_map() =>
+                if self.is_preserve_pair_map()
+                    || self.is_non_empty_map()
+                    || self.is_bounded_map() =>
             {
+                if let Some((min, max)) = self.bounded_map_u64_bounds() {
+                    let max = if max == u64::MAX {
+                        "{ u64::MAX }".to_owned()
+                    } else {
+                        max.to_string()
+                    };
+                    return format!(
+                        "BoundedMap<{}, {}, {min}, {max}>",
+                        k.for_rust_member(types, from_wasm, cli),
+                        v.for_rust_member(types, from_wasm, cli)
+                    );
+                }
                 let table = match (self.is_preserve_pair_map(), self.is_non_empty_map()) {
                     // `@duplicates preserve`: the vec-of-pairs twin (duplicate-permitting), non-empty
                     // flavor when the rule is also `{+}` (its door composes the min-1 check).
@@ -1291,6 +1400,9 @@ impl RustType {
         if self.is_non_empty_map() {
             return self.non_empty_wasm_map_wrapper_name(types);
         }
+        if self.is_bounded_map() {
+            return self.bounded_wasm_map_wrapper_name(types);
+        }
         // `@duplicates preserve` loose map: the flavored structural class (`PairMapKToV`). The
         // conceptual `for_wasm_member_ct` below cannot see the policy, so the flavor branch lives here
         // — the same seam `is_non_empty_map` uses for the occurrence bound.
@@ -1324,6 +1436,9 @@ impl RustType {
         if self.is_non_empty_map() {
             return format!("&{}", self.non_empty_wasm_map_wrapper_name(types));
         }
+        if self.is_bounded_map() {
+            return format!("&{}", self.bounded_wasm_map_wrapper_name(types));
+        }
         if self.is_preserve_pair_map() {
             return format!("&{}", self.preserve_pair_map_wasm_wrapper_name());
         }
@@ -1349,6 +1464,9 @@ impl RustType {
         if self.is_non_empty_map() {
             return self.non_empty_wasm_map_wrapper_name(types);
         }
+        if self.is_bounded_map() {
+            return self.bounded_wasm_map_wrapper_name(types);
+        }
         if self.is_preserve_pair_map() {
             return self.preserve_pair_map_wasm_wrapper_name();
         }
@@ -1361,7 +1479,11 @@ impl RustType {
         // A `[+ T]` (NonEmptyVec) or a `@duplicates reject` set (OrderedSet/NonEmptyOrderedSet) always
         // crosses the wasm boundary through its restricted wrapper class, never as a bare `Vec`: the
         // bare form would drop the invariant AND mismatch the rust core type. Same reason as `[+ T]`.
-        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array()
+            || self.is_bounded_array()
+            || self.is_reject_ordered_set()
+            || self.is_bounded_map()
+        {
             return false;
         }
         self.conceptual_type.directly_wasm_exposable_ct(types)
@@ -1409,7 +1531,11 @@ impl RustType {
     /// set but NOT a non-empty array, so it needs its own arm here (the sibling type-name methods
     /// `for_wasm_member`/`for_wasm_param`/`directly_wasm_exposable` already treat both the same way).
     pub fn to_wasm_boundary(&self, types: &IntermediateTypes, expr: &str, is_ref: bool) -> String {
-        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array()
+            || self.is_bounded_array()
+            || self.is_reject_ordered_set()
+            || self.is_bounded_map()
+        {
             return format!("{expr}.clone().into()");
         }
         self.conceptual_type.to_wasm_boundary(types, expr, is_ref)
@@ -1421,7 +1547,11 @@ impl RustType {
         expr: &str,
         is_ref: bool,
     ) -> String {
-        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array()
+            || self.is_bounded_array()
+            || self.is_reject_ordered_set()
+            || self.is_bounded_map()
+        {
             return format!("{expr}.clone().map(std::convert::Into::into)");
         }
         self.conceptual_type
@@ -1439,7 +1569,11 @@ impl RustType {
         expr: &str,
         can_fail: bool,
     ) -> Vec<ToWasmBoundaryOperations> {
-        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array()
+            || self.is_bounded_array()
+            || self.is_reject_ordered_set()
+            || self.is_bounded_map()
+        {
             let mut ops = vec![
                 ToWasmBoundaryOperations::Code(format!("{expr}.clone()")),
                 ToWasmBoundaryOperations::Into,

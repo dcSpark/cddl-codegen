@@ -504,6 +504,7 @@ impl Emitter<'_, '_> {
                 };
                 let restricted = resolved.is_type_enforced_non_empty()
                     || resolved.is_type_enforced_bounded_array()
+                    || resolved.is_type_enforced_bounded_map()
                     || super::wit::wit_param_despecialized(&resolved, self.types);
                 if !restricted {
                     return values;
@@ -550,6 +551,7 @@ impl Emitter<'_, '_> {
                 // column; otherwise inference tries to collect rows straight into the restricted
                 // map, which intentionally has no FromIterator implementation.
                 let restricted = rust_type.is_type_enforced_non_empty()
+                    || rust_type.is_type_enforced_bounded_map()
                     || super::wit::wit_param_despecialized(rust_type, self.types);
                 if key.expr == "x0" && value.expr == "x1" && !restricted {
                     // The target remains the rust map flavor (`BTreeMap`/`PairMap`): inference at

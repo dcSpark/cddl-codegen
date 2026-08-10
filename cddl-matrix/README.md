@@ -168,7 +168,7 @@ excluded-endpoint number, NaN against a float window — each a valid instance o
 certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
 REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
 replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is
-<!-- gen:sh:readme-enforce-green -->85 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+<!-- gen:sh:readme-enforce-green -->88 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
 the guard that replaced the silent truncation this row's vector exposed; pinned by the
@@ -370,8 +370,8 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    behavior verified by a 21-CBOR/12-JSON differential grid vs the ruby gem plus fork regression
    tests. No matrix consequence beyond the ledger: cddl-codegen rejects the `{ ? tstr => uint }`
    spelling gracefully (the count-permitting table-marker boundary), so
-   `contain.occurrence-target.memberkey.type1.optional_table` is a reject fixture in
-   `tests/matrix_reject/` with no decode-catalog row to re-mint. Two fingerprint probes
+  `contain.occurrence-target.memberkey.type1.optional_table` is now a supported bounded-table row;
+  its 0..=1 decode vectors are minted and its over-maximum constraint vector is pinned. Two fingerprint probes
    (`optional-entry-empty-map-accepts`, `closed-map-unexpected-key-rejects`) pin the fixed
    behavior, refusing a stale pre-fix (old-pin) oracle build. Of the four adjacent map-matching
    gaps found during the fix, one (the float-key/null copy-paste) is since fork-fixed — gap #10
@@ -742,16 +742,14 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   as "still wrongly accepts" (`over_accept_N`) so the pin flips LOUDLY when a fix lands, and projected
   by `query_q4_directional.ts` as the honest `enforce = no (over-accepts: M)` (dominating `yes`/
   `unverified`) instead of hiding the hole. No instances at HEAD (the set is empty) — but the class
-  stays armed. Its worked precedent is the widened-occurrence-marker table class (`ROADMAP.md`
-  § findings): a COUNT-PERMITTING occurrence marker (`+` / `?` / `n*m`) on a single non-literal arrow
-  map entry once table-detected to the same unbounded 0..N `BTreeMap` as `{ * k => v }` (`HomogenousMap`
-  carried no bounds), so an out-of-window map (`8200a0` = empty) was wrongly accepted against `+`, and
-  `contain.occurrence-target.memberkey.type1.plus_table` carried the pin. The FIX (honoring `+` as a
-  `NonEmptyMap`, `4fa3041`) flipped it loudly: the vector was promoted to `class="constraint"` (+
-  `expect_err "0 not at least 1"`) and the row moved to Q4's enforce-green pin. The `?` / `n*m`
-  spellings, and the seed instance (the no-occurrence type-domain arrow widening `{ tstr => uint }`,
-  pinned by `no_occurrence_arrow_map_entry_rejects_gracefully`), took the flow's OTHER exit — rejected
-  gracefully at generation, their rows flipped unsupported and their pins dropped with them.
+  stays armed. Its worked precedent is the former widened-occurrence table class: a single
+  non-literal arrow map entry once table-detected every occurrence spelling to the same unbounded
+  0..N `BTreeMap` as `{ * k => v }` (`HomogenousMap` carried no bounds), so an out-of-window map
+  (`8200a0` = empty) was wrongly accepted against `+`, and
+  `contain.occurrence-target.memberkey.type1.plus_table` carried the pin. The fix made `+`/`1*` a
+  `NonEmptyMap` and every other unique-key window — including `?`, `n*m`, and omitted exact-once — a
+  checked `BoundedMap`; their boundary vectors are now `class="constraint"` and the rows are Q4
+  enforce-green. Bounded `@duplicates preserve` tables remain the targeted unsupported boundary.
 - **Constraint-vector SHAPE is load-bearing: a `class="constraint"` vector for a `standalone` row
   must be a bare in-type instance of the row's type** — decodable all the way up to the constraint
   itself, so the emitted range/size check is the ONLY thing that can reject it. A holder-wrapped

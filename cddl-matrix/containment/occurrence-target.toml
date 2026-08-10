@@ -105,7 +105,7 @@ id = "contain.occurrence-target.memberkey.type1.plus_table"
 role = "role.occurrence-target"
 feature = "memberkey.type1"
 spec = "allowed"
-note = "A one-or-more occurrence on a NON-literal (type-domain) arrow map entry: `{ + tstr => uint }` requires 1..N entries (RFC8610 §3.2 `+` = one-or-more, §3.5.2 admits a type1 key). Home here because the varying axis is the occurrence MARKER on the arrow entry (its no-occurrence sibling `contain.map-key.memberkey.type1.tstr_arrow_nooccur` lives in map-key.toml because ITS axis was the key spelling). cddl-codegen honors the `+` lower bound as a NonEmptyMap<String, u64> whose single TryFrom door rejects the empty map, so the row's decode-catalog empty-map vector (holder `[0, {}]` = `8200a0`) is a class=\"constraint\" enforcement reject pin (`enforce = yes`); the unbounded upper direction matches the spec. Enumerated with its boundary-violation vector per the 'Intra-alternative variation rows' rule. Provenance + the remaining bounded-cardinality candidate: cddl-matrix/ROADMAP.md § findings, the 'Real bounded `?` / `n*m` table cardinality is a candidate feature' entry."
+note = "A one-or-more occurrence on a NON-literal (type-domain) arrow map entry: `{ + tstr => uint }` requires 1..N entries (RFC8610 §3.2 `+` = one-or-more, §3.5.2 admits a type1 key). Home here because the varying axis is the occurrence MARKER on the arrow entry (its no-occurrence sibling `contain.map-key.memberkey.type1.tstr_arrow_nooccur` lives in map-key.toml because ITS axis was the key spelling). cddl-codegen honors the `+` lower bound as a NonEmptyMap<String, u64> whose single TryFrom door rejects the empty map, so the row's decode-catalog empty-map vector (holder `[0, {}]` = `8200a0`) is a class=\"constraint\" enforcement reject pin (`enforce = yes`); the unbounded upper direction matches the spec. Enumerated with its boundary-violation vector per the 'Intra-alternative variation rows' rule."
 example = "m = { + tstr => uint }"
 
 [[contain]]
@@ -113,7 +113,7 @@ id = "contain.occurrence-target.memberkey.type1.optional_table"
 role = "role.occurrence-target"
 feature = "memberkey.type1"
 spec = "allowed"
-note = "An optional occurrence on a type-domain arrow map entry: `{ ? tstr => uint }` permits 0..1 entries (RFC8610 §3.2 `?` = optional, §3.5.2). cddl-codegen REJECTS this spelling gracefully — the count-permitting table-marker boundary: a 0..1 window an unbounded BTreeMap table cannot honor, so rejection replaced the old silent widening — making this a reject fixture (`tests/matrix_reject/`), not a decode-catalog row. The rust oracle formerly ALSO over-rejected the spec-VALID empty map here (README gap #9, fixed in the pinned fork @ 3d56d8e), so if the marker is ever honored as map-size bounds, the legal empty-map accept vector (`8200a0`) is now mintable through the two-oracle gate."
+note = "An optional occurrence on a type-domain arrow map entry: `{ ? tstr => uint }` permits 0..1 entries (RFC8610 §3.2 `?` = optional, §3.5.2). cddl-codegen represents it as `BoundedMap<String, u64, 0, 1>` and checks every construction/decode boundary; the empty holder-map vector `8200a0` is valid, while a two-entry map is a constraint rejection."
 example = "m = { ? tstr => uint }"
 
 [[contain]]
@@ -121,7 +121,7 @@ id = "contain.occurrence-target.memberkey.type1.bounded_table"
 role = "role.occurrence-target"
 feature = "memberkey.type1"
 spec = "allowed"
-note = "A bounded occurrence on a type-domain arrow map entry: `{ 2*3 tstr => uint }` requires 2..3 entries (RFC8610 §3.2 `n*m`, §3.5.2). cddl-codegen REJECTS this spelling gracefully — a bounded window that neither an unbounded BTreeMap table nor a NonEmptyMap can honor, the same count-permitting table-marker boundary as the `?` sibling — so this is a reject fixture (`tests/matrix_reject/`), not a decode-catalog row. Real bounded table cardinality is the ledgered candidate feature: cddl-matrix/ROADMAP.md § findings, the 'Real bounded `?` / `n*m` table cardinality is a candidate feature' entry."
+note = "A bounded occurrence on a type-domain arrow map entry: `{ 2*3 tstr => uint }` requires 2..3 entries (RFC8610 §3.2 `n*m`, §3.5.2). cddl-codegen represents it as `BoundedMap<String, u64, 2, 3>` and checks the inclusive window at API, CBOR, JSON, wasm, and component doors."
 example = "m = { 2*3 tstr => uint }"
 
 [[contain]]
@@ -204,7 +204,7 @@ id = "contain.occurrence-target.memberkey.type1.open_table_plus"
 role = "role.occurrence-target"
 feature = "memberkey.type1"
 spec = "allowed"
-note = "The count-permitting boundary of the open table, and the one place in this family where a `+` on an arrow row is SUPPORTED after being rejected at its two siblings: a one-or-more occurrence on an open table\'s TYPED row (`t = { + bstr => uint, * uint => uint }`) is the NonEmpty twin, whose minimum of 1 counts TYPED entries only — a map of purely captured entries is not a non-empty table. cddl-codegen enforces it at two doors: `new(first_key, first_value)` (so no constructed value violates it) and one check after each reader\'s loop, raising the same RangeCheck `NonEmptyMap`\'s own door raises. `+` and `1*` are one spelling, `*` and `0*` another; every other marker is a real bounded cardinality and is refused rather than widened. Contrast `contain.occurrence-target.memberkey.type1.open_struct_plus` (a `+` REST row after fixed keys, rejected) and `contain.occurrence-target.memberkey.type1.plus_table` (a `+` on a lone table, a NonEmptyMap): three contexts, the same marker, three different verdicts — the (feature x context) distinction this matrix exists to record. Pinned by `open_table_front_end` (robustness_tests.rs) and executed in tests/open-table-e2e. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 \'=>\'."
+note = "The count-permitting boundary of the open table: a one-or-more occurrence on an open table\'s TYPED row (`t = { + bstr => uint, * uint => uint }`) is the NonEmpty twin, whose minimum of 1 counts TYPED entries only — a map of purely captured entries is not a non-empty table. cddl-codegen enforces it at two doors: `new(first_key, first_value)` (so no constructed value violates it) and one check after each reader\'s loop, raising the same RangeCheck `NonEmptyMap`\'s own door raises. In this open-table typed-row context, `+` and `1*` are one spelling and `*` and `0*` another; every other marker is a bounded cardinality this composition does not honor and is refused rather than widened. A lone homogeneous unique-key table is different: all of its other windows generate as `BoundedMap`. Contrast `contain.occurrence-target.memberkey.type1.open_struct_plus` (a `+` REST row after fixed keys, rejected) and `contain.occurrence-target.memberkey.type1.plus_table` (a `+` on a lone table, a NonEmptyMap): three contexts, the same marker, three different verdicts — the (feature x context) distinction this matrix exists to record. Pinned by `open_table_front_end` (robustness_tests.rs) and executed in tests/open-table-e2e. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 \'=>\'."
 example = "t = { + bstr => uint, * uint => uint }"
 
 [[contain]]

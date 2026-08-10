@@ -1509,9 +1509,11 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   of a finalize-time check silently retargets every fixture whose spec happens to also match the
   new guard — the label is identical, the provenance is wrong, and the originally-pinned boundary
   goes unexercised. Proven near-miss (caught by implementation-time reading, not by any gate):
-  the no-occurrence-arrow rejection would have absorbed `tests/robustness/float_table_key{,_composite}.cddl`
-  (their occur-less spellings matched the new guard before the float-key finalize check ever
-  ran); the fixtures were respelled `*` and their headers document the pattern. The mechanical
+  an earlier no-occurrence-arrow guard would have absorbed
+  `tests/robustness/float_table_key{,_composite}.cddl` (their occur-less spellings matched that
+  historical guard before the float-key finalize check ran); the fixtures were respelled `*` and
+  their headers document the pattern. The exact-once spelling now generates a `BoundedMap`, so it
+  no longer has that rejection interaction. The mechanical
   layer: extend the reject-catalog snapshots from bare labels to a stable rejection-reason
   fingerprint per fixture (e.g. a distinctive message substring, as the decode catalog's
   `expect_err` pins already do for decode errors), so a provenance swap flips the snapshot loudly.
@@ -2803,35 +2805,12 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   absorbed silently. The mechanical layer when a release actually bites: a pinned-latest or
   `--minimal-versions`-style resolve check over one generated crate, red when the resolved
   `cbor_event` version drifts from the one the vectors were blessed against.
-- **Bounded table occurrences (`n*m` / `*n` / `n*`) remain rejected.** Homogeneous ordinary/preserve
-  ARRAYS now use `BoundedVec<T, MIN, MAX>` for every supported finite/zero-minimum window, with a shared API/CBOR/
-  JSON `TryFrom<Vec<T>>` door and restricted wasm/component projections. Bounded `@duplicates reject`
-  arrays remain `OrderedSet`/`NonEmptyOrderedSet` plus their existing runtime cardinality checks; no
-  `BoundedOrderedSet` is implied. Bounded TABLE markers still
-  reject gracefully at parsing's detection arm, pinned
-  by the `tests/matrix_reject/` rows
-  `contain.occurrence-target.memberkey.type1.bounded_table` /
-  `contain.occurrence-target.memberkey.bareword.zero_bounded_map` (the `HomogenousMap` doc
-  comment guarantees only `*` and `+`/`1*` bounds ever reach generation). The open FEATURE is
-  type-level enforcement for tables: a `BoundedMap` sibling following the
-  bounds-general API rule in `draft/two-type-constraint-enforcement.md` § "Support for more
-  complex occurrences" (an operation is checked iff it can cross a bound; value-`&mut` is
-  unconditionally safe; one `TryFrom` door reporting the decoder's own
-  `RangeCheck { min, max }`; per-shape siblings rather than redefining `NonEmpty*` as
-  const-generic aliases — fallibility cannot follow a const param). Implementation retraces
-  the shipped `+` seams: parsing's bounds plumbing (`GroupParsingType::HomogenousArray`/
-  `HomogenousMap` already carry `(Option<i128>, Option<i128>)`), member/alias type selection
-  beside `is_non_empty_array`/`is_non_empty_map`, `static/` runtime + json/schemars companions
-  gated by a usage predicate (the `uses_non_empty_map` precedent), wasm Min/Max-suffixed
-  wrappers per the design doc's naming convention (which join the synthesized-name interaction
-  families of the residual entry above), deserialize collect-then-`try_into`.
-  Tests-first encoding: the table reject rows flip to enforce-green through the same promotion
-  flow `plus_table` took (over-acceptance vector → `class="constraint"` reason-asserted
-  rejection); arrays gain decode vectors pinning boundary counts (accept at min/max,
-  reason-asserted reject at min−1/max+1) plus wasm-ABI matrix shapes. Matrix-side row-flip
-  detail — including the `{ k => v }`-as-bounds-`(1, 1)` revisit — lives in the two
-  candidate-feature entries in `cddl-matrix/ROADMAP.md` (the "Real bounded `?` / `n*m` table
-  cardinality" entry and its two-type sibling).
+- **Bounded duplicate-preserving tables remain future work.** The delivered unique-key table carrier
+  does not represent repeated keys, so a bounded `@duplicates preserve` table remains a targeted
+  generation refusal until a bounded pair-map can preserve both the occurrence window and wire order.
+  Reopen only for a consumer that needs that combination; add API/CBOR/JSON/wasm/component and
+  cross-crate checked-door coverage together. Bounded `@duplicates reject` arrays likewise remain on
+  their established runtime-check path until a compound bounded-unique carrier is deliberately designed.
 - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
   fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
   `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining

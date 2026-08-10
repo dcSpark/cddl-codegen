@@ -166,6 +166,7 @@ fn composed_runtime_static_files(
     cli: &Cli,
     include_non_empty_vec: bool,
     include_bounded_vec: bool,
+    include_bounded_map: bool,
     include_non_empty_map: bool,
     include_ordered_set: bool,
     include_pair_map: bool,
@@ -306,6 +307,38 @@ fn composed_runtime_static_files(
         out.push((
             "bounded.rs".to_owned(),
             rustfmt_generated_string(&bounded_rs)?.into_owned(),
+        ));
+    }
+
+    if include_bounded_map {
+        let mut bounded_map_rs = std::fs::read_to_string(cli.static_dir.join("bounded_map.rs"))?;
+        if cli.json_serde_derives {
+            bounded_map_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("bounded_map_json.rs"),
+            )?);
+        }
+        if cli.json_schema_export {
+            bounded_map_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("bounded_map_schemars.rs"),
+            )?);
+        }
+        if cli.preserve_encodings {
+            bounded_map_rs = bounded_map_rs
+                .replace("use alloc::collections::{BTreeMap, BTreeSet};", "use super::ordered_hash_map::OrderedHashMap;\nuse alloc::collections::{BTreeMap, BTreeSet};")
+                .replace("(BTreeMap<K, V>)", "(OrderedHashMap<K, V>)")
+                .replace("K: Ord", "K: Ord + core::hash::Hash + Eq")
+                .replace("BTreeMap<K, V>", "OrderedHashMap<K, V>")
+                .replace("BTreeMap::<K, V>", "OrderedHashMap::<K, V>")
+                .replace("BTreeMap::new()", "OrderedHashMap::new()")
+                .replace("collect::<BTreeMap<_, _>>()", "collect::<OrderedHashMap<_, _>>()")
+                .replace(
+                    "use alloc::collections::{BTreeMap, BTreeSet};",
+                    "use alloc::collections::BTreeSet;",
+                );
+        }
+        out.push((
+            "bounded_map.rs".to_owned(),
+            rustfmt_generated_string(&bounded_map_rs)?.into_owned(),
         ));
     }
 
@@ -937,6 +970,7 @@ impl GenerationScope {
                 cli,
                 types.uses_non_empty_vec() || self.requested_non_empty_vec,
                 types.uses_bounded_vec() || self.requested_bounded_vec,
+                types.uses_bounded_map() || self.requested_bounded_map,
                 types.uses_non_empty_map() || self.requested_non_empty_map,
                 types.uses_ordered_set() || self.requested_ordered_set,
                 types.uses_pair_map() || self.requested_pair_map,
@@ -967,7 +1001,7 @@ impl GenerationScope {
             Some(export_crate) => {
                 let mut runtime_files = Vec::new();
                 for (filename, content) in &composed_runtime_static_files(
-                    cli, true, true, true, true, true, true, true, true, true,
+                    cli, true, true, true, true, true, true, true, true, true, true,
                 )? {
                     // Same injection as the in-crate composition above: these files land in a
                     // HAND-OWNED crate root that this tool never writes, so they cannot rely on a

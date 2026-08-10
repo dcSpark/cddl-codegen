@@ -2439,6 +2439,72 @@ reason = "the empty indefinite map omits its sole required arrow key k; indefini
 expect_err = "Mandatory field \"k\" not found"
 
 [[row]]
+id = "contain.map-key.memberkey.type1.tstr_arrow_nooccur"
+axis = "containment"
+example = "m = { tstr => uint }"
+spec = "__probe_holder = [0, m]\nm = { tstr => uint }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "Empty map against exact-once `{ tstr => uint }`: RFC 8610's omitted occurrence is 1..=1, and BoundedMap's checked decode door rejects the zero-entry holder map."
+expect_err = "0 not at least 1"
+
+[[row.vector]]
+hex = "8200a1654c6f726e611908f0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16663656c6c6172190fee"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a166636c616d70731906e4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a166666f726d6564190d85"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a167456c6c696527731908ec"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a167516174617227731902a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16773686172696168190ab9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1686566667573696f6e1904c5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16b6e6174696f6e616c697479190d5f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16c6d696e69617475726973747319032f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.map-key.memberkey.type1.uint_arrow_multi"
 axis = "containment"
 example = "m = { 2 => uint, 1: uint }"
@@ -3868,6 +3934,80 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.occurrence-target.memberkey.type1.bounded_table"
+axis = "containment"
+example = "m = { 2*3 tstr => uint }"
+spec = "__probe_holder = [0, m]\nm = { 2*3 tstr => uint }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a1616101"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "One-entry map against `{ 2*3 tstr => uint }`: the 2..=3 BoundedMap decode door rejects below its inclusive minimum."
+expect_err = "1 not at least 2"
+
+[[row.vector]]
+hex = "8200a2674d61726c656e65190eaa6c6164756c7465726174696f6e190890"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2696772696e6465722773190ee06a696d706f737475726573190d45"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26d717561727465726261636b65641901366b6f7374656f706174682773190f00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36663617274656419076c6b64657363656e64656e7473188267416c6963652773190929"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3676d616e676c6564190c1267746f7373696e6718ad6a6669676874696e672773190e24"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a367746f7271756573190e2d7073656e736174696f6e616c6973742773190a3564726974651909eb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3694761727269636b2773190e7166736f696c65641904f96a486f6c737465696e27731903e7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3694a61696e69736d277319096b654469616e6e183c6870617977616c6c73190ba7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a369707572766965772773191096687669766964657374190be66b6e6f746f72696f75736c79190307"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36c656d62656c6c697368696e671911a266477265656e65191107687465746865722773190a2e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a4616101616202616303616404"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "Four-entry map against `{ 2*3 tstr => uint }`: the 2..=3 BoundedMap decode door rejects above its inclusive maximum."
+expect_err = "4 not at most 3"
+
+[[row]]
 id = "contain.occurrence-target.memberkey.type1.open_struct"
 axis = "containment"
 example = "m = { 1: uint, * uint => any }"
@@ -4122,6 +4262,52 @@ expect = "accept"
 hex = "a84477696e6f190b904a64696c657474616e74691901f9446f776c7319085c476d7574746572731907e519061e190814190f9c19063b190921190760190b84184d"
 source = "ruby-generate"
 expect = "accept"
+
+[[row]]
+id = "contain.occurrence-target.memberkey.type1.optional_table"
+axis = "containment"
+example = "m = { ? tstr => uint }"
+spec = "__probe_holder = [0, m]\nm = { ? tstr => uint }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16861706f706c657879190728"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16877616c6c6f70277319040c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1696d616c6c6561626c651905db"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16a497374616e62756c277319058c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16b636f6d6d616e6465722773190781"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2616101616202"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "Two-entry map against `{ ? tstr => uint }`: the optional 0..=1 BoundedMap decode door rejects above its inclusive maximum."
+expect_err = "2 not at most 1"
 
 [[row]]
 id = "contain.occurrence-target.memberkey.type1.plus_table"

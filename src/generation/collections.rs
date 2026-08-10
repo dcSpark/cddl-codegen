@@ -1034,6 +1034,124 @@ impl GenerationScope {
     /// used by `codegen_table_type`), delegating to `self.0`, whose `NonEmptyMap` method surface
     /// matches the raw map's `len`/`insert`/`get`/`keys`.
     #[allow(clippy::too_many_arguments)]
+    pub(super) fn generate_bounded_map_type(
+        &mut self,
+        types: &IntermediateTypes,
+        key_type: RustType,
+        value_type: RustType,
+        wrapper_ident: &RustIdent,
+        (min, max): (u64, u64),
+        rule_declared: bool,
+        cli: &Cli,
+    ) {
+        let structural_name = match (min, max == u64::MAX) {
+            (0, false) => format!(
+                "{}Max{max}",
+                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, false)
+            ),
+            (_, true) => format!(
+                "{}Min{min}",
+                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, false)
+            ),
+            _ => format!(
+                "{}Min{min}Max{max}",
+                ConceptualRustType::name_for_wasm_map(&key_type, &value_type, false)
+            ),
+        };
+        let bounded: RustType =
+            ConceptualRustType::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))
+                .into();
+        let bounded = bounded.with_bounds((
+            (min != 0).then_some(i128::from(min)),
+            (max != u64::MAX).then_some(i128::from(max)),
+        ));
+        let shape = render_wrapper_shape(&bounded);
+        if self.try_defer_wrapper(
+            types,
+            wrapper_ident,
+            &structural_name,
+            &[&key_type.conceptual_type, &value_type.conceptual_type],
+            &shape,
+            rule_declared,
+            cli,
+        ) {
+            return;
+        }
+        self.ensure_non_empty_wrappers(types, &key_type, cli);
+        self.ensure_non_empty_wrappers(types, &value_type, cli);
+        if !self.already_generated.insert(wrapper_ident.clone()) {
+            return;
+        }
+        self.record_collection_wrapper(types, wrapper_ident, &shape);
+        let map_inner =
+            ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
+        let open = map_inner.find('<').expect("map type has generics");
+        let close = map_inner.rfind('>').expect("map type has generics");
+        let kv = &map_inner[open + 1..close];
+        let max_token = if max == u64::MAX {
+            "{ u64::MAX }".to_owned()
+        } else {
+            max.to_string()
+        };
+        let inner_type = format!("BoundedMap<{kv}, {min}, {max_token}>");
+        let loose_ident = ConceptualRustType::name_for_wasm_map(&key_type, &value_type, false);
+        let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
+        wrapper.s.doc(format!(
+            "`{shape}`: inclusive entry window enforced by core `BoundedMap`; use `try_from` on the loose `{loose_ident}` builder. `insert` returns an error before a new key could exceed the maximum, while replacement remains legal."
+        ));
+        wrapper.push_inner_field(&inner_type);
+        if min == 0 {
+            wrapper
+                .s_impl
+                .new_fn("new")
+                .vis("pub")
+                .ret("Self")
+                .line("Self(BoundedMap::new())");
+        }
+        wrapper
+            .s_impl
+            .new_fn("len")
+            .vis("pub")
+            .ret("usize")
+            .arg_ref_self()
+            .line("self.0.len()");
+        push_table_accessors(
+            self,
+            &mut wrapper,
+            types,
+            &key_type,
+            &value_type,
+            "self.0",
+            true,
+            cli,
+        );
+        // A bounded wrapper is never self-named: its structural name carries the window while a
+        // rule name may be arbitrary. The loose builder is therefore always available as the
+        // fallible construction source.
+        codegen_table_type(
+            self,
+            types,
+            &loose_ident,
+            key_type.clone(),
+            value_type.clone(),
+            false,
+            false,
+            cli,
+        );
+        wrapper
+            .s_impl
+            .new_fn("try_from")
+            .vis("pub")
+            .ret(format!("Result<{wrapper_ident}, JsError>"))
+            .arg("map", format!("&{loose_ident}"))
+            .line(format!("let inner: {map_inner} = map.clone().into();"))
+            .line(
+                "BoundedMap::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))",
+            );
+        wrapper.add_conversion_methods(&inner_type, cli);
+        wrapper.push(self, types);
+    }
+
     pub(super) fn generate_non_empty_map_type(
         &mut self,
         types: &IntermediateTypes,
@@ -1191,6 +1309,7 @@ impl GenerationScope {
             &key_type,
             &value_type,
             "self.0",
+            false,
             cli,
         );
         // try_from: the single checked door from the loose table wrapper to the restricted wrapper.
@@ -1316,7 +1435,21 @@ impl GenerationScope {
                 self.ensure_non_empty_wrappers(types, inner, cli)
             }
             ConceptualRustType::Map(k, v) => {
-                if rt.is_non_empty_map() {
+                if let Some(bounds) = rt.bounded_map_u64_bounds() {
+                    self.ensure_non_empty_wrappers(types, k, cli);
+                    self.ensure_non_empty_wrappers(types, v, cli);
+                    let ident =
+                        RustIdent::new(CDDLIdent::new(rt.bounded_wasm_map_wrapper_name(types)));
+                    self.generate_bounded_map_type(
+                        types,
+                        (**k).clone(),
+                        (**v).clone(),
+                        &ident,
+                        bounds,
+                        false,
+                        cli,
+                    );
+                } else if rt.is_non_empty_map() {
                     // dedup-to-named: an inline `{+ k => v}` whose shape has a NAMED `{+ …}` table
                     // rule uses that rule's class (minted by the rule's own variant-match) — nothing
                     // synthesized here. Its key/value still get their own nested wrappers.
@@ -1418,6 +1551,7 @@ pub(super) fn push_table_accessors(
     key_type: &RustType,
     value_type: &RustType,
     receiver: &str,
+    checked_insert: bool,
     cli: &Cli,
 ) {
     // A nullable value (`* uint => (T / null)` -> `Option<T>`) would make get/insert return
@@ -1456,11 +1590,40 @@ pub(super) fn push_table_accessors(
         .arg_mut_self()
         .arg("key", key_type.for_wasm_param(types))
         .arg("value", value_type.for_wasm_param(types))
-        .ret(map_value_ret());
+        .ret(if checked_insert {
+            format!("Result<{}, JsError>", map_value_ret())
+        } else {
+            map_value_ret()
+        });
     if value_nullable {
         insert_func.doc("Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
     }
-    insert_func.line(format!(
+    // A loose table's `insert` returns `Option<V>` (or `Option<Option<V>>` for nullable values),
+    // whereas a bounded table's checked insertion returns `Result<Option<V>, DeserializeError>`.
+    // Convert the displaced value *inside* that Result: applying `Option::map(Into::into)` directly
+    // to Result's Ok payload asks Rust for `From<Option<CoreV>> for Option<WasmV>`, which does not
+    // exist. This is especially visible for requested bounded maps whose value is a dep-owned
+    // resource wrapper. Keep the nullable flatten at the same inner layer.
+    let insert_return_conversion = if checked_insert {
+        match (value_nullable, value_type.directly_wasm_exposable(types)) {
+            (true, true) => ".map(|value| value.flatten())".to_owned(),
+            (true, false) => ".map(|value| value.flatten().map(Into::into))".to_owned(),
+            (false, true) => String::new(),
+            (false, false) => ".map(|value| value.map(Into::into))".to_owned(),
+        }
+    } else if value_nullable {
+        if value_nullable_inner_exposable {
+            value_flatten.to_owned()
+        } else {
+            // displaced value is `Option<InnerRust>` after flatten; convert its inner to wasm.
+            format!("{value_flatten}.map(Into::into)")
+        }
+    } else if value_type.directly_wasm_exposable(types) {
+        String::new()
+    } else {
+        ".map(Into::into)".to_owned()
+    };
+    let insert_expr = format!(
         "{receiver}.insert({}, {}){}",
         ToWasmBoundaryOperations::format(
             key_type
@@ -1472,19 +1635,15 @@ pub(super) fn push_table_accessors(
                 .from_wasm_boundary_clone(types, "value", false)
                 .into_iter()
         ),
-        if value_nullable {
-            if value_nullable_inner_exposable {
-                value_flatten.to_owned()
-            } else {
-                // displaced value is `Option<InnerRust>` after flatten; convert its inner to wasm.
-                format!("{value_flatten}.map(Into::into)")
-            }
-        } else if value_type.directly_wasm_exposable(types) {
-            String::new()
-        } else {
-            ".map(Into::into)".to_owned()
-        }
-    ));
+        insert_return_conversion
+    );
+    if checked_insert {
+        insert_func.line(format!(
+            "{insert_expr}.map_err(|e| JsError::new(&e.to_string()))"
+        ));
+    } else {
+        insert_func.line(insert_expr);
+    }
     // ^ TODO: support failable types everywhere or just force it to be only a detail in the wrapper?
     wrapper.s_impl.push_fn(insert_func);
     // get
@@ -2002,6 +2161,7 @@ pub(super) fn codegen_table_type(
         &key_type,
         &value_type,
         "self.0",
+        false,
         cli,
     );
     wrapper.add_conversion_methods(&inner_type, cli);
