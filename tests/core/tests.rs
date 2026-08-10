@@ -1228,10 +1228,7 @@ mod tests {
                         for x in [false, true] {
                             for y in [false, true] {
                                 for z in [false, true] {
-                                    let mut components = vec![vec![ARR_INDEF]];
-                                    let bytes = vec![
-                                        vec![ARR_INDEF]
-                                    ];
+                                    let mut components = Vec::new();
                                     if x {
                                         components.push(cbor_float(1.010101));
                                     }
@@ -1254,7 +1251,7 @@ mod tests {
                                     if z {
                                         components.push(cbor_float(2.71828));
                                     }
-                                    components.push(vec![BREAK]);
+                                    components.insert(0, arr_def(components.len() as u8));
                                     let bytes = components.into_iter().flatten().clone().collect::<Vec<u8>>();
                                     // value anchors: decode-accepts alone proved nothing — pin every
                                     // field to what the hand-built bytes above encode (y is the
