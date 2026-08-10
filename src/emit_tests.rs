@@ -51,7 +51,7 @@
 use crate::cli::Cli;
 use crate::intermediate::{
     ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, Primitive, Representation,
-    RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
+    RestKind, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
 };
 use crate::utils::convert_to_snake_case;
 
@@ -746,10 +746,13 @@ fn struct_rejects_indefinite_ambiguous_optional(
                 .fields
                 .iter()
                 .any(|field| type_reaches_policy(types, &field.rust_type, visited))
-            || record
-                .rest
-                .as_ref()
-                .is_some_and(|rest| type_reaches_policy(types, rest.element(), visited))
+            || record.dynamic_rows().any(|row| match &row.kind {
+                RestKind::MapEntries { domain, range, .. } => {
+                    type_reaches_policy(types, domain, visited)
+                        || type_reaches_policy(types, range, visited)
+                }
+                RestKind::ArrayTail { element } => type_reaches_policy(types, element, visited),
+            })
     }
 
     fn type_reaches_policy(
