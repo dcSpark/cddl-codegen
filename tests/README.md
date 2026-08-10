@@ -1538,8 +1538,8 @@ ident never appears, so name-scanning cannot prove them unused — while `unused
 legitimate residue, so an emitted binding nothing reads is a generator defect every time. The
 corpus-wide owner of that same class is `feature_corpus_compiles`'
 `unused_generated_variable_lines` scan. Everything else — the concrete
-collection/encoding idents, the `super::*`/`error::*` globs (pruned against enumerable
-universes), cross-scope type imports, wasm macro/prelude imports, and every private import of a
+collection/encoding idents, the `super::*` glob and enumerable `error::*`/`cbor_encodings::*`
+globs, cross-scope type imports, wasm macro/prelude imports, and every private import of a
 re-export-only extern-glue file — IS pruned at generation time (the contract lives in
 `docs/docs/output_format.mdx`; the warning-severity detector is `feature_corpus_compiles`'
 `unused_generated_import_lines` scan). Two model choices are what make the glob half sound, and
@@ -3136,8 +3136,9 @@ no snapshot exists for a profile that never generates) and
 Because these crates are purely generated (no hand-appended scaffolding), the gate also doubles as
 the rustc-warning detector for the usage-derived import prune (`import_prune`): after each nested
 cargo invocation it scans stderr (`unused_generated_import_lines`) and fails on ANY `unused import`
-warning in the generated crates — collection/encoding idents, `super::*`/`error::*` globs,
-cross-scope type imports, and wasm macro/prelude imports — minus a documented trait residue
+warning in the generated crates — collection/encoding idents,
+`super::*`/`error::*`/`cbor_encodings::*` globs, cross-scope type imports, and wasm macro/prelude
+imports — minus a documented trait residue
 (`UNUSED_IMPORT_TRAIT_RESIDUE`, the `cbor_event::se::Serialize` trait the name-scan model can't
 prove unused). It also fails on ANY `unused variable` warning (`unused_generated_variable_lines`):
 a named binding rustc reports unused in a purely-generated crate is generator imprecision (a

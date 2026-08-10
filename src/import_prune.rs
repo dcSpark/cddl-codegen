@@ -63,8 +63,13 @@
 //!     type (`BTreeMap<Ikey, StringEncoding>`).
 //!   - `use <path>::error::*;` — universe = the fixed [`ERROR_MODULE_EXPORTS`]. Removed when neither F
 //!     nor a super-reachable descendant demands an error export it doesn't resolve locally
-//!     ([`error_glob_needed`]); the sub-scope `serialization.rs` carries its OWN `error::*`, so it
+//!     ([`enumerated_glob_needed`]); the sub-scope `serialization.rs` carries its OWN `error::*`, so it
 //!     resolves error names through that (source-glob), not the parent copy.
+//!   - `use super::cbor_encodings::*;` — universe = the top-level definitions in the generated
+//!     sibling `cbor_encodings.rs`. Removed when the final `serialization.rs` module family names no
+//!     encoding type. This is the serialize-only-record shape: the struct stores an encoding sidecar
+//!     and serialization accesses it through `self.encodings`, while only a generated deserialize
+//!     constructor names `<Type>Encoding` directly.
 //!
 //! **Documented-conservative residue.** The disqualifiers can still leave a protector standing and
 //! KEEP a would-be-prunable import — never remove one a consumer needs, so any imprecision is
@@ -356,8 +361,10 @@ pub(crate) fn prune_unused_type_imports(source: &str) -> Cow<'_, str> {
 ///
 /// **Glob pruning.** `use super::*;` is removed from a file with no super-reachable descendant whose
 /// own body names no PARENT-bound name it doesn't itself bind (`super_glob_needed`, universe =
-/// `bound_names(parent)`). A `use <path>::error::*;` is removed when neither F nor a super-reachable
-/// descendant demands an [`ERROR_MODULE_EXPORTS`] name it doesn't resolve locally (`error_glob_needed`).
+/// `bound_names(parent)`). The enumerable `error::*` and generated sibling
+/// `super::cbor_encodings::*` globs are removed when neither F nor a super-reachable descendant
+/// demands a name from their respective universes that it doesn't resolve locally
+/// ([`enumerated_glob_needed`]).
 ///
 /// A super-reachable descendant that fails to parse might consume ANY private import, so it poisons F
 /// (F is skipped). Returns `(path, pruned_content)` for each CHANGED file; the content is NOT
@@ -482,18 +489,28 @@ pub(crate) fn prune_generated_files(
         let error_universe: HashSet<String> =
             ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()).collect();
         for gp in own_globs {
-            if gp == "super" || gp.rsplit("::").next() != Some("error") {
+            if gp == "super" {
                 continue;
             }
-            if !error_glob_needed(
-                gp,
-                &error_universe,
-                path,
-                &reach,
-                &used_by_path,
-                &direct_by_path,
-                &glob_by_path,
-            ) {
+            let universe = if gp.rsplit("::").next() == Some("error") {
+                Some(&error_universe)
+            } else if gp == "super::cbor_encodings" {
+                sibling_module_file(path, "cbor_encodings", files)
+                    .and_then(|target| defs_by_path.get(target.as_str()))
+            } else {
+                None
+            };
+            if let Some(universe) = universe
+                && !enumerated_glob_needed(
+                    gp,
+                    universe,
+                    path,
+                    &reach,
+                    &used_by_path,
+                    &direct_by_path,
+                    &glob_by_path,
+                )
+            {
                 remove_globs.insert(gp.clone());
             }
         }
@@ -562,6 +579,23 @@ fn parent_mod_file(path: &str, files: &BTreeMap<String, String>) -> Option<Strin
     }
     let as_file = format!("{parent_module_dir}.rs");
     files.contains_key(&as_file).then_some(as_file)
+}
+
+/// The generated sibling module file `module` beside `path`, accepting either Rust module layout.
+/// `serialization.rs` and `cbor_encodings.rs` use the plain-file layout today; accepting `mod.rs`
+/// keeps the resolution rule structural and makes an absent/unknown target conservatively unprunable.
+fn sibling_module_file(
+    path: &str,
+    module: &str,
+    files: &BTreeMap<String, String>,
+) -> Option<String> {
+    let dir = &path[..path.rfind('/')?];
+    let as_file = format!("{dir}/{module}.rs");
+    if files.contains_key(&as_file) {
+        return Some(as_file);
+    }
+    let as_mod = format!("{dir}/{module}/mod.rs");
+    files.contains_key(&as_mod).then_some(as_mod)
 }
 
 /// Whether a file's `use super::*;` is NEEDED: F names some name bound in its PARENT module's
@@ -654,11 +688,12 @@ fn bound_names(
     Some(result)
 }
 
-/// Whether a `use <path>::error::*;` glob (`gp`, universe = [`ERROR_MODULE_EXPORTS`]) is NEEDED:
-/// F's own body, or a super-reachable descendant, demands an error export it doesn't resolve locally.
-/// A descendant resolves an error name locally when it directly imports it OR carries its OWN glob of
-/// the same error module (`gp`).
-fn error_glob_needed(
+/// Whether a private glob with a fully enumerated `universe` is NEEDED: F's own body, or a
+/// super-reachable descendant, demands one of its exports without resolving it locally. A descendant
+/// resolves a name locally when it directly imports it OR carries its OWN glob of the same module
+/// (`gp`). The universes passed here are conservative supersets (`cbor_encodings.rs` includes every
+/// top-level definition, not only public ones), so imprecision can only keep a dead glob.
+fn enumerated_glob_needed(
     gp: &str,
     universe: &HashSet<String>,
     f: &str,
@@ -680,7 +715,7 @@ fn error_glob_needed(
     }
     for d in reach {
         if glob_by_path.get(d).is_some_and(|g| g.contains(gp)) {
-            continue; // D resolves error names through its own glob of the same module
+            continue; // D resolves these names through its own glob of the same module
         }
         if demands(d) {
             return true;
@@ -2262,6 +2297,71 @@ mod tests {
         PruneConfig {
             extra_candidates: extra.iter().map(|s| (*s).to_owned()).collect(),
         }
+    }
+
+    /// A preserve-mode serialize-only record still owns a sidecar struct, but its serializer reaches
+    /// that sidecar only through `self.encodings`; with no generated deserialize constructor, the
+    /// sibling module's exported `<Type>Encoding` name is absent from `serialization.rs`. The
+    /// blindly-pushed sibling glob is therefore dead and must be pruned.
+    #[test]
+    fn cbor_encodings_glob_pruned_when_serialization_names_no_encoding_type() {
+        let map = files(&[
+            (
+                "rust/src/generated/a/mod.rs",
+                "pub mod cbor_encodings;\npub mod serialization;\npub struct Foo;\n",
+            ),
+            (
+                "rust/src/generated/a/cbor_encodings.rs",
+                "use super::*;\npub struct FooEncoding {\n    pub value: Foo,\n}\n",
+            ),
+            (
+                "rust/src/generated/a/serialization.rs",
+                "use super::cbor_encodings::*;\nuse super::*;\n\
+                 fn ser(value: &Foo) { let _ = &value; }\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let serialization = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/a/serialization.rs")
+            .expect("serialization.rs changes");
+        assert!(
+            !serialization.1.contains("use super::cbor_encodings::*"),
+            "unused sibling glob pruned: {}",
+            serialization.1
+        );
+        assert!(
+            serialization.1.contains("use super::*"),
+            "the independent parent glob remains load-bearing for Foo: {}",
+            serialization.1
+        );
+    }
+
+    /// Keep-direction twin: a generated deserialize constructor names `<Type>Encoding`, so the
+    /// sibling glob is the binding that makes the constructor compile. The cbor sidecar also names
+    /// the parent record, keeping its independent `super::*` edge live; no file should change.
+    #[test]
+    fn cbor_encodings_glob_kept_when_serialization_names_encoding_type() {
+        let map = files(&[
+            (
+                "rust/src/generated/a/mod.rs",
+                "pub mod cbor_encodings;\npub mod serialization;\npub struct Foo;\n",
+            ),
+            (
+                "rust/src/generated/a/cbor_encodings.rs",
+                "use super::*;\npub struct FooEncoding {\n    pub value: Foo,\n}\n",
+            ),
+            (
+                "rust/src/generated/a/serialization.rs",
+                "use super::cbor_encodings::*;\nuse super::*;\n\
+                 fn de(sidecar: FooEncoding) -> Foo { sidecar.value }\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        assert!(
+            changed.is_empty(),
+            "both sibling and parent globs are load-bearing: {changed:?}"
+        );
     }
 
     /// A `cbor_encodings.rs`-shaped file whose body names nothing from its parent module has its
