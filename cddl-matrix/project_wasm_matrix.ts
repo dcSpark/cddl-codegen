@@ -189,6 +189,20 @@ const SHAPES: Record<string, Shape> = {
   // anonymous instance `[+]` -> the STRUCTURAL `NonEmptyU64OrderedSet` class (`pub type NeosetU64 =
   // NonEmptyOrderedSet<u64>`); the non-empty reject twin of `rseta`, same marked-alias parity carve-out.
   nerseta: { defs: ["neoset<e0> = [+ e0] ; @duplicates reject"], ty: "neoset<uint>" },
+  // named bounded reject set with zero minimum -> `BoundedOrderedSet<u64, 0, 2>`. This is neither
+  // the loose `rset` nor the non-empty `nerset` ABI: it has a zero-minimum `new()` seed, a checked
+  // `add` that rejects duplicate OR over-maximum appends, and deliberately exposes neither the
+  // normalizing `insert` nor `try_opt_from` doors. The rule-owned class name (`Brs`) is the named
+  // counterpart to the structural generic shape below; both need every role because the restricted
+  // wrapper crosses by reference at each collection-bearing boundary.
+  brset: { defs: ["brs = [*2 uint] ; @duplicates reject"], ty: "brs" },
+  // anonymous generic bounded reject instance -> the structural bounds-bearing
+  // `U64BoundedOrderedSetMin2Max3` class over `BoundedOrderedSet<u64, 2, 3>`. Its min/max spelling
+  // is intentionally distinct from the loose/non-empty OrderedSet structural names and from the
+  // bounded `U64ListMin2Max3` class; it has no empty `new()` seed because its minimum is positive.
+  // The synthesized Rust alias remains parity-exempt like `rseta`/`nerseta`, while this cell keeps
+  // structural name + fallible `try_from`/`add` conversion coverage across all roles.
+  brseta: { defs: ["boset<e0> = [2*3 e0] ; @duplicates reject"], ty: "boset<uint>" },
   // --- `@duplicates preserve` PairMap ABI class (the mirror of the reject class, one boundary over).
   // A `{* k => v}`/`{+ k => v}` rule carrying `@duplicates preserve` lowers to the ORDER-FAITHFUL
   // multimap twin — rust core `PairMap<K, V>` / `NonEmptyPairMap<K, V>`, a `Vec<(K, V)>` with NO dedup
@@ -315,7 +329,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 266; // 33 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 282; // 35 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

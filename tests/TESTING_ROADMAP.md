@@ -2787,8 +2787,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   represent repeated keys, so a bounded `@duplicates preserve` table remains a targeted
   generation refusal until a bounded pair-map can preserve both the occurrence window and wire order.
   Reopen only for a consumer that needs that combination; add API/CBOR/JSON/wasm/component and
-  cross-crate checked-door coverage together. Bounded `@duplicates reject` arrays likewise remain on
-  their established runtime-check path until a compound bounded-unique carrier is deliberately designed.
+  cross-crate checked-door coverage together.
 - **Transparent tag-set idiom — recognized-shape boundary (REQUEST-08).** The collapse of a two-arm
   tagged-or-untagged collection choice into one transparent optionally-tagged alias
   (user doc: `docs/docs/current_capacities.mdx` § "Transparent tag-set idiom") is narrow by design;

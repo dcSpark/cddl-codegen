@@ -116,9 +116,8 @@ pub(crate) enum MintValue {
     /// a vec of `count` copies of `elem`, or the empty vec when `elem` is `None`. When `non_empty`
     /// the target type is `NonEmptyVec<T>` (`[+ T]`), so it is built through the single TryFrom door
     /// (`NonEmptyVec::try_from(vec![..]).unwrap()`). When `reject` the target is the `@duplicates
-    /// reject` uniqueness twin (`OrderedSet<T>` / `NonEmptyOrderedSet<T>`): N identical copies would
-    /// panic at the uniqueness door, so a reject set is synthesized as a SINGLE element (trivially
-    /// unique, and still exercises the element wire path) routed through its twin door.
+    /// reject` uniqueness twin. `unique_elems`, when present, supplies distinct values for each
+    /// requested member so a finite/minimum bounded set is minted at its actual valid cardinality.
     Array {
         elem: Option<Box<MintValue>>,
         count: i128,
@@ -127,6 +126,7 @@ pub(crate) enum MintValue {
         /// as generated decode rather than assigning a loose vector to a restricted field.
         bounded: Option<(u64, u64)>,
         reject: bool,
+        unique_elems: Option<Vec<MintValue>>,
     },
     /// a map of `count` entries with synthesized keys. When `non_empty` the target type is
     /// `NonEmptyMap<K, V>` (`{+ k => v}`), so it is built through the single TryFrom door
@@ -203,16 +203,21 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             non_empty,
             bounded,
             reject,
+            unique_elems,
         } => {
             if *reject {
-                // `@duplicates reject`: a single unique element through the twin door (see the variant
-                // doc — N identical copies would panic at the uniqueness scan).
-                let twin = if *non_empty {
+                let vec = unique_elems.as_ref().map_or_else(
+                    || format!("vec![{}; {count}]", render_rust(e)),
+                    |elems| format!("vec![{}]", elems.iter().map(render_rust).collect::<Vec<_>>().join(", ")),
+                );
+                let twin = if let Some((min, max)) = bounded {
+                    return format!("BoundedOrderedSet::<_, {min}, {max}>::try_from({vec}).unwrap()");
+                } else if *non_empty {
                     "NonEmptyOrderedSet"
                 } else {
                     "OrderedSet"
                 };
-                format!("{twin}::try_from(vec![{}]).unwrap()", render_rust(e))
+                format!("{twin}::try_from({vec}).unwrap()")
             } else {
                 let vec = format!("vec![{}; {count}]", render_rust(e));
                 if let Some((min, max)) = bounded {
@@ -228,8 +233,10 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         MintValue::Array {
             elem: None,
             reject: true,
+            bounded: Some((min, max)),
             ..
-        } => "OrderedSet::try_from(vec![]).unwrap()".to_owned(),
+        } => format!("BoundedOrderedSet::<_, {min}, {max}>::try_from(vec![]).unwrap()"),
+        MintValue::Array { elem: None, reject: true, .. } => "OrderedSet::try_from(vec![]).unwrap()".to_owned(),
         MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
         MintValue::Map {
             key,
@@ -1323,15 +1330,29 @@ fn render_bounded_array_try_from(mv: &MintValue) -> Option<String> {
         elem: Some(elem),
         count,
         bounded: Some((min, max)),
-        reject: false,
+        reject,
         ..
     } = mv
     else {
         return None;
     };
+    let elems = if *reject {
+        match mv {
+            MintValue::Array {
+                unique_elems: Some(elems),
+                ..
+            } => elems,
+            _ => return None,
+        }
+    } else {
+        return Some(format!(
+            "BoundedVec::<_, {min}, {max}>::try_from(vec![{}; {count}])",
+            render_rust(elem)
+        ));
+    };
     Some(format!(
-        "BoundedVec::<_, {min}, {max}>::try_from(vec![{}; {count}])",
-        render_rust(elem)
+        "BoundedOrderedSet::<_, {min}, {max}>::try_from(vec![{}])",
+        elems.iter().map(render_rust).collect::<Vec<_>>().join(", ")
     ))
 }
 
@@ -2271,9 +2292,21 @@ pub(crate) fn mint_struct(
         } => {
             // mint one element so the element serialize/deserialize path runs; fall back to empty
             // (valid for `*`) when the element isn't cheaply mintable.
+            let count = valid_measure(bounds.unwrap_or((None, None)));
+            let reject = rust_struct.config().duplicates
+                == Some(crate::comment_ast::DuplicatesPolicy::Reject);
+            let unique_elems = if reject {
+                unique_array_elems(types, element_type, count, depth + 1)?
+            } else {
+                None
+            };
             Some(MintValue::Array {
-                elem: valid_value_at(types, element_type, depth + 1).map(Box::new),
-                count: valid_measure(bounds.unwrap_or((None, None))),
+                elem: unique_elems
+                    .as_ref()
+                    .and_then(|elems| elems.first().cloned())
+                    .map(Box::new)
+                    .or_else(|| valid_value_at(types, element_type, depth + 1).map(Box::new)),
+                count,
                 non_empty: *bounds == Some((Some(1), None)),
                 bounded: bounds.and_then(|(min, max)| {
                     ((min, max) != (None, None) && (min, max) != (Some(1), None)).then_some((
@@ -2282,8 +2315,8 @@ pub(crate) fn mint_struct(
                             .unwrap_or(Some(u64::MAX))?,
                     ))
                 }),
-                reject: rust_struct.config().duplicates
-                    == Some(crate::comment_ast::DuplicatesPolicy::Reject),
+                reject,
+                unique_elems,
             })
         }
         // the reserved `int` prelude resolves to the hand-written `Int` extern (static prelude):
@@ -2337,10 +2370,46 @@ fn empty_collection(ty: &RustType) -> Option<MintValue> {
             non_empty: false,
             bounded: None,
             reject: ty.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject),
+            unique_elems: None,
         }),
         ConceptualRustType::Map(_, _) => Some(MintValue::DefaultMap),
         _ => None,
     }
+}
+
+/// Build distinct, cheaply-renderable members for a reject-set mint.  This is deliberately bounded:
+/// emitted tests skip a collection whose element has no finite distinct mint surface rather than
+/// fabricate an invalid set with repeated copies.  The normal corpus windows are tiny; a larger
+/// window is still covered by its runtime/decoder doors and receives the existing loud mint skip.
+fn unique_array_elems(
+    types: &IntermediateTypes,
+    elem: &RustType,
+    count: i128,
+    depth: u8,
+) -> Option<Option<Vec<MintValue>>> {
+    if !(0..=16).contains(&count) {
+        return None;
+    }
+    // The empty array is already a distinct, valid reject-set mint.  Do not enter the candidate
+    // loop: it can only return after adding an element, so it could never satisfy `len() == 0`.
+    if count == 0 {
+        return Some(Some(Vec::new()));
+    }
+    let mut elems = Vec::new();
+    let mut rendered = Vec::new();
+    for candidate in 0..(count.saturating_mul(8).saturating_add(16)) {
+        let value = materialize_at(types, elem, candidate, depth + 1)?;
+        let spelling = render_rust(&value);
+        if rendered.iter().any(|prior| prior == &spelling) {
+            continue;
+        }
+        rendered.push(spelling);
+        elems.push(value);
+        if elems.len() == count as usize {
+            return Some(Some(elems));
+        }
+    }
+    None
 }
 
 /// Build a minted value for `ty` whose bound-relevant measure equals `measure`
@@ -2406,13 +2475,23 @@ fn materialize_at(
             },
         },
         ConceptualRustType::Array(elem) => {
-            let e = valid_value_at(types, elem, depth)?;
+            let reject = ty.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject);
+            let unique_elems = if reject {
+                unique_array_elems(types, elem, measure, depth)?
+            } else {
+                None
+            };
+            let e = unique_elems
+                .as_ref()
+                .and_then(|elems| elems.first().cloned())
+                .or_else(|| valid_value_at(types, elem, depth))?;
             Some(MintValue::Array {
                 elem: Some(Box::new(e)),
                 count: measure,
                 non_empty: ty.is_type_enforced_non_empty(),
                 bounded: ty.type_enforced_bounded_array_u64_bounds(),
-                reject: ty.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject),
+                reject,
+                unique_elems,
             })
         }
         ConceptualRustType::Map(k, v) => {

@@ -93,24 +93,26 @@ pub(super) fn generate_wrapper_struct(
         }
         wrapper.s_impl.push_fn(wasm_new);
         // Only the `@duplicates reject` set nominal wraps a uniqueness twin
-        // (`OrderedSet`/`NonEmptyOrderedSet`), whose `insert -> bool` / `push -> Result` / `contains`
-        // / `try_opt_from` doors the flat delegation below relies on. A `@duplicates preserve` set
+        // (`OrderedSet`/`NonEmptyOrderedSet`/`BoundedOrderedSet`), whose checked `push` / `contains`
+        // doors the flat delegation below relies on. Loose/min-one twins additionally expose
+        // `insert -> bool` / `try_opt_from`; bounded twins intentionally do not. A `@duplicates preserve` set
         // nominal wraps a plain `Vec`/`NonEmptyVec` (different method surface, no `try_opt_from`), so
         // it keeps the original 0-arg `get()` returning its companion list wrapper.
         let reject_twin = matches!(
             struct_config.duplicates,
             Some(crate::comment_ast::DuplicatesPolicy::Reject)
         );
+        let bounded_reject = field_type.is_bounded_reject_ordered_set();
         if set_nominal && reject_twin {
             // FLATTENED set-nominal surface. The wasm class has no `Deref`, so before this the only
             // read door was a 0-arg `get()` returning the companion collection class — forcing every
             // JS read into a two-layer `set.get().get(i)` unwrap. Instead, DELEGATE the companion's
             // collection surface directly onto the nominal (`self.0` is the rust nominal, which
-            // `Deref`s to its `OrderedSet`/`NonEmptyOrderedSet` inner — `len`/`get(index)`/`insert`/
-            // `push`/`contains`/`Index` all resolve through it), so JS reads `set.get(i)` and the
-            // wasm surface tells the same story as the rust set API. `try_from`/`try_opt_from`
-            // delegate to the rust nominal's `TryFrom<Vec<_>>` / `try_opt_from` doors so a flat list
-            // constructs the nominal without threading through the companion class.
+            // `Deref`s to its ordered-set inner — `len`/`get(index)`/`push`/`contains`/`Index` all
+            // resolve through it; only loose/min-one flavors add `insert`/`try_opt_from`. JS reads
+            // `set.get(i)`, and the wasm surface tells the same story as the rust set API. `try_from`
+            // delegates to the rust nominal's `TryFrom<Vec<_>>` door so a flat list constructs the
+            // nominal without threading through the companion class.
             let element_type = match &field_type.conceptual_type {
                 ConceptualRustType::Array(elem) => (**elem).clone(),
                 // set_nominal is set only for Array-wrapped rules (parsing.rs); no other shape reaches here.
@@ -139,9 +141,8 @@ pub(super) fn generate_wrapper_struct(
                 .arg_ref_self()
                 .arg("index", "usize")
                 .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
-            // `add` mirrors the companion's CHECKED door (a duplicate is refused via the core `push`);
-            // `insert` is the std-set door (`false` = already present, set unchanged); `contains`
-            // tests membership.
+            // This is the sole mutable wasm door for a bounded set: both duplicate and overflow
+            // are errors, so it must not normalize an attempted insertion into a no-op.
             wrapper
                 .s_impl
                 .new_fn("add")
@@ -153,14 +154,16 @@ pub(super) fn generate_wrapper_struct(
                     "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
                     from_elem("elem")
                 ));
-            wrapper
-                .s_impl
-                .new_fn("insert")
-                .vis("pub")
-                .ret("bool")
-                .arg_mut_self()
-                .arg("elem", element_type.for_wasm_param(types))
-                .line(format!("self.0.insert({})", from_elem("elem")));
+            if !bounded_reject {
+                wrapper
+                    .s_impl
+                    .new_fn("insert")
+                    .vis("pub")
+                    .ret("bool")
+                    .arg_mut_self()
+                    .arg("elem", element_type.for_wasm_param(types))
+                    .line(format!("self.0.insert({})", from_elem("elem")));
+            }
             wrapper
                 .s_impl
                 .new_fn("contains")
@@ -209,18 +212,20 @@ pub(super) fn generate_wrapper_struct(
                 try_from_fn.line(format!(
                     "{native_wrapper}::try_from({arg}).map(Self).map_err(|e| JsError::new(&e.to_string()))"
                 ));
-                let try_opt_fn = wrapper
-                    .s_impl
-                    .new_fn("try_opt_from")
-                    .vis("pub")
-                    .ret(format!("Result<Option<{type_name}>, JsError>"))
-                    .arg(arg, arg_ty);
-                if let Some(prep) = prep {
-                    try_opt_fn.line(prep);
-                }
-                try_opt_fn.line(format!(
+                if !bounded_reject {
+                    let try_opt_fn = wrapper
+                        .s_impl
+                        .new_fn("try_opt_from")
+                        .vis("pub")
+                        .ret(format!("Result<Option<{type_name}>, JsError>"))
+                        .arg(arg, arg_ty);
+                    if let Some(prep) = prep {
+                        try_opt_fn.line(prep);
+                    }
+                    try_opt_fn.line(format!(
                     "{native_wrapper}::try_opt_from({arg}).map(|opt| opt.map(Self)).map_err(|e| JsError::new(&e.to_string()))"
                 ));
+                }
             }
             // A custom `@newtype <name>` getter (rare on a set nominal) still returns the companion —
             // it does not collide with the flat `get(index)` above.

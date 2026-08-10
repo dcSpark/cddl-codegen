@@ -17,7 +17,7 @@ sidebar_position: 4
 
 **Toolchain floor.** Generated crates depend on `cbor_event` 3.3, whose manifest declares `rust-version = "1.96.1"` — building a generated crate needs at least that toolchain.
 
-**Unused imports are pruned.** A usage-derived post-pass reads the rendered source and drops imports a generated file's module family references nowhere, so a module carries no unused-import warning for something a sibling module uses. It removes four things. **(1) Concrete-type names** — the collection helpers (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `BoundedVec`, `NonEmptyMap`, `OrderedSet`, `NonEmptyOrderedSet`) and, under `--preserve-encodings`, the encoding enums (`LenEncoding`, `StringEncoding`, `TagPresenceEncoding`); the wasm prelude names (`JsError`, `JsValue`, and the `wasm_bindgen` attribute macro, kept only where a `#[wasm_bindgen]` attribute appears); the `--wasm-*-macro` leaf names (kept only where the macro is actually invoked); and cross-scope generator-minted type idents an over-approximating reference walk imports. (The two `OrderedSet` twins ride the spec-global `@duplicates reject` gate — see [Reject-duplicates containers](#reject-duplicates-containers-uniqueness-twins) — so a scope with a reject-set rule pushes them into *every* scope's `mod.rs`, and this pass keeps the scopes that never name them warning-free.) **(2) `use super::*;`** — dropped from a file whose body names nothing bound in its parent module (kept where an encoding struct is keyed by a parent-scope generated type, e.g. `BTreeMap<Ikey, StringEncoding>`, since it reaches `Ikey` through the glob). **(3) `use <common>::error::*;`** — dropped from a `mod.rs` whose family names no error export (kept where a bounds-carrying wrapper's `TryFrom` names `DeserializeError`). **(4) `use super::cbor_encodings::*;`** — dropped from a `serialization.rs` family that names no definition from its generated sibling `cbor_encodings.rs` (for example, a serialize-only record that reaches its sidecar only through `self.encodings`).
+**Unused imports are pruned.** A usage-derived post-pass reads the rendered source and drops imports a generated file's module family references nowhere, so a module carries no unused-import warning for something a sibling module uses. It removes four things. **(1) Concrete-type names** — the collection helpers (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `BoundedVec`, `NonEmptyMap`, `OrderedSet`, `NonEmptyOrderedSet`, `BoundedOrderedSet`) and, under `--preserve-encodings`, the encoding enums (`LenEncoding`, `StringEncoding`, `TagPresenceEncoding`); the wasm prelude names (`JsError`, `JsValue`, and the `wasm_bindgen` attribute macro, kept only where a `#[wasm_bindgen]` attribute appears); the `--wasm-*-macro` leaf names (kept only where the macro is actually invoked); and cross-scope generator-minted type idents an over-approximating reference walk imports. (The ordered-set twins and bounded compound twin ride the spec-global `@duplicates reject` gate — see [Reject-duplicates containers](#reject-duplicates-containers-uniqueness-twins) — so a scope with a reject-set rule pushes them into *every* scope's `mod.rs`, and this pass keeps the scopes that never name them warning-free.) **(2) `use super::*;`** — dropped from a file whose body names nothing bound in its parent module (kept where an encoding struct is keyed by a parent-scope generated type, e.g. `BTreeMap<Ikey, StringEncoding>`, since it reaches `Ikey` through the glob). **(3) `use <common>::error::*;`** — dropped from a `mod.rs` whose family names no error export (kept where a bounds-carrying wrapper's `TryFrom` names `DeserializeError`). **(4) `use super::cbor_encodings::*;`** — dropped from a `serialization.rs` family that names no definition from its generated sibling `cbor_encodings.rs` (for example, a serialize-only record that reaches its sidecar only through `self.encodings`).
 
 The consuming set of a file is not "every descendant" but the descendants an unbroken chain of `use super::*;` edges links back to it — a private import in a scope's `mod.rs` is nameable by that scope's `serialization.rs`/`cbor_encodings.rs` (which glob `super`), but NOT by a *different* scope's files, whose own `mod.rs` does not re-glob upward. A super-reachable descendant keeps a parent's copy alive only when it would genuinely resolve the name through the parent: one that carries its own direct import of the same name, that IS the file of the module the parent imports it from (the `serialization.rs` static prelude that defines `LenEncoding`), or that globs that same module (`use <dep>::serialization::*;` under `--common-import-override`) resolves the name locally and does not. A reference counts only where it could actually resolve through the namespace: an identifier appearing solely as a `::`-qualified path tail (`cml_chain::assets::Coin` mentioning `assets` and `Coin`) resolves through its preceding path segment, so it keeps neither a named import nor a glob alive — which is why a file built entirely from fully-qualified paths (e.g. the `--wrapper-requests` `requested_collections.rs`) sheds its `use super::*;`. Only private `use` items are candidates (`pub use` re-exports are API surface and never touched). Trait imports (e.g. `cbor_event::se::Serialize`, exercised via a method call whose name never mentions `Serialize`) cannot be proven unused by name and are left as-is, so a scope that imports but never calls one still carries that single warning. The pass runs again after the edit-preservation overlay applies your `cddl-codegen:` blocks, so what justifies each import is the *final* shipped content, not the pristine pre-edit content — a replace block that removes an import's last user removes the import too (see [Preserving edits](./preserving_edits)).
 
@@ -858,10 +858,10 @@ homogeneous ARRAY window except bare `*` is likewise type-enforced: `[2*5 T]`, `
 `[? T]`, and `[2*2 T]` emit
 `BoundedVec<T, MIN, MAX>` (`u64::MAX` is the target-independent unbounded carrier). Bare `[* T]` remains `Vec<T>`.
 
-A bounded `@duplicates reject` array deliberately remains the compound-constraint residue: it uses
-`OrderedSet<T>` (or `NonEmptyOrderedSet<T>` for `[+]`) and retains its inclusive cardinality check at
-the API and decode boundaries. There is no `BoundedOrderedSet` yet, so a reject set is never silently
-lowered to `BoundedVec`.
+A bounded `@duplicates reject` array uses `BoundedOrderedSet<T, MIN, MAX>`. Its one
+`TryFrom<Vec<T>>` door preserves original order while refusing duplicate input (with the existing
+duplicate index) and values outside the inclusive window; checked `push`/`pop`/`remove` preserve both
+invariants. JSON/schema, CBOR, wasm, component, and requested-wrapper input all re-enter that door.
 
 Each non-empty type provides one conversion contract:
 
@@ -936,6 +936,9 @@ the non-empty containers make for the length bound:
 - `[* T]` → **`OrderedSet<T>`** (`signers = [* key] ; @duplicates reject` emits
   `pub type Signers = OrderedSet<Key>`).
 - `[+ T]` → **`NonEmptyOrderedSet<T>`**, whose door composes BOTH invariants (min-1 *and* uniqueness).
+- Every other bounded window → **`BoundedOrderedSet<T, MIN, MAX>`**, whose checked door composes
+  uniqueness with its inclusive occurrence window. It exposes reads and checked `push`/`pop`/`remove`,
+  but no normalizing `insert`/`Extend`/`FromIterator`: an over-maximum append is an error, never a no-op.
 
 A tag-258 set (which defaults to `reject`) uses the SAME twins for its inner collection, but wraps
 them in a nominal struct that owns its encodings rather than aliasing to them transparently — see
@@ -1474,7 +1477,8 @@ preservation. Requested wrappers are indexed in the dependency's own `collection
 (`pub use crate::generated::requested_collections::<Name>;`) exactly like a wrapper the dependency's
 own spec produces, so a consumer's `use <dep_wasm>::collections::<Name>;` resolves. A requested
 `NonEmpty…` wrapper additionally provisions the `NonEmptyVec`/`NonEmptyMap` runtime; a bounded list
-provisions `BoundedVec`; either may emit its loose `try_from` source wrapper as an (unattributed)
+provisions `BoundedVec`, while a bounded reject array provisions `BoundedOrderedSet`; either may emit
+its loose `try_from` source wrapper as an (unattributed)
 transitive support type. Each hosted wrapper
 also carries explicit imports for the element types its body names — a cross-scope generated
 element from its scope module (`crate::generated::<scope>::X`), an extern or hand-written element

@@ -1164,7 +1164,9 @@ impl<'a> IntermediateTypes<'a> {
         // Every remaining wrapper name resolves the same way `for_wasm_member` names it, and its home
         // is `types.scope(ident)` (root for a synthesized name, the owner's module for a dedup/rule
         // ident — a registered rust struct).
-        let name = if ty.is_reject_ordered_set() {
+        let name = if ty.is_bounded_reject_ordered_set() {
+            ty.bounded_reject_ordered_set_wasm_wrapper_name(self)
+        } else if ty.is_reject_ordered_set() {
             ty.reject_ordered_set_wasm_wrapper_name(self)
         } else if ty.is_non_empty_array() {
             ty.non_empty_wasm_wrapper_name(self)
@@ -3972,6 +3974,9 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.bounded_array_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            for msg in self.bounded_reject_ordered_set_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
             // NonEmptyMap wasm-wrapper name collisions — the map-side twin of the above.
             for msg in self.non_empty_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
@@ -4621,7 +4626,7 @@ impl<'a> IntermediateTypes<'a> {
             let ConceptualRustType::Array(elem) = &rt.conceptual_type else {
                 return;
             };
-            if !rt.is_bounded_array() {
+            if !rt.is_bounded_array() || rt.is_bounded_reject_ordered_set() {
                 return;
             }
             let (min, _) = rt
@@ -5328,6 +5333,28 @@ impl<'a> IntermediateTypes<'a> {
                 ));
             }
         }
+        msgs.into_iter().collect()
+    }
+
+    /// Bounded reject sets have their own structural wasm class: both the uniqueness flavor and
+    /// occurrence endpoints are encoded, so the class cannot be confused with `BoundedVec` or an
+    /// unbounded `OrderedSet`. Keep this a per-kind sibling of the other collision detectors: the
+    /// pinned remedy must name the carrier an author is actually shadowing.
+    fn bounded_reject_ordered_set_wrapper_name_collisions(&self) -> Vec<String> {
+        let mut msgs = BTreeSet::new();
+        self.visit_all_rust_types(&mut |rt| {
+            if !rt.is_bounded_reject_ordered_set() {
+                return;
+            }
+            let structural = rt.bounded_reject_ordered_set_wasm_wrapper_name(self);
+            if self.wasm_ident_claimed_by_user_rule(&structural) {
+                msgs.insert(format!(
+                    "name collision: rule '{structural}' collides with the '{structural}' wasm \
+                     wrapper generated for an inline bounded `@duplicates reject` set occurrence — \
+                     rename the rule to avoid shadowing the restricted BoundedOrderedSet wrapper"
+                ));
+            }
+        });
         msgs.into_iter().collect()
     }
 

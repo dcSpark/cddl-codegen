@@ -174,8 +174,10 @@ minimum classes have no `new`. A zero-minimum **self-named** rule whose identifi
 loose builder (`bar_list = [*5 bar]`) has no separate `try_from` source; it remains constructible
 through `new()` plus checked `add`, and its generated docs say so. A positive-minimum self-named
 rule is rejected with a rename remedy because it has neither that empty seed nor a distinct loose
-source. A bounded `@duplicates reject` array is intentionally outside this representation: it
-remains the runtime-checked `OrderedSet` twin until a compound bounded-unique carrier exists.
+source. A bounded `@duplicates reject` array instead uses the parallel
+`<Elem>BoundedOrderedSetMaxN` / `…MinN` / `…MinNMaxM` class over `BoundedOrderedSet`; `try_from` and
+checked `add` enter its compound door, and `len`/`get`/`contains` remain readable while normalizing
+`insert` is intentionally absent.
 
 ## Bounded homogeneous tables
 
@@ -188,14 +190,15 @@ and checked `insert` re-enter the core range-check door, and only a zero-minimum
 ## Reject-duplicates containers
 
 A collection rule carrying [`@duplicates reject`](./comment_dsl) — `[* T]` → `OrderedSet<T>`,
-`[+ T]` → `NonEmptyOrderedSet<T>` (see
+`[+ T]` → `NonEmptyOrderedSet<T>`, and every other bounded window → `BoundedOrderedSet<T, MIN, MAX>` (see
 [Output format](./output_format.mdx#reject-duplicates-containers-uniqueness-twins)) — crosses the
 wasm boundary with the **same two-wrapper pattern** as the non-empty case, the restricted wrapper
 wrapping the uniqueness twin core:
 
 - A **named** rule surfaces as a class under its own identifier (`signers = [* key] ; @duplicates
   reject` → a `Signers` class); an **anonymous** generic-collection instance uses the structural
-  names **`<Elem>OrderedSet`** / **`NonEmpty<Elem>OrderedSet`** (e.g. `U64OrderedSet` for an inline
+  names **`<Elem>OrderedSet`** / **`NonEmpty<Elem>OrderedSet`** / bounded
+  **`<Elem>BoundedOrderedSet…`** (e.g. `U64OrderedSet` for an inline
   reject `[* uint]`, `NonEmptyFooOrderedSet` for `[+ foo]`) — the uniqueness analogue of the
   `<Elem>List` list wrapper.
 - Construction is via **`try_from`**, exactly like the non-empty restricted wrapper:

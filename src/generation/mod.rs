@@ -460,12 +460,17 @@ impl GenerationScope {
                         ));
                     }
                     // The finite/zero-minimum array sibling carries its complete occurrence window
-                    // in `BoundedVec`'s const arguments. Quote the canonical sidecar grammar here
+                    // in the chosen bounded carrier's const arguments. Quote the canonical sidecar grammar here
                     // so a named alias is discoverable without following the generated type alias.
                     if alias_info.base_type.is_bounded_array() {
                         let shape = render_wrapper_shape(&alias_info.base_type);
+                        let door = if alias_info.base_type.is_bounded_reject_ordered_set() {
+                            "BoundedOrderedSet"
+                        } else {
+                            "BoundedVec"
+                        };
                         doc_lines.push(format!(
-                            "`{shape}`: inclusive length window enforced at the `BoundedVec` \
+                            "`{shape}`: inclusive length window enforced at the `{door}` \
                              `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
                              door, so wire-side and API-side rejection are identical)."
                         ));
@@ -989,6 +994,14 @@ impl GenerationScope {
                                     element_type.clone(),
                                     rust_ident,
                                     non_empty,
+                                    bounds.and_then(|bounds| {
+                                        let ty: crate::intermediate::RustType =
+                                            crate::intermediate::ConceptualRustType::Array(
+                                                Box::new(element_type.clone()),
+                                            )
+                                            .into();
+                                        ty.with_bounds(bounds).bounded_array_u64_bounds()
+                                    }),
                                     // See the non-empty arm below: a generator-synthesized
                                     // collection (a table rule's keys-list) must never claim
                                     // `rule_declared` — no rule authored that wrapper, so the
@@ -1861,6 +1874,11 @@ impl GenerationScope {
                     "NonEmptyOrderedSet",
                     None,
                 );
+                content.push_import(
+                    format!("{}::ordered_set", cli.common_import_rust()),
+                    "BoundedOrderedSet",
+                    None,
+                );
             }
             if types.uses_pair_map() {
                 content.push_import(
@@ -2068,6 +2086,11 @@ impl GenerationScope {
                     content.push_import(
                         format!("{}::ordered_set", cli.common_import_wasm()),
                         "NonEmptyOrderedSet",
+                        None,
+                    );
+                    content.push_import(
+                        format!("{}::ordered_set", cli.common_import_wasm()),
+                        "BoundedOrderedSet",
                         None,
                     );
                 }
@@ -3949,6 +3972,8 @@ pub enum NaturalAnyPosition {
     OptSeq,
     BoundedSeq(u64, u64),
     OptBoundedSeq(u64, u64),
+    BoundedUniqueSeq(u64, u64),
+    OptBoundedUniqueSeq(u64, u64),
     Map,
     OptMap,
     OrderedMap,
@@ -4002,6 +4027,16 @@ pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<
         OptBoundedSeq(min, max) => (
             "natural_any_cbor_opt_bounded_seq",
             format!("natural_any_cbor_bounded_seq_schema::<{min}, {max}>"),
+            true,
+        ),
+        BoundedUniqueSeq(min, max) => (
+            "natural_any_cbor_bounded_ordered_set",
+            format!("natural_any_cbor_bounded_ordered_set_schema::<{min}, {max}>"),
+            false,
+        ),
+        OptBoundedUniqueSeq(min, max) => (
+            "natural_any_cbor_opt_bounded_ordered_set",
+            format!("natural_any_cbor_bounded_ordered_set_schema::<{min}, {max}>"),
             true,
         ),
         Map => (

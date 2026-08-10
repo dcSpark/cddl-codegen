@@ -224,6 +224,7 @@ impl GenerationScope {
                             (**inner).clone(),
                             &ident,
                             rt.is_non_empty_array(),
+                            rt.bounded_array_u64_bounds(),
                             // `false`, exactly as the loose/NonEmpty arms below: a hosted request is
                             // not a rule of THIS dep's spec. The defer consult the emitter now makes
                             // is naturally inert here for the same reason it already is for those
@@ -381,7 +382,8 @@ impl GenerationScope {
         // wrapper needs them pushed here (same dumb-push + central-prune contract as the twins above).
         if let Some(path) = ordered_set_import {
             scope_content.push_import(path.clone(), "OrderedSet", None);
-            scope_content.push_import(path, "NonEmptyOrderedSet", None);
+            scope_content.push_import(path.clone(), "NonEmptyOrderedSet", None);
+            scope_content.push_import(path, "BoundedOrderedSet", None);
         }
         // The preserve twin wraps `core::PairMap` / `NonEmptyPairMap`, gated the same way (the
         // per-scope loop keys off the dep's OWN `uses_pair_map()`, which a request-only host fails).
@@ -860,7 +862,9 @@ fn requested_structural_name(
 ) -> String {
     match &rt.conceptual_type {
         ConceptualRustType::Array(inner) => {
-            if rt.is_reject_ordered_set() {
+            if rt.is_bounded_reject_ordered_set() {
+                rt.bounded_reject_ordered_set_wasm_wrapper_name(types)
+            } else if rt.is_reject_ordered_set() {
                 // The uniqueness twin's wasm class name (`<Elem>OrderedSet` /
                 // `NonEmpty<Elem>OrderedSet`) — the same spelling the dep mints locally, so a request
                 // for it resolves to (or subtracts against) the identical structural name.

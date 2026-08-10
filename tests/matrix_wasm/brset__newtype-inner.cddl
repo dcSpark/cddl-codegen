@@ -1,0 +1,3 @@
+; cell: brset x newtype-inner
+brs = [*2 uint] ; @duplicates reject
+holder = brs ; @newtype

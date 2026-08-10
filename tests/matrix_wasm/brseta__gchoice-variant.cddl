@@ -1,0 +1,3 @@
+; cell: brseta x gchoice-variant
+boset<e0> = [2*3 e0] ; @duplicates reject
+holder = [ f0: boset<uint> // f1: nint ]

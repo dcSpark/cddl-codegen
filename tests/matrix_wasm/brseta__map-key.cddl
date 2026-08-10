@@ -1,0 +1,3 @@
+; cell: brseta x map-key
+boset<e0> = [2*3 e0] ; @duplicates reject
+holder = { * boset<uint> => uint }

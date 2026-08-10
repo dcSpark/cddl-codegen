@@ -362,6 +362,49 @@ fn fallible_doors_return_err_and_leave_the_instance_usable() -> Result<()> {
     // ...and the record is untouched and still usable after the rejection.
     assert_eq!(api.record().call_aliases(&mut *store, hs.record)?, None);
     assert_eq!(api.record().call_id(&mut *store, hs.record)?, ID);
+
+    // The bounded reject set crosses WIT as a list, but the component must restore BOTH bounds and
+    // uniqueness through BoundedOrderedSet's one fallible door. Every rejection is an inner Err,
+    // never an outer wasmtime error/trap, and the same instance accepts a valid value afterwards.
+    let below = api
+        .record()
+        .call_set_unique(&mut *store, hs.record, &vec![1])?
+        .expect_err("a one-element bounded set must reject below its minimum");
+    assert_eq!(
+        below,
+        cddl_lib::ordered_set::BoundedOrderedSet::<u64, 2, 3>::try_from(vec![1])
+            .unwrap_err()
+            .to_string()
+    );
+    let above = api
+        .record()
+        .call_set_unique(&mut *store, hs.record, &vec![1, 2, 3, 4])?
+        .expect_err("a four-element bounded set must reject above its maximum");
+    assert_eq!(
+        above,
+        cddl_lib::ordered_set::BoundedOrderedSet::<u64, 2, 3>::try_from(vec![1, 2, 3, 4])
+            .unwrap_err()
+            .to_string()
+    );
+    let duplicate = api
+        .record()
+        .call_set_unique(&mut *store, hs.record, &vec![1, 1])?
+        .expect_err("a duplicate bounded set member must reject");
+    assert_eq!(
+        duplicate,
+        cddl_lib::ordered_set::BoundedOrderedSet::<u64, 2, 3>::try_from(vec![1, 1])
+            .unwrap_err()
+            .to_string()
+    );
+    assert_eq!(api.record().call_unique(&mut *store, hs.record)?, None);
+    api.record()
+        .call_set_unique(&mut *store, hs.record, &vec![4, 2, 9])?
+        .expect("a distinct in-window bounded set must be accepted after errors");
+    assert_eq!(
+        api.record().call_unique(&mut *store, hs.record)?,
+        Some(vec![4, 2, 9]),
+        "accepted bounded-set values retain their insertion order across the component boundary"
+    );
     Ok(())
 }
 

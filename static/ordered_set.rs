@@ -188,6 +188,96 @@ fn scan_unique<T: Ord>(vec: &[T]) -> Result<(), DeserializeError> {
     }
 }
 
+/// An insertion-ordered, duplicate-free `Vec<T>` whose inclusive CDDL occurrence window is part
+/// of its Rust type.  This is the compound carrier for bounded `@duplicates reject` arrays.
+///
+/// Like the other ordered-set twins it preserves accepted input order.  Unlike `OrderedSet`, every
+/// mutation is checked against both the uniqueness and cardinality invariants; no mutable slice or
+/// loose carrier is exposed.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BoundedOrderedSet<T, const MIN: u64, const MAX: u64>(Vec<T>);
+
+impl<T, const MIN: u64, const MAX: u64> BoundedOrderedSet<T, MIN, MAX> {
+    fn range_error(found: usize) -> DeserializeError {
+        DeserializeFailure::RangeCheck {
+            found: found as i128,
+            min: Some(MIN as i128),
+            max: if MAX == u64::MAX { None } else { Some(MAX as i128) },
+        }
+        .into()
+    }
+
+    fn valid_len(len: usize) -> bool {
+        let len = len as u64;
+        MIN <= MAX && len >= MIN && len <= MAX
+    }
+
+    pub fn len(&self) -> usize { self.0.len() }
+    pub fn is_empty(&self) -> bool { self.0.is_empty() }
+    pub fn get(&self, index: usize) -> Option<&T> { self.0.get(index) }
+    pub fn iter(&self) -> core::slice::Iter<'_, T> { self.0.iter() }
+    pub fn as_slice(&self) -> &[T] { self.0.as_slice() }
+    pub fn into_inner(self) -> Vec<T> { self.0 }
+
+    pub fn contains(&self, value: &T) -> bool where T: PartialEq { self.0.contains(value) }
+
+    pub fn push(&mut self, value: T) -> Result<(), DeserializeError>
+    where T: PartialEq {
+        if self.0.contains(&value) {
+            return Err(DeserializeFailure::DuplicateKey(Key::Uint(self.0.len() as u64)).into());
+        }
+        if self.0.len() as u64 == MAX {
+            return Err(Self::range_error(self.0.len().saturating_add(1)));
+        }
+        self.0.push(value);
+        Ok(())
+    }
+
+    pub fn pop(&mut self) -> Result<T, DeserializeError> {
+        if (self.0.len() as u64) <= MIN {
+            return Err(Self::range_error(self.0.len().saturating_sub(1)));
+        }
+        Ok(self.0.pop().expect("length checked before BoundedOrderedSet::pop"))
+    }
+
+    pub fn remove(&mut self, index: usize) -> Result<T, DeserializeError> {
+        if (self.0.len() as u64) <= MIN {
+            return Err(Self::range_error(self.0.len().saturating_sub(1)));
+        }
+        Ok(self.0.remove(index))
+    }
+}
+
+impl<T, const MAX: u64> BoundedOrderedSet<T, 0, MAX> {
+    pub fn new() -> Self { Self(Vec::new()) }
+}
+
+impl<T: Ord, const MIN: u64, const MAX: u64> TryFrom<Vec<T>> for BoundedOrderedSet<T, MIN, MAX> {
+    type Error = DeserializeError;
+    fn try_from(vec: Vec<T>) -> Result<Self, Self::Error> {
+        // Retain OrderedSet's duplicate-first door precedence: malformed uniqueness is reported
+        // identically before the cardinality window is considered.
+        scan_unique(&vec)?;
+        if Self::valid_len(vec.len()) { Ok(Self(vec)) } else { Err(Self::range_error(vec.len())) }
+    }
+}
+
+impl<T, const MIN: u64, const MAX: u64> From<BoundedOrderedSet<T, MIN, MAX>> for Vec<T> {
+    fn from(value: BoundedOrderedSet<T, MIN, MAX>) -> Self { value.0 }
+}
+impl<T, const MIN: u64, const MAX: u64> AsRef<[T]> for BoundedOrderedSet<T, MIN, MAX> {
+    fn as_ref(&self) -> &[T] { self.0.as_slice() }
+}
+impl<T, const MIN: u64, const MAX: u64> core::ops::Index<usize> for BoundedOrderedSet<T, MIN, MAX> {
+    type Output = T;
+    fn index(&self, index: usize) -> &Self::Output { &self.0[index] }
+}
+impl<'a, T, const MIN: u64, const MAX: u64> IntoIterator for &'a BoundedOrderedSet<T, MIN, MAX> {
+    type Item = &'a T;
+    type IntoIter = core::slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter { self.0.iter() }
+}
+
 impl<T: Ord> TryFrom<Vec<T>> for OrderedSet<T> {
     type Error = DeserializeError;
 
@@ -450,5 +540,33 @@ impl<T> TryFrom<OrderedSet<T>> for NonEmptyOrderedSet<T> {
 impl<T> From<NonEmptyOrderedSet<T>> for OrderedSet<T> {
     fn from(set: NonEmptyOrderedSet<T>) -> Self {
         OrderedSet(set.0)
+    }
+}
+
+#[cfg(test)]
+mod bounded_ordered_set_tests {
+    use super::*;
+
+    #[test]
+    fn bounded_unique_door_and_mutators_preserve_both_invariants() {
+        let duplicate = BoundedOrderedSet::<u64, 2, 5>::try_from(vec![7, 7]).unwrap_err();
+        assert!(matches!(duplicate.failure(), DeserializeFailure::DuplicateKey(Key::Uint(1))));
+        BoundedOrderedSet::<u64, 2, 5>::try_from(vec![1]).unwrap_err();
+        BoundedOrderedSet::<u64, 2, 5>::try_from(vec![1, 2, 3, 4, 5, 6]).unwrap_err();
+        let mut value = BoundedOrderedSet::<u64, 2, 5>::try_from(vec![1, 2]).unwrap();
+        value.pop().unwrap_err();
+        assert!(value.push(2).is_err());
+        assert_eq!(value.as_slice(), [1, 2]);
+        value.push(3).unwrap();
+        value.push(4).unwrap();
+        value.push(5).unwrap();
+        assert!(value.push(6).is_err());
+        assert_eq!(value.as_slice(), [1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn zero_seed_and_invalid_window_are_checked_doors() {
+        assert!(BoundedOrderedSet::<u64, 0, 0>::new().is_empty());
+        BoundedOrderedSet::<u64, 2, 1>::try_from(vec![1, 2]).unwrap_err();
     }
 }

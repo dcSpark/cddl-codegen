@@ -867,8 +867,8 @@ impl RustType {
     /// The `[+ T]` occurrence shape — lower bound exactly 1, no upper bound — on a homogeneous
     /// ARRAY. This is the original restricted sibling: it becomes `NonEmptyVec<T>`, whose single
     /// `TryFrom<Vec<T>>` door enforces non-emptiness at the type level. Other ordinary/preserve
-    /// bounded windows (`2*5`, `*3`, …) use `BoundedVec`; only the deliberately compound
-    /// `@duplicates reject` bounded case keeps `OrderedSet` plus runtime cardinality checks.
+    /// bounded windows (`2*5`, `*3`, …) use a type-enforced carrier. `@duplicates reject` selects
+    /// the compound `BoundedOrderedSet` sibling rather than weakening either invariant at call sites.
     /// Matches the RAW conceptual type (not alias-resolved): a field that *references* a
     /// named `[+ int]` rule carries this bounds shape but is an `Alias`, and its member type must
     /// stay the alias name (whose target is already `NonEmptyVec`), not re-inline the container.
@@ -878,12 +878,10 @@ impl RustType {
     }
 
     /// A finite or non-zero-minimum homogeneous ARRAY occurrence whose window is represented by
-    /// `BoundedVec`, rather than a loose `Vec` plus checks at each construction site.  `[+ T]`
-    /// deliberately remains the older `NonEmptyVec` sibling; `@duplicates reject` remains the
-    /// `OrderedSet` sibling until a compound bounded-unique carrier is designed.
+    /// `BoundedVec` (or `BoundedOrderedSet` for reject sets), rather than a loose `Vec` plus checks
+    /// at each construction site. `[+ T]` deliberately remains the older NonEmpty sibling.
     pub fn is_bounded_array(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Array(_))
-            && !self.duplicates_reject()
             && matches!(self.config.bounds, Some(bounds) if bounds != (None, None) && bounds != (Some(1), None))
     }
 
@@ -910,9 +908,6 @@ impl RustType {
             ConceptualRustType::Array(_)
         )
         .then_some(())?;
-        if self.duplicates_reject() {
-            return None;
-        }
         let (min, max) = self.config.bounds?;
         if (min, max) == (None, None) || (min, max) == (Some(1), None) {
             return None;
@@ -932,6 +927,12 @@ impl RustType {
     pub fn is_reject_ordered_set(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Array(_))
             && self.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+    }
+
+    /// The compound bounded-unique shape. This intentionally excludes loose `*` and the existing
+    /// min-one `+`/`1*` OrderedSet twins, which retain their established carriers.
+    pub fn is_bounded_reject_ordered_set(&self) -> bool {
+        self.is_reject_ordered_set() && self.is_bounded_array()
     }
 
     /// Whether this member carries the `@duplicates reject` policy, INDEPENDENT of whether the
@@ -1057,9 +1058,8 @@ impl RustType {
         ) && self.config.bounds == Some((Some(1), None))
     }
 
-    /// Like `is_type_enforced_non_empty`, but for every ordinary/preserve ARRAY occurrence
-    /// represented by `BoundedVec`. `@duplicates reject` stays on `OrderedSet` plus runtime bounds
-    /// until a compound bounded-unique carrier is deliberately designed.
+    /// Like `is_type_enforced_non_empty`, but for every bounded ARRAY occurrence represented by a
+    /// `BoundedVec` or, for `@duplicates reject`, a `BoundedOrderedSet`.
     pub fn is_type_enforced_bounded_array(&self) -> bool {
         matches!(
             self.conceptual_type.resolve_alias_shallow(),
@@ -1086,7 +1086,7 @@ impl RustType {
 
     /// Whether any nested position needs the `BoundedVec` runtime module.
     pub fn contains_bounded_array(&self) -> bool {
-        if self.is_bounded_array() {
+        if self.is_bounded_array() && !self.is_bounded_reject_ordered_set() {
             return true;
         }
         match &self.conceptual_type {
@@ -1234,6 +1234,27 @@ impl RustType {
         }
     }
 
+    /// Structural wasm name for a bounded `@duplicates reject` array. Bounds and the uniqueness
+    /// flavor are both part of the name, so it cannot collide with either a bounded loose list or
+    /// a loose/non-empty ordered-set wrapper of the same element type.
+    pub fn bounded_reject_ordered_set_wasm_wrapper_name(
+        &self,
+        _types: &IntermediateTypes,
+    ) -> String {
+        let (min, max) = self
+            .bounded_array_u64_bounds()
+            .expect("bounded reject set has representable occurrence bounds");
+        let ConceptualRustType::Array(inner) = &self.conceptual_type else {
+            unreachable!("bounded_reject_ordered_set_wasm_wrapper_name on a non-array");
+        };
+        let base = inner.conceptual_type.for_variant();
+        match (min, max == u64::MAX) {
+            (0, false) => format!("{base}BoundedOrderedSetMax{max}"),
+            (_, true) => format!("{base}BoundedOrderedSetMin{min}"),
+            _ => format!("{base}BoundedOrderedSetMin{min}Max{max}"),
+        }
+    }
+
     /// The wasm-boundary name of the restricted map wrapper for a `{+ k => v}` table. When a NAMED
     /// `{+ k => v}` rule of the same domain/range exists, the inline use DEDUPS to that rule's class
     /// (the spec author's name wins — see `IntermediateTypes::non_empty_map_named_owner`); otherwise a
@@ -1326,7 +1347,12 @@ impl RustType {
                     } else {
                         max.to_string()
                     };
-                    return format!("BoundedVec<{element}, {min}, {max}>");
+                    let carrier = if self.is_bounded_reject_ordered_set() {
+                        "BoundedOrderedSet"
+                    } else {
+                        "BoundedVec"
+                    };
+                    return format!("{carrier}<{element}, {min}, {max}>");
                 }
                 format!(
                     "{}<{element}>",
@@ -1388,6 +1414,9 @@ impl RustType {
 
     /// If we were to store a value directly in a wasm-wrapper, this would be used. Bounds-aware.
     pub fn for_wasm_member(&self, types: &IntermediateTypes) -> String {
+        if self.is_bounded_reject_ordered_set() {
+            return self.bounded_reject_ordered_set_wasm_wrapper_name(types);
+        }
         if self.is_reject_ordered_set() {
             return self.reject_ordered_set_wasm_wrapper_name(types);
         }
@@ -1424,6 +1453,12 @@ impl RustType {
 
     /// Function parameter TYPE from wasm (ref for non-primitives). Bounds-aware over `for_wasm_param_ct`.
     pub fn for_wasm_param(&self, types: &IntermediateTypes) -> String {
+        if self.is_bounded_reject_ordered_set() {
+            return format!(
+                "&{}",
+                self.bounded_reject_ordered_set_wasm_wrapper_name(types)
+            );
+        }
         if self.is_reject_ordered_set() {
             return format!("&{}", self.reject_ordered_set_wasm_wrapper_name(types));
         }
@@ -1452,6 +1487,9 @@ impl RustType {
 
     /// Optional-inner variant of `for_wasm_param` (no leading `&`), bounds-aware.
     fn for_wasm_param_impl_rt(&self, types: &IntermediateTypes) -> String {
+        if self.is_bounded_reject_ordered_set() {
+            return self.bounded_reject_ordered_set_wasm_wrapper_name(types);
+        }
         if self.is_reject_ordered_set() {
             return self.reject_ordered_set_wasm_wrapper_name(types);
         }

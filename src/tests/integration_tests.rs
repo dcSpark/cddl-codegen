@@ -17986,14 +17986,18 @@ fn workspace_requests_host_bounded_maps_preserve_window_checked_door_and_flavor(
 /// → its real `borrowed_collections.rs` → dep regen consuming it → both wasm crates compile against
 /// each other.
 ///
-/// Four cells, one per participation answer the reject seam can give (the wrapper name is what
-/// distinguishes them, so one crate carries all four):
+/// Six cells, one per participation answer plus two bounded windows (the wrapper name is what
+/// distinguishes them, so one crate carries all six):
 ///
 /// * `wp_oset<idx_foo>` — an inline (anonymous generic-instance) `[*]` set: structural name, all-one
 ///   -dep elements ⇒ BORROW.
 /// * `wp_neset<idx_bar>` — the `[+]` flavor of the same, proving the non-empty twin rides the same
 ///   seam and that its `[+ …]` shape column survives to the host (a `[*]` rebuild would hand the
 ///   consumer a class whose min-1 bound is gone).
+/// * `wp_bounded_2_3<idx_foo>` / `wp_bounded_max_4<idx_bar>` — bounded reject sets over the same
+///   two element types. Their canonical occurrence and `@duplicates reject` marker must survive the
+///   consumer export/import/request seam, and the hosted wrappers must use `BoundedOrderedSet` rather
+///   than weakening either invariant to `BoundedVec` or `OrderedSet`.
 /// * `idx_baz_ordered_set = [* idx_baz]` — a RULE whose ident coincides with the structural name:
 ///   criterion 9, so it is the consumer's own class, minted locally and warned about, never borrowed.
 /// * `qux_set = [* idx_qux]` — a rule whose ident DIFFERS from the structural name: the consumer's
@@ -18032,11 +18036,15 @@ fn workspace_dep_defers_reject_ordered_set_twins() {
         "consumer/lib.cddl",
         "wp_oset<a0> = [* a0] ; @duplicates reject\n\n\
          wp_neset<a0> = [+ a0] ; @duplicates reject\n\n\
+         wp_bounded_2_3<a0> = [2*3 a0] ; @duplicates reject\n\n\
+         wp_bounded_max_4<a0> = [*4 a0] ; @duplicates reject\n\n\
          idx_baz_ordered_set = [* idx_baz] ; @duplicates reject\n\n\
          qux_set = [* idx_qux] ; @duplicates reject\n\n\
          holder = [\n  \
            a: wp_oset<idx_foo>,\n  \
            b: wp_neset<idx_bar>,\n  \
+           e: wp_bounded_2_3<idx_foo>,\n  \
+           f: wp_bounded_max_4<idx_bar>,\n  \
            c: idx_baz_ordered_set,\n  \
            d: qux_set\n\
          ]\n",
@@ -18078,7 +18086,12 @@ fn workspace_dep_defers_reject_ordered_set_twins() {
                 rest[..=rest.find(';').expect("unterminated use statement")].contains(class)
             })
     };
-    for borrowed in ["IdxFooOrderedSet", "NonEmptyIdxBarOrderedSet"] {
+    for borrowed in [
+        "IdxFooOrderedSet",
+        "NonEmptyIdxBarOrderedSet",
+        "IdxFooBoundedOrderedSetMin2Max3",
+        "IdxBarBoundedOrderedSetMax4",
+    ] {
         assert!(
             !wasm_mod.contains(&format!("pub struct {borrowed}(")),
             "the deferred reject twin {borrowed} must NOT be minted locally:\n{wasm_mod}"
@@ -18100,6 +18113,8 @@ fn workspace_dep_defers_reject_ordered_set_twins() {
     for (name, shape) in [
         ("IdxFooOrderedSet", "[* idx_foo]"),
         ("NonEmptyIdxBarOrderedSet", "[+ idx_bar]"),
+        ("IdxFooBoundedOrderedSetMin2Max3", "[2*3 idx_foo]"),
+        ("IdxBarBoundedOrderedSetMax4", "[*4 idx_bar]"),
     ] {
         let row = format!(
             "\"wr_dep\",\n        \"{name}\",\n        \"{shape} {}\",",
@@ -18112,6 +18127,14 @@ fn workspace_dep_defers_reject_ordered_set_twins() {
         assert!(
             sidecar.contains(&format!("use wr_dep_wasm::collections::{name};")),
             "the sidecar's compiled self-check must name {name}:\n{sidecar}"
+        );
+    }
+    let key_sidecar = read_consumer("rust/src/generated/borrowed_key_types.rs");
+    for element in ["idx_foo", "idx_bar"] {
+        assert!(
+            key_sidecar.contains(&format!("(\"wr_dep\", \"{element}\", \"ord\")")),
+            "every requested OrderedSet flavor needs the element's Ord capability through the key \
+             request channel; missing {element}:\n{key_sidecar}"
         );
     }
     // Criterion 9: a rule-declared set whose ident IS the structural name stays the consumer's own
@@ -18184,6 +18207,39 @@ fn workspace_dep_defers_reject_ordered_set_twins() {
         "the auto-written [+] row must host the NonEmptyOrderedSet twin — a [*] rebuild would drop \
          the min-1 bound:\n{hosted}"
     );
+    for (name, elem, bounds) in [
+        ("IdxFooBoundedOrderedSetMin2Max3", "IdxFoo", "2, 3"),
+        ("IdxBarBoundedOrderedSetMax4", "IdxBar", "0, 4"),
+    ] {
+        assert!(
+            hosted.contains(&format!(
+                "pub struct {name}(pub(crate) BoundedOrderedSet<wr_dep::{elem}, {bounds}>)"
+            )),
+            "the canonical bounded reject request must host {name}'s compound carrier and window:\n{hosted}"
+        );
+        assert!(
+            hosted.contains(&format!("pub fn try_from(list: &{elem}List)"))
+                && hosted.contains("BoundedOrderedSet::try_from(inner)")
+                && hosted.contains("pub fn add(&mut self, elem:")
+                && hosted.contains("-> Result<(), JsError>"),
+            "the hosted bounded reject class must retain checked conversion and mutation doors:\n{hosted}"
+        );
+    }
+    assert!(
+        hosted.contains("::ordered_set::{BoundedOrderedSet, NonEmptyOrderedSet, OrderedSet}"),
+        "requested bounded reject wrappers must import the compound runtime alongside loose controls:\n{hosted}"
+    );
+    let dep_rust = std::fs::read_to_string(dep_export.join("rust/src/generated/mod.rs")).unwrap();
+    for element in ["IdxFoo", "IdxBar"] {
+        let declaration = dep_rust
+            .split(&format!("pub struct {element}"))
+            .next()
+            .unwrap_or_default();
+        assert!(
+            declaration.contains("Ord") && declaration.contains("PartialOrd"),
+            "the dependency must derive the requested Ord capability for {element}:\n{dep_rust}"
+        );
+    }
 
     // ===== Both crates compile against each other ================================================
     append_manifest_deps(

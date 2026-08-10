@@ -48,6 +48,11 @@ node = {
 ; a NonEmpty list: type-enforced in rust, despecialized to a plain `list<string>` in WIT
 names = [+ text]
 
+; A bounded reject set: both cardinality and uniqueness are type-enforced in rust by one
+; BoundedOrderedSet door, while WIT deliberately carries only `list<u64>`. `record.unique` is
+; optional so its setter exercises a post-construction component input boundary.
+unique = [2*3 uint] ; @duplicates reject
+
 ; a table -> `list<tuple<string, u64>>`
 attrs = { * text => uint }
 
@@ -63,6 +68,7 @@ record = {
   root: node,
   meta: any,
   ? aliases: names,
+  ? unique: unique,
   ? extra: any,
   ? note: text,
   ? nested: text / null,

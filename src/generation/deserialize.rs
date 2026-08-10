@@ -2274,27 +2274,31 @@ impl GenerationScope {
                         // built through the API report the identical `DuplicateKey(index)` error and
                         // can never drift. The non-empty flavor's door additionally enforces the `[+]`
                         // min-1 bound (same composed door). Encoding vars stay keyed off the field.
-                        let twin = if type_cfg.bounds == Some((Some(1), None)) {
-                            "NonEmptyOrderedSet"
-                        } else {
-                            "OrderedSet"
-                        };
-                        deser_code.content.line(&format!(
-                            "let {arr_var_name} = {twin}::try_from({arr_var_name})?;"
-                        ));
-                        // A non-`+` reject set may still carry OTHER occurrence bounds (`2*5` etc);
-                        // those stay a runtime length check on the accepted (unique) collection.
-                        if type_cfg.bounds != Some((Some(1), None))
-                            && let Some(bounds) = &type_cfg.bounds
+                        if let Some((min, max)) = type_cfg.bounds
+                            && (min, max) != (Some(1), None)
+                            && (min, max) != (None, None)
                         {
-                            deser_code.content.line(&bounds_check_if_block(
-                                bounds,
-                                &format!("{arr_var_name}.len()"),
-                                true,
-                                true,
-                                None,
-                                // `.len()` is usize — the widening cast is real
-                                false,
+                            let min = u64::try_from(min.unwrap_or(0)).expect(
+                                "array occurrence lower bound was validated during parsing",
+                            );
+                            let max = max
+                                .map(|v| {
+                                    u64::try_from(v)
+                                        .expect("array occurrence upper bound was validated during parsing")
+                                        .to_string()
+                                })
+                                .unwrap_or_else(|| "{ u64::MAX }".to_owned());
+                            deser_code.content.line(&format!(
+                                "let {arr_var_name} = BoundedOrderedSet::<_, {min}, {max}>::try_from({arr_var_name})?;"
+                            ));
+                        } else {
+                            let twin = if type_cfg.bounds == Some((Some(1), None)) {
+                                "NonEmptyOrderedSet"
+                            } else {
+                                "OrderedSet"
+                            };
+                            deser_code.content.line(&format!(
+                                "let {arr_var_name} = {twin}::try_from({arr_var_name})?;"
                             ));
                         }
                     } else if type_cfg.bounds == Some((Some(1), None)) {
