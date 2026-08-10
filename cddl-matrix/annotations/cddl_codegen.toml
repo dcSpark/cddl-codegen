@@ -174,11 +174,11 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "dsl.duplicates.preserve"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (1 accept + 2 reject vector(s) under wasmtime); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); component round-trips (1 accept + 2 reject vector(s) under wasmtime); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)"
 emission.preserve.status = "supported"
-emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)"
 
 [[support]]
 id = "dsl.duplicates.reject"
@@ -1640,7 +1640,11 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.map-key.memberkey.type1.tstr_arrow_nooccur"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)"
 
 [[support]]
 id = "contain.map-key.memberkey.type1.uint_arrow_multi"
@@ -1950,7 +1954,11 @@ evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 [[support]]
 id = "contain.occurrence-target.memberkey.type1.bounded_table"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)"
 
 [[support]]
 id = "contain.occurrence-target.memberkey.type1.open_struct"
@@ -2029,7 +2037,11 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.occurrence-target.memberkey.type1.optional_table"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)"
 
 [[support]]
 id = "contain.occurrence-target.memberkey.type1.plus_table"

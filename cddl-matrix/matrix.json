@@ -174,15 +174,15 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (1 accept + 2 reject vector(s) under wasmtime); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); component round-trips (1 accept + 2 reject vector(s) under wasmtime); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.duplicates.preserve",
         "status": "supported"
       },
@@ -2512,7 +2512,17 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.map-key.memberkey.type1.tstr_arrow_nooccur",
         "status": "supported"
       },
@@ -2972,7 +2982,17 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.bounded_table",
         "status": "supported"
       },
@@ -3087,7 +3107,17 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.optional_table",
         "status": "supported"
       },
