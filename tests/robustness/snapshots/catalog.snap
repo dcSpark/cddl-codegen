@@ -12,6 +12,8 @@ alias_plain_group_array_element ok
 alias_plain_group_array_field ok
 any_control_op             error (graceful)
 any_member                 ok
+bounded_map_wrapper_name_collision error (graceful)
+bounded_map_wrapper_named_owner ok
 bounded_wrapper_name_collision error (graceful)
 cbor_fixed_payload         ok
 cbor_payload_same_chain_alias ok

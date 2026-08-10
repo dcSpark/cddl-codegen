@@ -20,6 +20,7 @@ pub use crate::generated::MapTextToText;
 pub use crate::generated::MapTextToU64;
 pub use crate::generated::MapU64ToText;
 pub use crate::generated::MapU64ToU64;
+pub use crate::generated::MapU64ToU64Max3;
 pub use crate::generated::NemNamed;
 pub use crate::generated::NevBarList;
 pub use crate::generated::NevInts;

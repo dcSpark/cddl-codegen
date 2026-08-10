@@ -768,14 +768,7 @@ impl Deserialize for Bounds {
                         return Err(DeserializeFailure::DuplicateKey(Key::Uint(b_key)).into());
                     }
                 }
-                if b_table.len() > 3 {
-                    return Err(DeserializeFailure::RangeCheck {
-                        found: b_table.len() as i128,
-                        min: None,
-                        max: Some(3),
-                    }
-                    .into());
-                }
+                let b_table = BoundedMap::<_, _, 0, 3>::try_from(b_table)?;
                 Ok(b_table)
             })()
             .map_err(|e| e.annotate("b"))?;
