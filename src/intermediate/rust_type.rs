@@ -865,15 +865,63 @@ impl RustType {
     }
 
     /// The `[+ T]` occurrence shape — lower bound exactly 1, no upper bound — on a homogeneous
-    /// ARRAY. This is the ONLY array bounds shape that changes representation: it becomes
-    /// `NonEmptyVec<T>`, whose single `TryFrom<Vec<T>>` door enforces non-emptiness at the type
-    /// level. Every other array bound (`2*5`, `*3`, …) keeps the runtime-check path and a bare
-    /// `Vec<T>`. Matches the RAW conceptual type (not alias-resolved): a field that *references* a
+    /// ARRAY. This is the original restricted sibling: it becomes `NonEmptyVec<T>`, whose single
+    /// `TryFrom<Vec<T>>` door enforces non-emptiness at the type level. Other ordinary/preserve
+    /// bounded windows (`2*5`, `*3`, …) use `BoundedVec`; only the deliberately compound
+    /// `@duplicates reject` bounded case keeps `OrderedSet` plus runtime cardinality checks.
+    /// Matches the RAW conceptual type (not alias-resolved): a field that *references* a
     /// named `[+ int]` rule carries this bounds shape but is an `Alias`, and its member type must
     /// stay the alias name (whose target is already `NonEmptyVec`), not re-inline the container.
     pub fn is_non_empty_array(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Array(_))
             && self.config.bounds == Some((Some(1), None))
+    }
+
+    /// A finite or non-zero-minimum homogeneous ARRAY occurrence whose window is represented by
+    /// `BoundedVec`, rather than a loose `Vec` plus checks at each construction site.  `[+ T]`
+    /// deliberately remains the older `NonEmptyVec` sibling; `@duplicates reject` remains the
+    /// `OrderedSet` sibling until a compound bounded-unique carrier is designed.
+    pub fn is_bounded_array(&self) -> bool {
+        matches!(self.conceptual_type, ConceptualRustType::Array(_))
+            && !self.duplicates_reject()
+            && matches!(self.config.bounds, Some(bounds) if bounds != (None, None) && bounds != (Some(1), None))
+    }
+
+    /// The const arguments used by `BoundedVec`. Occurrence endpoints are non-negative parse
+    /// quantities; retain the checked conversion here so no code generator can silently truncate a
+    /// future wider parser carrier.
+    pub fn bounded_array_u64_bounds(&self) -> Option<(u64, u64)> {
+        if !self.is_bounded_array() {
+            return None;
+        }
+        let (min, max) = self.config.bounds?;
+        let min = min.unwrap_or(0).try_into().ok()?;
+        let max = max
+            .map(|value| value.try_into().ok())
+            .unwrap_or(Some(u64::MAX))?;
+        (min <= max).then_some((min, max))
+    }
+
+    /// Alias-aware counterpart used only for invariant decisions and minting. Naming retains the
+    /// raw predicate above so a field referencing a named rule stays that rule's alias.
+    pub fn type_enforced_bounded_array_u64_bounds(&self) -> Option<(u64, u64)> {
+        matches!(
+            self.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Array(_)
+        )
+        .then_some(())?;
+        if self.duplicates_reject() {
+            return None;
+        }
+        let (min, max) = self.config.bounds?;
+        if (min, max) == (None, None) || (min, max) == (Some(1), None) {
+            return None;
+        }
+        let min = min.unwrap_or(0).try_into().ok()?;
+        let max = max
+            .map(|value| value.try_into().ok())
+            .unwrap_or(Some(u64::MAX))?;
+        (min <= max).then_some((min, max))
     }
 
     /// True when this array-shaped member carries `@duplicates reject` — its representation swaps to
@@ -964,6 +1012,16 @@ impl RustType {
         ) && self.config.bounds == Some((Some(1), None))
     }
 
+    /// Like `is_type_enforced_non_empty`, but for every ordinary/preserve ARRAY occurrence
+    /// represented by `BoundedVec`. `@duplicates reject` stays on `OrderedSet` plus runtime bounds
+    /// until a compound bounded-unique carrier is deliberately designed.
+    pub fn is_type_enforced_bounded_array(&self) -> bool {
+        matches!(
+            self.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Array(_)
+        ) && self.type_enforced_bounded_array_u64_bounds().is_some()
+    }
+
     /// Whether this type, at ANY nesting level, contains the `[+ T]` NonEmptyVec shape (so the
     /// crate needs the `non_empty` runtime module + import). Recurses into container inners.
     pub fn contains_non_empty_array(&self) -> bool {
@@ -976,6 +1034,22 @@ impl RustType {
             }
             ConceptualRustType::Map(k, v) => {
                 k.contains_non_empty_array() || v.contains_non_empty_array()
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether any nested position needs the `BoundedVec` runtime module.
+    pub fn contains_bounded_array(&self) -> bool {
+        if self.is_bounded_array() {
+            return true;
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                inner.contains_bounded_array()
+            }
+            ConceptualRustType::Map(k, v) => {
+                k.contains_bounded_array() || v.contains_bounded_array()
             }
             _ => false,
         }
@@ -1014,7 +1088,7 @@ impl RustType {
         // TryFrom door, so it emits NO constructor/setter length check and does NOT make new()
         // fallible — the invalid (empty) state is unrepresentable, not runtime-rejected. Covers both
         // inline `[+ T]` and a field referencing a named `[+ …]` rule (alias-resolving).
-        if self.is_type_enforced_non_empty() {
+        if self.is_type_enforced_non_empty() || self.is_type_enforced_bounded_array() {
             return false;
         }
         self.config.bounds.is_some() || self.config.float_bounds.is_some()
@@ -1045,6 +1119,30 @@ impl RustType {
                 None => format!("NonEmpty{}List", inner.conceptual_type.for_variant()),
             },
             _ => unreachable!("non_empty_wasm_wrapper_name on a non-array: {:?}", self),
+        }
+    }
+
+    /// Mechanical restricted-list wasm name for a bounded homogeneous array. A named rule wins;
+    /// anonymous occurrences carry both sides of their inclusive window in the class name.
+    pub fn bounded_wasm_wrapper_name(&self, types: &IntermediateTypes) -> String {
+        let ConceptualRustType::Array(inner) = &self.conceptual_type else {
+            unreachable!("bounded_wasm_wrapper_name on a non-array: {:?}", self);
+        };
+        let bounds = self
+            .config
+            .bounds
+            .expect("bounded array has occurrence bounds");
+        if let Some(owner) = types.bounded_array_named_owner(inner, bounds) {
+            return owner.to_string();
+        }
+        let (min, max) = self
+            .bounded_array_u64_bounds()
+            .expect("bounded wasm wrapper has representable bounds");
+        let base = inner.conceptual_type.for_variant();
+        match (min, max == u64::MAX) {
+            (0, false) => format!("{base}ListMax{max}"),
+            (_, true) => format!("{base}ListMin{min}"),
+            _ => format!("{base}ListMin{min}Max{max}"),
         }
     }
 
@@ -1125,18 +1223,28 @@ impl RustType {
     /// Type when stored inside a rust struct (member/alias/param). Bounds-aware over `for_rust_member_ct`.
     pub fn for_rust_member(&self, types: &IntermediateTypes, from_wasm: bool, cli: &Cli) -> String {
         match &self.conceptual_type {
-            ConceptualRustType::Array(inner) => format!(
-                "{}<{}>",
-                match (self.is_reject_ordered_set(), self.is_non_empty_array()) {
-                    // `@duplicates reject`: the uniqueness twin (order-preserving), non-empty flavor
-                    // when the rule is also `[+]` (its door composes uniqueness + the min-1 check).
-                    (true, true) => "NonEmptyOrderedSet",
-                    (true, false) => "OrderedSet",
-                    (false, true) => "NonEmptyVec",
-                    (false, false) => "Vec",
-                },
-                inner.for_rust_member(types, from_wasm, cli)
-            ),
+            ConceptualRustType::Array(inner) => {
+                let element = inner.for_rust_member(types, from_wasm, cli);
+                if let Some((min, max)) = self.bounded_array_u64_bounds() {
+                    let max = if max == u64::MAX {
+                        "{ u64::MAX }".to_owned()
+                    } else {
+                        max.to_string()
+                    };
+                    return format!("BoundedVec<{element}, {min}, {max}>");
+                }
+                format!(
+                    "{}<{element}>",
+                    match (self.is_reject_ordered_set(), self.is_non_empty_array()) {
+                        // `@duplicates reject`: the uniqueness twin (order-preserving), non-empty flavor
+                        // when the rule is also `[+]` (its door composes uniqueness + the min-1 check).
+                        (true, true) => "NonEmptyOrderedSet",
+                        (true, false) => "OrderedSet",
+                        (false, true) => "NonEmptyVec",
+                        (false, false) => "Vec",
+                    }
+                )
+            }
             ConceptualRustType::Optional(inner) => {
                 format!("Option<{}>", inner.for_rust_member(types, from_wasm, cli))
             }
@@ -1177,6 +1285,9 @@ impl RustType {
         if self.is_non_empty_array() {
             return self.non_empty_wasm_wrapper_name(types);
         }
+        if self.is_bounded_array() {
+            return self.bounded_wasm_wrapper_name(types);
+        }
         if self.is_non_empty_map() {
             return self.non_empty_wasm_map_wrapper_name(types);
         }
@@ -1207,6 +1318,9 @@ impl RustType {
         if self.is_non_empty_array() {
             return format!("&{}", self.non_empty_wasm_wrapper_name(types));
         }
+        if self.is_bounded_array() {
+            return format!("&{}", self.bounded_wasm_wrapper_name(types));
+        }
         if self.is_non_empty_map() {
             return format!("&{}", self.non_empty_wasm_map_wrapper_name(types));
         }
@@ -1229,6 +1343,9 @@ impl RustType {
         if self.is_non_empty_array() {
             return self.non_empty_wasm_wrapper_name(types);
         }
+        if self.is_bounded_array() {
+            return self.bounded_wasm_wrapper_name(types);
+        }
         if self.is_non_empty_map() {
             return self.non_empty_wasm_map_wrapper_name(types);
         }
@@ -1244,7 +1361,7 @@ impl RustType {
         // A `[+ T]` (NonEmptyVec) or a `@duplicates reject` set (OrderedSet/NonEmptyOrderedSet) always
         // crosses the wasm boundary through its restricted wrapper class, never as a bare `Vec`: the
         // bare form would drop the invariant AND mismatch the rust core type. Same reason as `[+ T]`.
-        if self.is_non_empty_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
             return false;
         }
         self.conceptual_type.directly_wasm_exposable_ct(types)
@@ -1292,7 +1409,7 @@ impl RustType {
     /// set but NOT a non-empty array, so it needs its own arm here (the sibling type-name methods
     /// `for_wasm_member`/`for_wasm_param`/`directly_wasm_exposable` already treat both the same way).
     pub fn to_wasm_boundary(&self, types: &IntermediateTypes, expr: &str, is_ref: bool) -> String {
-        if self.is_non_empty_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
             return format!("{expr}.clone().into()");
         }
         self.conceptual_type.to_wasm_boundary(types, expr, is_ref)
@@ -1304,7 +1421,7 @@ impl RustType {
         expr: &str,
         is_ref: bool,
     ) -> String {
-        if self.is_non_empty_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
             return format!("{expr}.clone().map(std::convert::Into::into)");
         }
         self.conceptual_type
@@ -1322,7 +1439,7 @@ impl RustType {
         expr: &str,
         can_fail: bool,
     ) -> Vec<ToWasmBoundaryOperations> {
-        if self.is_non_empty_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
             let mut ops = vec![
                 ToWasmBoundaryOperations::Code(format!("{expr}.clone()")),
                 ToWasmBoundaryOperations::Into,
@@ -1340,7 +1457,7 @@ impl RustType {
     /// by-ref unchanged (both cross as `&Wrapper`).
     #[allow(clippy::wrong_self_convention)]
     pub fn from_wasm_boundary_ref(&self, types: &IntermediateTypes, expr: &str) -> String {
-        if self.is_non_empty_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
             return expr.to_owned();
         }
         self.conceptual_type.from_wasm_boundary_ref(types, expr)

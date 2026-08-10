@@ -175,7 +175,7 @@ the guard that replaced the silent truncation this row's vector exposed; pinned 
 `signed_ints_width_rejects` / `width_collapse_rejects` execution fixtures),
 the eight `rangeop` rows (`rangeop.{inclusive,exclusive}` plus their head-type × sign variation
 rows `.int`/`.nint`/`.float`), the three occurrence-bound rows `occur.bounded{,.lower,.upper}`
-(out-of-count arrays against the generated `Vec` length check), and the three fixed-value lexeme
+(out-of-count arrays against the generated `BoundedVec` conversion door), and the three fixed-value lexeme
 rows `value.number.{hexfloat,hex,bin}` (wrong-value instances against the fixed 3.0 / 16 / 10,
 rejected as FixedValueMismatch — hex/bin carry hand pins including `[0]`, the silent-zero
 radix-conversion trap from `draft/rust-cddl-radix-int-literal-gap.md` § post-implementation

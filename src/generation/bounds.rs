@@ -246,9 +246,10 @@ pub(super) fn bounds_check_if_block_float(
 pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) -> Option<String> {
     // The `[+ T]` shape enforces its `>= 1` bound at the type level (NonEmptyVec's single TryFrom
     // door), so no inline length check is emitted at ctor/setter/deser sites — the invalid state is
-    // unrepresentable. Every OTHER array bound (2*5, *3, …) keeps this runtime-check path. Alias-
-    // resolving so a field referencing a named `[+ …]` rule skips the check too.
-    if ty.is_type_enforced_non_empty() {
+    // unrepresentable. Ordinary/preserve bounded arrays likewise use BoundedVec and skip this path;
+    // the deliberate bounded-@duplicates-reject OrderedSet residue retains its runtime check. Alias-
+    // resolving so a field referencing a named restricted rule skips the check too.
+    if ty.is_type_enforced_non_empty() || ty.is_type_enforced_bounded_array() {
         return None;
     }
     if let Some(window) = &ty.config.float_bounds {
@@ -306,7 +307,7 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
 /// `DeserializeError` does — so the failure is lifted through `DeserializeError::from` before it
 /// reaches a `Display`-bounded helper.
 pub(super) fn component_bounds_check_line(ty: &RustType, e: &str, runtime: &str) -> Option<String> {
-    if ty.is_type_enforced_non_empty() {
+    if ty.is_type_enforced_non_empty() || ty.is_type_enforced_bounded_array() {
         return None;
     }
     let wrap = |failure: String| {

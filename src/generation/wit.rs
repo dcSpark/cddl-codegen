@@ -621,9 +621,9 @@ pub(crate) struct WitParam {
     /// Carried because the guest emitter has two independent decisions to make here and neither is
     /// derivable from `validates` alone: whether the type was DESPECIALIZED (re-enter its `TryFrom`
     /// door — see [`wit_param_despecialized`]) and whether it carries a VALUE WINDOW (emit the range
-    /// check). `validates` is the union of those and of CDDL `any`, so routing on it conflates them
-    /// — which is how a plain bounded array reached the `TryFrom` door, where `Vec<T>`'s identity
-    /// `TryFrom` compiles while checking nothing. R3: the projection carries the rust fact rather
+    /// check). `validates` is the union of those and of CDDL `any`, so routing on it conflates them;
+    /// bounded arrays now deliberately take the despecialization path because their rust type is
+    /// `BoundedVec`, whereas bounded maps retain their inline check. R3: the projection carries the rust fact rather
     /// than the emitter re-deriving it.
     ///
     /// WHERE the window is checked stays a per-SITE decision the emitter owns rather than a property
@@ -2425,7 +2425,11 @@ fn wit_param_is_reject_set(ty: &RustType) -> bool {
 }
 
 fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
-    if ty.has_value_bounds() || ty.is_type_enforced_non_empty() || wit_param_is_reject_set(ty) {
+    if ty.has_value_bounds()
+        || ty.is_type_enforced_non_empty()
+        || ty.is_type_enforced_bounded_array()
+        || wit_param_is_reject_set(ty)
+    {
         return true;
     }
     // A field referencing a named `[+ …]` rule by a bare `Rust(ident)` (rather than through the
@@ -2433,16 +2437,17 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
     // struct as well.
     if let ConceptualRustType::Rust(ident) = ty.conceptual_type.resolve_alias_shallow()
         && let Some(rust_struct) = types.rust_struct(ident)
-        && matches!(
-            rust_struct.variant(),
+        && match rust_struct.variant() {
             RustStructType::Array {
+                bounds: Some(bounds),
+                ..
+            } => *bounds != (None, None),
+            RustStructType::Table {
                 bounds: Some((Some(1), None)),
                 ..
-            } | RustStructType::Table {
-                bounds: Some((Some(1), None)),
-                ..
-            }
-        )
+            } => true,
+            _ => false,
+        }
     {
         return true;
     }
@@ -2468,19 +2473,21 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
 }
 
 /// Whether the projection DESPECIALIZED this parameter's type — dropped an invariant the RUST type
-/// enforces in its own type system (`[+ T]`'s `NonEmptyVec`, `@duplicates reject`'s `OrderedSet`),
+/// enforces in its own type system (`[+ T]`'s `NonEmptyVec`, bounded arrays' `BoundedVec`,
+/// `@duplicates reject`'s `OrderedSet`),
 /// so the single `TryFrom` door that owns the invariant has to be re-entered where the WIT list is
 /// consumed.
 ///
 /// Strictly narrower than [`wit_param_validates`], and deliberately its own function rather than a
 /// reading of that one: `validates` is the UNION of despecialization, a value window and CDDL `any`,
-/// and only the first has a `TryFrom` door at all. A plain bounded array (`[2*5 uint]`) is a
-/// `Vec<T>` on both sides, so routing it through `try_into` resolves to the identity
-/// `TryFrom<Vec<T>>` (`Error = Infallible`) — it compiles, and it checks nothing. A bounded MAP is
-/// worse: `BTreeMap<K, V>` has no `TryFrom<Vec<(K, V)>>` at all, so the same conflation emitted glue
-/// that did not compile.
+/// and only the first has a `TryFrom` door at all. A bounded array (`[2*5 uint]`) is a `BoundedVec`
+/// on the rust side and must re-enter that checked door. A bounded MAP is different:
+/// `BTreeMap<K, V>` has no `TryFrom<Vec<(K, V)>>`, so it remains on the inline-check path.
 pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) -> bool {
-    if ty.is_type_enforced_non_empty() || wit_param_is_reject_set(ty) {
+    if ty.is_type_enforced_non_empty()
+        || ty.is_type_enforced_bounded_array()
+        || wit_param_is_reject_set(ty)
+    {
         return true;
     }
     // A field referencing a named `[+ …]` rule by a bare `Rust(ident)` (rather than through the
@@ -2488,24 +2495,24 @@ pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) 
     // `wit_param_validates` takes off the struct, for the same reason.
     if let ConceptualRustType::Rust(ident) = ty.conceptual_type.resolve_alias_shallow()
         && let Some(rust_struct) = types.rust_struct(ident)
-        && matches!(
-            rust_struct.variant(),
+        && match rust_struct.variant() {
             RustStructType::Array {
+                bounds: Some(bounds),
+                ..
+            } => *bounds != (None, None),
+            RustStructType::Table {
                 bounds: Some((Some(1), None)),
                 ..
-            } | RustStructType::Table {
-                bounds: Some((Some(1), None)),
-                ..
-            }
-        )
+            } => true,
+            _ => false,
+        }
     {
         return true;
     }
     // No final shape match, deliberately: unlike [`wit_param_validates`], the only despecialized
-    // carriers are the two read above, and both are read through `resolve_alias_shallow` already. A
-    // despecialization NESTED under a collection is a real residue, but closing it needs the rust
-    // type threaded through the conversion walk as well — it is ledgered as class 1 of
-    // `component_tests::EXPECTED_COMPILE_FAIL`, not silently absent here.
+    // carriers are the two read above, and both are read through `resolve_alias_shallow` already.
+    // Nested arrays re-enter their doors in the typed component conversion walk; the remaining
+    // table-key despecialization residue is ledgered in `component_tests::EXPECTED_COMPILE_FAIL`.
     false
 }
 

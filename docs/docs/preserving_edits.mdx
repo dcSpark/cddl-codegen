@@ -189,7 +189,7 @@ plain comment of yours whose anchor falls inside a span some replace block delet
 move it into the block.
 
 **Imports and your block's code.** The generated struct modules import the collection helper types
-(`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`) only when the file — or one of its
+(`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `BoundedVec`, `NonEmptyMap`) only when the file — or one of its
 descendant modules — references them (see [Output format](./output_format)). The relationship to
 your block's code is asymmetric. Your block cannot make an import *appear*: the initial import
 derivation runs over the pristine generated content, before your edits are applied, so a file whose

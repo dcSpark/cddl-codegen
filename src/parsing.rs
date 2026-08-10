@@ -4719,6 +4719,24 @@ enum GroupParsingType {
     WrappedBasicGroup(RustType),
 }
 
+/// `BoundedVec` carries occurrence endpoints as `u64` const arguments. Reject a parser value that
+/// cannot fit that target-independent carrier before later codegen reaches a narrowing conversion
+/// (where an `expect` would turn malformed input into a panic).
+fn reject_out_of_range_occurrence_bounds(
+    types: &mut IntermediateTypes,
+    bounds: Option<(Option<i128>, Option<i128>)>,
+) {
+    for bound in bounds
+        .into_iter()
+        .flat_map(|(lower, upper)| [lower, upper])
+        .flatten()
+    {
+        if bound > i128::from(u64::MAX) {
+            types.record_rejection(format!("Occurrence bound out of range: {bound}"));
+        }
+    }
+}
+
 /// Whether a single-choice inline group carrying this occurrence marker may be spliced into the
 /// parent entry list (pure grouping) rather than kept unflattened for downstream rejection.
 ///
@@ -5111,6 +5129,7 @@ fn parse_group_type<'a>(
                     Occur::Optional { .. } => (None, Some(1)),
                     Occur::OneOrMore { .. } => (Some(1), None),
                 });
+                reject_out_of_range_occurrence_bounds(types, bounds);
                 // `[* 5]` / `[+ 5]` / `[? 5]` / `[2*5 5]`: a bare fixed value as the target of a
                 // COUNT-PERMITTING occurrence. The homogeneous-array path stores its elements in a
                 // `Vec<T>`, and a `Fixed` has no `T` — it exists only as an unstored member whose

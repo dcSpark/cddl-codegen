@@ -33,8 +33,10 @@ pub struct WitWrappedNonempty(pub RefCell<cddl_lib::WrappedNonempty>);
 
 impl wit_types::GuestWrappedNonempty for WitWrappedNonempty {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::WrappedNonempty::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::WrappedNonempty::new(inner);
         Ok(WitWrappedNonempty(RefCell::new(inner)))
     }
 
@@ -61,8 +63,10 @@ pub struct WitWrappedNonemptyMap(pub RefCell<cddl_lib::WrappedNonemptyMap>);
 
 impl wit_types::GuestWrappedNonemptyMap for WitWrappedNonemptyMap {
     fn new(inner: Vec<(String, u64)>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::WrappedNonemptyMap::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::WrappedNonemptyMap::new(inner);
         Ok(WitWrappedNonemptyMap(RefCell::new(inner)))
     }
 

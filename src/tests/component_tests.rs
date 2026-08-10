@@ -776,7 +776,10 @@ fn component_glue_new_variant_statics_unwrap_the_rust_constructor() {
     // The other direction: a static that is fallible for a BOUNDARY reason (a despecialized `[+ T]`
     // arm) still calls an INFALLIBLE rust constructor, so it must not `?` it.
     assert!(
-        glue.contains("let inner = cddl_lib::Label::new_labels(labels.try_into().map_err(err)?);"),
+        glue.contains(
+            "let labels = (labels.into_iter().collect::<Vec<_>>())\n            .try_into()\n            \
+             .map_err(err)?;\n        let inner = cddl_lib::Label::new_labels(labels);"
+        ),
         "the despecialized arm's static no longer re-enters the `TryFrom` door, or wrongly unwraps \
          an infallible rust constructor:\n{glue}"
     );
@@ -907,9 +910,9 @@ fn component_glue_bridges_raw_bytes_through_raw_bytes_encoding() {
 /// the wasm one, which emits the range check at the same site.
 ///
 /// Per shape, because the check expression differs per shape and a single-row test would pass while
-/// the others silently did nothing. The two controls matter as much as the six checks: a `[+ T]` and
-/// an `@duplicates reject` set enforce their invariant in the TYPE system, so they must re-enter
-/// their `TryFrom` door and emit NO inline check.
+/// the others silently did nothing. The controls matter as much as the checks: a bounded array, a
+/// `[+ T]`, and an `@duplicates reject` set enforce their invariant in the TYPE system, so they must
+/// re-enter their `TryFrom` door and emit NO inline check.
 #[test]
 fn component_glue_bounded_setters_check_their_window() {
     let glue = component_glue("tests/component-bounds/input.cddl", &[]);
@@ -928,7 +931,6 @@ fn component_glue_bounded_setters_check_their_window() {
         ),
         ("set_digest", "if digest.len() != 4 {"),
         ("set_label", "if label.len() < 3 || label.len() > 14 {"),
-        ("set_span", "if span.len() < 2 || span.len() > 5 {"),
         ("set_counts", "if counts.len() > 3 {"),
     ] {
         let body = body(setter);
@@ -945,23 +947,16 @@ fn component_glue_bounded_setters_check_their_window() {
             "`{setter}`'s failure is no longer the rust crate's own error type:\n{body}"
         );
     }
-    // The check precedes the conversion, and that ordering is forced rather than chosen: a `.len()`
-    // read off a `collect()`-bound local is E0282, because the container type is pinned only by the
-    // assignment that comes after it.
-    let span = body("set_span");
-    assert!(
-        span.find("if span.len()") < span.find("let span = span.into_iter()"),
-        "the window check no longer precedes the conversion:\n{span}"
-    );
     // The CONTROLS. A type-enforced invariant is re-imposed by its `TryFrom` door, never by an
     // inline check — the invalid state is unrepresentable rather than rejected.
     for (setter, door) in [
-        ("set_ids", "let ids: Vec<_> = ids.into_iter().collect();"),
-        ("set_tags", "let tags: Vec<_> = tags.into_iter().collect();"),
+        ("set_span", "span.into_iter().collect::<Vec<_>>()"),
+        ("set_ids", "ids.into_iter().collect::<Vec<_>>()"),
+        ("set_tags", "tags.into_iter().collect::<Vec<_>>()"),
     ] {
         let body = body(setter);
         assert!(
-            body.contains(door) && body.contains(".try_into().map_err(err)?"),
+            body.contains(door) && body.contains("try_into()") && body.contains("map_err(err)?"),
             "`{setter}` no longer re-enters the despecialized type's `TryFrom` door:\n{body}"
         );
         assert!(
@@ -971,38 +966,87 @@ fn component_glue_bounded_setters_check_their_window() {
     }
 }
 
-/// The OTHER door the same rust type decides, and why it is a TYPE question rather than a "validates
-/// and is a list" one. A plain bounded array is a `Vec<T>` on both sides, so routing it through
-/// `try_into` reaches the identity `TryFrom` (`Error = Infallible`) — it compiles while checking
-/// nothing. A bounded MAP is worse: `BTreeMap<K, V>` has no `TryFrom<Vec<(K, V)>>` at all, so the
-/// same conflation emitted glue that did not compile.
+/// The rust type decides which WIT list must re-enter a `TryFrom` door. Bounded arrays now use
+/// `BoundedVec`, so they join `[+ T]` and reject sets in that path. A bounded MAP remains the
+/// counterexample: `BTreeMap<K, V>` has no `TryFrom<Vec<(K, V)>>`, so it retains an inline check.
 #[test]
-fn component_glue_routes_only_despecialized_params_through_the_try_from_door() {
+fn component_glue_routes_type_enforced_lists_through_the_try_from_door() {
     let glue = component_glue("tests/component-bounds/input.cddl", &[]);
-    for setter in ["set_span", "set_counts"] {
-        let body = glue
-            .split(&format!("fn {setter}("))
-            .nth(1)
-            .and_then(|rest| rest.split("\n    }").next())
-            .unwrap_or_else(|| panic!("the glue carries no `{setter}`:\n{glue}"));
-        assert!(
-            !body.contains("try_into"),
-            "`{setter}` still routes a merely-BOUNDED parameter through the despecialization \
-             door:\n{body}"
-        );
-    }
-    // A MANDATORY bounded field keeps its window enforced by the rust `new`, whose `Result` the
-    // guest unwraps — so the constructor adds neither a door nor a second check.
+    let span = glue
+        .split("fn set_span(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    }").next())
+        .unwrap_or_else(|| panic!("the glue carries no `set_span`:\n{glue}"));
+    assert!(
+        span.contains("span.into_iter().collect::<Vec<_>>()")
+            && span.contains("try_into()")
+            && span.contains("map_err(err)?")
+            && !span.contains("RangeCheck"),
+        "the bounded-array setter must re-enter BoundedVec's TryFrom door:\n{span}"
+    );
+    let counts = glue
+        .split("fn set_counts(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    }").next())
+        .unwrap_or_else(|| panic!("the glue carries no `set_counts`:\n{glue}"));
+    assert!(
+        !counts.contains("try_into") && counts.contains("if counts.len() > 3 {"),
+        "the bounded-map setter must retain its inline length check:\n{counts}"
+    );
+    // A mandatory bounded field now takes the typed BoundedVec at an infallible rust constructor;
+    // the guest therefore restores the type-level window before making the call.
     let ctor = glue
         .split("fn new(fixed_size: Vec<u64>)")
         .nth(1)
         .and_then(|rest| rest.split("\n    }").next())
         .expect("the glue carries no constructor");
     assert!(
-        ctor.contains("let inner = cddl_lib::Bounded::new(fixed_size).map_err(err)?;")
-            && !ctor.contains("try_into")
+        ctor.contains("fixed_size.into_iter().collect::<Vec<_>>()")
+            && ctor.contains("try_into()")
+            && ctor.contains("map_err(err)?")
+            && ctor.contains("let inner = cddl_lib::Bounded::new(fixed_size);")
             && !ctor.contains("RangeCheck"),
-        "the mandatory bounded field is no longer left to the rust constructor's own check:\n{ctor}"
+        "the mandatory bounded field must re-enter its door before the infallible constructor:\n{ctor}"
+    );
+}
+
+/// Direct table rows lower to WIT `list<tuple<K, V>>`. The typed conversion walk must descend into
+/// each tuple column so a bounded VALUE is restored before `collect()` selects the rust map type.
+#[test]
+fn component_glue_reenters_bounded_array_doors_inside_direct_table_values() {
+    let glue = component_glue("tests/component-bounds/input.cddl", &[]);
+    let constructor = glue
+        .split("impl wit_types::GuestMapped for WitMapped {")
+        .nth(1)
+        .and_then(|rest| rest.split("    fn entries(").next())
+        .expect("the glue carries no mapped constructor");
+    assert!(
+        constructor.contains("entries\n            .into_iter()\n            .map(|(x0, x1)|")
+            && constructor.contains("x1.into_iter().collect::<Vec<_>>()")
+            && constructor.contains("try_into()")
+            && constructor.contains("map_err(err)?")
+            && constructor.contains("collect::<Result<_, String>>()?"),
+        "a direct table value no longer re-enters BoundedVec's checked door before collecting the map:\n{constructor}"
+    );
+}
+
+/// The typed map walk also owns the map's OUTER despecialization: a `{+ K => V}` travels through
+/// WIT as a plain list of rows, so the glue must stage those rows in the loose vec-of-pairs carrier
+/// before re-entering `NonEmptyMap`'s `TryFrom` door.
+#[test]
+fn component_glue_reenters_non_empty_map_outer_try_from_door() {
+    let glue = component_glue("tests/component-core/input.cddl", &[]);
+    let constructor = glue
+        .split("impl wit_types::GuestRecord for WitRecord {")
+        .nth(1)
+        .and_then(|rest| rest.split("    fn id(").next())
+        .expect("the glue carries no record constructor");
+    assert!(
+        constructor.contains("totals.into_iter().collect::<Vec<_>>()")
+            && constructor.contains("totals")
+            && constructor.contains("try_into()")
+            && constructor.contains("map_err(err)?"),
+        "the despecialized non-empty table must stage rows then re-enter NonEmptyMap's checked door:\n{constructor}"
     );
 }
 
@@ -1048,7 +1092,10 @@ fn component_reject_tables_stay_plain_maps_while_reject_sets_reenter_try_from() 
             panic!("the component glue carries no reject-set holder constructor:\n{glue}")
         });
     assert!(
-        reject_set_constructor.contains("unique.try_into().map_err(err)?")
+        reject_set_constructor.contains(
+            "let unique = (unique.into_iter().collect::<Vec<_>>())\n            .try_into()\n            \
+             .map_err(err)?;"
+        )
             && reject_set_constructor.contains(") -> Result<Self, String> {"),
         "the reject-set control no longer re-enters OrderedSet's fallible TryFrom door:\n\
          {reject_set_constructor}"
@@ -1658,7 +1705,7 @@ fn component_glue_never_holds_two_refcell_guards() {
         if *input == "tests/component-core/input.cddl" {
             assert!(
                 glue.contains(
-                    "let children = children\n            .into_iter()\n            .map(|x| x.get::<WitNode>().0.borrow().clone())\n            .collect();"
+                    "let children = children\n            .into_iter()\n            .map(|x| x.get::<WitNode>().0.borrow().clone())\n            .collect::<Vec<_>>();"
                 ),
                 "the recursive fixture no longer materializes its `list<borrow<node>>` argument \
                  into an owned value — the re-entrancy assertion above has gone vacuous:\n{glue}"
@@ -2452,17 +2499,11 @@ fn component_crate_builds_for_wasm32_wasip2() {
 /// it needs a fact the projection does not carry today, which is why it is ledgered rather than
 /// fixed.
 ///
-/// 1. **The despecialized NonEmpty in a NESTED position.** A `[+ T]` / `{+ K => V}` reached through
-///    a named collection rule — as a list ELEMENT or a map KEY — makes the glue `.collect()`
-///    straight into `NonEmptyVec`/`NonEmptyMap`, which have no `FromIterator` (E0277). The
-///    `TryFrom` door those types own is re-entered only for a parameter that is despecialized at its
-///    TOP level (`materialize` routes off `wit::wit_param_despecialized` of the whole parameter), and
-///    the conversion walk below that point sees WIT types only, so a nested despecialization is
-///    invisible to it. What remains is exactly that: the rust type threaded through the conversion
-///    walk beside the WIT type, so the nested door can re-enter `TryFrom`. The SURFACE half is
-///    already in place — `wit_param_validates` resolves through the alias a named collection rule
-///    registers, so these doors carry the `result<_, string>` such a re-check has to report
-///    through.
+/// 1. **A despecialized non-empty container in a map KEY.** A `[+ T]` / `{+ K => V}` reached as
+///    the key of a named table rule makes the glue `.collect()` straight into `NonEmptyVec` /
+///    `NonEmptyMap`, which have no `FromIterator` (E0277). Nested arrays (including
+///    `NonEmptyVec` and `BoundedVec`) now thread their rust type beside the WIT list and re-enter
+///    `TryFrom`; tables still need the equivalent typed conversion walk.
 ///
 /// A fixture that fails to GENERATE belongs in `snapshot_tests::PROFILE_GENERATION_SKIP` instead;
 /// a fixture whose RUST crate cannot compile standalone belongs in
@@ -2471,13 +2512,13 @@ const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[
     (
         "composite_map_key",
         "class 1: the map KEY of a named table rule is a `NonEmptyVec<u64>`, and the glue \
-         `.collect()`s into it (E0277) — a nested despecialization the top-level `TryFrom` routing \
-         cannot see",
+         `.collect()`s into it (E0277) — table-key despecialization remains outside the typed \
+         list conversion walk",
     ),
     (
         "nonempty_nested_positions",
-        "class 1: same, in both flavors and both nesting positions — a `NonEmptyVec<u64>` list \
-         ELEMENT and a `NonEmptyMap<u64, u64>` map KEY",
+        "class 1: the `NonEmptyMap<u64, u64>` map KEY remains; its `NonEmptyVec<u64>` list \
+         element sibling now compiles through the typed list conversion walk",
     ),
 ];
 

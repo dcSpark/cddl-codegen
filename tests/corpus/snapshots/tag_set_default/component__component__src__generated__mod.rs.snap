@@ -36,8 +36,10 @@ pub struct WitDefaultNeset(pub RefCell<cddl_lib::DefaultNeset>);
 
 impl wit_types::GuestDefaultNeset for WitDefaultNeset {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::DefaultNeset::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::DefaultNeset::new(inner);
         Ok(WitDefaultNeset(RefCell::new(inner)))
     }
 
@@ -58,8 +60,10 @@ pub struct WitDefaultSet(pub RefCell<cddl_lib::DefaultSet>);
 
 impl wit_types::GuestDefaultSet for WitDefaultSet {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::DefaultSet::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::DefaultSet::new(inner);
         Ok(WitDefaultSet(RefCell::new(inner)))
     }
 
@@ -128,7 +132,7 @@ pub struct WitOptOut(pub RefCell<cddl_lib::OptOut>);
 
 impl wit_types::GuestOptOut for WitOptOut {
     fn new(inner: Vec<u64>) -> Self {
-        let inner = inner.into_iter().collect();
+        let inner = inner.into_iter().collect::<Vec<_>>();
         let inner = cddl_lib::OptOut::new(inner);
         WitOptOut(RefCell::new(inner))
     }
@@ -148,8 +152,10 @@ pub struct WitSingleArm(pub RefCell<cddl_lib::SingleArm>);
 
 impl wit_types::GuestSingleArm for WitSingleArm {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::SingleArm::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::SingleArm::new(inner);
         Ok(WitSingleArm(RefCell::new(inner)))
     }
 

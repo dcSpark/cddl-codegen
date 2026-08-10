@@ -51,7 +51,7 @@ impl wit_types::GuestArrU64OrArrU64 for WitArrU64OrArrU64 {
     }
 
     fn new_arr_u642(arr_u642: Vec<u64>) -> wit_types::ArrU64OrArrU64 {
-        let arr_u642 = arr_u642.into_iter().collect();
+        let arr_u642 = arr_u642.into_iter().collect::<Vec<_>>();
         let inner = cddl_lib::ArrU64OrArrU64::new_arr_u642(arr_u642);
         wit_types::ArrU64OrArrU64::new(WitArrU64OrArrU64(RefCell::new(inner)))
     }
@@ -99,7 +99,7 @@ impl wit_types::GuestInlineHolder for WitInlineHolder {
         let c = c
             .into_iter()
             .map(|x| x.get::<WitSetU64>().0.borrow().clone())
-            .collect();
+            .collect::<Vec<_>>();
         let x = x.get::<WitArrU64OrArrU64>().0.borrow().clone();
         let inner = cddl_lib::InlineHolder::new(a, c, x);
         WitInlineHolder(RefCell::new(inner))
@@ -150,8 +150,10 @@ pub struct WitSetText(pub RefCell<cddl_lib::SetText>);
 
 impl wit_types::GuestSetText for WitSetText {
     fn new(inner: Vec<String>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::SetText::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::SetText::new(inner);
         Ok(WitSetText(RefCell::new(inner)))
     }
 
@@ -170,8 +172,10 @@ pub struct WitSetU64(pub RefCell<cddl_lib::SetU64>);
 
 impl wit_types::GuestSetU64 for WitSetU64 {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::SetU64::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::SetU64::new(inner);
         Ok(WitSetU64(RefCell::new(inner)))
     }
 

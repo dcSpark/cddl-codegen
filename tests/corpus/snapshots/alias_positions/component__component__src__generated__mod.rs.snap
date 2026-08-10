@@ -160,7 +160,10 @@ impl wit_types::GuestNested for WitNested {
         opt: Option<Vec<u8>>,
         deep: Vec<(u64, Vec<(Vec<u8>, String)>)>,
     ) -> Self {
-        let arr = arr.into_iter().map(|x| x.into_iter().collect()).collect();
+        let arr = arr
+            .into_iter()
+            .map(|x| x.into_iter().collect())
+            .collect::<Vec<_>>();
         let opt = opt.map(|v| v.into_iter().collect());
         let deep = deep
             .into_iter()

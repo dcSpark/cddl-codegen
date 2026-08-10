@@ -33,7 +33,7 @@ pub struct WitWrappedArr(pub RefCell<cddl_lib::WrappedArr>);
 
 impl wit_types::GuestWrappedArr for WitWrappedArr {
     fn new(inner: Vec<u64>) -> Self {
-        let inner = inner.into_iter().collect();
+        let inner = inner.into_iter().collect::<Vec<_>>();
         let inner = cddl_lib::WrappedArr::new(inner);
         WitWrappedArr(RefCell::new(inner))
     }

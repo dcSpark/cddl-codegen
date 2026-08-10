@@ -140,7 +140,7 @@ pub(crate) const DEPTH_LIMIT_REQUIRES_STD: &str = "--deserialize-depth-limit out
      the flag";
 
 /// The composed rust runtime static files (`error.rs`, `ordered_hash_map.rs`, `non_empty.rs`,
-/// `non_empty_map.rs`) shared by the in-crate static export and the `--export-static-crate` path so
+/// `bounded.rs`, `non_empty_map.rs`) shared by the in-crate static export and the `--export-static-crate` path so
 /// the two can't drift. Each returned entry is (bare filename, rustfmt'd content). The content
 /// COMPOSITION (file concatenation, json/schemars companions, the preserve-encodings
 /// BTreeMap→OrderedHashMap substitution plus its post-rewrite reduced-consumer bridge for
@@ -165,6 +165,7 @@ pub(crate) const DEPTH_LIMIT_REQUIRES_STD: &str = "--deserialize-depth-limit out
 fn composed_runtime_static_files(
     cli: &Cli,
     include_non_empty_vec: bool,
+    include_bounded_vec: bool,
     include_non_empty_map: bool,
     include_ordered_set: bool,
     include_pair_map: bool,
@@ -287,6 +288,24 @@ fn composed_runtime_static_files(
         out.push((
             "non_empty.rs".to_owned(),
             rustfmt_generated_string(&non_empty_rs)?.into_owned(),
+        ));
+    }
+
+    if include_bounded_vec {
+        let mut bounded_rs = std::fs::read_to_string(cli.static_dir.join("bounded.rs"))?;
+        if cli.json_serde_derives {
+            bounded_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("bounded_json.rs"),
+            )?);
+        }
+        if cli.json_schema_export {
+            bounded_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("bounded_schemars.rs"),
+            )?);
+        }
+        out.push((
+            "bounded.rs".to_owned(),
+            rustfmt_generated_string(&bounded_rs)?.into_owned(),
         ));
     }
 
@@ -429,6 +448,11 @@ fn composed_runtime_static_files(
                     cli.static_dir.join("any_cbor_non_empty_json.rs"),
                 )?);
             }
+            if include_bounded_vec {
+                any_cbor_rs.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("any_cbor_bounded_json.rs"),
+                )?);
+            }
             // Preserve-only natural-JSON adapters for `any`-valued MAP members (OrderedHashMap): a
             // `{* K => any}` member is `OrderedHashMap<K, AnyCbor>` under --preserve-encodings.
             // `ordered_hash_map.rs` is emitted unconditionally under preserve (above), so the
@@ -447,6 +471,11 @@ fn composed_runtime_static_files(
             if include_non_empty_vec {
                 any_cbor_rs.push_str(&std::fs::read_to_string(
                     cli.static_dir.join("any_cbor_non_empty_schemars.rs"),
+                )?);
+            }
+            if include_bounded_vec {
+                any_cbor_rs.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("any_cbor_bounded_schemars.rs"),
                 )?);
             }
         }
@@ -907,6 +936,7 @@ impl GenerationScope {
             let runtime_files = composed_runtime_static_files(
                 cli,
                 types.uses_non_empty_vec() || self.requested_non_empty_vec,
+                types.uses_bounded_vec() || self.requested_bounded_vec,
                 types.uses_non_empty_map() || self.requested_non_empty_map,
                 types.uses_ordered_set() || self.requested_ordered_set,
                 types.uses_pair_map() || self.requested_pair_map,
@@ -937,7 +967,7 @@ impl GenerationScope {
             Some(export_crate) => {
                 let mut runtime_files = Vec::new();
                 for (filename, content) in &composed_runtime_static_files(
-                    cli, true, true, true, true, true, true, true, true,
+                    cli, true, true, true, true, true, true, true, true, true,
                 )? {
                     // Same injection as the in-crate composition above: these files land in a
                     // HAND-OWNED crate root that this tool never writes, so they cannot rely on a

@@ -5,9 +5,9 @@
 ; signature of a bounded setter (`result<_, string>`) is identical whether the glue checks the window
 ; or ignores it — which is why this fixture is in the wasip2 build smoke as well as the WIT sweep.
 
-; a bounded ARRAY: a plain `Vec<T>` on both sides of the boundary, so its window has to be checked
-; inline. Routing it through the despecialization door instead reaches `Vec<T>`'s own identity
-; `TryFrom` (`Error = Infallible`), which compiles and checks nothing.
+; a bounded ARRAY: its rust type is `BoundedVec<T, MIN, MAX>` while WIT carries a plain list, so
+; the boundary must re-enter BoundedVec's `TryFrom` door. No inline check is needed because the
+; invalid state is unrepresentable after conversion.
 sized_list = [2*5 uint]
 
 ; a `[+ T]`: the CONTROL for the opposite verdict. Its `>= 1` bound is enforced by the type system
@@ -20,13 +20,13 @@ non_empty = [+ uint]
 unique = [* uint] ; @duplicates reject
 
 bounded = {
-  ; mandatory and bounded: the rust `new` range-checks it and the guest unwraps that `Result`, so
-  ; the boundary adds nothing. A second check here would report the same failure twice.
+  ; mandatory and bounded: the rust `new` takes an already-checked BoundedVec and is infallible, so
+  ; the guest re-enters `TryFrom` before calling it. A second inline check would duplicate the door.
   fixed_size: sized_list,
 
   ; the optional bounded rows — one per bounds-check expression the shared owner renders: a bare
-  ; integer, a float window, and `.len()` over bytes, text, an array and a map. Each reaches a
-  ; SETTER, which is the only door that has to enforce the window itself.
+  ; integer, a float window, and `.len()` over bytes, text, and a map. Each reaches a SETTER, which
+  ; is the only door that has to enforce the window itself; the bounded-array field above is typed.
   ? lim: uint .le 5,
   ? window: 0.5 .. 10.5,
   ? digest: bytes .size 4,
@@ -42,4 +42,10 @@ bounded = {
   ; constructor between the caller and the field.
   ? ids: non_empty,
   ? tags: unique,
+}
+
+; A direct table's WIT spelling is `list<tuple<K, V>>`; its bounded VALUE must still re-enter
+; BoundedVec's TryFrom door while the outer collect selects the target BTreeMap.
+mapped = {
+  entries: { * uint => sized_list },
 }

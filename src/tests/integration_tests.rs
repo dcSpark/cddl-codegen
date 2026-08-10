@@ -8393,6 +8393,102 @@ mod __double_option_pin {
     }
 }
 
+/// B3-022's bounded `any` cross-product: natural JSON cannot select the ordinary Vec adapter for a
+/// `[2*3 any]` field because its stored type is `BoundedVec`. This executes the emitted serde and
+/// schemars surfaces for both a required and optional bounded array, proving natural JSON values
+/// survive the adapter while min-1/max+1 values re-enter the same checked BoundedVec door.
+#[test]
+fn bounded_any_members_keep_natural_json_and_exact_schema_windows() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_bounded_any_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(
+        &input,
+        "holder = [required: [2*3 any], ? optional: [2*3 any]]\n",
+    )
+    .unwrap();
+    let out = scratch.join("export");
+    let generated = codegen_cmd()
+        .arg(format!("--input={}", input.display()))
+        .arg(format!("--output={}", out.display()))
+        .arg("--wasm=false")
+        .arg("--json-serde-derives=true")
+        .arg("--json-schema-export=true")
+        .output()
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "bounded any generation failed:\n{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    let generated_mod = out.join("rust/src/generated/mod.rs");
+    let source = std::fs::read_to_string(&generated_mod).unwrap();
+    assert!(
+        source.contains("natural_any_cbor_bounded_seq")
+            && source.contains("natural_any_cbor_opt_bounded_seq")
+            && source.contains("natural_any_cbor_bounded_seq_schema::<2, 3>"),
+        "bounded any fields must select the bounded natural JSON/schema adapters:\n{source}"
+    );
+    const PIN: &str = r##"
+#[cfg(test)]
+mod __bounded_any_json_pin {
+    use super::*;
+
+    #[test]
+    fn natural_json_and_bounds_share_the_checked_door() {
+        let json = r#"{"required":[1,{"nested":true}],"optional":[null,"x"]}"#;
+        let value: Holder = serde_json::from_str(json).expect("in-window natural JSON");
+        let rendered = serde_json::to_value(&value).expect("natural JSON write");
+        assert_eq!(rendered["required"][0], 1);
+        assert_eq!(rendered["required"][1]["nested"], true);
+        assert_eq!(rendered["optional"][0], serde_json::Value::Null);
+        assert!(serde_json::from_str::<Holder>(r#"{"required":[1]}"#).is_err());
+        assert!(serde_json::from_str::<Holder>(r#"{"required":[1,2,3,4]}"#).is_err());
+        assert!(serde_json::from_str::<Holder>(r#"{"required":[1,2],"optional":[1]}"#).is_err());
+    }
+}
+"##;
+    std::fs::write(&generated_mod, format!("{source}\n{PIN}")).unwrap();
+    let target_dir = scratch.join("target");
+    let test = tool_cmd("cargo")
+        .args(["test", "__bounded_any_json_pin"])
+        .current_dir(out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        test.status.success(),
+        "bounded any emitted JSON test failed:\n{}",
+        String::from_utf8_lossy(&test.stderr)
+    );
+    let schema = tool_cmd("cargo")
+        .arg("run")
+        .current_dir(out.join("wasm/json-gen"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        schema.status.success(),
+        "bounded any schema export failed:\n{}",
+        String::from_utf8_lossy(&schema.stderr)
+    );
+    let document: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(out.join("wasm/json-gen/schemas/cddl_lib.schema.json")).unwrap(),
+    )
+    .unwrap();
+    let holder = &document["$defs"]["Holder"]["properties"];
+    for name in ["required", "optional"] {
+        let window = &holder[name];
+        assert_eq!(window["minItems"], 2, "{name} schema minItems");
+        assert_eq!(window["maxItems"], 3, "{name} schema maxItems");
+    }
+}
+
 /// A `bytes .cbor T` RULE BODY agrees with itself: its own standalone `to_cbor_bytes` /
 /// `from_cbor_bytes` write and accept the spec's BYTE-STRING-WRAPPED form, reject the bare inner
 /// form, and produce byte-for-byte what an embed site of the same rule round-trips.
@@ -9117,15 +9213,24 @@ fn corpus_occurrence_bounds_enforced() {
         "tests/corpus/snapshots/occurrence/default__rust__src__generated__serialization.rs.snap",
     )
     .expect("occurrence serialization snapshot missing");
-    // `2*5` and `1*3` keep the runtime occurrence-count length checks byte-for-byte (only the exact
-    // `+` shape changes representation — WI-1 of two-type-constraint-enforcement).
+    // Every bounded homogeneous array is now type-enforced. Decode stages a loose Vec only long
+    // enough to enter BoundedVec's one checked door; ctor/setter inline checks must not return.
     for check in [
+        "BoundedVec::<_, 2, 5>::try_from(b_arr)?",
+        "BoundedVec::<_, 1, 3>::try_from(inline_bounded_arr)?",
+    ] {
+        assert!(
+            ser.contains(check),
+            "occurrence snapshot lost the BoundedVec conversion door `{check}`"
+        );
+    }
+    for old_check in [
         "if b_arr.len() < 2 || b_arr.len() > 5 {",
         "if inline_bounded_arr.len() < 1 || inline_bounded_arr.len() > 3 {",
     ] {
         assert!(
-            ser.contains(check),
-            "occurrence snapshot lost the occurrence-count length check `{check}`"
+            !ser.contains(old_check),
+            "bounded occurrence reverted to an inline length check `{old_check}`"
         );
     }
     // the `+` (`[+ uint]`) shape is now type-enforced: its length check is GONE from the ctor/deser,
@@ -17507,6 +17612,176 @@ fn workspace_requests_hosts_reject_ordered_set_twins() {
             ),
         "the wasm collections index must re-export both hosted twins:\n{collections}"
     );
+}
+
+/// B3-022: the deferred-wrapper sidecar retains bounded homogeneous-array occurrence windows.
+/// A request-only host owns no bounded rule itself, so this also proves the requested runtime gate
+/// provisions `bounded.rs` and the hosted restricted class keeps the same `TryFrom<Vec<_>>` door.
+#[test]
+fn workspace_requests_host_bounded_array_preserves_window_and_checked_door() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!("cddl_wr_bounded_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("lib.cddl"), "idx_foo = [x: uint]\n").unwrap();
+    std::fs::write(
+        dir.join("borrowed_collections.rs"),
+        r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// This file records every collection wrapper this crate borrows from workspace deps.
+// It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
+// here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
+#[allow(unused_imports)]
+mod borrowed {
+    use wr_dep_wasm::collections::IdxFooListMax1;
+    use wr_dep_wasm::collections::IdxFooListMax5;
+    use wr_dep_wasm::collections::IdxFooListMin2;
+    use wr_dep_wasm::collections::IdxFooListMin2Max2;
+    use wr_dep_wasm::collections::IdxFooListMin2Max5;
+}
+
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
+    ("wr_dep", "IdxFooListMax1", "[? idx_foo]"),
+    ("wr_dep", "IdxFooListMax5", "[*5 idx_foo]"),
+    ("wr_dep", "IdxFooListMin2", "[2* idx_foo]"),
+    ("wr_dep", "IdxFooListMin2Max2", "[2*2 idx_foo]"),
+    ("wr_dep", "IdxFooListMin2Max5", "[2*5 idx_foo]"),
+];
+"#,
+    )
+    .unwrap();
+    let sidecar = dir.join("borrowed_collections.rs");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.join("lib.cddl").to_str().unwrap(),
+        "--output",
+        "wr_bounded_unused",
+        "--lib-name",
+        "wr-dep",
+        "--wasm=true",
+        "--wrapper-requests",
+        &format!("boundedc={}", sidecar.display()),
+    ]);
+    let files = crate::api::generated_strings(&cli)
+        .unwrap_or_else(|e| panic!("dep generation must host bounded wrapper: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let requested = &files["wasm/src/generated/requested_collections.rs"];
+    for (name, bounds) in [
+        ("IdxFooListMax1", "0, 1"),
+        ("IdxFooListMax5", "0, 5"),
+        ("IdxFooListMin2", "2, { u64::MAX }"),
+        ("IdxFooListMin2Max2", "2, 2"),
+        ("IdxFooListMin2Max5", "2, 5"),
+    ] {
+        assert!(
+            requested.contains(&format!(
+                "pub struct {name}(pub(crate) BoundedVec<wr_dep::IdxFoo, {bounds}>)"
+            )),
+            "the request must preserve {name}'s window:\n{requested}"
+        );
+    }
+    assert!(
+        requested.contains("pub fn try_from(list: &IdxFooList)")
+            && requested.contains("BoundedVec::try_from(inner)")
+            && requested.contains(".map(Self)"),
+        "every non-exposable requested bounded wrapper must use the shared checked door:\n{requested}"
+    );
+    assert!(
+        requested.contains("impl IdxFooListMax1 {\n    pub fn new() -> Self")
+            && requested.contains("Self(BoundedVec::new())")
+            && !requested.contains("pub fn new() -> Result<IdxFooListMax1"),
+        "only a zero-minimum bounded wrapper may expose an infallible empty seed:\n{requested}"
+    );
+    assert!(
+        requested.contains("/// Generated at the request of: boundedc."),
+        "a requested bounded wrapper must retain its requester attribution beside its discovery doc:\n{requested}"
+    );
+    assert!(
+        files["rust/src/generated/mod.rs"].contains("pub mod bounded;"),
+        "a request-only bounded wrapper must provision the bounded runtime module"
+    );
+    for name in [
+        "IdxFooListMax1",
+        "IdxFooListMax5",
+        "IdxFooListMin2",
+        "IdxFooListMin2Max2",
+        "IdxFooListMin2Max5",
+    ] {
+        assert!(
+            files["wasm/src/generated/collections.rs"].contains(&format!(
+                "pub use crate::generated::requested_collections::{name};"
+            )),
+            "the hosted {name} wrapper must be re-exported from the dep collection index"
+        );
+    }
+}
+
+/// The consumer's OWN sidecar writer canonicalizes equivalent zero-minimum spellings before a dep
+/// ever sees them. This closes the loop that the hand-authored request-host pin above cannot: source
+/// `[0*1 idx_foo]` / `[0*5 idx_foo]` must write the strict parser's canonical `[? idx_foo]` /
+/// `[*5 idx_foo]`, with one structural wrapper each and no source-spelling leakage.
+#[test]
+fn workspace_consumer_writes_canonical_bounded_array_request_shapes() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_sidecar_{:016x}",
+        checkout_hash()
+    ));
+    let _lock = acquire_scratch_lock(&format!(
+        "cddl_codegen_bounded_sidecar_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let write = |rel: &str, body: &str| {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+    };
+    write(
+        "consumer/_CDDL_CODEGEN_EXTERN_DEPS_DIR_/wr_dep/mod.cddl",
+        "idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    );
+    write(
+        "consumer/lib.cddl",
+        "holder = [maybe: [0*1 idx_foo], upper: [0*5 idx_foo]]\n",
+    );
+    let export = root.join("consumer-export");
+    let static_dir = std::env::current_dir().unwrap().join("static");
+    let run = codegen_cmd()
+        .arg(format!("--input={}", root.join("consumer").display()))
+        .arg(format!("--output={}", export.display()))
+        .arg(format!("--static-dir={}", static_dir.display()))
+        .arg("--wasm=true")
+        .arg("--common-import-override=wr_dep")
+        .arg("--extern-wasm-crate=wr_dep=wr_dep_wasm")
+        .arg("--workspace-dep=wr_dep")
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "consumer generation failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let sidecar =
+        std::fs::read_to_string(export.join("wasm/src/generated/borrowed_collections.rs")).unwrap();
+    for (name, shape) in [
+        ("IdxFooListMax1", "[? idx_foo]"),
+        ("IdxFooListMax5", "[*5 idx_foo]"),
+    ] {
+        assert!(
+            sidecar.contains(&format!("(\"wr_dep\", \"{name}\", \"{shape}\")")),
+            "the generated request sidecar must carry the canonical {shape} row for {name}:\n{sidecar}"
+        );
+    }
+    assert!(
+        !sidecar.contains("[0*"),
+        "source-only zero minima must not leak into a machine-read sidecar:\n{sidecar}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// The CONSUMER side of the reject-set deferral, and the round trip that closes it: a

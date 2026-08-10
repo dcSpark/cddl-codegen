@@ -358,7 +358,7 @@ Notes:
 - It is rejected if the element is *directly WASM-exposable* (e.g. a transparent `uint`/`text` alias):
   such a list lowers to a bare `Vec<..>` at the boundary with no wrapper class, so there is nothing to
   mint.
-- It only mints the loose `[* x]` list wrapper. `[+ x]` (NonEmpty) and map wrappers are out of scope
+- It only mints the loose `[* x]` list wrapper. `[+ x]` (NonEmpty), bounded array wrappers, and map wrappers are out of scope
   (a map wrapper cannot be named by a tag on a single element rule).
 - It is **rule-scoped**: the tag names the type whose wrapper to mint, so it belongs on a rule. On a
   field/member's trailing comment (`f: bw, ; @used_as_elem`, inside a `holder = [ … ]`) it is a hard

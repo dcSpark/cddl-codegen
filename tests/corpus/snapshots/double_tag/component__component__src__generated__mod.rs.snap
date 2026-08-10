@@ -38,8 +38,10 @@ pub struct WitElemTagged(pub RefCell<cddl_lib::ElemTagged>);
 
 impl wit_types::GuestElemTagged for WitElemTagged {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::ElemTagged::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::ElemTagged::new(inner);
         Ok(WitElemTagged(RefCell::new(inner)))
     }
 
@@ -88,8 +90,10 @@ pub struct WitHeterogeneousSet(pub RefCell<cddl_lib::HeterogeneousSet>);
 
 impl wit_types::GuestHeterogeneousSet for WitHeterogeneousSet {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::HeterogeneousSet::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::HeterogeneousSet::new(inner);
         Ok(WitHeterogeneousSet(RefCell::new(inner)))
     }
 
@@ -181,8 +185,10 @@ pub struct WitHomogeneousInner(pub RefCell<cddl_lib::HomogeneousInner>);
 
 impl wit_types::GuestHomogeneousInner for WitHomogeneousInner {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::HomogeneousInner::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::HomogeneousInner::new(inner);
         Ok(WitHomogeneousInner(RefCell::new(inner)))
     }
 
@@ -208,7 +214,7 @@ impl wit_types::GuestOuterOverArray for WitOuterOverArray {
         let inner = inner
             .into_iter()
             .map(|x| x.get::<WitElemTagged>().0.borrow().clone())
-            .collect();
+            .collect::<Vec<_>>();
         let inner = cddl_lib::OuterOverArray::new(inner);
         WitOuterOverArray(RefCell::new(inner))
     }

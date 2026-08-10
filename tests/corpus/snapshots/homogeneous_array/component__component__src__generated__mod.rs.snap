@@ -33,7 +33,7 @@ pub struct WitBoolHolder(pub RefCell<cddl_lib::BoolHolder>);
 
 impl wit_types::GuestBoolHolder for WitBoolHolder {
     fn new(b: Vec<bool>) -> Self {
-        let b = b.into_iter().collect();
+        let b = b.into_iter().collect::<Vec<_>>();
         let inner = cddl_lib::BoolHolder::new(b);
         WitBoolHolder(RefCell::new(inner))
     }
@@ -60,7 +60,7 @@ pub struct WitFloatHolder(pub RefCell<cddl_lib::FloatHolder>);
 
 impl wit_types::GuestFloatHolder for WitFloatHolder {
     fn new(f: Vec<f64>) -> Self {
-        let f = f.into_iter().collect();
+        let f = f.into_iter().collect::<Vec<_>>();
         let inner = cddl_lib::FloatHolder::new(f);
         WitFloatHolder(RefCell::new(inner))
     }

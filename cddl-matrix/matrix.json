@@ -687,7 +687,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (10 accept + 2 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); ordinary/preserve arrays compile to a restricted BoundedVec wasm wrapper, while @duplicates reject arrays retain OrderedSet plus a runtime cardinality check; component round-trips (10 accept + 2 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "occur.bounded",
         "status": "supported"
       },
@@ -702,7 +702,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); ordinary/preserve arrays compile to a restricted BoundedVec wasm wrapper, while @duplicates reject arrays retain OrderedSet plus a runtime cardinality check; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "occur.bounded.lower",
         "status": "supported"
       },
@@ -717,7 +717,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); ordinary/preserve arrays compile to a restricted BoundedVec wasm wrapper, while @duplicates reject arrays retain OrderedSet plus a runtime cardinality check; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "occur.bounded.upper",
         "status": "supported"
       },

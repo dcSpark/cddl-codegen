@@ -77,8 +77,10 @@ pub struct WitIntNeset(pub RefCell<cddl_lib::IntNeset>);
 
 impl wit_types::GuestIntNeset for WitIntNeset {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::IntNeset::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::IntNeset::new(inner);
         Ok(WitIntNeset(RefCell::new(inner)))
     }
 
@@ -99,7 +101,7 @@ pub struct WitIntSet(pub RefCell<cddl_lib::IntSet>);
 
 impl wit_types::GuestIntSet for WitIntSet {
     fn new(inner: Vec<u64>) -> Self {
-        let inner = inner.into_iter().collect();
+        let inner = inner.into_iter().collect::<Vec<_>>();
         let inner = cddl_lib::IntSet::new(inner);
         WitIntSet(RefCell::new(inner))
     }
@@ -119,7 +121,7 @@ pub struct WitTextSet(pub RefCell<cddl_lib::TextSet>);
 
 impl wit_types::GuestTextSet for WitTextSet {
     fn new(inner: Vec<String>) -> Self {
-        let inner = inner.into_iter().collect();
+        let inner = inner.into_iter().collect::<Vec<_>>();
         let inner = cddl_lib::TextSet::new(inner);
         WitTextSet(RefCell::new(inner))
     }

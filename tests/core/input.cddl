@@ -476,7 +476,8 @@ docs_groupchoice = [
 ] ; @doc type-level comment
 ; --- WI-1: NonEmptyVec two-type enforcement for the `+`/`1*` occurrence on arrays ---
 ; `[+ T]` becomes NonEmptyVec<T> (invalid empty state unrepresentable, one TryFrom door). Every
-; other array bound keeps the runtime-check path; `[* T]` stays a bare Vec.
+; ordinary/preserve bounded array windows use BoundedVec; bounded @duplicates reject arrays retain
+; their runtime checks; `[* T]` stays a bare Vec.
 nev_bar = { a: uint }
 ; a NAMED `[+ T]` rule gains a real enforcement surface: `pub type NevInts = NonEmptyVec<u64>`
 nev_ints = [+ uint]

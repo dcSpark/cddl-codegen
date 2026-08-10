@@ -231,6 +231,9 @@ pub struct GenerationScope {
     /// gates (`pub mod non_empty`/`non_empty_map` decl + static file copy) OR these in so the dep
     /// hosts a requested NonEmpty wrapper's `NonEmptyVec`/`NonEmptyMap` type. Never set off the flag.
     requested_non_empty_vec: bool,
+    /// W2 dep side: `true` when a requested restricted bounded-array wrapper needs the `BoundedVec`
+    /// runtime even though this dep's own spec has no bounded homogeneous array occurrence.
+    requested_bounded_vec: bool,
     requested_non_empty_map: bool,
     /// W2 dep side, `@duplicates reject` twin: `true` when requested-wrapper emission produced a
     /// reject-mode set wrapper whose `ordered_set` runtime the dep's OWN spec does not otherwise pull
@@ -315,6 +318,7 @@ impl GenerationScope {
             requested_wrapper_types: Vec::new(),
             requested_attribution: BTreeMap::new(),
             requested_non_empty_vec: false,
+            requested_bounded_vec: false,
             requested_non_empty_map: false,
             requested_ordered_set: false,
             requested_pair_map: false,
@@ -451,6 +455,17 @@ impl GenerationScope {
                              `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
                              door, so wire-side and API-side rejection are identical).",
                             elem.for_rust_member(types, false, cli)
+                        ));
+                    }
+                    // The finite/zero-minimum array sibling carries its complete occurrence window
+                    // in `BoundedVec`'s const arguments. Quote the canonical sidecar grammar here
+                    // so a named alias is discoverable without following the generated type alias.
+                    if alias_info.base_type.is_bounded_array() {
+                        let shape = render_wrapper_shape(&alias_info.base_type);
+                        doc_lines.push(format!(
+                            "`{shape}`: inclusive length window enforced at the `BoundedVec` \
+                             `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
+                             door, so wire-side and API-side rejection are identical)."
                         ));
                     }
                     // map-side twin: a named `{+ k => v}` rule's alias quotes the occurrence too.
@@ -972,6 +987,24 @@ impl GenerationScope {
                                     !types.is_synthesized_collection(rust_ident),
                                     cli,
                                 );
+                            } else if let Some((min, max)) = {
+                                let ty: crate::intermediate::RustType =
+                                    crate::intermediate::ConceptualRustType::Array(Box::new(
+                                        element_type.clone(),
+                                    ))
+                                    .into();
+                                bounds.and_then(|bounds| {
+                                    ty.with_bounds(bounds).bounded_array_u64_bounds()
+                                })
+                            } {
+                                self.generate_bounded_array_type(
+                                    types,
+                                    element_type.clone(),
+                                    rust_ident,
+                                    (min, max),
+                                    !types.is_synthesized_collection(rust_ident),
+                                    cli,
+                                );
                             } else {
                                 self.generate_array_type(
                                     types,
@@ -1325,6 +1358,9 @@ impl GenerationScope {
             // NonEmpty wrapper needs the runtime module even when its own spec has no `[+ …]`.
             if types.uses_non_empty_vec() || self.requested_non_empty_vec {
                 self.rust_lib().raw("pub mod non_empty;");
+            }
+            if types.uses_bounded_vec() || self.requested_bounded_vec {
+                self.rust_lib().raw("pub mod bounded;");
             }
             // only crates that actually use `{+ k => v}` pull in the NonEmptyMap runtime
             if types.uses_non_empty_map() || self.requested_non_empty_map {
@@ -1765,6 +1801,13 @@ impl GenerationScope {
                     None,
                 );
             }
+            if types.uses_bounded_vec() || self.requested_bounded_vec {
+                content.push_import(
+                    format!("{}::bounded", cli.common_import_rust()),
+                    "BoundedVec",
+                    None,
+                );
+            }
             if types.uses_non_empty_map() {
                 content.push_import(
                     format!("{}::non_empty_map", cli.common_import_rust()),
@@ -1957,6 +2000,13 @@ impl GenerationScope {
                     content.push_import(
                         format!("{}::non_empty", cli.common_import_wasm()),
                         "NonEmptyVec",
+                        None,
+                    );
+                }
+                if types.uses_bounded_vec() || self.requested_bounded_vec {
+                    content.push_import(
+                        format!("{}::bounded", cli.common_import_wasm()),
+                        "BoundedVec",
                         None,
                     );
                 }
@@ -3855,6 +3905,8 @@ pub enum NaturalAnyPosition {
     Seq,
     NonEmptySeq,
     OptSeq,
+    BoundedSeq(u64, u64),
+    OptBoundedSeq(u64, u64),
     Map,
     OptMap,
     OrderedMap,
@@ -3875,37 +3927,59 @@ pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<
     // serves both required and optional (an empty/array/object-with-any schema accepts null/absent);
     // required-ness is derived from the field's `Option<..>`-ness, not from `schema_with`.
     let (with_mod, schema_fn, optional) = match pos {
-        Direct => ("natural_any_cbor", "natural_any_cbor_schema", false),
-        Optional => ("natural_any_cbor_opt", "natural_any_cbor_schema", true),
-        Seq => ("natural_any_cbor_seq", "natural_any_cbor_seq_schema", false),
+        Direct => (
+            "natural_any_cbor",
+            "natural_any_cbor_schema".to_owned(),
+            false,
+        ),
+        Optional => (
+            "natural_any_cbor_opt",
+            "natural_any_cbor_schema".to_owned(),
+            true,
+        ),
+        Seq => (
+            "natural_any_cbor_seq",
+            "natural_any_cbor_seq_schema".to_owned(),
+            false,
+        ),
         NonEmptySeq => (
             "natural_any_cbor_non_empty_seq",
-            "natural_any_cbor_non_empty_seq_schema",
+            "natural_any_cbor_non_empty_seq_schema".to_owned(),
             false,
         ),
         OptSeq => (
             "natural_any_cbor_opt_seq",
-            "natural_any_cbor_seq_schema",
+            "natural_any_cbor_seq_schema".to_owned(),
+            true,
+        ),
+        BoundedSeq(min, max) => (
+            "natural_any_cbor_bounded_seq",
+            format!("natural_any_cbor_bounded_seq_schema::<{min}, {max}>"),
+            false,
+        ),
+        OptBoundedSeq(min, max) => (
+            "natural_any_cbor_opt_bounded_seq",
+            format!("natural_any_cbor_bounded_seq_schema::<{min}, {max}>"),
             true,
         ),
         Map => (
             "natural_any_cbor_btreemap",
-            "natural_any_cbor_map_schema",
+            "natural_any_cbor_map_schema".to_owned(),
             false,
         ),
         OptMap => (
             "natural_any_cbor_opt_btreemap",
-            "natural_any_cbor_map_schema",
+            "natural_any_cbor_map_schema".to_owned(),
             true,
         ),
         OrderedMap => (
             "natural_any_cbor_orderedmap",
-            "natural_any_cbor_map_schema",
+            "natural_any_cbor_map_schema".to_owned(),
             false,
         ),
         OptOrderedMap => (
             "natural_any_cbor_opt_orderedmap",
-            "natural_any_cbor_map_schema",
+            "natural_any_cbor_map_schema".to_owned(),
             true,
         ),
     };

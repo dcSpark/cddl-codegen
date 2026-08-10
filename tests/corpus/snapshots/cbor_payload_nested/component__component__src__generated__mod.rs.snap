@@ -37,7 +37,7 @@ impl wit_types::GuestCborPayloadNested for WitCborPayloadNested {
         after_payload: u64,
         tail: String,
     ) -> Self {
-        let elem_payloads = elem_payloads.into_iter().collect();
+        let elem_payloads = elem_payloads.into_iter().collect::<Vec<_>>();
         let value_payloads = value_payloads.into_iter().collect();
         let inner =
             cddl_lib::CborPayloadNested::new(elem_payloads, value_payloads, after_payload, tail);

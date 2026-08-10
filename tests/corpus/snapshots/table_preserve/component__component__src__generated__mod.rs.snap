@@ -53,10 +53,12 @@ impl wit_types::GuestHolder for WitHolder {
         m: wit_types::MdBorrow<'_>,
     ) -> Result<Self, String> {
         let p = p.into_iter().collect();
-        let np: Vec<_> = np.into_iter().collect();
+        let np = (np.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
         let g = g.into_iter().collect();
         let m = m.get::<WitMd>().0.borrow().clone();
-        let inner = cddl_lib::Holder::new(p, np.try_into().map_err(err)?, g, m);
+        let inner = cddl_lib::Holder::new(p, np, g, m);
         Ok(WitHolder(RefCell::new(inner)))
     }
 
@@ -136,7 +138,7 @@ impl wit_types::GuestMd for WitMd {
         let arr_md = arr_md
             .into_iter()
             .map(|x| x.get::<WitMd>().0.borrow().clone())
-            .collect();
+            .collect::<Vec<_>>();
         let inner = cddl_lib::Md::new_arr_md(arr_md);
         wit_types::Md::new(WitMd(RefCell::new(inner)))
     }

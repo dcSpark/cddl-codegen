@@ -68,7 +68,7 @@ impl wit_types::GuestSplicedGroupArray for WitSplicedGroupArray {
         let inner = inner
             .into_iter()
             .map(|x| x.get::<WitCoords>().0.borrow().clone())
-            .collect();
+            .collect::<Vec<_>>();
         let inner = cddl_lib::SplicedGroupArray::new(inner);
         WitSplicedGroupArray(RefCell::new(inner))
     }
@@ -103,7 +103,7 @@ impl wit_types::GuestWrappedGroupArray for WitWrappedGroupArray {
         let inner = inner
             .into_iter()
             .map(|x| x.get::<WitCoords>().0.borrow().clone())
-            .collect();
+            .collect::<Vec<_>>();
         let inner = cddl_lib::WrappedGroupArray::new(inner);
         WitWrappedGroupArray(RefCell::new(inner))
     }

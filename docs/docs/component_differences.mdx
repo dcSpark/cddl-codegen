@@ -496,12 +496,10 @@ diagnosis in the corpus compile gate's ledger (`EXPECTED_COMPILE_FAIL`, gate
 `component_corpus_compiles`), so a fix announces itself by turning the pin stale rather than
 needing rediscovery:
 
-- **Nested despecialization**: a constrained collection (`NonEmptyVec`, `NonEmptyMap`) sitting
-  *below* the top level of a parameter — a named table rule whose map key is a non-empty list, or
-  a non-empty list as a list element. The door's WIT signature already carries the
-  `result<_, string>` such a re-check reports through (the fallibility walk resolves the alias a
-  named collection rule registers); what remains is the conversion walk below the top level, which
-  sees WIT types only, so the constrained rust type's `TryFrom` door is never re-entered.
+- **Nested non-empty table key**: a `NonEmptyVec` or `NonEmptyMap` used as the map key of a named
+  table rule. Direct table rows recurse through their WIT tuple columns, so constrained list keys
+  and values (including `BoundedVec`) re-enter their `TryFrom` doors there; the residual named-table
+  key conversion walk still sees WIT types only, so this constrained rust type's door is not re-entered.
 
 Until this closes, a spec relying on it should keep `--component` off or restructure the
 shape; every other corpus shape compiles and validates. (Two further classes lived here and are

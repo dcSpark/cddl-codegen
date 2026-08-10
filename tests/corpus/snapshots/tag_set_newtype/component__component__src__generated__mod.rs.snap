@@ -100,7 +100,7 @@ pub struct WitOptOut(pub RefCell<cddl_lib::OptOut>);
 
 impl wit_types::GuestOptOut for WitOptOut {
     fn new(inner: Vec<u64>) -> Self {
-        let inner = inner.into_iter().collect();
+        let inner = inner.into_iter().collect::<Vec<_>>();
         let inner = cddl_lib::OptOut::new(inner);
         WitOptOut(RefCell::new(inner))
     }
@@ -120,8 +120,10 @@ pub struct WitPlainNesetReject(pub RefCell<cddl_lib::PlainNesetReject>);
 
 impl wit_types::GuestPlainNesetReject for WitPlainNesetReject {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::PlainNesetReject::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::PlainNesetReject::new(inner);
         Ok(WitPlainNesetReject(RefCell::new(inner)))
     }
 
@@ -150,8 +152,10 @@ pub struct WitPlainReject(pub RefCell<cddl_lib::PlainReject>);
 
 impl wit_types::GuestPlainReject for WitPlainReject {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::PlainReject::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::PlainReject::new(inner);
         Ok(WitPlainReject(RefCell::new(inner)))
     }
 
@@ -206,8 +210,10 @@ pub struct WitSingleArmNeset(pub RefCell<cddl_lib::SingleArmNeset>);
 
 impl wit_types::GuestSingleArmNeset for WitSingleArmNeset {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::SingleArmNeset::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::SingleArmNeset::new(inner);
         Ok(WitSingleArmNeset(RefCell::new(inner)))
     }
 
@@ -228,8 +234,10 @@ pub struct WitSingleArmSet(pub RefCell<cddl_lib::SingleArmSet>);
 
 impl wit_types::GuestSingleArmSet for WitSingleArmSet {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::SingleArmSet::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::SingleArmSet::new(inner);
         Ok(WitSingleArmSet(RefCell::new(inner)))
     }
 

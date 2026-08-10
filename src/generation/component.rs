@@ -45,7 +45,8 @@ use super::wit::{
 use crate::cli::Cli;
 use crate::component_wit_deps::DepWitPackages;
 use crate::intermediate::{
-    EnumVariant, IntermediateTypes, ModuleScope, Representation, RustIdent, RustStructType,
+    ConceptualRustType, EnumVariant, IntermediateTypes, ModuleScope, Representation, RustIdent,
+    RustStructType, RustType,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -468,6 +469,134 @@ impl Emitter<'_, '_> {
     // ---------------------------------------------------------------------------------------------
     // WIT value -> rust value (parameter direction)
     // ---------------------------------------------------------------------------------------------
+
+    /// The rust-type-aware counterpart to [`Self::wit_to_rust`] for collections. WIT intentionally
+    /// despecializes every array to `list<t>`, so the WIT type alone cannot say that a nested list
+    /// must re-enter `NonEmptyVec`/`BoundedVec`'s checked door. Thread the parallel rust shape down
+    /// through arrays, options, and direct table rows; all other conversion rules remain owned by
+    /// `wit_to_rust`.
+    fn wit_to_rust_typed(
+        &self,
+        wit_type: &WitType,
+        rust_type: &RustType,
+        expr: &str,
+        iface: &str,
+    ) -> Conv {
+        let resolved = rust_type.clone().resolve_aliases();
+        match (wit_type, &resolved.conceptual_type) {
+            (WitType::List(wit_inner), ConceptualRustType::Array(rust_inner)) => {
+                let element = self.wit_to_rust_typed(wit_inner, rust_inner, "x", iface);
+                let values = if element.expr == "x" {
+                    Conv::plain(format!("{expr}.into_iter().collect::<Vec<_>>()"))
+                } else if element.fallible {
+                    Conv {
+                        expr: format!(
+                            "{expr}.into_iter().map(|x| {}).collect::<Result<Vec<_>, String>>()",
+                            wrap_fallible_element(&element.expr, wit_inner)
+                        ),
+                        fallible: true,
+                    }
+                } else {
+                    Conv::plain(format!(
+                        "{expr}.into_iter().map(|x| {}).collect::<Vec<_>>()",
+                        element.expr
+                    ))
+                };
+                let restricted = resolved.is_type_enforced_non_empty()
+                    || resolved.is_type_enforced_bounded_array()
+                    || super::wit::wit_param_despecialized(&resolved, self.types);
+                if !restricted {
+                    return values;
+                }
+                if values.fallible {
+                    Conv {
+                        expr: format!(
+                            "{}.and_then(|values| values.try_into().map_err(err))",
+                            values.expr
+                        ),
+                        fallible: true,
+                    }
+                } else {
+                    Conv {
+                        expr: format!("({}).try_into().map_err(err)", values.expr),
+                        fallible: true,
+                    }
+                }
+            }
+            (WitType::Option(wit_inner), ConceptualRustType::Optional(rust_inner)) => {
+                let inner = self.wit_to_rust_typed(wit_inner, rust_inner, "v", iface);
+                if inner.expr == "v" {
+                    Conv::plain(expr)
+                } else if inner.fallible {
+                    Conv {
+                        expr: format!("{expr}.map(|v| {}).transpose()", inner.expr),
+                        fallible: true,
+                    }
+                } else {
+                    Conv::plain(format!("{expr}.map(|v| {})", inner.expr))
+                }
+            }
+            (WitType::List(wit_rows), ConceptualRustType::Map(rust_key, rust_value)) => {
+                let WitType::Tuple(wit_columns) = &**wit_rows else {
+                    return self.wit_to_rust(wit_type, expr, iface);
+                };
+                let [wit_key, wit_value] = wit_columns.as_slice() else {
+                    return self.wit_to_rust(wit_type, expr, iface);
+                };
+                let key = self.wit_to_rust_typed(wit_key, rust_key, "x0", iface);
+                let value = self.wit_to_rust_typed(wit_value, rust_value, "x1", iface);
+                // A `{+ K => V}` is despecialized to the same WIT list as a loose table. Restore
+                // the OUTER NonEmptyMap/NonEmptyPairMap door after recursively restoring either
+                // column; otherwise inference tries to collect rows straight into the restricted
+                // map, which intentionally has no FromIterator implementation.
+                let restricted = rust_type.is_type_enforced_non_empty()
+                    || super::wit::wit_param_despecialized(rust_type, self.types);
+                if key.expr == "x0" && value.expr == "x1" && !restricted {
+                    // The target remains the rust map flavor (`BTreeMap`/`PairMap`): inference at
+                    // the consuming constructor/setter selects it through `collect()`.
+                    return Conv::plain(format!("{expr}.into_iter().collect()"));
+                }
+                let row = format!("({}, {})", key.unwrapped(), value.unwrapped());
+                let values = if key.expr == "x0" && value.expr == "x1" {
+                    Conv::plain(format!("{expr}.into_iter().collect::<Vec<_>>()"))
+                } else if key.fallible || value.fallible {
+                    Conv {
+                        expr: format!(
+                            "{expr}.into_iter().map(|(x0, x1)| (|| -> Result<_, String> {{ Ok({row}) }})()).collect::<Result<_, String>>()"
+                        ),
+                        fallible: true,
+                    }
+                } else {
+                    let collect = if restricted {
+                        "collect::<Vec<_>>()"
+                    } else {
+                        "collect()"
+                    };
+                    Conv::plain(format!(
+                        "{expr}.into_iter().map(|(x0, x1)| {row}).{collect}"
+                    ))
+                };
+                if !restricted {
+                    return values;
+                }
+                if values.fallible {
+                    Conv {
+                        expr: format!(
+                            "{}.and_then(|values| values.try_into().map_err(err))",
+                            values.expr
+                        ),
+                        fallible: true,
+                    }
+                } else {
+                    Conv {
+                        expr: format!("({}).try_into().map_err(err)", values.expr),
+                        fallible: true,
+                    }
+                }
+            }
+            _ => self.wit_to_rust(wit_type, expr, iface),
+        }
+    }
 
     /// Convert an owned WIT-side value into the rust crate's own type.
     ///
@@ -1387,23 +1516,12 @@ impl Emitter<'_, '_> {
         let mut args = Vec::new();
         for param in params {
             let name = kebab_to_snake(&param.name);
-            let conv = self.wit_to_rust(&param.ty, &name, iface);
-            let despecialized = param
+            let conv = param
                 .rust_type
                 .as_ref()
-                .is_some_and(|ty| super::wit::wit_param_despecialized(ty, self.types));
-            if despecialized {
-                // A despecialized collection (`[+ T]`'s `NonEmptyVec`, `@duplicates reject`'s
-                // `OrderedSet`) crosses as a plain list, so its single `TryFrom` door has to be
-                // re-entered here — at exactly the point the rust crate's own decoder enters it. The
-                // `Vec<_>` binding is what makes `collect()` pick the door's input type.
-                //
-                // Routed off the rust TYPE, never off "validates and is a list": that reading also
-                // caught a plain bounded array, whose identity `TryFrom<Vec<T>>` compiles while
-                // checking nothing, and a bounded map, for which no such `TryFrom` exists at all.
-                lines.push(format!("let {name}: Vec<_> = {};", conv.unwrapped()));
-                args.push(format!("{name}.try_into().map_err(err)?"));
-            } else if conv.expr == name && !conv.fallible {
+                .map(|ty| self.wit_to_rust_typed(&param.ty, ty, &name, iface))
+                .unwrap_or_else(|| self.wit_to_rust(&param.ty, &name, iface));
+            if conv.expr == name && !conv.fallible {
                 // The parameter already IS the rust value (a primitive, a string, a byte list): a
                 // rebinding would be a no-op a reader has to check before believing.
                 args.push(name);

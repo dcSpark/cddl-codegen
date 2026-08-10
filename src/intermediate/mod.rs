@@ -551,6 +551,24 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
+    /// Whether any generated type uses a bounded homogeneous ARRAY occurrence. This mirrors the
+    /// non-empty runtime gate and deliberately walks every IR position, including nested aliases.
+    pub fn uses_bounded_vec(&self) -> bool {
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.contains_bounded_array());
+        found
+            || self.rust_structs.values().any(|rs| {
+                matches!(
+                    rs.variant(),
+                    RustStructType::Array { bounds: Some(bounds), .. }
+                        if *bounds != (None, None)
+                            && *bounds != (Some(1), None)
+                            && rs.config().duplicates
+                                != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                )
+            })
+    }
+
     /// Whether ANY generated type uses the `{+ k => v}` NonEmptyMap shape, so `export`/import wiring
     /// can pull in the `non_empty_map` runtime module + `NonEmptyMap` import only for crates that need
     /// it (keeping every non-`+`-table crate's output byte-identical).
@@ -748,6 +766,52 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
+    /// The authored bounded-array rule owning the wasm class for an inline occurrence with the
+    /// identical element and inclusive window.  The bounds are part of the identity: unlike a
+    /// loose list, `[2*5 T]` and `[2*6 T]` cannot share a class without losing the checked door.
+    pub fn bounded_array_named_owner(
+        &self,
+        element: &RustType,
+        bounds: (Option<i128>, Option<i128>),
+    ) -> Option<&RustIdent> {
+        let normalized = Self::normalized_bounded_array_window(bounds)?;
+        let resolved = element.clone().resolve_aliases();
+        self.rust_structs
+            .iter()
+            .find_map(|(ident, rs)| match rs.variant() {
+                RustStructType::Array {
+                    element_type,
+                    bounds: Some(candidate),
+                } if Self::normalized_bounded_array_window(*candidate) == Some(normalized)
+                    // A reject-mode bounded rule owns an `OrderedSet` class, not the ordinary
+                    // BoundedVec wasm class an inline preserve-policy occurrence needs. It cannot
+                    // be a dedup owner without crossing incompatible core representations.
+                    && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                    && !self.is_anonymous_collection_instance(ident)
+                    && element_type.clone().resolve_aliases() == resolved =>
+                {
+                    Some(ident)
+                }
+                _ => None,
+            })
+    }
+
+    /// Canonicalize an array occurrence window before comparing ownership or rendering a request:
+    /// absent endpoints are the real `0` / unbounded values, and the two loose shapes are not
+    /// bounded owners.  Keeping this here makes `[? T]`/`[0*1 T]` and `[*5 T]`/`[0*5 T]` one
+    /// identity even though the parser preserves the source spelling.
+    fn normalized_bounded_array_window(bounds: (Option<i128>, Option<i128>)) -> Option<(u64, u64)> {
+        let min = u64::try_from(bounds.0.unwrap_or(0)).ok()?;
+        let max = bounds
+            .1
+            .map(u64::try_from)
+            .transpose()
+            .ok()?
+            .unwrap_or(u64::MAX);
+        (min <= max && (min, max) != (0, u64::MAX) && (min, max) != (1, u64::MAX))
+            .then_some((min, max))
+    }
+
     /// Visit every `RustType` occurrence in the IR — record fields, table domain/range, wrapper
     /// inners, enum variants (incl. inlined records), named-array element types, and type-alias
     /// base types — recursing into Array/Optional/Map inners at the RustType level, so occurrence
@@ -818,19 +882,22 @@ impl<'a> IntermediateTypes<'a> {
             || self.type_aliases.contains_key(&AliasIdent::Rust(ident))
     }
 
-    /// Whether rule `name` provides a COMPATIBLE loose list wrapper for `element_resolved` (an
-    /// Array rust struct of the same element whose bounds are NOT the `[+]` shape — its wasm class
-    /// is the loose `Vec` wrapper, byte-compatible with what the try_from source needs).
+    /// Whether rule `name` provides a COMPATIBLE loose list wrapper for `element_resolved`: only a
+    /// genuinely unbounded default/preserve Array of that same element is the `Vec` builder a
+    /// restricted wrapper may borrow. Bounded `BoundedVec` and reject `OrderedSet` rules share none
+    /// of that representation, even if their bounds are not `[+]`.
     fn provides_compatible_loose_list(&self, name: &str, element_resolved: &RustType) -> bool {
         let ident = RustIdent::new(CDDLIdent::new(name));
-        matches!(
-            self.rust_structs.get(&ident).map(|rs| rs.variant()),
-            Some(RustStructType::Array {
-                element_type,
-                bounds,
-            }) if *bounds != Some((Some(1), None))
-                && element_type.clone().resolve_aliases() == *element_resolved
-        )
+        self.rust_structs.get(&ident).is_some_and(|rs| {
+            matches!(
+                rs.variant(),
+                RustStructType::Array {
+                    element_type,
+                    bounds,
+                } if matches!(bounds, None | Some((None, None)))
+                    && element_type.clone().resolve_aliases() == *element_resolved
+            ) && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+        })
     }
 
     /// Whether rule `name` is the SELF-NAMED `[+ elem]` rule of the element whose loose list class is
@@ -1050,6 +1117,8 @@ impl<'a> IntermediateTypes<'a> {
             ty.reject_ordered_set_wasm_wrapper_name(self)
         } else if ty.is_non_empty_array() {
             ty.non_empty_wasm_wrapper_name(self)
+        } else if ty.is_bounded_array() {
+            ty.bounded_wasm_wrapper_name(self)
         } else if ty.is_non_empty_map() {
             ty.non_empty_wasm_map_wrapper_name(self)
         } else {
@@ -1137,7 +1206,7 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         // Register the import of a DEFERRED loose LIST wrapper that a locally-minted restricted
-        // wrapper (`NonEmpty*List`, or a named `[+ …]` rule's class) borrows as its `try_from`
+        // wrapper (`NonEmpty*List`, `BoundedVec`, or a named restricted rule's class) borrows as its `try_from`
         // source. The `try_from(&<Elem>List)` reference is conversion-internal — invisible to the
         // field walk, the same class of problem as a map's `keys()`-list
         // (`register_deferred_keys_list`), solved the same way: follow the CLASS, not the using
@@ -1148,14 +1217,17 @@ impl<'a> IntermediateTypes<'a> {
         // loose name equals the wrapper ident (a self-named rule emits no `try_from`); or the
         // loose wrapper is not deferred (it is a local class in the same scope). Empty `deferred`
         // (rust pass / flag unused) makes this a no-op, so output is byte-identical without the flag.
-        fn register_deferred_non_empty_list_source(
+        fn register_deferred_restricted_list_source(
             refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
             deferred: &BTreeMap<RustIdent, ModuleScope>,
             wrapper_ident: &RustIdent,
             elem: &RustType,
+            bounded_outer: bool,
         ) {
-            if elem.vec_of_self_directly_wasm_exposable(types) || elem.is_non_empty_array() {
+            if elem.vec_of_self_directly_wasm_exposable(types)
+                || (!bounded_outer && (elem.is_non_empty_array() || elem.is_bounded_array()))
+            {
                 return;
             }
             let loose = elem.name_as_wasm_array(types);
@@ -1172,7 +1244,7 @@ impl<'a> IntermediateTypes<'a> {
                     .insert(loose_ident);
             }
         }
-        // The map twin of `register_deferred_non_empty_list_source`: a locally-minted restricted
+        // The map twin of `register_deferred_restricted_list_source`: a locally-minted restricted
         // `NonEmptyMap*` (or named `{+ …}` rule) class enters via `try_from(&MapKToV)` — when that
         // loose structural table wrapper is deferred, import it at the restricted wrapper's
         // emission scope. Additional no-op case: the loose shape has a SOLE table-rule owner —
@@ -1244,8 +1316,8 @@ impl<'a> IntermediateTypes<'a> {
                 .or_default()
                 .insert(keys_ident);
         }
-        // The non-deferred analogue of `register_deferred_non_empty_list_source`: a restricted list
-        // wrapper (`NonEmpty*List` / a named `[+ …]` rule / a dedup owner) emitted at `emit_scope`
+        // The non-deferred analogue of `register_deferred_restricted_list_source`: a restricted list
+        // wrapper (`NonEmpty*List`, `BoundedVec`, a named restricted rule, or a dedup owner) emitted at `emit_scope`
         // borrows a LOOSE `<Elem>List` as its `try_from` source, and that loose builder is a locally
         // minted class (typically ROOT-minted). Its `try_from(&<Elem>List)` names the loose builder
         // bare in `emit_scope`, so import it there — the list twin of `register_root_keys_list`. Also
@@ -1257,7 +1329,7 @@ impl<'a> IntermediateTypes<'a> {
         // emits no `try_from`); or the loose builder is deferred (the deferred helper imports it from
         // the dep's `collections` module instead).
         #[allow(clippy::too_many_arguments)]
-        fn register_root_non_empty_list_source(
+        fn register_root_restricted_list_source(
             refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
             wasm: bool,
@@ -1266,8 +1338,11 @@ impl<'a> IntermediateTypes<'a> {
             emit_scope: &ModuleScope,
             wrapper_ident: &RustIdent,
             elem: &RustType,
+            bounded_outer: bool,
         ) {
-            if !wasm || elem.vec_of_self_directly_wasm_exposable(types) || elem.is_non_empty_array()
+            if !wasm
+                || elem.vec_of_self_directly_wasm_exposable(types)
+                || (!bounded_outer && (elem.is_non_empty_array() || elem.is_bounded_array()))
             {
                 return;
             }
@@ -1289,7 +1364,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             mark_refs(refs, types, wasm, sole_owners, deferred, &loose_scope, elem);
         }
-        // The map twin of `register_root_non_empty_list_source`: a restricted `NonEmptyMap*` /
+        // The map twin of `register_root_restricted_list_source`: a restricted `NonEmptyMap*` /
         // `NonEmptyPairMap*` wrapper (synthesized, named `{+ …}` rule, or dedup owner) emitted at
         // `emit_scope` enters via `try_from(&MapKToV)`, naming the LOOSE structural table wrapper bare
         // in `emit_scope`. Import it there, resolving the loose builder's own home the SAME way
@@ -1463,11 +1538,19 @@ impl<'a> IntermediateTypes<'a> {
                         // A RESTRICTED wrapper (`[+ …]` / `@duplicates reject`) borrows a LOOSE
                         // `<Elem>List` as its `try_from` source, named bare in its emission scope —
                         // import it there (deferred + non-deferred analogues).
-                        if ty.is_non_empty_array() || ty.is_reject_ordered_set() {
-                            register_deferred_non_empty_list_source(
-                                refs, types, deferred, &wrapper, elem_ty,
+                        if ty.is_non_empty_array()
+                            || ty.is_bounded_array()
+                            || ty.is_reject_ordered_set()
+                        {
+                            register_deferred_restricted_list_source(
+                                refs,
+                                types,
+                                deferred,
+                                &wrapper,
+                                elem_ty,
+                                ty.is_bounded_array(),
                             );
-                            register_root_non_empty_list_source(
+                            register_root_restricted_list_source(
                                 refs,
                                 types,
                                 wasm,
@@ -1476,6 +1559,7 @@ impl<'a> IntermediateTypes<'a> {
                                 &emit_scope,
                                 &wrapper,
                                 elem_ty,
+                                ty.is_bounded_array(),
                             );
                         }
                         // The wrapper's emitted code names its ELEMENT type bare in its EMISSION
@@ -1613,9 +1697,10 @@ impl<'a> IntermediateTypes<'a> {
                     bounds,
                 } => {
                     // A NAMED rule whose emitted class borrows the LOOSE `<Elem>List` as its
-                    // `try_from(&<Elem>List)` source names that builder bare in THIS scope. Two rule
-                    // families do so: a restricted `[+ …]` rule (`generate_non_empty_array_type`) and
-                    // a `@duplicates reject` rule of ANY bounds (`generate_reject_ordered_set_type`) —
+                    // `try_from(&<Elem>List)` source names that builder bare in THIS scope. Three rule
+                    // families do so: a restricted `[+ …]` rule (`generate_non_empty_array_type`), an
+                    // ordinary/preserve bounded rule (`generate_bounded_array_type`), and a
+                    // `@duplicates reject` rule of ANY bounds (`generate_reject_ordered_set_type`) —
                     // a plain `[*] reject` set still enters through `try_from(&FooList)`, so gating on
                     // the non-empty bound alone left its loose-source import (at the rule's scope) and
                     // the loose builder's element ref (at ROOT, its emission scope) unregistered
@@ -1624,16 +1709,24 @@ impl<'a> IntermediateTypes<'a> {
                     // whether a loose source actually exists, so a plain non-reject `[* foo]` rule
                     // (whose class wraps `Vec<Foo>` directly, no `try_from` source) is correctly a
                     // no-op even when it reaches here.
-                    // LOCKSTEP: this gate mirrors `generate_reject_ordered_set_type`'s /
-                    // `generate_non_empty_array_type`'s `loose_list` decision — a reject rule emits
-                    // `try_from(&Loose)` regardless of its `[*]`/`[+]` bound. Change them together.
+                    // LOCKSTEP: this gate mirrors the three restricted emitters' `loose_list`
+                    // decisions — a reject rule emits `try_from(&Loose)` regardless of its `[*]`/`[+]`
+                    // bound, while a bounded outer also does so over a constrained element. Change
+                    // them together.
                     // A rule whose own wrapper DEFERRED (index mode unifying a rule ident with an
                     // indexed structural name) emits no class and therefore no `try_from` — it still
                     // reaches this gate, and the two helpers' own guards plus the usage-derived
                     // import prune leave it importing nothing, so the gate stays keyed on the rule's
                     // SHAPE rather than on a placement decision made in the generator.
+                    let bounded = rust_struct.config().duplicates
+                        != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                        && matches!(
+                            bounds,
+                            Some(window) if *window != (None, None) && *window != (Some(1), None)
+                        );
                     if wasm
                         && (*bounds == Some((Some(1), None))
+                            || bounded
                             || rust_struct.config().duplicates
                                 == Some(crate::comment_ast::DuplicatesPolicy::Reject))
                     {
@@ -1643,18 +1736,19 @@ impl<'a> IntermediateTypes<'a> {
                         // same-condition principle (a reject rule over a dep-owned element defers its
                         // loose source exactly as a non-empty rule does); a no-op when `deferred` is
                         // empty, so output is byte-identical without the flag.
-                        register_deferred_non_empty_list_source(
+                        register_deferred_restricted_list_source(
                             &mut refs,
                             self,
                             deferred,
                             &rust_struct.ident,
                             element_type,
+                            bounded,
                         );
                         // The non-deferred analogue: the loose `<Elem>List` is a locally (ROOT-)
                         // minted class the rule's `try_from(&<Elem>List)` names bare in THIS scope,
                         // so import it here (E0425 otherwise). Fixes the `necollrec` and `rsetrec`
                         // cells.
-                        register_root_non_empty_list_source(
+                        register_root_restricted_list_source(
                             &mut refs,
                             self,
                             wasm,
@@ -1663,6 +1757,7 @@ impl<'a> IntermediateTypes<'a> {
                             current_scope,
                             &rust_struct.ident,
                             element_type,
+                            bounded,
                         );
                     }
                     mark_refs(
@@ -2066,14 +2161,22 @@ impl<'a> IntermediateTypes<'a> {
                         // as its `try_from` source, named bare at the emission scope. Import it there —
                         // unless that loose source is itself a hosted requested wrapper (same scope, no
                         // import; `register_root_*` would misroute the structural name to root).
-                        if rt.is_non_empty_array() || rt.is_reject_ordered_set() {
-                            register_deferred_non_empty_list_source(
-                                &mut refs, self, deferred, wid, elem,
+                        if rt.is_non_empty_array()
+                            || rt.is_bounded_array()
+                            || rt.is_reject_ordered_set()
+                        {
+                            register_deferred_restricted_list_source(
+                                &mut refs,
+                                self,
+                                deferred,
+                                wid,
+                                elem,
+                                rt.is_bounded_array(),
                             );
                             let loose =
                                 RustIdent::new(CDDLIdent::new(elem.name_as_wasm_array(self)));
                             if !requested_hosted.contains(&loose) {
-                                register_root_non_empty_list_source(
+                                register_root_restricted_list_source(
                                     &mut refs,
                                     self,
                                     wasm,
@@ -2082,6 +2185,7 @@ impl<'a> IntermediateTypes<'a> {
                                     req_scope,
                                     wid,
                                     elem,
+                                    rt.is_bounded_array(),
                                 );
                             }
                         }
@@ -3812,6 +3916,9 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.non_empty_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            for msg in self.bounded_array_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
             // NonEmptyMap wasm-wrapper name collisions — the map-side twin of the above.
             for msg in self.non_empty_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
@@ -4409,6 +4516,106 @@ impl<'a> IntermediateTypes<'a> {
             return Err(self.rejections_error());
         }
         Ok(())
+    }
+
+    /// Detect wasm-class name conflicts the finite/zero-minimum `BoundedVec` emission would
+    /// otherwise turn into a non-compiling wasm crate. This is deliberately a per-kind sibling of
+    /// the NonEmpty detector: its name embeds MIN/MAX and its pinned diagnostic tells an author
+    /// which restricted representation they shadowed. In addition to the restricted class's own
+    /// name, a non-exposable bounded wrapper needs the loose `<Elem>List` builder as its checked
+    /// `try_from` source. A positive-minimum self-named rule cannot use `new()` and cannot borrow
+    /// that same ident as a loose source, so it is rejected rather than exposing an unconstructible
+    /// JS class. Zero-minimum self-named rules remain constructible by `new()` + `add`.
+    fn bounded_array_wrapper_name_collisions(&self) -> Vec<String> {
+        let mut msgs = BTreeSet::new();
+        let check_loose_source = |wrapper_ident: &str,
+                                  element: &RustType,
+                                  min: u64,
+                                  context: &str,
+                                  msgs: &mut BTreeSet<String>| {
+            // Unlike the NonEmpty/reject twins, a bounded OUTER can and must take a loose source
+            // even when its element is another restricted collection: `generate_array_type` gives
+            // that source wrapper its own checked element boundary.
+            if element.vec_of_self_directly_wasm_exposable(self) {
+                return;
+            }
+            let loose = element.name_as_wasm_array(self);
+            if loose == wrapper_ident {
+                if min != 0 {
+                    msgs.insert(format!(
+                        "name collision: positive-minimum bounded rule '{wrapper_ident}' owns the \
+                         loose '{loose}' list-builder ident it needs as its `try_from` source — \
+                         rename the rule so the loose builder class can exist"
+                    ));
+                }
+            } else if self.wasm_ident_claimed_by_user_rule(&loose)
+                && !self.provides_compatible_loose_list(&loose, &element.clone().resolve_aliases())
+            {
+                msgs.insert(format!(
+                    "name collision: rule '{loose}' claims the ident the loose '{loose}' list \
+                     builder needs as the `try_from` source of {context} — rename the rule (or \
+                     make it `[* …]` of the same element, which IS that builder)"
+                ));
+            }
+        };
+        self.visit_all_rust_types(&mut |rt| {
+            let ConceptualRustType::Array(elem) = &rt.conceptual_type else {
+                return;
+            };
+            if !rt.is_bounded_array() {
+                return;
+            }
+            let (min, _) = rt
+                .bounded_array_u64_bounds()
+                .expect("bounded occurrence bounds were validated during parsing");
+            if self
+                .bounded_array_named_owner(elem, rt.config.bounds.unwrap())
+                .is_some()
+            {
+                return;
+            }
+            let restricted = rt.bounded_wasm_wrapper_name(self);
+            if self.wasm_ident_claimed_by_user_rule(&restricted) {
+                msgs.insert(format!(
+                    "name collision: rule '{restricted}' collides with the '{restricted}' wasm \
+                     wrapper generated for an inline bounded array occurrence — rename the rule to \
+                     avoid shadowing the restricted BoundedVec wrapper"
+                ));
+            }
+            check_loose_source(
+                &restricted,
+                elem,
+                min,
+                &format!("the inline bounded wrapper '{restricted}'"),
+                &mut msgs,
+            );
+        });
+        // A named bounded rule uses its own ident for the restricted class and is not visited as a
+        // raw Array occurrence above. It has the same loose-source need, including the positive-min
+        // self-named dead end, so audit it explicitly.
+        for (ident, rs) in &self.rust_structs {
+            let RustStructType::Array {
+                element_type,
+                bounds: Some(bounds),
+            } = rs.variant()
+            else {
+                continue;
+            };
+            if rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject) {
+                continue;
+            }
+            let Some((min, _)) = Self::normalized_bounded_array_window(*bounds) else {
+                continue;
+            };
+            check_loose_source(
+                ident.as_ref(),
+                element_type,
+                min,
+                &format!("the named bounded rule '{ident}'"),
+                &mut msgs,
+            );
+        }
+        msgs.into_iter().collect()
     }
 
     /// Detect wasm-class name conflicts the `[+ elem]` (NonEmptyVec) emission would otherwise turn

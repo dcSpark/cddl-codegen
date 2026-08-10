@@ -85,11 +85,13 @@ pub struct WitNonemptyOsetPoint(pub RefCell<cddl_lib::NonemptyOsetPoint>);
 
 impl wit_types::GuestNonemptyOsetPoint for WitNonemptyOsetPoint {
     fn new(inner: Vec<wit_types::PointBorrow<'_>>) -> Result<Self, String> {
-        let inner: Vec<_> = inner
+        let inner = (inner
             .into_iter()
             .map(|x| x.get::<WitPoint>().0.borrow().clone())
-            .collect();
-        let inner = cddl_lib::NonemptyOsetPoint::new(inner.try_into().map_err(err)?);
+            .collect::<Vec<_>>())
+        .try_into()
+        .map_err(err)?;
+        let inner = cddl_lib::NonemptyOsetPoint::new(inner);
         Ok(WitNonemptyOsetPoint(RefCell::new(inner)))
     }
 
@@ -112,8 +114,13 @@ pub struct WitNonemptySetBytes(pub RefCell<cddl_lib::NonemptySetBytes>);
 
 impl wit_types::GuestNonemptySetBytes for WitNonemptySetBytes {
     fn new(inner: Vec<Vec<u8>>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().map(|x| x.into_iter().collect()).collect();
-        let inner = cddl_lib::NonemptySetBytes::new(inner.try_into().map_err(err)?);
+        let inner = (inner
+            .into_iter()
+            .map(|x| x.into_iter().collect())
+            .collect::<Vec<_>>())
+        .try_into()
+        .map_err(err)?;
+        let inner = cddl_lib::NonemptySetBytes::new(inner);
         Ok(WitNonemptySetBytes(RefCell::new(inner)))
     }
 
@@ -136,8 +143,10 @@ pub struct WitNonemptySetText(pub RefCell<cddl_lib::NonemptySetText>);
 
 impl wit_types::GuestNonemptySetText for WitNonemptySetText {
     fn new(inner: Vec<String>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::NonemptySetText::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::NonemptySetText::new(inner);
         Ok(WitNonemptySetText(RefCell::new(inner)))
     }
 
@@ -187,7 +196,7 @@ pub struct WitSetU64(pub RefCell<cddl_lib::SetU64>);
 
 impl wit_types::GuestSetU64 for WitSetU64 {
     fn new(inner: Vec<u64>) -> Self {
-        let inner = inner.into_iter().collect();
+        let inner = inner.into_iter().collect::<Vec<_>>();
         let inner = cddl_lib::SetU64::new(inner);
         WitSetU64(RefCell::new(inner))
     }

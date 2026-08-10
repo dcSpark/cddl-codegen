@@ -14,6 +14,7 @@ expression: content
 extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
+pub mod bounded;
 pub mod error;
 pub mod non_empty;
 pub mod ordered_hash_map;
@@ -22,17 +23,42 @@ pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
+use crate::generated::bounded::BoundedVec;
 use crate::generated::non_empty::NonEmptyVec;
 use cbor_encodings::OccurrenceHolderEncoding;
 
-pub type Bounded = Vec<u64>;
+/// `[2*5 uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type Bounded = BoundedVec<u64, 2, 5>;
+
+/// `[2*2 uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type Exact = BoundedVec<u64, 2, 2>;
+
+/// `[2* uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type Lower = BoundedVec<u64, 2, { u64::MAX }>;
+
+/// `[? uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type Maybe = BoundedVec<u64, 0, 1>;
+
+/// `[2*3 [*2 uint]]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type NestedBounded = BoundedVec<BoundedVec<u64, 0, 2>, 2, 3>;
+
+pub type NestedUpper = Vec<BoundedVec<u64, 0, 2>>;
 
 #[derive(Clone, Debug)]
 pub struct OccurrenceHolder {
     pub o: OneOrMore,
     pub b: Bounded,
-    pub inline_bounded: Vec<String>,
+    pub upper: Upper,
+    pub lower: Lower,
+    pub maybe: Maybe,
+    pub exact: Exact,
+    pub nested: NestedUpper,
+    pub nested_bounded: NestedBounded,
+    pub inline_bounded: BoundedVec<String, 1, 3>,
+    pub inline_upper: BoundedVec<u64, 0, 5>,
+    pub inline_lower: BoundedVec<u64, 2, { u64::MAX }>,
+    pub inline_maybe: BoundedVec<u64, 0, 1>,
+    pub inline_exact: BoundedVec<u64, 2, 2>,
     pub encodings: Option<OccurrenceHolderEncoding>,
 }
 
@@ -40,32 +66,39 @@ impl OccurrenceHolder {
     pub fn new(
         o: OneOrMore,
         b: Bounded,
-        inline_bounded: Vec<String>,
-    ) -> Result<Self, DeserializeError> {
-        if b.len() < 2 || b.len() > 5 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: b.len() as i128,
-                min: Some(2),
-                max: Some(5),
-            }
-            .into());
-        }
-        if inline_bounded.len() < 1 || inline_bounded.len() > 3 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: inline_bounded.len() as i128,
-                min: Some(1),
-                max: Some(3),
-            }
-            .into());
-        }
-        Ok(Self {
+        upper: Upper,
+        lower: Lower,
+        maybe: Maybe,
+        exact: Exact,
+        nested: NestedUpper,
+        nested_bounded: NestedBounded,
+        inline_bounded: BoundedVec<String, 1, 3>,
+        inline_upper: BoundedVec<u64, 0, 5>,
+        inline_lower: BoundedVec<u64, 2, { u64::MAX }>,
+        inline_maybe: BoundedVec<u64, 0, 1>,
+        inline_exact: BoundedVec<u64, 2, 2>,
+    ) -> Self {
+        Self {
             o,
             b,
+            upper,
+            lower,
+            maybe,
+            exact,
+            nested,
+            nested_bounded,
             inline_bounded,
+            inline_upper,
+            inline_lower,
+            inline_maybe,
+            inline_exact,
             encodings: None,
-        })
+        }
     }
 }
 
 /// `[+ u64]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 pub type OneOrMore = NonEmptyVec<u64>;
+
+/// `[*5 uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type Upper = BoundedVec<u64, 0, 5>;

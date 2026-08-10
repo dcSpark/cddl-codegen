@@ -24,7 +24,19 @@ fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(unused_imports)]
 use crate::generated::Bounded as _;
 #[allow(unused_imports)]
+use crate::generated::Exact as _;
+#[allow(unused_imports)]
+use crate::generated::Lower as _;
+#[allow(unused_imports)]
+use crate::generated::Maybe as _;
+#[allow(unused_imports)]
+use crate::generated::NestedBounded as _;
+#[allow(unused_imports)]
+use crate::generated::NestedUpper as _;
+#[allow(unused_imports)]
 use crate::generated::OneOrMore as _;
+#[allow(unused_imports)]
+use crate::generated::Upper as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::OccurrenceHolder>();
