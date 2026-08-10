@@ -21,8 +21,9 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->293 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
-> generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
-> it generates and compiles. A second, orthogonal **emission axis** re-probes every default-`supported`
+> generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`) wherever the
+> shape mints a standalone or synthetic embedded test surface; the explicitly-labelled fallback for
+> shapes that mint neither is a passing compile verdict. A second, orthogonal **emission axis** re-probes every default-`supported`
 > row under each non-default codegen profile (`preserve`, `json`) and records a per-profile verdict
 > (`emission.<name>.status`) — the axis is **filled**: a row with no `emission` keys is one whose
 > default verdict is not `supported`, hence unsupported under every profile (a derived fact, since

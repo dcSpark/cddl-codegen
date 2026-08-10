@@ -419,9 +419,9 @@ defaults to **`reject`**: the well-known-tag registry supplies set semantics (un
 default. Every **other** set/array rule (a non-258 tagged idiom, a plain `[* a]` / `[+ a]`) still
 defaults to `preserve`, and **tables** still default to `reject`. Writing the effective default
 explicitly is accepted as self-documentation (a no-op, no warning); the opposite value is the live
-opt-out. In particular, `@duplicates preserve` on a tag-258 set is the **opt-out** back to plain
-`Vec<T>`/`NonEmptyVec<T>` (today's wire behavior verbatim) for a rule that must accept and re-emit
-historical duplicate-bearing data.
+opt-out. In particular, `@duplicates preserve` on a tag-258 set is the **opt-out** back to the
+occurrence-selected `Vec<T>` / `NonEmptyVec<T>` / `BoundedVec<T, MIN, MAX>` carrier (today's wire
+behavior verbatim) for a rule that must accept and re-emit historical duplicate-bearing data.
 
 :::warning Breaking change (decode-time)
 A tag-258 set previously defaulted to `preserve`; it now defaults to `reject`. Generated code still
