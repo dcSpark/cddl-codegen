@@ -11580,7 +11580,9 @@ fn emit_tests_execute() {
 /// mandatory suffix. Generate a direct record, a containing choice (reachability), and a disjoint
 /// control; inspect the per-type emitted guard and execute the generated crate. This is the focused
 /// local-tier pin for the class `feature_corpus_roundtrips_nondefault_profiles` found at full-tier
-/// corpus breadth.
+/// corpus breadth. The nested array tail, open struct-map and both open-table row positions also
+/// pin the representation-aware rest-row traversal: map rows walk domain/range, array tails walk
+/// their element, and open tables walk both the typed row and catch-all.
 #[test]
 fn emit_tests_optional_overlap_indefinite_policy_execute() {
     if !tool_exists("cargo") {
@@ -11597,7 +11599,14 @@ fn emit_tests_optional_overlap_indefinite_policy_execute() {
         &input,
         "overlap = [? a: uint, b: uint]\n\
          disjoint = [? a: tstr, b: uint]\n\
-         choice = overlap / tstr\n",
+         choice = overlap / tstr\n\
+         array-tail = [head: uint, * overlap]\n\
+         open-map = { 1: uint, * tstr => overlap }\n\
+         domain-map = { 1: uint, * overlap => tstr }\n\
+         disjoint-open-map = { 1: uint, * tstr => disjoint }\n\
+         md = uint / tstr\n\
+         typed-table = { * bstr => overlap, * md => disjoint }\n\
+         catchall-table = { * bstr => disjoint, * md => overlap }\n",
     )
     .unwrap();
     let out = root.join("crate");
@@ -11625,7 +11634,15 @@ fn emit_tests_optional_overlap_indefinite_policy_execute() {
             .and_then(|rest| rest.split("\n    #[test]\n").next())
             .unwrap_or_else(|| panic!("missing emitted roundtrip_{name}"))
     };
-    for name in ["overlap", "choice"] {
+    for name in [
+        "overlap",
+        "choice",
+        "array_tail",
+        "open_map",
+        "domain_map",
+        "typed_table",
+        "catchall_table",
+    ] {
         let body = test_body(name);
         assert!(
             body.contains("IndefiniteLengthAmbiguousOptionalField")
@@ -11634,11 +11651,13 @@ fn emit_tests_optional_overlap_indefinite_policy_execute() {
             "{name}'s emitted oracle lacks the exact policy/error/transform guard:\n{body}"
         );
     }
-    let disjoint = test_body("disjoint");
-    assert!(
-        !disjoint.contains("IndefiniteLengthAmbiguousOptionalField"),
-        "the disjoint control received the policy escape hatch:\n{disjoint}"
-    );
+    for name in ["disjoint", "disjoint_open_map"] {
+        let body = test_body(name);
+        assert!(
+            !body.contains("IndefiniteLengthAmbiguousOptionalField"),
+            "the {name} control received the policy escape hatch:\n{body}"
+        );
+    }
 
     let test = tool_cmd("cargo")
         .arg("test")
