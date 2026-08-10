@@ -3551,14 +3551,15 @@ fn exposable_generic_collection_instance_keyed_map_lowers_keys_list_structurally
     );
 }
 
-/// Independently-authored tables share a structural wasm `keys()` class exactly when their native
-/// key carriers match. Each table below is valid alone; together they used to collapse every array
-/// key onto `ArrU64List`, then make the second synthesis mistake the first for a user-authored claim.
-/// The first five are the minimized batch-19 family; the final pair is batch 33's
-/// range-vs-`.cbor` interaction. `loose`/`ranged` genuinely share `Vec<u64>`, while
-/// `upper`/`cbor_wrapped` genuinely share `BoundedVec<u64, 0, 5>`; the other carriers stay distinct.
+/// Independently valid tables with loose, non-empty, and bounded ARRAY keys compose without
+/// changing the established keys-list ABI. All seven shapes below have always named the returned
+/// class `ArrU64List`; the class therefore stores the one loose boundary carrier `Vec<Vec<u64>>`,
+/// while each map retains its checked key carrier for `insert`/`get`. The restricted `keys()`
+/// accessors clone through their infallible carrier-to-`Vec` conversion before constructing the
+/// shared class. The first five rows are the minimized recombination batch-19 family; the last pair
+/// is batch 33's scalar-range versus `.cbor` interaction.
 #[test]
-fn table_keys_list_syntheses_unify_only_exact_native_carriers() {
+fn table_keys_list_syntheses_share_the_established_loose_boundary_carrier() {
     const CDDL: &str = "bounded = { [2*5 uint] => uint }\n\
                         lower = { [2* uint] => uint }\n\
                         upper = { [*5 uint] => uint }\n\
@@ -3579,101 +3580,45 @@ fn table_keys_list_syntheses_unify_only_exact_native_carriers() {
         "shared_keys_list_unused",
         "--wasm=true",
     ]))
-    .expect("compatible table keys-list owners must unify without collapsing distinct carriers");
+    .expect("bounded and loose table keys must share the established keys-list boundary class");
     std::fs::remove_file(&path).ok();
     let wasm = &out["wasm/src/generated/mod.rs"];
-    for (class, inner, keys_users) in [
-        ("ArrU64List", "Vec<Vec<u64>>", 3),
-        ("U64ListMax5List", "Vec<BoundedVec<u64, 0, 5>>", 3),
-        (
-            "U64ListMin2List",
-            "Vec<BoundedVec<u64, 2, { u64::MAX }>>",
-            2,
-        ),
-        ("U64ListMin2Max5List", "Vec<BoundedVec<u64, 2, 5>>", 2),
-        ("NonEmptyU64ListList", "Vec<NonEmptyVec<u64>>", 2),
-    ] {
-        assert_eq!(
-            wasm.matches(&format!("pub struct {class}(pub(crate) {inner})"))
-                .count(),
-            1,
-            "the exact native carrier must have one structural class `{class}`:\n{wasm}"
-        );
-        assert_eq!(
-            wasm.matches(&format!("pub fn keys(&self) -> {class}"))
-                .count(),
-            keys_users,
-            "every table/builder with the exact carrier must reuse `{class}`:\n{wasm}"
-        );
-    }
-}
 
-/// The exact-carrier rule is recursive: once a bounded collection is nested inside another list,
-/// set, map, or pair-map, the outer structural name must retain that restricted inner carrier.
-/// Otherwise these independently valid inline fields collapse onto one JS class while wrapping
-/// incompatible Rust types (`Vec` versus `BoundedVec`) and the generated wasm crate fails with
-/// conversion/type-mismatch errors.
-#[test]
-fn nested_collection_structural_names_retain_restricted_inner_carriers() {
-    const CDDL: &str = "loose_set<a> = [* a] ; @duplicates reject
-    restricted_set<a> = [* a] ; @duplicates reject
-    loose_bounded_set<a> = [*3 a] ; @duplicates reject
-    restricted_bounded_set<a> = [*3 a] ; @duplicates reject
-    holder = [
-      ne_loose: [+ [* uint]],
-      ne_bounded: [+ [*5 uint]],
-      bounded_loose: [*3 [* uint]],
-      bounded_bounded: [*3 [*5 uint]],
-      set_loose: loose_set<([* uint])>,
-      set_bounded: restricted_set<([*5 uint])>,
-      bounded_set_loose: loose_bounded_set<([* uint])>,
-      bounded_set_bounded: restricted_bounded_set<([*5 uint])>,
-      map_loose: { * [* uint] => [* uint] },
-      map_bounded: { * [*5 uint] => [*5 uint] },
-      deep_map_loose: { * [* [* uint]] => uint },
-      deep_map_bounded: { * [* [*5 uint]] => uint },
-      map_list_loose: [* { * [* uint] => uint }],
-      map_list_bounded: [* { * [*5 uint] => uint }],
-      pair_loose: { * [* uint] => [* uint] ; @duplicates preserve
-      },
-      pair_bounded: { * [*5 uint] => [*5 uint] ; @duplicates preserve
-      },
-    ]\n";
-    let path = std::env::temp_dir().join(format!(
-        "cddl_codegen_nested_carrier_names_{}.cddl",
-        std::process::id()
-    ));
-    std::fs::write(&path, CDDL).unwrap();
-    let out = crate::api::generated_strings(&Cli::parse_from([
-        "cddl-codegen",
-        "--input",
-        path.to_str().unwrap(),
-        "--output",
-        "nested_carrier_names_unused",
-        "--wasm=true",
-    ]))
-    .expect("nested restricted collection carriers must generate distinct structural wasm names");
-    std::fs::remove_file(&path).ok();
-    let wasm = &out["wasm/src/generated/mod.rs"];
-    for (loose, restricted) in [
-        ("NonEmptyArrU64List", "NonEmptyU64ListMax5List"),
-        ("ArrU64ListMax3", "U64ListMax5ListMax3"),
-        ("ArrU64OrderedSet", "U64ListMax5OrderedSet"),
-        (
-            "ArrU64BoundedOrderedSetMax3",
-            "U64ListMax5BoundedOrderedSetMax3",
-        ),
-        ("MapArrU64ToArrU64", "MapU64ListMax5ToU64ListMax5"),
-        ("MapArrArrU64ToU64", "MapArrU64ListMax5ToU64"),
-        ("MapArrU64ToU64List", "MapU64ListMax5ToU64List"),
-        ("PairMapArrU64ToArrU64", "PairMapU64ListMax5ToU64ListMax5"),
-    ] {
-        assert!(
-            wasm.contains(&format!("pub struct {loose}"))
-                && wasm.contains(&format!("pub struct {restricted}")),
-            "loose and restricted nested carriers need distinct `{loose}` / `{restricted}` classes:\n{wasm}"
-        );
-    }
+    assert_eq!(
+        wasm.matches("pub struct ArrU64List(pub(crate) Vec<Vec<u64>>)")
+            .count(),
+        1,
+        "the shared structural class must be minted once over the loose boundary carrier:\n{wasm}"
+    );
+    assert!(
+        !wasm.contains("U64ListMax5List")
+            && !wasm.contains("U64ListMin2List")
+            && !wasm.contains("U64ListMin2Max5List")
+            && !wasm.contains("NonEmptyU64ListList"),
+        "occurrence bounds must not rename the established `ArrU64List` ABI:\n{wasm}"
+    );
+    assert!(
+        wasm.matches("pub fn keys(&self) -> ArrU64List").count() >= 7,
+        "every table surface must return the shared keys-list class:\n{wasm}"
+    );
+    assert!(
+        wasm.matches(".keys().cloned().map(Into::into).collect::<Vec<_>>()")
+            .count()
+            >= 5,
+        "each restricted key carrier must loosen at the `keys()` boundary:\n{wasm}"
+    );
+    assert_eq!(
+        wasm.matches("pub struct MapArrU64ToU64(pub(crate) BTreeMap<Vec<u64>, u64>)")
+            .count(),
+        1,
+        "the shared structural map builder must likewise have one loose key carrier:\n{wasm}"
+    );
+    assert!(
+        wasm.matches(".map(|(key, value)| key.try_into().map(|key| (key, value)))")
+            .count()
+            >= 5,
+        "restricted named tables must re-check every loose builder key at their guarded door:\n{wasm}"
+    );
 }
 
 /// A recursive union used as a table's DOMAIN (`key_map = { * key_val => key_val }` with

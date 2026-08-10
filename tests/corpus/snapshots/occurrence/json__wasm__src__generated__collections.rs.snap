@@ -11,6 +11,7 @@ expression: content
 // line naming a removed wrapper fails this crate's own build — the index cannot
 // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to
 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).
+pub use crate::generated::ArrU64List;
 pub use crate::generated::Bounded;
 pub use crate::generated::Exact;
 pub use crate::generated::Lower;
@@ -20,5 +21,4 @@ pub use crate::generated::NestedUpper;
 pub use crate::generated::OneOrMore;
 pub use crate::generated::TextListMin1Max3;
 pub use crate::generated::U64ListMax2;
-pub use crate::generated::U64ListMax2List;
 pub use crate::generated::Upper;

@@ -4086,16 +4086,13 @@ colliding user name or a named+inline coexistence, so a bug in this class ships 
   `feature_corpus_compiles` shared-target pattern), with per-cell `present`/`absent` assertions
   pinning the dedup semantics (dedup target defined once, the deduped-away twin never emitted).
 
-The cheap cross-composition pins beside that sweep are
-`table_keys_list_syntheses_unify_only_exact_native_carriers` and
-`nested_collection_structural_names_retain_restricted_inner_carriers` (`robustness_tests.rs`). The
-first is the minimized pairwise closure for two full-tier `recombination_wasm_crates_check`
-failures: independent table rules reuse one `keys()` class exactly when their native key carriers
-match. The second recurses the same invariant through loose/non-empty/bounded lists, loose/bounded
-reject sets, default maps, preserve pair-maps, and deeper list/map nesting. Together they prevent a
-single structural class name from being re-used for incompatible `Vec`, `NonEmptyVec`,
-`BoundedVec`, ordered-set, map, or pair-map carriers without paying a generated-crate build per
-case; the full-tier wasm recombination leg remains the broad compile oracle.
+`table_keys_list_syntheses_share_the_established_loose_boundary_carrier`
+(`robustness_tests.rs`) is the cheap minimized cross-composition pin for the batch-19/batch-33
+failures found by the full-tier wasm recombination leg. It combines loose, non-empty, bounded,
+scalar-ranged, and `.cbor`-wrapped array keys and asserts that the established `ArrU64List` ABI is
+minted once over `Vec<Vec<u64>>`; restricted `keys()` surfaces convert into that boundary carrier,
+while their map classes retain checked key doors. A focused generated-WASM `cargo check` is required
+when changing this seam, and the full-tier recombination wasm leg remains the broad compile oracle.
 
 Expectations are seeded by the **probe-then-pin** rule: run the generator on the cell's CDDL, inspect
 the outcome, then pin the observed-AND-correct behavior. A cell that lands exit-0 + non-compiling is a

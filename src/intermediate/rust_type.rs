@@ -1195,7 +1195,7 @@ impl RustType {
                 // LOCKSTEP: `generate_non_empty_array_type`'s defer-candidate structural name
                 // duplicates THIS spelling on purpose (it must stay owner-independent — an
                 // owner-named wrapper must never look deferrable). Change both together.
-                None => format!("NonEmpty{}List", inner.wasm_structural_variant(types)),
+                None => format!("NonEmpty{}List", inner.conceptual_type.for_variant()),
             },
             _ => unreachable!("non_empty_wasm_wrapper_name on a non-array: {:?}", self),
         }
@@ -1217,7 +1217,7 @@ impl RustType {
         let (min, max) = self
             .bounded_array_u64_bounds()
             .expect("bounded wasm wrapper has representable bounds");
-        let base = inner.wasm_structural_variant(types);
+        let base = inner.conceptual_type.for_variant();
         match (min, max == u64::MAX) {
             (0, false) => format!("{base}ListMax{max}"),
             (_, true) => format!("{base}ListMin{min}"),
@@ -1234,10 +1234,10 @@ impl RustType {
     /// can never disagree. NAMED reject rules keep their rule ident as the wrapper name and never route
     /// through here (like the NonEmpty twin, the raw-`Array` `is_reject_ordered_set` gate leaves an
     /// aliased field on its rule-derived name).
-    pub fn reject_ordered_set_wasm_wrapper_name(&self, types: &IntermediateTypes) -> String {
+    pub fn reject_ordered_set_wasm_wrapper_name(&self, _types: &IntermediateTypes) -> String {
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) => {
-                let variant = inner.wasm_structural_variant(types);
+                let variant = inner.conceptual_type.for_variant();
                 if self.is_non_empty_array() {
                     format!("NonEmpty{variant}OrderedSet")
                 } else {
@@ -1256,7 +1256,7 @@ impl RustType {
     /// a loose/non-empty ordered-set wrapper of the same element type.
     pub fn bounded_reject_ordered_set_wasm_wrapper_name(
         &self,
-        types: &IntermediateTypes,
+        _types: &IntermediateTypes,
     ) -> String {
         let (min, max) = self
             .bounded_array_u64_bounds()
@@ -1264,7 +1264,7 @@ impl RustType {
         let ConceptualRustType::Array(inner) = &self.conceptual_type else {
             unreachable!("bounded_reject_ordered_set_wasm_wrapper_name on a non-array");
         };
-        let base = inner.wasm_structural_variant(types);
+        let base = inner.conceptual_type.for_variant();
         match (min, max == u64::MAX) {
             (0, false) => format!("{base}BoundedOrderedSetMax{max}"),
             (_, true) => format!("{base}BoundedOrderedSetMin{min}"),
@@ -1288,7 +1288,7 @@ impl RustType {
                 // owner-named wrapper must never look deferrable). Change both together.
                 None => format!(
                     "NonEmpty{}",
-                    Self::name_for_wasm_map(types, k, v, self.is_preserve_pair_map())
+                    ConceptualRustType::name_for_wasm_map(k, v, self.is_preserve_pair_map())
                 ),
             },
             _ => unreachable!("non_empty_wasm_map_wrapper_name on a non-map: {:?}", self),
@@ -1297,13 +1297,13 @@ impl RustType {
 
     /// Mechanical wasm name for a finite/exact table. Both bounds and duplicate policy are part of
     /// the structural identity, so a loose source can never be mistaken for this wrapper.
-    pub fn bounded_wasm_map_structural_name(&self, types: &IntermediateTypes) -> String {
+    pub fn bounded_wasm_map_structural_name(&self) -> String {
         let (min, max) = self
             .bounded_map_u64_bounds()
             .expect("bounded map wasm wrapper has representable bounds");
         let base = match &self.conceptual_type {
             ConceptualRustType::Map(k, v) => {
-                Self::name_for_wasm_map(types, k, v, self.is_preserve_pair_map())
+                ConceptualRustType::name_for_wasm_map(k, v, self.is_preserve_pair_map())
             }
             _ => unreachable!("bounded_wasm_map_wrapper_name on a non-map"),
         };
@@ -1327,7 +1327,7 @@ impl RustType {
         types
             .bounded_map_named_owner(key, value, bounds, self.is_preserve_pair_map())
             .map(ToString::to_string)
-            .unwrap_or_else(|| self.bounded_wasm_map_structural_name(types))
+            .unwrap_or_else(|| self.bounded_wasm_map_structural_name())
     }
 
     /// The wasm-boundary name of the LOOSE `@duplicates preserve` map wrapper (`PairMapKToV`) — the
@@ -1336,9 +1336,11 @@ impl RustType {
     /// class minted under the rule ident with a `pub type PairMapKToV = <Owner>;` alias beside it
     /// (`mint_sole_owner_table`), so every reference site names the structural spelling and
     /// wasm-bindgen folds it onto the owner class.
-    pub fn preserve_pair_map_wasm_wrapper_name(&self, types: &IntermediateTypes) -> String {
+    pub fn preserve_pair_map_wasm_wrapper_name(&self) -> String {
         match &self.conceptual_type {
-            ConceptualRustType::Map(k, v) => Self::name_for_wasm_map(types, k, v, true).to_string(),
+            ConceptualRustType::Map(k, v) => {
+                ConceptualRustType::name_for_wasm_map(k, v, true).to_string()
+            }
             _ => unreachable!(
                 "preserve_pair_map_wasm_wrapper_name on a non-map: {:?}",
                 self
@@ -1458,10 +1460,7 @@ impl RustType {
         // conceptual `for_wasm_member_ct` below cannot see the policy, so the flavor branch lives here
         // — the same seam `is_non_empty_map` uses for the occurrence bound.
         if self.is_preserve_pair_map() {
-            return self.preserve_pair_map_wasm_wrapper_name(types);
-        }
-        if let ConceptualRustType::Map(k, v) = &self.conceptual_type {
-            return Self::name_for_wasm_map(types, k, v, false).to_string();
+            return self.preserve_pair_map_wasm_wrapper_name();
         }
         match &self.conceptual_type {
             ConceptualRustType::Optional(inner) => {
@@ -1500,10 +1499,7 @@ impl RustType {
             return format!("&{}", self.bounded_wasm_map_wrapper_name(types));
         }
         if self.is_preserve_pair_map() {
-            return format!("&{}", self.preserve_pair_map_wasm_wrapper_name(types));
-        }
-        if let ConceptualRustType::Map(k, v) = &self.conceptual_type {
-            return format!("&{}", Self::name_for_wasm_map(types, k, v, false));
+            return format!("&{}", self.preserve_pair_map_wasm_wrapper_name());
         }
         match &self.conceptual_type {
             ConceptualRustType::Optional(inner) => {
@@ -1534,10 +1530,7 @@ impl RustType {
             return self.bounded_wasm_map_wrapper_name(types);
         }
         if self.is_preserve_pair_map() {
-            return self.preserve_pair_map_wasm_wrapper_name(types);
-        }
-        if let ConceptualRustType::Map(k, v) = &self.conceptual_type {
-            return Self::name_for_wasm_map(types, k, v, false).to_string();
+            return self.preserve_pair_map_wasm_wrapper_name();
         }
         self.conceptual_type.for_wasm_param_impl(types, true)
     }
@@ -1575,79 +1568,36 @@ impl RustType {
     }
 
     /// `self` is the ELEMENT type; this names the LOOSE `Vec`-of-`self` wrapper (`BarList`,
-    /// `ArrIntList`). It is NOT the outer container's nonempty/bounded name. A restricted ELEMENT,
-    /// however, must contribute its own boundary carrier to the name: `[* [2*5 uint]]` stores
-    /// `BoundedVec<u64, 2, 5>` and therefore uses `U64ListMin2Max5List`, not the `ArrU64List` a
-    /// loose `Vec<Vec<u64>>` owns. This keeps table `keys()` wrappers and structural map builders
-    /// one-name/one-native-type while still unifying constraints that share a carrier.
+    /// `ArrIntList`). It is NOT the nonempty-container name — that is `for_wasm_member` on the array
+    /// RustType. The element's own `for_variant` (bounds-invariant) drives the name, so a nonempty
+    /// element still yields a distinct loose container name (e.g. `[* [+ int]]` → `ArrIntList`).
     pub fn name_as_wasm_array(&self, types: &IntermediateTypes) -> String {
-        let carrier = self.wasm_structural_variant(types);
-        if carrier == self.conceptual_type.for_variant().to_string() {
-            self.conceptual_type.name_as_wasm_array_ct(types)
-        } else {
-            format!("{carrier}List")
-        }
+        self.conceptual_type.name_as_wasm_array_ct(types)
     }
 
-    /// The wasm wrapper carrier this Rust type contributes when nested inside another structural
-    /// wrapper name. Unlike `ConceptualRustType::for_variant`, this preserves occurrence bounds and
-    /// duplicate policy whenever they change the native stored type.
-    pub fn wasm_structural_variant(&self, types: &IntermediateTypes) -> String {
-        if self.is_bounded_reject_ordered_set() {
-            self.bounded_reject_ordered_set_wasm_wrapper_name(types)
-        } else if self.is_reject_ordered_set() {
-            self.reject_ordered_set_wasm_wrapper_name(types)
-        } else if self.is_non_empty_array() {
-            self.non_empty_wasm_wrapper_name(types)
-        } else if self.is_bounded_array() {
-            self.bounded_wasm_wrapper_name(types)
-        } else if self.is_non_empty_map() {
-            self.non_empty_wasm_map_wrapper_name(types)
-        } else if self.is_bounded_map() {
-            self.bounded_wasm_map_wrapper_name(types)
-        } else if self.is_preserve_pair_map() {
-            self.preserve_pair_map_wasm_wrapper_name(types)
-        } else {
-            match &self.conceptual_type {
-                ConceptualRustType::Array(inner) => {
-                    let inner_variant = inner.wasm_structural_variant(types);
-                    if inner_variant == inner.conceptual_type.for_variant().to_string() {
-                        self.conceptual_type.for_variant().to_string()
-                    } else {
-                        format!("Arr{inner_variant}")
-                    }
-                }
-                ConceptualRustType::Optional(inner) => {
-                    let inner_variant = inner.wasm_structural_variant(types);
-                    if inner_variant == inner.conceptual_type.for_variant().to_string() {
-                        self.conceptual_type.for_variant().to_string()
-                    } else {
-                        format!("Opt{inner_variant}")
-                    }
-                }
-                ConceptualRustType::Map(k, v) => {
-                    Self::name_for_wasm_map(types, k, v, false).to_string()
-                }
-                _ => self.conceptual_type.for_variant().to_string(),
-            }
+    /// The loose wasm boundary form of a table key, used by both the structural builder and the
+    /// list returned from `keys()`.
+    ///
+    /// The structural keys-list ABI predates occurrence-enforcing collection carriers: a table
+    /// keyed by `[* uint]`, `[+ uint]`, or `[2*5 uint]` names the returned class `ArrU64List` in
+    /// every case. Keep that established name honest by projecting an inline restricted collection
+    /// key to its loose boundary value before synthesizing the OUTER list. The map itself retains
+    /// the restricted key carrier, so `insert`/`get` still use the checked wrapper; only `keys()`
+    /// clones each key out through the carrier's infallible `Into<Vec<_>>` conversion.
+    ///
+    /// This deliberately changes only the top-level collection occurrence. Element value ranges
+    /// and nested constraints remain part of each key value, while encodings such as `.cbor` do not
+    /// affect the native boundary carrier and are therefore retained harmlessly.
+    pub fn loosened_for_wasm_table_boundary_key(&self) -> Self {
+        let mut loose = self.clone();
+        if matches!(
+            loose.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Array(_)
+        ) {
+            loose.config.bounds = None;
+            loose.config.duplicates = None;
         }
-    }
-
-    /// Bounds/policy-aware structural map name. The conceptual predecessor remains for contexts
-    /// that truly have only conceptual types; wasm wrapper ownership and emission use this form so
-    /// two equal names always imply equal native key/value carriers.
-    pub fn name_for_wasm_map(
-        types: &IntermediateTypes,
-        key: &RustType,
-        value: &RustType,
-        preserve: bool,
-    ) -> RustIdent {
-        RustIdent::new(CDDLIdent::new(format!(
-            "{}Map{}To{}",
-            if preserve { "Pair" } else { "" },
-            key.wasm_structural_variant(types),
-            value.wasm_structural_variant(types)
-        )))
+        loose
     }
 
     /// `self` is the ELEMENT type; this is the `Vec<element>` rust type. Bounds-aware over the
