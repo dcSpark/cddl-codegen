@@ -1512,6 +1512,31 @@ impl RustRecord {
             .sum()
     }
 
+    /// Whether optional `field_index` needs definite-count disambiguation because a later
+    /// mandatory member admits the same CBOR major type. The deserializer and the generated
+    /// preserve-encoding oracle share this predicate: the former rejects indefinite input for the
+    /// shape, and the latter expects that exact policy rejection only from transforms which make
+    /// the relevant container indefinite.
+    pub fn optional_overlaps_later_mandatory(
+        &self,
+        types: &IntermediateTypes,
+        field_index: usize,
+    ) -> bool {
+        let field = &self.fields[field_index];
+        if !field.optional {
+            return false;
+        }
+        let field_cbor_types = field.rust_type.cbor_types(types);
+        self.fields[(field_index + 1)..].iter().any(|later| {
+            !later.optional
+                && later
+                    .rust_type
+                    .cbor_types(types)
+                    .iter()
+                    .any(|ty| field_cbor_types.contains(ty))
+        })
+    }
+
     pub fn cbor_len_info(&self, types: &IntermediateTypes) -> RustStructCBORLen {
         match self.fixed_field_count(types) {
             Some(fixed_count) => RustStructCBORLen::Fixed(fixed_count),
