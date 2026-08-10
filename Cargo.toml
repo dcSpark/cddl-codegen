@@ -100,7 +100,7 @@ insta = "1.48"
 # otherwise only reachable inside the `cddl` validator's process, here we drive it directly.
 ciborium = "0.2"
 # `half` gates the `decode::Tokenizer` + `data::Token` stream API the differential drives.
-minicbor = { version = "0.26", features = ["half"] }
+minicbor = { version = "2.3", features = ["half"] }
 # Harness-side ONLY (never a generated-crate dep): `recombination_tests` parses the projected
 # `tests/recomb/ingredients.json` (cddl-matrix/project_recombination.ts). Already in-tree
 # transitively (via the `cddl` validator), so this adds no lockfile weight. Navigated via
