@@ -3083,7 +3083,7 @@ impl GenerationScope {
     /// Why a pre-pass and not a check each emitter makes as it goes: the emission walk visits
     /// `rust_structs()` in IDENT order (a `BTreeMap`), which bears no relation to reference order.
     /// `ch = foo / tstr` emits the enum `Ch` before the arm `Foo`; `gc = [... // tstr]` emits `Gc`
-    /// before its arm `Gc0`; `aaa = [? f0: uint, f1: uint]` + `zzz = aaa / tstr` happens to emit
+    /// before its arm `Gc0`; `aaa = [? f0: uint, * uint]` + `zzz = aaa / tstr` happens to emit
     /// the arm first. A containing type asking "does this arm have a deserialize?" mid-walk would
     /// therefore get an answer that depends on the two idents' alphabetical order — a correctness
     /// property must not. Seeding the whole verdict up front cannot be order-sensitive: every

@@ -1715,15 +1715,11 @@ fn component_glue_unwraps_a_fallible_record_new() {
     );
 }
 
-/// A type the rust face declined to give a `Deserialize` impl carries NO `from-cbor-bytes` — and the
-/// WIT and the glue must drop it TOGETHER: a func the world declares but the guest does not
-/// implement does not satisfy the world, and glue naming a trait impl that does not exist does not
-/// compile. The verdict is reached during GENERATION, not at IR finalization, which is why the
-/// projection takes it as an input rather than re-deriving it.
+/// A count-disambiguated optional array record retains `from-cbor-bytes` through the component
+/// projection and guest glue. The direct record is the same one the Rust count-boundary test uses;
+/// a missing bridge would make this accepted Rust surface unavailable to component consumers.
 #[test]
-fn a_type_with_no_deserialize_impl_carries_no_from_cbor_bytes() {
-    // An array struct whose optional field has the same CBOR type as the field after it: a peek
-    // cannot tell them apart, so the rust face emits `Serialize` and refuses `Deserialize`.
+fn count_disambiguated_array_record_carries_from_cbor_bytes() {
     const SPEC: &str = "ambiguous = [? b: uint, c: uint]\nplain = [n: text]\n";
     let dir = scratch_dir("nodeser");
     let path = dir.join("input.cddl");
@@ -1735,8 +1731,8 @@ fn a_type_with_no_deserialize_impl_carries_no_from_cbor_bytes() {
     std::fs::remove_dir_all(&dir).ok();
 
     assert!(
-        !rust.contains("impl Deserialize for Ambiguous"),
-        "the fixture no longer reaches the no-deserialize verdict, so this pin is vacuous:\n{rust}"
+        rust.contains("impl Deserialize for Ambiguous"),
+        "the count-disambiguated record lost its Deserialize impl:\n{rust}"
     );
     let ambiguous_body = wit
         .split("resource ambiguous {")
@@ -1744,19 +1740,18 @@ fn a_type_with_no_deserialize_impl_carries_no_from_cbor_bytes() {
         .and_then(|rest| rest.split('}').next())
         .expect("the WIT must still carry the resource itself");
     assert!(
-        ambiguous_body.contains("to-cbor-bytes") && !ambiguous_body.contains("from-cbor-bytes"),
-        "the WIT still declares `from-cbor-bytes` for a type with no `Deserialize` impl (or lost \
-         the `to-` half too):\n{wit}"
+        ambiguous_body.contains("to-cbor-bytes") && ambiguous_body.contains("from-cbor-bytes"),
+        "the WIT lost one CBOR bridge for the count-disambiguated record:\n{wit}"
     );
     assert!(
-        !glue.contains("cddl_lib::Ambiguous as cddl_lib::serialization::Deserialize"),
-        "the glue still names a `Deserialize` impl the rust crate does not emit:\n{glue}"
+        glue.contains("cddl_lib::Ambiguous as cddl_lib::serialization::Deserialize"),
+        "the glue lost the supported record's Deserialize bridge:\n{glue}"
     );
     // The unaffected type keeps both halves, so the gating is per-type and not a blanket drop.
     assert!(
         wit.contains("from-cbor-bytes")
             && glue.contains("cddl_lib::Plain as cddl_lib::serialization::Deserialize"),
-        "the deserializable type lost its bytes seam too — the gate is not per-type:\n{wit}\n{glue}"
+        "the ordinary control lost its bytes seam:\n{wit}\n{glue}"
     );
 }
 
@@ -1802,14 +1797,14 @@ fn a_custom_record_pair_keeps_from_cbor_bytes_despite_ambiguous_fields() {
 /// by deleting the check.
 #[test]
 fn a_no_deserialize_type_may_carry_a_from_cbor_bytes_field() {
-    // The same ambiguous-array shape `a_type_with_no_deserialize_impl_carries_no_from_cbor_bytes`
-    // uses — a peek cannot tell the optional field from the one after it — plus the field whose name
-    // converges on the static.
+    // An optional member immediately before an open rest tail remains a no-deserialize shape: no
+    // definite count can distinguish that member from the first tail element. Its field name
+    // converges on the static which the no-deserialize verdict suppresses.
     let dir = scratch_dir("nodeserfield");
     let path = dir.join("input.cddl");
     std::fs::write(
         &path,
-        "ambiguous = [? b: uint, c: uint, from_cbor_bytes: text]\n",
+        "ambiguous = [from_cbor_bytes: text, ? b: uint, * uint]\n",
     )
     .unwrap();
     let files = crate::api::generated_strings(&cli_for(path.to_str().unwrap(), &[]))

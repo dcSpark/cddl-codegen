@@ -1,0 +1,4 @@
+; A non-final optional ARRAY-record member whose wire major overlaps its mandatory successor.
+; Definite array headers disambiguate it: `[uint]` is absent and `[uint, uint]` is present. An
+; indefinite inner array is deliberately rejected because it has no count to reserve the suffix.
+optional_overlap_array = [? a: uint, b: uint]

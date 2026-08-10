@@ -1,0 +1,115 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for OptionalOverlapArray {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(
+                    1 + match &self.a {
+                        Some(_) => 1,
+                        None => 0,
+                    },
+                ),
+        )?;
+        if let Some(field) = &self.a {
+            serializer.write_unsigned_integer_sz(
+                *field,
+                fit_sz(
+                    *field,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.a_encoding)
+                        .unwrap_or_default(),
+                ),
+            )?;
+        }
+        serializer.write_unsigned_integer_sz(
+            self.b,
+            fit_sz(
+                self.b,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.b_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OptionalOverlapArray {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            if read_len.is_indefinite() {
+                return Err(DeserializeFailure::IndefiniteLengthAmbiguousOptionalField.into());
+            }
+            let (a, a_encoding) = if read_len
+                .remaining()
+                .map(|remaining| remaining > 0)
+                .unwrap_or(true)
+                && (raw
+                    .cbor_type()
+                    .map(|ty| ty == cbor_event::Type::UnsignedInteger)
+                    .unwrap_or(false))
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    raw.unsigned_integer_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .map(|(x, enc)| (x, Some(enc)))
+                })()
+                .map_err(|e| e.annotate("a"))
+                .map(|(a, a_encoding)| (Some(a), a_encoding))
+            } else {
+                Ok((None, None))
+            }?;
+            let (b, b_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("b"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptionalOverlapArray {
+                a,
+                b,
+                encodings: Some(OptionalOverlapArrayEncoding {
+                    len_encoding,
+                    a_encoding,
+                    b_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OptionalOverlapArray"))
+    }
+}

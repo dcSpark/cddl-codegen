@@ -2482,8 +2482,8 @@ fn extern_interface_check_emit() {
 }
 
 /// The self-check WEAKENS the bound to `Serialize` only for a type with no generated `Deserialize`:
-/// the ambiguous-optional array record `ambig` has no deserialize impl (`print_structs_without_deserialize`),
-/// so asserting `Deserialize` on it would fail the dep's own build. A normal record (`rec`) keeps
+/// `ambig` has an optional member adjacent to an open rest tail, so asserting `Deserialize` on it
+/// would fail the dep's own build. A normal record (`rec`) keeps
 /// both, and a `@no_alias` rule (`raw_index`) — which emits no rust type — is not asserted at all.
 #[test]
 fn extern_interface_check_weakens_deserialize_bound() {

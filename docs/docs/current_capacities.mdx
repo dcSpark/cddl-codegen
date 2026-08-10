@@ -441,16 +441,21 @@ A few accepted shapes generate at exit 0 with their **encode half only**: the st
 constructor, getters and `Serialize`/`to_cbor_bytes` are all emitted and compile, but the generator
 declines the `Deserialize` impl, so the type has no `from_cbor_bytes`. Every refusal is loud —
 generation prints `Not generating <Type>::deserialize() - reasons:` on stderr with one line per
-cause — and one shape earns one: an **array-record `?` optional field whose CBOR major types
-overlap what can follow it** — a later
-declared field reachable through any run of optionals, or the open rest tail when it is reachable:
-`foo = [? f0: uint, f1: uint]`. The decoder decides presence by peeking the next element's major
-type, so a type-disjoint non-final optional (`foo = [? f0: uint, f1: tstr]`) decodes fine; on
-overlap the peek cannot decide and the generator refuses the decoder rather than emitting one that
-guesses. Remedy: make the types distinct, drop the optional, or restructure (an optional-**last**
-field never needs the peek disambiguated against a follower).
+cause. The remaining array-record case is an optional field immediately reachable before an **open
+rest tail** with an overlapping CBOR major type, for example `foo = [? f0: uint, * uint]`: neither
+a peek nor a definite header can say whether the next uint belongs to `f0` or the tail. Remedy:
+make the types distinct, drop the optional or tail, or restructure.
 
-The refusal **propagates to every container of such a type**: an enum with it in any arm (both
+An ordinary non-final optional followed by a mandatory field is supported even when their CBOR
+major types overlap: `foo = [? f0: uint, f1: uint]`. On a **definite** array, the decoder reserves
+the entire mandatory suffix and uses the remaining element count before its existing major-type
+peek, so `[uint]` reads `f0` as absent and `[uint, uint]` reads it as present. The generated
+default and canonical serializers always write this actual definite count. An **indefinite**
+encoding of that overlapping shape is rejected at runtime with `Cannot decode an
+indefinite-length array with an optional field overlapping a later mandatory field`; preserve mode
+therefore never re-mints that ambiguous form.
+
+The open-tail refusal **propagates to every container of such a type**: an enum with it in any arm (both
 type-choice and group-choice flavors, transitively), a wrapper over it, and a collection or table
 over it each lose their own `Deserialize` too — announced with the same stderr notice naming the
 member that caused it. The alternative would be emitted code calling a decode function that was

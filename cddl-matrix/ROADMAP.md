@@ -427,11 +427,9 @@ entry, so the atomicity is the rule).
   `occurrence_on_array_record_field_rejects_gracefully`. The rejection avoids the silent
   exactly-once narrowing that makes a generated decoder reject spec-valid repetition counts —
   invisible to round-trip tests, surfaced only by spec-derived decode vectors. Real support for the
-  middle-position case is one decode-disambiguation design shared with the findings entry
-  "Decode-disambiguate a non-final `?` optional array-record field whose CBOR major types OVERLAP a
-  later field's": the emitter already peeks major types for optional fields; the missing signal is
-  the remaining definite-length COUNT (repeats = len − fixed), plus the shared
-  residue/indefinite-length policy decisions that entry spells out.
+  middle-position case extends the delivered count-disambiguation policy for non-final `?` fields:
+  those fields reserve their mandatory suffix and use the remaining definite-array COUNT plus the
+  existing peek; repeated occurrences still need a representation and residue policy of their own.
 - **Real bounded `?` / `n*m` table cardinality is a candidate feature.** A count-permitting occurrence
   marker on a single non-literal arrow map entry never silently widens to an unbounded `*` table —
   the widening the rejections below exist to prevent, since `HomogenousMap` — unlike
@@ -509,23 +507,16 @@ entry, so the atomicity is the rule).
   ordinary value a generated wrapper can hold. Keep its role-neutral graceful refusal and the
   `tests/TESTING_ROADMAP.md` § North star exclusion; do not reopen it without an explicit maintainer
   decision.
-- **Decode-disambiguate a non-final `?` optional array-record field whose CBOR major types OVERLAP
-  a later field's.** `a = [ ? f0: uint, f1: uint ]` generates at exit 0 and the crate builds, but
-  `f0` gets no decoder: the refusal is recorded (`dont_generate_deserialize`, loud
-  `Not generating A::deserialize()`) and propagates honestly through every consumer — containing
-  enums of both flavors lose their own `Deserialize` transitively, and both `--emit-tests` minters
-  skip the type with a named line. Position per se is NOT the gap: the emitter peek-disambiguates
-  optional array-record fields against every reachable follower's `cbor_types`, so a type-disjoint
-  non-final `?` (`[ ? f0: uint, f1: tstr ]`) works today. Real support shares ONE design with
-  "Honor non-final and `+`/bounded count-permitting occurrences on heterogeneous ARRAY-record
-  fields": add the remaining definite-length COUNT to the
-  existing PEEK signal (repeats = len − fixed), decide the genuinely ambiguous residue (count+peek
-  admitting ≥2 assignments — the wire does not carry WHICH assignment produced the bytes, the same
-  loss a type choice's overlapping arms have; that one is settled as first match, and this residue
-  should settle the same way), and decide the
-  indefinite-length story (no count signal there; peek-only makes acceptance encoding-dependent).
-  **Reopening signal:** a spec author reports a rule they cannot decode at all — i.e. the refusal
-  reaches a type they need on the wire, not merely a shape a fuzzer composed.
+- **Extend count-aware ARRAY occurrence decoding beyond the delivered non-final `?` field.**
+  `a = [ ? f0: uint, f1: uint ]` now decodes definite arrays by reserving the full mandatory suffix
+  before its existing major-type peek: `[uint]` is absent and `[uint, uint]` is present. It keeps
+  first-match behavior where count leaves either assignment possible. The indefinite form rejects
+  with a reason-bearing runtime error, so preserve mode cannot mint an encoding-dependent reading.
+  The remaining design work is repeated (`*`, `+`, bounded) occurrences, bounded containers/tables,
+  and the optional-before-open-tail case, whose tail has no finite suffix to reserve. **Reopening
+  signal:** a supported repeated/bounded or open-tail shape needs more than one distinct
+  count/residue rule at the same array-record position; that count measures whether the shared
+  decoder policy should become a general occurrence engine.
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). Every one of those shapes rejects gracefully

@@ -15,6 +15,23 @@ impl CBORReadLen {
         self.read
     }
 
+    /// The definite-array capacity not already reserved for mandatory record members.
+    ///
+    /// Array-record deserializers reserve their complete mandatory suffix before they inspect an
+    /// optional member. A remaining value therefore represents an optional slot which the current
+    /// member may claim; zero means that taking the member would starve a mandatory suffix. An
+    /// indefinite container has no count signal, so it returns `None`.
+    pub fn remaining(&self) -> Option<u64> {
+        match self.deser_len {
+            cbor_event::Len::Len(n) => Some(n - self.read),
+            cbor_event::Len::Indefinite => None,
+        }
+    }
+
+    pub fn is_indefinite(&self) -> bool {
+        matches!(self.deser_len, cbor_event::Len::Indefinite)
+    }
+
     // Marks {n} values as being read, and if we go past the available definite length
     // given by the CBOR, we return an error.
     pub fn read_elems(&mut self, count: usize) -> Result<(), DeserializeFailure> {

@@ -1,0 +1,81 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptionalOverlapArray(pub(crate) cddl_lib::OptionalOverlapArray);
+
+#[wasm_bindgen]
+impl OptionalOverlapArray {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptionalOverlapArray, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<OptionalOverlapArray, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn set_a(&mut self, a: u64) {
+        self.0.a = Some(a)
+    }
+
+    pub fn a(&self) -> Option<u64> {
+        self.0.a
+    }
+
+    pub fn b(&self) -> u64 {
+        self.0.b
+    }
+
+    pub fn new(b: u64) -> Self {
+        Self(cddl_lib::OptionalOverlapArray::new(b))
+    }
+}
+
+impl From<cddl_lib::OptionalOverlapArray> for OptionalOverlapArray {
+    fn from(native: cddl_lib::OptionalOverlapArray) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptionalOverlapArray> for cddl_lib::OptionalOverlapArray {
+    fn from(wasm: OptionalOverlapArray) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptionalOverlapArray> for OptionalOverlapArray {
+    fn as_ref(&self) -> &cddl_lib::OptionalOverlapArray {
+        &self.0
+    }
+}
