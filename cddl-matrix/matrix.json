@@ -5886,7 +5886,7 @@
     },
     {
       "alt": "[uint] \"*\" [uint]",
-      "desc": "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a `Vec` length check (distinct from the map-side zero-permitting form's graceful rejection recorded in § findings, where a zero-permitting keyed struct-map field is rejected rather than narrowed). A distinct enforcement surface the two-sided base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a type-enforced `BoundedVec<T, 0, m>` length window (distinct from the map-side zero-permitting form's graceful rejection recorded in § findings, where a zero-permitting keyed struct-map field is rejected rather than narrowed). A distinct enforcement surface the two-sided base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "g = [*5 uint]",
       "id": "occur.bounded.upper",
       "production": "occur",

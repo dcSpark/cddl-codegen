@@ -6865,7 +6865,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "a 6-element array is above the `*5` occurrence upper bound (zero-permitting, no lower arm) — violates `[*5 uint]`"
-expect_err = "6 not at most 5"
+expect_err = "6 not in range 0 - 5"
 
 [[row]]
 id = "occur.one_or_more"
