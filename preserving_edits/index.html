@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Preserving edits to generated code | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/preserving_edits"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Preserving edits to generated code | cddl-codegen"><meta data-rh="true" name="description" content="Everything under a generated crate&#x27;s src/generated/ is tool-owned and rewritten on every"><meta data-rh="true" property="og:description" content="Everything under a generated crate&#x27;s src/generated/ is tool-owned and rewritten on every"><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/preserving_edits"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/preserving_edits" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/preserving_edits" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.2e067908.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.d44ce425.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
 </head>
 <body>
@@ -132,8 +132,9 @@ is an error (there&#x27;d be nothing to match against).</p>
 plain comment of yours whose anchor falls inside a span some replace block deletes fails loudly —
 move it into the block.</p>
 <p><strong>Imports and your block&#x27;s code.</strong> The generated struct modules import the collection helper types
-(<code>BTreeMap</code>, <code>OrderedHashMap</code>, <code>NonEmptyVec</code>, <code>NonEmptyMap</code>) only when the file — or one of its
-descendant modules — references them (see <a class="" href="/cddl-codegen/output_format">Output format</a>). The relationship to
+(<code>BTreeMap</code>, <code>OrderedHashMap</code>, <code>NonEmptyVec</code>, <code>BoundedVec</code>, <code>NonEmptyMap</code>, <code>BoundedMap</code>, <code>OrderedSet</code>,
+<code>NonEmptyOrderedSet</code>, <code>BoundedOrderedSet</code>, <code>PairMap</code>, <code>NonEmptyPairMap</code>, <code>BoundedPairMap</code>) only when
+the file — or one of its descendant modules — references them (see <a class="" href="/cddl-codegen/output_format">Output format</a>). The relationship to
 your block&#x27;s code is asymmetric. Your block cannot make an import <em>appear</em>: the initial import
 derivation runs over the pristine generated content, before your edits are applied, so a file whose
 generated code never justified <code>BTreeMap</code> won&#x27;t gain the <code>use</code> just because your block names it —

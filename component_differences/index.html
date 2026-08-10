@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Component Differences | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/component_differences"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Component Differences | cddl-codegen"><meta data-rh="true" name="description" content="--component emits a third face beside the rust and wasm crates: a"><meta data-rh="true" property="og:description" content="--component emits a third face beside the rust and wasm crates: a"><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/component_differences"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/component_differences" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/component_differences" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.2e067908.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.d44ce425.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
 </head>
 <body>
@@ -62,12 +62,22 @@ already follows, and it is asserted end to end by the behavioural gate <code>com
 <code>FooList.new()</code>/<code>add()</code>. The wasm face&#x27;s wrappers exist for ownership safety first and type-support
 gaps second; the borrow-parameter rule above covers the ownership half, and WIT&#x27;s type system has
 neither of the gaps (nested lists, lists of handles and nested <code>option</code>s are all expressible).</p>
-<p>The consequence is that <strong>constraints move from the type to the door</strong>. A <code>[+ t]</code> non-empty
-container, a <code>@duplicates reject</code> set and a <code>@duplicates preserve</code> pair-map all despecialize to a
-plain <code>list&lt;…&gt;</code>, and the invariant is re-checked where the list is <em>consumed</em> — the constructor or
-setter that takes it returns <code>result&lt;…, string&gt;</code> and reports the same refusal the rust crate&#x27;s own
-<code>TryFrom</code> door would. Nothing is lost; the check simply happens at the call that would have
-violated it.</p>
+<p>The consequence is that <strong>constraints move from the type to the door</strong>. A <code>[+ t]</code> non-empty,
+bounded, or <code>@duplicates reject</code> <strong>set</strong> all despecialize to a plain <code>list&lt;…&gt;</code>, so the invariant
+is re-checked where the list is <em>consumed</em>: the constructor or setter returns
+<code>result&lt;…, string&gt;</code> and reports the same refusal as the rust crate&#x27;s <code>TryFrom</code> door.</p>
+<p>Tables are different. A <code>@duplicates preserve</code> pair-map also projects as
+<code>list&lt;tuple&lt;k, v&gt;&gt;</code>, but that list already represents every ordered, duplicate-bearing entry the
+pair-map can hold, so collecting it is infallible unless another constraint such as <code>{+ …}</code> applies.
+A plain table — including an explicit <code>@duplicates reject</code>, the accepted table default — likewise
+collects directly into its rust map and does <strong>not</strong> make the door fallible merely because of that
+policy. Repeated keys supplied in the WIT list therefore follow the rust map&#x27;s ordinary collection
+semantics rather than returning the reject-set <code>DuplicateKey</code> error; <code>reject</code> on a table documents
+the already-key-unique map representation, not an <code>OrderedSet</code>-style validation door.</p>
+<p>A bounded table uses the same <code>list&lt;tuple&lt;k, v&gt;&gt;</code> representation, then passes its collected entries
+through <code>BoundedMap::TryFrom</code> for unique keys or <code>BoundedPairMap::TryFrom</code> for
+<code>@duplicates preserve</code>. Below-minimum and above-maximum component inputs return the same range error
+as Rust, CBOR, JSON, and wasm construction; pair-map inputs retain duplicate entries and order.</p>
 <p><strong>Access granularity is coarser than the wasm face&#x27;s.</strong> A map-typed field&#x27;s only read is the
 whole-map getter: it materializes every entry and mints a fresh handle per resource-typed entry on
 every call. There is no <code>get(key)</code> and no incremental <code>insert</code> as the wasm face&#x27;s table wrappers
@@ -83,18 +93,38 @@ whole.</p>
 <code>option&lt;t&gt;</code>, while its setter takes the <strong>bare</strong> <code>t</code>. A setter sets a value; it never clears one.
 An optional <em>fixed-value</em> field — one whose only information is whether it is present — instead
 gets a <code>bool</code> presence getter and a <code>set-&lt;field&gt;(present: bool)</code>.</p>
+<p>A <strong><code>.default</code>-carrying</strong> optional member (<code>? b: uint .default 0</code>) is the one optional field whose
+getter is <em>not</em> <code>option&lt;t&gt;</code>. The rust struct stores such a member plain — the default substitutes
+for an absent value, so there is no absence to report — and this face mirrors that storage exactly
+as the wasm face does: the getter returns the bare <code>t</code> and the setter assigns it directly. The
+consequence is the same on both faces: <strong>absent</strong> and <strong>explicitly set to the default</strong> are
+indistinguishable here, and no setter can put the member back to absent. That is the rust face&#x27;s
+contract showing through rather than a component-face simplification. (Under
+<code>--preserve-encodings</code> the rust crate does remember whether the member was written on the wire, so
+a decode/re-encode round trip stays byte-exact — that memory simply is not part of this face&#x27;s
+surface.)</p>
 <p>A setter whose type carries a bound is fallible (<code>result&lt;_, string&gt;</code>); one whose type does not is
 infallible, so the signature tells you whether a value can be refused.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="fixed-value-singletons-are-resources">Fixed-value singletons are resources<a href="#fixed-value-singletons-are-resources" class="hash-link" aria-label="Direct link to Fixed-value singletons are resources" title="Direct link to Fixed-value singletons are resources" translate="no">​</a></h2>
+<p>A named fixed-value rule (<code>answer = 42</code>, <code>magic = h&#x27;CAFE&#x27;</code>, <code>enabled = true</code>, or a tagged/<code>bytes .cbor</code> fixed rule)
+projects as an opaque resource, with its direct CBOR and JSON methods. It is not a WIT enum: there
+is one valid value, and the resource owns the constant verification plus its complete wire framing.
+For <code>42 / null</code>, the nullable surface is <code>option&lt;answer&gt;</code>; bare <code>null / null</code> has only the
+singleton-null resource state rather than a second nullable state that would encode identically.
+An encoded-null arm such as <code>#6.7(null)</code> or <code>bytes .cbor null</code> remains distinct from bare null and
+therefore keeps the nullable two-state surface.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="rest-rows-and-open-tables-project-as-extra-getters">Rest rows and open tables project as extra getters<a href="#rest-rows-and-open-tables-project-as-extra-getters" class="hash-link" aria-label="Direct link to Rest rows and open tables project as extra getters" title="Direct link to Rest rows and open tables project as extra getters" translate="no">​</a></h2>
 <p>A rule that captures entries it did not declare — an
 <a class="" href="/cddl-codegen/output_format#open-struct-maps-rest-rows">open struct-map</a> (<code>{ 1: uint, * k =&gt; v }</code>), an
-<a class="" href="/cddl-codegen/output_format#open-arrays-rest-tails">open array</a> (<code>[uint, * t]</code>), or an <strong>open table</strong>
+<a class="" href="/cddl-codegen/output_format#open-arrays-rest-tails">open array</a> (<code>[uint, * t]</code> or <code>[uint, + t]</code>), or an <strong>open table</strong>
 (<code>t = { * k1 =&gt; v1, * k2 =&gt; v2 }</code>) — projects each captured row as one <strong>read-only getter</strong> on the
 resource, named after the row (<code>rest</code> by default, or whatever
 <a class="" href="/cddl-codegen/comment_dsl#name"><code>@name</code></a> gives it). A map row is <code>list&lt;tuple&lt;k, v&gt;&gt;</code>, an array tail is <code>list&lt;t&gt;</code>,
 which is the collection spelling above with nothing new added.</p>
-<p>Each such getter is read-only in the strong sense: the row is <strong>not</strong> a constructor parameter and has
-<strong>no setter</strong>, so on this face a captured region can be read but not written. That is the same
+<p>Each such getter is read-only in the strong sense and has <strong>no setter</strong>, so on this face a captured
+region can be read but not written. A loose rest row/tail is <strong>not</strong> a constructor parameter; a
+non-empty array tail (<code>+ t</code> / <code>1* t</code>) contributes its first element to the constructor so the
+resource starts valid, while the getter remains list-shaped. That is the same
 posture the wasm face takes on the field itself, minus the mutable wrapper the wasm face hands back —
 here the whole-map snapshot rule applies, so what you get is a copy. An
 <a class="" href="/cddl-codegen/comment_dsl#ignore"><code>@ignore</code></a> row stores nothing and therefore projects <strong>no</strong> getter at all.</p>
@@ -173,7 +203,11 @@ which is why the emitted WIT carries the bias as a comment on the arm, and why i
 <p>A structural recursive variant is impossible (WIT forbids recursive value types), and a resource
 would fail composability exactly where <code>any</code> matters most — metadata extension points shared
 between libraries. Bytes are the one representation two independently generated packages can agree
-on without a shared package. Three consequences, all of which have bitten in probing:</p>
+on without a shared package. A CDDL <em>alias</em> of <code>any</code> (<code>x = any</code>, referenced from a member) is
+resolved through and is indistinguishable from <code>any</code> written directly — the same <code>any-cbor</code>
+spelling and the same fallible doors, however many alias links sit between the member and <code>any</code>
+(pinned by the <code>component-any-alias</code> corpus fixture). Three consequences, all of which have bitten
+in probing:</p>
 <ul>
 <li class=""><strong>Exactly one CBOR item.</strong> Validity is checked where the bytes are <em>consumed</em>; getters always
 return valid bytes. Trailing data is an error rather than a silent truncation: handing <code>0102</code>
@@ -193,6 +227,13 @@ synthetic <code>invalid</code> case. Under <code>--json-serde-derives</code> the
 <code>cbor-from-json</code> join it, both fallible for the same reason. Invalid bytes always cross as a
 normal <code>Err</code>, never as a trap.</li>
 </ul>
+<p>RFC 8610&#x27;s <code>eb64url</code>, <code>eb64legacy</code>, and <code>eb16</code> prelude names project as nominal resources over the
+same <code>any-cbor</code> door. For example, <code>prelude-eb64url</code> has
+<code>constructor(inner: any-cbor) -&gt; result&lt;prelude-eb64url, string&gt;</code>, <code>get: func() -&gt; any-cbor</code>, and
+the usual <code>to-cbor-bytes</code> / <code>from-cbor-bytes</code> doors. The constructor and getter exchange exactly one
+arbitrary CBOR item; the wrapper-byte doors retain and require the fixed <code>#6.21</code> tag (respectively
+<code>#6.22</code> and <code>#6.23</code> for the siblings). These resources expose no base64/base16 rendering algorithm:
+the tags remain CBOR advice around the opaque item.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="fallible-doors-return-the-rust-error-text">Fallible doors return the rust error text<a href="#fallible-doors-return-the-rust-error-text" class="hash-link" aria-label="Direct link to Fallible doors return the rust error text" title="Direct link to Fallible doors return the rust error text" translate="no">​</a></h2>
 <p>Anything that can refuse — a bounds-checking constructor, a despecialized collection door, a
 <code>from-cbor-bytes</code>, a JSON door — returns <code>result&lt;…, string&gt;</code>, and the string is the rust type&#x27;s
@@ -200,6 +241,13 @@ normal <code>Err</code>, never as a trap.</li>
 <code>Deserialization failed in Hash because: 31 not in range 32 - 32</code>). A structured error <code>variant</code> is
 a possible future refinement; today the text is the contract. A refusal is a normal <code>Err</code> and never
 a trap, so the instance stays usable afterwards.</p>
+<p>Both halves of that sentence are <em>executed</em>, not just asserted in prose. Beside the behavioural gate
+<code>component_host</code>, the CDDL matrix drives a bounded selection of feature rows through a real
+<code>wasm32-wasip2</code> component under wasmtime (<code>cddl-matrix/README.md</code>, the annotations-table row&#x27;s
+component-execution clause): per selected row, every committed accept vector must decode and
+re-encode to the bytes the same spec&#x27;s rust crate produces, and every reject vector must come back
+as <code>Err</code> — with a re-check vector after the rejects, so &quot;the instance stays usable&quot; is an observed
+line rather than a claim. A trap is a distinct verdict there and is never reported as a refusal.</p>
 <p>Note a template-level distinction visible in the WIT: a fallible <strong>constructor</strong> is
 <code>constructor(...) -&gt; result&lt;t, string&gt;</code>, while a fallible <strong>static</strong> is
 <code>from-cbor-bytes: static func(...) -&gt; result&lt;t, string&gt;</code>. A resource cannot carry both a
@@ -341,32 +389,31 @@ or an invalid identifier for a package that is perfectly valid. An old <code>was
 about a component; check its version before believing it. This project&#x27;s own gates never shell out
 to an ambient binary for that reason: <code>component_wit_validates</code> uses in-process <code>wit-parser</code> /
 <code>wit-component</code> / <code>wasmparser</code> pinned at the floor.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="known-limitation-the-wasm32-wasip2-cdylib-link-crash">Known limitation: the <code>wasm32-wasip2</code> cdylib link crash<a href="#known-limitation-the-wasm32-wasip2-cdylib-link-crash" class="hash-link" aria-label="Direct link to known-limitation-the-wasm32-wasip2-cdylib-link-crash" title="Direct link to known-limitation-the-wasm32-wasip2-cdylib-link-crash" translate="no">​</a></h2>
-<p>The generated <code>rust/Cargo.toml</code> declares <code>crate-type = [&quot;cdylib&quot;, &quot;rlib&quot;]</code> for the wasm face&#x27;s sake,
-and on <code>wasm32-wasip2</code> that <code>cdylib</code> can crash the linker in the rust sysroot with a SIGSEGV inside
-<code>wasm-component-ld</code>/LLD. It is spec-dependent, it is not a diagnostic about your spec, and building
-only the <code>component/</code> crate does not avoid it. The fix — narrowing the rust crate to
-<code>crate-type = [&quot;rlib&quot;]</code> in the consuming workspace — and the exact failure signature are documented
-on the <a class="" href="/cddl-codegen/command_line_flags"><code>--component</code> flag</a>, which is where a user turning this face on
-meets it; that account is the single source for it and is not restated here.</p>
-<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="known-limitation-shapes-whose-glue-does-not-yet-compile">Known limitation: shapes whose glue does not yet compile<a href="#known-limitation-shapes-whose-glue-does-not-yet-compile" class="hash-link" aria-label="Direct link to Known limitation: shapes whose glue does not yet compile" title="Direct link to Known limitation: shapes whose glue does not yet compile" translate="no">​</a></h2>
-<p>Two shape classes (three corpus fixtures) currently emit a component crate whose glue does not
-compile. The failure is loud — the generated component crate&#x27;s own build fails; the <code>rust/</code> and
-<code>wasm/</code> faces are unaffected — the WIT itself is valid, and each shape is pinned with its
-diagnosis in the corpus compile gate&#x27;s ledger (<code>EXPECTED_COMPILE_FAIL</code>, gate
-<code>component_corpus_compiles</code>), so a fix announces itself by turning the pin stale rather than
-needing rediscovery:</p>
-<ul>
-<li class=""><strong>Nested despecialization</strong>: a constrained collection (<code>NonEmptyVec</code>, <code>NonEmptyMap</code>) sitting
-<em>below</em> the top level of a parameter — a named table rule whose map key is a non-empty list, or
-a non-empty list as a list element. The conversion walk sees WIT types only below the top
-level, so the constrained rust type&#x27;s <code>TryFrom</code> door is never routed.</li>
-<li class=""><strong><code>@default</code> fields</strong>: a defaulted field is a plain <code>T</code> on the rust side (the default fills
-absence in) while the projection still treats it as optional, so the glue reads and writes an
-<code>Option</code> that does not exist.</li>
-</ul>
-<p>Until these close, a spec relying on either shape should keep <code>--component</code> off or restructure
-the shape; every other corpus shape compiles and validates.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-rust-crates-crate-type-on-this-face">The rust crate&#x27;s <code>crate-type</code> on this face<a href="#the-rust-crates-crate-type-on-this-face" class="hash-link" aria-label="Direct link to the-rust-crates-crate-type-on-this-face" title="Direct link to the-rust-crates-crate-type-on-this-face" translate="no">​</a></h2>
+<p>A component-only tree (<code>--component=true --wasm=false</code>) is emitted with
+<code>crate-type = [&quot;rlib&quot;]</code>: the wasip2 guest links the rust crate as an <code>rlib</code>, and the <code>cdylib</code> exists
+only for the wasm face&#x27;s <code>wasm32-unknown-unknown</code> build. A tree generated with <strong>both</strong> faces on
+keeps the <code>cdylib</code> the wasm face needs, and on <code>wasm32-wasip2</code> that <code>cdylib</code> can crash the linker in
+the rust sysroot with a SIGSEGV inside <code>wasm-component-ld</code>/LLD — so such a workspace is narrowed by
+hand before a wasip2 build. The posture table, the exact failure signature and the hand narrowing are
+documented on the <a class="" href="/cddl-codegen/command_line_flags"><code>--component</code> flag</a>, which is where a user turning this
+face on meets it; that account is the single source for it and is not restated here.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="known-limitation-a-rule-named-t-is-unexported-on-this-face">Known limitation: a rule named <code>t</code> is unexported on this face<a href="#known-limitation-a-rule-named-t-is-unexported-on-this-face" class="hash-link" aria-label="Direct link to known-limitation-a-rule-named-t-is-unexported-on-this-face" title="Direct link to known-limitation-a-rule-named-t-is-unexported-on-this-face" translate="no">​</a></h2>
+<p>A rule whose WIT resource name would be exactly <code>t</code> — a CDDL identifier <code>t</code> or <code>T</code>, whatever its
+shape — is <strong>excluded and recorded</strong> rather than projected: <code>wit_bindgen::generate!</code> (the pinned
+0.57 line) binds its own type parameter <code>T</code> unhygienically in the scope it expands the guest
+bindings into, so a WIT <code>resource t</code>, whose rust name is <code>T</code>, resolves to the macro&#x27;s parameter
+instead of the resource and the guest crate cannot compile. It is an upstream hygiene bug, not a
+property of the rule&#x27;s shape, so the projection refuses the NAME through the standard exclusion
+channel: <code>t</code> and everything referencing it get <code>// unexported: &lt;ident&gt; — &lt;reason&gt;</code> rows (a
+dependent&#x27;s row names the chain root, not its immediate neighbour), and the rest of the spec&#x27;s
+component face still generates <strong>and still builds</strong> (pinned by the <code>component-ident-hazard</code> corpus
+fixture).</p>
+<p>The remedy is in the recorded reason: rename the identifier (<code>@name</code> does not rename a top-level
+rule; a name that came from a group-choice arm&#x27;s <code>@name</code> is changed there). Renaming does not
+touch the CBOR wire format. Only a rule that mints a WIT <em>resource</em> is affected — a c-style enum
+named <code>t</code> (plain WIT <code>enum</code>), a transparent alias, and a named collection all keep their current
+behavior — and the exclusion lifts on its own once upstream fixes the macro&#x27;s hygiene.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="flag-semantics-deltas">Flag-semantics deltas<a href="#flag-semantics-deltas" class="hash-link" aria-label="Direct link to Flag-semantics deltas" title="Direct link to Flag-semantics deltas" translate="no">​</a></h2>
 <ul>
 <li class=""><strong><code>--to-from-bytes-methods</code> does not gate this face.</strong> <code>to-cbor-bytes</code> and <code>from-cbor-bytes</code> are
@@ -523,7 +570,8 @@ the above and none were exercised. Note <code>--optimize</code> runs <code>wasm-
 </ul>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="binary-size">Binary size<a href="#binary-size" class="hash-link" aria-label="Direct link to Binary size" title="Direct link to Binary size" translate="no">​</a></h2>
 <p>Measured on this project&#x27;s own generated output under rustc 1.96.1, <code>--target wasm32-wasip2</code>,
-<code>[profile.release] opt-level = &quot;s&quot;</code>, with the rust crate narrowed to <code>crate-type = [&quot;rlib&quot;]</code>:</p>
+<code>[profile.release] opt-level = &quot;s&quot;</code>, over a component-only tree (whose rust crate is emitted
+<code>crate-type = [&quot;rlib&quot;]</code>):</p>
 <table><thead><tr><th>Spec</th><th>Component <code>.wasm</code></th><th>With <code>[profile.release] strip = true</code></th></tr></thead><tbody><tr><td>A small single-scope spec (records, a choice, a bounded type, a map, an <code>any</code> field)</td><td>275,768 B</td><td>211,930 B (−23.1 %)</td></tr><tr><td>A larger single-scope spec (the project&#x27;s <code>json</code> fixture)</td><td>338,772 B</td><td>251,406 B (−25.8 %)</td></tr><tr><td>The smallest real spec measured (one bounded-bytes rule)</td><td>145,020 B</td><td>—</td></tr></tbody></table>
 <p>Three things to take from that:</p>
 <ul>
@@ -549,6 +597,6 @@ above — including the 145 KB one — imports exactly <strong>14</strong> <code
 <code>@0.2.9</code> under this toolchain) and exports exactly one interface. Those imports come from the
 sysroot&#x27;s reactor adapter, not from generated code, and a host must satisfy them even for a pure
 codec: an empty host linker fails on <code>wasi:io/poll</code> before your code runs. The generated WIT itself
-stays WASI-free.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/comment_dsl"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Comment DSL</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/examples"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Examples</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#resources-not-records" class="table-of-contents__link toc-highlight">Resources, not records</a></li><li><a href="#getters-hand-back-a-snapshot" class="table-of-contents__link toc-highlight">Getters hand back a snapshot</a></li><li><a href="#collections-are-plain-lists" class="table-of-contents__link toc-highlight">Collections are plain lists</a></li><li><a href="#setters-exist-only-for-optional-fields" class="table-of-contents__link toc-highlight">Setters exist only for optional fields</a></li><li><a href="#rest-rows-and-open-tables-project-as-extra-getters" class="table-of-contents__link toc-highlight">Rest rows and open tables project as extra getters</a></li><li><a href="#passing-a-resource-into-itself-stores-a-snapshot" class="table-of-contents__link toc-highlight">Passing a resource into itself stores a snapshot</a></li><li><a href="#nested-options-work" class="table-of-contents__link toc-highlight">Nested options work</a></li><li><a href="#naming" class="table-of-contents__link toc-highlight">Naming</a></li><li><a href="#int-is-a-variant-and-its-nint-arm-is-cbor-biased" class="table-of-contents__link toc-highlight"><code>Int</code> is a variant, and its <code>nint</code> arm is CBOR-biased</a></li><li><a href="#any-cbor-is-bytes-exactly-one-item-canonically-re-encoded" class="table-of-contents__link toc-highlight"><code>any-cbor</code> is bytes, exactly one item, canonically re-encoded</a></li><li><a href="#fallible-doors-return-the-rust-error-text" class="table-of-contents__link toc-highlight">Fallible doors return the rust error text</a></li><li><a href="#encoding-posture-is-a-property-of-the-package-not-of-a-type" class="table-of-contents__link toc-highlight">Encoding posture is a property of the package, not of a type</a></li><li><a href="#sharing-types-across-packages" class="table-of-contents__link toc-highlight">Sharing types across packages</a><ul><li><a href="#import-mode-is-opt-in-and-the-fallback-is-exclusion" class="table-of-contents__link toc-highlight">Import mode is opt-in, and the fallback is exclusion</a></li><li><a href="#the-seam-is-cbor-bytes-and-it-costs-what-that-costs" class="table-of-contents__link toc-highlight">The seam is CBOR bytes, and it costs what that costs</a></li><li><a href="#getters-on-dependency-typed-fields-are-fallible" class="table-of-contents__link toc-highlight">Getters on dependency-typed fields are fallible</a></li><li><a href="#dependency-typed-collection-parameters-take-an-accumulator" class="table-of-contents__link toc-highlight">Dependency-typed collection parameters take an accumulator</a></li><li><a href="#posture-matching-is-an-integrator-obligation" class="table-of-contents__link toc-highlight">Posture matching is an integrator obligation</a></li><li><a href="#instantiate-the-dependency-once--nothing-enforces-it" class="table-of-contents__link toc-highlight">Instantiate the dependency once — nothing enforces it</a></li><li><a href="#known-limitation-no-binary-dedupe" class="table-of-contents__link toc-highlight">Known limitation: no binary dedupe</a></li></ul></li><li><a href="#toolchain-floor-and-the-ambient-wasm-tools-trap" class="table-of-contents__link toc-highlight">Toolchain floor, and the ambient-<code>wasm-tools</code> trap</a></li><li><a href="#known-limitation-the-wasm32-wasip2-cdylib-link-crash" class="table-of-contents__link toc-highlight">Known limitation: the <code>wasm32-wasip2</code> cdylib link crash</a></li><li><a href="#known-limitation-shapes-whose-glue-does-not-yet-compile" class="table-of-contents__link toc-highlight">Known limitation: shapes whose glue does not yet compile</a></li><li><a href="#flag-semantics-deltas" class="table-of-contents__link toc-highlight">Flag-semantics deltas</a></li><li><a href="#javascript-via-jco" class="table-of-contents__link toc-highlight">JavaScript via jco</a><ul><li><a href="#transpiling-install-the-shim-map-nothing" class="table-of-contents__link toc-highlight">Transpiling: install the shim, map nothing</a></li><li><a href="#the-js-surface-row-by-row" class="table-of-contents__link toc-highlight">The JS surface, row by row</a></li><li><a href="#a-refusal-is-thrown-and-the-instance-survives-it" class="table-of-contents__link toc-highlight">A refusal is thrown, and the instance survives it</a></li><li><a href="#disposal-is-an-own-property-and-reclamation-is-otherwise-gc-driven" class="table-of-contents__link toc-highlight">Disposal is an own property, and reclamation is otherwise GC-driven</a></li><li><a href="#two-generated-packages-transpile-each-one-wire-them-with---map" class="table-of-contents__link toc-highlight">Two generated packages: transpile each one, wire them with <code>--map</code></a></li><li><a href="#do-not-transpile-a-composed-artifact" class="table-of-contents__link toc-highlight">Do not transpile a composed artifact</a></li><li><a href="#packaging-documented-not-generated" class="table-of-contents__link toc-highlight">Packaging: documented, not generated</a></li><li><a href="#not-probed-on-this-face" class="table-of-contents__link toc-highlight">Not probed on this face</a></li></ul></li><li><a href="#binary-size" class="table-of-contents__link toc-highlight">Binary size</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
+stays WASI-free.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/comment_dsl"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Comment DSL</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/examples"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Examples</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#resources-not-records" class="table-of-contents__link toc-highlight">Resources, not records</a></li><li><a href="#getters-hand-back-a-snapshot" class="table-of-contents__link toc-highlight">Getters hand back a snapshot</a></li><li><a href="#collections-are-plain-lists" class="table-of-contents__link toc-highlight">Collections are plain lists</a></li><li><a href="#setters-exist-only-for-optional-fields" class="table-of-contents__link toc-highlight">Setters exist only for optional fields</a></li><li><a href="#fixed-value-singletons-are-resources" class="table-of-contents__link toc-highlight">Fixed-value singletons are resources</a></li><li><a href="#rest-rows-and-open-tables-project-as-extra-getters" class="table-of-contents__link toc-highlight">Rest rows and open tables project as extra getters</a></li><li><a href="#passing-a-resource-into-itself-stores-a-snapshot" class="table-of-contents__link toc-highlight">Passing a resource into itself stores a snapshot</a></li><li><a href="#nested-options-work" class="table-of-contents__link toc-highlight">Nested options work</a></li><li><a href="#naming" class="table-of-contents__link toc-highlight">Naming</a></li><li><a href="#int-is-a-variant-and-its-nint-arm-is-cbor-biased" class="table-of-contents__link toc-highlight"><code>Int</code> is a variant, and its <code>nint</code> arm is CBOR-biased</a></li><li><a href="#any-cbor-is-bytes-exactly-one-item-canonically-re-encoded" class="table-of-contents__link toc-highlight"><code>any-cbor</code> is bytes, exactly one item, canonically re-encoded</a></li><li><a href="#fallible-doors-return-the-rust-error-text" class="table-of-contents__link toc-highlight">Fallible doors return the rust error text</a></li><li><a href="#encoding-posture-is-a-property-of-the-package-not-of-a-type" class="table-of-contents__link toc-highlight">Encoding posture is a property of the package, not of a type</a></li><li><a href="#sharing-types-across-packages" class="table-of-contents__link toc-highlight">Sharing types across packages</a><ul><li><a href="#import-mode-is-opt-in-and-the-fallback-is-exclusion" class="table-of-contents__link toc-highlight">Import mode is opt-in, and the fallback is exclusion</a></li><li><a href="#the-seam-is-cbor-bytes-and-it-costs-what-that-costs" class="table-of-contents__link toc-highlight">The seam is CBOR bytes, and it costs what that costs</a></li><li><a href="#getters-on-dependency-typed-fields-are-fallible" class="table-of-contents__link toc-highlight">Getters on dependency-typed fields are fallible</a></li><li><a href="#dependency-typed-collection-parameters-take-an-accumulator" class="table-of-contents__link toc-highlight">Dependency-typed collection parameters take an accumulator</a></li><li><a href="#posture-matching-is-an-integrator-obligation" class="table-of-contents__link toc-highlight">Posture matching is an integrator obligation</a></li><li><a href="#instantiate-the-dependency-once--nothing-enforces-it" class="table-of-contents__link toc-highlight">Instantiate the dependency once — nothing enforces it</a></li><li><a href="#known-limitation-no-binary-dedupe" class="table-of-contents__link toc-highlight">Known limitation: no binary dedupe</a></li></ul></li><li><a href="#toolchain-floor-and-the-ambient-wasm-tools-trap" class="table-of-contents__link toc-highlight">Toolchain floor, and the ambient-<code>wasm-tools</code> trap</a></li><li><a href="#the-rust-crates-crate-type-on-this-face" class="table-of-contents__link toc-highlight">The rust crate&#39;s <code>crate-type</code> on this face</a></li><li><a href="#known-limitation-a-rule-named-t-is-unexported-on-this-face" class="table-of-contents__link toc-highlight">Known limitation: a rule named <code>t</code> is unexported on this face</a></li><li><a href="#flag-semantics-deltas" class="table-of-contents__link toc-highlight">Flag-semantics deltas</a></li><li><a href="#javascript-via-jco" class="table-of-contents__link toc-highlight">JavaScript via jco</a><ul><li><a href="#transpiling-install-the-shim-map-nothing" class="table-of-contents__link toc-highlight">Transpiling: install the shim, map nothing</a></li><li><a href="#the-js-surface-row-by-row" class="table-of-contents__link toc-highlight">The JS surface, row by row</a></li><li><a href="#a-refusal-is-thrown-and-the-instance-survives-it" class="table-of-contents__link toc-highlight">A refusal is thrown, and the instance survives it</a></li><li><a href="#disposal-is-an-own-property-and-reclamation-is-otherwise-gc-driven" class="table-of-contents__link toc-highlight">Disposal is an own property, and reclamation is otherwise GC-driven</a></li><li><a href="#two-generated-packages-transpile-each-one-wire-them-with---map" class="table-of-contents__link toc-highlight">Two generated packages: transpile each one, wire them with <code>--map</code></a></li><li><a href="#do-not-transpile-a-composed-artifact" class="table-of-contents__link toc-highlight">Do not transpile a composed artifact</a></li><li><a href="#packaging-documented-not-generated" class="table-of-contents__link toc-highlight">Packaging: documented, not generated</a></li><li><a href="#not-probed-on-this-face" class="table-of-contents__link toc-highlight">Not probed on this face</a></li></ul></li><li><a href="#binary-size" class="table-of-contents__link toc-highlight">Binary size</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
 </body>
 </html>
