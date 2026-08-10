@@ -814,31 +814,49 @@ impl GenerationScope {
     /// break uniqueness, so `add` is CHECKED here (returns `Result<_, JsError>` through the same door
     /// the core `push` uses). Construction is via `try_from` (the uniqueness/min-1 door) or, for the
     /// non-empty flavor, `new(first)`.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn generate_reject_ordered_set_type(
         &mut self,
         types: &IntermediateTypes,
         element_type: RustType,
         wrapper_ident: &RustIdent,
         non_empty: bool,
+        // Finite/optional/lower-bounded occurrence window for the compound carrier. `None` keeps
+        // the established loose/non-empty ordered-set twins.
+        bounds: Option<(u64, u64)>,
         // `true` when `wrapper_ident` is an explicit RULE ident (`foo = [* bar] ; @duplicates
         // reject`), so a structural-name coincidence never workspace-defers the consumer's own class
         // (criterion 9).
         rule_declared: bool,
         cli: &Cli,
     ) {
-        let twin = if non_empty {
+        let twin = if bounds.is_some() {
+            "BoundedOrderedSet"
+        } else if non_empty {
             "NonEmptyOrderedSet"
         } else {
             "OrderedSet"
         };
         // The shape column the sidecar round-trips: the marker is the SHARED const the dep-side
         // parser consumes, so the writer and the reader cannot drift apart on its spelling.
-        let shape = format!(
-            "[{} {}] {}",
-            if non_empty { "+" } else { "*" },
-            render_wrapper_shape(&element_type),
-            REJECT_MARKER
-        );
+        let shape = if let Some((min, max)) = bounds {
+            let occurrence = match (min, max == u64::MAX) {
+                (0, false) if max == 1 => "?".to_owned(),
+                (0, false) => format!("*{max}"),
+                (_, true) => format!("{min}*"),
+                _ => format!("{min}*{max}"),
+            };
+            format!(
+                "[{occurrence} {}] {REJECT_MARKER}",
+                render_wrapper_shape(&element_type)
+            )
+        } else {
+            format!(
+                "[{} {}] {REJECT_MARKER}",
+                if non_empty { "+" } else { "*" },
+                render_wrapper_shape(&element_type)
+            )
+        };
         // `--extern-wrapper-index` / `--workspace-dep`: the uniqueness twin over a dependency's
         // elements is a defer candidate exactly like the loose list and the NonEmpty twin — the
         // dependency's class is the one JS class for this shape, and re-minting it here is a
@@ -853,7 +871,13 @@ impl GenerationScope {
         // deferrable. If that helper's synthesized spelling changes, change this format! too (and the
         // list/map twins above).
         let variant = element_type.conceptual_type.for_variant();
-        let structural_name = if non_empty {
+        let structural_name = if let Some((min, max)) = bounds {
+            match (min, max == u64::MAX) {
+                (0, false) => format!("{variant}BoundedOrderedSetMax{max}"),
+                (_, true) => format!("{variant}BoundedOrderedSetMin{min}"),
+                _ => format!("{variant}BoundedOrderedSetMin{min}Max{max}"),
+            }
+        } else if non_empty {
             format!("NonEmpty{variant}OrderedSet")
         } else {
             format!("{variant}OrderedSet")
@@ -876,7 +900,16 @@ impl GenerationScope {
         // mint any NonEmpty wrappers the element itself needs first (parity with the twins)
         self.ensure_non_empty_wrappers(types, &element_type, cli);
         let elem_rust = element_type.for_rust_member(types, true, cli);
-        let inner_type = format!("{twin}<{elem_rust}>");
+        let inner_type = if let Some((min, max)) = bounds {
+            let max = if max == u64::MAX {
+                "{ u64::MAX }".to_owned()
+            } else {
+                max.to_string()
+            };
+            format!("{twin}<{elem_rust}, {min}, {max}>")
+        } else {
+            format!("{twin}<{elem_rust}>")
+        };
         let elem_wasm = element_type.for_wasm_member(types);
         // LOCKSTEP: a `@duplicates reject` rule of ANY bounds enters through `try_from(&<Elem>List)`
         // whenever this `loose_list` is `Some` (non-exposable, non-nested, not self-named element), so
@@ -891,14 +924,27 @@ impl GenerationScope {
         let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
         let attr_prefix = self.requested_attribution_prefix(wrapper_ident);
+        let mutation_docs = if bounds.is_some() {
+            "`add` is checked — duplicate and over-maximum additions are refused; `insert` and \
+             `try_opt_from` are intentionally absent; `contains` remains a read door."
+        } else {
+            "`add` is checked — an already-present element is refused; construct via `try_from` \
+             (the uniqueness door). `insert` is the std-set door (returns `false`, set unchanged, \
+             for an already-present element); `contains` tests membership."
+        };
         wrapper.s.doc(format!(
             "{attr_prefix}`{shape}`: an insertion-ordered, duplicate-free set (order preserved for \
-             byte-exact round-trip). `add` is checked — an already-present element is refused; \
-             construct via `try_from` (the uniqueness door). `insert` is the std-set door (returns \
-             `false`, set unchanged, for an already-present element); `contains` tests membership."
+             byte-exact round-trip). {mutation_docs}"
         ));
         wrapper.push_inner_field(&inner_type);
-        if non_empty {
+        if bounds.map(|(min, _)| min == 0).unwrap_or(false) {
+            wrapper
+                .s_impl
+                .new_fn("new")
+                .vis("pub")
+                .ret("Self")
+                .line(format!("Self({twin}::new())"));
+        } else if non_empty {
             // new(first) — always valid (length 1, trivially unique)
             let mut new_func = codegen::Function::new("new");
             new_func
@@ -914,7 +960,7 @@ impl GenerationScope {
                     )
                 ));
             wrapper.s_impl.push_fn(new_func);
-        } else {
+        } else if bounds.is_none() {
             let mut new_func = codegen::Function::new("new");
             new_func
                 .vis("pub")
@@ -953,25 +999,26 @@ impl GenerationScope {
                         .into_iter()
                 )
             ));
-        // insert / contains: the std-set doors mirroring the core `OrderedSet` runtime additions
-        // (Phase B). `insert -> bool` is the union-friendly no-panic door (`false` = already present,
-        // set unchanged); `contains` tests membership. Both keep the wasm surface telling the same
-        // story as the rust set API reachable through `Deref`.
-        wrapper
-            .s_impl
-            .new_fn("insert")
-            .vis("pub")
-            .ret("bool")
-            .arg_mut_self()
-            .arg("elem", element_type.for_wasm_param(types))
-            .line(format!(
-                "self.0.insert({})",
-                ToWasmBoundaryOperations::format(
-                    element_type
-                        .from_wasm_boundary_clone(types, "elem", false)
-                        .into_iter()
-                )
-            ));
+        // Only loose/non-empty twins expose the standard normalizing insert. Bounded set mutation
+        // must stay checked for both duplicate and maximum overflow.
+        if bounds.is_none() {
+            wrapper
+                .s_impl
+                .new_fn("insert")
+                .vis("pub")
+                .ret("bool")
+                .arg_mut_self()
+                .arg("elem", element_type.for_wasm_param(types))
+                .line(format!(
+                    "self.0.insert({})",
+                    ToWasmBoundaryOperations::format(
+                        element_type
+                            .from_wasm_boundary_clone(types, "elem", false)
+                            .into_iter()
+                    )
+                ));
+        }
+        // Membership is a read door and applies to every ordered-set flavor.
         wrapper
             .s_impl
             .new_fn("contains")
@@ -1375,7 +1422,20 @@ impl GenerationScope {
     ) {
         match &rt.conceptual_type {
             ConceptualRustType::Array(inner) => {
-                if let Some((min, max)) = rt.bounded_array_u64_bounds() {
+                if rt.is_bounded_reject_ordered_set() {
+                    let ident = RustIdent::new(CDDLIdent::new(
+                        rt.bounded_reject_ordered_set_wasm_wrapper_name(types),
+                    ));
+                    self.generate_reject_ordered_set_type(
+                        types,
+                        (**inner).clone(),
+                        &ident,
+                        false,
+                        rt.bounded_array_u64_bounds(),
+                        false,
+                        cli,
+                    );
+                } else if let Some((min, max)) = rt.bounded_array_u64_bounds() {
                     if types
                         .bounded_array_named_owner(inner, rt.config.bounds.unwrap())
                         .is_none()
@@ -1407,6 +1467,7 @@ impl GenerationScope {
                         (**inner).clone(),
                         &ident,
                         rt.is_non_empty_array(),
+                        rt.bounded_array_u64_bounds(),
                         // an inline (anonymous) occurrence: no rule authored this class, so the
                         // criterion-9 shadow screen does not apply — the sibling twins pass `false`
                         // from this same seam.

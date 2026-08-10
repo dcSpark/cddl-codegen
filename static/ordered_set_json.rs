@@ -40,3 +40,22 @@ impl<'de, T: serde::Deserialize<'de> + Ord> serde::de::Deserialize<'de>
         NonEmptyOrderedSet::try_from(vec).map_err(serde::de::Error::custom)
     }
 }
+
+impl<T: serde::Serialize, const MIN: u64, const MAX: u64> serde::Serialize
+    for BoundedOrderedSet<T, MIN, MAX>
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: serde::Serializer {
+        self.as_slice().serialize(serializer)
+    }
+}
+
+impl<'de, T: serde::Deserialize<'de> + Ord, const MIN: u64, const MAX: u64>
+    serde::de::Deserialize<'de> for BoundedOrderedSet<T, MIN, MAX>
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: serde::de::Deserializer<'de> {
+        let vec = <Vec<T> as serde::de::Deserialize>::deserialize(deserializer)?;
+        BoundedOrderedSet::try_from(vec).map_err(serde::de::Error::custom)
+    }
+}

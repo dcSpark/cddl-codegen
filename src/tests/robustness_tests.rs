@@ -2116,10 +2116,10 @@ fn well_known_tag_258_default_shape_guard_negatives() {
 }
 
 /// A bounded-occurrence tag-258 set (`#6.258([3*5 uint]) / [3*5 uint]`) composes the registry's
-/// reject default with a general occurrence bound: the reject twin picker routes the collected `Vec`
-/// through `OrderedSet::try_from` (uniqueness) and THEN a runtime length check for the `3*5` window
-/// (`src/generation/deserialize.rs`). Bounded-reject is therefore SUPPORTED — no guard-exclusion, no
-/// panic; this pins that a bounded 258 set gets the twin AND still enforces its length window.
+/// reject default with a general occurrence bound: the collected `Vec` enters the compound
+/// `BoundedOrderedSet` door, which owns uniqueness and the `3*5` window together. Bounded-reject is
+/// therefore type-enforced at both its API and wire doors rather than relying on a generated-site
+/// length check.
 #[test]
 fn well_known_tag_258_bounded_occurrence_composes_with_reject_twin() {
     let path = std::env::temp_dir().join(format!(
@@ -2144,23 +2144,20 @@ fn well_known_tag_258_bounded_occurrence_composes_with_reject_twin() {
     let src = out.values().cloned().collect::<Vec<_>>().join("\n");
     assert!(
         src.contains("pub struct Foo")
-            && src.contains("OrderedSet<u64>")
+            && src.contains("BoundedOrderedSet<u64, 3, 5>")
             && !src.contains("pub type Foo ="),
-        "a bounded 258 set nominalizes to a wrapper over the OrderedSet uniqueness twin:\n{src}"
+        "a bounded 258 set nominalizes to a wrapper over the compound uniqueness/window twin:\n{src}"
     );
     assert!(
-        src.contains("OrderedSet::try_from"),
-        "the bounded 258 set must route through the OrderedSet uniqueness door:\n{src}"
+        src.contains("BoundedOrderedSet<u64, 3, 5>>::try_from"),
+        "the bounded 258 set must route through the compound checked door:\n{src}"
     );
-    // the `3*5` window survives as a runtime length check on the accepted (unique) collection
     assert!(
-        src.contains(".len()") && (src.contains("3") && src.contains("5")),
-        "the `3*5` occurrence window must still be enforced as a length check:\n{src}"
+        !src.contains("if raw.len()") && !src.contains("if len"),
+        "the compound carrier must remove the redundant generated-site range check:\n{src}"
     );
 
-    // The same compound residue must hold without tag-258 nominalization: reject sets retain the
-    // OrderedSet representation and their ordinary `3*5` cardinality check until a deliberately
-    // designed BoundedOrderedSet exists (which this feature must not invent).
+    // Direct reject arrays take the identical compound carrier path without tag-258 nominalization.
     let direct_path = std::env::temp_dir().join(format!(
         "cddl_codegen_reject_bounded_{}.cddl",
         std::process::id()
@@ -2182,16 +2179,94 @@ fn well_known_tag_258_bounded_occurrence_composes_with_reject_twin() {
     std::fs::remove_file(&direct_path).ok();
     let direct = direct.values().cloned().collect::<Vec<_>>().join("\n");
     assert!(
-        direct.contains("pub type Foo = OrderedSet<u64>")
-            && direct.contains("OrderedSet::try_from")
+        direct.contains("pub type Foo = BoundedOrderedSet<u64, 3, 5>")
+            && direct.contains("BoundedOrderedSet::<_, 3, 5>::try_from")
             && !direct.contains("pub type Foo = BoundedVec")
             && !direct.contains("pub mod bounded;"),
-        "a direct bounded reject set must stay OrderedSet-based, never become BoundedVec:\n{direct}"
+        "a direct bounded reject set must use BoundedOrderedSet, never BoundedVec:\n{direct}"
     );
     assert!(
-        direct.contains(".len()") && direct.contains("3") && direct.contains("5"),
-        "the direct bounded reject set must retain its runtime 3*5 cardinality check:\n{direct}"
+        !direct.contains("if raw.len()") && !direct.contains("if len"),
+        "the direct bounded reject set must not retain a generated-site cardinality check:\n{direct}"
     );
+
+    // Natural JSON for `any` cannot reuse the bounded-Vec adapter: its type must be the compound
+    // carrier so duplicate and range rejection go through the same door as CBOR/API construction.
+    let any_path = std::env::temp_dir().join(format!(
+        "cddl_codegen_reject_bounded_any_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &any_path,
+        "any_set = [2*5 any] ; @duplicates reject\nholder = [s: any_set]\n",
+    )
+    .unwrap();
+    let any = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        any_path.to_str().unwrap(),
+        "--output",
+        "reject_bounded_any_unused",
+        "--wasm=false",
+        "--json-serde-derives=true",
+        "--json-schema-export=true",
+    ]))
+    .expect("bounded reject any JSON must generate cleanly");
+    std::fs::remove_file(&any_path).ok();
+    let any = any.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        any.contains("natural_any_cbor_bounded_ordered_set")
+            && any.contains("natural_any_cbor_bounded_ordered_set_schema")
+            && any.contains("BoundedOrderedSet<crate::generated::any_cbor::AnyCbor, 2, 5>"),
+        "bounded reject any must select the compound natural JSON/schema adapter:\n{any}"
+    );
+}
+
+/// `--emit-tests` must mint the valid empty value for zero-minimum bounded reject windows instead
+/// of trying to find a first distinct element.  The optional, max-only, and min-only occurrence
+/// spellings keep the bounded compound carrier on both Rust and wasm faces; none may regress to a
+/// loose set twin. (`1*1` is a fixed array/group spelling, not a homogeneous collection that accepts
+/// `@duplicates`, and remains outside this bounded-carrier surface.)
+#[test]
+fn emit_tests_mint_all_bounded_reject_occurrence_windows() {
+    let files = expect_generates(
+        "emit_tests_bounded_reject_windows",
+        "zero = [0*0 uint] ; @duplicates reject\n\
+         opt = [? uint] ; @duplicates reject\n\
+         max_only = [*2 uint] ; @duplicates reject\n\
+         min_only = [2* uint] ; @duplicates reject\n\
+         holder = [zero: zero, opt: opt, max: max_only, min: min_only]\n",
+        &["--wasm=true", "--emit-tests=true"],
+    );
+    let rust = files
+        .get("rust/src/generated/mod.rs")
+        .expect("Rust bounded reject generated module");
+    let wasm = files
+        .get("wasm/src/generated/mod.rs")
+        .expect("wasm bounded reject generated module");
+    for (name, carrier) in [
+        ("zero", "BoundedOrderedSet<u64, 0, 0>"),
+        ("opt", "BoundedOrderedSet<u64, 0, 1>"),
+        ("max-only", "BoundedOrderedSet<u64, 0, 2>"),
+        ("min-only", "BoundedOrderedSet<u64, 2, { u64::MAX }>"),
+    ] {
+        assert!(
+            rust.contains(carrier),
+            "Rust `{name}` must retain its bounded unique carrier:\n{rust}"
+        );
+    }
+    assert!(
+        rust.contains("BoundedOrderedSet::<_, 0, 0>::try_from(vec![]).unwrap()"),
+        "the zero-width reject window must mint through its valid empty checked door:\n{rust}"
+    );
+    for emitted in [rust, wasm] {
+        assert!(
+            emitted.contains("BoundedOrderedSet")
+                && !emitted.contains("OrderedSet<u64>")
+                && !emitted.contains("NonEmptyOrderedSet<u64>"),
+            "bounded reject windows must not lower to loose/non-empty ordered-set twins:\n{emitted}"
+        );
+    }
 }
 
 /// Inline-position tag-258 arrays NOMINALIZE into shape-derived `Set<Elem>` wrappers (Phase 2.4) —

@@ -370,7 +370,7 @@ Notes:
 ## @duplicates
 
 :::note Status
-`@duplicates reject` is **live for set/array collection rules** (`[* a]` / `[+ a]`, including the
+`@duplicates reject` is **live for set/array collection rules** (`[* a]` / `[+ a]` / `[n*m a]`, including the
 tag-258 set idiom), across the Rust, JSON, wasm-bindgen, and **component/WIT** boundaries: the rule's
 rust representation becomes an order-preserving, duplicate-free set and each boundary preserves
 that invariant. `@duplicates preserve` is **live for table rules** (`{ * k => v }` and
@@ -433,11 +433,13 @@ CDDL rule references are transparent, so the hoist is semantically identical.
 :::
 
 Under `@duplicates reject` a set rule's transparent alias targets an order-preserving,
-duplicate-free set type (`OrderedSet<T>`, or `NonEmptyOrderedSet<T>` for the `[+]` flavor) instead of
-`Vec<T>`/`NonEmptyVec<T>`. Its single `TryFrom` door is the only way to build one, so a duplicate is
+duplicate-free set type: `OrderedSet<T>` for `[* T]`, `NonEmptyOrderedSet<T>` for `[+ T]`, or
+`BoundedOrderedSet<T, MIN, MAX>` for every other bounded window, instead of the corresponding
+`Vec` carrier. Its single `TryFrom` door is the only way to build one, so a duplicate is
 refused identically whether it arrives on the wire or through the generated API — the decode error is
 `DeserializeFailure::DuplicateKey(Key::Uint(i))`, where `i` is the zero-based index of the offending
-element. Rejection only narrows *which* inputs are accepted; an accepted (duplicate-free) value
+element. The bounded carrier also refuses an out-of-window length at that same door and exposes only
+checked mutation, so uniqueness and cardinality cannot drift apart. Rejection only narrows *which* inputs are accepted; an accepted (duplicate-free) value
 re-emits byte-exactly in its original wire order (the set is never sorted).
 
 Under `@duplicates preserve` a **table** rule's transparent alias targets an entry-ordered,

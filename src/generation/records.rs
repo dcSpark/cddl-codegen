@@ -2927,10 +2927,11 @@ pub(super) fn codegen_struct(
                             .map_or_else(
                                 || Some(if opt { P::OptSeq } else { P::Seq }),
                                 |(min, max)| {
-                                    Some(if opt {
-                                        P::OptBoundedSeq(min, max)
-                                    } else {
-                                        P::BoundedSeq(min, max)
+                                    Some(match (field.rust_type.duplicates_reject(), opt) {
+                                        (true, false) => P::BoundedUniqueSeq(min, max),
+                                        (true, true) => P::OptBoundedUniqueSeq(min, max),
+                                        (false, false) => P::BoundedSeq(min, max),
+                                        (false, true) => P::OptBoundedSeq(min, max),
                                     })
                                 },
                             )

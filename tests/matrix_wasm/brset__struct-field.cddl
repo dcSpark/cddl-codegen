@@ -1,0 +1,3 @@
+; cell: brset x struct-field
+brs = [*2 uint] ; @duplicates reject
+holder = [field0: brs]

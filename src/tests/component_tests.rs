@@ -1026,6 +1026,37 @@ fn component_glue_routes_type_enforced_lists_through_the_try_from_door() {
             && !ctor.contains("RangeCheck"),
         "the mandatory bounded field must re-enter its door before the infallible constructor:\n{ctor}"
     );
+    let bounded_unique = glue
+        .split("fn set_bounded_unique(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    }").next())
+        .unwrap_or_else(|| panic!("the glue carries no `set_bounded_unique`:\n{glue}"));
+    assert!(
+        bounded_unique.contains("bounded_unique.into_iter().collect::<Vec<_>>()")
+            && bounded_unique.contains("try_into()")
+            && bounded_unique.contains("map_err(err)?")
+            && !bounded_unique.contains("RangeCheck"),
+        "the bounded reject setter must re-enter its type-enforced TryFrom door:\n{bounded_unique}"
+    );
+    let bounded_unique_signature = glue
+        .split("fn set_bounded_unique(")
+        .nth(1)
+        .and_then(|rest| rest.split('{').next())
+        .unwrap_or_else(|| panic!("the glue carries no `set_bounded_unique` signature:\n{glue}"));
+    assert!(
+        bounded_unique_signature.contains(") -> Result<(), String>"),
+        "the bounded reject conversion must report its checked-door failure as the component's inner \
+         Err channel, never a trap:\n{bounded_unique_signature}"
+    );
+    let files = crate::api::generated_strings(&cli_for("tests/component-bounds/input.cddl", &[]))
+        .expect("the bounded-reject component fixture must generate");
+    let rust = &files["rust/src/generated/mod.rs"];
+    assert!(
+        rust.contains("BoundedOrderedSet<u64, 2, 3>")
+            && !rust.contains("pub type BoundedUnique = BoundedVec<u64, 2, 3>")
+            && !rust.contains("pub type BoundedUnique = OrderedSet<u64>"),
+        "the component's checked list conversion must target the compound BoundedOrderedSet carrier:\n{rust}"
+    );
 }
 
 /// Direct table rows lower to WIT `list<tuple<K, V>>`. The typed conversion walk must descend into

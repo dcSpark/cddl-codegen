@@ -19,6 +19,10 @@ non_empty = [+ uint]
 ; plain `list<u64>` and its uniqueness is re-imposed by `OrderedSet`'s `TryFrom`.
 unique = [* uint] ; @duplicates reject
 
+; The bounded-reject sibling proves that the component restores BOTH invariants through the
+; compound carrier rather than selecting BoundedVec for cardinality or OrderedSet for uniqueness.
+bounded_unique = [2*3 uint] ; @duplicates reject
+
 bounded = {
   ; mandatory and bounded: the rust `new` takes an already-checked BoundedVec and is infallible, so
   ; the guest re-enters `TryFrom` before calling it. A second inline check would duplicate the door.
@@ -45,6 +49,7 @@ bounded = {
   ; constructor between the caller and the field.
   ? ids: non_empty,
   ? tags: unique,
+  ? bounded_unique: bounded_unique,
 }
 
 ; A direct table's WIT spelling is `list<tuple<K, V>>`; its bounded VALUE must still re-enter

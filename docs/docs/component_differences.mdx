@@ -64,8 +64,8 @@ There are **no wrapper classes** on this face. An array field is `list<t>`, a ma
 gaps second; the borrow-parameter rule above covers the ownership half, and WIT's type system has
 neither of the gaps (nested lists, lists of handles and nested `option`s are all expressible).
 
-The consequence is that **constraints move from the type to the door**. A `[+ t]` non-empty
-container and a `@duplicates reject` **set** both despecialize to a plain `list<…>`, so the invariant
+The consequence is that **constraints move from the type to the door**. A `[+ t]` non-empty,
+bounded, or `@duplicates reject` **set** all despecialize to a plain `list<…>`, so the invariant
 is re-checked where the list is *consumed*: the constructor or setter returns
 `result<…, string>` and reports the same refusal as the rust crate's `TryFrom` door.
 

@@ -245,19 +245,32 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             non_empty,
             bounded,
             reject,
+            unique_elems,
         } => {
             if *reject {
-                // `@duplicates reject`: a single unique element through the twin door (N identical
-                // copies would panic at the uniqueness scan — see emit_tests.rs).
-                let twin = if *non_empty {
+                let vec = unique_elems.as_ref().map_or_else(
+                    || format!("vec![{}; {count}]", rust_scoped(e, scoped)),
+                    |elems| {
+                        format!(
+                            "vec![{}]",
+                            elems
+                                .iter()
+                                .map(|e| rust_scoped(e, scoped))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    },
+                );
+                let twin = if let Some((min, max)) = bounded {
+                    return format!(
+                        "BoundedOrderedSet::<_, {min}, {max}>::try_from({vec}).unwrap()"
+                    );
+                } else if *non_empty {
                     "NonEmptyOrderedSet"
                 } else {
                     "OrderedSet"
                 };
-                format!(
-                    "{twin}::try_from(vec![{}]).unwrap()",
-                    rust_scoped(e, scoped)
-                )
+                format!("{twin}::try_from({vec}).unwrap()")
             } else {
                 let vec = format!("vec![{}; {count}]", rust_scoped(e, scoped));
                 if let Some((min, max)) = bounded {
@@ -269,6 +282,12 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
                 }
             }
         }
+        MintValue::Array {
+            elem: None,
+            reject: true,
+            bounded: Some((min, max)),
+            ..
+        } => format!("BoundedOrderedSet::<_, {min}, {max}>::try_from(vec![]).unwrap()"),
         MintValue::Array {
             elem: None,
             reject: true,

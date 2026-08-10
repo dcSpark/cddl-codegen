@@ -1,0 +1,3 @@
+; cell: brseta x struct-field-opt
+boset<e0> = [2*3 e0] ; @duplicates reject
+holder = [pre: uint, ? field0: boset<uint>]

@@ -1,0 +1,3 @@
+; cell: brset x gchoice-variant
+brs = [*2 uint] ; @duplicates reject
+holder = [ f0: brs // f1: nint ]
