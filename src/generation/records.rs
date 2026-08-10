@@ -443,9 +443,7 @@ pub(super) fn generate_array_struct_deserialization(
                     "return Err(DeserializeFailure::IndefiniteLengthAmbiguousOptionalField.into());",
                 );
                 deser_code.content.push_block(indefinite_rejection);
-                format!(
-                    "if read_len.remaining() != Some(0) && ({type_check_predicate})"
-                )
+                format!("if read_len.remaining() != Some(0) && ({type_check_predicate})")
             } else {
                 format!("if {type_check_predicate}")
             };
