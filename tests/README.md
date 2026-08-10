@@ -4093,6 +4093,18 @@ scalar-ranged, and `.cbor`-wrapped array keys and asserts that the established `
 minted once over `Vec<Vec<u64>>`; restricted `keys()` surfaces convert into that boundary carrier,
 while their map classes retain checked key doors. A focused generated-WASM `cargo check` is required
 when changing this seam, and the full-tier recombination wasm leg remains the broad compile oracle.
+`nested_table_key_keeps_its_native_array_carrier_at_the_outer_boundary` is the complementary
+read-derived pin: `rc1508 = { { [*5 uint] => uint } => uint }` asserts that the inner map's own
+anonymous structural builder and the outer table conversion retain the nested map's `BoundedVec`
+carrier. Its sibling
+`direct_and_nested_table_keys_share_one_canonical_structural_builder_carrier` crosses both traversal
+orders and pins that a named bounded table makes `MapArrU64ToU64` the one loose builder regardless of
+mint order. `ordinary_inline_map_keeps_its_native_restricted_key_carrier` covers the incompatible
+ordinary-map boundary, while `loose_map_and_named_bounded_table_same_builder_shape_reject_gracefully`
+and `open_table_catchall_and_named_bounded_table_same_builder_shape_reject_gracefully` refuse the
+one-name/two-carrier composition for inline fields and the default/preserve catch-all wrappers. The
+source assertions catch the otherwise exit-0 E0277 conversion mismatch; focused generated-WASM
+`cargo check`s remain required after edits.
 
 Expectations are seeded by the **probe-then-pin** rule: run the generator on the cell's CDDL, inspect
 the outcome, then pin the observed-AND-correct behavior. A cell that lands exit-0 + non-compiling is a

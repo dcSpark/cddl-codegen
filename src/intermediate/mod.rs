@@ -852,6 +852,41 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
+    /// Whether an exported named bounded table needs the loose structural wasm builder for this
+    /// key/value SHAPE. The builder name deliberately ignores an inline array's occurrence window,
+    /// so this is shape-based rather than occurrence-based: a nested bounded table that reaches the
+    /// same `Map…` source must choose its carrier from this whole-IR fact, never from mint order.
+    ///
+    /// This says nothing about an ordinary loose map use of the shape. That incompatible native
+    /// boundary is rejected separately by `bounded_table_loose_builder_carrier_collisions` before
+    /// generation, rather than silently choosing one carrier for both roles.
+    pub fn has_bounded_table_loose_builder_for_wasm_shape(
+        &self,
+        key: &RustType,
+        value: &RustType,
+        preserve: bool,
+    ) -> bool {
+        let structural = ConceptualRustType::name_for_wasm_map(key, value, preserve);
+        self.rust_structs.iter().any(|(ident, rs)| {
+            if !self.scope(ident).export() || self.is_anonymous_collection_instance(ident) {
+                return false;
+            }
+            let RustStructType::Table {
+                domain,
+                range,
+                bounds: Some(bounds),
+            } = rs.variant()
+            else {
+                return false;
+            };
+            Self::normalized_bounded_map_window(*bounds).is_some()
+                && (rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve))
+                    == preserve
+                && domain.loosened_for_wasm_table_boundary_key() != *domain
+                && ConceptualRustType::name_for_wasm_map(domain, range, preserve) == structural
+        })
+    }
+
     /// Canonicalize an array occurrence window before comparing ownership or rendering a request:
     /// absent endpoints are the real `0` / unbounded values, and the two loose shapes are not
     /// bounded owners.  Keeping this here makes `[? T]`/`[0*1 T]` and `[*5 T]`/`[0*5 T]` one
@@ -4008,6 +4043,9 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.bounded_pair_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            for msg in self.bounded_table_loose_builder_carrier_collisions() {
+                self.record_rejection(msg);
+            }
             // `@duplicates reject` uniqueness-twin wasm-wrapper name collisions — the third container
             // kind's sibling of the two detectors above (the reject twin is the new container kind
             // AGENTS.md's twin-detector note reserved as the trigger for this expansion).
@@ -5327,6 +5365,81 @@ impl<'a> IntermediateTypes<'a> {
                 ));
             }
         });
+        msgs.into_iter().collect()
+    }
+
+    /// A named bounded table with a direct restricted-array key needs `MapKToV` (or its preserve
+    /// pair-map twin) as a loose `try_from` source. An ordinary loose map of the same structural
+    /// name instead needs that class to carry its native restricted key for an infallible parent
+    /// conversion. One wasm class cannot carry both representations, and letting whichever visitor
+    /// runs first decide produces a reproducible-looking but order-dependent E0277. Reject the
+    /// incompatible pair before generation; bounded-only direct/nested uses share the loose source
+    /// through `has_bounded_table_loose_builder_for_wasm_shape` instead.
+    fn bounded_table_loose_builder_carrier_collisions(&self) -> Vec<String> {
+        let mut bounded_builders: BTreeMap<String, RustIdent> = BTreeMap::new();
+        for (ident, rs) in self.rust_structs() {
+            if !self.scope(ident).export() || self.is_anonymous_collection_instance(ident) {
+                continue;
+            }
+            let RustStructType::Table {
+                domain,
+                range,
+                bounds: Some(bounds),
+            } = rs.variant()
+            else {
+                continue;
+            };
+            let preserve =
+                rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+            if Self::normalized_bounded_map_window(*bounds).is_some()
+                && domain.loosened_for_wasm_table_boundary_key() != *domain
+            {
+                bounded_builders
+                    .entry(
+                        ConceptualRustType::name_for_wasm_map(domain, range, preserve).to_string(),
+                    )
+                    .or_insert_with(|| ident.clone());
+            }
+        }
+
+        let mut msgs = BTreeSet::new();
+        let mut record_loose_map_collision = |rt: &RustType| {
+            let ConceptualRustType::Map(key, value) = &rt.conceptual_type else {
+                return;
+            };
+            if rt.is_bounded_map() || rt.is_non_empty_map() {
+                return;
+            }
+            let preserve = rt.is_preserve_pair_map();
+            if key.loosened_for_wasm_table_boundary_key() == **key {
+                return;
+            }
+            let structural =
+                ConceptualRustType::name_for_wasm_map(key, value, preserve).to_string();
+            let Some(owner) = bounded_builders.get(&structural) else {
+                return;
+            };
+            msgs.insert(format!(
+                "wasm structural builder collision: bounded table rule `{owner}` needs `{structural}` as a loose direct-array-key builder, but an ordinary loose map of the same shape needs `{structural}` to retain its native restricted key for an infallible parent boundary. One wasm class cannot represent both carriers; wrap one key shape in a distinct named type (for example an `@newtype`) so the structural builder names differ."
+            ));
+        };
+        self.visit_all_rust_types(&mut record_loose_map_collision);
+        // A captured open-table CATCH-ALL row has a whole-map `rest()` getter and therefore mints
+        // the same structural `MapKToV` / `PairMapKToV` class as an inline loose-map field. The
+        // general RustType visitor deliberately walks only a rest row's domain/range (there is no
+        // stored container RustType), so reconstruct that emitted container here. The TYPED row is
+        // excluded: its map surface is flattened onto the open table and mints no map class.
+        for rs in self.rust_structs.values() {
+            let RustStructType::Record(record) = rs.variant() else {
+                continue;
+            };
+            for rest in record
+                .captured_dynamic_rows()
+                .filter(|rest| !rest.is_array_tail() && !record.is_typed_row(rest))
+            {
+                record_loose_map_collision(&rest.container_type());
+            }
+        }
         msgs.into_iter().collect()
     }
 

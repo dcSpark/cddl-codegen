@@ -3621,6 +3621,196 @@ fn table_keys_list_syntheses_share_the_established_loose_boundary_carrier() {
     );
 }
 
+/// An anonymous bounded table used only as another table's key retains its native carrier. In
+/// particular, no named bounded table establishes `MapArrU64ToU64` as a loose structural source in
+/// this spec, so the inner wrapper and outer key agree on `BoundedVec`; recursively loosening the
+/// builder would instead produce E0277.
+///
+/// This is the minimized wasm recombination composition `rc1508`. Source assertions pin both ends
+/// of the conversion; the focused scratch WASM-crate check accompanying this change proves the
+/// emitted conversion type-checks rather than merely generating.
+#[test]
+fn nested_table_key_keeps_its_native_array_carrier_at_the_outer_boundary() {
+    const CDDL: &str = "rc1508 = { { [*5 uint] => uint } => uint }\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_nested_table_key_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "nested_table_key_unused",
+        "--wasm=true",
+    ]))
+    .expect("a nested restricted table key must generate under --wasm");
+    std::fs::remove_file(&path).ok();
+    let wasm = &out["wasm/src/generated/mod.rs"];
+
+    assert!(
+        wasm.contains(
+            "pub struct MapArrU64ToU64(pub(crate) BTreeMap<BoundedVec<u64, 0, 5>, u64>)"
+        ) && wasm.contains(
+            "pub struct Rc1508(pub(crate) BoundedMap<BoundedMap<BoundedVec<u64, 0, 5>, u64, 1, 1>, u64, 1, 1>)"
+        ),
+        "the nested table and outer key must retain their shared native bounded carrier:\n{wasm}"
+    );
+    assert!(
+        wasm.contains("let inner: BTreeMap<BoundedVec<u64, 0, 5>, u64> = map.clone().into();")
+            && !wasm.contains("let inner: BTreeMap<Vec<u64>, u64> = map.clone().into();"),
+        "the anonymous nested table must read its native source carrier:\n{wasm}"
+    );
+}
+
+/// `MapArrU64ToU64` is a structural builder, so its direct-array carrier is a property of the
+/// shape, never of the first traversal that happened to mint it. Both orderings combine the direct
+/// bounded table and the same table nested as another table's key; the latter still uses the
+/// restricted `BoundedMap<BoundedVec<..>>` carrier at the outer boundary.
+#[test]
+fn direct_and_nested_table_keys_share_one_canonical_structural_builder_carrier() {
+    const DIRECT_THEN_NESTED: &str = "direct = { [*5 uint] => uint }\n\
+                                     outer = { { [*5 uint] => uint } => uint }\n";
+    const NESTED_THEN_DIRECT: &str = "a_outer = { { [*5 uint] => uint } => uint }\n\
+                                     z_direct = { [*5 uint] => uint }\n";
+    for (label, cddl) in [
+        ("direct_then_nested", DIRECT_THEN_NESTED),
+        ("nested_then_direct", NESTED_THEN_DIRECT),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_canonical_table_builder_{label}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let out = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "canonical_table_builder_unused",
+            "--wasm=true",
+        ]))
+        .expect("direct and nested restricted tables must generate under --wasm");
+        std::fs::remove_file(&path).ok();
+        let wasm = &out["wasm/src/generated/mod.rs"];
+        assert_eq!(
+            wasm.matches("pub struct MapArrU64ToU64(pub(crate) BTreeMap<Vec<u64>, u64>)")
+                .count(),
+            1,
+            "{label} must mint the one canonical loose structural builder:\n{wasm}"
+        );
+        assert!(
+            wasm.contains("let inner: BTreeMap<Vec<u64>, u64> = map.clone().into();")
+                && !wasm.contains(
+                    "pub struct MapArrU64ToU64(pub(crate) BTreeMap<BoundedVec<u64, 0, 5>, u64>)"
+                ),
+            "{label} must not make the structural builder depend on traversal order:\n{wasm}"
+        );
+    }
+}
+
+/// An ordinary loose inline map is a native parent-boundary carrier, not a bounded-table
+/// `try_from` source. In the absence of a matching named bounded-table owner it must keep its
+/// direct restricted array key; changing it to a loose `Vec` breaks Holder's infallible getter/new
+/// conversions with E0277.
+#[test]
+fn ordinary_inline_map_keeps_its_native_restricted_key_carrier() {
+    const CDDL: &str = "holder = [m: { * [*5 uint] => uint }]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_ordinary_inline_map_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "ordinary_inline_map_unused",
+        "--wasm=true",
+    ]))
+    .expect("an ordinary inline map must generate under --wasm");
+    std::fs::remove_file(&path).ok();
+    let wasm = &out["wasm/src/generated/mod.rs"];
+    assert!(
+        wasm.contains("pub struct MapArrU64ToU64(pub(crate) BTreeMap<BoundedVec<u64, 0, 5>, u64>)")
+            && wasm.contains("pub fn new(m: &MapArrU64ToU64) -> Self"),
+        "the ordinary map wrapper must retain the native key carrier its parent converts infallibly:\n{wasm}"
+    );
+}
+
+/// A named bounded table needs the loose `MapArrU64ToU64` source, while an ordinary loose map of
+/// the same structural shape needs the native version for a parent boundary. Reject this genuinely
+/// unrepresentable one-name/two-carrier combination before emission rather than letting map mint
+/// order choose an ABI (or a later E0277).
+#[test]
+fn loose_map_and_named_bounded_table_same_builder_shape_reject_gracefully() {
+    const CDDL: &str = "direct = { [*5 uint] => uint }\n\
+                        holder = [m: { * [*5 uint] => uint }]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_loose_bounded_builder_collision_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let err = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "loose_bounded_builder_collision_unused",
+        "--wasm=true",
+    ]))
+    .expect_err("one structural builder cannot carry both loose and native direct-array map keys");
+    std::fs::remove_file(&path).ok();
+    assert!(
+        err.to_string()
+            .contains("wasm structural builder collision")
+            && err.to_string().contains("MapArrU64ToU64"),
+        "the incompatible loose-map/bounded-source pair must reject with its structural builder name: {err}"
+    );
+}
+
+/// A captured open-table catch-all row mints the same whole-map structural class as an inline map
+/// field (the typed row does not: its accessors are flattened onto the open-table class). Cover both
+/// structural flavors so the collision preflight cannot overlook a `Map`/`PairMap` source that is
+/// reconstructed from `RestRow::container_type` rather than stored as a composite `RustType`.
+#[test]
+fn open_table_catchall_and_named_bounded_table_same_builder_shape_reject_gracefully() {
+    for (label, preserve) in [("default", ""), ("preserve", " ; @duplicates preserve")] {
+        let cddl = format!(
+            "direct = {{ [*5 uint] => uint }}{preserve}\n\
+             holder = {{ * text => uint, * [*5 uint] => uint{preserve}\n}}\n"
+        );
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_open_table_bounded_builder_collision_{label}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let err = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "open_table_bounded_builder_collision_unused",
+            "--wasm=true",
+        ]))
+        .expect_err("an open-table catch-all cannot share both structural builder carriers");
+        std::fs::remove_file(&path).ok();
+        let structural = if preserve.is_empty() {
+            "MapArrU64ToU64"
+        } else {
+            "PairMapArrU64ToU64"
+        };
+        assert!(
+            err.to_string()
+                .contains("wasm structural builder collision")
+                && err.to_string().contains(structural),
+            "the {label} catch-all collision must name its structural builder: {err}"
+        );
+    }
+}
+
 /// A recursive union used as a table's DOMAIN (`key_map = { * key_val => key_val }` with
 /// `key_val = key_map / …`) mints its keys-list wasm wrapper from a domain that names the very
 /// struct the table lowers to. The whole class once aborted in `register_rust_struct`'s keys-list

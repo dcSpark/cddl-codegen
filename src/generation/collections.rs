@@ -1090,6 +1090,7 @@ impl GenerationScope {
         (min, max): (u64, u64),
         rule_declared: bool,
         preserve_pair_map: bool,
+        top_level_builder_boundary: bool,
         cli: &Cli,
     ) {
         let structural_name = match (min, max == u64::MAX) {
@@ -1163,7 +1164,21 @@ impl GenerationScope {
         // occurrence-invariant in representation too: accept the loose key value there and restore
         // the restricted carrier through its checked `TryFrom` door below. The named restricted
         // wrapper's own insert/get surface continues to use `key_type` unchanged.
-        let loose_key_type = key_type.loosened_for_wasm_table_boundary_key();
+        // A nested bounded table normally remains a native carrier for its parent. Its structural
+        // builder must nevertheless use the loose direct-array representation when a named bounded
+        // table anywhere in the finalized IR needs that SAME `Map…` source: the source class is
+        // shape-global, so this decision cannot depend on which occurrence happens to mint first.
+        let loosen_builder_key = top_level_builder_boundary
+            || types.has_bounded_table_loose_builder_for_wasm_shape(
+                &key_type,
+                &value_type,
+                preserve_pair_map,
+            );
+        let loose_key_type = if loosen_builder_key {
+            key_type.loosened_for_wasm_table_boundary_key()
+        } else {
+            key_type.clone()
+        };
         let key_needs_restriction = key_type.for_rust_member(types, true, cli)
             != loose_key_type.for_rust_member(types, true, cli);
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
@@ -1565,6 +1580,7 @@ impl GenerationScope {
                         bounds,
                         false,
                         rt.is_preserve_pair_map(),
+                        false,
                         cli,
                     );
                 } else if rt.is_non_empty_map() {
@@ -2202,6 +2218,21 @@ pub(super) fn codegen_table_type(
     cli: &Cli,
 ) {
     assert!(cli.wasm);
+    // A nested conceptual `Map` reaches this structural mint before its enclosing bounded
+    // occurrence is available. Consult the finalized-IR shape decision instead: a named bounded
+    // table makes this the shared loose source in every traversal order. The IR collision detector
+    // has already rejected an ordinary loose map that would need this same class natively, so the
+    // normalization cannot break an infallible parent boundary.
+    let key_type = if !exists_in_rust
+        && types.has_bounded_table_loose_builder_for_wasm_shape(
+            &key_type,
+            &value_type,
+            preserve_pair_map,
+        ) {
+        key_type.loosened_for_wasm_table_boundary_key()
+    } else {
+        key_type
+    };
     // `--extern-wrapper-index`: only the anonymous STRUCTURAL map wrapper (`!exists_in_rust`, name ==
     // `name_for_wasm_map`) is a defer candidate — a rule-owned class (`exists_in_rust`) is the
     // consumer's own type. If a mapped dependency owns this exact structural map wrapper, defer to it
