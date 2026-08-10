@@ -3452,9 +3452,10 @@ cache is preserved. The fixture loop uses curated ledgers, each empirically just
   minted value became in-spec.
   `inline_group` (`[(uint, tstr)]`) and `occurrence` (`[+ uint]` / `[2*5 uint]`) are earlier
   residents' siblings that never joined the list: both are **fixed at HEAD** (inline_group emits a
-  2-field struct that reads 2 elems; occurrence bounds now live on the ARRAY type — enforced as a
-  length check at embed sites and covered by `occurrence_holder`'s minted round-trip + deser-reject
-  cases, where they were once misread as element VALUE bounds).
+  2-field struct that reads 2 elems; finite/non-zero occurrence bounds now live on the ARRAY type's
+  `BoundedVec::try_from` door, which generated tests probe directly before passing accepted values
+  into infallible record/type-choice/group-choice constructors, while minted round-trips exercise
+  the same door on decode — the bounds were once misread as element VALUE bounds).
 - **`GEN_SKIP`** — fixtures excluded from the sweep for a concrete *validator/minter* gap
   (never to hide a real bug): `dsl_custom` (references user-supplied code, can't compile
   standalone). `sized_int` is a past resident, off the list twice over: its negative-lower-bound

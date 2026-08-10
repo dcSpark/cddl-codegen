@@ -907,6 +907,106 @@ fn json_gen_extern_schema_rows() {
     );
 }
 
+/// A bounded homogeneous array is already a restricted `BoundedVec` by the time a record or enum
+/// constructor receives it. The fallible door is therefore `BoundedVec::try_from`, never the outer
+/// constructor. Keep that ownership true across every rust-test-emitting profile, and keep the
+/// nested-container renderer routing an inner bounded array through the same door.
+#[test]
+fn bounded_array_emit_test_probes_follow_the_fallible_door() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_array_emit_test_probe_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(
+        &input,
+        "bounded_record = [values: [2*5 uint]]\n\
+         bounded_choice = [2*5 uint] / tstr\n\
+         bounded_arm = (code: uint, values: [2*5 uint])\n\
+         label_arm = (label: tstr)\n\
+         bounded_group_choice = [bounded_arm // label_arm]\n\
+         nested_choice = [* [2*5 uint]] / bool\n",
+    )
+    .unwrap();
+
+    for (profile, flags) in [
+        ("default", vec!["--emit-tests=true", "--wasm=false"]),
+        (
+            "preserve",
+            vec![
+                "--emit-tests=true",
+                "--preserve-encodings=true",
+                "--wasm=false",
+            ],
+        ),
+        (
+            "json",
+            vec![
+                "--emit-tests=true",
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+                "--wasm=false",
+            ],
+        ),
+        ("wasm", vec!["--emit-tests=true", "--wasm=true"]),
+    ] {
+        let files = crate::api::generated_strings(&cli_for(&input, &flags))
+            .unwrap_or_else(|e| panic!("{profile} generation failed: {e}"));
+        let rust = files
+            .get("rust/src/generated/mod.rs")
+            .unwrap_or_else(|| panic!("{profile} omitted the generated rust root"));
+        let compact: String = rust.split_whitespace().collect();
+
+        assert!(
+            compact.contains(
+                "usecrate::generated::error::DeserializeFailureas__CddlTestDeserializeFailure;"
+            ),
+            "{profile} reject probes must own their error import inside the test module:\n{rust}"
+        );
+
+        for (owner, ctor) in [
+            ("record", "BoundedRecord::new(__bounded_arg)"),
+            ("type choice", "BoundedChoice::new_arr_u64(__bounded_arg)"),
+            (
+                "group choice",
+                "BoundedGroupChoice::new_bounded_arm(0,__bounded_arg)",
+            ),
+        ] {
+            assert!(
+                compact
+                    .contains("let__bounded_arg=BoundedVec::<_,2,5>::try_from(vec![0;2]).expect(")
+                    && compact.contains(&format!("let_={ctor};")),
+                "{profile} {owner} accept probe must cross the bounded argument's TryFrom door, then pass the checked value to the infallible outer constructor:\n{rust}"
+            );
+        }
+        assert!(
+            compact.contains("BoundedVec::<_,2,5>::try_from(vec![0;1]).unwrap_err().failure()")
+                && compact
+                    .contains("BoundedVec::<_,2,5>::try_from(vec![0;6]).unwrap_err().failure()"),
+            "{profile} reject probes must observe RangeCheck at the BoundedVec door:\n{rust}"
+        );
+        for bad_owner in [
+            "BoundedChoice::new_arr_u64(BoundedVec::<_,2,5>::try_from",
+            "BoundedGroupChoice::new_bounded_arm(0,BoundedVec::<_,2,5>::try_from",
+        ] {
+            assert!(
+                !compact.contains(&format!("{bad_owner}vec![0;2]).unwrap()).is_ok()")),
+                "{profile} must not attach Result assertions to an infallible enum constructor:\n{rust}"
+            );
+        }
+        assert!(
+            compact.contains(
+                "NestedChoice::new_arr_arr_u64(vec![BoundedVec::<_,2,5>::try_from(vec![0;2]).unwrap();1])"
+            ),
+            "{profile} nested bounded-array values must still cross their inner TryFrom door:\n{rust}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// Byte-stability of the json-gen crate root across regenerations. The schema document is built by
 /// threading ONE `schemars::SchemaGenerator` through the rows in the order `add_schemas` emits them,
 /// and schemars assigns its collision suffixes (`{base}{i}`) from a per-generator name set in

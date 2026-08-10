@@ -14,10 +14,12 @@
 //!   field out of bounds, serialize, and assert `from_cbor_bytes` rejects the wire bytes as
 //!   `DeserializeFailure::RangeCheck`. This exercises the *wire* path — the roadmap's target —
 //!   because serialize does not re-check bounds (raw `write_*`) but deserialize does.
-//! * **construct-reject** (type / group choices, bounded `@newtype` wrappers): assert the
-//!   constructor itself rejects an out-of-bounds value as `RangeCheck` (and accepts the boundary).
-//!   Type and group choices share the same deserialization code, so we only check the constructor
-//!   API here.
+//! * **construct-reject** (record/choice bounded-array arguments, other bounded type/group choices,
+//!   and bounded `@newtype` wrappers): assert the fallible construction door rejects an
+//!   out-of-bounds value as `RangeCheck` (and accepts the boundary). For a bounded-array argument
+//!   that door is `BoundedVec::try_from`; the checked value then passes into its infallible outer
+//!   record/choice constructor. Type and group choices share the same deserialization code, so we
+//!   only check the construction API here.
 //!
 //! **Round-trip half** — for every type we can mint, a `#[test]` that constructs IR-derived value
 //! cases and asserts the full wire cycle is byte-identical (`value → to_cbor_bytes →
@@ -531,8 +533,24 @@ pub fn emit_generated_tests(
     } else {
         String::new()
     };
+    // Keep error-name ownership local to the generated-test module. If a type's production code
+    // needs no error export but its emitted reject probe does, resolving `DeserializeFailure`
+    // through the parent's `error::*` makes that parent glob look needed to the source-level import
+    // pruner while rustc still diagnoses it as unused (a descendant's `use super::*` does not count
+    // as a use of every parent glob). An explicit child import lets both analyses agree.
+    let bounded_failure_import = if fns
+        .iter()
+        .any(|body| body.contains("__CddlTestDeserializeFailure"))
+    {
+        format!(
+            "    use {}::error::DeserializeFailure as __CddlTestDeserializeFailure;\n",
+            cli.common_import_rust()
+        )
+    } else {
+        String::new()
+    };
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n{STD_RESTORE}    use super::*;\n    use super::serialization::*;\n{any_import}{scope_globs}{conformance_mod}{fidelity_mod}{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n{STD_RESTORE}    use super::*;\n    use super::serialization::*;\n{bounded_failure_import}{any_import}{scope_globs}{conformance_mod}{fidelity_mod}{}\n}}\n",
         fns.join("\n")
     ))
 }
@@ -1293,6 +1311,84 @@ pub(crate) fn arg_can_fail(types: &IntermediateTypes, ty: &RustType) -> bool {
         && crate::generation::bounds_check_expr_rust_type(ty, "x").is_some()
 }
 
+/// Render the loose-to-tight door for a bounded-array mint, leaving its `Result` observable.
+/// `render_rust` normally unwraps this door because it produces a valid constructor argument; the
+/// boundary probes need to assert on the door itself instead.
+fn render_bounded_array_try_from(mv: &MintValue) -> Option<String> {
+    let MintValue::Array {
+        elem: Some(elem),
+        count,
+        bounded: Some((min, max)),
+        reject: false,
+        ..
+    } = mv
+    else {
+        return None;
+    };
+    Some(format!(
+        "BoundedVec::<_, {min}, {max}>::try_from(vec![{}; {count}])",
+        render_rust(elem)
+    ))
+}
+
+/// Boundary probes for constructor arguments whose cardinality is already enforced by their
+/// `BoundedVec` type. Accepted values cross that type's `TryFrom<Vec<_>>` door before reaching the
+/// outer constructor; rejected values never can reach the outer constructor at all.
+fn type_enforced_bounded_array_ctor_probes(
+    types: &IntermediateTypes,
+    ctor: &str,
+    arg_types: &[&RustType],
+    ctor_can_fail: bool,
+) -> Vec<String> {
+    let mut blocks = Vec::new();
+    for (target, arg_ty) in arg_types.iter().enumerate() {
+        if !arg_ty.is_type_enforced_bounded_array() {
+            continue;
+        }
+        let Some(bounds) = arg_ty.config.bounds else {
+            continue;
+        };
+        for (mv, accept, label) in bound_cases(types, arg_ty, bounds, true) {
+            let Some(door) = render_bounded_array_try_from(&mv) else {
+                continue;
+            };
+            if accept {
+                let mut args = Vec::new();
+                let mut mintable = true;
+                for (i, ty) in arg_types.iter().enumerate() {
+                    if i == target {
+                        args.push("__bounded_arg".to_owned());
+                    } else if let Some(value) = valid_value(types, ty) {
+                        args.push(render_rust(&value));
+                    } else {
+                        mintable = false;
+                        break;
+                    }
+                }
+                if mintable {
+                    let call = format!("{ctor}({})", args.join(", "));
+                    let call = if ctor_can_fail {
+                        format!("{call}.expect(\"{ctor} {label} must be accepted\")")
+                    } else {
+                        call
+                    };
+                    blocks.push(format!(
+                        "    {{
+        let __bounded_arg = {door}.expect(\"{ctor} argument {label} must be accepted\");
+        let _ = {call};
+    }}"
+                    ));
+                }
+            } else {
+                blocks.push(format!(
+                    "    assert!(matches!({door}.unwrap_err().failure(), __CddlTestDeserializeFailure::RangeCheck {{ .. }}), \"{ctor} argument {label} must be rejected as RangeCheck\");"
+                ));
+            }
+        }
+    }
+    blocks
+}
+
 /// deser-reject for a struct: for each cheaply-mutatable bounded field, mint a valid baseline,
 /// mutate that one field out of bounds, and assert the wire path rejects it as `RangeCheck`.
 fn record_deser_reject(
@@ -1301,6 +1397,14 @@ fn record_deser_reject(
     record: &RustRecord,
     value_eq: bool,
 ) -> Option<String> {
+    let ctor_arg_types = record_ctor_arg_types(record);
+    let mut bounded_array_probes = type_enforced_bounded_array_ctor_probes(
+        types,
+        &format!("{name}::new"),
+        &ctor_arg_types,
+        record_ctor_can_fail(record),
+    );
+
     // constructor arg list: mandatory, non-fixed, non-default fields (mirrors codegen_struct)
     let ctor_fields: Vec<&RustField> = record
         .fields
@@ -1338,7 +1442,7 @@ fn record_deser_reject(
         })
         .collect();
     if targets.is_empty() {
-        return None;
+        return (!bounded_array_probes.is_empty()).then(|| bounded_array_probes.join("\n"));
     }
 
     // valid baseline arg for every constructor field; bail the whole type if any isn't mintable
@@ -1351,7 +1455,7 @@ fn record_deser_reject(
                     "cddl-codegen --emit-tests: skipped {name} (field {} not cheaply mintable)",
                     f.name
                 );
-                return None;
+                return (!bounded_array_probes.is_empty()).then(|| bounded_array_probes.join("\n"));
             }
         }
     }
@@ -1420,12 +1524,13 @@ fn record_deser_reject(
         }
     }
     if blocks.is_empty() {
-        return None;
+        return (!bounded_array_probes.is_empty()).then(|| bounded_array_probes.join("\n"));
     }
-    Some(format!(
+    bounded_array_probes.push(format!(
         "    let mk = || {baseline};\n{}",
         blocks.join("\n")
-    ))
+    ));
+    Some(bounded_array_probes.join("\n"))
 }
 
 /// construct-reject for type/group choice variants whose constructor checks bounds.
@@ -1442,8 +1547,19 @@ fn choice_construct_reject(
             continue;
         };
 
+        let arg_types: Vec<&RustType> = arg_fields.iter().map(|(ty, _)| *ty).collect();
+        lines.extend(type_enforced_bounded_array_ctor_probes(
+            types,
+            &format!("{name}::{ctor}"),
+            &arg_types,
+            arg_types.iter().any(|ty| arg_can_fail(types, ty)),
+        ));
+
         // which arg (if any) carries a cheaply-testable bound?
         for (i, (arg_ty, _)) in arg_fields.iter().enumerate() {
+            if !arg_can_fail(types, arg_ty) {
+                continue;
+            }
             let (cases, failure) = if let Some(window) = &arg_ty.config.float_bounds {
                 (
                     float_bound_cases(window, float_is_f32(arg_ty), float_class_of(arg_ty)?),
