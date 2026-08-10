@@ -4462,7 +4462,8 @@ lockfile preflight per cell, which is most of what is left.
 fixed — remove the pin", an unlisted one that stops fails as a regression. Every entry is a FINDING
 this gate made rather than a decision. No fixture is ledgered today: the typed conversion walk
 threads the rust shape through nested lists and table rows, stages despecialized collections in
-their loose carriers, and re-enters `NonEmptyVec`/`NonEmptyMap`/`BoundedVec` through `TryFrom`.
+their loose carriers, and re-enters `NonEmptyVec`/`NonEmptyMap`/`BoundedVec`/`BoundedMap` through
+`TryFrom`.
 The two classes the gate found in the GUEST BLOCK
 itself — a world exporting no interface still emitting `export!(Component);`, and an interface of
 only value types still emitting `impl wit_types::Guest for Component {}` — are fixed, and the

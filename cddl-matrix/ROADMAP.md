@@ -80,10 +80,9 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   a splice writes no marker of its own and so leaves the array's LENGTH as the only evidence of
   presence, which an embedded decoder that length-checks just its own members cannot read
   (`optional_plain_group_array_field_rejects_gracefully_at_every_spelling`; real support is the
-  occurrence/bounds design owned by the findings entries "Honor non-final and `+`/bounded
-  count-permitting occurrences on heterogeneous ARRAY-record fields" and "Decode-disambiguate a
-  non-final `?` optional array-record field whose CBOR major types OVERLAP a later field's" —
-  cited below as "the occurrence/bounds family" — and its guard covered a TAGGED
+  occurrence/bounds design owned by the finding "Honor non-final and bounded count-permitting
+  occurrences on heterogeneous ARRAY-record fields" — cited below as "the occurrence/bounds
+  family" — and its guard covered a TAGGED
   spelling that had been shipping a codec whose own decoder rejected its own bytes). So enumerate
   the product: placement (array
   element, array-rep field, struct-map member, table key, table value, map/array group-choice arm,
@@ -428,9 +427,8 @@ entry, so the atomicity is the rule).
   `occurrence_on_array_record_field_rejects_gracefully`. The rejection avoids the silent
   exactly-once narrowing that makes a generated decoder reject spec-valid repetition counts —
   invisible to round-trip tests, surfaced only by spec-derived decode vectors. Real support for the
-  middle-position case shares an occurrence-decoding design with the unresolved non-final `?`
-  overlap below. RFC 8610's greedy PEG occurrence semantics do not permit reserving a mandatory
-  suffix or backtracking; repeated occurrences additionally need a representation and residue
+  middle-position case needs an occurrence-decoding design that honors RFC 8610's greedy,
+  non-backtracking semantics; repeated occurrences additionally need a representation and residue
   policy of their own.
 - **Bounded `@duplicates preserve` tables remain a future boundary.** A duplicate-preserving table
   needs a bounded pair-map carrier that retains both occurrence cardinality and wire order across
@@ -478,17 +476,6 @@ entry, so the atomicity is the rule).
   ordinary value a generated wrapper can hold. Keep its role-neutral graceful refusal and the
   `tests/TESTING_ROADMAP.md` § North star exclusion; do not reopen it without an explicit maintainer
   decision.
-- **Honor a non-final `?` optional array-record field whose CBOR major types OVERLAP a reachable
-  follower's.** `a = [ ? f0: uint, f1: uint ]` generates at exit 0, but `A` gets no decoder: the
-  refusal is loud and propagates honestly through every consumer, and both `--emit-tests` minters
-  skip the type with a named line. Position alone is not the gap: a type-disjoint non-final `?`
-  (`[ ? f0: uint, f1: tstr ]`) works today. RFC 8610 Appendix A makes occurrence matching greedy
-  and non-backtracking, so `[uint]` is invalid for the overlapping spelling: the optional consumes
-  that item and the mandatory successor is then missing. A decoder must not reserve the suffix and
-  reinterpret `[uint]` as an absent optional. Real support needs an API/serialization design that
-  cannot mint that unreachable absent assignment, plus a decoder which preserves the same greedy
-  rule for both definite and indefinite arrays. **Reopening signal:** a spec author reports a rule
-  they need to decode on the wire, not merely a shape a fuzzer composed.
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). Every one of those shapes rejects gracefully
