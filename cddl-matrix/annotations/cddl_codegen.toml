@@ -1639,8 +1639,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "contain.map-key.memberkey.type1.tstr_arrow_nooccur"
-status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
 
 [[support]]
 id = "contain.map-key.memberkey.type1.uint_arrow_multi"
@@ -1949,8 +1949,8 @@ evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.occurrence-target.memberkey.type1.bounded_table"
-status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
 
 [[support]]
 id = "contain.occurrence-target.memberkey.type1.open_struct"
@@ -2028,8 +2028,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "contain.occurrence-target.memberkey.type1.optional_table"
-status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok"
 
 [[support]]
 id = "contain.occurrence-target.memberkey.type1.plus_table"

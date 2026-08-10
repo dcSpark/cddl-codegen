@@ -8345,30 +8345,22 @@ fn fixed_table_value_rejection_advertises_executable_nominal_remedy() {
     }
 }
 
-/// A no-occurrence type-domain arrow entry — `{ tstr => uint }`, key non-literal — is rejected
-/// gracefully: per RFC 8610 an entry with NO occurrence indicator occurs EXACTLY ONCE, but table
-/// detection routed it to the same 0..N `BTreeMap` as `{ * tstr => uint }` (generation was
-/// byte-identical, verified by diff), silently WIDENING the occurrence — the generated decoder
-/// wrongly accepted e.g. the empty map (the certified over-acceptance instance `8200a0`, formerly
-/// pinned on `contain.map-key.memberkey.type1.tstr_arrow_nooccur`). This pins the rejection, that
-/// the message carries the exactly-once rationale and the `*` remedy, that the remedy generates,
-/// and the boundaries the guard must preserve:
+/// A no-occurrence type-domain arrow entry — `{ tstr => uint }`, key non-literal — has RFC 8610's
+/// exact-once window and generates `BoundedMap<K, V, 1, 1>`, rather than widening to the loose
+/// `BTreeMap` selected explicitly by `{ * tstr => uint }`. This pins the exact carrier and the
+/// surrounding routes that must preserve it:
 ///   - fixed/literal arrow keys (`{ 1 => uint }`, `{ "a" => uint }`) still route to the record
 ///     path (RFC-equal to the colon spelling — the existing arrow-routing test pins equality);
 ///   - the parenthesized table `{ * (tstr => uint) }` stays supported (the occurrence lives on
 ///     the inline group; the inner entry's missing occur is NOT the semantic occurrence);
-///   - the occur-less parenthesized form `{ (tstr => uint) }` splices into the plain arm and is
-///     rejected there (pure grouping — semantically identical to the unparenthesized spelling);
-///   - a NESTED anonymous no-occur table (`a = [{ tstr => uint }]`) rejects through the same
-///     seam (no rule name to cite — the message still carries the rationale and remedy);
-///   - count-permitting markers (`+` / `?` / `n*m`) are OUT of scope here and keep generating
-///     (they also table-detect to an unbounded 0..N map today — a separate ledgered finding, the
-///     widened-occurrence-marker table class in cddl-matrix/ROADMAP.md § findings, enumerated as the
-///     matrix rows `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table` with
-///     certified `class="over-acceptance"` decode-catalog pins for the out-of-window maps; these
-///     legs and those pins flip loudly together when that finding is fixed).
+///   - the occur-less parenthesized form `{ (tstr => uint) }` preserves that exact window (pure
+///     grouping — semantically identical to the unparenthesized spelling);
+///   - a NESTED anonymous no-occur table (`a = [{ tstr => uint }]`) reaches the same exact-map
+///     path without a rule name;
+///   - `+` retains `NonEmptyMap`, while `?` and finite or one-sided bounded windows generate their
+///     corresponding `BoundedMap` windows.
 #[test]
-fn no_occurrence_arrow_map_entry_rejects_gracefully() {
+fn no_occurrence_arrow_map_entry_is_an_exact_bounded_table() {
     fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_nooccur_arrow_{}_{}.cddl",
@@ -8388,17 +8380,12 @@ fn no_occurrence_arrow_map_entry_rejects_gracefully() {
         result
     }
 
-    // The finding's shape: Err with the exactly-once rationale, the rule name, and the `*` remedy.
-    let msg = run("m = { tstr => uint }\n", "nooccur").expect_err(
-        "a no-occurrence type-domain arrow entry must reject (silent 0..N widening is wrong)",
-    );
+    let exact = run("m = { tstr => uint }\n", "nooccur")
+        .expect("a no-occurrence type-domain arrow entry must generate as exact");
     assert!(
-        msg.contains("exactly once") && msg.contains("rule `m`"),
-        "rejection should carry the exactly-once rationale and name the rule, got: {msg}"
-    );
-    assert!(
-        msg.contains("{ * tstr => uint }"),
-        "rejection should advertise the explicit `*` table spelling, got: {msg}"
+        exact
+            .values()
+            .any(|file| file.contains("BoundedMap<String, u64, 1, 1>"))
     );
 
     // Remedy-works: the advertised `*` spelling generates.
@@ -8411,60 +8398,37 @@ fn no_occurrence_arrow_map_entry_rejects_gracefully() {
     run("m = { \"a\" => uint }\n", "fixed_text")
         .expect("a fixed text arrow key is a 1-field struct and must keep generating");
 
-    // Parenthesized boundary: `*` on the inline group is the semantic occurrence — supported;
-    // the occur-less parenthesized form is pure grouping and rejects like the plain spelling.
+    // Parenthesized `*` remains loose; pure grouping preserves the exact occurrence.
     run("m = { * (tstr => uint) }\n", "paren_star").expect(
         "`{ * (k => v) }` carries the occurrence on the inline group and must keep generating",
     );
-    run("m = { (tstr => uint) }\n", "paren_nooccur").expect_err(
-        "`{ (k => v) }` is pure grouping around an exactly-once entry and must reject like `{ k => v }`",
-    );
+    run("m = { (tstr => uint) }\n", "paren_nooccur")
+        .expect("pure grouping around an exact table must generate");
 
-    // Nested anonymous position rejects through the same seam (no rule name available).
-    let nested = run("a = [{ tstr => uint }]\n", "nested")
-        .expect_err("a nested anonymous no-occur table must reject through the same seam");
-    assert!(
-        nested.contains("exactly once"),
-        "nested rejection should still carry the exactly-once rationale, got: {nested}"
-    );
+    run("a = [{ tstr => uint }]\n", "nested")
+        .expect("a nested anonymous exact table must generate");
 
-    // WI-2 (two-type `{+ k => v}`): the count-permitting markers on a table entry are now HONORED or
-    // REJECTED — this closes the widened-occurrence-marker over-acceptance class:
-    // - `+` / `1*` generate a NonEmptyMap (non-empty table, enforced via the single TryFrom door);
-    // - `?` / `n*m` / `*n` (n≥2) / `0*n` reject gracefully (a real bounded cardinality this phase does
-    //   not honor — silently widening it to 0..N was the bug).
+    // `+` retains NonEmptyMap; every other finite/zero-minimum window uses BoundedMap.
     run("m = { + tstr => uint }\n", "plus")
         .expect("`+` on a table entry now generates a NonEmptyMap");
     let opt = run("m = { ? tstr => uint }\n", "opt")
-        .expect_err("`?` on a table entry now rejects (bounded cardinality not honored)");
+        .expect("`?` on a table entry must generate a 0..=1 BoundedMap");
     assert!(
-        opt.contains("bounded occurrence marker") && opt.contains("rule `m`"),
-        "`?` rejection should carry the bounded-marker rationale and name the rule, got: {opt}"
+        opt.values()
+            .any(|file| file.contains("BoundedMap<String, u64, 0, 1>"))
     );
-    assert!(
-        opt.contains("{ * tstr => uint }") && opt.contains("{ + tstr => uint }"),
-        "`?` rejection should advertise both the `*` (unbounded) and `+` (non-empty) remedies, got: {opt}"
-    );
-    let bounded = run("m = { 2*3 tstr => uint }\n", "bounded")
-        .expect_err("`n*m` on a table entry now rejects (bounded cardinality not honored)");
-    assert!(
-        bounded.contains("bounded occurrence marker"),
-        "`2*3` rejection should carry the bounded-marker rationale, got: {bounded}"
-    );
+    run("m = { 2*3 tstr => uint }\n", "bounded")
+        .expect("`n*m` on a table entry must generate a bounded BoundedMap");
 }
 
-/// The no-occurrence arrow-entry rejection (`5ef7ed0`) must reach maps instantiated through a
-/// GENERIC ARG — a guard-coverage pin. Before that rejection existed, `g<{ int .ne 0 => uint }>`
-/// silently generated an unbounded `BTreeMap<i64, u64>` (the exactly-once entry widened to 0..N —
-/// the over-acceptance class the guard closes), and nothing pins the generic-instantiation parse
-/// path specifically: the sibling `no_occurrence_arrow_map_entry_rejects_gracefully` covers plain
-/// rules, parenthesized groups, and nested anonymous maps, but not this reach. This test pins it
-/// so the reach cannot silently regress back to widening. (Surfaced by the recombination fuzzer's
-/// layer-2 vacuity guard when its `outer=generic_arg inner=map_key filler=ctl.ne.zero` composition
-/// stopped reaching layer 2 — that retired `LAYER2_KNOWN_BAD` entry's minter gap is now closed and
-/// pinned by `emit_tests_bounded_map_key_execute`.)
+/// The exact no-occurrence arrow path must also reach a map instantiated through a GENERIC ARG — a
+/// guard-coverage pin. `g<{ int .ne 0 => uint }>` must retain its `BoundedMap<i64, u64, 1, 1>`
+/// carrier rather than widening to an unbounded `BTreeMap<i64, u64>`. The sibling test covers plain
+/// rules, parenthesized groups, and nested anonymous maps; this one covers generic instantiation.
+/// (The recombination fuzzer's former layer-2 minter gap is now pinned by
+/// `emit_tests_bounded_map_key_execute`.)
 #[test]
-fn generic_arg_no_occurrence_table_rejects_gracefully() {
+fn generic_arg_no_occurrence_table_is_exact_bounded() {
     fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_genarg_nooccur_{}_{}.cddl",
@@ -8484,22 +8448,15 @@ fn generic_arg_no_occurrence_table_rejects_gracefully() {
         result
     }
 
-    // The escape's shape: a no-occurrence arrow table as a generic argument must reject with the
-    // same exactly-once rationale and explicit-occurrence remedies as the plain spelling.
-    let msg = run("g<a0> = [a0]\nx = g<{ int .ne 0 => uint }>\n", "nooccur").expect_err(
-        "a no-occurrence arrow entry inside a generic arg must reject (the baseline silently \
-         widened it to an unbounded table)",
-    );
+    let exact = run("g<a0> = [a0]\nx = g<{ int .ne 0 => uint }>\n", "nooccur")
+        .expect("a no-occurrence table in a generic argument must generate as exact");
     assert!(
-        msg.contains("exactly once"),
-        "generic-arg rejection should carry the exactly-once rationale, got: {msg}"
-    );
-    assert!(
-        msg.contains("{ * int .ne 0 => uint }") && msg.contains("{ + int .ne 0 => uint }"),
-        "generic-arg rejection should advertise the `*` and `+` remedies, got: {msg}"
+        exact
+            .values()
+            .any(|file| file.contains("BoundedMap<i64, u64, 1, 1>"))
     );
 
-    // Remedy-works boundaries: both advertised spellings generate through the same generic arg.
+    // Loose and non-empty sibling spellings remain valid through the same generic arg.
     run("g<a0> = [a0]\nx = g<{ * int .ne 0 => uint }>\n", "star")
         .expect("the advertised `*` table spelling must generate through a generic arg");
     run("g<a0> = [a0]\nx = g<{ + int .ne 0 => uint }>\n", "plus")
@@ -9478,6 +9435,44 @@ fn bounded_wrapper_name_collision_names_restricted_bounded_vec_wrapper() {
         !msg.contains("duplicate top-level ident"),
         "the bounded-specific detector must run before the generic backstop, got: {msg}"
     );
+}
+
+/// Bounded tables have their own Min/Max wrapper namespace. An inline occurrence must reject a
+/// different rule claiming that synthesized class, while a same-shape table is its compatible owner.
+#[test]
+fn bounded_map_wrapper_name_collision_and_named_owner_are_distinct() {
+    let collision =
+        std::path::Path::new("tests/robustness/bounded_map_wrapper_name_collision.cddl");
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        collision.to_str().unwrap(),
+        "--output",
+        "bounded_map_collision_unused",
+    ]);
+    let msg = crate::api::generated_strings(&cli)
+        .map_err(|e| e.to_string())
+        .expect_err("an unrelated bounded-map wrapper claim must reject");
+    assert!(
+        msg.contains("MapTextToU64Min2Max3") && msg.contains("restricted BoundedMap wrapper"),
+        "bounded-map collision must name its structural class and representation: {msg}"
+    );
+    assert!(
+        !msg.contains("duplicate top-level ident"),
+        "per-kind detector must precede generic backstop: {msg}"
+    );
+
+    let owner = std::path::Path::new("tests/robustness/bounded_map_wrapper_named_owner.cddl");
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        owner.to_str().unwrap(),
+        "--output",
+        "bounded_map_owner_unused",
+    ]);
+    crate::api::generated_strings(&cli).unwrap_or_else(|err| {
+        panic!("a compatible named bounded-table owner must generate: {err}")
+    });
 }
 
 /// Bounded-array const arguments are `u64` on every target. A CDDL occurrence endpoint wider than

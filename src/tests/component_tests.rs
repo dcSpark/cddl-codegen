@@ -967,8 +967,7 @@ fn component_glue_bounded_setters_check_their_window() {
 }
 
 /// The rust type decides which WIT list must re-enter a `TryFrom` door. Bounded arrays now use
-/// `BoundedVec`, so they join `[+ T]` and reject sets in that path. A bounded MAP remains the
-/// counterexample: `BTreeMap<K, V>` has no `TryFrom<Vec<(K, V)>>`, so it retains an inline check.
+/// `BoundedVec`, so they join `[+ T]`, reject sets, and bounded maps in that path.
 #[test]
 fn component_glue_routes_type_enforced_lists_through_the_try_from_door() {
     let glue = component_glue("tests/component-bounds/input.cddl", &[]);
@@ -990,8 +989,23 @@ fn component_glue_routes_type_enforced_lists_through_the_try_from_door() {
         .and_then(|rest| rest.split("\n    }").next())
         .unwrap_or_else(|| panic!("the glue carries no `set_counts`:\n{glue}"));
     assert!(
-        !counts.contains("try_into") && counts.contains("if counts.len() > 3 {"),
-        "the bounded-map setter must retain its inline length check:\n{counts}"
+        counts.contains("counts.into_iter().collect::<Vec<_>>()")
+            && counts.contains("try_into()")
+            && counts.contains("map_err(err)?")
+            && !counts.contains("RangeCheck"),
+        "the bounded-map setter must re-enter BoundedMap's TryFrom door:\n{counts}"
+    );
+    let exact_counts = glue
+        .split("fn set_exact_counts(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    }").next())
+        .unwrap_or_else(|| panic!("the glue carries no `set_exact_counts`:\n{glue}"));
+    assert!(
+        exact_counts.contains("exact_counts.into_iter().collect::<Vec<_>>()")
+            && exact_counts.contains("try_into()")
+            && exact_counts.contains("map_err(err)?")
+            && !exact_counts.contains("RangeCheck"),
+        "the occurrence-bounded map setter must re-enter BoundedMap's TryFrom door:\n{exact_counts}"
     );
     // A mandatory bounded field now takes the typed BoundedVec at an infallible rust constructor;
     // the guest therefore restores the type-level window before making the call.

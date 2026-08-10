@@ -529,6 +529,9 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.map-value.value.number", "contain.map-value.value.text",
     "contain.occurrence-target.grpent.member.plus_array",
     "contain.occurrence-target.memberkey.type1.plus_table",
+    "contain.occurrence-target.memberkey.type1.optional_table",
+    "contain.occurrence-target.memberkey.type1.bounded_table",
+    "contain.map-key.memberkey.type1.tstr_arrow_nooccur",
     "contain.occurrence-target.type2.value.optional_keyed_array",
     "contain.occurrence-target.type2.value.optional_keyed_map", "memberkey.cut",
     "occur.bounded", "occur.bounded.lower", "occur.bounded.upper", "occur.one_or_more",
@@ -559,10 +562,8 @@ function vacuityProblems(rs: Directional[]): string[] {
   //   - `+` / `1*` is now HONORED — the entry decodes as a `NonEmptyMap` whose single TryFrom door
   //     rejects the empty map, so `plus_table`'s empty-map vector was promoted to class="constraint"
   //     and its row id moved to EXPECTED_ENFORCE_YES above (the decoder-fix branch);
-  //   - `?` / `n*m` / `*n` / `0*n` is REJECTED gracefully at generation (a bounded cardinality this
-  //     phase does not honor — silently widening it to 0..N was the bug), so `optional_table` /
-  //     `bounded_table` flipped unsupported and their catalog rows were dropped (the graceful-rejection
-  //     branch, same as the seed no-occurrence type-domain arrow row before them).
+  //   - `?` / `n*m` / `*n` / `0*n` and omitted exact-once arrows are now BoundedMap windows; their
+  //     hand below/above-window vectors are class="constraint" and project enforce=yes.
   // The machinery stays armed: a NEW certified over-acceptance lands as a class="over-acceptance"
   // vector and its row id here; a decoder FIX flips the replay pin loudly, promotes the vector to
   // class="constraint", and moves the row id to EXPECTED_ENFORCE_YES.

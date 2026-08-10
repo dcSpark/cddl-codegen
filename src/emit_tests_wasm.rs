@@ -281,11 +281,16 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             val,
             count,
             non_empty,
+            bounded,
             preserve,
         } => {
             let k = map_key_expr(key, *key_base);
             let v = rust_scoped(val, scoped);
-            if *non_empty {
+            if let Some((min, max)) = bounded {
+                format!(
+                    "BoundedMap::<_, _, {min}, {max}>::try_from((0u64..{count}).map(|__i| ({k}, {v})).collect::<Vec<_>>()).unwrap()"
+                )
+            } else if *non_empty {
                 // build via new(first_key, first_value) + insert (flavor-agnostic; a bare
                 // `try_from(collect())` can't infer the inner map type — see emit_tests.rs). The
                 // preserve flavor routes through `NonEmptyPairMap`.
@@ -619,6 +624,12 @@ fn wasm_collection_build(
             // so synthesize each of the `count` distinct keys as a literal; `insert` takes the value
             // via `for_wasm_param`, so `wasm_arg` gives it the same boundary treatment.
             let val_expr = wasm_arg(types, val, v, scoped, cli)?;
+            if field_ty.is_type_enforced_bounded_map() {
+                // Positive-minimum bounded maps intentionally have no empty wasm constructor.
+                // The shared mint already entered the core through BoundedMap::TryFrom<Vec<_>>;
+                // every wrapper has an infallible From<core> bridge, so this preserves that door.
+                return Some(format!("{wrapper}::from({})", rust_scoped(mv, scoped)));
+            }
             if field_ty.is_type_enforced_non_empty() {
                 // restricted wrapper: `new(first_key, first_value)` seeds the first entry (no empty
                 // state), `insert` the rest. `count` is >= 1 for a `{+ k => v}` shape.

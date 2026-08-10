@@ -687,7 +687,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); ordinary/preserve arrays compile to a restricted BoundedVec wasm wrapper, while @duplicates reject arrays retain OrderedSet plus a runtime cardinality check; component round-trips (10 accept + 2 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (10 accept + 2 reject vector(s) under wasmtime); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "occur.bounded",
         "status": "supported"
       },
@@ -702,7 +702,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); ordinary/preserve arrays compile to a restricted BoundedVec wasm wrapper, while @duplicates reject arrays retain OrderedSet plus a runtime cardinality check; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "occur.bounded.lower",
         "status": "supported"
       },
@@ -717,7 +717,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); ordinary/preserve arrays compile to a restricted BoundedVec wasm wrapper, while @duplicates reject arrays retain OrderedSet plus a runtime cardinality check; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "occur.bounded.upper",
         "status": "supported"
       },
@@ -2512,9 +2512,9 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.map-key.memberkey.type1.tstr_arrow_nooccur",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -2934,15 +2934,15 @@
       {
         "emission": {
           "json": {
-            "evidence": "open-array JSON e2e: required minItems-one typed and natural AnyCbor tails round-trip; empty lists reject",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "open-array preserve e2e: indefinite owner and non-canonical tail widths replay byte-exactly; canonical normalizes positionally",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; reason-asserted zero-tail rejects; wasm/component projected; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.member.plus_array",
         "status": "supported"
       },
@@ -2972,9 +2972,9 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.bounded_table",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -3082,14 +3082,14 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm compiles (no minted wasm surface); accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.open_table_plus",
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips when embedded; wasm compiles; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.optional_table",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -4007,7 +4007,7 @@
       "example": "m = { tstr => uint }",
       "feature": "memberkey.type1",
       "id": "contain.map-key.memberkey.type1.tstr_arrow_nooccur",
-      "note": "A NON-literal (type-domain) arrow key with NO occurrence marker: `{ tstr => uint }`. RFC8610 §2.1/§3.2 — an entry with no occurrence indicator occurs EXACTLY ONCE, and §3.5.2 admits a type1 key — so this map REQUIRES exactly one `tstr => uint` entry. cddl-codegen REJECTS the spelling gracefully at generation, recommending the explicit table `{ * tstr => uint }`: table-detecting it to a 0..N BTreeMap (the old behavior, byte-identical to the `*` spelling) silently widened the exactly-once occurrence and wrongly accepted an EMPTY map the spec rejects — this row WAS the certified over-acceptance instance (the empty-map vector `8200a0` = holder `[0, {}]`), enumerated with its boundary-violation vector per the 'Intra-alternative variation rows' expansion rule before the rejection closed it. Boundary pinned by `no_occurrence_arrow_map_entry_rejects_gracefully`. Contrast the literal-key `*_arrow_single` cells, which correctly route to the struct/record path and keep generating.",
+      "note": "A NON-literal (type-domain) arrow key with NO occurrence marker: `{ tstr => uint }`. RFC8610 §2.1/§3.2 gives it an exact 1..=1 occurrence window, so cddl-codegen emits `BoundedMap<String, u64, 1, 1>` rather than widening it to a loose table. The literal-key `*_arrow_single` cells still route through the record path.",
       "role": "role.map-key",
       "spec": "allowed"
     },
@@ -4335,7 +4335,7 @@
       "example": "m = { + tstr => uint }",
       "feature": "memberkey.type1",
       "id": "contain.occurrence-target.memberkey.type1.plus_table",
-      "note": "A one-or-more occurrence on a NON-literal (type-domain) arrow map entry: `{ + tstr => uint }` requires 1..N entries (RFC8610 §3.2 `+` = one-or-more, §3.5.2 admits a type1 key). Home here because the varying axis is the occurrence MARKER on the arrow entry (its no-occurrence sibling `contain.map-key.memberkey.type1.tstr_arrow_nooccur` lives in map-key.toml because ITS axis was the key spelling). cddl-codegen honors the `+` lower bound as a NonEmptyMap<String, u64> whose single TryFrom door rejects the empty map, so the row's decode-catalog empty-map vector (holder `[0, {}]` = `8200a0`) is a class=\"constraint\" enforcement reject pin (`enforce = yes`); the unbounded upper direction matches the spec. Enumerated with its boundary-violation vector per the 'Intra-alternative variation rows' rule. Provenance + the remaining bounded-cardinality candidate: cddl-matrix/ROADMAP.md § findings, the 'Real bounded `?` / `n*m` table cardinality is a candidate feature' entry.",
+      "note": "A one-or-more occurrence on a NON-literal (type-domain) arrow map entry: `{ + tstr => uint }` requires 1..N entries (RFC8610 §3.2 `+` = one-or-more, §3.5.2 admits a type1 key). Home here because the varying axis is the occurrence MARKER on the arrow entry (its no-occurrence sibling `contain.map-key.memberkey.type1.tstr_arrow_nooccur` lives in map-key.toml because ITS axis was the key spelling). cddl-codegen honors the `+` lower bound as a NonEmptyMap<String, u64> whose single TryFrom door rejects the empty map, so the row's decode-catalog empty-map vector (holder `[0, {}]` = `8200a0`) is a class=\"constraint\" enforcement reject pin (`enforce = yes`); the unbounded upper direction matches the spec. Enumerated with its boundary-violation vector per the 'Intra-alternative variation rows' rule.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -4343,7 +4343,7 @@
       "example": "m = { ? tstr => uint }",
       "feature": "memberkey.type1",
       "id": "contain.occurrence-target.memberkey.type1.optional_table",
-      "note": "An optional occurrence on a type-domain arrow map entry: `{ ? tstr => uint }` permits 0..1 entries (RFC8610 §3.2 `?` = optional, §3.5.2). cddl-codegen REJECTS this spelling gracefully — the count-permitting table-marker boundary: a 0..1 window an unbounded BTreeMap table cannot honor, so rejection replaced the old silent widening — making this a reject fixture (`tests/matrix_reject/`), not a decode-catalog row. The rust oracle formerly ALSO over-rejected the spec-VALID empty map here (README gap #9, fixed in the pinned fork @ 3d56d8e), so if the marker is ever honored as map-size bounds, the legal empty-map accept vector (`8200a0`) is now mintable through the two-oracle gate.",
+      "note": "An optional occurrence on a type-domain arrow map entry: `{ ? tstr => uint }` permits 0..1 entries (RFC8610 §3.2 `?` = optional, §3.5.2). cddl-codegen represents it as `BoundedMap<String, u64, 0, 1>` and checks every construction/decode boundary; the empty holder-map vector `8200a0` is valid, while a two-entry map is a constraint rejection.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -4351,7 +4351,7 @@
       "example": "m = { 2*3 tstr => uint }",
       "feature": "memberkey.type1",
       "id": "contain.occurrence-target.memberkey.type1.bounded_table",
-      "note": "A bounded occurrence on a type-domain arrow map entry: `{ 2*3 tstr => uint }` requires 2..3 entries (RFC8610 §3.2 `n*m`, §3.5.2). cddl-codegen REJECTS this spelling gracefully — a bounded window that neither an unbounded BTreeMap table nor a NonEmptyMap can honor, the same count-permitting table-marker boundary as the `?` sibling — so this is a reject fixture (`tests/matrix_reject/`), not a decode-catalog row. Real bounded table cardinality is the ledgered candidate feature: cddl-matrix/ROADMAP.md § findings, the 'Real bounded `?` / `n*m` table cardinality is a candidate feature' entry.",
+      "note": "A bounded occurrence on a type-domain arrow map entry: `{ 2*3 tstr => uint }` requires 2..3 entries (RFC8610 §3.2 `n*m`, §3.5.2). cddl-codegen represents it as `BoundedMap<String, u64, 2, 3>` and checks the inclusive window at API, CBOR, JSON, wasm, and component doors.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -4423,7 +4423,7 @@
       "example": "t = { + bstr => uint, * uint => uint }",
       "feature": "memberkey.type1",
       "id": "contain.occurrence-target.memberkey.type1.open_table_plus",
-      "note": "The count-permitting boundary of the open table, and the one place in this family where a `+` on an arrow row is SUPPORTED after being rejected at its two siblings: a one-or-more occurrence on an open table's TYPED row (`t = { + bstr => uint, * uint => uint }`) is the NonEmpty twin, whose minimum of 1 counts TYPED entries only — a map of purely captured entries is not a non-empty table. cddl-codegen enforces it at two doors: `new(first_key, first_value)` (so no constructed value violates it) and one check after each reader's loop, raising the same RangeCheck `NonEmptyMap`'s own door raises. `+` and `1*` are one spelling, `*` and `0*` another; every other marker is a real bounded cardinality and is refused rather than widened. Contrast `contain.occurrence-target.memberkey.type1.open_struct_plus` (a `+` REST row after fixed keys, rejected) and `contain.occurrence-target.memberkey.type1.plus_table` (a `+` on a lone table, a NonEmptyMap): three contexts, the same marker, three different verdicts — the (feature x context) distinction this matrix exists to record. Pinned by `open_table_front_end` (robustness_tests.rs) and executed in tests/open-table-e2e. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'.",
+      "note": "The count-permitting boundary of the open table: a one-or-more occurrence on an open table's TYPED row (`t = { + bstr => uint, * uint => uint }`) is the NonEmpty twin, whose minimum of 1 counts TYPED entries only — a map of purely captured entries is not a non-empty table. cddl-codegen enforces it at two doors: `new(first_key, first_value)` (so no constructed value violates it) and one check after each reader's loop, raising the same RangeCheck `NonEmptyMap`'s own door raises. In this open-table typed-row context, `+` and `1*` are one spelling and `*` and `0*` another; every other marker is a bounded cardinality this composition does not honor and is refused rather than widened. A lone homogeneous unique-key table is different: all of its other windows generate as `BoundedMap`. Contrast `contain.occurrence-target.memberkey.type1.open_struct_plus` (a `+` REST row after fixed keys, rejected) and `contain.occurrence-target.memberkey.type1.plus_table` (a `+` on a lone table, a NonEmptyMap): three contexts, the same marker, three different verdicts — the (feature x context) distinction this matrix exists to record. Pinned by `open_table_front_end` (robustness_tests.rs) and executed in tests/open-table-e2e. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -4575,7 +4575,7 @@
       "example": "m = { * #6.24(uint) => tstr }",
       "feature": "type2.tag",
       "id": "contain.map-key.type2.tag",
-      "note": "A tagged type as a map key (memberkey can be a type). `*`-spelled: the no-occurrence spelling is spec-exactly-once and rejected gracefully at generation (the tstr_arrow_nooccur map-key row owns that boundary).",
+      "note": "A tagged type as a map key (memberkey can be a type). In a non-literal homogeneous table, the omitted occurrence is RFC-exactly-once and generates a checked BoundedMap; spelling `*` expressly selects a loose map (the tstr_arrow_nooccur map-key row owns that boundary).",
       "role": "role.map-key",
       "spec": "allowed"
     },
@@ -5886,7 +5886,7 @@
     },
     {
       "alt": "[uint] \"*\" [uint]",
-      "desc": "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a type-enforced `BoundedVec<T, 0, m>` length window (distinct from the map-side zero-permitting form's graceful rejection recorded in § findings, where a zero-permitting keyed struct-map field is rejected rather than narrowed). A distinct enforcement surface the two-sided base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
+      "desc": "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a type-enforced `BoundedVec<T, 0, m>` length window. A lone homogeneous unique-key table with the same window is likewise a `BoundedMap`; the distinct unsupported map-side context is a zero-permitting keyed struct-map field, which remains rejected rather than narrowed. A distinct enforcement surface the two-sided base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",
       "example": "g = [*5 uint]",
       "id": "occur.bounded.upper",
       "production": "occur",

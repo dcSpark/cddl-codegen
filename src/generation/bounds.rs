@@ -249,7 +249,10 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
     // unrepresentable. Ordinary/preserve bounded arrays likewise use BoundedVec and skip this path;
     // the deliberate bounded-@duplicates-reject OrderedSet residue retains its runtime check. Alias-
     // resolving so a field referencing a named restricted rule skips the check too.
-    if ty.is_type_enforced_non_empty() || ty.is_type_enforced_bounded_array() {
+    if ty.is_type_enforced_non_empty()
+        || ty.is_type_enforced_bounded_array()
+        || ty.is_type_enforced_bounded_map()
+    {
         return None;
     }
     if let Some(window) = &ty.config.float_bounds {
@@ -307,7 +310,10 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
 /// `DeserializeError` does — so the failure is lifted through `DeserializeError::from` before it
 /// reaches a `Display`-bounded helper.
 pub(super) fn component_bounds_check_line(ty: &RustType, e: &str, runtime: &str) -> Option<String> {
-    if ty.is_type_enforced_non_empty() || ty.is_type_enforced_bounded_array() {
+    if ty.is_type_enforced_non_empty()
+        || ty.is_type_enforced_bounded_array()
+        || ty.is_type_enforced_bounded_map()
+    {
         return None;
     }
     let wrap = |failure: String| {

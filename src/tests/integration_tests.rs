@@ -17796,6 +17796,188 @@ fn workspace_consumer_writes_canonical_bounded_array_request_shapes() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// B3-022's table-side request round trip. This is deliberately a real two-crate workspace rather
+/// than a hand-authored host-sidecar unit: the consumer must canonicalize `0*1`, omitted exact, and
+/// `2*3` map windows; the dependency must rebuild the requested BoundedMap wrappers (including the
+/// loose source and checked door); and both wasm crates must link under both carrier flavors.
+#[test]
+fn workspace_requests_host_bounded_maps_preserve_window_checked_door_and_flavor() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_map_requests_{:016x}",
+        checkout_hash()
+    ));
+    let _lock = acquire_scratch_lock(&format!(
+        "cddl_codegen_bounded_map_requests_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let write = |rel: &str, body: &str| {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+    };
+    write(
+        "consumer/_CDDL_CODEGEN_EXTERN_DEPS_DIR_/wr_dep/mod.cddl",
+        "idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    );
+    write(
+        "consumer/lib.cddl",
+        "holder = [maybe: { 0*1 idx_foo => uint }, exact: { idx_foo => uint }, bounded: { 2*3 idx_foo => uint }, maybe_value: { 0*1 uint => idx_foo }, exact_value: { uint => idx_foo }, bounded_value: { 2*3 uint => idx_foo }]\n",
+    );
+    write("dep/lib.cddl", "idx_foo = [x: uint]\n");
+    let static_dir = std::env::current_dir().unwrap().join("static");
+
+    for (flavor, preserve) in [("default", false), ("preserve", true)] {
+        let consumer_export = root.join(format!("consumer-{flavor}"));
+        let mut consumer = codegen_cmd();
+        consumer
+            .arg(format!("--input={}", root.join("consumer").display()))
+            .arg(format!("--output={}", consumer_export.display()))
+            .arg(format!("--static-dir={}", static_dir.display()))
+            .arg("--wasm=true")
+            .arg(format!("--preserve-encodings={preserve}"))
+            .arg("--common-import-override=wr_dep")
+            .arg("--extern-wasm-crate=wr_dep=wr_dep_wasm")
+            .arg("--workspace-dep=wr_dep");
+        let consumer = consumer.output().unwrap();
+        assert!(
+            consumer.status.success(),
+            "{flavor} consumer generation failed:\n{}",
+            String::from_utf8_lossy(&consumer.stderr)
+        );
+        let sidecar = std::fs::read_to_string(
+            consumer_export.join("wasm/src/generated/borrowed_collections.rs"),
+        )
+        .unwrap();
+        for (name, shape) in [
+            ("MapIdxFooToU64Max1", "{? idx_foo => uint}"),
+            ("MapIdxFooToU64Min1Max1", "{1*1 idx_foo => uint}"),
+            ("MapIdxFooToU64Min2Max3", "{2*3 idx_foo => uint}"),
+            ("MapU64ToIdxFooMax1", "{? uint => idx_foo}"),
+            ("MapU64ToIdxFooMin1Max1", "{1*1 uint => idx_foo}"),
+            ("MapU64ToIdxFooMin2Max3", "{2*3 uint => idx_foo}"),
+        ] {
+            assert!(
+                sidecar.contains(&format!("(\"wr_dep\", \"{name}\", \"{shape}\")")),
+                "{flavor} consumer sidecar lost canonical bounded-map request {name}/{shape}:\n{sidecar}"
+            );
+            assert!(
+                sidecar.contains(&format!("use wr_dep_wasm::collections::{name};")),
+                "{flavor} sidecar self-check must attribute {name} to the dep:\n{sidecar}"
+            );
+        }
+        assert!(
+            !sidecar.contains("{0*1"),
+            "source spelling leaked into {flavor} sidecar:\n{sidecar}"
+        );
+
+        let dep_export = root.join(format!("dep-{flavor}"));
+        let dep = codegen_cmd()
+            .arg(format!("--input={}", root.join("dep").display()))
+            .arg(format!("--output={}", dep_export.display()))
+            .arg(format!("--static-dir={}", static_dir.display()))
+            .arg("--lib-name=wr-dep")
+            .arg("--wasm=true")
+            .arg(format!("--preserve-encodings={preserve}"))
+            .arg(format!(
+                "--wrapper-requests=consumer={}",
+                consumer_export
+                    .join("wasm/src/generated/borrowed_collections.rs")
+                    .display()
+            ))
+            .arg(format!(
+                "--key-requests=consumer={}",
+                consumer_export
+                    .join("rust/src/generated/borrowed_key_types.rs")
+                    .display()
+            ))
+            .output()
+            .unwrap();
+        assert!(
+            dep.status.success(),
+            "{flavor} dependency generation failed:\n{}",
+            String::from_utf8_lossy(&dep.stderr)
+        );
+        let hosted =
+            std::fs::read_to_string(dep_export.join("wasm/src/generated/requested_collections.rs"))
+                .unwrap();
+        for (name, inner, bounds) in [
+            ("MapIdxFooToU64Max1", "wr_dep::IdxFoo, u64", "0, 1"),
+            ("MapIdxFooToU64Min1Max1", "wr_dep::IdxFoo, u64", "1, 1"),
+            ("MapIdxFooToU64Min2Max3", "wr_dep::IdxFoo, u64", "2, 3"),
+            ("MapU64ToIdxFooMax1", "u64, wr_dep::IdxFoo", "0, 1"),
+            ("MapU64ToIdxFooMin1Max1", "u64, wr_dep::IdxFoo", "1, 1"),
+            ("MapU64ToIdxFooMin2Max3", "u64, wr_dep::IdxFoo", "2, 3"),
+        ] {
+            assert!(
+                hosted.contains(&format!(
+                    "pub struct {name}(pub(crate) BoundedMap<{inner}, {bounds}>)"
+                )),
+                "{flavor} host must preserve {name}'s BoundedMap window:\n{hosted}"
+            );
+            assert!(
+                hosted.contains(&format!(
+                    "pub use crate::generated::requested_collections::{name};"
+                )) || std::fs::read_to_string(dep_export.join("wasm/src/generated/collections.rs"))
+                    .unwrap()
+                    .contains(&format!(
+                        "pub use crate::generated::requested_collections::{name};"
+                    )),
+                "{flavor} hosted {name} must be in the dependency index"
+            );
+        }
+        assert!(
+            hosted.contains("pub fn try_from(map: &MapIdxFooToU64)")
+                && hosted.contains("BoundedMap::try_from(inner)")
+                && hosted.contains("/// Generated at the request of: consumer."),
+            "{flavor} bounded-map host must retain loose builder, checked door, and attribution:\n{hosted}"
+        );
+        assert!(
+            std::fs::read_to_string(dep_export.join("rust/src/generated/mod.rs"))
+                .unwrap()
+                .contains("pub mod bounded_map;"),
+            "request-only {flavor} host must provision bounded_map runtime"
+        );
+
+        append_manifest_deps(
+            &consumer_export.join("rust/Cargo.toml"),
+            &[&format!(
+                "wr-dep = {{ path = \"{}\" }}",
+                dep_export.join("rust").display()
+            )],
+        );
+        append_manifest_deps(
+            &consumer_export.join("wasm/Cargo.toml"),
+            &[
+                &format!(
+                    "wr-dep = {{ path = \"{}\" }}",
+                    dep_export.join("rust").display()
+                ),
+                &format!(
+                    "wr-dep-wasm = {{ path = \"{}\" }}",
+                    dep_export.join("wasm").display()
+                ),
+            ],
+        );
+        for (label, export) in [("dependency", &dep_export), ("consumer", &consumer_export)] {
+            let check = tool_cmd("cargo")
+                .arg("check")
+                .current_dir(export.join("wasm"))
+                .output()
+                .unwrap();
+            assert!(
+                check.status.success(),
+                "{flavor} {label} wasm crate must compile with bounded-map request hosting:\n{}",
+                String::from_utf8_lossy(&check.stderr)
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The CONSUMER side of the reject-set deferral, and the round trip that closes it: a
 /// `--workspace-dep` consumer whose spec spells `@duplicates reject` sets over the dependency's
 /// elements borrows the dependency's uniqueness twins and WRITES the request rows itself, so the leg

@@ -37,6 +37,9 @@ bounded = {
   ; boundary that mistook a bounded map for a despecialized collection emitted glue that did not
   ; compile — and the check itself has to be a `.len()` over the map.
   ? counts: { * uint => text } .le 3,
+  ; Unlike the value-bound control above, this occurrence window is represented by BoundedMap and
+  ; must re-enter its TryFrom door after WIT's list-of-pairs crossing.
+  ? exact_counts: { 2*3 uint => text },
 
   ; the two controls, as optional fields so they reach a SETTER — the one door with no rust
   ; constructor between the caller and the field.

@@ -177,6 +177,14 @@ rule is rejected with a rename remedy because it has neither that empty seed nor
 source. A bounded `@duplicates reject` array is intentionally outside this representation: it
 remains the runtime-checked `OrderedSet` twin until a compound bounded-unique carrier exists.
 
+## Bounded homogeneous tables
+
+A unique-key bounded table (`{ ? K => V }`, `{ N*M K => V }`, `{ N* K => V }`, or an omitted
+exact-once occurrence) owns a restricted `MapKToVMaxN`, `MapKToVMinN`, or `MapKToVMinNMaxM` class
+(an authored same-shape rule owns the inline surface). It wraps `BoundedMap`; `try_from(looseMap)`
+and checked `insert` re-enter the core range-check door, and only a zero-minimum class has `new()`.
+`*` and `+` retain the loose and NonEmptyMap APIs. A bounded `@duplicates preserve` table is refused.
+
 ## Reject-duplicates containers
 
 A collection rule carrying [`@duplicates reject`](./comment_dsl) — `[* T]` → `OrderedSet<T>`,

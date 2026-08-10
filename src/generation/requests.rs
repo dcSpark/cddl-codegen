@@ -257,7 +257,17 @@ impl GenerationScope {
                     }
                 }
                 ConceptualRustType::Map(k, v) => {
-                    if rt.is_non_empty_map() {
+                    if let Some(bounds) = rt.bounded_map_u64_bounds() {
+                        self.generate_bounded_map_type(
+                            types,
+                            (**k).clone(),
+                            (**v).clone(),
+                            &ident,
+                            bounds,
+                            false,
+                            cli,
+                        );
+                    } else if rt.is_non_empty_map() {
                         self.generate_non_empty_map_type(
                             types,
                             (**k).clone(),
@@ -307,6 +317,9 @@ impl GenerationScope {
         self.requested_bounded_vec = to_emit
             .iter()
             .any(|(_, rt, _, _)| rt.contains_bounded_array());
+        self.requested_bounded_map = to_emit
+            .iter()
+            .any(|(_, rt, _, _)| rt.contains_bounded_map());
         self.requested_non_empty_map = to_emit
             .iter()
             .any(|(_, rt, _, _)| rt.contains_non_empty_map());
@@ -325,6 +338,9 @@ impl GenerationScope {
         let bounded_import = self
             .requested_bounded_vec
             .then(|| format!("{}::bounded", cli.common_import_wasm()));
+        let bounded_map_import = self
+            .requested_bounded_map
+            .then(|| format!("{}::bounded_map", cli.common_import_wasm()));
         let non_empty_map_import = self
             .requested_non_empty_map
             .then(|| format!("{}::non_empty_map", cli.common_import_wasm()));
@@ -353,6 +369,9 @@ impl GenerationScope {
         }
         if let Some(path) = bounded_import {
             scope_content.push_import(path, "BoundedVec", None);
+        }
+        if let Some(path) = bounded_map_import {
+            scope_content.push_import(path, "BoundedMap", None);
         }
         if let Some(path) = non_empty_map_import {
             scope_content.push_import(path, "NonEmptyMap", None);
@@ -432,7 +451,14 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
             format!("[{occ} {}]{reject}", render_wrapper_shape(inner))
         }
         ConceptualRustType::Map(key, value) => {
-            let occ = if rt.is_non_empty_map() { "+" } else { "*" };
+            let occ = match rt.config.bounds {
+                Some((Some(1), None)) => "+".to_owned(),
+                Some((None, Some(1))) => "?".to_owned(),
+                Some((None, Some(max))) => format!("*{max}"),
+                Some((Some(min), None)) => format!("{min}*"),
+                Some((Some(min), Some(max))) => format!("{min}*{max}"),
+                None | Some((None, None)) => "*".to_owned(),
+            };
             // The map-side twin of the array arm's reject marker: a `@duplicates preserve` table's
             // backing container (`PairMap`) is part of its structural identity, so the shape column
             // carries the policy and the reconstruction rebuilds the same flavored wrapper.
@@ -677,7 +703,9 @@ fn parse_shape_fragment(
         '{' => {
             *pos += 1;
             skip_ws(pos);
-            let occ = read_map_occurrence(chars, pos).unwrap_or_else(|| bad("expected `*` or `+`"));
+            let occ = read_occurrence(chars, pos).unwrap_or_else(|| {
+                bad("expected a table occurrence (`*`, `+`, `?`, `*N`, `N*`, or `N*M`)")
+            });
             skip_ws(pos);
             let key = parse_shape_fragment(
                 types,
@@ -711,10 +739,9 @@ fn parse_shape_fragment(
             }
             *pos += 1;
             let rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
-            if occ == '+' {
-                rt.with_bounds((Some(1), None))
-            } else {
-                rt
+            match occ {
+                (None, None) => rt,
+                bounds => rt.with_bounds(bounds),
             }
         }
         _ => {
@@ -819,19 +846,6 @@ fn read_occurrence_number(chars: &[char], pos: &mut usize) -> Option<Option<i128
         .map(Some)
 }
 
-/// Maps do not yet have bounded-table support, so their sidecar grammar deliberately remains the
-/// old one-character occurrence form.
-fn read_map_occurrence(chars: &[char], pos: &mut usize) -> Option<char> {
-    match chars.get(*pos) {
-        Some('*' | '+') => {
-            let occurrence = chars[*pos];
-            *pos += 1;
-            Some(occurrence)
-        }
-        _ => None,
-    }
-}
-
 /// The owner-INDEPENDENT structural wrapper name for a reconstructed requested shape — the exact
 /// spelling the consumer's emitter passed to `try_defer_wrapper` and recorded in its sidecar. Uses
 /// the raw `NonEmpty*List` / `NonEmpty<MapKToV>` forms (NOT `non_empty_wasm_wrapper_name`, which
@@ -869,7 +883,9 @@ fn requested_structural_name(
             // it (`@duplicates preserve` marker), so a requested pair-map wrapper reconstructs to the
             // SAME `PairMapKToV` / `NonEmptyPairMapKToV` spelling the consumer's emitter deferred on.
             let preserve = rt.is_preserve_pair_map();
-            if rt.is_non_empty_map() {
+            if rt.is_bounded_map() {
+                rt.bounded_wasm_map_structural_name()
+            } else if rt.is_non_empty_map() {
                 format!(
                     "NonEmpty{}",
                     ConceptualRustType::name_for_wasm_map(k, v, preserve)

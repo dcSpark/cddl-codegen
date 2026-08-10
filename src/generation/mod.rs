@@ -234,6 +234,7 @@ pub struct GenerationScope {
     /// W2 dep side: `true` when a requested restricted bounded-array wrapper needs the `BoundedVec`
     /// runtime even though this dep's own spec has no bounded homogeneous array occurrence.
     requested_bounded_vec: bool,
+    requested_bounded_map: bool,
     requested_non_empty_map: bool,
     /// W2 dep side, `@duplicates reject` twin: `true` when requested-wrapper emission produced a
     /// reject-mode set wrapper whose `ordered_set` runtime the dep's OWN spec does not otherwise pull
@@ -319,6 +320,7 @@ impl GenerationScope {
             requested_attribution: BTreeMap::new(),
             requested_non_empty_vec: false,
             requested_bounded_vec: false,
+            requested_bounded_map: false,
             requested_non_empty_map: false,
             requested_ordered_set: false,
             requested_pair_map: false,
@@ -891,6 +893,29 @@ impl GenerationScope {
                                     == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
                                 cli,
                             );
+                        } else if cli.wasm
+                            && !anon
+                            && let Some((min, max)) = {
+                                let table: crate::intermediate::RustType =
+                                    crate::intermediate::ConceptualRustType::Map(
+                                        Box::new(domain.clone()),
+                                        Box::new(range.clone()),
+                                    )
+                                    .into();
+                                bounds.and_then(|bounds| {
+                                    table.with_bounds(bounds).bounded_map_u64_bounds()
+                                })
+                            }
+                        {
+                            self.generate_bounded_map_type(
+                                types,
+                                domain.clone(),
+                                range.clone(),
+                                rust_ident,
+                                (min, max),
+                                !types.is_synthesized_collection(rust_ident),
+                                cli,
+                            );
                         } else if cli.wasm && !anon {
                             // A rule-declared LOOSE table never reaches `try_defer_wrapper` (both
                             // mints below are `exists_in_rust` paths), so the one thing the defer
@@ -1362,6 +1387,9 @@ impl GenerationScope {
             if types.uses_bounded_vec() || self.requested_bounded_vec {
                 self.rust_lib().raw("pub mod bounded;");
             }
+            if types.uses_bounded_map() || self.requested_bounded_map {
+                self.rust_lib().raw("pub mod bounded_map;");
+            }
             // only crates that actually use `{+ k => v}` pull in the NonEmptyMap runtime
             if types.uses_non_empty_map() || self.requested_non_empty_map {
                 self.rust_lib().raw("pub mod non_empty_map;");
@@ -1808,6 +1836,13 @@ impl GenerationScope {
                     None,
                 );
             }
+            if types.uses_bounded_map() || self.requested_bounded_map {
+                content.push_import(
+                    format!("{}::bounded_map", cli.common_import_rust()),
+                    "BoundedMap",
+                    None,
+                );
+            }
             if types.uses_non_empty_map() {
                 content.push_import(
                     format!("{}::non_empty_map", cli.common_import_rust()),
@@ -2007,6 +2042,13 @@ impl GenerationScope {
                     content.push_import(
                         format!("{}::bounded", cli.common_import_wasm()),
                         "BoundedVec",
+                        None,
+                    );
+                }
+                if types.uses_bounded_map() || self.requested_bounded_map {
+                    content.push_import(
+                        format!("{}::bounded_map", cli.common_import_wasm()),
+                        "BoundedMap",
                         None,
                     );
                 }

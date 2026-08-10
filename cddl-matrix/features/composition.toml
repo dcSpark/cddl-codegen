@@ -77,9 +77,9 @@ rfc = "RFC8610 §3.5.2; ABNF memberkey / type1 \"=>\""
 profile = "RFC8610"
 title = "Type memberkey (t =>)"
 desc = "A memberkey given as a full type expression followed by =>; the key matches any data item of that type (table / general form)."
-# `*`-spelled: the no-occurrence spelling `{ tstr => int }` is spec-exactly-once and is rejected
-# gracefully at generation (the tstr_arrow_nooccur containment row owns that boundary); the example
-# must probe the memberkey production itself through a supported instance.
+# The no-occurrence spelling `{ tstr => int }` is spec-exactly-once and generates a checked
+# `BoundedMap`; `*` expressly selects the loose-map variant. The tstr_arrow_nooccur containment row
+# owns that boundary; this example probes the memberkey production through the loose instance.
 example = "m = { * tstr => int }"
 roles = ["role.map-key"]
 
@@ -191,6 +191,6 @@ alt = '[uint] "*" [uint]'
 rfc = "RFC8610 §3.2; ABNF occur / [uint] \"*\" [uint]"
 profile = "RFC8610"
 title = "Upper-bound-only occurrence (*m)"
-desc = "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a type-enforced `BoundedVec<T, 0, m>` length window (distinct from the map-side zero-permitting form's graceful rejection recorded in § findings, where a zero-permitting keyed struct-map field is rejected rather than narrowed). A distinct enforcement surface the two-sided base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
+desc = "One-sided variation of occur.bounded: an upper-bound-only, zero-permitting occurrence (`*5`) — the entry occurs at most m times, zero allowed. On the ARRAY side this is a type-enforced `BoundedVec<T, 0, m>` length window. A lone homogeneous unique-key table with the same window is likewise a `BoundedMap`; the distinct unsupported map-side context is a zero-permitting keyed struct-map field, which remains rejected rather than narrowed. A distinct enforcement surface the two-sided base row cannot reach, per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration."
 example = "g = [*5 uint]"
 roles = ["role.occurrence-target"]

@@ -2353,19 +2353,15 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   vector NEVER counts as spec-valid decode evidence: it is excluded from the verify.ts decode-foreign
   corroboration count, from Q4's foreign-decode count, and from the replay gate's encoding-variant /
   header-mutation / preserve legs. Zero instances at HEAD — the class stays armed for the next
-  certified instance. Its retired residents were the widened-occurrence-marker table rows
-  `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table`: a COUNT-PERMITTING
-  marker (`+` / `?` / `n*m`) on a single non-literal arrow map entry table-detected to the same
-  unbounded 0..N map as `{ * k => v }`, wrongly accepting out-of-window maps, until `+`/`1*` was
-  honored as a `NonEmptyMap` (plus_table's empty-map pin promoted to `class="constraint"`) and the
-  `?`/`n*m` spellings became graceful rejections (`tests/matrix_reject/` fixtures) — provenance in
-  `cddl-matrix/ROADMAP.md` § findings, the 'Real bounded `?` / `n*m` table cardinality is a
-  candidate feature' entry. (The seed instance was the
-  no-occurrence type-domain arrow widening `{ tstr => uint }`, whose empty-map instance `8200a0` =
-  holder `[0, {}]` was likewise wrongly accepted — it took the flow's OTHER branch, rejected gracefully
-  at generation, pinned by `no_occurrence_arrow_map_entry_rejects_gracefully`, its row flipped
-  unsupported and the pin dropped with it.) (`8200a0` also remains the seeded-control *accept* on
-  `type2.map` — `{ * tstr => int }`, a spec-VALID empty table there.)
+  certified instance. Its historical residents were the widened-occurrence-marker table rows
+  `contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table` and the omitted-window
+  `contain.map-key.memberkey.type1.tstr_arrow_nooccur`: a single non-literal arrow table once
+  widened every occurrence spelling to the loose 0..N map. That widening is retired. `+`/`1*` now
+  uses `NonEmptyMap`; every other unique-key window, including omitted exact-once and `?`/`n*m`, uses
+  checked `BoundedMap`; their catalog boundary vectors are `class="constraint"` enforcement pins.
+  The remaining unsupported boundary is a bounded `@duplicates preserve` table, which has no bounded
+  pair-map carrier. (`8200a0` also remains the seeded-control *accept* on `type2.map` —
+  `{ * tstr => int }`, a spec-VALID empty table there.)
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~6 min): per active row it generates a crate from the committed `spec` and `cargo
   test`s it under two profiles (default + preserve), plus a third json/wasm-surface generation

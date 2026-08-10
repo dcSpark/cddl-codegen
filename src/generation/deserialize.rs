@@ -2654,6 +2654,27 @@ impl GenerationScope {
                             deser_code.content.line(&format!(
                                 "let {table_var} = NonEmptyMap::try_from({table_var})?;"
                             ));
+                        } else if let Some((min, max)) = type_cfg.bounds
+                            && (min, max) != (None, None)
+                        {
+                            let min = u64::try_from(min.unwrap_or(0)).expect(
+                                "table occurrence lower bound was validated during parsing",
+                            );
+                            let max = max
+                                .map(|max| {
+                                    u64::try_from(max).expect(
+                                        "table occurrence upper bound was validated during parsing",
+                                    )
+                                })
+                                .unwrap_or(u64::MAX);
+                            let max = if max == u64::MAX {
+                                "{ u64::MAX }".to_owned()
+                            } else {
+                                max.to_string()
+                            };
+                            deser_code.content.line(&format!(
+                                "let {table_var} = BoundedMap::<_, _, {min}, {max}>::try_from({table_var})?;"
+                            ));
                         } else if let Some(bounds) = &type_cfg.bounds {
                             // we use cargo fmt after so it's okay if we just use .line() here
                             deser_code.content.line(&bounds_check_if_block(

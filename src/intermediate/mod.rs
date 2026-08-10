@@ -597,6 +597,18 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
+    /// Whether any owned type needs the finite/exact BoundedMap runtime.
+    pub fn uses_bounded_map(&self) -> bool {
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.contains_bounded_map());
+        found || self.rust_structs.values().any(|rs| matches!(
+            rs.variant(),
+            RustStructType::Table { bounds: Some(bounds), .. }
+                if *bounds != (None, None) && *bounds != (Some(1), None)
+                    && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+        ))
+    }
+
     /// Whether ANY generated type uses the `@duplicates reject` `OrderedSet`/`NonEmptyOrderedSet`
     /// shape, so `export`/import wiring pulls in the `ordered_set` runtime module + imports only for
     /// crates that need it (keeping every non-reject crate's output byte-identical). Detection folds
@@ -796,6 +808,38 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
+    /// The authored bounded-table rule owning the wasm class for an inline occurrence with the
+    /// identical domain, range, and inclusive window. As with bounded arrays, the window is part
+    /// of the identity: `{2*3 K => V}` cannot share a class with `{2*4 K => V}`.
+    pub fn bounded_map_named_owner(
+        &self,
+        key: &RustType,
+        value: &RustType,
+        bounds: (Option<i128>, Option<i128>),
+    ) -> Option<&RustIdent> {
+        let normalized = Self::normalized_bounded_map_window(bounds)?;
+        let key_resolved = key.clone().resolve_aliases();
+        let value_resolved = value.clone().resolve_aliases();
+        self.rust_structs
+            .iter()
+            .find_map(|(ident, rs)| match rs.variant() {
+                RustStructType::Table {
+                    domain,
+                    range,
+                    bounds: Some(candidate),
+                } if Self::normalized_bounded_map_window(*candidate) == Some(normalized)
+                    && rs.config().duplicates
+                        != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    && !self.is_anonymous_collection_instance(ident)
+                    && domain.clone().resolve_aliases() == key_resolved
+                    && range.clone().resolve_aliases() == value_resolved =>
+                {
+                    Some(ident)
+                }
+                _ => None,
+            })
+    }
+
     /// Canonicalize an array occurrence window before comparing ownership or rendering a request:
     /// absent endpoints are the real `0` / unbounded values, and the two loose shapes are not
     /// bounded owners.  Keeping this here makes `[? T]`/`[0*1 T]` and `[*5 T]`/`[0*5 T]` one
@@ -810,6 +854,12 @@ impl<'a> IntermediateTypes<'a> {
             .unwrap_or(u64::MAX);
         (min <= max && (min, max) != (0, u64::MAX) && (min, max) != (1, u64::MAX))
             .then_some((min, max))
+    }
+
+    /// Table-side occurrence-window canonicalization. `+` remains NonEmptyMap; all other non-loose
+    /// unique-key table windows are BoundedMap owners.
+    fn normalized_bounded_map_window(bounds: (Option<i128>, Option<i128>)) -> Option<(u64, u64)> {
+        Self::normalized_bounded_array_window(bounds)
     }
 
     /// Visit every `RustType` occurrence in the IR — record fields, table domain/range, wrapper
@@ -1099,6 +1149,7 @@ impl<'a> IntermediateTypes<'a> {
         // `types.scope` — the structural `MapKToV` name is never a registered scope.
         if let ConceptualRustType::Map(k, v) = &ty.conceptual_type
             && !ty.is_non_empty_map()
+            && !ty.is_bounded_map()
         {
             // The occurrence's own carried policy selects the flavor (`MapKToV` / `PairMapKToV`) —
             // the same local signal `for_wasm_member` uses, so name resolution here and at the
@@ -1121,6 +1172,8 @@ impl<'a> IntermediateTypes<'a> {
             ty.bounded_wasm_wrapper_name(self)
         } else if ty.is_non_empty_map() {
             ty.non_empty_wasm_map_wrapper_name(self)
+        } else if ty.is_bounded_map() {
+            ty.bounded_wasm_map_wrapper_name(self)
         } else {
             match &ty.conceptual_type {
                 ConceptualRustType::Array(elem) if !ty.directly_wasm_exposable(self) => {
@@ -1630,7 +1683,7 @@ impl<'a> IntermediateTypes<'a> {
                         // A RESTRICTED `{+ …}` map wrapper enters via `try_from(&MapKToV)`, naming the
                         // loose structural table wrapper bare in its emission scope — import it there
                         // (deferred + non-deferred analogues).
-                        if ty.is_non_empty_map() {
+                        if ty.is_non_empty_map() || ty.is_bounded_map() {
                             register_deferred_non_empty_map_source(
                                 refs,
                                 types,
@@ -3923,6 +3976,12 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.non_empty_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            // Finite/exact/lower-bounded unique-key table wrapper names are their own family:
+            // `MapKToVMinN/MaxN` cannot share the NonEmptyMap detector because their checked door
+            // and structural identity include both occurrence endpoints.
+            for msg in self.bounded_map_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
             // `@duplicates reject` uniqueness-twin wasm-wrapper name collisions — the third container
             // kind's sibling of the two detectors above (the reject twin is the new container kind
             // AGENTS.md's twin-detector note reserved as the trigger for this expansion).
@@ -5149,6 +5208,51 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
 
+        msgs.into_iter().collect()
+    }
+
+    /// Detect an authored rule shadowing the synthesized wasm class for an inline bounded table.
+    /// This is deliberately the bounded-table sibling of the bounded-array and NonEmptyMap
+    /// detectors: a `MapKToVMinN/MaxN` wrapper owns a BoundedMap and its one checked `try_from`
+    /// door, so silently resolving that name to an unrelated rule would expose the wrong class.
+    ///
+    /// A same-shape named bounded table is not a collision. It is the explicit owner of the inline
+    /// occurrence's surface, including through nested/generic occurrences, and therefore no
+    /// structural class is synthesized for it to shadow.
+    fn bounded_map_wrapper_name_collisions(&self) -> Vec<String> {
+        let mut msgs = BTreeSet::new();
+        self.visit_all_rust_types(&mut |rt| {
+            let ConceptualRustType::Map(key, value) = &rt.conceptual_type else {
+                return;
+            };
+            let Some(bounds) = rt.bounded_map_u64_bounds() else {
+                return;
+            };
+            let source_bounds = rt
+                .config
+                .bounds
+                .expect("bounded map occurrence carries bounds");
+            if self
+                .bounded_map_named_owner(key, value, source_bounds)
+                .is_some()
+            {
+                return;
+            }
+            let restricted = rt.bounded_wasm_map_structural_name();
+            if self.wasm_ident_claimed_by_user_rule(&restricted) {
+                let (min, max) = bounds;
+                let window = if max == u64::MAX {
+                    format!("{min}*")
+                } else {
+                    format!("{min}*{max}")
+                };
+                msgs.insert(format!(
+                    "name collision: rule '{restricted}' collides with the '{restricted}' wasm \
+                     wrapper generated for an inline bounded `{{{window} …}}` table occurrence — \
+                     rename the rule to avoid shadowing the restricted BoundedMap wrapper"
+                ));
+            }
+        });
         msgs.into_iter().collect()
     }
 

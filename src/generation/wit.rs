@@ -2428,6 +2428,7 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
     if ty.has_value_bounds()
         || ty.is_type_enforced_non_empty()
         || ty.is_type_enforced_bounded_array()
+        || ty.is_type_enforced_bounded_map()
         || wit_param_is_reject_set(ty)
     {
         return true;
@@ -2486,6 +2487,7 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
 pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) -> bool {
     if ty.is_type_enforced_non_empty()
         || ty.is_type_enforced_bounded_array()
+        || ty.is_type_enforced_bounded_map()
         || wit_param_is_reject_set(ty)
     {
         return true;

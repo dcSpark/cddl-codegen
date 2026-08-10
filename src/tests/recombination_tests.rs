@@ -1422,13 +1422,11 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // -- emitted-test minter / baseline decode gaps on nested shapes -------------------------------
     // (The former `outer=generic_arg inner=map_key filler=ctl.ne.zero` entry — the emit-tests minter
     // minting key 0 against an `int .ne 0` table domain — retired when its pinning composition
-    // stopped reaching layer 2: the composition's map spelling carries NO occurrence indicator, so
-    // it rejects gracefully at generation under the no-occurrence arrow-entry rejection (`5ef7ed0`);
-    // the staleness sat latent until the next full-tier run (this sweep is full-tier-only). The
-    // generic-instantiation REACH of that rejection is pinned by
-    // `generic_arg_no_occurrence_table_rejects_gracefully`. The MINTER gap itself is now closed —
+    // stopped reaching layer 2. Its map spelling carries NO occurrence indicator, so it now
+    // generates an exact `BoundedMap`; the generic-instantiation reach is pinned by
+    // `generic_arg_no_occurrence_table_is_exact_bounded`. The MINTER gap itself is now closed —
     // the minter picks a key base its own emitted bounds check accepts — and is pinned end-to-end
-    // for `*`-spelled tables by `emit_tests_bounded_map_key_execute`, arm-by-arm by
+    // for exact and `*`-spelled tables by `emit_tests_bounded_map_key_execute`, arm-by-arm by
     // `bounds_reject_value_agrees_with_emitted_condition`.)
     //
     // (The former `outer=arr_mid inner=cbor_payload filler=prelude.float64` entry — a

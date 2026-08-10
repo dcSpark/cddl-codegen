@@ -1,0 +1,3 @@
+; The inline bounded table mints MapTextToUintMin2Max3; an unrelated rule must not shadow it.
+map_text_to_u64_min_2_max_3 = [* uint]
+holder = { entries: { 2*3 tstr => uint } }
