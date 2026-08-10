@@ -68,10 +68,7 @@ impl Deserialize for OptionalOverlapArray {
             if read_len.is_indefinite() {
                 return Err(DeserializeFailure::IndefiniteLengthAmbiguousOptionalField.into());
             }
-            let (a, a_encoding) = if read_len
-                .remaining()
-                .map(|remaining| remaining > 0)
-                .unwrap_or(true)
+            let (a, a_encoding) = if read_len.remaining() != Some(0)
                 && (raw
                     .cbor_type()
                     .map(|ty| ty == cbor_event::Type::UnsignedInteger)

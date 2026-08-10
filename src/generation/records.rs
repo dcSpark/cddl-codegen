@@ -444,7 +444,7 @@ pub(super) fn generate_array_struct_deserialization(
                 );
                 deser_code.content.push_block(indefinite_rejection);
                 format!(
-                    "if read_len.remaining().map(|remaining| remaining > 0).unwrap_or(true) && ({type_check_predicate})"
+                    "if read_len.remaining() != Some(0) && ({type_check_predicate})"
                 )
             } else {
                 format!("if {type_check_predicate}")
