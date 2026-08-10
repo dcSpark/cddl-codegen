@@ -37,4 +37,5 @@ pub use crate::generated::StandaloneTable;
 pub use crate::generated::StandaloneText;
 pub use crate::generated::Table;
 pub use crate::generated::TopLevelArray;
+pub use crate::generated::U64ListMin1Max3;
 pub use crate::generated::U64OrderedSet;

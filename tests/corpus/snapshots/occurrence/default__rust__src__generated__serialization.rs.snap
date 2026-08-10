@@ -17,7 +17,7 @@ impl cbor_event::se::Serialize for OccurrenceHolder {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        serializer.write_array(cbor_event::Len::Len(3))?;
+        serializer.write_array(cbor_event::Len::Len(13))?;
         serializer.write_array(cbor_event::Len::Len(self.o.len() as u64))?;
         for element in self.o.iter() {
             serializer.write_unsigned_integer(*element)?;
@@ -26,9 +26,55 @@ impl cbor_event::se::Serialize for OccurrenceHolder {
         for element in self.b.iter() {
             serializer.write_unsigned_integer(*element)?;
         }
+        serializer.write_array(cbor_event::Len::Len(self.upper.len() as u64))?;
+        for element in self.upper.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_array(cbor_event::Len::Len(self.lower.len() as u64))?;
+        for element in self.lower.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_array(cbor_event::Len::Len(self.maybe.len() as u64))?;
+        for element in self.maybe.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_array(cbor_event::Len::Len(self.exact.len() as u64))?;
+        for element in self.exact.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_array(cbor_event::Len::Len(self.nested.len() as u64))?;
+        for element in self.nested.iter() {
+            serializer.write_array(cbor_event::Len::Len(element.len() as u64))?;
+            for element in element.iter() {
+                serializer.write_unsigned_integer(*element)?;
+            }
+        }
+        serializer.write_array(cbor_event::Len::Len(self.nested_bounded.len() as u64))?;
+        for element in self.nested_bounded.iter() {
+            serializer.write_array(cbor_event::Len::Len(element.len() as u64))?;
+            for element in element.iter() {
+                serializer.write_unsigned_integer(*element)?;
+            }
+        }
         serializer.write_array(cbor_event::Len::Len(self.inline_bounded.len() as u64))?;
         for element in self.inline_bounded.iter() {
             serializer.write_text(element)?;
+        }
+        serializer.write_array(cbor_event::Len::Len(self.inline_upper.len() as u64))?;
+        for element in self.inline_upper.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_array(cbor_event::Len::Len(self.inline_lower.len() as u64))?;
+        for element in self.inline_lower.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_array(cbor_event::Len::Len(self.inline_maybe.len() as u64))?;
+        for element in self.inline_maybe.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_array(cbor_event::Len::Len(self.inline_exact.len() as u64))?;
+        for element in self.inline_exact.iter() {
+            serializer.write_unsigned_integer(*element)?;
         }
         Ok(serializer)
     }
@@ -39,7 +85,7 @@ impl Deserialize for OccurrenceHolder {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
-            read_len.read_elems(3)?;
+            read_len.read_elems(13)?;
             read_len.finish()?;
             let o = (|| -> Result<_, DeserializeError> {
                 let mut o_arr = Vec::new();
@@ -75,17 +121,154 @@ impl Deserialize for OccurrenceHolder {
                     }
                     b_arr.push(raw.unsigned_integer()?);
                 }
-                if b_arr.len() < 2 || b_arr.len() > 5 {
-                    return Err(DeserializeFailure::RangeCheck {
-                        found: b_arr.len() as i128,
-                        min: Some(2),
-                        max: Some(5),
-                    }
-                    .into());
-                }
+                let b_arr = BoundedVec::<_, 2, 5>::try_from(b_arr)?;
                 Ok(b_arr)
             })()
             .map_err(|e| e.annotate("b"))?;
+            let upper = (|| -> Result<_, DeserializeError> {
+                let mut upper_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (upper_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    upper_arr.push(raw.unsigned_integer()?);
+                }
+                let upper_arr = BoundedVec::<_, 0, 5>::try_from(upper_arr)?;
+                Ok(upper_arr)
+            })()
+            .map_err(|e| e.annotate("upper"))?;
+            let lower = (|| -> Result<_, DeserializeError> {
+                let mut lower_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (lower_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    lower_arr.push(raw.unsigned_integer()?);
+                }
+                let lower_arr = BoundedVec::<_, 2, { u64::MAX }>::try_from(lower_arr)?;
+                Ok(lower_arr)
+            })()
+            .map_err(|e| e.annotate("lower"))?;
+            let maybe = (|| -> Result<_, DeserializeError> {
+                let mut maybe_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (maybe_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    maybe_arr.push(raw.unsigned_integer()?);
+                }
+                let maybe_arr = BoundedVec::<_, 0, 1>::try_from(maybe_arr)?;
+                Ok(maybe_arr)
+            })()
+            .map_err(|e| e.annotate("maybe"))?;
+            let exact = (|| -> Result<_, DeserializeError> {
+                let mut exact_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (exact_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    exact_arr.push(raw.unsigned_integer()?);
+                }
+                let exact_arr = BoundedVec::<_, 2, 2>::try_from(exact_arr)?;
+                Ok(exact_arr)
+            })()
+            .map_err(|e| e.annotate("exact"))?;
+            let nested = (|| -> Result<_, DeserializeError> {
+                let mut nested_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (nested_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let mut nested_elem_arr = Vec::new();
+                    let len = raw.array()?;
+                    while match len {
+                        cbor_event::Len::Len(n) => (nested_elem_arr.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if matches!(len, cbor_event::Len::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        nested_elem_arr.push(raw.unsigned_integer()?);
+                    }
+                    let nested_elem_arr = BoundedVec::<_, 0, 2>::try_from(nested_elem_arr)?;
+                    nested_arr.push(nested_elem_arr);
+                }
+                Ok(nested_arr)
+            })()
+            .map_err(|e| e.annotate("nested"))?;
+            let nested_bounded = (|| -> Result<_, DeserializeError> {
+                let mut nested_bounded_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (nested_bounded_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let mut nested_bounded_elem_arr = Vec::new();
+                    let len = raw.array()?;
+                    while match len {
+                        cbor_event::Len::Len(n) => (nested_bounded_elem_arr.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if matches!(len, cbor_event::Len::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        nested_bounded_elem_arr.push(raw.unsigned_integer()?);
+                    }
+                    let nested_bounded_elem_arr =
+                        BoundedVec::<_, 0, 2>::try_from(nested_bounded_elem_arr)?;
+                    nested_bounded_arr.push(nested_bounded_elem_arr);
+                }
+                let nested_bounded_arr = BoundedVec::<_, 2, 3>::try_from(nested_bounded_arr)?;
+                Ok(nested_bounded_arr)
+            })()
+            .map_err(|e| e.annotate("nested_bounded"))?;
             let inline_bounded = (|| -> Result<_, DeserializeError> {
                 let mut inline_bounded_arr = Vec::new();
                 let len = raw.array()?;
@@ -101,17 +284,87 @@ impl Deserialize for OccurrenceHolder {
                     }
                     inline_bounded_arr.push(raw.text()?);
                 }
-                if inline_bounded_arr.len() < 1 || inline_bounded_arr.len() > 3 {
-                    return Err(DeserializeFailure::RangeCheck {
-                        found: inline_bounded_arr.len() as i128,
-                        min: Some(1),
-                        max: Some(3),
-                    }
-                    .into());
-                }
+                let inline_bounded_arr = BoundedVec::<_, 1, 3>::try_from(inline_bounded_arr)?;
                 Ok(inline_bounded_arr)
             })()
             .map_err(|e| e.annotate("inline_bounded"))?;
+            let inline_upper = (|| -> Result<_, DeserializeError> {
+                let mut inline_upper_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (inline_upper_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    inline_upper_arr.push(raw.unsigned_integer()?);
+                }
+                let inline_upper_arr = BoundedVec::<_, 0, 5>::try_from(inline_upper_arr)?;
+                Ok(inline_upper_arr)
+            })()
+            .map_err(|e| e.annotate("inline_upper"))?;
+            let inline_lower = (|| -> Result<_, DeserializeError> {
+                let mut inline_lower_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (inline_lower_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    inline_lower_arr.push(raw.unsigned_integer()?);
+                }
+                let inline_lower_arr =
+                    BoundedVec::<_, 2, { u64::MAX }>::try_from(inline_lower_arr)?;
+                Ok(inline_lower_arr)
+            })()
+            .map_err(|e| e.annotate("inline_lower"))?;
+            let inline_maybe = (|| -> Result<_, DeserializeError> {
+                let mut inline_maybe_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (inline_maybe_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    inline_maybe_arr.push(raw.unsigned_integer()?);
+                }
+                let inline_maybe_arr = BoundedVec::<_, 0, 1>::try_from(inline_maybe_arr)?;
+                Ok(inline_maybe_arr)
+            })()
+            .map_err(|e| e.annotate("inline_maybe"))?;
+            let inline_exact = (|| -> Result<_, DeserializeError> {
+                let mut inline_exact_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (inline_exact_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    inline_exact_arr.push(raw.unsigned_integer()?);
+                }
+                let inline_exact_arr = BoundedVec::<_, 2, 2>::try_from(inline_exact_arr)?;
+                Ok(inline_exact_arr)
+            })()
+            .map_err(|e| e.annotate("inline_exact"))?;
             match len {
                 cbor_event::Len::Len(_) => (),
                 cbor_event::Len::Indefinite => match raw.special()? {
@@ -122,7 +375,17 @@ impl Deserialize for OccurrenceHolder {
             Ok(OccurrenceHolder {
                 o,
                 b,
+                upper,
+                lower,
+                maybe,
+                exact,
+                nested,
+                nested_bounded,
                 inline_bounded,
+                inline_upper,
+                inline_lower,
+                inline_maybe,
+                inline_exact,
             })
         })()
         .map_err(|e| e.annotate("OccurrenceHolder"))

@@ -121,6 +121,9 @@ pub(crate) enum MintValue {
         elem: Option<Box<MintValue>>,
         count: i128,
         non_empty: bool,
+        /// A type-enforced finite/zero-minimum occurrence. The renderer uses the same checked door
+        /// as generated decode rather than assigning a loose vector to a restricted field.
+        bounded: Option<(u64, u64)>,
         reject: bool,
     },
     /// a map of `count` entries with synthesized keys. When `non_empty` the target type is
@@ -195,6 +198,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             elem: Some(e),
             count,
             non_empty,
+            bounded,
             reject,
         } => {
             if *reject {
@@ -208,7 +212,9 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
                 format!("{twin}::try_from(vec![{}]).unwrap()", render_rust(e))
             } else {
                 let vec = format!("vec![{}; {count}]", render_rust(e));
-                if *non_empty {
+                if let Some((min, max)) = bounded {
+                    format!("BoundedVec::<_, {min}, {max}>::try_from({vec}).unwrap()")
+                } else if *non_empty {
                     // route through the single TryFrom door (same as every other construction path)
                     format!("NonEmptyVec::try_from({vec}).unwrap()")
                 } else {
@@ -1326,7 +1332,8 @@ fn record_deser_reject(
             // (an empty wire array must be rejected through the same TryFrom door).
             (f.rust_type.config.bounds.is_some()
                 && measure_kind(&f.rust_type).is_some()
-                && !f.rust_type.is_type_enforced_non_empty())
+                && !f.rust_type.is_type_enforced_non_empty()
+                && !f.rust_type.is_type_enforced_bounded_array())
                 || f.rust_type.config.float_bounds.is_some()
         })
         .collect();
@@ -2145,8 +2152,15 @@ pub(crate) fn mint_struct(
             // (valid for `*`) when the element isn't cheaply mintable.
             Some(MintValue::Array {
                 elem: valid_value_at(types, element_type, depth + 1).map(Box::new),
-                count: 1,
+                count: valid_measure(bounds.unwrap_or((None, None))),
                 non_empty: *bounds == Some((Some(1), None)),
+                bounded: bounds.and_then(|(min, max)| {
+                    ((min, max) != (None, None) && (min, max) != (Some(1), None)).then_some((
+                        u64::try_from(min.unwrap_or(0)).ok()?,
+                        max.map(|v| u64::try_from(v).ok())
+                            .unwrap_or(Some(u64::MAX))?,
+                    ))
+                }),
                 reject: rust_struct.config().duplicates
                     == Some(crate::comment_ast::DuplicatesPolicy::Reject),
             })
@@ -2200,6 +2214,7 @@ fn empty_collection(ty: &RustType) -> Option<MintValue> {
             elem: None,
             count: 0,
             non_empty: false,
+            bounded: None,
             reject: ty.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject),
         }),
         ConceptualRustType::Map(_, _) => Some(MintValue::DefaultMap),
@@ -2275,6 +2290,7 @@ fn materialize_at(
                 elem: Some(Box::new(e)),
                 count: measure,
                 non_empty: ty.is_type_enforced_non_empty(),
+                bounded: ty.type_enforced_bounded_array_u64_bounds(),
                 reject: ty.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject),
             })
         }

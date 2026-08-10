@@ -162,6 +162,21 @@ borrow from, and construction is `new(first)` + `add` (the reason is in the wrap
 comment). See [`--wasm-list-macro`](./command_line_flags.mdx) for the macro-mode posture of these
 restricted wrappers.
 
+## Bounded homogeneous arrays
+
+An ordinary or `@duplicates preserve` bounded homogeneous array (`[? T]`, `[*N T]`, `[N* T]`, or
+`[N*M T]`) uses the same loose-builder/restricted-wrapper pattern, but its restricted class wraps
+`BoundedVec<T, MIN, MAX>` and is named `<Elem>ListMaxN`, `<Elem>ListMinN`, or
+`<Elem>ListMinNMaxN` (a named CDDL rule keeps its own class name). `try_from` borrows and clones the
+loose list into the core `BoundedVec::TryFrom<Vec<_>>` door; `add` returns `Result` because it can
+cross an upper bound. Only zero-minimum classes expose an infallible empty `new()` seed; positive-
+minimum classes have no `new`. A zero-minimum **self-named** rule whose identifier is already the
+loose builder (`bar_list = [*5 bar]`) has no separate `try_from` source; it remains constructible
+through `new()` plus checked `add`, and its generated docs say so. A positive-minimum self-named
+rule is rejected with a rename remedy because it has neither that empty seed nor a distinct loose
+source. A bounded `@duplicates reject` array is intentionally outside this representation: it
+remains the runtime-checked `OrderedSet` twin until a compound bounded-unique carrier exists.
+
 ## Reject-duplicates containers
 
 A collection rule carrying [`@duplicates reject`](./comment_dsl) — `[* T]` → `OrderedSet<T>`,

@@ -1,0 +1,6 @@
+; B3-022: the synthesized `BarListMin2Max5` wrapper of an inline bounded array must not be
+; silently shadowed by an unrelated user rule of that name. This is wasm-only collision territory:
+; rust-only generation remains valid because it has no generated JS class.
+bar = { a: uint }
+bar_list_min_2_max_5 = [* bar]
+holder = { tags: [2*5 bar] }

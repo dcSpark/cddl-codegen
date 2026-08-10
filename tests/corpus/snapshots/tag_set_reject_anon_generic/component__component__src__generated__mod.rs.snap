@@ -58,8 +58,10 @@ pub struct WitOsetU64(pub RefCell<cddl_lib::OsetU64>);
 
 impl wit_types::GuestOsetU64 for WitOsetU64 {
     fn new(inner: Vec<u64>) -> Result<Self, String> {
-        let inner: Vec<_> = inner.into_iter().collect();
-        let inner = cddl_lib::OsetU64::new(inner.try_into().map_err(err)?);
+        let inner = (inner.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::OsetU64::new(inner);
         Ok(WitOsetU64(RefCell::new(inner)))
     }
 

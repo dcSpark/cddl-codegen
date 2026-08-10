@@ -9,10 +9,20 @@ package cddl:cddl-lib@0.1.0;
 
 interface types {
   resource occurrence-holder {
-    constructor(o: list<u64>, b: list<u64>, inline-bounded: list<string>) -> result<occurrence-holder, string>;
+    constructor(o: list<u64>, b: list<u64>, upper: list<u64>, lower: list<u64>, maybe: list<u64>, exact: list<u64>, nested: list<list<u64>>, nested-bounded: list<list<u64>>, inline-bounded: list<string>, inline-upper: list<u64>, inline-lower: list<u64>, inline-maybe: list<u64>, inline-exact: list<u64>) -> result<occurrence-holder, string>;
     o: func() -> list<u64>;
     b: func() -> list<u64>;
+    upper: func() -> list<u64>;
+    lower: func() -> list<u64>;
+    maybe: func() -> list<u64>;
+    exact: func() -> list<u64>;
+    nested: func() -> list<list<u64>>;
+    nested-bounded: func() -> list<list<u64>>;
     inline-bounded: func() -> list<string>;
+    inline-upper: func() -> list<u64>;
+    inline-lower: func() -> list<u64>;
+    inline-maybe: func() -> list<u64>;
+    inline-exact: func() -> list<u64>;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<occurrence-holder, string>;
   }

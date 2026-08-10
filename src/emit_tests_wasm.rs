@@ -243,6 +243,7 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             elem: Some(e),
             count,
             non_empty,
+            bounded,
             reject,
         } => {
             if *reject {
@@ -259,7 +260,9 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
                 )
             } else {
                 let vec = format!("vec![{}; {count}]", rust_scoped(e, scoped));
-                if *non_empty {
+                if let Some((min, max)) = bounded {
+                    format!("BoundedVec::<_, {min}, {max}>::try_from({vec}).unwrap()")
+                } else if *non_empty {
                     format!("NonEmptyVec::try_from({vec}).unwrap()")
                 } else {
                     vec
@@ -580,6 +583,18 @@ fn wasm_collection_build(
                     body.push_str(&format!(" l.add({elem_expr});"));
                 }
                 return Some(format!("{{ {body} l }}"));
+            }
+            if field_ty.is_type_enforced_bounded_array() {
+                // A bounded wrapper has no invalid empty seed when MIN > 0. For wasm-native
+                // elements its `try_from(Vec<_>)` door is the direct, checked construction path.
+                let e = elem.as_ref()?;
+                let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
+                if elem_ty.vec_of_self_directly_wasm_exposable(types) {
+                    return Some(format!(
+                        "{wrapper}::try_from(vec![{elem_expr}; {count}]).ok().expect(\"bounded emitted-test mint\")"
+                    ));
+                }
+                return Some(format!("{wrapper}::from({})", rust_scoped(mv, scoped)));
             }
             let mut body = format!("let mut l = {wrapper}::new();");
             if let Some(e) = elem {

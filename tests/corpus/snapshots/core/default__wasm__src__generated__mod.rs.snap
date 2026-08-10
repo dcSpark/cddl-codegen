@@ -18,6 +18,7 @@ pub use crate::ExternGenericExternalFoo;
 pub use crate::ExternalFoo;
 
 pub use cddl_lib::CEnum;
+use cddl_lib::bounded::BoundedVec;
 use cddl_lib::non_empty::NonEmptyVec;
 use cddl_lib::non_empty_map::NonEmptyMap;
 use cddl_lib::ordered_set::OrderedSet;
@@ -393,8 +394,8 @@ impl Bounds {
         self.0.z.clone()
     }
 
-    pub fn a(&self) -> Vec<u64> {
-        self.0.a.clone()
+    pub fn a(&self) -> U64ListMin1Max3 {
+        self.0.a.clone().into()
     }
 
     pub fn b(&self) -> MapU64ToU64 {
@@ -406,10 +407,10 @@ impl Bounds {
         x: u64,
         y: u64,
         z: String,
-        a: Vec<u64>,
+        a: &U64ListMin1Max3,
         b: &MapU64ToU64,
     ) -> Result<Bounds, JsError> {
-        cddl_lib::Bounds::new(w, x, y, z, a, b.clone().into())
+        cddl_lib::Bounds::new(w, x, y, z, a.clone().into(), b.clone().into())
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -7178,6 +7179,50 @@ pub type U16 = u16;
 pub type U32 = u32;
 
 pub type U64 = u64;
+
+/// `[1*3 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct U64ListMin1Max3(pub(crate) BoundedVec<u64, 1, 3>);
+
+#[wasm_bindgen]
+impl U64ListMin1Max3 {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<U64ListMin1Max3, JsError> {
+        BoundedVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedVec<u64, 1, 3>> for U64ListMin1Max3 {
+    fn from(native: BoundedVec<u64, 1, 3>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<U64ListMin1Max3> for BoundedVec<u64, 1, 3> {
+    fn from(wasm: U64ListMin1Max3) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedVec<u64, 1, 3>> for U64ListMin1Max3 {
+    fn as_ref(&self) -> &BoundedVec<u64, 1, 3> {
+        &self.0
+    }
+}
 
 /// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door). `insert` is the std-set door (returns `false`, set unchanged, for an already-present element); `contains` tests membership.
 #[derive(Clone, Debug)]

@@ -12,12 +12,12 @@ sidebar_position: 4
   `rust/` crate. Its API shape deliberately parallels the wasm face with documented deltas —
   see [Component (WIT) differences](component_differences).
 - Two further top-level directories are emitted beside them in **every** mode: `extern-interface/` (this crate's extern-visible type surface, for consumers — see [Extern-interface export](#extern-interface-export)) and `no-std-check/` (a tiny throwaway crate that proves the rust crate still builds without `std` — see [The `no-std-check` shim crate](#the-no-std-check-shim-crate)). Both are tool-owned and delete-and-recreated on every run.
-- Every crate's generated code lives under a tool-owned `src/generated/` subtree (`rust/src/generated/mod.rs` holds the structs, `rust/src/generated/serialization.rs` their (de)serialization implementations/corresponding types, plus the runtime modules `error.rs`/`ordered_hash_map.rs`; a crate with any [`@used_as_key`](./comment_dsl)-tagged rule also carries `key_demand_assertions.rs`, the private compile-time record of which tag demanded which comparison/hash traits). The crate root `src/lib.rs` is a thin, user-owned wrapper (`mod generated; pub use generated::*;`) — see [Generated crate roots](#generated-crate-roots-thin-root-seed-once) below.
+- Every crate's generated code lives under a tool-owned `src/generated/` subtree (`rust/src/generated/mod.rs` holds the structs, `rust/src/generated/serialization.rs` their (de)serialization implementations/corresponding types, plus usage-gated runtime modules such as `error.rs`, `ordered_hash_map.rs`, and `bounded.rs`; a crate with any [`@used_as_key`](./comment_dsl)-tagged rule also carries `key_demand_assertions.rs`, the private compile-time record of which tag demanded which comparison/hash traits). The crate root `src/lib.rs` is a thin, user-owned wrapper (`mod generated; pub use generated::*;`) — see [Generated crate roots](#generated-crate-roots-thin-root-seed-once) below.
 - The `wasm/` directory is full of wasm_bindgen-annotated wrappers (under `wasm/src/generated/`) for the corresponding rust-use-only structs in `rust/` and can be compiled for WASM builds by running `wasm-pack build` on it. The `--target=nodejs` output runs unchanged under both Node and [Bun](https://bun.sh). Every wasm crate also carries a `wasm/src/generated/collections.rs` index: one `pub use crate::…::<Wrapper>;` re-export per collection wrapper class the crate defines (the `FooList` / `MapKToV` and `NonEmpty…` wrappers minted from `[* T]` / `{* K => V}` shapes), sorted, with no glob. Because it is compiled as part of the crate, a line naming a removed wrapper fails the crate's own build, so the index can never silently drift from the classes it inventories.
 
 **Toolchain floor.** Generated crates depend on `cbor_event` 3.3, whose manifest declares `rust-version = "1.96.1"` — building a generated crate needs at least that toolchain.
 
-**Unused imports are pruned.** A usage-derived post-pass reads the rendered source and drops imports a generated file's module family references nowhere, so a module carries no unused-import warning for something a sibling module uses. It removes three things. **(1) Concrete-type names** — the collection helpers (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`, `OrderedSet`, `NonEmptyOrderedSet`) and, under `--preserve-encodings`, the encoding enums (`LenEncoding`, `StringEncoding`, `TagPresenceEncoding`); the wasm prelude names (`JsError`, `JsValue`, and the `wasm_bindgen` attribute macro, kept only where a `#[wasm_bindgen]` attribute appears); the `--wasm-*-macro` leaf names (kept only where the macro is actually invoked); and cross-scope generator-minted type idents an over-approximating reference walk imports. (The two `OrderedSet` twins ride the spec-global `@duplicates reject` gate — see [Reject-duplicates containers](#reject-duplicates-containers-uniqueness-twins) — so a scope with a reject-set rule pushes them into *every* scope's `mod.rs`, and this pass keeps the scopes that never name them warning-free.) **(2) `use super::*;`** — dropped from a file whose body names nothing bound in its parent module (kept where an encoding struct is keyed by a parent-scope generated type, e.g. `BTreeMap<Ikey, StringEncoding>`, since it reaches `Ikey` through the glob). **(3) `use <common>::error::*;`** — dropped from a `mod.rs` whose family names no error export (kept where a bounds-carrying wrapper's `TryFrom`/`new` names `DeserializeError`).
+**Unused imports are pruned.** A usage-derived post-pass reads the rendered source and drops imports a generated file's module family references nowhere, so a module carries no unused-import warning for something a sibling module uses. It removes three things. **(1) Concrete-type names** — the collection helpers (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `BoundedVec`, `NonEmptyMap`, `OrderedSet`, `NonEmptyOrderedSet`) and, under `--preserve-encodings`, the encoding enums (`LenEncoding`, `StringEncoding`, `TagPresenceEncoding`); the wasm prelude names (`JsError`, `JsValue`, and the `wasm_bindgen` attribute macro, kept only where a `#[wasm_bindgen]` attribute appears); the `--wasm-*-macro` leaf names (kept only where the macro is actually invoked); and cross-scope generator-minted type idents an over-approximating reference walk imports. (The two `OrderedSet` twins ride the spec-global `@duplicates reject` gate — see [Reject-duplicates containers](#reject-duplicates-containers-uniqueness-twins) — so a scope with a reject-set rule pushes them into *every* scope's `mod.rs`, and this pass keeps the scopes that never name them warning-free.) **(2) `use super::*;`** — dropped from a file whose body names nothing bound in its parent module (kept where an encoding struct is keyed by a parent-scope generated type, e.g. `BTreeMap<Ikey, StringEncoding>`, since it reaches `Ikey` through the glob). **(3) `use <common>::error::*;`** — dropped from a `mod.rs` whose family names no error export (kept where a bounds-carrying wrapper's `TryFrom` names `DeserializeError`).
 
 The consuming set of a file is not "every descendant" but the descendants an unbroken chain of `use super::*;` edges links back to it — a private import in a scope's `mod.rs` is nameable by that scope's `serialization.rs`/`cbor_encodings.rs` (which glob `super`), but NOT by a *different* scope's files, whose own `mod.rs` does not re-glob upward. A super-reachable descendant keeps a parent's copy alive only when it would genuinely resolve the name through the parent: one that carries its own direct import of the same name, that IS the file of the module the parent imports it from (the `serialization.rs` static prelude that defines `LenEncoding`), or that globs that same module (`use <dep>::serialization::*;` under `--common-import-override`) resolves the name locally and does not. A reference counts only where it could actually resolve through the namespace: an identifier appearing solely as a `::`-qualified path tail (`cml_chain::assets::Coin` mentioning `assets` and `Coin`) resolves through its preceding path segment, so it keeps neither a named import nor a glob alive — which is why a file built entirely from fully-qualified paths (e.g. the `--wrapper-requests` `requested_collections.rs`) sheds its `use super::*;`. Only private `use` items are candidates (`pub use` re-exports are API surface and never touched). Trait imports (e.g. `cbor_event::se::Serialize`, exercised via a method call whose name never mentions `Serialize`) cannot be proven unused by name and are left as-is, so a scope that imports but never calls one still carries that single warning. The pass runs again after the edit-preservation overlay applies your `cddl-codegen:` blocks, so what justifies each import is the *final* shipped content, not the pristine pre-edit content — a replace block that removes an import's last user removes the import too (see [Preserving edits](./preserving_edits)).
 
@@ -853,8 +853,15 @@ An occurrence lower bound of exactly one — `[+ T]` and the equivalent `[1* T]`
 field type becomes `NonEmptyVec<T>` (or `NonEmptyMap<K, V>`), hand-written generics copied into the
 generated crate, so an empty value is simply not representable. A named rule aliases straight to it:
 `deltas = [+ int]` emits `pub type Deltas = NonEmptyVec<i64>`, giving the rule a real enforcement
-surface it never had standalone. Every other bound (`[* T]`, `[2*5 T]`, …) keeps today's bare `Vec` +
-runtime length check — only the exactly-`(1, ∞)` shape changes representation.
+surface it never had standalone. Every other supported **ordinary or `@duplicates preserve`**
+homogeneous ARRAY window except bare `*` is likewise type-enforced: `[2*5 T]`, `[*5 T]`, `[2* T]`,
+`[? T]`, and `[2*2 T]` emit
+`BoundedVec<T, MIN, MAX>` (`u64::MAX` is the target-independent unbounded carrier). Bare `[* T]` remains `Vec<T>`.
+
+A bounded `@duplicates reject` array deliberately remains the compound-constraint residue: it uses
+`OrderedSet<T>` (or `NonEmptyOrderedSet<T>` for `[+]`) and retains its inclusive cardinality check at
+the API and decode boundaries. There is no `BoundedOrderedSet` yet, so a reject set is never silently
+lowered to `BoundedVec`.
 
 Each non-empty type provides one conversion contract:
 
@@ -874,6 +881,15 @@ Each non-empty type provides one conversion contract:
   an empty CBOR array/map is rejected during decode with the *same* `0 not at least 1` error the API
   raises, so the constraint holds identically at both doors.
 
+`BoundedVec` has the same loose-to-tight `TryFrom<Vec<T>>` and widening `From`/`into_inner` contract.
+It exposes slices and mutable elements but never `&mut Vec`; `push`, `extend`, `pop`, `remove`, and
+`truncate` return the existing `RangeCheck` before crossing either bound. JSON is an ordinary array
+and schemars publishes `minItems`/`maxItems`. The wasm class is named `<Elem>ListMinN`,
+`<Elem>ListMaxN`, or `<Elem>ListMinNMaxN` (a named CDDL rule wins); its `try_from`/`add` doors are
+fallible for the same reason, and only a zero-minimum class exposes an infallible empty `new()` seed.
+Positive-minimum instantiations have no `new` method at all. Tables remain outside this representation and retain their documented
+occurrence limits.
+
 Because the invalid state is unrepresentable, a struct whose only rejectable constraint is an
 occurrence lower bound gets an **infallible `new()`**: every argument is already valid by
 construction, and serialization stays infallible (there is no empty value to fail on). Construction
@@ -888,6 +904,17 @@ the length check moves to a single `try_into` at the point the loose collection 
 | `Foo::new(tags: Vec<Bar>) -> Result<Foo, DeserializeError>` | `Foo::new(tags: NonEmptyVec<Bar>) -> Foo` |
 | `let foo = Foo::new(tags)?;` (checks length, but a later `foo.tags.clear()` re-breaks it) | `let tags: NonEmptyVec<Bar> = tags.try_into()?; let foo = Foo::new(tags);` |
 | empty vs. absent modelled as `Option<Foo>` | empty `Vec<Bar>` is representable — it just isn't a `NonEmptyVec` yet; `Option` returns to meaning "the field itself is optional" |
+
+**Migrating a bounded window** (`Vec<T>` field → `BoundedVec<T, MIN, MAX>` field) follows the same
+two-type boundary. The constructor becomes infallible when it receives the already-checked bounded
+value; call `try_into()` once where a loose vector is assembled. A zero-minimum `BoundedVec` can be
+seeded with `BoundedVec::new()`; a positive-minimum value must enter through `TryFrom<Vec<T>>`.
+
+| Before (bypassable `new` check) | After (two-type bounded window) |
+|---|---|
+| `Foo::new(tags: Vec<Bar>) -> Result<Foo, DeserializeError>` | `Foo::new(tags: BoundedVec<Bar, 2, 5>) -> Foo` |
+| `let foo = Foo::new(tags)?;` | `let tags: BoundedVec<Bar, 2, 5> = tags.try_into()?; let foo = Foo::new(tags);` |
+| `tags.push(bar)` can silently exceed the window | `tags.push(bar)?` refuses the first out-of-window append before mutation |
 
 The type name, the generated doc comment (which quotes the originating CDDL), and the `TryFrom`
 signature are three redundant signals that a constraint exists. The wasm boundary mirrors this with a
@@ -1254,7 +1281,7 @@ ignores non-`pub` fields, so the wasm ABI is unchanged.
 
 This applies uniformly to the wasm *collection* wrappers too: the plain list wrappers (`FooList`),
 the structural map wrappers (`MapKToV`) and named map/table rules, and the `NonEmpty*` list/map
-wrappers all back their inner `Vec`/`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`NonEmptyMap` with a
+wrappers all back their inner `Vec`/`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`BoundedVec`/`NonEmptyMap` with a
 `pub(crate)` tuple field, so hand augmentation reaches `self.0` on any of them. The one exception is
 `--wasm-list-macro`: those list wrappers are defined by a *consumer-supplied* macro, so their field
 visibility is the macro's choice, not the generator's — give that macro a `pub(crate)` field if its
@@ -1295,7 +1322,7 @@ The tool prints a one-time stderr warning when it sees a root without `mod gener
 
 When a set of co-generated crates form a workspace — one crate per CDDL spec, later crates importing
 earlier ones as extern deps — a collection wrapper over another crate's types
-(`[* foo]` → `FooList`, `{* k => v}` → `MapKToV`, and their `NonEmpty…` variants) must live in
+(`[* foo]` → `FooList`, `[2*5 foo]` → `FooListMin2Max5`, `{* k => v}` → `MapKToV`, and their restricted variants) must live in
 **exactly one** crate. Two crates that each mint the same `#[wasm_bindgen] FooList` export one JS
 class name twice and fail to link a single wasm cdylib (`duplicate symbol: __wbg_foolist_free`). The
 `--workspace-dep` (consumer side) and `--wrapper-requests` (dependency side) flags place every
@@ -1440,8 +1467,9 @@ freely — so adding or dropping a requester churns the doc in place without eve
 preservation. Requested wrappers are indexed in the dependency's own `collections.rs`
 (`pub use crate::generated::requested_collections::<Name>;`) exactly like a wrapper the dependency's
 own spec produces, so a consumer's `use <dep_wasm>::collections::<Name>;` resolves. A requested
-`NonEmpty…` wrapper additionally provisions the `NonEmptyVec`/`NonEmptyMap` runtime and may emit its
-loose `try_from` source wrapper as an (unattributed) transitive support type. Each hosted wrapper
+`NonEmpty…` wrapper additionally provisions the `NonEmptyVec`/`NonEmptyMap` runtime; a bounded list
+provisions `BoundedVec`; either may emit its loose `try_from` source wrapper as an (unattributed)
+transitive support type. Each hosted wrapper
 also carries explicit imports for the element types its body names — a cross-scope generated
 element from its scope module (`crate::generated::<scope>::X`), an extern or hand-written element
 through its crate-root re-export glue — so hosting works for elements that live outside the

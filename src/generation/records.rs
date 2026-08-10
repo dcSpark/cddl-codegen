@@ -2929,7 +2929,23 @@ pub(super) fn codegen_struct(
                 let position = match field.rust_type.conceptual_type.resolve_alias_shallow() {
                     ConceptualRustType::Any => Some(if opt { P::Optional } else { P::Direct }),
                     ConceptualRustType::Array(inner) if resolves_any(inner) => {
-                        Some(if opt { P::OptSeq } else { P::Seq })
+                        // Alias-aware: a named `[2*3 any]` field resolves shallowly to Array but
+                        // its checked bounds live on the RustType configuration. The bounded
+                        // adapter keeps natural JSON's fallible AnyCbor walk AND re-enters the
+                        // BoundedVec TryFrom door instead of pretending this is Vec<AnyCbor>.
+                        field
+                            .rust_type
+                            .type_enforced_bounded_array_u64_bounds()
+                            .map_or_else(
+                                || Some(if opt { P::OptSeq } else { P::Seq }),
+                                |(min, max)| {
+                                    Some(if opt {
+                                        P::OptBoundedSeq(min, max)
+                                    } else {
+                                        P::BoundedSeq(min, max)
+                                    })
+                                },
+                            )
                     }
                     // An `any`-keyed table stays tagged (its key already errors at runtime per
                     // RFC 8949 §6.1), so require a non-`any` key. Preserve → `OrderedHashMap`, else `BTreeMap`.

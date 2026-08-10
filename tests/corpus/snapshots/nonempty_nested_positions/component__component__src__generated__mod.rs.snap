@@ -32,11 +32,23 @@ pub struct WitHolder(pub RefCell<cddl_lib::Holder>);
 
 impl wit_types::GuestHolder for WitHolder {
     fn new(np: Vec<Vec<u64>>, dm: Vec<(Vec<(u64, u64)>, String)>) -> Result<Self, String> {
-        let np = np.into_iter().map(|x| x.into_iter().collect()).collect();
+        let np = np
+            .into_iter()
+            .map(|x| (x.into_iter().collect::<Vec<_>>()).try_into().map_err(err))
+            .collect::<Result<Vec<_>, String>>()?;
         let dm = dm
             .into_iter()
-            .map(|(x0, x1)| (x0.into_iter().collect(), x1))
-            .collect();
+            .map(|(x0, x1)| {
+                (|| -> Result<_, String> {
+                    Ok((
+                        (x0.into_iter().collect::<Vec<_>>())
+                            .try_into()
+                            .map_err(err)?,
+                        x1,
+                    ))
+                })()
+            })
+            .collect::<Result<_, String>>()?;
         let inner = cddl_lib::Holder::new(np, dm);
         Ok(WitHolder(RefCell::new(inner)))
     }

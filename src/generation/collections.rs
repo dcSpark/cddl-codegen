@@ -647,6 +647,165 @@ impl GenerationScope {
         wrapper.push(self, types);
     }
 
+    /// Emit the restricted wasm wrapper for a finite/zero-minimum homogeneous array.  It owns the
+    /// real `BoundedVec` so conversions into a parent are infallible; loose input is accepted only
+    /// through `try_from`, which reaches the same core `TryFrom<Vec<_>>` door as CBOR/JSON decode.
+    pub(super) fn generate_bounded_array_type(
+        &mut self,
+        types: &IntermediateTypes,
+        element_type: RustType,
+        wrapper_ident: &RustIdent,
+        (min, max): (u64, u64),
+        rule_declared: bool,
+        cli: &Cli,
+    ) {
+        let max_token = if max == u64::MAX {
+            "{ u64::MAX }".to_owned()
+        } else {
+            max.to_string()
+        };
+        let structural_name = match (min, max == u64::MAX) {
+            (0, false) => format!("{}ListMax{max}", element_type.conceptual_type.for_variant()),
+            (_, true) => format!("{}ListMin{min}", element_type.conceptual_type.for_variant()),
+            _ => format!(
+                "{}ListMin{min}Max{max}",
+                element_type.conceptual_type.for_variant()
+            ),
+        };
+        // The request/index shape must go through the one canonical renderer: in particular its
+        // `[? T]` and `[*N T]` spellings are also what the strict sidecar parser reconstructs.
+        // Hand-formatting this as `0*1` / `0*N` makes an otherwise identical own-spec wrapper
+        // look different to a requesting consumer.
+        let bounded_shape_type: RustType =
+            ConceptualRustType::Array(Box::new(element_type.clone())).into();
+        let bounded_shape_type = bounded_shape_type.with_bounds((
+            (min != 0).then_some(i128::from(min)),
+            (max != u64::MAX).then_some(i128::from(max)),
+        ));
+        let shape = render_wrapper_shape(&bounded_shape_type);
+        if self.try_defer_wrapper(
+            types,
+            wrapper_ident,
+            &structural_name,
+            &[&element_type.conceptual_type],
+            &shape,
+            rule_declared,
+            cli,
+        ) {
+            return;
+        }
+        self.ensure_non_empty_wrappers(types, &element_type, cli);
+        if !self.already_generated.insert(wrapper_ident.clone()) {
+            return;
+        }
+        self.record_collection_wrapper(types, wrapper_ident, &shape);
+        let elem_rust = element_type.for_rust_member(types, true, cli);
+        let inner_type = format!("BoundedVec<{elem_rust}, {min}, {max_token}>");
+        let elem_wasm = element_type.for_wasm_member(types);
+        // A bounded OUTER needs a loose list source even when its element is itself constrained:
+        // that source's generated accessors restore the inner boundary, then this wrapper's
+        // `try_from` restores the outer window. Unlike the NonEmpty/reject twins, positive-minimum
+        // BoundedVec has no `new(first)` constructor to fall back to.
+        let loose_list = (!element_type.vec_of_self_directly_wasm_exposable(types))
+            .then(|| element_type.name_as_wasm_array(types));
+        let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
+        let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
+        // Requested wrappers set their own discovery docs, so retain the request attribution that
+        // `create_base_wasm_struct` initially installed (the same clobber seam as NonEmptyVec).
+        let attr_prefix = self.requested_attribution_prefix(wrapper_ident);
+        let construction = if self_named {
+            "This self-named zero-minimum class owns the loose-builder ident itself, so construct it \
+             with `new()` plus checked `add` calls; `add` fails before changing the value when it \
+             would cross the declared bound."
+        } else {
+            "Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and \
+             `try_from` fail before changing the value when they would cross the declared bound."
+        };
+        wrapper.s.doc(format!(
+            "{attr_prefix}`{shape}`: inclusive length window enforced by the core `BoundedVec`. \
+             {construction}"
+        ));
+        wrapper.push_inner_field(&inner_type);
+        // A zero-minimum window has a valid empty seed. There is intentionally no wasm `new`
+        // surface for a positive minimum: exposing one that only returns an error would advertise
+        // an impossible construction route instead of the required `try_from`/`add` doors.
+        if min == 0 {
+            wrapper
+                .s_impl
+                .new_fn("new")
+                .vis("pub")
+                .ret("Self")
+                .line("Self(BoundedVec::new())");
+        }
+        wrapper
+            .s_impl
+            .new_fn("len")
+            .vis("pub")
+            .ret("usize")
+            .arg_ref_self()
+            .line("self.0.len()");
+        wrapper
+            .s_impl
+            .new_fn("get")
+            .vis("pub")
+            .ret(element_type.for_wasm_return(types))
+            .arg_ref_self()
+            .arg("index", "usize")
+            .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
+        wrapper
+            .s_impl
+            .new_fn("add")
+            .vis("pub")
+            .ret("Result<(), JsError>")
+            .arg_mut_self()
+            .arg("elem", element_type.for_wasm_param(types))
+            .line(format!(
+                "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
+                ToWasmBoundaryOperations::format(
+                    element_type
+                        .from_wasm_boundary_clone(types, "elem", false)
+                        .into_iter()
+                )
+            ));
+        if element_type.vec_of_self_directly_wasm_exposable(types) {
+            wrapper
+                .s_impl
+                .new_fn("try_from")
+                .vis("pub")
+                .ret(format!("Result<{wrapper_ident}, JsError>"))
+                .arg("elements", format!("Vec<{elem_wasm}>"))
+                .line(
+                    "BoundedVec::try_from(elements).map(Self).map_err(|e| JsError::new(&e.to_string()))",
+                );
+        } else if let Some(loose_list) = loose_list.filter(|_| !self_named) {
+            // Like NonEmptyVec, a non-exposable element enters through the existing loose wrapper.
+            // Borrow + clone keeps the JS source valid while the one core conversion door checks
+            // the inclusive window.
+            self.generate_array_type(
+                types,
+                element_type.clone(),
+                &RustIdent::new(CDDLIdent::new(loose_list.clone())),
+                false,
+                cli,
+            );
+            wrapper
+                .s_impl
+                .new_fn("try_from")
+                .vis("pub")
+                .ret(format!("Result<{wrapper_ident}, JsError>"))
+                .arg("list", format!("&{loose_list}"))
+                .line(format!(
+                    "let inner: {} = list.clone().into();",
+                    element_type.name_as_rust_array(types, true, cli)
+                ))
+                .line(
+                    "BoundedVec::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))",
+                );
+        }
+        wrapper.add_conversion_methods(&inner_type, cli);
+        wrapper.push(self, types);
+    }
+
     /// Emit the RESTRICTED set wrapper for a `@duplicates reject` collection — the wasm twin of the
     /// loose list wrapper, but wrapping `core::OrderedSet<T>` (`non_empty == false`) or
     /// `core::NonEmptyOrderedSet<T>` (`non_empty == true`) so the boundary conversion to the rust core
@@ -1096,7 +1255,23 @@ impl GenerationScope {
     ) {
         match &rt.conceptual_type {
             ConceptualRustType::Array(inner) => {
-                if rt.is_reject_ordered_set() {
+                if let Some((min, max)) = rt.bounded_array_u64_bounds() {
+                    if types
+                        .bounded_array_named_owner(inner, rt.config.bounds.unwrap())
+                        .is_none()
+                    {
+                        let ident =
+                            RustIdent::new(CDDLIdent::new(rt.bounded_wasm_wrapper_name(types)));
+                        self.generate_bounded_array_type(
+                            types,
+                            (**inner).clone(),
+                            &ident,
+                            (min, max),
+                            false,
+                            cli,
+                        );
+                    }
+                } else if rt.is_reject_ordered_set() {
                     // `@duplicates reject` inline (anonymous generic-instance) set: mint the
                     // uniqueness-twin wrapper under its structural name (`U64OrderedSet` /
                     // `NonEmptyU64OrderedSet`). Named reject rules mint under their rule ident via the

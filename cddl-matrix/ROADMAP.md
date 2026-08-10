@@ -448,23 +448,14 @@ entry, so the atomicity is the rule).
   slot lands, also revisit the rejected no-occurrence spelling `{ k => v }` — it becomes implementable
   as bounds `(1, 1)`, so flip its reject row (`contain.map-key.memberkey.type1.tstr_arrow_nooccur`) on
   merit rather than keeping the rejection out of inertia.
-- **Extending type-level ("two-type") constraint enforcement beyond the `+` occurrence is a
-  candidate feature family.** The shipped model (`static/non_empty.rs` / `static/non_empty_map.rs`;
-  user-facing contract in `docs/docs/output_format.mdx` § "Non-empty containers") makes the invalid
-  state unrepresentable and funnels construction through a single `TryFrom` door — but only for the
-  lower-bound-exactly-1 container shape. The remaining constraint classes still enforce via runtime
-  checks that a `pub` field or direct mutation can bypass (the bypassability the `+` work removed):
-  - **Bounded containers** (`[2*5 T]` / `*n` arrays — runtime-checked today — and the rejected
-    `?`/`n*m` table spellings owned by "Real bounded `?` / `n*m` table cardinality"):
-    `BoundedVec`/`BoundedMap` statics
-    as SIBLINGS of the non-empty types, not a generalization the non-empty types alias into — Rust
-    cannot vary a method's fallibility by const parameter, so a `MIN=1, MAX=∞` instantiation would
-    force `Result` onto the shipped infallible `push`/`insert`. The mechanical `Min{N}`/`Max{N}`
-    wasm naming and the same conversion contract still slot in without redesign; the bounds-general
-    API rule (a length-changing operation is checked iff it can cross a bound; value-level `&mut`
-    is unrestricted at every bound shape) and the pickup plan live in
-    `draft/two-type-constraint-enforcement.md` § "Support for more complex occurrences" and the
-    bounded-occurrence residual in `tests/TESTING_ROADMAP.md`.
+- **Bounded table cardinality remains the type-level constraint residue beyond `+`.** Ordinary and
+  preserve homogeneous ARRAY windows now use the `BoundedVec` sibling and Min/Max wasm wrappers;
+  bounded `@duplicates reject` arrays remain runtime-checked `OrderedSet` values until a compound
+  bounded-unique representation is designed; do not reopen that
+  delivered representation. The rejected `?`/`n*m` table spellings owned by "Real bounded `?` /
+  `n*m` table cardinality" would require a `BoundedMap` sibling. Rust cannot vary method fallibility
+  by const parameter, so it remains separate from `NonEmptyMap`; reopen when a table consumer needs
+  bounded cardinality rather than a parser refusal.
   - **An open table's min-1 typed row** (`t = { + K_t => V_t, * K_r => V_r }`): the one min-1 shape
     that does NOT use the unrepresentable model, because the container it bounds is one `pub` member
     of a struct whose OTHER member is an unbounded sibling. It is enforced at a seeded door

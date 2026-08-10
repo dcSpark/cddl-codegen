@@ -35,7 +35,7 @@ impl wit_types::GuestTree for WitTree {
         let children = children
             .into_iter()
             .map(|x| x.get::<WitTree>().0.borrow().clone())
-            .collect();
+            .collect::<Vec<_>>();
         let inner = cddl_lib::Tree::new(value, children);
         WitTree(RefCell::new(inner))
     }

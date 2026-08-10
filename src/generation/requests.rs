@@ -243,6 +243,15 @@ impl GenerationScope {
                             false,
                             cli,
                         );
+                    } else if let Some((min, max)) = rt.bounded_array_u64_bounds() {
+                        self.generate_bounded_array_type(
+                            types,
+                            (**inner).clone(),
+                            &ident,
+                            (min, max),
+                            false,
+                            cli,
+                        );
                     } else {
                         self.generate_array_type(types, (**inner).clone(), &ident, false, cli);
                     }
@@ -295,6 +304,9 @@ impl GenerationScope {
         self.requested_non_empty_vec = to_emit
             .iter()
             .any(|(_, rt, _, _)| rt.contains_non_empty_array());
+        self.requested_bounded_vec = to_emit
+            .iter()
+            .any(|(_, rt, _, _)| rt.contains_bounded_array());
         self.requested_non_empty_map = to_emit
             .iter()
             .any(|(_, rt, _, _)| rt.contains_non_empty_map());
@@ -310,6 +322,9 @@ impl GenerationScope {
         let non_empty_import = self
             .requested_non_empty_vec
             .then(|| format!("{}::non_empty", cli.common_import_wasm()));
+        let bounded_import = self
+            .requested_bounded_vec
+            .then(|| format!("{}::bounded", cli.common_import_wasm()));
         let non_empty_map_import = self
             .requested_non_empty_map
             .then(|| format!("{}::non_empty_map", cli.common_import_wasm()));
@@ -335,6 +350,9 @@ impl GenerationScope {
         // central prune, same as the struct sites.
         if let Some(path) = non_empty_import {
             scope_content.push_import(path, "NonEmptyVec", None);
+        }
+        if let Some(path) = bounded_import {
+            scope_content.push_import(path, "BoundedVec", None);
         }
         if let Some(path) = non_empty_map_import {
             scope_content.push_import(path, "NonEmptyMap", None);
@@ -384,8 +402,8 @@ fn primitive_cddl_name(p: &Primitive) -> &'static str {
 }
 
 /// Render a collection wrapper's CDDL shape fragment in the canonical W1 shape-column grammar —
-/// `[* foo]` / `[+ foo]` for loose / non-empty lists, `{* k => v}` / `{+ k => v}` for maps, nesting
-/// recursively (`[* [* foo]]`, `[* [+ foo]]`). Element idents are the dependency's own spec spelling
+/// `[* foo]` / `[+ foo]` / `[*5 foo]` / `[2* foo]` / `[2*5 foo]` for loose, non-empty, and bounded
+/// lists, `{* k => v}` / `{+ k => v}` for maps, nesting recursively. Element idents are the dependency's own spec spelling
 /// (snake_case of the rust ident, matching the extern-stub naming a dep re-parses after
 /// normalization); primitives render as their CDDL prelude name. The occurrence marker is taken from
 /// the `RustType`'s own bounds so nested non-empty shapes are honored at every level. This is the
@@ -394,7 +412,14 @@ fn primitive_cddl_name(p: &Primitive) -> &'static str {
 pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
     match &rt.conceptual_type {
         ConceptualRustType::Array(inner) => {
-            let occ = if rt.is_non_empty_array() { "+" } else { "*" };
+            let occ = match rt.config.bounds {
+                Some((Some(1), None)) => "+".to_owned(),
+                Some((None, Some(1))) => "?".to_owned(),
+                Some((None, Some(max))) => format!("*{max}"),
+                Some((Some(min), None)) => format!("{min}*"),
+                Some((Some(min), Some(max))) => format!("{min}*{max}"),
+                None | Some((None, None)) => "*".to_owned(),
+            };
             // A `@duplicates reject` collection appends its policy marker so the shape column
             // round-trips the uniqueness twin (parsed back by `parse_requested_shape`, and matched as
             // a distinct canonical shape from the same loose/non-empty list). Kept byte-identical to
@@ -627,7 +652,9 @@ fn parse_shape_fragment(
         '[' => {
             *pos += 1;
             skip_ws(pos);
-            let occ = read_occurrence(chars, pos).unwrap_or_else(|| bad("expected `*` or `+`"));
+            let occ = read_occurrence(chars, pos).unwrap_or_else(|| {
+                bad("expected an array occurrence (`*`, `+`, `?`, `*N`, `N*`, or `N*M`)")
+            });
             skip_ws(pos);
             let inner = parse_shape_fragment(
                 types,
@@ -645,16 +672,12 @@ fn parse_shape_fragment(
             }
             *pos += 1;
             let rt = RustType::new(ConceptualRustType::Array(Box::new(inner)));
-            if occ == '+' {
-                rt.with_bounds((Some(1), None))
-            } else {
-                rt
-            }
+            rt.with_bounds(occ)
         }
         '{' => {
             *pos += 1;
             skip_ws(pos);
-            let occ = read_occurrence(chars, pos).unwrap_or_else(|| bad("expected `*` or `+`"));
+            let occ = read_map_occurrence(chars, pos).unwrap_or_else(|| bad("expected `*` or `+`"));
             skip_ws(pos);
             let key = parse_shape_fragment(
                 types,
@@ -749,16 +772,61 @@ fn parse_shape_fragment(
     }
 }
 
-/// Read a `*`/`+` occurrence marker at `chars[*pos]`, advancing past it.
-fn read_occurrence(chars: &[char], pos: &mut usize) -> Option<char> {
+/// Read the array occurrence grammar emitted by [`render_wrapper_shape`], advancing past it.
+/// Maps keep their historical `*`/`+` grammar; only the `[` caller consumes the wider form.
+fn read_occurrence(chars: &[char], pos: &mut usize) -> Option<(Option<i128>, Option<i128>)> {
     match chars.get(*pos) {
-        Some('*') => {
-            *pos += 1;
-            Some('*')
-        }
         Some('+') => {
             *pos += 1;
-            Some('+')
+            Some((Some(1), None))
+        }
+        Some('?') => {
+            *pos += 1;
+            Some((None, Some(1)))
+        }
+        Some('*') => {
+            *pos += 1;
+            let max = read_occurrence_number(chars, pos)?;
+            Some((None, max))
+        }
+        Some(c) if c.is_ascii_digit() => {
+            let min = read_occurrence_number(chars, pos)?;
+            if chars.get(*pos) != Some(&'*') {
+                return None;
+            }
+            *pos += 1;
+            let max = read_occurrence_number(chars, pos)?;
+            Some((min, max))
+        }
+        _ => None,
+    }
+}
+
+/// Consume an optional non-negative endpoint. `None` means no digits, not an invalid number.
+fn read_occurrence_number(chars: &[char], pos: &mut usize) -> Option<Option<i128>> {
+    let start = *pos;
+    while chars.get(*pos).is_some_and(|c| c.is_ascii_digit()) {
+        *pos += 1;
+    }
+    if start == *pos {
+        return Some(None);
+    }
+    chars[start..*pos]
+        .iter()
+        .collect::<String>()
+        .parse::<i128>()
+        .ok()
+        .map(Some)
+}
+
+/// Maps do not yet have bounded-table support, so their sidecar grammar deliberately remains the
+/// old one-character occurrence form.
+fn read_map_occurrence(chars: &[char], pos: &mut usize) -> Option<char> {
+    match chars.get(*pos) {
+        Some('*' | '+') => {
+            let occurrence = chars[*pos];
+            *pos += 1;
+            Some(occurrence)
         }
         _ => None,
     }
@@ -785,6 +853,13 @@ fn requested_structural_name(
                 rt.reject_ordered_set_wasm_wrapper_name(types)
             } else if rt.is_non_empty_array() {
                 format!("NonEmpty{}List", inner.conceptual_type.for_variant())
+            } else if let Some((min, max)) = rt.bounded_array_u64_bounds() {
+                let base = inner.conceptual_type.for_variant();
+                match (min, max == u64::MAX) {
+                    (0, false) => format!("{base}ListMax{max}"),
+                    (_, true) => format!("{base}ListMin{min}"),
+                    _ => format!("{base}ListMin{min}Max{max}"),
+                }
             } else {
                 inner.conceptual_type.name_as_wasm_array_ct(types)
             }
@@ -817,7 +892,7 @@ fn requested_structural_name(
 /// array always gets a wrapper class, so only the loose-array (`[* …]`) case can be exposable.
 fn requested_exposable_member(types: &IntermediateTypes, rt: &RustType) -> Option<String> {
     match &rt.conceptual_type {
-        ConceptualRustType::Array(inner) if !rt.is_non_empty_array() => {
+        ConceptualRustType::Array(inner) if !rt.is_non_empty_array() && !rt.is_bounded_array() => {
             if ConceptualRustType::Array(Box::new(inner.conceptual_type.clone().into()))
                 .directly_wasm_exposable_ct(types)
             {
@@ -849,6 +924,9 @@ fn requested_shape_leaf_resolutions(types: &IntermediateTypes, shape: &str) -> V
                 i += 1;
             }
             let token: String = chars[start..i].iter().collect();
+            if token.bytes().all(|byte| byte.is_ascii_digit()) {
+                continue;
+            }
             if primitive_from_cddl_name(&token).is_some() {
                 continue;
             }

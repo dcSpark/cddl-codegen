@@ -48,7 +48,7 @@ impl wit_types::GuestHolder for WitHolder {
         let history = history
             .into_iter()
             .map(|x| x.get::<WitOutcome>().0.borrow().clone())
-            .collect();
+            .collect::<Vec<_>>();
         let inner = cddl_lib::Holder::new(o, l, n, history);
         WitHolder(RefCell::new(inner))
     }
@@ -91,8 +91,10 @@ pub struct WitLabel(pub RefCell<cddl_lib::Label>);
 
 impl wit_types::GuestLabel for WitLabel {
     fn new_labels(labels: Vec<String>) -> Result<wit_types::Label, String> {
-        let labels: Vec<_> = labels.into_iter().collect();
-        let inner = cddl_lib::Label::new_labels(labels.try_into().map_err(err)?);
+        let labels = (labels.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::Label::new_labels(labels);
         Ok(wit_types::Label::new(WitLabel(RefCell::new(inner))))
     }
 

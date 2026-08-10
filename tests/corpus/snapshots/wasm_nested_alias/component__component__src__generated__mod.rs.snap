@@ -47,7 +47,7 @@ impl wit_types::GuestOptHolder for WitOptHolder {
     }
 
     fn set_f(&self, f: Vec<u64>) {
-        let f = f.into_iter().collect();
+        let f = f.into_iter().collect::<Vec<_>>();
         self.0.borrow_mut().f = Some(f);
     }
 

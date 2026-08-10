@@ -2803,17 +2803,17 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   absorbed silently. The mechanical layer when a release actually bites: a pinned-latest or
   `--minimal-versions`-style resolve check over one generated crate, red when the resolved
   `cbor_event` version drifts from the one the vectors were blessed against.
-- **Bounded occurrences beyond `+` (`n*m` / `*n` / `n*` with n ≥ 2) — half runtime-checked,
-  half rejected, neither type-enforced.** Current state is asymmetric by representation:
-  ARRAYS (`[2*5 foo]`, `[*3 foo]`) are supported via serialize/deserialize-time length checks
-  on a bare `Vec<T>` — correct on the wire but bypassable at the API (the exact class the
-  two-type design's "Problem" section names; `is_non_empty_array`'s doc comment marks the
-  boundary) — while bounded TABLE markers reject gracefully at parsing's detection arm, pinned
+- **Bounded table occurrences (`n*m` / `*n` / `n*`) remain rejected.** Homogeneous ordinary/preserve
+  ARRAYS now use `BoundedVec<T, MIN, MAX>` for every supported finite/zero-minimum window, with a shared API/CBOR/
+  JSON `TryFrom<Vec<T>>` door and restricted wasm/component projections. Bounded `@duplicates reject`
+  arrays remain `OrderedSet`/`NonEmptyOrderedSet` plus their existing runtime cardinality checks; no
+  `BoundedOrderedSet` is implied. Bounded TABLE markers still
+  reject gracefully at parsing's detection arm, pinned
   by the `tests/matrix_reject/` rows
   `contain.occurrence-target.memberkey.type1.bounded_table` /
   `contain.occurrence-target.memberkey.bareword.zero_bounded_map` (the `HomogenousMap` doc
   comment guarantees only `*` and `+`/`1*` bounds ever reach generation). The open FEATURE is
-  type-level enforcement for both: sibling statics `BoundedVec`/`BoundedMap` following the
+  type-level enforcement for tables: a `BoundedMap` sibling following the
   bounds-general API rule in `draft/two-type-constraint-enforcement.md` § "Support for more
   complex occurrences" (an operation is checked iff it can cross a bound; value-`&mut` is
   unconditionally safe; one `TryFrom` door reporting the decoder's own

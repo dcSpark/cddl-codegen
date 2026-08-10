@@ -259,9 +259,10 @@ pub struct WitNonemptyArm(pub RefCell<cddl_lib::NonemptyArm>);
 
 impl wit_types::GuestNonemptyArm for WitNonemptyArm {
     fn new_nonempty_arm0(f0: Vec<u64>, f1: u64) -> Result<wit_types::NonemptyArm, String> {
-        let f0: Vec<_> = f0.into_iter().collect();
-        let inner = cddl_lib::NonemptyArm::new_nonempty_arm0(f0.try_into().map_err(err)?, f1)
+        let f0 = (f0.into_iter().collect::<Vec<_>>())
+            .try_into()
             .map_err(err)?;
+        let inner = cddl_lib::NonemptyArm::new_nonempty_arm0(f0, f1).map_err(err)?;
         Ok(wit_types::NonemptyArm::new(WitNonemptyArm(RefCell::new(
             inner,
         ))))
@@ -315,8 +316,10 @@ pub struct WitNonemptyArm0(pub RefCell<cddl_lib::NonemptyArm0>);
 
 impl wit_types::GuestNonemptyArm0 for WitNonemptyArm0 {
     fn new(f0: Vec<u64>, f1: u64) -> Result<Self, String> {
-        let f0: Vec<_> = f0.into_iter().collect();
-        let inner = cddl_lib::NonemptyArm0::new(f0.try_into().map_err(err)?, f1).map_err(err)?;
+        let f0 = (f0.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::NonemptyArm0::new(f0, f1).map_err(err)?;
         Ok(WitNonemptyArm0(RefCell::new(inner)))
     }
 

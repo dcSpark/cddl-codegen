@@ -61,7 +61,7 @@ impl wit_types::GuestHolder for WitHolder {
         let tips = tips
             .into_iter()
             .map(|x| x.get::<WitLeaf>().0.borrow().clone())
-            .collect();
+            .collect::<Vec<_>>();
         let inner = cddl_lib::Holder::new(name, tip, shade, tips);
         WitHolder(RefCell::new(inner))
     }

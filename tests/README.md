@@ -4464,9 +4464,10 @@ lockfile preflight per cell, which is most of what is left.
 fixed — remove the pin", an unlisted one that stops fails as a regression. Every entry is a FINDING
 this gate made rather than a decision. One emitter class remains, in the emitted
 `component/src/generated/mod.rs` and reproducing under either `--wasm` posture: a despecialized
-`[+ T]` / `{+ K => V}` reached through a named collection rule as a list ELEMENT or a map KEY, which
-`.collect()`s straight into `NonEmptyVec`/`NonEmptyMap` because the `TryFrom` routing sees only the
-TOP level of a parameter. The two classes the gate found in the GUEST BLOCK
+`[+ T]` / `{+ K => V}` reached as the map KEY of a named table rule, which `.collect()`s straight
+into `NonEmptyVec`/`NonEmptyMap` because the typed conversion walk currently covers nested lists
+but not table keys.
+The two classes the gate found in the GUEST BLOCK
 itself — a world exporting no interface still emitting `export!(Component);`, and an interface of
 only value types still emitting `impl wit_types::Guest for Component {}` — are fixed, and the
 emission conditions that replaced them are pinned in `src/tests/component_tests.rs` by

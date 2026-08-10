@@ -26,4 +26,5 @@ pub use crate::generated::NonEmptyMapU64ToText;
 pub use crate::generated::NonEmptyU64List;
 pub use crate::generated::PlainList;
 pub use crate::generated::Table;
+pub use crate::generated::U64ListMin1Max3;
 pub use crate::generated::U64OrderedSet;

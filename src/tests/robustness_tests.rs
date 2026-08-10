@@ -2157,6 +2157,41 @@ fn well_known_tag_258_bounded_occurrence_composes_with_reject_twin() {
         src.contains(".len()") && (src.contains("3") && src.contains("5")),
         "the `3*5` occurrence window must still be enforced as a length check:\n{src}"
     );
+
+    // The same compound residue must hold without tag-258 nominalization: reject sets retain the
+    // OrderedSet representation and their ordinary `3*5` cardinality check until a deliberately
+    // designed BoundedOrderedSet exists (which this feature must not invent).
+    let direct_path = std::env::temp_dir().join(format!(
+        "cddl_codegen_reject_bounded_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &direct_path,
+        "foo = [3*5 uint] ; @duplicates reject\nholder = [f: foo]\n",
+    )
+    .unwrap();
+    let direct = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        direct_path.to_str().unwrap(),
+        "--output",
+        "reject_bounded_unused",
+        "--wasm=false",
+    ]))
+    .expect("a direct bounded reject set must generate cleanly");
+    std::fs::remove_file(&direct_path).ok();
+    let direct = direct.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        direct.contains("pub type Foo = OrderedSet<u64>")
+            && direct.contains("OrderedSet::try_from")
+            && !direct.contains("pub type Foo = BoundedVec")
+            && !direct.contains("pub mod bounded;"),
+        "a direct bounded reject set must stay OrderedSet-based, never become BoundedVec:\n{direct}"
+    );
+    assert!(
+        direct.contains(".len()") && direct.contains("3") && direct.contains("5"),
+        "the direct bounded reject set must retain its runtime 3*5 cardinality check:\n{direct}"
+    );
 }
 
 /// Inline-position tag-258 arrays NOMINALIZE into shape-derived `Set<Elem>` wrappers (Phase 2.4) —
@@ -9416,6 +9451,131 @@ fn loose_builder_name_claimed_plain_message_names_ident_and_use() {
     assert!(
         !msg.contains("duplicate top-level ident"),
         "the per-kind detector must fire BEFORE the generic duplicate-ident backstop, got: {msg}"
+    );
+}
+
+/// B3-022's finite-window sibling has its own pinned diagnostic. The catalog records the graceful
+/// outcome; this assertion keeps the bounded-specific remediation from falling back to the generic
+/// duplicate-ident backstop.
+#[test]
+fn bounded_wrapper_name_collision_names_restricted_bounded_vec_wrapper() {
+    let path = std::path::Path::new("tests/robustness/bounded_wrapper_name_collision.cddl");
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "bounded_wrapper_name_collision_unused",
+    ]);
+    let msg = crate::api::generated_strings(&cli)
+        .map_err(|e| e.to_string())
+        .expect_err("a bounded wrapper name collision must reject gracefully");
+    assert!(
+        msg.contains("BarListMin2Max5") && msg.contains("restricted BoundedVec wrapper"),
+        "the bounded per-kind diagnostic must name its class and representation, got: {msg}"
+    );
+    assert!(
+        !msg.contains("duplicate top-level ident"),
+        "the bounded-specific detector must run before the generic backstop, got: {msg}"
+    );
+}
+
+/// Bounded-array const arguments are `u64` on every target. A CDDL occurrence endpoint wider than
+/// that must be an ordinary input rejection, never the later `expect`/const-emission panic this
+/// boundary replaced.
+#[test]
+fn out_of_range_bounded_array_endpoint_rejects_gracefully() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_endpoint_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "huge = [18446744073709551616*18446744073709551616 uint]\n",
+    )
+    .unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "bounded_endpoint_unused",
+            "--wasm=true",
+        ]))
+    }));
+    std::fs::remove_file(&path).ok();
+    let err = result
+        .expect("an oversized occurrence endpoint must not panic")
+        .expect_err("an oversized occurrence endpoint must be rejected")
+        .to_string();
+    assert!(
+        err.contains("Occurrence bound out of range: 18446744073709551616"),
+        "the rejection must identify the unrepresentable endpoint, got: {err}"
+    );
+}
+
+/// A bounded rule is not the loose `Vec` builder merely because it is not `[+]`: a second bounded
+/// wrapper over the same non-exposable element needs the real `<Elem>List` source for its checked
+/// door, so an ident claimed by `BoundedVec` must reject before emitting incompatible wasm glue.
+#[test]
+fn bounded_rule_cannot_impersonate_a_compatible_loose_list_builder() {
+    const CDDL: &str = "bar = { a: uint }\n\
+                        bar_list = [*5 bar]\n\
+                        bounded = [2*5 bar]\n\
+                        holder = [x: bounded]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_loose_claim_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "bounded_loose_claim_unused",
+        "--wasm=true",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let msg = result
+        .expect_err("a bounded rule cannot supply another bounded wrapper's loose Vec source")
+        .to_string();
+    assert!(
+        msg.contains("BarList")
+            && msg.contains("named bounded rule 'Bounded'")
+            && msg.contains("make it `[* …]`"),
+        "the bounded loose-source collision must name the claim and compatibility remedy, got: {msg}"
+    );
+}
+
+/// A positive-minimum self-named bounded rule has neither `new()` nor a distinct loose source for
+/// `try_from`; reject it explicitly instead of emitting a JS class callers cannot construct.
+#[test]
+fn positive_minimum_self_named_bounded_rule_rejects_gracefully() {
+    const CDDL: &str = "bar = { a: uint }\nbar_list = [2*5 bar]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_self_named_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "bounded_self_named_unused",
+        "--wasm=true",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let msg = result
+        .expect_err("a positive-minimum self-named bounded wrapper must not be unconstructible")
+        .to_string();
+    assert!(
+        msg.contains("positive-minimum bounded rule 'BarList'")
+            && msg.contains("loose 'BarList' list-builder ident")
+            && msg.contains("rename the rule"),
+        "the self-named bounded rejection must explain the missing loose source and remedy, got: {msg}"
     );
 }
 

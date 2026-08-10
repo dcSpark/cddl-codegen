@@ -7397,120 +7397,415 @@ expect = "accept"
 [[row]]
 id = "occurrence.bounded"
 axis = "corpus"
-example = "bounded = [2*5 uint]\n; Embed sites are where occurrence counts are actually enforceable (the top-level rules are\n; transparent Vec aliases with no standalone wire API). Occurrence bounds are LENGTH constraints\n; on the array — they must never be misread as element VALUE bounds (`[+ uint]` once rejected the\n; element value 0, and `[2*5 uint]` rejected element values outside 2..=5, while any length\n; passed). The emit-tests deser-reject cases push each field's length out of bounds."
+example = "bounded = [2*5 uint]"
 fixture = "occurrence"
 rule = "bounded"
-spec = "__probe_holder = [0, bounded]\nbounded = [2*5 uint]\n; Embed sites are where occurrence counts are actually enforceable (the top-level rules are\n; transparent Vec aliases with no standalone wire API). Occurrence bounds are LENGTH constraints\n; on the array — they must never be misread as element VALUE bounds (`[+ uint]` once rejected the\n; element value 0, and `[2*5 uint]` rejected element values outside 2..=5, while any length\n; passed). The emit-tests deser-reject cases push each field's length out of bounds."
+spec = "__probe_holder = [0, bounded]\nbounded = [2*5 uint]"
 mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "82008219061d190dca"
+hex = "8200821901e519032c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190860190941"
+hex = "82008219030b190f04"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190c08190773"
+hex = "820082190b2e1906be"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082190e2b190e33"
+hex = "820082190bfb1902a1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082191185190f72"
+hex = "8200831904ec185f1902c7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008319031e18d8190554"
+hex = "820083190854190485190167"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083190a8219077219087f"
+hex = "82008319097a19070a190aca"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008419070d190aad190f4f1854"
+hex = "8200841903091903771909411907cf"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200841908ad19043b19105118de"
+hex = "8200841904911905dc190b10190be0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820084190dd51908061906cd190b85"
+hex = "820084190b0e19124319081e191068"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "occurrence.exact"
+axis = "corpus"
+example = "exact = [2*2 uint]"
+fixture = "occurrence"
+rule = "exact"
+spec = "__probe_holder = [0, exact]\nexact = [2*2 uint]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008219019e190606"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821902d1191046"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219041a190bc9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821909b319115b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821909dd191193"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190ccd190971"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190eb3190b14"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190f5e19053f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190f7f1902c5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821911ee1901fa"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "occurrence.lower"
+axis = "corpus"
+example = "lower = [2* uint]"
+fixture = "occurrence"
+rule = "lower"
+spec = "__probe_holder = [0, lower]\nlower = [2* uint]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820082190922190681"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190b3b1907b5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821911b9191020"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008318c4190a7619037a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190732190cef19102b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831909f8190b50190a53"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190ef5190762190aee"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008319119d190b5a19114f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831911d21907781909b8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008418851903ff190323190678"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "occurrence.maybe"
+axis = "corpus"
+example = "maybe = [? uint]"
+fixture = "occurrence"
+rule = "maybe"
+spec = "__probe_holder = [0, maybe]\nmaybe = [? uint]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200811902a8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200811902b3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190739"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190870"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190ae1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190f30"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190f4e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008119106e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "occurrence.nested_bounded"
+axis = "corpus"
+example = "nested_bounded = [2*3 [*2 uint]]\n; Embed sites are where occurrence counts are actually enforceable (the top-level rules are\n; transparent Vec aliases with no standalone wire API). Occurrence bounds are LENGTH constraints\n; on the array — they must never be misread as element VALUE bounds (`[+ uint]` once rejected the\n; element value 0, and `[2*5 uint]` rejected element values outside 2..=5, while any length\n; passed). The emit-tests deser-reject cases push each field's length out of bounds. The inline\n; fields exercise named-class dedup for each window family."
+fixture = "occurrence"
+rule = "nested_bounded"
+spec = "__probe_holder = [0, nested_bounded]\nnested_bounded = [2*3 [*2 uint]]\n; Embed sites are where occurrence counts are actually enforceable (the top-level rules are\n; transparent Vec aliases with no standalone wire API). Occurrence bounds are LENGTH constraints\n; on the array — they must never be misread as element VALUE bounds (`[+ uint]` once rejected the\n; element value 0, and `[2*5 uint]` rejected element values outside 2..=5, while any length\n; passed). The emit-tests deser-reject cases push each field's length out of bounds. The inline\n; fields exercise named-class dedup for each window family."
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008281186181190518"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200828119101082190af01911e8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008282190130190b2c81190a93"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200828219041d19083f80"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008282191199190e228219057a19121c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083808080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083808082190be11903f7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200838219014d190e3482190f42190abf8119121d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200838219042918c48080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008382190cc6190e0b8219088619041180"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "occurrence.nested_upper"
+axis = "corpus"
+example = "nested_upper = [* [*2 uint]]"
+fixture = "occurrence"
+rule = "nested_upper"
+spec = "__probe_holder = [0, nested_upper]\nnested_upper = [* [*2 uint]]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200828080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082811903c381190314"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082811904c881190cc0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200838081190aa180"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083811908c480821907e5190568"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008381190a15811910f782190543191089"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083821901b61905228082190b77190799"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008382190ef819034b8119076280"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200848218fd1905078219096e1904ee81190d1480"
 source = "ruby-generate"
 expect = "accept"
 
 [[row]]
 id = "occurrence.occurrence_holder"
 axis = "corpus"
-example = "one_or_more = [+ uint]\nbounded = [2*5 uint]\n; Embed sites are where occurrence counts are actually enforceable (the top-level rules are\n; transparent Vec aliases with no standalone wire API). Occurrence bounds are LENGTH constraints\n; on the array — they must never be misread as element VALUE bounds (`[+ uint]` once rejected the\n; element value 0, and `[2*5 uint]` rejected element values outside 2..=5, while any length\n; passed). The emit-tests deser-reject cases push each field's length out of bounds.\noccurrence_holder = [o: one_or_more, b: bounded, inline_bounded: [1*3 text]]"
+example = "one_or_more = [+ uint]\nbounded = [2*5 uint]\nupper = [*5 uint]\nlower = [2* uint]\nmaybe = [? uint]\nexact = [2*2 uint]\nnested_upper = [* [*2 uint]]\nnested_bounded = [2*3 [*2 uint]]\n; Embed sites are where occurrence counts are actually enforceable (the top-level rules are\n; transparent Vec aliases with no standalone wire API). Occurrence bounds are LENGTH constraints\n; on the array — they must never be misread as element VALUE bounds (`[+ uint]` once rejected the\n; element value 0, and `[2*5 uint]` rejected element values outside 2..=5, while any length\n; passed). The emit-tests deser-reject cases push each field's length out of bounds. The inline\n; fields exercise named-class dedup for each window family.\noccurrence_holder = [\n  o: one_or_more,\n  b: bounded,\n  upper: upper,\n  lower: lower,\n  maybe: maybe,\n  exact: exact,\n  nested: nested_upper,\n  nested_bounded: nested_bounded,\n  inline_bounded: [1*3 text],\n  inline_upper: [0*5 uint],\n  inline_lower: [2* uint],\n  inline_maybe: [0*1 uint],\n  inline_exact: [2*2 uint],\n]"
 fixture = "occurrence"
 rule = "occurrence_holder"
-spec = "__probe_holder = [0, occurrence_holder]\none_or_more = [+ uint]\nbounded = [2*5 uint]\n; Embed sites are where occurrence counts are actually enforceable (the top-level rules are\n; transparent Vec aliases with no standalone wire API). Occurrence bounds are LENGTH constraints\n; on the array — they must never be misread as element VALUE bounds (`[+ uint]` once rejected the\n; element value 0, and `[2*5 uint]` rejected element values outside 2..=5, while any length\n; passed). The emit-tests deser-reject cases push each field's length out of bounds.\noccurrence_holder = [o: one_or_more, b: bounded, inline_bounded: [1*3 text]]"
+spec = "__probe_holder = [0, occurrence_holder]\none_or_more = [+ uint]\nbounded = [2*5 uint]\nupper = [*5 uint]\nlower = [2* uint]\nmaybe = [? uint]\nexact = [2*2 uint]\nnested_upper = [* [*2 uint]]\nnested_bounded = [2*3 [*2 uint]]\n; Embed sites are where occurrence counts are actually enforceable (the top-level rules are\n; transparent Vec aliases with no standalone wire API). Occurrence bounds are LENGTH constraints\n; on the array — they must never be misread as element VALUE bounds (`[+ uint]` once rejected the\n; element value 0, and `[2*5 uint]` rejected element values outside 2..=5, while any length\n; passed). The emit-tests deser-reject cases push each field's length out of bounds. The inline\n; fields exercise named-class dedup for each window family.\noccurrence_holder = [\n  o: one_or_more,\n  b: bounded,\n  upper: upper,\n  lower: lower,\n  maybe: maybe,\n  exact: exact,\n  nested: nested_upper,\n  nested_bounded: nested_bounded,\n  inline_bounded: [1*3 text],\n  inline_upper: [0*5 uint],\n  inline_lower: [2* uint],\n  inline_maybe: [0*1 uint],\n  inline_exact: [2*2 uint],\n]"
 mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820083811902cd8219059319051a8168636f6e6475697473"
+hex = "82008d81190c20831902a71905731902cc808419117319026c190de91911ca80821903d91909898182190472190eec82821903d1190bd282190aa2190c318269636174746c656d656e6972616d70617274277380841911a119084f19067919116f81191005821901d7190c54"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200838119046f83184a1910de19056d83676272617661646f66706c617927736d726573746f726174696f6e2773"
+hex = "82008d8218c1190cc784190cf519040c19124b19064b821907721903398219078e19082b808219079419120d84811909c3821909711902de821905cd19064f81190b8882821904031906e9808368486f7070657227736970726f6e6f756e27736b6e6f7374616c676961277384190d2f18a6190a6a190a91821906dc190dbb81190ea38219062d190551"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008381190fa283190d38190991190b99816a646f63756d656e742773"
+hex = "82008d821909b31903c7831904da19060d190f068119118e8319022319082c1901558118f182181a19068f8082821912161902328219080e190e19816a696e76696e6369626c7981190a5e821901e5190d9e811910f482190f72187f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200838119109f841911f11909cc190c80190ccf816b726174696f6e616c697a65"
+hex = "82008d82190a84190d9d82190106190d6184190c8f188a190187190f10821902d2190c6180821903221907a28381190b4582190a6019071580838219046e1901da82190ba4190a1082190edb1904bb8264636f61786c7072656665726d656e74277384190443190a821904e919038b84190dd71903771907531903e381190f2f8219027f190fca"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200838219032d1840841910791908c71910df190d48836c74727563756c656e63652773684368657272792773696d6f746f7277617973"
+hex = "82008d82190bdb190711821908c119090483190626190fdf190ba58219063c18af8082190bfb1903df80828080816a537465726c696e6727738119059883191079190e911907b4808218bb190d2d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008382190dac190b68831911361906d9190d8683684c686f74736527736762696365702773697374696c6574746f73"
+hex = "82008d82190fcd191139821904b5190d6f81190b8784190a3318bd190a561911b98082190d67190d02838080811905908281190663811901438369726563757273696f6e65737461766566637261622773831905c319125b190a1e831911f4190f781905de8082190ed1190e34"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008383190e3c190ac61906ff821903ca19118281676c616d706f6f6e"
+hex = "82008d8419050b1911c11909bb19049182190ad71903c281190e1382190286190e39811909538219029819083382808119073f83821904a3190a1e82182a1911d28119117882666761726e657267696e6465786564808218261904778119042d82190358190558"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008384190343190d601902fb19083c82190d991908f2816977656c636f6d696e67"
+hex = "82008d84190a1619071c1903351902408219068a1909438319041d1909211908008219071b1911618119089682190f111911e98382190674190736808083821902ff1911a88119015780816870726169736527738082190b2c190bd18082190a5e1908b4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083841908fe190b1a19079719045484190a7d19091b190d151902cb8365457277696e6661737365747366796f6c6b2773"
+hex = "82008d84190c3719031a190a6a1902b5821907061911c28084190aed19079118ba190f3a811906e382190255118280821906c11910b183808081190e24826643616e746f6e66666172696e678082190bcc19038581190c4982191215190220"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008384190aa219057019066a1904238219118c190e7c826770616e69636b79657661756c74"
+hex = "82008d84190c9c190faa1909271905a98319121c19043619072282190616184182190507190941811903ae82190f901905998182190dbc19047e8381190109821909df190ac58218dd190c76826c7472616e736475636572277365456c6c696583190925191182190b1884190a4b190a6a190d61190d358082190b8f19125f"
 source = "ruby-generate"
 expect = "accept"
 
@@ -7525,52 +7820,107 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "8200811907de"
+hex = "820081190760"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190948"
+hex = "8200811910aa"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190ef7"
+hex = "8200811910dc"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190f53"
+hex = "8200821902bb190ba9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008219065b19011d"
+hex = "82008319020c1905cb190a3d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200821910ca190ca2"
+hex = "8200831903e91902eb1909df"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200841902391903d9190d601905b9"
+hex = "82008418e2190cf60b1909b6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200841908b0190a89190c271906de"
+hex = "8200841903ac190dba190adc1911b2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200841911f9190faa19114d1906fa"
+hex = "820084190a5318811907201911b9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200841911fd1901cb190ab3190f97"
+hex = "820084190c6e19075d1902a0190e90"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "occurrence.upper"
+axis = "corpus"
+example = "upper = [*5 uint]"
+fixture = "occurrence"
+rule = "upper"
+spec = "__probe_holder = [0, upper]\nupper = [*5 uint]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008119030b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190865"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190ac8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190780189c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190cb8190aa4190d6a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190d0d19039b19058b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190dd119067f1908bd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084190af61902f7191243190346"
 source = "ruby-generate"
 expect = "accept"
 

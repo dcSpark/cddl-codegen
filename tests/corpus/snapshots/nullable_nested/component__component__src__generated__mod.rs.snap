@@ -85,7 +85,7 @@ pub struct WitNullableCollField(pub RefCell<cddl_lib::NullableCollField>);
 
 impl wit_types::GuestNullableCollField for WitNullableCollField {
     fn new(c: Option<Vec<u64>>) -> Self {
-        let c = c.map(|v| v.into_iter().collect());
+        let c = c.map(|v| v.into_iter().collect::<Vec<_>>());
         let inner = cddl_lib::NullableCollField::new(c);
         WitNullableCollField(RefCell::new(inner))
     }

@@ -31,12 +31,78 @@ fn err<E: core::fmt::Display>(e: E) -> String {
 pub struct WitOccurrenceHolder(pub RefCell<cddl_lib::OccurrenceHolder>);
 
 impl wit_types::GuestOccurrenceHolder for WitOccurrenceHolder {
-    fn new(o: Vec<u64>, b: Vec<u64>, inline_bounded: Vec<String>) -> Result<Self, String> {
-        let o: Vec<_> = o.into_iter().collect();
-        let b = b.into_iter().collect();
-        let inline_bounded = inline_bounded.into_iter().collect();
-        let inner = cddl_lib::OccurrenceHolder::new(o.try_into().map_err(err)?, b, inline_bounded)
+    fn new(
+        o: Vec<u64>,
+        b: Vec<u64>,
+        upper: Vec<u64>,
+        lower: Vec<u64>,
+        maybe: Vec<u64>,
+        exact: Vec<u64>,
+        nested: Vec<Vec<u64>>,
+        nested_bounded: Vec<Vec<u64>>,
+        inline_bounded: Vec<String>,
+        inline_upper: Vec<u64>,
+        inline_lower: Vec<u64>,
+        inline_maybe: Vec<u64>,
+        inline_exact: Vec<u64>,
+    ) -> Result<Self, String> {
+        let o = (o.into_iter().collect::<Vec<_>>())
+            .try_into()
             .map_err(err)?;
+        let b = (b.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let upper = (upper.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let lower = (lower.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let maybe = (maybe.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let exact = (exact.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let nested = nested
+            .into_iter()
+            .map(|x| (x.into_iter().collect::<Vec<_>>()).try_into().map_err(err))
+            .collect::<Result<Vec<_>, String>>()?;
+        let nested_bounded = nested_bounded
+            .into_iter()
+            .map(|x| (x.into_iter().collect::<Vec<_>>()).try_into().map_err(err))
+            .collect::<Result<Vec<_>, String>>()
+            .and_then(|values| values.try_into().map_err(err))?;
+        let inline_bounded = (inline_bounded.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inline_upper = (inline_upper.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inline_lower = (inline_lower.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inline_maybe = (inline_maybe.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inline_exact = (inline_exact.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::OccurrenceHolder::new(
+            o,
+            b,
+            upper,
+            lower,
+            maybe,
+            exact,
+            nested,
+            nested_bounded,
+            inline_bounded,
+            inline_upper,
+            inline_lower,
+            inline_maybe,
+            inline_exact,
+        );
         Ok(WitOccurrenceHolder(RefCell::new(inner)))
     }
 
@@ -50,9 +116,65 @@ impl wit_types::GuestOccurrenceHolder for WitOccurrenceHolder {
         me.b.iter().map(|x| *x).collect()
     }
 
+    fn upper(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.upper.iter().map(|x| *x).collect()
+    }
+
+    fn lower(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.lower.iter().map(|x| *x).collect()
+    }
+
+    fn maybe(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.maybe.iter().map(|x| *x).collect()
+    }
+
+    fn exact(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.exact.iter().map(|x| *x).collect()
+    }
+
+    fn nested(&self) -> Vec<Vec<u64>> {
+        let me = self.0.borrow();
+        me.nested
+            .iter()
+            .map(|x| x.iter().map(|x| *x).collect())
+            .collect()
+    }
+
+    fn nested_bounded(&self) -> Vec<Vec<u64>> {
+        let me = self.0.borrow();
+        me.nested_bounded
+            .iter()
+            .map(|x| x.iter().map(|x| *x).collect())
+            .collect()
+    }
+
     fn inline_bounded(&self) -> Vec<String> {
         let me = self.0.borrow();
         me.inline_bounded.iter().map(|x| x.clone()).collect()
+    }
+
+    fn inline_upper(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.inline_upper.iter().map(|x| *x).collect()
+    }
+
+    fn inline_lower(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.inline_lower.iter().map(|x| *x).collect()
+    }
+
+    fn inline_maybe(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.inline_maybe.iter().map(|x| *x).collect()
+    }
+
+    fn inline_exact(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.inline_exact.iter().map(|x| *x).collect()
     }
 
     fn to_cbor_bytes(&self) -> Vec<u8> {

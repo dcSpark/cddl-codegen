@@ -16,6 +16,7 @@ use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
+pub mod bounded;
 pub mod error;
 pub mod non_empty;
 pub mod non_empty_map;
@@ -81,6 +82,7 @@ impl OsetPU64 {
 pub mod cbor_encodings;
 pub mod serialization;
 
+use crate::generated::bounded::BoundedVec;
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
@@ -211,7 +213,7 @@ pub struct Bounds {
     pub x: u64,
     pub y: u64,
     pub z: String,
-    pub a: Vec<u64>,
+    pub a: BoundedVec<u64, 1, 3>,
     pub b: OrderedHashMap<u64, u64>,
     pub encodings: Option<BoundsEncoding>,
 }
@@ -222,7 +224,7 @@ impl Bounds {
         x: u64,
         y: u64,
         z: String,
-        a: Vec<u64>,
+        a: BoundedVec<u64, 1, 3>,
         b: OrderedHashMap<u64, u64>,
     ) -> Result<Self, DeserializeError> {
         if w < -1000 || w > 1000 {
@@ -254,14 +256,6 @@ impl Bounds {
                 found: z.len() as i128,
                 min: Some(3),
                 max: Some(14),
-            }
-            .into());
-        }
-        if a.len() < 1 || a.len() > 3 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: a.len() as i128,
-                min: Some(1),
-                max: Some(3),
             }
             .into());
         }

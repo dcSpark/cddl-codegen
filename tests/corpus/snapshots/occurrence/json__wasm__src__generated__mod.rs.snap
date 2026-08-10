@@ -12,17 +12,192 @@ expression: content
 )]
 pub mod collections;
 
+use cddl_lib::bounded::BoundedVec;
 use cddl_lib::non_empty::NonEmptyVec;
 use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Bounded(pub(crate) Vec<u64>);
+pub struct ArrU64List(pub(crate) Vec<BoundedVec<u64, 0, 2>>);
+
+#[wasm_bindgen]
+impl ArrU64List {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> U64ListMax2 {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &U64ListMax2) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<BoundedVec<u64, 0, 2>>> for ArrU64List {
+    fn from(native: Vec<BoundedVec<u64, 0, 2>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrU64List> for Vec<BoundedVec<u64, 0, 2>> {
+    fn from(wasm: ArrU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<BoundedVec<u64, 0, 2>>> for ArrU64List {
+    fn as_ref(&self) -> &Vec<BoundedVec<u64, 0, 2>> {
+        &self.0
+    }
+}
+
+/// `[2*5 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Bounded(pub(crate) BoundedVec<u64, 2, 5>);
 
 #[wasm_bindgen]
 impl Bounded {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<Bounded, JsError> {
+        BoundedVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedVec<u64, 2, 5>> for Bounded {
+    fn from(native: BoundedVec<u64, 2, 5>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Bounded> for BoundedVec<u64, 2, 5> {
+    fn from(wasm: Bounded) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedVec<u64, 2, 5>> for Bounded {
+    fn as_ref(&self) -> &BoundedVec<u64, 2, 5> {
+        &self.0
+    }
+}
+
+/// `[2*2 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Exact(pub(crate) BoundedVec<u64, 2, 2>);
+
+#[wasm_bindgen]
+impl Exact {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<Exact, JsError> {
+        BoundedVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedVec<u64, 2, 2>> for Exact {
+    fn from(native: BoundedVec<u64, 2, 2>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Exact> for BoundedVec<u64, 2, 2> {
+    fn from(wasm: Exact) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedVec<u64, 2, 2>> for Exact {
+    fn as_ref(&self) -> &BoundedVec<u64, 2, 2> {
+        &self.0
+    }
+}
+
+/// `[2* uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Lower(pub(crate) BoundedVec<u64, 2, { u64::MAX }>);
+
+#[wasm_bindgen]
+impl Lower {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<Lower, JsError> {
+        BoundedVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedVec<u64, 2, { u64::MAX }>> for Lower {
+    fn from(native: BoundedVec<u64, 2, { u64::MAX }>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Lower> for BoundedVec<u64, 2, { u64::MAX }> {
+    fn from(wasm: Lower) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedVec<u64, 2, { u64::MAX }>> for Lower {
+    fn as_ref(&self) -> &BoundedVec<u64, 2, { u64::MAX }> {
+        &self.0
+    }
+}
+
+/// `[? uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Maybe(pub(crate) BoundedVec<u64, 0, 1>);
+
+#[wasm_bindgen]
+impl Maybe {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self(BoundedVec::new())
     }
 
     pub fn len(&self) -> usize {
@@ -33,25 +208,119 @@ impl Bounded {
         self.0[index]
     }
 
-    pub fn add(&mut self, elem: u64) {
-        self.0.push(elem);
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<Maybe, JsError> {
+        BoundedVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
-impl From<Vec<u64>> for Bounded {
-    fn from(native: Vec<u64>) -> Self {
+impl From<BoundedVec<u64, 0, 1>> for Maybe {
+    fn from(native: BoundedVec<u64, 0, 1>) -> Self {
         Self(native)
     }
 }
 
-impl From<Bounded> for Vec<u64> {
-    fn from(wasm: Bounded) -> Self {
+impl From<Maybe> for BoundedVec<u64, 0, 1> {
+    fn from(wasm: Maybe) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<Vec<u64>> for Bounded {
-    fn as_ref(&self) -> &Vec<u64> {
+impl AsRef<BoundedVec<u64, 0, 1>> for Maybe {
+    fn as_ref(&self) -> &BoundedVec<u64, 0, 1> {
+        &self.0
+    }
+}
+
+/// `[2*3 [*2 uint]]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NestedBounded(pub(crate) BoundedVec<BoundedVec<u64, 0, 2>, 2, 3>);
+
+#[wasm_bindgen]
+impl NestedBounded {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> U64ListMax2 {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &U64ListMax2) -> Result<(), JsError> {
+        self.0
+            .push(elem.clone().into())
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(list: &ArrU64List) -> Result<NestedBounded, JsError> {
+        let inner: Vec<BoundedVec<u64, 0, 2>> = list.clone().into();
+        BoundedVec::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedVec<BoundedVec<u64, 0, 2>, 2, 3>> for NestedBounded {
+    fn from(native: BoundedVec<BoundedVec<u64, 0, 2>, 2, 3>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NestedBounded> for BoundedVec<BoundedVec<u64, 0, 2>, 2, 3> {
+    fn from(wasm: NestedBounded) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedVec<BoundedVec<u64, 0, 2>, 2, 3>> for NestedBounded {
+    fn as_ref(&self) -> &BoundedVec<BoundedVec<u64, 0, 2>, 2, 3> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NestedUpper(pub(crate) Vec<BoundedVec<u64, 0, 2>>);
+
+#[wasm_bindgen]
+impl NestedUpper {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> U64ListMax2 {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &U64ListMax2) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<BoundedVec<u64, 0, 2>>> for NestedUpper {
+    fn from(native: Vec<BoundedVec<u64, 0, 2>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NestedUpper> for Vec<BoundedVec<u64, 0, 2>> {
+    fn from(wasm: NestedUpper) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<BoundedVec<u64, 0, 2>>> for NestedUpper {
+    fn as_ref(&self) -> &Vec<BoundedVec<u64, 0, 2>> {
         &self.0
     }
 }
@@ -95,18 +364,80 @@ impl OccurrenceHolder {
         self.0.b.clone().into()
     }
 
-    pub fn inline_bounded(&self) -> Vec<String> {
-        self.0.inline_bounded.clone()
+    pub fn upper(&self) -> Upper {
+        self.0.upper.clone().into()
+    }
+
+    pub fn lower(&self) -> Lower {
+        self.0.lower.clone().into()
+    }
+
+    pub fn maybe(&self) -> Maybe {
+        self.0.maybe.clone().into()
+    }
+
+    pub fn exact(&self) -> Exact {
+        self.0.exact.clone().into()
+    }
+
+    pub fn nested(&self) -> NestedUpper {
+        self.0.nested.clone().into()
+    }
+
+    pub fn nested_bounded(&self) -> NestedBounded {
+        self.0.nested_bounded.clone().into()
+    }
+
+    pub fn inline_bounded(&self) -> TextListMin1Max3 {
+        self.0.inline_bounded.clone().into()
+    }
+
+    pub fn inline_upper(&self) -> Upper {
+        self.0.inline_upper.clone().into()
+    }
+
+    pub fn inline_lower(&self) -> Lower {
+        self.0.inline_lower.clone().into()
+    }
+
+    pub fn inline_maybe(&self) -> Maybe {
+        self.0.inline_maybe.clone().into()
+    }
+
+    pub fn inline_exact(&self) -> Exact {
+        self.0.inline_exact.clone().into()
     }
 
     pub fn new(
         o: &OneOrMore,
         b: &Bounded,
-        inline_bounded: Vec<String>,
-    ) -> Result<OccurrenceHolder, JsError> {
-        cddl_lib::OccurrenceHolder::new(o.clone().into(), b.clone().into(), inline_bounded)
-            .map(Into::into)
-            .map_err(Into::into)
+        upper: &Upper,
+        lower: &Lower,
+        maybe: &Maybe,
+        exact: &Exact,
+        nested: &NestedUpper,
+        nested_bounded: &NestedBounded,
+        inline_bounded: &TextListMin1Max3,
+        inline_upper: &Upper,
+        inline_lower: &Lower,
+        inline_maybe: &Maybe,
+        inline_exact: &Exact,
+    ) -> Self {
+        Self(cddl_lib::OccurrenceHolder::new(
+            o.clone().into(),
+            b.clone().into(),
+            upper.clone().into(),
+            lower.clone().into(),
+            maybe.clone().into(),
+            exact.clone().into(),
+            nested.clone().into(),
+            nested_bounded.clone().into(),
+            inline_bounded.clone().into(),
+            inline_upper.clone().into(),
+            inline_lower.clone().into(),
+            inline_maybe.clone().into(),
+            inline_exact.clone().into(),
+        ))
     }
 }
 
@@ -174,6 +505,146 @@ impl From<OneOrMore> for NonEmptyVec<u64> {
 
 impl AsRef<NonEmptyVec<u64>> for OneOrMore {
     fn as_ref(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+}
+
+/// `[1*3 text]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextListMin1Max3(pub(crate) BoundedVec<String, 1, 3>);
+
+#[wasm_bindgen]
+impl TextListMin1Max3 {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> String {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: String) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<String>) -> Result<TextListMin1Max3, JsError> {
+        BoundedVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedVec<String, 1, 3>> for TextListMin1Max3 {
+    fn from(native: BoundedVec<String, 1, 3>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextListMin1Max3> for BoundedVec<String, 1, 3> {
+    fn from(wasm: TextListMin1Max3) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedVec<String, 1, 3>> for TextListMin1Max3 {
+    fn as_ref(&self) -> &BoundedVec<String, 1, 3> {
+        &self.0
+    }
+}
+
+/// `[*2 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct U64ListMax2(pub(crate) BoundedVec<u64, 0, 2>);
+
+#[wasm_bindgen]
+impl U64ListMax2 {
+    pub fn new() -> Self {
+        Self(BoundedVec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<U64ListMax2, JsError> {
+        BoundedVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedVec<u64, 0, 2>> for U64ListMax2 {
+    fn from(native: BoundedVec<u64, 0, 2>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<U64ListMax2> for BoundedVec<u64, 0, 2> {
+    fn from(wasm: U64ListMax2) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedVec<u64, 0, 2>> for U64ListMax2 {
+    fn as_ref(&self) -> &BoundedVec<u64, 0, 2> {
+        &self.0
+    }
+}
+
+/// `[*5 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Upper(pub(crate) BoundedVec<u64, 0, 5>);
+
+#[wasm_bindgen]
+impl Upper {
+    pub fn new() -> Self {
+        Self(BoundedVec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<Upper, JsError> {
+        BoundedVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedVec<u64, 0, 5>> for Upper {
+    fn from(native: BoundedVec<u64, 0, 5>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Upper> for BoundedVec<u64, 0, 5> {
+    fn from(wasm: Upper) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedVec<u64, 0, 5>> for Upper {
+    fn as_ref(&self) -> &BoundedVec<u64, 0, 5> {
         &self.0
     }
 }

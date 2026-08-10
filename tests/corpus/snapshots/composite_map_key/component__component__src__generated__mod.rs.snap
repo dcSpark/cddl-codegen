@@ -34,8 +34,17 @@ impl wit_types::GuestHolder for WitHolder {
     fn new(table: Vec<(Vec<u64>, u64)>) -> Result<Self, String> {
         let table = table
             .into_iter()
-            .map(|(x0, x1)| (x0.into_iter().collect(), x1))
-            .collect();
+            .map(|(x0, x1)| {
+                (|| -> Result<_, String> {
+                    Ok((
+                        (x0.into_iter().collect::<Vec<_>>())
+                            .try_into()
+                            .map_err(err)?,
+                        x1,
+                    ))
+                })()
+            })
+            .collect::<Result<_, String>>()?;
         let inner = cddl_lib::Holder::new(table);
         Ok(WitHolder(RefCell::new(inner)))
     }
