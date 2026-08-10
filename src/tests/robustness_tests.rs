@@ -11807,11 +11807,11 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
          record field walk while retaining the opaque extern-interface trait contract, got:\n{src}"
     );
     // A complete pair owns the whole item, including a record shape whose generated field decoder
-    // is ambiguous. Its no-deserialize verdict must stay clear so the direct, holder, extern, and
+    // refuses an optional member adjacent to an open rest tail. Its no-deserialize verdict must stay clear so the direct, holder, extern, and
     // wasm from-CBOR surfaces all agree with the thin impl.
     let src = expect_custom_codec_source(
         "custom_ambiguous_record_both_set_control",
-        "myrec = [? ignored: uint, value: uint] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
+        "myrec = [? ignored: uint, * uint] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
          holder = [f: myrec]\n",
     );
     assert!(
@@ -11824,11 +11824,11 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
         "a complete custom record pair must supersede generated-only decoder refusals across every \
          shared no-deserialize consumer, got:\n{src}"
     );
-    // Control: the same ambiguous shape with no complete pair still has no generated decoder, so
+    // Control: the same open-tail-ambiguous shape with no complete pair still has no generated decoder, so
     // the verdict bypass is not a blanket relaxation of record safety.
     let src = expect_custom_codec_source(
         "ambiguous_record_no_pair_control",
-        "ambiguous = [? ignored: uint, value: uint]\nholder = [f: ambiguous]\n",
+        "ambiguous = [? ignored: uint, * uint]\nholder = [f: ambiguous]\n",
     );
     assert!(
         !src.contains("impl Deserialize for Ambiguous")
@@ -11840,7 +11840,7 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
     // Myrec or its holder.
     let src = expect_custom_codec_source(
         "custom_record_undecodable_field_both_set_control",
-        "inner = [? ignored: uint, value: uint]\n\
+        "inner = [? ignored: uint, * uint]\n\
          myrec = [i: inner] ; @custom_serialize my_ser @custom_deserialize my_deser\n\
          holder = [f: myrec]\n",
     );

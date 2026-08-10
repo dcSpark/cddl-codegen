@@ -9,9 +9,10 @@ rec = [a: uint, b: text]
 wrap = uint ; @newtype
 tc = uint / text
 
-; an ambiguous-optional array record has NO generated deserialize -> the self-check WEAKENS its
-; bound to Serialize only (asserting Deserialize would fail the dep's own build).
-ambig = [? uint, uint]
+; An optional member immediately before an open rest tail has NO generated deserialize: a count
+; cannot distinguish the optional uint from the first tail uint. The self-check therefore weakens
+; its bound to Serialize only (asserting Deserialize would fail the dep's own build).
+ambig = [? uint, * uint]
 
 ; transparent rows -> a `use crate::generated::<Name> as _;` existence check
 ce = 0 / 1 / 2

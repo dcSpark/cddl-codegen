@@ -35,6 +35,17 @@ impl CBORReadLen {
         self.read
     }
 
+    pub fn remaining(&self) -> Option<u64> {
+        match self.deser_len {
+            cbor_event::LenSz::Len(n, _) => Some(n - self.read),
+            cbor_event::LenSz::Indefinite => None,
+        }
+    }
+
+    pub fn is_indefinite(&self) -> bool {
+        matches!(self.deser_len, cbor_event::LenSz::Indefinite)
+    }
+
     // Marks {n} values as being read, and if we go past the available definite length
     // given by the CBOR, we return an error.
     pub fn read_elems(&mut self, count: usize) -> Result<(), DeserializeFailure> {

@@ -1,0 +1,15 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use crate::generated::serialization::LenEncoding;
+
+#[derive(Clone, Debug, Default)]
+pub struct OptionalOverlapArrayEncoding {
+    pub len_encoding: LenEncoding,
+    pub a_encoding: Option<cbor_event::Sz>,
+    pub b_encoding: Option<cbor_event::Sz>,
+}

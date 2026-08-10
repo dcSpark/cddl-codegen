@@ -1,0 +1,71 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for OptionalOverlapArray {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(
+            1 + match &self.a {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+        if let Some(field) = &self.a {
+            serializer.write_unsigned_integer(*field)?;
+        }
+        serializer.write_unsigned_integer(self.b)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptionalOverlapArray {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            if read_len.is_indefinite() {
+                return Err(DeserializeFailure::IndefiniteLengthAmbiguousOptionalField.into());
+            }
+            let a = if read_len
+                .remaining()
+                .map(|remaining| remaining > 0)
+                .unwrap_or(true)
+                && (raw
+                    .cbor_type()
+                    .map(|ty| ty == cbor_event::Type::UnsignedInteger)
+                    .unwrap_or(false))
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    Ok(raw.unsigned_integer()?)
+                })()
+                .map_err(|e| e.annotate("a"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
+            let b = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("b"))?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptionalOverlapArray { a, b })
+        })()
+        .map_err(|e| e.annotate("OptionalOverlapArray"))
+    }
+}

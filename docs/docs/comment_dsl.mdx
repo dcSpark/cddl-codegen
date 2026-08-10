@@ -1073,7 +1073,8 @@ records, including a concrete record minted from a generic record **definition**
 pair becomes the concrete type's pair. A comment on the separate generic-instance **binding** still
 has no config slot and is rejected. A plain group's field slot likewise remains field metadata and
 follows the ordinary field splicing rules. Because the reader owns the whole item, it also
-supersedes generated-only record decoder refusals such as ambiguous optional array members; its
+supersedes generated-only record decoder refusals such as an optional array member adjacent to an
+open rest tail; its
 `Deserialize`/`from-cbor-bytes` surface remains available across the Rust, wasm, and component
 faces.
 
