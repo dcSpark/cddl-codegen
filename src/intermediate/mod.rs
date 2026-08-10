@@ -542,6 +542,13 @@ impl<'a> IntermediateTypes<'a> {
                     RustStructType::Array { bounds, .. } if *bounds == Some((Some(1), None))
                 )
             })
+            // A one-or-more open-array tail stores its inner type flat in `RestRow`; its composite
+            // `NonEmptyVec<T>` is recovered by `RestRow::container_type`, so the generic type walk
+            // deliberately does not see it. Keep runtime provisioning tied to that real container.
+            || self.rust_structs.values().any(|rs| {
+                matches!(rs.variant(), RustStructType::Record(record)
+                    if record.dynamic_rows().any(|row| row.is_non_empty_array_tail()))
+            })
     }
 
     /// Whether ANY generated type uses the `{+ k => v}` NonEmptyMap shape, so `export`/import wiring
@@ -4421,7 +4428,8 @@ impl<'a> IntermediateTypes<'a> {
     ///    `try_from`; construction is `new(first)` + `add`), but then no OTHER use may need the
     ///    loose `<Elem>List` builder: a plain non-exposable `[* elem]` mint, a map-key list
     ///    wrapper of the same element, or an open struct's rest row (a `* K => V` row's `keys()`
-    ///    wrapper, a `* T` tail's own getter) would reference a class of the wrong shape.
+    ///    wrapper, a loose `* T` tail's own getter, or the `try_from` source of a non-empty `+ T`
+    ///    tail) would reference a class of the wrong shape.
     /// 4. A DIRECT claim: any of those plain uses MINTS the loose `<Elem>List` on its own, with no
     ///    `[+ …]` shape anywhere, and a user rule of the same ident and an incompatible shape
     ///    shadows it. Classes 2 and 3 both arrive through a `[+ …]` wrapper, so this is the leg a
@@ -4492,11 +4500,23 @@ impl<'a> IntermediateTypes<'a> {
                 RustStructType::Record(record) => {
                     for rest in record.captured_dynamic_rows() {
                         if rest.is_array_tail() {
+                            // A final `+ T` tail is an inline restricted Array RustType even though
+                            // the generic type walk sees only its element. Its getter mints the same
+                            // NonEmpty<Elem>List class as an inline `[+ T]`, so it must enter the
+                            // restricted-wrapper collision leg before generation gets a chance to
+                            // silently shadow a user rule of that ident.
+                            if rest.is_non_empty_array_tail() {
+                                inline_non_empty.push(rest.container_type());
+                            }
                             if !rest.container_type().directly_wasm_exposable(self) {
                                 plain_loose_needs.insert(
                                     rest.element().name_as_wasm_array(self),
                                     (
-                                        "an open array `* …` rest tail".to_owned(),
+                                        if rest.is_non_empty_array_tail() {
+                                            "a one-or-more open array `+ …` rest tail".to_owned()
+                                        } else {
+                                            "an open array `* …` rest tail".to_owned()
+                                        },
                                         rest.element().clone(),
                                     ),
                                 );

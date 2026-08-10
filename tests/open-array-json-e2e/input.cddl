@@ -6,3 +6,5 @@
 ; --json-schema-export, --wasm=false. See tests/open-array-json-e2e/tests.rs.
 cap = [uint, tstr, * uint]          ; typed tail — ordinary JSON array of numbers
 cap_any = [uint, * any]             ; any tail — natural-fallible JSON
+required = [uint, + uint]           ; required NonEmptyVec JSON array
+required_any = [uint, + any]        ; required natural-fallible AnyCbor JSON array

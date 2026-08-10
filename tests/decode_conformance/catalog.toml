@@ -3744,6 +3744,72 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.occurrence-target.grpent.member.plus_array"
+axis = "containment"
+example = "a = [uint, + bytes]"
+spec = "a = [uint, + bytes]"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "8107"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "Empty trailing region against `a = [uint, + bytes]`: the fixed prefix is present but the one-or-more tail has zero elements, so cddl-codegen's staged decode enters NonEmptyVec's single TryFrom door and reports the stable min-one RangeCheck."
+expect_err = "0 not at least 1"
+
+[[row.vector]]
+hex = "82190b444773656173696465"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821910994877656c6b696e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "831909da4a6665746368696e676c7946736f62657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "84183648736b657463686573454a756e27734a4672616e63697363616e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8419032d4c50697474736669656c64277349617374726f6e6f6d79486372756d70657473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "841903b1444b616c6947696e636c75646547676f72696c6c61"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "84190c1e4752616e64692773484d6f7267616e27734861646a756e637473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "84190f294767756c636827734a70617274726964676573474265726e617264"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8419100d4a70656e6f6c6f677927734b776865656c636861697273494e6174616c69652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8519094349646563656173696e674a5061726c69616d656e74476d7564646c6573486f75737465722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.occurrence-target.grpent.member.zero_array"
 axis = "containment"
 example = "a = [uint, * bytes]"

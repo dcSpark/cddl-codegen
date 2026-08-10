@@ -5,6 +5,7 @@
 ; profile here.
 typed = [uint, tstr, * uint]        ; typed tail
 anytail = [uint, * any]             ; any tail (nested-container elements)
+required = [uint, + bytes]          ; restricted one-or-more tail; wasm getter uses NonEmptyBytesList
 named = [
   uint,
   tstr,

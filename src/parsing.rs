@@ -7991,7 +7991,8 @@ fn recognize_rest_row(
     (Some(Box::new(rest_row)), Some(candidate))
 }
 
-/// The array-rep analog of `recognize_rest_row`: recognize a final-position `* T` tail (`[a, b, * t]`)
+/// The array-rep analog of `recognize_rest_row`: recognize a final-position `* T` / `+ T` tail
+/// (`[a, b, * t]` / `[a, b, + t]`)
 /// after ≥1 fixed member as an open-array rest tail (the positional sibling of the map rest row), or
 /// reject an unsupported placement/shape gracefully. Returns the built `RestRow` (if recognized) and
 /// the flattened index of the tail CANDIDATE (so the caller's field loop skips it — whether recognized
@@ -8016,7 +8017,7 @@ fn recognize_array_rest_tail(
     };
     // Count-permitting occurrences are exactly the markers the field-loop narrowing guard matches:
     // anything present that is NOT `?` (optional) or the pedantic `1*1` (exactly-once). `*` / `+` /
-    // `n*m` all qualify as tail CANDIDATES here (only `*` is ultimately honored — the rest reject
+    // `n*m` all qualify as tail CANDIDATES here (only `*` and min-one are ultimately honored — the rest reject
     // below naming the supported spelling). Only `ValueMemberKey`/`TypeGroupname` carry `ge.occur`;
     // an inline group has none (never count-permitting → never a candidate → its later `* (…)`
     // narrowing rejection in the field loop stands).
@@ -8106,18 +8107,26 @@ fn recognize_array_rest_tail(
         return (None, Some(candidate));
     }
     let (candidate_ge, candidate_comma) = flattened[candidate];
-    // Occurrence must be exactly `*` (unbounded capture). `+` / `n*m` are rejected: a `+` tail (at
-    // least one unknown element) breaks the empty-tail ≡ closed-struct byte invariant, and bounded
-    // cardinalities on a tail are ill-specified.
+    // Occurrence must be exactly `*` (loose capture) or `+` / `1*` (the min-one restricted capture).
+    // Other bounded cardinalities are deliberately still unimplemented.
     let candidate_occur = match candidate_ge {
         GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
         GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
         GroupEntry::InlineGroup { .. } => None,
     };
-    if !matches!(candidate_occur, Some(Occur::ZeroOrMore { .. })) {
+    let non_empty = matches!(
+        candidate_occur,
+        Some(Occur::OneOrMore { .. })
+            | Some(Occur::Exact {
+                lower: Some(1),
+                upper: None,
+                ..
+            })
+    );
+    if !matches!(candidate_occur, Some(Occur::ZeroOrMore { .. })) && !non_empty {
         types.record_rejection(format!(
-            "rule `{src}`: an open-array rest tail must use the `*` occurrence (unbounded capture: \
-             `* t`). `+` and `n*m` are not supported on a rest tail."
+            "rule `{src}`: an open-array rest tail must use `*` (unbounded capture) or `+` / `1*` \
+             (one-or-more capture). Other `n*m` bounds are not supported on a rest tail."
         ));
         return (None, Some(candidate));
     }
@@ -8225,6 +8234,14 @@ fn recognize_array_rest_tail(
         return (None, Some(candidate));
     }
     if tail_metadata.ignore {
+        if non_empty {
+            types.record_rejection(format!(
+                "rule `{src}`: `@ignore` cannot apply to a one-or-more open-array rest tail (`+ t` / \
+                 `1* t`), because dropping every captured element would re-serialize zero occurrences \
+                 and violate the rule's own minimum. Drop `@ignore` to capture the non-empty tail."
+            ));
+            return (None, Some(candidate));
+        }
         // `@ignore` + `--preserve-encodings`: PERMANENTLY rejected (a preserve crate's contract is
         // byte-exact round-trips, which a deliberately-lossy tolerate-and-drop tail undermines
         // crate-wide). `--canonical-form` implies preserve (enforced in `api.rs`), so this covers it
@@ -8266,9 +8283,7 @@ fn recognize_array_rest_tail(
         field_name,
         // An array tail has no keys, so no major-type dispatch and no claimed major.
         dispatch_major: None,
-        // `[a, b, + t]` is not a recognized tail shape (the tail guard takes `*` only), so an array
-        // tail never carries the min-1 bound.
-        non_empty: false,
+        non_empty,
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }

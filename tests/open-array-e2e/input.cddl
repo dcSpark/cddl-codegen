@@ -3,6 +3,13 @@
 ; a later work package. See tests/open-array-e2e/tests.rs for the value-level vectors.
 cap = [uint, tstr, * uint]          ; typed tail (each trailing element is a uint)
 cap_any = [uint, * any]             ; any tail (captures nested-container elements)
+byte_alias = bytes
+required = [uint, + byte_alias]     ; one-or-more tail, with alias element
+named_required = [
+  uint,
+  + byte_alias ; @name extras
+]
+bounded_required = [uint, + uint .le 5]
 opt = [uint, ? tstr, * uint]        ; optional member + type-distinct tail (uint vs tstr)
 ign = [
   uint,
@@ -12,6 +19,8 @@ ign = [
 ; tail loop must stop at the open array's end and leave the sibling for the outer decoder.
 outer = [inner, uint]
 inner = [uint, * uint]
+outer_required = [inner_required, uint]
+inner_required = [uint, + uint]
 outer_ign = [inner_ign, uint]
 inner_ign = [
   uint,

@@ -773,8 +773,9 @@ pub(super) fn generate_array_struct_deserialization(
             deser_ctor_fields.push((field.name.clone(), field.name.clone()));
         }
     }
-    // Open-array rest tail (loose CBOR): after the straight-line fixed prefix, read the trailing
-    // elements. CAPTURE pushes each typed element into the `Vec` field; IGNORE typed-deserializes and
+    // Open-array rest tail: after the straight-line fixed prefix, read the trailing elements. CAPTURE
+    // stages each typed element in a `Vec`; a one-or-more tail enters `NonEmptyVec::try_from` exactly
+    // once at final assembly, while a loose tail moves that Vec directly. IGNORE typed-deserializes and
     // DROPS it (both advance the stream past nested containers — the stream-position regression class).
     // The loop reads until the definite length is exhausted (`read_len.read() < n`, where `read_len`
     // already accounts the prefix) or, for an indefinite array, the `0xff` break byte is reached — a
@@ -870,7 +871,12 @@ pub(super) fn generate_array_struct_deserialization(
         }
         deser_code.content.push_block(tail_loop);
         if rest.semantics == RestSemantics::Capture {
-            deser_ctor_fields.push((rest.field_name.clone(), rest.field_name.clone()));
+            let rest_expr = if rest.is_non_empty_array_tail() {
+                format!("NonEmptyVec::try_from({})?", rest.field_name)
+            } else {
+                rest.field_name.clone()
+            };
+            deser_ctor_fields.push((rest.field_name.clone(), rest_expr));
             if !elem_encs.is_empty() {
                 let sidecar = format!("{}_elem_encodings", rest.field_name);
                 if vars_in_self {
@@ -944,7 +950,8 @@ fn rest_is_pair_map(rest: &RestRow) -> bool {
     rest.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
 }
 
-/// The rest container CONSTRUCTOR token: `Vec` for an array `* t` tail; for a map row
+/// The rest container CONSTRUCTOR token: `Vec` for an array tail's decode staging (the min-one form
+/// routes that Vec through `NonEmptyVec::try_from` at final assembly); for a map row
 /// `PairMap` (`@duplicates preserve`) / `OrderedHashMap` / `BTreeMap`.
 fn rest_container_ctor(rest: &RestRow, cli: &Cli) -> &'static str {
     if rest.is_array_tail() {
@@ -2482,7 +2489,10 @@ pub(super) fn codegen_struct(
     let new_can_fail = record
         .fields
         .iter()
-        .any(|f| !f.optional && f.rust_type.has_value_bounds());
+        .any(|f| !f.optional && f.rust_type.has_value_bounds())
+        || record
+            .captured_dynamic_rows()
+            .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds());
     // wasm wrapper
     if cli.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, name, true, cli);
@@ -2730,6 +2740,35 @@ pub(super) fn codegen_struct(
                 cli,
             );
         }
+        // A one-or-more open-array tail has the same valid-by-construction door as its Rust record:
+        // take one element here and let the Rust `new(first)` build the restricted `NonEmptyVec`.
+        // The name follows the Rust constructor's collision-safe synthesis exactly.
+        for rest in record
+            .captured_dynamic_rows()
+            .filter(|row| row.is_non_empty_array_tail())
+        {
+            let mut first_arg = format!("first_{}_element", rest.field_name);
+            let reserved: Vec<String> = record
+                .fields
+                .iter()
+                .map(|field| field.name.clone())
+                .chain(record.dynamic_rows().map(|row| row.field_name.clone()))
+                .collect();
+            let mut suffix = 2;
+            while reserved.iter().any(|name| name == &first_arg) {
+                first_arg = format!("first_{}_element_{suffix}", rest.field_name);
+                suffix += 1;
+            }
+            wasm_new.arg(&first_arg, rest.element().for_wasm_param(types));
+            wasm_new_args.push(ToWasmBoundaryOperations::format(
+                rest.element()
+                    .from_wasm_boundary_clone(types, &first_arg, false)
+                    .into_iter(),
+            ));
+            wasm_new_comments.push(format!(
+                "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
+            ));
+        }
         // Open rest (CAPTURE only): a getter returning the captured content as its minted wasm wrapper
         // — a map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin) for a `* k => v`
         // row, or a list wrapper (`TList` / `AnyList`) for an array `* t` tail. Deliberately no `new()`
@@ -2748,7 +2787,10 @@ pub(super) fn codegen_struct(
                 .arg_ref_self()
                 .ret(rest_ty.for_wasm_return(types))
                 .vis("pub")
-                .doc(if rest.is_array_tail() {
+                .doc(if rest.is_non_empty_array_tail() {
+                    "The captured one-or-more trailing array elements beyond the declared members \
+                     (CDDL `+ t` / `1* t` rest tail), as the restricted wasm list wrapper."
+                } else if rest.is_array_tail() {
                     "The captured trailing array elements beyond the declared members (CDDL \
                      `* t` rest tail), as the wasm list wrapper."
                 } else {
@@ -2964,9 +3006,9 @@ pub(super) fn codegen_struct(
         }
     }
     // Open rest (CAPTURE only): a `pub` field holding the captured content — a map container for a
-    // `* k => v` rest row, a `Vec<T>` for an array `* t` rest tail. Deliberately NOT a constructor
-    // argument — `new()` defaults it empty, so adding a rest row/tail to a spec is source-compatible
-    // for existing `new()` callers. Map containers match the table switch (non-preserve `BTreeMap`;
+    // `* k => v` rest row, a `Vec<T>` for a loose array `* t` tail, or `NonEmptyVec<T>` for a `+ t`
+    // tail. Loose tails stay out of `new()` and default empty; a non-empty tail takes its first
+    // element so constructed values cannot violate the schema. Map containers match the table switch (non-preserve `BTreeMap`;
     // `OrderedHashMap` under `--preserve-encodings`). An `@ignore` row/tail emits NO field (it drops
     // unknown entries), so the struct is a closed struct's.
     for rest in record.captured_dynamic_rows() {
@@ -2974,7 +3016,10 @@ pub(super) fn codegen_struct(
             format!("pub {}", rest.field_name),
             rest_member_type(rest).for_rust_member(types, false, cli),
         );
-        rest_field.doc(if rest.is_array_tail() {
+        rest_field.doc(if rest.is_non_empty_array_tail() {
+            "Captured one-or-more trailing array elements beyond the declared members (CDDL `+ t` / \
+             `1* t` rest tail). Serialized after the declared members; never empty."
+        } else if rest.is_array_tail() {
             "Captured trailing array elements beyond the declared members (CDDL `* t` rest tail). \
              Serialized after the declared members; defaults empty."
         } else if record.is_typed_row(rest) {
@@ -3000,7 +3045,7 @@ pub(super) fn codegen_struct(
         // `Seq` adapter (a typed element uses its own serde).
         if !manual_json {
             if rest.is_array_tail() {
-                if cli.json_serde_derives {
+                if cli.json_serde_derives && !rest.is_non_empty_array_tail() {
                     rest_field
                         .annotation("#[serde(skip_serializing_if = \"Vec::is_empty\", default)]");
                 }
@@ -3009,9 +3054,14 @@ pub(super) fn codegen_struct(
                     ConceptualRustType::Any
                 );
                 if elem_is_any {
-                    for annotation in
-                        super::natural_any_serde_annotations(cli, super::NaturalAnyPosition::Seq)
-                    {
+                    for annotation in super::natural_any_serde_annotations(
+                        cli,
+                        if rest.is_non_empty_array_tail() {
+                            super::NaturalAnyPosition::NonEmptySeq
+                        } else {
+                            super::NaturalAnyPosition::Seq
+                        },
+                    ) {
                         rest_field.annotation(annotation);
                     }
                 }
@@ -3050,6 +3100,31 @@ pub(super) fn codegen_struct(
             seed.line("seed");
             seed.after(",");
             native_new_block.push_block(seed);
+        } else if rest.is_non_empty_array_tail() {
+            let mut first_arg = format!("first_{}_element", rest.field_name);
+            let reserved: Vec<String> = record
+                .fields
+                .iter()
+                .map(|field| field.name.clone())
+                .chain(record.dynamic_rows().map(|row| row.field_name.clone()))
+                .collect();
+            let mut suffix = 2;
+            while reserved.iter().any(|name| name == &first_arg) {
+                first_arg = format!("first_{}_element_{suffix}", rest.field_name);
+                suffix += 1;
+            }
+            native_new.arg(&first_arg, rest.element().for_rust_move(types, cli));
+            new_arg_count += 1;
+            native_new_comments.push(format!(
+                "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
+            ));
+            native_new_block.line(format!(
+                "{}: NonEmptyVec::new({first_arg}),",
+                rest.field_name
+            ));
+            if let Some(line) = value_bounds_check_line(rest.element(), &first_arg, true) {
+                native_new.line(&line);
+            }
         } else {
             native_new_block.line(format!(
                 "{}: {}::new(),",

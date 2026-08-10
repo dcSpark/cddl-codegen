@@ -3,8 +3,9 @@ impl<T: schemars::JsonSchema> schemars::JsonSchema for NonEmptyVec<T> {
         format!("NonEmptyVec<{}>", T::schema_name()).into()
     }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        // shape matches the loose Vec (a JSON array); the >= 1 invariant is enforced at TryFrom
-        Vec::<T>::json_schema(generator)
+        let mut schema = Vec::<T>::json_schema(generator);
+        schema.insert("minItems".to_owned(), 1.into());
+        schema
     }
     fn inline_schema() -> bool {
         Vec::<T>::inline_schema()

@@ -13,3 +13,4 @@ expression: content
 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).
 pub use crate::generated::AnyList;
 pub use crate::generated::BytesList;
+pub use crate::generated::NonEmptyBytesList;

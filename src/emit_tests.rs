@@ -876,12 +876,43 @@ fn roundtrip_body(
 }
 
 /// Mirrors the record constructor's fallibility rule (`generation/records.rs` `new_can_fail`): `new()`
-/// returns `Result` iff any non-optional field is bounded.
+/// returns `Result` iff a mandatory field OR a one-or-more array tail's first element is bounded.
 pub(crate) fn record_ctor_can_fail(record: &RustRecord) -> bool {
     record
         .fields
         .iter()
         .any(|f| !f.optional && f.rust_type.has_value_bounds())
+        || record
+            .captured_dynamic_rows()
+            .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds())
+}
+
+/// The generated record constructor's argument types, in its exact field-then-dynamic-row order.
+/// This is shared with the wasm emitted-test renderer so an added valid-by-construction dynamic row
+/// cannot make that face silently drop the record's round-trip test.
+pub(crate) fn record_ctor_arg_types(record: &RustRecord) -> Vec<&RustType> {
+    let mut args: Vec<&RustType> = record
+        .fields
+        .iter()
+        .filter(|f| {
+            !f.optional && !f.rust_type.is_fixed_value() && f.rust_type.config.default.is_none()
+        })
+        .map(|f| &f.rust_type)
+        .collect();
+    if let Some(typed) = record
+        .typed_row()
+        .filter(|_| record.is_non_empty_open_table())
+    {
+        args.push(typed.domain());
+        args.push(typed.range());
+    }
+    args.extend(
+        record
+            .captured_dynamic_rows()
+            .filter(|row| row.is_non_empty_array_tail())
+            .map(|row| row.element()),
+    );
+    args
 }
 
 /// Record round-trip: a valid baseline, plus one case per optional field with that field present.
@@ -944,6 +975,23 @@ fn record_roundtrip(
             _ => {
                 crate::warn!(
                     "cddl-codegen --emit-tests: no round-trip for {name} (NonEmpty typed row not cheaply mintable)"
+                );
+                return None;
+            }
+        }
+    }
+    // A one-or-more array tail has the same valid-by-construction constructor door as its public
+    // record API: the first captured element is a constructor argument, not a later `Vec::push`.
+    // Keep it after the fixed fields (and the open-table door, if present) in exact emitter order.
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|row| row.is_non_empty_array_tail())
+    {
+        match valid_value(types, rest.element()) {
+            Some(first) => valid_args.push(first),
+            None => {
+                crate::warn!(
+                    "cddl-codegen --emit-tests: no round-trip for {name} (NonEmpty rest tail not cheaply mintable)"
                 );
                 return None;
             }
@@ -1075,7 +1123,9 @@ fn record_roundtrip(
                     }
                 }
             }
-            // Array `* t` rest tail: mint one trailing element via the `.rest` `Vec` `push` API.
+            // Array rest tail: a loose `* t` starts empty, while a `+ t` baseline already holds its
+            // first element through `new`; both gain one more element here through the non-shrinking
+            // `.push` API so serialization/deserialization executes the tail loop.
             crate::intermediate::RestKind::ArrayTail { element } => {
                 match valid_value(types, element) {
                     Some(e) => cases.push((
@@ -1999,6 +2049,15 @@ pub(crate) fn mint_struct(
             {
                 args.push(valid_value_at(types, typed.domain(), depth + 1)?);
                 args.push(valid_value_at(types, typed.range(), depth + 1)?);
+            }
+            // The one-or-more array tail's first element is a real constructor argument, just as it
+            // is at the top-level `record_roundtrip` call. Without it nested record mints call
+            // `new` with a missing argument and fail to compile.
+            for rest in record
+                .captured_dynamic_rows()
+                .filter(|row| row.is_non_empty_array_tail())
+            {
+                args.push(valid_value_at(types, rest.element(), depth + 1)?);
             }
             Some(MintValue::Record {
                 ident: name,

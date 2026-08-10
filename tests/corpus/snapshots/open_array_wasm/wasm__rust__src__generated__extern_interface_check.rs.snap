@@ -33,6 +33,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Named>();
     _assert_serialize::<crate::generated::OptFixedMember>();
     _assert_deserialize::<crate::generated::OptFixedMember>();
+    _assert_serialize::<crate::generated::Required>();
+    _assert_deserialize::<crate::generated::Required>();
     _assert_serialize::<crate::generated::SingleFixed>();
     _assert_deserialize::<crate::generated::SingleFixed>();
     _assert_serialize::<crate::generated::Typed>();

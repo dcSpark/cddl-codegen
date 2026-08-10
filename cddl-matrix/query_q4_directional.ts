@@ -527,6 +527,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.map-value.prelude.true", "contain.map-value.prelude.undefined", "contain.map-value.type2.value",
     "contain.map-value.type2.tag.fixed_bool", "contain.map-value.type2.tag.fixed_null",
     "contain.map-value.value.number", "contain.map-value.value.text",
+    "contain.occurrence-target.grpent.member.plus_array",
     "contain.occurrence-target.memberkey.type1.plus_table",
     "contain.occurrence-target.type2.value.optional_keyed_array",
     "contain.occurrence-target.type2.value.optional_keyed_map", "memberkey.cut",

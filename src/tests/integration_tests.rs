@@ -11680,12 +11680,13 @@ fn emit_tests_open_struct_ignore_execute() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Executes `--emit-tests` over the open-ARRAY rest-tail shapes (a final-position `* t` after the fixed
-/// members). All three flavors are covered by one non-preserve generation: a typed tail (`cap`), an
-/// `any` tail (`cap_any`), and a tolerate-and-drop `@ignore` tail (`ign`). It is the array twin of the
+/// Executes `--emit-tests` over the open-ARRAY rest-tail shapes. One non-preserve generation covers a
+/// loose typed tail (`cap`), an `any` tail (`cap_any`), a required typed tail (`required`), its
+/// `@name`d sibling (`named_required`), and a tolerate-and-drop `@ignore` tail (`ign`). It is the array twin of the
 /// open struct-map rest / `@ignore` execute gates, and pins two things the mint promises:
-///   * CAPTURE mints one trailing element through the generated `.rest` `Vec` `push` API (the tail is
-///     excluded from `new()`, so a non-empty tail exercises the deserialize loop / re-serialize path);
+///   * loose CAPTURE mints one trailing element through the generated `.rest` `Vec` `push` API; a
+///     required tail instead mints its first element in the generated `new()` call, exercising the
+///     restricted construction door before the tail loop;
 ///   * the `@ignore` tail gets the SAME ordinary `roundtrip_<type>` treatment as any closed struct with
 ///     NO ignore-specific gating — its minted value goes through `new()` (declared prefix only), so it
 ///     carries no unknown trailing elements and byte-identity holds trivially.
@@ -11719,9 +11720,16 @@ fn emit_tests_open_array_execute() {
 
     let src =
         std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
-    // Every shape — typed tail, `any` tail, and the `@ignore` tail — gets an ordinary
-    // `roundtrip_<type>`; the `@ignore` type is minted exactly like a closed struct (no gating).
-    for ty in ["roundtrip_cap", "roundtrip_cap_any", "roundtrip_ign"] {
+    // Every shape gets an ordinary `roundtrip_<type>`; a required tail is constructed with a real
+    // first element, and the `@ignore` type is minted exactly like a closed struct (no gating).
+    for ty in [
+        "roundtrip_cap",
+        "roundtrip_cap_any",
+        "roundtrip_required",
+        "roundtrip_named_required",
+        "roundtrip_bounded_required",
+        "roundtrip_ign",
+    ] {
         assert!(
             src.contains(&format!("fn {ty}(")),
             "emit-tests skipped `{ty}` — an open-array rest-tail type must be minted like any struct"
@@ -11732,6 +11740,12 @@ fn emit_tests_open_array_execute() {
     assert!(
         src.contains(".rest.push("),
         "the open-array capture mint did not push a trailing element through the generated `.rest` Vec API"
+    );
+    assert!(
+        src.contains("Required::new(")
+            && src.contains("NamedRequired::new(")
+            && src.contains("BoundedRequired::new("),
+        "required tails must be minted through their real first-element constructors, not skipped or defaulted empty"
     );
     assert!(
         !src.contains(".rest.insert("),
@@ -11750,6 +11764,59 @@ fn emit_tests_open_array_execute() {
     assert!(
         test.status.success(),
         "generated open-array rest-tail emit-tests crate failed cargo test"
+    );
+
+    // The wasm renderer consumes the SAME `MintValue::Record` argument vector. Generate it
+    // separately (the rust leg deliberately used --wasm=false), then compile AND run the emitted
+    // wasm tests so a new valid-by-construction tail argument cannot make `wasm_named` silently skip
+    // the record through its constructor-arity guard.
+    let wasm_out = root.join("wasm-crate");
+    let wasm_generate = codegen_cmd()
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", wasm_out.to_str().unwrap()))
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    if !wasm_generate.status.success() {
+        eprintln!(
+            "wasm generation stderr:\n{}",
+            String::from_utf8_lossy(&wasm_generate.stderr)
+        );
+    }
+    assert!(
+        wasm_generate.status.success(),
+        "wasm emit-tests generation failed"
+    );
+    let wasm_src = std::fs::read_to_string(wasm_out.join("wasm/src/generated/mod.rs"))
+        .expect("generated wasm mod.rs");
+    for ty in [
+        "wasm_roundtrip_required",
+        "wasm_roundtrip_named_required",
+        "wasm_roundtrip_bounded_required",
+    ] {
+        assert!(
+            wasm_src.contains(&format!("fn {ty}()")),
+            "wasm emit-tests silently skipped `{ty}` after its non-empty constructor argument"
+        );
+    }
+    let wasm_test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(wasm_out.join("wasm"))
+        .output()
+        .unwrap();
+    if !wasm_test.status.success() {
+        eprintln!(
+            "wasm stdout:\n{}",
+            String::from_utf8_lossy(&wasm_test.stdout)
+        );
+        eprintln!(
+            "wasm stderr:\n{}",
+            String::from_utf8_lossy(&wasm_test.stderr)
+        );
+    }
+    assert!(
+        wasm_test.status.success(),
+        "generated open-array wasm emit-tests crate failed cargo test"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -24,7 +24,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->1 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->104 `class="constraint"` enforcement reject vectors over 84 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->105 `class="constraint"` enforcement reject vectors over 85 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries three temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
 every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
 the pinned rust-cddl validator panic prevents the two fixed-byte member rows and their top-level
@@ -417,12 +417,11 @@ entry, so the atomicity is the rule).
   and the merge generalized to group statements. On implementation: flip the `assigng.extend` reject
   row (verify.ts re-probe) and re-mint its decode rows. Reopening signal — it is the
   choice-of-bodies entry's signal, since nothing here can move first.
-- **Honor non-final and `+`/bounded count-permitting occurrences on heterogeneous ARRAY-record
-  fields.** A **final-position** `* t` after ≥1 fixed member is now an open-array rest tail
-  (captured `Vec`, or dropped under `@ignore`; user doc: `docs/docs/output_format.mdx` § "Open
-  arrays"), enumerated supported by `contain.occurrence-target.grpent.member.zero_array`. Still
-  rejected gracefully: a `+` or bounded (`n*m`) final tail —
-  `contain.occurrence-target.grpent.member.plus_array` — and any **non-final / middle** `*` member
+- **Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record
+  fields.** A **final-position** `* t` after ≥1 fixed member is the loose open-array rest tail;
+  final `+ t` / `1* t` is its `NonEmptyVec` twin with a first-element construction door (both
+  supported by `contain.occurrence-target.grpent.member.{zero_array,plus_array}`). Still rejected
+  gracefully: bounded (`n*m`) final tails and any **non-final / middle** `*` / `+` member
   (`[uint, * bytes, tstr]`); those boundaries are pinned by
   `occurrence_on_array_record_field_rejects_gracefully`. The rejection avoids the silent
   exactly-once narrowing that makes a generated decoder reject spec-valid repetition counts —

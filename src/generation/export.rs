@@ -424,6 +424,11 @@ fn composed_runtime_static_files(
             any_cbor_rs.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("any_cbor_json.rs"),
             )?);
+            if include_non_empty_vec {
+                any_cbor_rs.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("any_cbor_non_empty_json.rs"),
+                )?);
+            }
             // Preserve-only natural-JSON adapters for `any`-valued MAP members (OrderedHashMap): a
             // `{* K => any}` member is `OrderedHashMap<K, AnyCbor>` under --preserve-encodings.
             // `ordered_hash_map.rs` is emitted unconditionally under preserve (above), so the
@@ -439,6 +444,11 @@ fn composed_runtime_static_files(
             any_cbor_rs.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("any_cbor_schemars.rs"),
             )?);
+            if include_non_empty_vec {
+                any_cbor_rs.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("any_cbor_non_empty_schemars.rs"),
+                )?);
+            }
         }
         out.push((
             "any_cbor.rs".to_owned(),

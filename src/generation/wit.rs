@@ -1780,6 +1780,36 @@ fn project_record(
             ctor_fallible |= validates;
         }
     }
+    // The one-or-more open-array tail's Rust `new` takes its first element rather than an
+    // empty-capable list. WIT projects that same element door; the list getter remains a list and
+    // the resource's restricted Rust representation owns the invariant.
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|row| row.is_non_empty_array_tail())
+    {
+        let mut rust_name = format!("first_{}_element", rest.field_name);
+        let reserved: Vec<String> = record
+            .fields
+            .iter()
+            .map(|field| field.name.clone())
+            .chain(record.dynamic_rows().map(|row| row.field_name.clone()))
+            .collect();
+        let mut suffix = 2;
+        while reserved.iter().any(|name| name == &rust_name) {
+            rust_name = format!("first_{}_element_{suffix}", rest.field_name);
+            suffix += 1;
+        }
+        let element = rest.element();
+        let validates = wit_param_validates(element, ctx.types);
+        params.push(WitParam {
+            name: convert_to_kebab_case(&rust_name),
+            rust_name,
+            ty: map_rust_type(element, ctx)?,
+            validates,
+            rust_type: Some(element.clone()),
+        });
+        ctor_fallible |= validates;
+    }
     // An open struct's rest row: a getter over the captured content, mirroring the wasm face. An
     // `@ignore` row stores nothing, so it has no accessor at all.
     // BOTH dynamic rows: an open table's TYPED row is a second captured container with its own
