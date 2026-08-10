@@ -24,14 +24,15 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->1 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->109 `class="constraint"` enforcement reject vectors over 88 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->111 `class="constraint"` enforcement reject vectors over 89 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries three temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
 every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
 the pinned rust-cddl validator panic prevents the two fixed-byte member rows and their top-level
 feature row from gaining independently certified reject vectors until upstream gap #17 closes.
-For unique-key homogeneous tables, `*` is loose, `+`/`1*` is non-empty, and every other
-occurrence window (including omitted exact-once) is a checked `BoundedMap`; only bounded
-duplicate-preserving tables and bounded rows in open-table/open-struct contexts remain rejected.
+For homogeneous tables, `*` is loose, `+`/`1*` is non-empty, and every other occurrence window
+(including omitted exact-once) is checked: unique keys use `BoundedMap`, while duplicate-preserving
+tables use entry-ordered `BoundedPairMap`. Only bounded rows in open-table/open-struct contexts remain
+rejected.
 The green, three-row unverified, and over-accepts (empty) sets are
 each pinned exactly by `query_q4_directional.ts --check` (the over-acceptance vector class stays armed
 for the next certified instance).
@@ -430,11 +431,6 @@ entry, so the atomicity is the rule).
   middle-position case needs an occurrence-decoding design that honors RFC 8610's greedy,
   non-backtracking semantics; repeated occurrences additionally need a representation and residue
   policy of their own.
-- **Bounded `@duplicates preserve` tables remain a future boundary.** A duplicate-preserving table
-  needs a bounded pair-map carrier that retains both occurrence cardinality and wire order across
-  Rust, JSON, wasm, component, and cross-crate wrapper requests. Until that carrier exists, bounded
-  preserve tables stay a targeted refusal. Reopen only when a consumer needs bounded duplicate keys;
-  the acceptance change must include checked-door and preserve-fidelity vectors for every face.
   - **An open table's min-1 typed row** (`t = { + K_t => V_t, * K_r => V_r }`): the one min-1 shape
     that does NOT use the unrepresentable model, because the container it bounds is one `pub` member
     of a struct whose OTHER member is an unbounded sibling. It is enforced at a seeded door

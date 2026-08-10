@@ -447,4 +447,35 @@ mod tests {
             serde_json::from_str(r#"{"ys":[[1,"a"],[1,"b"]]}"#).expect("a non-empty array-of-pairs is accepted");
         assert_eq!(ok.ys.len(), 2, "the door keeps duplicate keys");
     }
+
+    #[test]
+    fn bounded_preserve_pair_map_json_and_schema_door() {
+        let holder: BoundedPreservePmapJson = serde_json::from_str(
+            r#"{"zs":[[1,"a"],[1,"b"],[2,"c"]]}"#,
+        )
+        .expect("a bounded array-of-pairs accepts duplicate keys in entry order");
+        let json = serde_json::to_string(&holder).unwrap();
+        assert!(
+            json.contains(r#""zs":[[1,"a"],[1,"b"],[2,"c"]]"#),
+            "BoundedPairMap must retain duplicate pair order: {json}"
+        );
+        assert_eq!(holder.zs.keys().copied().collect::<Vec<_>>(), vec![1, 1, 2]);
+        assert!(
+            serde_json::from_str::<BoundedPreservePmapJson>(r#"{"zs":[[1,"a"]]}"#).is_err(),
+            "below-min JSON input must be rejected by BoundedPairMap::try_from"
+        );
+        assert!(
+            serde_json::from_str::<BoundedPreservePmapJson>(r#"{"zs":[[1,"a"],[2,"b"],[3,"c"],[4,"d"]]}"#).is_err(),
+            "above-max JSON input must be rejected by BoundedPairMap::try_from"
+        );
+
+        let schema = serde_json::to_value(schemars::schema_for!(BoundedPreservePmapJson)).unwrap();
+        let text = schema.to_string();
+        assert!(text.contains("minItems") && text.contains("maxItems"), "bounded pair schema must bound the pair array: {text}");
+        assert!(!text.contains("minProperties") && !text.contains("maxProperties"), "bounded pair schema must not pretend to be an object: {text}");
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&serde_json::json!({"zs":[[1,"a"],[1,"b"]]})));
+        assert!(!validator.is_valid(&serde_json::json!({"zs":[[1,"a"]]})));
+        assert!(!validator.is_valid(&serde_json::json!({"zs":[[1,"a",0],[2,"b"]]})));
+    }
 }

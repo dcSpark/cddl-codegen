@@ -15,6 +15,112 @@ use alloc::vec::Vec;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
+impl cbor_event::se::Serialize for BoundedPreservePmapJson {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1))?;
+        serializer.write_text("zs")?;
+        serializer.write_map(cbor_event::Len::Len(self.zs.len() as u64))?;
+        for (key, value) in self.zs.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_text(value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for BoundedPreservePmapJson {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let mut zs = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "zs" => {
+                            if zs.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "zs".into(),
+                                ))
+                                .into());
+                            }
+                            zs = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut zs_table = Vec::new();
+                                    let zs_len = raw.map()?;
+                                    while match zs_len {
+                                        cbor_event::Len::Len(n) => (zs_table.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(zs_len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        let zs_key = raw.unsigned_integer()?;
+                                        let zs_value = raw.text()?;
+                                        zs_table.push((zs_key, zs_value));
+                                    }
+                                    let zs_table =
+                                        BoundedPairMap::<_, _, 2, 3>::try_from(zs_table)?;
+                                    Ok(zs_table)
+                                })()
+                                .map_err(|e| e.annotate("zs"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let zs = match zs {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("zs")))
+                            .into(),
+                    );
+                }
+            };
+            Ok(Self { zs })
+        })()
+        .map_err(|e| e.annotate("BoundedPreservePmapJson"))
+    }
+}
+
 impl cbor_event::se::Serialize for BytesWrapper {
     fn serialize<'se>(
         &self,

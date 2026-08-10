@@ -266,6 +266,7 @@ impl GenerationScope {
                             &ident,
                             bounds,
                             false,
+                            rt.is_preserve_pair_map(),
                             cli,
                         );
                     } else if rt.is_non_empty_map() {
@@ -389,7 +390,8 @@ impl GenerationScope {
         // per-scope loop keys off the dep's OWN `uses_pair_map()`, which a request-only host fails).
         if let Some(path) = pair_map_import {
             scope_content.push_import(path.clone(), "PairMap", None);
-            scope_content.push_import(path, "NonEmptyPairMap", None);
+            scope_content.push_import(path.clone(), "NonEmptyPairMap", None);
+            scope_content.push_import(path, "BoundedPairMap", None);
         }
         Ok(())
     }

@@ -182,7 +182,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (1 accept + 2 reject vector(s) under wasmtime); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.duplicates.preserve",
         "status": "supported"
       },
@@ -5574,8 +5574,8 @@
     },
     {
       "alt": "@duplicates preserve",
-      "desc": "Per-rule duplicates policy, preserve flavor: on a table rule ({* k => v} / {+ k => v}) the transparent alias swaps to the Vec<(K, V)>-backed PairMap/NonEmptyPairMap twin — the only shape faithful to both entry order and duplicate keys — so a duplicate-keyed map decodes AND re-emits byte-exactly (driver: pre-Conway Cardano transaction_metadata, whose auxiliary-data hash is computed over the original bytes). JSON diverges to an array of [k, v] pairs (an object would collapse duplicates); under --canonical-form entries stable-sort by encoded key bytes with duplicates adjacent. On a set/array, preserve is the default (writing it is an accepted self-documenting no-op).",
-      "example": "meta = { * uint => text } ; @duplicates preserve",
+      "desc": "Per-rule duplicates policy, preserve flavor: on a table rule ({* k => v}, {+ k => v}, or a bounded homogeneous window) the transparent alias swaps to the Vec<(K, V)>-backed PairMap/NonEmptyPairMap/BoundedPairMap twin — the only shape faithful to both entry order and duplicate keys. BoundedPairMap's single TryFrom door enforces its inclusive entry-count window, so a duplicate-keyed map decodes AND re-emits byte-exactly within the allowed range (driver: pre-Conway Cardano transaction_metadata, whose auxiliary-data hash is computed over the original bytes). JSON diverges to an array of [k, v] pairs (an object would collapse duplicates); under --canonical-form entries stable-sort by encoded key bytes with duplicates adjacent. On a set/array, preserve is the default (writing it is an accepted self-documenting no-op).",
+      "example": "meta = { 2*3 uint => text } ; @duplicates preserve",
       "id": "dsl.duplicates.preserve",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",

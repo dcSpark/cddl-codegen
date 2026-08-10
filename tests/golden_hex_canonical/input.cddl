@@ -52,6 +52,12 @@ opt_set_holder = [s: opt_set]
 dup_pmap        = { * uint => text } ; @duplicates preserve
 dup_pmap_holder = [p: dup_pmap]
 
+; The bounded preserve twin uses the same stable encoded-key sort, but must still retain its
+; inclusive checked door before it reaches serialization. The matching KAT holds the lower boundary
+; (two entries) and makes equal key order observable through distinct values.
+bounded_dup_pmap        = { 2*3 uint => text } ; @duplicates preserve
+bounded_dup_pmap_holder = [p: bounded_dup_pmap]
+
 ; open struct-map under --canonical-form: the runtime canonical key MERGE minimizes each rest key's
 ; header (a non-minimal 0x18 0x07 rest key minimizes to 0x07) and orders the declared key together
 ; with the rest keys length-first-then-bytewise. Vectors in tests.rs pin the preserve-identity of the

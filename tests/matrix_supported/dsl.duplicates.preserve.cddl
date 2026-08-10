@@ -1,1 +1,1 @@
-meta = { * uint => text } ; @duplicates preserve
+meta = { 2*3 uint => text } ; @duplicates preserve

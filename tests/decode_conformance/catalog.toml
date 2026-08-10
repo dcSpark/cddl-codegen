@@ -5577,55 +5577,31 @@ expect = "accept"
 [[row]]
 id = "dsl.duplicates.preserve"
 axis = "feature"
-example = "meta = { * uint => text } ; @duplicates preserve"
-spec = "__probe_holder = [0, meta]\nmeta = { * uint => text } ; @duplicates preserve"
+example = "meta = { 2*3 uint => text } ; @duplicates preserve"
+spec = "__probe_holder = [0, meta]\nmeta = { 2*3 uint => text } ; @duplicates preserve"
 mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
 hex = "8200a0"
-source = "ruby-generate"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the holder's duplicate-preserving table is empty, violating the authored inclusive 2*3 entry window; the failure must come from BoundedPairMap's shared checked door"
+expect_err = "0 not in range 2 - 3"
+
+[[row.vector]]
+hex = "8200a2016161016162"
+source = "hand"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a218a369646973677573746564190db668656c656769616373"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a21903b665636f6e6761190680687761736861626c65"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a2190a796a73706c617368646f776e190c2a66717569766572"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a31904966b737570706f727465722773190f5a6a5079746861676f726173190cf968736d656c74657273"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a3190651696173736f6e616e63651909a6655061742773190d84677377696c6c6564"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a31908756a6170706f736974656c791908fb6c696c6c757374726174697665190cf167686f746e657373"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a31909126c6f757470617469656e7427731904ee68666f6c6c6f7775701907da697665726163696f7573"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a4190c5f687265646566696e65190d5b6a7374616666696e6727731911cc666775726e657919039166727566666c65"
-source = "ruby-generate"
-expect = "accept"
+hex = "8200a4016161016162026163036164"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the holder's duplicate-preserving table carries four entries, violating the authored inclusive 2*3 entry window; distinct keys make this a pure cardinality failure"
+expect_err = "4 not in range 2 - 3"
 
 [[row]]
 id = "dsl.duplicates.reject"

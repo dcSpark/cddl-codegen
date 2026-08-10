@@ -329,6 +329,24 @@ mod golden_hex_canonical {
             );
         }
     );
+    // The bounded pair-map uses the SAME stable key sort after entering its checked [2, 3] door.
+    // Equal key-1 entries arrive in "a", then "b" order and canonical output MUST retain that
+    // relative order: this executes the bounds-bearing carrier path, not just the loose PairMap
+    // sibling above. Holder `[p: bounded_dup_pmap]` is a one-element array (0x81).
+    kat_canonical!(
+        canon_bounded_dup_pmap_stable_equal_keys,
+        BoundedDupPmapHolder,
+        &[0x81, 0xa2, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62],
+        &[0x81, 0xa2, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62],
+        |d: &BoundedDupPmapHolder| {
+            assert_eq!(d.p.len(), 2);
+            assert_eq!(
+                d.p.get_all(&1).into_iter().map(String::as_str).collect::<Vec<_>>(),
+                vec!["a", "b"],
+                "equal encoded keys retain first-appearance order under the stable canonical sort"
+            );
+        }
+    );
 
     // ---- open struct-map (rest row) under --canonical-form ----
     // The runtime canonical key merge minimizes each rest key's header and orders the declared key

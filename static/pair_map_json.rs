@@ -24,6 +24,23 @@ impl<'de, K: serde::Deserialize<'de>, V: serde::Deserialize<'de>> serde::de::Des
     }
 }
 
+impl<K: serde::Serialize, V: serde::Serialize, const MIN: u64, const MAX: u64> serde::Serialize
+    for BoundedPairMap<K, V, MIN, MAX>
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: serde::Serializer {
+        self.as_slice().serialize(serializer)
+    }
+}
+
+impl<'de, K: serde::Deserialize<'de>, V: serde::Deserialize<'de>, const MIN: u64, const MAX: u64>
+    serde::de::Deserialize<'de> for BoundedPairMap<K, V, MIN, MAX>
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: serde::de::Deserializer<'de> {
+        BoundedPairMap::try_from(<Vec<(K, V)> as serde::de::Deserialize>::deserialize(deserializer)?)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 impl<K: serde::Serialize, V: serde::Serialize> serde::Serialize for NonEmptyPairMap<K, V> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

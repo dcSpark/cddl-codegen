@@ -1057,6 +1057,26 @@ fn component_glue_routes_type_enforced_lists_through_the_try_from_door() {
             && !rust.contains("pub type BoundedUnique = OrderedSet<u64>"),
         "the component's checked list conversion must target the compound BoundedOrderedSet carrier:\n{rust}"
     );
+    assert!(
+        rust.contains("BoundedPairMap<u64, String, 2, 3>"),
+        "the bounded preserve table must retain its compound carrier in the component rust crate:\n{rust}"
+    );
+    let pairs = glue
+        .split("fn set_pairs(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n    }").next())
+        .unwrap_or_else(|| panic!("the glue carries no `set_pairs`:\n{glue}"));
+    assert!(
+        pairs.contains("pairs.into_iter().collect::<Vec<_>>()")
+            && pairs.contains("try_into()")
+            && pairs.contains("map_err(err)?")
+            && !pairs.contains("RangeCheck"),
+        "the optional bounded preserve table must re-enter BoundedPairMap's TryFrom door:\n{pairs}"
+    );
+    assert!(
+        glue.contains("fn set_nested_pairs(") && glue.contains("struct WitNestedBoundedPairs"),
+        "the alias/nested bounded preserve occurrence must remain in the component projection:\n{glue}"
+    );
 }
 
 /// Direct table rows lower to WIT `list<tuple<K, V>>`. The typed conversion walk must descend into

@@ -30,8 +30,21 @@ use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 use crate::generated::ordered_set::OrderedSet;
-use crate::generated::pair_map::{NonEmptyPairMap, PairMap};
+use crate::generated::pair_map::{BoundedPairMap, NonEmptyPairMap, PairMap};
 use crate::generated::serialization::decode_canonical_hex;
+
+pub type BoundedPreservePmap = BoundedPairMap<u64, String, 2, 3>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct BoundedPreservePmapJson {
+    pub zs: BoundedPreservePmap,
+}
+
+impl BoundedPreservePmapJson {
+    pub fn new(zs: BoundedPreservePmap) -> Self {
+        Self { zs }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct BytesWrapper(pub(crate) Vec<u8>);

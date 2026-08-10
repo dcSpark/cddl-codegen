@@ -189,8 +189,8 @@ alt = "@duplicates preserve"
 rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@duplicates; src/comment_ast.rs"
 profile = "CDDL_CODEGEN"
 title = "@duplicates preserve — duplicate-preserving pair-map tables"
-desc = "Per-rule duplicates policy, preserve flavor: on a table rule ({* k => v} / {+ k => v}) the transparent alias swaps to the Vec<(K, V)>-backed PairMap/NonEmptyPairMap twin — the only shape faithful to both entry order and duplicate keys — so a duplicate-keyed map decodes AND re-emits byte-exactly (driver: pre-Conway Cardano transaction_metadata, whose auxiliary-data hash is computed over the original bytes). JSON diverges to an array of [k, v] pairs (an object would collapse duplicates); under --canonical-form entries stable-sort by encoded key bytes with duplicates adjacent. On a set/array, preserve is the default (writing it is an accepted self-documenting no-op)."
-example = "meta = { * uint => text } ; @duplicates preserve"
+desc = "Per-rule duplicates policy, preserve flavor: on a table rule ({* k => v}, {+ k => v}, or a bounded homogeneous window) the transparent alias swaps to the Vec<(K, V)>-backed PairMap/NonEmptyPairMap/BoundedPairMap twin — the only shape faithful to both entry order and duplicate keys. BoundedPairMap's single TryFrom door enforces its inclusive entry-count window, so a duplicate-keyed map decodes AND re-emits byte-exactly within the allowed range (driver: pre-Conway Cardano transaction_metadata, whose auxiliary-data hash is computed over the original bytes). JSON diverges to an array of [k, v] pairs (an object would collapse duplicates); under --canonical-form entries stable-sort by encoded key bytes with duplicates adjacent. On a set/array, preserve is the default (writing it is an accepted self-documenting no-op)."
+example = "meta = { 2*3 uint => text } ; @duplicates preserve"
 
 [[feature]]
 id = "dsl.custom_json"

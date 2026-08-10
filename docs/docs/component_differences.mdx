@@ -78,10 +78,10 @@ policy. Repeated keys supplied in the WIT list therefore follow the rust map's o
 semantics rather than returning the reject-set `DuplicateKey` error; `reject` on a table documents
 the already-key-unique map representation, not an `OrderedSet`-style validation door.
 
-A bounded unique-key table uses the same `list<tuple<k, v>>` representation, then passes the
-collected map through `BoundedMap::TryFrom`; below-minimum and above-maximum component inputs return
-the same range error as Rust, CBOR, JSON, and wasm construction. This does not add a bounded pair-map:
-bounded `@duplicates preserve` tables remain a generation refusal.
+A bounded table uses the same `list<tuple<k, v>>` representation, then passes its collected entries
+through `BoundedMap::TryFrom` for unique keys or `BoundedPairMap::TryFrom` for
+`@duplicates preserve`. Below-minimum and above-maximum component inputs return the same range error
+as Rust, CBOR, JSON, and wasm construction; pair-map inputs retain duplicate entries and order.
 
 **Access granularity is coarser than the wasm face's.** A map-typed field's only read is the
 whole-map getter: it materializes every entry and mints a fresh handle per resource-typed entry on

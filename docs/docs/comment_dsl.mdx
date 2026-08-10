@@ -374,9 +374,10 @@ Notes:
 tag-258 set idiom), across the Rust, JSON, wasm-bindgen, and **component/WIT** boundaries: the rule's
 rust representation becomes an order-preserving, duplicate-free set and each boundary preserves
 that invariant. `@duplicates preserve` is **live for table rules** (`{ * k => v }` and
-`{ + k => v }`) across the Rust, JSON, wasm-bindgen, and **component/WIT** boundaries: the rust alias
-becomes a byte-exact, duplicate-keyed pair-map — `PairMap<K, V>`, or `NonEmptyPairMap<K, V>` for the
-non-empty `{+ …}` flavor (its single `try_from` door composes the min-1 check). A **tag-258** set
+`{ + k => v }`, including finite/exact occurrence windows) across the Rust, JSON, wasm-bindgen, and **component/WIT** boundaries: the rust alias
+becomes a byte-exact, duplicate-keyed pair-map — `PairMap<K, V>`, `NonEmptyPairMap<K, V>` for the
+non-empty `{+ …}` flavor, or `BoundedPairMap<K, V, MIN, MAX>` for every other window (each uses its
+single checked conversion door). A **tag-258** set
 now defaults to `reject` (see *Defaults* below); every other set defaults to `preserve` and tables to
 `reject`. Writing the effective default explicitly is accepted for self-documentation (a no-op). A
 preserve table and a non-preserve map/table of the *identical* key/value **coexist** under `--wasm`:

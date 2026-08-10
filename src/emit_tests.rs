@@ -250,7 +250,13 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             let k = map_key_expr(key, *key_base);
             let v = render_rust(val);
             if let Some((min, max)) = bounded {
-                format!("BoundedMap::<_, _, {min}, {max}>::try_from((0u64..{count}).map(|__i| ({k}, {v})).collect::<Vec<_>>()).unwrap()")
+                let carrier = if *preserve { "BoundedPairMap" } else { "BoundedMap" };
+                // A preserve table's generated valid fixture deliberately reuses its key: this is
+                // the emitted-test coverage that proves the bounded door counts duplicate entries
+                // rather than silently collecting them into a unique-key map.
+                let k = if *preserve { k.replace("__i", "0") } else { k };
+                let index = if *preserve { "_i" } else { "__i" };
+                format!("{carrier}::<_, _, {min}, {max}>::try_from((0u64..{count}).map(|{index}| ({k}, {v})).collect::<Vec<_>>()).unwrap()")
             } else if *non_empty {
                 // build via `new(first_key, first_value)` + `insert` (flavor-agnostic and
                 // unambiguous). A bare `try_from((..).collect())` can't infer the collect target here:

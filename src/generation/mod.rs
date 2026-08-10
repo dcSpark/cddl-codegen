@@ -126,8 +126,8 @@ use wrappers::{generate_any_cbor_wasm, generate_int, generate_wrapper_struct};
 
 mod collections;
 use collections::{
-    codegen_table_type, dep_owns_element, mint_sole_owner_table, mint_wasm_keys_list,
-    mint_wasm_wrapper_for_visited_type, push_table_accessors,
+    codegen_table_type, dep_owns_element, is_loose_table_owner, mint_sole_owner_table,
+    mint_wasm_keys_list, mint_wasm_wrapper_for_visited_type, push_table_accessors,
 };
 
 mod requests;
@@ -728,6 +728,26 @@ impl GenerationScope {
                         RustStructType::Record(record) => {
                             for field in &record.fields {
                                 self.ensure_non_empty_wrappers(types, &field.rust_type, cli);
+                                // The conceptual visitor above intentionally cannot see a field's
+                                // `@duplicates preserve` policy. Restricted pair maps route through
+                                // `ensure_non_empty_wrappers`, but the loose `{* …}` twin has no
+                                // bounds to trigger that path. Mint it from the policy-bearing
+                                // RustType so an all-one-dependency field records/defer-imports
+                                // `PairMapKToV`, never the default `MapKToV` class.
+                                if field.rust_type.is_preserve_pair_map()
+                                    && !field.rust_type.is_non_empty_map()
+                                    && !field.rust_type.is_bounded_map()
+                                {
+                                    mint_wasm_wrapper_for_visited_type(
+                                        self,
+                                        types,
+                                        &field.rust_type.conceptual_type,
+                                        &mut wasm_wrappers_generated,
+                                        &table_shape_sole_owner,
+                                        true,
+                                        cli,
+                                    );
+                                }
                             }
                             // Open struct-map rest row (CAPTURE only): its container is a
                             // `Map(domain, range)` the conceptual visitor above never sees as a
@@ -919,6 +939,8 @@ impl GenerationScope {
                                 rust_ident,
                                 (min, max),
                                 !types.is_synthesized_collection(rust_ident),
+                                rust_struct.config().duplicates
+                                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
                                 cli,
                             );
                         } else if cli.wasm && !anon {
@@ -934,6 +956,7 @@ impl GenerationScope {
                             );
                             if table_shape_sole_owner.get(&map_ident.to_string())
                                 == Some(rust_ident)
+                                && is_loose_table_owner(types, rust_ident)
                             {
                                 // Sole owner of this shape: emit the real JS class under the rule name
                                 // plus the structural alias. Idempotent — the visit arm may have
@@ -1892,6 +1915,13 @@ impl GenerationScope {
                     None,
                 );
             }
+            if types.uses_bounded_pair_map() {
+                content.push_import(
+                    format!("{}::pair_map", cli.common_import_rust()),
+                    "BoundedPairMap",
+                    None,
+                );
+            }
         }
 
         // serialization
@@ -2103,6 +2133,13 @@ impl GenerationScope {
                     content.push_import(
                         format!("{}::pair_map", cli.common_import_wasm()),
                         "NonEmptyPairMap",
+                        None,
+                    );
+                }
+                if types.uses_bounded_pair_map() {
+                    content.push_import(
+                        format!("{}::pair_map", cli.common_import_wasm()),
+                        "BoundedPairMap",
                         None,
                     );
                 }

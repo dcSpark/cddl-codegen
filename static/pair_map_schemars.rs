@@ -26,3 +26,18 @@ impl<K: schemars::JsonSchema, V: schemars::JsonSchema> schemars::JsonSchema
         Vec::<(K, V)>::inline_schema()
     }
 }
+
+impl<K: schemars::JsonSchema, V: schemars::JsonSchema, const MIN: u64, const MAX: u64>
+    schemars::JsonSchema for BoundedPairMap<K, V, MIN, MAX>
+{
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        format!("BoundedPairMap<{}, {}, {MIN}, {MAX}>", K::schema_name(), V::schema_name()).into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut schema = Vec::<(K, V)>::json_schema(generator);
+        schema.insert("minItems".to_owned(), MIN.into());
+        if MAX != u64::MAX { schema.insert("maxItems".to_owned(), MAX.into()); }
+        schema
+    }
+    fn inline_schema() -> bool { Vec::<(K, V)>::inline_schema() }
+}

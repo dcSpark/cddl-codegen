@@ -2783,11 +2783,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   absorbed silently. The mechanical layer when a release actually bites: a pinned-latest or
   `--minimal-versions`-style resolve check over one generated crate, red when the resolved
   `cbor_event` version drifts from the one the vectors were blessed against.
-- **Bounded duplicate-preserving tables remain future work.** The unique-key table carrier does not
-  represent repeated keys, so a bounded `@duplicates preserve` table remains a targeted
-  generation refusal until a bounded pair-map can preserve both the occurrence window and wire order.
-  Reopen only for a consumer that needs that combination; add API/CBOR/JSON/wasm/component and
-  cross-crate checked-door coverage together.
 - **Transparent tag-set idiom — recognized-shape boundary (REQUEST-08).** The collapse of a two-arm
   tagged-or-untagged collection choice into one transparent optionally-tagged alias
   (user doc: `docs/docs/current_capacities.mdx` § "Transparent tag-set idiom") is narrow by design;

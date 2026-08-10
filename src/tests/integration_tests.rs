@@ -11033,6 +11033,36 @@ fn golden_hex_canonical() {
     );
 }
 
+/// The KAT executes equal-key stability through `BoundedPairMap`; this source pin additionally
+/// protects the generated canonical path from changing to an unstable or key-only reconstruction.
+#[test]
+fn canonical_bounded_pair_map_stable_sort_source_pin() {
+    use clap::Parser;
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input=tests/golden_hex_canonical/input.cddl",
+        "--output=canonical_pair_map_source_unused",
+        "--wasm=false",
+        "--preserve-encodings=true",
+        "--canonical-form=true",
+    ]);
+    let files = crate::api::generated_strings(&cli).expect("canonical pair-map fixture generates");
+    let serialization = files
+        .get("rust/src/generated/serialization.rs")
+        .expect("canonical pair-map serialization source");
+    assert!(
+        serialization.contains("impl Serialize for BoundedDupPmapHolder")
+            && serialization
+                .contains("self\n            .p\n            .iter()\n            .enumerate()")
+            && serialization.contains("Vec<(Vec<u8>, usize, &_, &_)>")
+            && serialization
+                .contains("key_order.sort_by(|(lhs_bytes, _, _, _), (rhs_bytes, _, _, _)| {")
+            && serialization.contains("cbor_canonical_key_cmp(lhs_bytes, rhs_bytes)"),
+        "bounded pair-map canonical source must retain the indexed stable-sort tuple:\n{serialization}"
+    );
+}
+
 #[test]
 fn any_choice_content_fallthrough() {
     // A bare `any` type-choice catch-all in last position. Rust-only (--wasm=false).
@@ -17798,8 +17828,10 @@ fn workspace_consumer_writes_canonical_bounded_array_request_shapes() {
 
 /// B3-022's table-side request round trip. This is deliberately a real two-crate workspace rather
 /// than a hand-authored host-sidecar unit: the consumer must canonicalize `0*1`, omitted exact, and
-/// `2*3` map windows; the dependency must rebuild the requested BoundedMap wrappers (including the
-/// loose source and checked door); and both wasm crates must link under both carrier flavors.
+/// `2*3` map windows; the dependency must rebuild the requested BoundedMap *and* BoundedPairMap
+/// wrappers (including each loose source and checked door); and both wasm crates must link under
+/// both encoding profiles. The loose/non-empty preserve controls prove the marker still selects its
+/// established twins while the bounded preserve rows prove it composes with canonical bounds.
 #[test]
 fn workspace_requests_host_bounded_maps_preserve_window_checked_door_and_flavor() {
     if !tool_exists("cargo") {
@@ -17825,7 +17857,22 @@ fn workspace_requests_host_bounded_maps_preserve_window_checked_door_and_flavor(
     );
     write(
         "consumer/lib.cddl",
-        "holder = [maybe: { 0*1 idx_foo => uint }, exact: { idx_foo => uint }, bounded: { 2*3 idx_foo => uint }, maybe_value: { 0*1 uint => idx_foo }, exact_value: { uint => idx_foo }, bounded_value: { 2*3 uint => idx_foo }]\n",
+        "holder = [\n\
+           maybe: { 0*1 idx_foo => uint }, exact: { idx_foo => uint }, bounded: { 2*3 idx_foo => uint },\n\
+           maybe_value: { 0*1 uint => idx_foo }, exact_value: { uint => idx_foo }, bounded_value: { 2*3 uint => idx_foo },\n\
+           loose_pairs: { * idx_foo => uint ; @duplicates preserve\n\
+           },\n\
+           nonempty_pairs: { + idx_foo => uint ; @duplicates preserve\n\
+           },\n\
+           maybe_pairs: { 0*1 idx_foo => uint ; @duplicates preserve\n\
+           },\n\
+           bounded_pairs: { 2*3 idx_foo => uint ; @duplicates preserve\n\
+           },\n\
+           maybe_pair_value: { 0*1 uint => idx_foo ; @duplicates preserve\n\
+           },\n\
+           bounded_pair_value: { 2*3 uint => idx_foo ; @duplicates preserve\n\
+           }\n\
+         ]\n",
     );
     write("dep/lib.cddl", "idx_foo = [x: uint]\n");
     let static_dir = std::env::current_dir().unwrap().join("static");
@@ -17867,6 +17914,26 @@ fn workspace_requests_host_bounded_maps_preserve_window_checked_door_and_flavor(
             assert!(
                 sidecar.contains(&format!("use wr_dep_wasm::collections::{name};")),
                 "{flavor} sidecar self-check must attribute {name} to the dep:\n{sidecar}"
+            );
+        }
+        const PRESERVE_MARKER: &str = "@duplicates preserve";
+        for (name, shape) in [
+            ("PairMapIdxFooToU64", "{* idx_foo => uint}"),
+            ("NonEmptyPairMapIdxFooToU64", "{+ idx_foo => uint}"),
+            ("PairMapIdxFooToU64Max1", "{? idx_foo => uint}"),
+            ("PairMapIdxFooToU64Min2Max3", "{2*3 idx_foo => uint}"),
+            ("PairMapU64ToIdxFooMax1", "{? uint => idx_foo}"),
+            ("PairMapU64ToIdxFooMin2Max3", "{2*3 uint => idx_foo}"),
+        ] {
+            assert!(
+                sidecar.contains(&format!(
+                    "\"wr_dep\",\n        \"{name}\",\n        \"{shape} {PRESERVE_MARKER}\","
+                )),
+                "{flavor} consumer sidecar lost canonical bounded-pair-map request {name}/{shape}:\n{sidecar}"
+            );
+            assert!(
+                sidecar.contains(&format!("use wr_dep_wasm::collections::{name};")),
+                "{flavor} preserve sidecar self-check must attribute {name} to the dep:\n{sidecar}"
             );
         }
         assert!(
@@ -17929,6 +17996,29 @@ fn workspace_requests_host_bounded_maps_preserve_window_checked_door_and_flavor(
                 "{flavor} hosted {name} must be in the dependency index"
             );
         }
+        for (name, inner, bounds) in [
+            ("PairMapIdxFooToU64Max1", "wr_dep::IdxFoo, u64", "0, 1"),
+            ("PairMapIdxFooToU64Min2Max3", "wr_dep::IdxFoo, u64", "2, 3"),
+            ("PairMapU64ToIdxFooMax1", "u64, wr_dep::IdxFoo", "0, 1"),
+            ("PairMapU64ToIdxFooMin2Max3", "u64, wr_dep::IdxFoo", "2, 3"),
+        ] {
+            assert!(
+                hosted.contains(&format!(
+                    "pub struct {name}(pub(crate) BoundedPairMap<{inner}, {bounds}>)"
+                )),
+                "{flavor} host must preserve {name}'s BoundedPairMap window and duplicate flavor:\n{hosted}"
+            );
+            assert!(
+                hosted.contains(&format!(
+                    "pub use crate::generated::requested_collections::{name};"
+                )) || std::fs::read_to_string(dep_export.join("wasm/src/generated/collections.rs"))
+                    .unwrap()
+                    .contains(&format!(
+                        "pub use crate::generated::requested_collections::{name};"
+                    )),
+                "{flavor} hosted bounded preserve {name} must be in the dependency index"
+            );
+        }
         assert!(
             hosted.contains("pub fn try_from(map: &MapIdxFooToU64)")
                 && hosted.contains("BoundedMap::try_from(inner)")
@@ -17936,10 +18026,20 @@ fn workspace_requests_host_bounded_maps_preserve_window_checked_door_and_flavor(
             "{flavor} bounded-map host must retain loose builder, checked door, and attribution:\n{hosted}"
         );
         assert!(
+            hosted.contains("pub fn try_from(map: &PairMapIdxFooToU64)")
+                && hosted.contains("BoundedPairMap::try_from(inner)")
+                && hosted.contains("::pair_map::{BoundedPairMap, NonEmptyPairMap, PairMap}")
+                && hosted.contains("/// Generated at the request of: consumer."),
+            "{flavor} bounded preserve host must retain its PairMap source, checked door, runtime import, and attribution:\n{hosted}"
+        );
+        assert!(
             std::fs::read_to_string(dep_export.join("rust/src/generated/mod.rs"))
                 .unwrap()
-                .contains("pub mod bounded_map;"),
-            "request-only {flavor} host must provision bounded_map runtime"
+                .contains("pub mod bounded_map;")
+                && std::fs::read_to_string(dep_export.join("rust/src/generated/mod.rs"))
+                    .unwrap()
+                    .contains("pub mod pair_map;"),
+            "request-only {flavor} host must provision bounded_map and pair_map runtimes"
         );
 
         append_manifest_deps(

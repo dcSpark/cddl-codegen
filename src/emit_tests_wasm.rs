@@ -306,8 +306,15 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             let k = map_key_expr(key, *key_base);
             let v = rust_scoped(val, scoped);
             if let Some((min, max)) = bounded {
+                let carrier = if *preserve {
+                    "BoundedPairMap"
+                } else {
+                    "BoundedMap"
+                };
+                let k = if *preserve { k.replace("__i", "0") } else { k };
+                let index = if *preserve { "_i" } else { "__i" };
                 format!(
-                    "BoundedMap::<_, _, {min}, {max}>::try_from((0u64..{count}).map(|__i| ({k}, {v})).collect::<Vec<_>>()).unwrap()"
+                    "{carrier}::<_, _, {min}, {max}>::try_from((0u64..{count}).map(|{index}| ({k}, {v})).collect::<Vec<_>>()).unwrap()"
                 )
             } else if *non_empty {
                 // build via new(first_key, first_value) + insert (flavor-agnostic; a bare

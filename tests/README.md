@@ -2157,8 +2157,9 @@ The **`@duplicates preserve` flavor** (tables — user doc:
 § "Preserve-mode tables", `docs/docs/wasm_differences.mdx` § "Preserve-duplicates tables",
 `docs/docs/comment_dsl.mdx` § `@duplicates`) is the TABLE mirror of the reject flavor: a table rule
 carrying `@duplicates preserve` swaps its transparent alias to the `Vec<(K, V)>`-backed pair-map twin
-(`{*}` → `PairMap`, `{+}` → `NonEmptyPairMap`), the only shape faithful to both entry order and
-duplicate keys (driver: byte-exact round-trip of pre-Conway Cardano `transaction_metadata`). Verified
+(`{*}` → `PairMap`, `{+}` → `NonEmptyPairMap`, every other homogeneous window → checked
+`BoundedPairMap`), the only shape faithful to both entry order and duplicate keys (driver: byte-exact
+round-trip of pre-Conway Cardano `transaction_metadata`). Verified
 across the same layers:
 
 - **Wire bytes (byte-exact dup round-trip)** — `tests/golden_hex_preserve/tests.rs`:
@@ -2369,8 +2370,8 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   widened every occurrence spelling to the loose 0..N map. That widening is retired. `+`/`1*` now
   uses `NonEmptyMap`; every other unique-key window, including omitted exact-once and `?`/`n*m`, uses
   checked `BoundedMap`; their catalog boundary vectors are `class="constraint"` enforcement pins.
-  The remaining unsupported boundary is a bounded `@duplicates preserve` table, which has no bounded
-  pair-map carrier. (`8200a0` also remains the seeded-control *accept* on `type2.map` —
+  Bounded `@duplicates preserve` tables use `BoundedPairMap` and their catalog boundary vectors are
+  `class="constraint"` enforcement pins. (`8200a0` also remains the seeded-control *accept* on `type2.map` —
   `{ * tstr => int }`, a spec-VALID empty table there.)
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
   `full` tier, ~6 min): per active row it generates a crate from the committed `spec` and `cargo

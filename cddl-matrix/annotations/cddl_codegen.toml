@@ -174,7 +174,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "dsl.duplicates.preserve"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (1 accept + 2 reject vector(s) under wasmtime); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 emission.preserve.status = "supported"

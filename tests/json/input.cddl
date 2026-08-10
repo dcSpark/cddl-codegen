@@ -53,3 +53,8 @@ preserve_pmap         = { * uint => tstr } ; @duplicates preserve
 preserve_pmap_json    = { xs: preserve_pmap }
 ne_preserve_pmap      = { + uint => tstr } ; @duplicates preserve
 ne_preserve_pmap_json = { ys: ne_preserve_pmap }
+
+; A bounded preserve table takes the same honest array-of-pairs JSON shape, but its inclusive
+; cardinality is enforced by BoundedPairMap at deserialize and published as array minItems/maxItems.
+bounded_preserve_pmap      = { 2*3 uint => tstr } ; @duplicates preserve
+bounded_preserve_pmap_json = { zs: bounded_preserve_pmap }
