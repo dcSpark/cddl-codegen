@@ -4996,11 +4996,10 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   sweep's two preserve-only compile classes (tag/`.cbor`-wrapped constrained-int deserialize tuple
   arity; composite map-key move-then-reuse) are fixed, with their preserve compile + round-trip
   pinned by the `tagged_constrained_int` / `composite_map_key` corpus fixtures — so a preserve-only
-  compile failure surfaces as a NEW finding. Observed baseline (the committed generation datum
-  `tests/recombination-counts.json`, held exactly by `recombination_generation_sweep`; the shared
-  `LAYER2_KNOWN_BAD` is empty of rows there): 1624 classified
-  compositions (`ok=998`, `graceful=611`, `panic=15`), 998 executed / 0 shared known-bad
-  exclusions. NAMING GOTCHA: the name deliberately does NOT contain the
+  compile failure surfaces as a NEW finding. The authoritative classification totals live only in
+  `tests/recombination-counts.json` and are held exactly by `recombination_generation_sweep`; every
+  `ok` composition is executed, and the shared `LAYER2_KNOWN_BAD` contributes 0 exclusions. NAMING
+  GOTCHA: the name deliberately does NOT contain the
   `recombination_crates_execute` needle, and both check.ts gate cmds pass `--exact` on the full test
   path so cargo's substring selection can't cross-select.
 - `recombination_json_crates_execute` (`#[ignore]`, check.ts full tier): the JSON escalation of
@@ -5012,9 +5011,8 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   crate to the existing json profile compile/schema gates rather than running it per batch. Both
   json-only ledgers (`JSON_ONLY_PANIC_CLASSES`, `LAYER2_JSON_KNOWN_BAD`) are empty at HEAD — json
   derives do not rewire the panic surface, so classification matches the default profile exactly.
-  Observed baseline (the committed generation datum `tests/recombination-counts.json`): 1624
-  classified compositions (`ok=998`, `graceful=611`, `panic=15`), 998 executed /
-  0 shared known-bad exclusions.
+  The authoritative totals live in `tests/recombination-counts.json`; every `ok` composition is
+  executed, with 0 shared known-bad exclusions.
 - `recombination_wasm_crates_check` (`#[ignore]`, check.ts full tier): the WASM escalation of
   layer 2, using explicit `--wasm=true` for both in-process classification and out-of-process batch
   generation. It does not pass `--emit-tests`: the oracle is `cargo check` on the generated `wasm/`
@@ -5022,11 +5020,10 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   through the same command. Both wasm-only ledgers (`WASM_ONLY_PANIC_CLASSES`,
   `LAYER2_WASM_KNOWN_BAD`) are empty at HEAD — tagged tables and alias-only-reachable table wrappers
   generate and check (pinned by the `tagged_table` / `cbor_bignint_table` corpus fixtures) — so a
-  wasm-only panic or compile class surfaces as a NEW finding. Observed baseline (the committed
-  generation datum `tests/recombination-counts.json`): 1624 classified compositions (`ok=998`,
-  `graceful=611`, `panic=15`), 998 checked / 0 known-bad exclusions. This is
-  a fuzz-recombination cross-check for wasm generation paths; the wasm-ABI matrix remains the
-  systematic per-shape wasm surface owner.
+  wasm-only panic or compile class surfaces as a NEW finding. The authoritative totals live in
+  `tests/recombination-counts.json`; every `ok` composition is checked, with 0 known-bad exclusions.
+  This is a fuzz-recombination cross-check for wasm generation paths; the wasm-ABI matrix remains
+  the systematic per-shape wasm surface owner.
 
 Adding a member kind / role template / construct shape extends the swept surface; re-tune the
 executed-artifact floors when doing so deliberately. Changing `SEED` re-rolls every sampled
