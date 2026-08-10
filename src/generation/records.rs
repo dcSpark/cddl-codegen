@@ -265,26 +265,6 @@ pub(super) fn array_record_deser_refusals(
     reasons
 }
 
-/// A count-disambiguated optional needs a later mandatory member of the same CBOR major class.
-/// `CBORReadLen` reserves every mandatory member before optional decoding begins, so a definite
-/// array can use its remaining unreserved capacity to decide whether this optional may consume the
-/// current item. Indefinite arrays have no such capacity signal and reject this shape at runtime.
-fn optional_overlaps_later_mandatory(
-    types: &IntermediateTypes,
-    record: &RustRecord,
-    field_index: usize,
-) -> bool {
-    let field_cbor_types = record.fields[field_index].rust_type.cbor_types(types);
-    record.fields[(field_index + 1)..].iter().any(|later| {
-        !later.optional
-            && later
-                .rust_type
-                .cbor_types(types)
-                .iter()
-                .any(|ty| field_cbor_types.contains(ty))
-    })
-}
-
 /// The MAP-representation twin of `array_record_deser_refusals`, same purity contract.
 ///
 /// To support maps with plain groups inside is very difficult as we cannot guarantee the order of
@@ -437,7 +417,7 @@ pub(super) fn generate_array_struct_deserialization(
                     format!("vec![{types_str}].contains(&raw.cbor_type()?)")
                 }
             };
-            let type_check_cond = if optional_overlaps_later_mandatory(types, record, field_index) {
+            let type_check_cond = if record.optional_overlaps_later_mandatory(types, field_index) {
                 let mut indefinite_rejection = Block::new("if read_len.is_indefinite()");
                 indefinite_rejection.line(
                     "return Err(DeserializeFailure::IndefiniteLengthAmbiguousOptionalField.into());",

@@ -11574,6 +11574,86 @@ fn emit_tests_execute() {
     );
 }
 
+/// The preserve encoding-fidelity oracle keeps every mutator failure loud except the one
+/// combination the decoder's documented policy deliberately refuses: `indef_containers` or
+/// `everything` applied to a root which can reach a non-final optional ARRAY member overlapping a
+/// mandatory suffix. Generate a direct record, a containing choice (reachability), and a disjoint
+/// control; inspect the per-type emitted guard and execute the generated crate. This is the focused
+/// local-tier pin for the class `feature_corpus_roundtrips_nondefault_profiles` found at full-tier
+/// corpus breadth.
+#[test]
+fn emit_tests_optional_overlap_indefinite_policy_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_optional_overlap_emit_tests_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(
+        &input,
+        "overlap = [? a: uint, b: uint]\n\
+         disjoint = [? a: tstr, b: uint]\n\
+         choice = overlap / tstr\n",
+    )
+    .unwrap();
+    let out = root.join("crate");
+    let generate = codegen_cmd()
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--static-dir")
+        .arg(format!("{}/static", env!("CARGO_MANIFEST_DIR")))
+        .arg("--wasm=false")
+        .arg("--preserve-encodings=true")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    assert!(
+        generate.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&generate.stderr)
+    );
+
+    let src =
+        std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
+    let test_body = |name: &str| {
+        src.split(&format!("fn roundtrip_{name}()"))
+            .nth(1)
+            .and_then(|rest| rest.split("\n    #[test]\n").next())
+            .unwrap_or_else(|| panic!("missing emitted roundtrip_{name}"))
+    };
+    for name in ["overlap", "choice"] {
+        let body = test_body(name);
+        assert!(
+            body.contains("IndefiniteLengthAmbiguousOptionalField")
+                && body.contains("indef_containers")
+                && body.contains("everything"),
+            "{name}'s emitted oracle lacks the exact policy/error/transform guard:\n{body}"
+        );
+    }
+    let disjoint = test_body("disjoint");
+    assert!(
+        !disjoint.contains("IndefiniteLengthAmbiguousOptionalField"),
+        "the disjoint control received the policy escape hatch:\n{disjoint}"
+    );
+
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("rust"))
+        .output()
+        .unwrap();
+    assert!(
+        test.status.success(),
+        "generated optional-overlap preserve tests failed:\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        String::from_utf8_lossy(&test.stdout),
+        String::from_utf8_lossy(&test.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// End-to-end proof of the CDDL `any` (`AnyCbor`) emit-tests mint and the `--preserve-encodings`
 /// `widen_float` encoding-fidelity class: generate the `any-positions` fixture
 /// with `--preserve-encodings --emit-tests` and `cargo test` the crate. Every `any`-typed member
