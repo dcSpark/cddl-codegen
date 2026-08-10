@@ -54,4 +54,26 @@ mod open_array_json {
             "a bytes tail element must error on to_json (non-injective node)"
         );
     }
+
+    #[test]
+    fn required_tail_is_required_non_empty_json_and_schema_honest() {
+        let r = Required::new(7, 2);
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("\"rest\":[2]"), "required tail is never skipped: {json}");
+        assert!(serde_json::from_str::<Required>(r#"{"index_0":7,"rest":[]}"#).is_err());
+        assert!(serde_json::from_str::<Required>(r#"{"index_0":7}"#).is_err());
+        let schema = schemars::schema_for!(Required);
+        assert_eq!(
+            serde_json::to_value(schema).unwrap()["properties"]["rest"]["minItems"],
+            1
+        );
+    }
+
+    #[test]
+    fn required_any_tail_stays_natural_and_rejects_empty_json() {
+        let r = RequiredAny::new(7, AnyCbor::new_uint(5));
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("\"rest\":[5]"), "natural any JSON, not tagged AnyCbor: {json}");
+        assert!(serde_json::from_str::<RequiredAny>(r#"{"index_0":7,"rest":[]}"#).is_err());
+    }
 }

@@ -777,6 +777,7 @@ impl GenerationScope {
                                     false,
                                     cli,
                                 );
+                                self.ensure_non_empty_wrappers(types, &rest_list, cli);
                                 self.ensure_non_empty_wrappers(types, rest.element(), cli);
                             }
                         }
@@ -3852,6 +3853,7 @@ pub enum NaturalAnyPosition {
     Direct,
     Optional,
     Seq,
+    NonEmptySeq,
     OptSeq,
     Map,
     OptMap,
@@ -3876,6 +3878,11 @@ pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<
         Direct => ("natural_any_cbor", "natural_any_cbor_schema", false),
         Optional => ("natural_any_cbor_opt", "natural_any_cbor_schema", true),
         Seq => ("natural_any_cbor_seq", "natural_any_cbor_seq_schema", false),
+        NonEmptySeq => (
+            "natural_any_cbor_non_empty_seq",
+            "natural_any_cbor_non_empty_seq_schema",
+            false,
+        ),
         OptSeq => (
             "natural_any_cbor_opt_seq",
             "natural_any_cbor_seq_schema",

@@ -32,11 +32,12 @@ load-bearing: some constructs (`#`/`cbor-any`, `float16`, socket plugs, …) are
 name) moved OFF it 2026-07-23 (maintainer-ruled feature), and the loose-CBOR family that followed
 it is shipped CURRENT STATE, not roadmap — first-class `any` on every surface, open struct-maps
 (trailing `* K => V` rest rows, capture and `@ignore` tolerate-and-drop flavors), and open arrays
-(final-position `* t` rest tails, both flavors). Per-layer test maps: `tests/README.md` § "Open
+(final-position loose `* t` and non-empty `+ t` / `1* t` rest tails; `@ignore` applies only to the
+loose flavor). Per-layer test maps: `tests/README.md` § "Open
 struct-maps (rest rows)", § "Open struct-maps — the `@ignore` (tolerate-and-drop) flavor", and
 § "Open arrays (rest tails)"; user-facing contracts: `docs/docs/current_capacities.mdx` /
 `output_format.mdx` / `comment_dsl.mdx` / `wasm_differences.mdx`. The family's v1 boundaries
-(non-final/multiple/plain-group rest rows, `+`/bounded occurrences, and the two key domains a row
+(non-final/multiple/plain-group rest rows, bounded occurrences, and the two key domains a row
 cannot key on — float-containing, which has no total order, and `null`-admitting, which the row's
 key dispatch cannot tell from an indefinite map's break) are graceful rejections whose
 candidate-feature entries live in `cddl-matrix/ROADMAP.md` § findings, not here. The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and

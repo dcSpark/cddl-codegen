@@ -4402,24 +4402,23 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
         "a final-position `* t` after fixed members is an open-array rest tail (captured Vec) — must generate",
     );
 
-    // `+` / `n*m` on a final tail entry stay rejected: only `*` (unbounded capture) is honored on a
-    // rest tail (a `+` tail breaks the empty-tail ≡ closed-struct byte invariant).
-    let plus = run("m = [uint, + bytes]\n", "plus")
-        .expect_err("`+` on the final entry is not a supported rest-tail occurrence — must reject");
-    assert!(
-        plus.contains("rule `m`") && (plus.contains("rest tail") || plus.contains("`*`")),
-        "the `+`-tail rejection should be actionable and name the rule, got: {plus}"
-    );
+    // A final `+` / `1*` tail is the restricted `NonEmptyVec` sibling of the loose `*` tail.
+    run("m = [uint, + bytes]\n", "plus")
+        .expect("a final `+` tail is a supported restricted rest-tail occurrence");
+    run("m = [uint, 1* bytes]\n", "one_star")
+        .expect("a final `1*` tail is the equivalent restricted rest-tail occurrence");
     run("m = [uint, 2*3 bytes]\n", "bounded").expect_err(
         "`2*3` admits 2..=3 repetitions — not a supported rest-tail occurrence (must reject)",
     );
-    // A leading/non-final `*` keeps rejecting (the rest tail must be the LAST member).
+    // A leading/non-final repetition keeps rejecting (the rest tail must be the LAST member).
     let leading = run("m = [* bytes, uint]\n", "leading")
         .expect_err("a non-final `*` narrows identically — must reject (rest tail must be last)");
     assert!(
         leading.contains("rule `m`"),
         "the non-final `*` rejection should name the rule, got: {leading}"
     );
+    run("m = [uint, + bytes, text]\n", "middle_plus")
+        .expect_err("a non-final `+` must reject (the rest tail must be last)");
 
     run("m = [uint, 1*1 bytes]\n", "exactly_once")
         .expect("`1*1` is exactly-once — mandatory IS the honored semantics");
@@ -4466,12 +4465,40 @@ fn open_array_front_end() {
         out.values().cloned().collect::<Vec<_>>().join("\n")
     };
 
-    // --- positive: a final `* t` after ≥1 fixed member captures a `Vec<T>` tail ---
+    // --- positive: final `* t` is loose, while final `+ t` / `1* t` is a real NonEmptyVec tail ---
     let cap =
         run("a = [uint, tstr, * uint]\n").expect("final-position `* t` is an open-array rest tail");
     assert!(
         src(&cap).contains("pub rest: Vec<u64>"),
         "capture tail is a `Vec<T>` field named `rest`"
+    );
+    let plus = run("a = [uint, + uint]\n")
+        .expect("final-position `+ t` is a one-or-more open-array rest tail");
+    assert!(
+        src(&plus).contains("pub rest: NonEmptyVec<u64>")
+            && src(&plus).contains("pub fn new(index_0: u64, first_rest_element: u64) -> Self"),
+        "one-or-more tail stores NonEmptyVec and takes its first element at new(): {}",
+        src(&plus)
+    );
+    let one_star =
+        run("a = [uint, 1* uint]\n").expect("`1* t` is equivalent to final-position `+ t`");
+    assert!(
+        src(&one_star).contains("pub rest: NonEmptyVec<u64>"),
+        "`1*` tail carries the same restricted representation"
+    );
+    let plus_wasm = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        "tests/open-array/input.cddl",
+        "--output",
+        "open_array_plus_wasm_unused",
+    ]))
+    .expect("one-or-more tail generates on the wasm face");
+    let wasm_src = src(&plus_wasm);
+    assert!(
+        wasm_src.contains("NonEmptyBytesList")
+            && wasm_src.contains("pub fn new(index_0: u64, first_rest_element: Vec<u8>)"),
+        "wasm constructor takes the first tail element and getter uses the restricted list wrapper: {wasm_src}"
     );
 
     // --- @name renames the captured field (read from the ENTRY-trailing slot) ---
@@ -4480,6 +4507,14 @@ fn open_array_front_end() {
     assert!(
         src(&named).contains("pub extras: Vec<u64>") && !src(&named).contains("pub rest:"),
         "@name on the tail renames `rest` -> `extras`"
+    );
+    let named_non_empty = run("a = [\n  first_extras_element: uint,\n  + uint ; @name extras\n]\n")
+        .expect("@name on a non-empty tail renames its field and constructor argument");
+    assert!(
+        src(&named_non_empty).contains("pub extras: NonEmptyVec<u64>")
+            && src(&named_non_empty).contains("first_extras_element_2: u64"),
+        "a non-empty tail's synthesized first-element argument must avoid a fixed-member collision: {}",
+        src(&named_non_empty)
     );
 
     // --- @ignore (entry-trailing slot) is HONORED: no field, a closed struct ---
@@ -4511,12 +4546,13 @@ fn open_array_front_end() {
     }
 
     // --- guards, each a graceful rejection ---
-    // non-final `*`
+    // non-final `*` / `+`
     run("a = [* uint, tstr]\n").expect_err("a non-final `*` must reject (tail must be last)");
+    run("a = [uint, + uint, tstr]\n").expect_err("a non-final `+` must reject (tail must be last)");
     // multiple count-permitting members
     run("a = [uint, * uint, * tstr]\n").expect_err("multiple `*` members must reject");
-    // `+` / `n*m` on the final entry
-    run("a = [uint, + uint]\n").expect_err("`+` is not a supported rest-tail occurrence");
+    run("a = [uint, + uint, * tstr]\n").expect_err("multiple count-permitting members must reject");
+    // bounded `n*m` on the final entry remains unsupported
     run("a = [uint, 2*3 uint]\n").expect_err("`n*m` is not a supported rest-tail occurrence");
     // a fixed-value tail element has no Rust representation (a `Vec<FixedValue>` is not a type), so it
     // is rejected before the homogeneous-array fixed-value panic class
@@ -4525,24 +4561,33 @@ fn open_array_front_end() {
         fixed.contains("fixed value") && fixed.contains("rule `a`"),
         "the fixed-value-tail rejection names the rule + cause, got: {fixed}"
     );
+    run("a = [uint, + 5]\n").expect_err("a non-empty fixed-value tail element must reject");
     run("a = [uint, * null]\n").expect_err("a `* null` tail must reject (fixed value)");
     // choice-arm placement
     run("a = [uint, * uint] // [tstr]\n")
         .expect_err("a rest tail in a group-choice arm must reject");
+    run("a = [uint, + uint] // [tstr]\n")
+        .expect_err("a non-empty rest tail in a group-choice arm must reject");
     // plain group placement (`g = (a, * t)`, embedded via `[g]`)
     run("a = [g]\ng = (uint, * uint)\n").expect_err("a rest tail inside a plain group must reject");
+    run("a = [g]\ng = (uint, + uint)\n")
+        .expect_err("a non-empty rest tail inside a plain group must reject");
 
     // --- directive combination rejections ---
     run("a = [\n  uint,\n  * uint ; @ignore @name x\n]\n")
         .expect_err("@ignore + @name on the tail must reject (no field to name)");
     run("a = [\n  uint,\n  * uint ; @ignore @duplicates preserve\n]\n")
         .expect_err("@ignore + @duplicates on the tail must reject (no keys)");
+    run("a = [\n  uint,\n  + uint ; @ignore\n]\n")
+        .expect_err("@ignore on a non-empty tail must reject (it would re-emit zero elements)");
     let dup = run("a = [\n  uint,\n  * uint ; @duplicates preserve\n]\n")
         .expect_err("@duplicates on an array tail must reject (no keys)");
     assert!(
         dup.contains("@duplicates") && dup.contains("no keys"),
         "the @duplicates-on-array rejection explains there are no keys, got: {dup}"
     );
+    run("a = [\n  uint,\n  + uint ; @duplicates preserve\n]\n")
+        .expect_err("@duplicates on a non-empty array tail must reject (no keys)");
 
     // --- profiles: CAPTURE under --preserve-encodings GENERATES (byte-exact per-element tail
     // encodings ride a positional `{field}_elem_encodings` sidecar); @ignore under preserve is a
@@ -4558,6 +4603,100 @@ fn open_array_front_end() {
     assert!(
         ign_pres.contains("@ignore") && ign_pres.contains("preserve-encodings"),
         "the @ignore-preserve rejection names the directive + profile, got: {ign_pres}"
+    );
+}
+
+/// A final `+ T` rest tail mints BOTH the restricted `NonEmpty<T>List` getter wrapper and, for a
+/// non-wasm-native element, its loose `<T>List` `try_from` builder. The generic type walk sees only
+/// the tail element, so these two direct-claim vectors pin the explicit RestRow collision leg.
+#[test]
+fn non_empty_open_array_tail_wasm_wrapper_ident_collisions_reject_gracefully() {
+    let run = |claim: &str, expected: &str| {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_ne_open_array_wrapper_collision_{}_{}.cddl",
+            claim,
+            std::process::id()
+        ));
+        let cddl = format!(
+            "{claim} = [x: uint]\n\
+             holder = [prefix: uint, + bytes]\n\
+             user = [value: {claim}]\n"
+        );
+        std::fs::write(&path, cddl).unwrap();
+        let result = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "ne_open_array_wrapper_collision_unused",
+            "--wasm=true",
+        ]));
+        std::fs::remove_file(&path).ok();
+        let err =
+            result.expect_err("an incompatible authored wrapper ident must reject gracefully");
+        let msg = err.to_string();
+        assert!(
+            msg.contains(expected)
+                && msg.contains("name collision")
+                && !msg.contains("duplicate top-level ident"),
+            "the dedicated non-empty-array collision detector must name `{expected}` before the generic backstop, got: {msg}"
+        );
+    };
+
+    run("non_empty_bytes_list", "NonEmptyBytesList");
+    run("bytes_list", "BytesList");
+}
+
+/// The first constructor element of a non-empty tail is a normal value-bounded constructor input:
+/// Rust must validate it, which makes Rust/wasm/component constructors consistently fallible, and
+/// both emitted-test faces must mint it rather than skipping the record.
+#[test]
+fn bounded_non_empty_open_array_tail_is_checked_on_every_constructor_face() {
+    const CDDL: &str = "bounded_required = [prefix: uint, + uint .le 5]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_ne_open_array_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "bounded_ne_open_array_unused",
+        "--component=true",
+        "--emit-tests=true",
+    ]))
+    .expect("a bounded final non-empty tail must generate on every constructor face");
+    std::fs::remove_file(&path).ok();
+    let rust = out["rust/src/generated/mod.rs"].as_str();
+    let wasm = out["wasm/src/generated/mod.rs"].as_str();
+    let wit = out["component/wit/world.wit"].as_str();
+    let glue = out["component/src/generated/mod.rs"].as_str();
+
+    assert!(
+        rust.contains(
+            "pub fn new(prefix: u64, first_rest_element: u64) -> Result<Self, DeserializeError>"
+        ) && rust.contains("first_rest_element"),
+        "Rust new must become fallible and name/check the first bounded tail element:\n{rust}"
+    );
+    assert!(
+        wasm.contains(
+            "pub fn new(prefix: u64, first_rest_element: u64) -> Result<BoundedRequired, JsError>"
+        ),
+        "the wasm constructor must mirror Rust fallibility for the bounded first tail element:\n{wasm}"
+    );
+    assert!(
+        wit.contains(
+            "constructor(prefix: u64, first-rest-element: u64) -> result<bounded-required, string>;"
+        ) && glue.contains("cddl_lib::BoundedRequired::new(prefix, first_rest_element)")
+            && glue.contains(".map_err(err)?;"),
+        "WIT/component glue must own the same fallible first-element door:\n{wit}\n{glue}"
+    );
+    assert!(
+        rust.contains("fn roundtrip_bounded_required()")
+            && wasm.contains("fn wasm_roundtrip_bounded_required()"),
+        "both emitted-test faces must mint the bounded non-empty record instead of silently skipping it"
     );
 }
 
@@ -5537,10 +5676,10 @@ fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
 /// (`* #6.10(w)`). Pins the message across every spelling the one seam covers — bare, ALIAS and
 /// TAGGED — on every profile, and pins the sibling guards this one must neither shadow nor
 /// double-report: the guards that run BEFORE the element type is even computed (choice-arm
-/// placement, plain-group owner, multiplicity, position, occurrence kind, member key) keep their
-/// own messages, the fixed-value guard beside it keeps its own, and the row-entry DIRECTIVE guards
-/// after it are deliberately shadowed — a directive cannot be judged on a tail that has no
-/// representable element, and one problem gets one message.
+/// placement, plain-group owner, multiplicity, position, unsupported bounded occurrence kind,
+/// member key) keep their own messages, the fixed-value guard beside it keeps its own, and the
+/// row-entry DIRECTIVE guards after it are deliberately shadowed — a directive cannot be judged on
+/// a tail that has no representable element, and one problem gets one message.
 #[test]
 fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
     fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
@@ -5614,6 +5753,10 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
             format!("{GROUP}t = [ c: uint, d: tstr, * kv ]\n"),
             "longer_prefix",
         ),
+        // `+` / `1*` are now supported tail occurrences, so they reach the same element-shape
+        // refusal rather than the bounded-occurrence guard.
+        (format!("{GROUP}t = [ c: uint, + kv ]\n"), "plus"),
+        (format!("{GROUP}t = [ c: uint, 1* kv ]\n"), "one_star"),
     ] {
         let msg =
             run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
@@ -5724,14 +5867,9 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
             "must be the LAST member of the array",
         ),
         (
-            format!("{GROUP}t = [ c: uint, + kv ]\n"),
-            "plus_occurrence",
-            "must use the `*` occurrence",
-        ),
-        (
             format!("{GROUP}t = [ c: uint, 2*3 kv ]\n"),
             "bounded_occurrence",
-            "must use the `*` occurrence",
+            "Other `n*m` bounds are not supported",
         ),
         (
             format!("{GROUP}t = [ c: uint, * k: kv ]\n"),

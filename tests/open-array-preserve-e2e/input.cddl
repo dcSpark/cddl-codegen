@@ -5,6 +5,7 @@
 ; (`@ignore` is rejected under --preserve-encodings). See tests/open-array-preserve-e2e/tests.rs.
 cap = [uint, tstr, * uint]          ; typed tail — per-element encoding sidecar (`rest_elem_encodings`)
 cap_any = [uint, * any]             ; any tail — self-carried encodings (no sidecar)
+required = [uint, + uint]           ; one-or-more tail — per-element encoding sidecar
 ; Stream position (the cip36 skip-arm bug class): an open array is a member of an outer array; the
 ; tail loop must stop at the open array's end and leave the sibling for the outer decoder.
 outer = [inner, uint]

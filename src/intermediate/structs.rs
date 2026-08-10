@@ -994,10 +994,10 @@ pub enum RestKind {
 
 /// The trailing open ("rest") part of an open struct-map (`* K => V`) or an open array (`* T` tail).
 /// Under the CAPTURE flavor the content lands in a `pub` field (`rest` by default, `@name`-overridable)
-/// — a map container (`BTreeMap`/`OrderedHashMap`) for a map rest, a `Vec<T>` for an array tail; under
-/// the IGNORE flavor nothing is stored. Not a `RustField`: it is excluded from `new()` (defaults empty,
-/// so adding a rest row/tail to a spec is source-compatible) and carries the open semantics explicitly
-/// for the emitters.
+/// — a map container (`BTreeMap`/`OrderedHashMap`) for a map rest, a `Vec<T>` for a loose array tail,
+/// or a `NonEmptyVec<T>` for a one-or-more array tail; under the IGNORE flavor nothing is stored. Not a
+/// `RustField`: a loose rest row/tail is excluded from `new()` (defaults empty), while a non-empty tail
+/// takes its first element at that construction door so the public value is valid by construction.
 #[derive(Clone, Debug)]
 pub struct RestRow {
     /// The rep-specific inner shape (map `* K => V` vs array `* T`).
@@ -1019,13 +1019,14 @@ pub struct RestRow {
     /// row and array tail: those see the COMPLEMENT of the typed row's major (or, with no typed row,
     /// everything), which is not a single major and is expressed by the loop's arm layout instead.
     pub dispatch_major: Option<CBORType>,
-    /// The row carries a MIN-1 occurrence (`+` / `1*`) rather than the unbounded `*`. `true` only on
-    /// an open table's TYPED row (`t = { + K_t => V_t, * K_r => V_r }`, the NonEmpty twin), where the
-    /// minimum counts TYPED entries only — a map of purely captured entries is not a non-empty table.
-    /// The bound is enforced at exactly two doors, mirroring `NonEmptyMap`'s single-door posture: the
-    /// CBOR deserialize's post-loop `is_empty()` check and the JSON visitor's, both raising the same
-    /// `RangeCheck { found: 0, min: Some(1), max: None }`; and the value is unbreakable-by-construction
-    /// from `new(first_key, first_value)`, the `NonEmptyMap::new` door verbatim.
+    /// The row carries a MIN-1 occurrence (`+` / `1*`) rather than the unbounded `*`. On an open
+    /// table's TYPED row (`t = { + K_t => V_t, * K_r => V_r }`) the minimum counts TYPED entries
+    /// only; on an array rest tail (`[a, + t]`) it counts every captured trailing element.
+    /// The bound is enforced by the representation's one checked conversion door. An array tail
+    /// stages CBOR/JSON input in `Vec<T>` and enters `NonEmptyVec::try_from`; an open table's typed
+    /// row runs its post-loop/JSON check and enters `NonEmptyMap`. Each raises the same
+    /// `RangeCheck { found: 0, min: Some(1), max: None }`, while construction takes its first
+    /// required element so a public value is valid by construction.
     pub non_empty: bool,
 }
 
@@ -1157,6 +1158,13 @@ impl RestRow {
         matches!(self.kind, RestKind::ArrayTail { .. })
     }
 
+    /// Whether this is the one-or-more (`+` / `1*`) array-tail flavor. The container returned by
+    /// `container_type` carries the same bound, so every type walk sees `NonEmptyVec<T>` rather than
+    /// a detached boolean beside a loose `Vec<T>`.
+    pub fn is_non_empty_array_tail(&self) -> bool {
+        self.is_array_tail() && self.non_empty
+    }
+
     /// The rest row's CONTAINER type — the composite the emitted code actually names: `Array(T)` for
     /// an array `* T` tail, `Map(K, V)` carrying the row's `@duplicates` policy for a map `* K => V`
     /// row (so `for_rust_member` routes a `preserve` row to the `PairMap<K, V>` twin and
@@ -1208,7 +1216,12 @@ impl RestRow {
     pub fn container_type(&self) -> RustType {
         match &self.kind {
             RestKind::ArrayTail { element } => {
-                ConceptualRustType::Array(Box::new(element.clone())).into()
+                let ty: RustType = ConceptualRustType::Array(Box::new(element.clone())).into();
+                if self.non_empty {
+                    ty.with_bounds((Some(1), None))
+                } else {
+                    ty
+                }
             }
             RestKind::MapEntries {
                 domain,

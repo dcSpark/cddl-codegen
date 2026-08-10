@@ -372,7 +372,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `grpchoice.sequence` |  |  |  |  |  |  | ✅ |  |  |  |
 | `grpent.groupname` |  | ✅ |  |  |  |  | ✅ | ◐ |  |  |
 | `grpent.inline_group` | · | ✅ |  |  |  |  | ➖ | ◐ |  |  |
-| `grpent.member` |  |  |  |  |  |  | ✅ | ◐ |  |  |
+| `grpent.member` |  |  |  |  |  |  | ✅ | ✅ |  |  |
 | `memberkey.bareword` |  |  |  | · |  |  | ✅ | ➖ |  |  |
 | `memberkey.type1` |  |  |  | ◐ |  |  | ➖ | ◐ |  |  |
 | `memberkey.value` |  |  |  | ◐ |  |  | ◐ |  |  |  |

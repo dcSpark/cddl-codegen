@@ -31,4 +31,6 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Inner>();
     _assert_serialize::<crate::generated::Outer>();
     _assert_deserialize::<crate::generated::Outer>();
+    _assert_serialize::<crate::generated::Required>();
+    _assert_deserialize::<crate::generated::Required>();
 }

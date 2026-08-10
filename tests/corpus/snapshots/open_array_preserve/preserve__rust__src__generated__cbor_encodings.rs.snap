@@ -35,3 +35,10 @@ pub struct OuterEncoding {
     pub len_encoding: LenEncoding,
     pub index_1_encoding: Option<cbor_event::Sz>,
 }
+
+#[derive(Clone, Debug, Default)]
+pub struct RequiredEncoding {
+    pub len_encoding: LenEncoding,
+    pub index_0_encoding: Option<cbor_event::Sz>,
+    pub rest_elem_encodings: Vec<Option<cbor_event::Sz>>,
+}

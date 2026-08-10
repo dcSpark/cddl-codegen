@@ -72,7 +72,7 @@
 use crate::cli::Cli;
 use crate::emit_tests::{
     self, MintValue, arg_can_fail, bound_cases, map_key_expr, map_key_literal, measure_kind,
-    mint_struct, record_ctor_can_fail, valid_value, variant_arg_fields,
+    mint_struct, record_ctor_arg_types, record_ctor_can_fail, valid_value, variant_arg_fields,
 };
 use crate::generation::rust_crate_struct_from_wasm;
 use crate::intermediate::{
@@ -402,13 +402,16 @@ fn wasm_named(
             let MintValue::Record { args, .. } = mv else {
                 return None;
             };
-            let ctor_fields = record_ctor_fields(record);
-            if ctor_fields.len() != args.len() {
+            let ctor_arg_types = record_ctor_arg_types(record);
+            if ctor_arg_types.len() != args.len() {
+                crate::warn!(
+                    "cddl-codegen --emit-tests: no wasm build for {name} (minted constructor arguments drift from the record API)"
+                );
                 return None;
             }
             let mut wasm_args = Vec::new();
-            for (f, amv) in ctor_fields.iter().zip(args) {
-                wasm_args.push(wasm_arg(types, amv, &f.rust_type, scoped, cli)?);
+            for (ty, amv) in ctor_arg_types.iter().zip(args) {
+                wasm_args.push(wasm_arg(types, amv, ty, scoped, cli)?);
             }
             let call = format!("{name}::new({})", wasm_args.join(", "));
             Some(finish_fallible(call, record_ctor_can_fail(record), &name))
@@ -941,11 +944,12 @@ fn wasm_record_bounds(
     cli: &Cli,
 ) -> Option<String> {
     let ctor_fields = record_ctor_fields(record);
-    // baseline args for every ctor field (all must be wasm-mintable)
+    let ctor_arg_types = record_ctor_arg_types(record);
+    // baseline args for every constructor argument, including valid-by-construction dynamic rows.
     let mut baseline: Vec<String> = Vec::new();
-    for f in &ctor_fields {
-        let m = valid_value(types, &f.rust_type)?;
-        baseline.push(wasm_arg(types, &m, &f.rust_type, scoped, cli)?);
+    for ty in &ctor_arg_types {
+        let m = valid_value(types, ty)?;
+        baseline.push(wasm_arg(types, &m, ty, scoped, cli)?);
     }
     let mut lines = Vec::new();
     for (i, f) in ctor_fields.iter().enumerate() {

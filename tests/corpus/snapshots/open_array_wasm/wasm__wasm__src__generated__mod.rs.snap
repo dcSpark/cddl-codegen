@@ -12,6 +12,7 @@ expression: content
 )]
 pub mod collections;
 
+use cddl_lib::non_empty::NonEmptyVec;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 /// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.
@@ -363,6 +364,57 @@ impl AsRef<cddl_lib::Named> for Named {
     }
 }
 
+/// `[+ Vec<u8>]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyBytesList(pub(crate) NonEmptyVec<Vec<u8>>);
+
+#[wasm_bindgen]
+impl NonEmptyBytesList {
+    pub fn new(first: Vec<u8>) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u8> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u8>) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(list: &BytesList) -> Result<NonEmptyBytesList, JsError> {
+        let inner: Vec<Vec<u8>> = list.clone().into();
+        NonEmptyVec::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<Vec<u8>>> for NonEmptyBytesList {
+    fn from(native: NonEmptyVec<Vec<u8>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyBytesList> for NonEmptyVec<Vec<u8>> {
+    fn from(wasm: NonEmptyBytesList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<Vec<u8>>> for NonEmptyBytesList {
+    fn as_ref(&self) -> &NonEmptyVec<Vec<u8>> {
+        &self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct OptFixedMember(pub(crate) cddl_lib::OptFixedMember);
@@ -415,6 +467,55 @@ impl From<OptFixedMember> for cddl_lib::OptFixedMember {
 
 impl AsRef<cddl_lib::OptFixedMember> for OptFixedMember {
     fn as_ref(&self) -> &cddl_lib::OptFixedMember {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Required(pub(crate) cddl_lib::Required);
+
+#[wasm_bindgen]
+impl Required {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Required, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    /// The captured one-or-more trailing array elements beyond the declared members (CDDL `+ t` / `1* t` rest tail), as the restricted wasm list wrapper.
+    pub fn rest(&self) -> NonEmptyBytesList {
+        self.0.rest.clone().into()
+    }
+
+    /// * `first_rest_element` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)
+    pub fn new(index_0: u64, first_rest_element: Vec<u8>) -> Self {
+        Self(cddl_lib::Required::new(index_0, first_rest_element))
+    }
+}
+
+impl From<cddl_lib::Required> for Required {
+    fn from(native: cddl_lib::Required) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Required> for cddl_lib::Required {
+    fn from(wasm: Required) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Required> for Required {
+    fn as_ref(&self) -> &cddl_lib::Required {
         &self.0
     }
 }

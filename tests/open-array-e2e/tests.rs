@@ -22,6 +22,17 @@ mod open_array {
             .collect()
     }
 
+    fn assert_decode_reject_reason<T: Deserialize>(bytes: &[u8], reason: &str) {
+        let err = match T::from_cbor_bytes(bytes) {
+            Ok(_) => panic!("vector must reject"),
+            Err(err) => err,
+        };
+        assert!(
+            err.to_string().contains(reason),
+            "expected reason `{reason}`, got `{err}`"
+        );
+    }
+
     // --- CAPTURE, typed tail (`cap = [uint, tstr, * uint]`) ---
 
     #[test]
@@ -66,6 +77,40 @@ mod open_array {
         // [7, "hi", "x"] — a text trailing element is not a uint, so the typed tail rejects it.
         let wire = bytes("83 07 62 6869 6178");
         assert!(Cap::from_cbor_bytes(&wire).is_err());
+    }
+
+    // --- one-or-more typed tail (`required = [uint, + byte_alias]`) ---
+
+    #[test]
+    fn required_tail_is_valid_by_construction_and_round_trips() {
+        let r = Required::new(7, vec![0xaa]);
+        assert_eq!(r.rest.as_slice(), &[vec![0xaa]]);
+        assert_eq!(r.to_cbor_bytes(), bytes("82 07 41aa"));
+        let multiple = bytes("83 07 41aa 41bb");
+        let decoded = Required::from_cbor_bytes(&multiple).unwrap();
+        assert_eq!(decoded.rest.as_slice(), &[vec![0xaa], vec![0xbb]]);
+        assert_eq!(decoded.to_cbor_bytes(), multiple);
+    }
+
+    #[test]
+    fn required_tail_empty_definite_and_indefinite_share_the_non_empty_door() {
+        assert_decode_reject_reason::<Required>(&bytes("81 07"), "0 not at least 1");
+        assert_decode_reject_reason::<Required>(&bytes("9f 07 ff"), "0 not at least 1");
+    }
+
+    #[test]
+    fn named_required_tail_renames_the_field_and_constructor_argument() {
+        let r = NamedRequired::new(7, vec![0xaa]);
+        assert_eq!(r.extras.as_slice(), &[vec![0xaa]]);
+        assert_eq!(r.to_cbor_bytes(), bytes("82 07 41aa"));
+    }
+
+    #[test]
+    fn bounded_required_tail_checks_its_first_constructor_element() {
+        let valid = BoundedRequired::new(7, 5).expect("the inclusive upper bound is valid");
+        assert_eq!(valid.rest.as_slice(), &[5]);
+        let err = BoundedRequired::new(7, 6).expect_err("the first tail element exceeds .le 5");
+        assert!(err.to_string().contains("6 not at most 5"));
     }
 
     // --- CAPTURE, `any` tail with a nested-container element (`cap_any = [uint, * any]`) ---
@@ -172,6 +217,18 @@ mod open_array {
         assert_eq!(o.inner.rest, vec![2u64, 3u64]);
         assert_eq!(o.index_1, 99);
         assert_eq!(o.to_cbor_bytes(), wire);
+    }
+
+    #[test]
+    fn required_tail_stream_position_leaves_the_outer_sibling_after_definite_and_indefinite_inner() {
+        // [[1, 2, 3], 99] — `inner_required` owns 2 and 3 as its non-empty tail; 99 remains for
+        // the enclosing record after BOTH the definite and indefinite inner-array boundaries.
+        for wire in [bytes("82 83 01 02 03 1863"), bytes("82 9f 01 02 03 ff 1863")] {
+            let outer = OuterRequired::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(outer.inner_required.index_0, 1);
+            assert_eq!(outer.inner_required.rest.as_slice(), &[2, 3]);
+            assert_eq!(outer.index_1, 99);
+        }
     }
 
     #[test]

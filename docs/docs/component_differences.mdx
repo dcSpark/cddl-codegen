@@ -125,14 +125,16 @@ therefore keeps the nullable two-state surface.
 
 A rule that captures entries it did not declare — an
 [open struct-map](output_format#open-struct-maps-rest-rows) (`{ 1: uint, * k => v }`), an
-[open array](output_format#open-arrays-rest-tails) (`[uint, * t]`), or an **open table**
+[open array](output_format#open-arrays-rest-tails) (`[uint, * t]` or `[uint, + t]`), or an **open table**
 (`t = { * k1 => v1, * k2 => v2 }`) — projects each captured row as one **read-only getter** on the
 resource, named after the row (`rest` by default, or whatever
 [`@name`](comment_dsl#name) gives it). A map row is `list<tuple<k, v>>`, an array tail is `list<t>`,
 which is the collection spelling above with nothing new added.
 
-Each such getter is read-only in the strong sense: the row is **not** a constructor parameter and has
-**no setter**, so on this face a captured region can be read but not written. That is the same
+Each such getter is read-only in the strong sense and has **no setter**, so on this face a captured
+region can be read but not written. A loose rest row/tail is **not** a constructor parameter; a
+non-empty array tail (`+ t` / `1* t`) contributes its first element to the constructor so the
+resource starts valid, while the getter remains list-shaped. That is the same
 posture the wasm face takes on the field itself, minus the mutable wrapper the wasm face hands back —
 here the whole-map snapshot rule applies, so what you get is a copy. An
 [`@ignore`](comment_dsl#ignore) row stores nothing and therefore projects **no** getter at all.

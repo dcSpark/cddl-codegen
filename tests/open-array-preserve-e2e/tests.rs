@@ -72,6 +72,19 @@ mod open_array_preserve {
         assert_eq!(c.to_cbor_bytes(), wire, "indefinite owner + tail byte-exact");
     }
 
+    #[test]
+    fn required_tail_preserves_indefinite_and_normalizes_positionally() {
+        let wire = bytes("9f 07 1802 1903e8 ff");
+        let r = Required::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(r.rest.as_slice(), &[2u64, 1000]);
+        assert_eq!(r.to_cbor_bytes(), wire, "one-or-more tail keeps owner form and widths");
+        assert_eq!(
+            r.to_canonical_cbor_bytes(),
+            bytes("83 07 02 1903e8"),
+            "canonical normalizes each non-empty tail element in order"
+        );
+    }
+
     // --- `any` tail (`cap_any = [uint, * any]`): self-carried encodings (no sidecar) ---
 
     #[test]

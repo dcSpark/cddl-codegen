@@ -16,13 +16,15 @@ use alloc::string::String;
 use alloc::vec::Vec;
 pub mod any_cbor;
 pub mod error;
+pub mod non_empty;
 pub mod ordered_hash_map;
 extern crate derivative;
 pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
-use cbor_encodings::{CapAnyEncoding, CapEncoding, InnerEncoding, OuterEncoding};
+use crate::generated::non_empty::NonEmptyVec;
+use cbor_encodings::{CapAnyEncoding, CapEncoding, InnerEncoding, OuterEncoding, RequiredEncoding};
 
 #[derive(Clone, Debug)]
 pub struct Cap {
@@ -92,6 +94,25 @@ impl Outer {
         Self {
             inner,
             index_1,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Required {
+    pub index_0: u64,
+    /// Captured one-or-more trailing array elements beyond the declared members (CDDL `+ t` / `1* t` rest tail). Serialized after the declared members; never empty.
+    pub rest: NonEmptyVec<u64>,
+    pub encodings: Option<RequiredEncoding>,
+}
+
+impl Required {
+    /// * `first_rest_element` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)
+    pub fn new(index_0: u64, first_rest_element: u64) -> Self {
+        Self {
+            index_0,
+            rest: NonEmptyVec::new(first_rest_element),
             encodings: None,
         }
     }

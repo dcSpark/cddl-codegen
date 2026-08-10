@@ -335,3 +335,87 @@ impl Deserialize for Outer {
         .map_err(|e| e.annotate("Outer"))
     }
 }
+
+impl cbor_event::se::Serialize for Required {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1 + self.rest.len() as u64),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.index_0,
+            fit_sz(
+                self.index_0,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.index_0_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        for (i, element) in self.rest.iter().enumerate() {
+            let rest_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.rest_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*element, fit_sz(*element, rest_elem_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for Required {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            let (index_0, index_0_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let mut rest = Vec::new();
+            let mut rest_elem_encodings = Vec::new();
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read_len.read() < n,
+                cbor_event::LenSz::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let (rest_elem, rest_elem_encoding) =
+                    raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                rest.push(rest_elem);
+                rest_elem_encodings.push(rest_elem_encoding);
+            }
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Required {
+                index_0,
+                rest: NonEmptyVec::try_from(rest)?,
+                encodings: Some(RequiredEncoding {
+                    rest_elem_encodings,
+                    len_encoding,
+                    index_0_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("Required"))
+    }
+}

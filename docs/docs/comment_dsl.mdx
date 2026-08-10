@@ -569,8 +569,10 @@ rest row's — the two slots are disjoint, so neither steals from the other.
 The same entry-trailing slot serves an **open-array rest tail** (`[uint, tstr, * bytes]` — see
 [Open arrays](output_format#open-arrays-rest-tails)), with one asymmetry:
 
-- **`@name`** renames the captured tail `Vec` field (default `rest`) exactly as it renames the map
-  capture field — `* bytes ; @name extras` yields `pub extras: Vec<Vec<u8>>`.
+- **`@name`** renames the captured tail field (default `rest`) exactly as it renames the map
+  capture field — `* bytes ; @name extras` yields `pub extras: Vec<Vec<u8>>`; the non-empty
+  spelling `+ bytes ; @name extras` yields `pub extras: NonEmptyVec<Vec<u8>>` and its generated
+  constructor's `first_extras_element` argument.
 - **`@duplicates`** does **not** apply to a rest tail and is rejected gracefully: an array tail is
   positional (`Vec` in every mode), so there are no keys for a duplicate policy to govern.
 

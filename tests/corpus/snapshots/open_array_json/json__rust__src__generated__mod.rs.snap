@@ -19,8 +19,11 @@ pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
 pub mod json_value_ser;
+pub mod non_empty;
 pub mod open_struct_rest_json;
 pub mod serialization;
+
+use crate::generated::non_empty::NonEmptyVec;
 
 /// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -101,6 +104,23 @@ impl OptFixedMember {
             index_0,
             index_1: false,
             rest: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Required {
+    pub index_0: u64,
+    /// Captured one-or-more trailing array elements beyond the declared members (CDDL `+ t` / `1* t` rest tail). Serialized after the declared members; never empty.
+    pub rest: NonEmptyVec<Vec<u8>>,
+}
+
+impl Required {
+    /// * `first_rest_element` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)
+    pub fn new(index_0: u64, first_rest_element: Vec<u8>) -> Self {
+        Self {
+            index_0,
+            rest: NonEmptyVec::new(first_rest_element),
         }
     }
 }

@@ -1755,6 +1755,31 @@ fn count_disambiguated_array_record_carries_from_cbor_bytes() {
     );
 }
 
+/// A non-empty final array tail is a resource constructor input, not an empty-capable list
+/// default. The WIT list getter remains list-shaped; the generated Rust representation owns the
+/// restriction and the guest glue must pass the first element through the same `new` door.
+#[test]
+fn component_projects_a_non_empty_array_tail_through_its_constructor() {
+    const SPEC: &str = "byte_alias = bytes\nrecord = [prefix: uint, + byte_alias]\n";
+    let files = wit_files_for_spec(SPEC, &[]);
+    let wit = files.values().cloned().collect::<Vec<_>>().join("\n");
+    let encoded =
+        resolve_and_encode(&files).expect("the non-empty tail WIT must resolve and encode");
+    validate_component(&encoded).expect("the non-empty tail component must validate");
+    let glue = component_glue_for_spec(SPEC, &[]);
+
+    assert!(
+        wit.contains("constructor(prefix: u64, first-rest-element: list<u8>);")
+            && wit.contains("rest: func() -> list<list<u8>>;"),
+        "the non-empty tail must project its first element into the constructor and retain its list getter:\n{wit}"
+    );
+    assert!(
+        glue.contains("let inner = cddl_lib::Record::new(prefix, first_rest_element);")
+            && glue.contains("me.rest\n            .iter()"),
+        "the component glue lost the Rust construction door or list getter bridge:\n{glue}"
+    );
+}
+
 /// A complete record-level custom pair owns decoding without consulting the generated record-field
 /// decoder. Even when the declared array members are structurally ambiguous, its seeded verdict
 /// stays deserializable, so the WIT and guest glue retain the same from-CBOR seam as Rust/wasm.
@@ -2135,6 +2160,10 @@ const BUILD_SMOKE_FIXTURES: &[BuildSmokeRow] = &[
     // runtime's vec-of-pairs `TryFrom` door, and the value-bounded field (`limit`) makes the rust
     // `Record::new` itself fallible, so the glue must unwrap it rather than wrap it.
     ("tests/component-core/input.cddl", &[], None, None),
+    // A final `+ bytes` rest tail: unlike a loose rest tail this record constructor takes its first
+    // element and the wasm/component getter projects `NonEmptyBytesList`. This compilation reaches
+    // the guest conversion that WIT validity alone cannot type-check.
+    ("tests/open-array-e2e/input.cddl", &[], None, None),
     // CHOICES: the largest new glue surface phase 2 adds, and the one no WIT gate can judge. A
     // `kind` / `as-<variant>` arm that does not match the rust enum's ARM SHAPE, or a `new-<variant>`
     // that wraps a `Result` the rust ctor already returns, is a type error in generated code that

@@ -12,6 +12,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.add::<cddl_lib::Ignored>();
     reg.add::<cddl_lib::Named>();
     reg.add::<cddl_lib::OptFixedMember>();
+    reg.add::<cddl_lib::Required>();
     reg.add::<cddl_lib::SingleFixed>();
     reg.add::<cddl_lib::Typed>();
     reg.add::<cddl_lib::any_cbor::AnyCbor>();
