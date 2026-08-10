@@ -51,15 +51,11 @@
     },
     {
       "gate": "clippy",
-      "warm_ms": 3000,
+      "warm_ms": 229,
       "n": 20,
-      "measured": "2026-08-09",
+      "measured": "2026-08-10",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-07",
-          "warm_ms": 206
-        },
         {
           "date": "2026-08-09",
           "warm_ms": 6000
@@ -75,6 +71,10 @@
         {
           "date": "2026-08-09",
           "warm_ms": 3000
+        },
+        {
+          "date": "2026-08-10",
+          "warm_ms": 229
         }
       ]
     },
@@ -200,15 +200,11 @@
     },
     {
       "gate": "corpus_decode_replay",
-      "warm_ms": 1354000,
-      "n": 20,
-      "measured": "2026-08-06",
+      "warm_ms": 1625000,
+      "n": 14,
+      "measured": "2026-08-10",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-26",
-          "warm_ms": 636000
-        },
         {
           "date": "2026-07-28",
           "warm_ms": 770000
@@ -224,6 +220,10 @@
         {
           "date": "2026-08-06",
           "warm_ms": 1354000
+        },
+        {
+          "date": "2026-08-10",
+          "warm_ms": 1625000
         }
       ]
     },
@@ -785,9 +785,9 @@
     },
     {
       "gate": "recombination_json_crates_execute",
-      "warm_ms": 102000,
-      "n": 20,
-      "measured": "2026-07-29",
+      "warm_ms": 142000,
+      "n": 10,
+      "measured": "2026-08-10",
       "machine": "86216c55",
       "history": [
         {
@@ -797,6 +797,10 @@
         {
           "date": "2026-07-29",
           "warm_ms": 102000
+        },
+        {
+          "date": "2026-08-10",
+          "warm_ms": 142000
         }
       ]
     },
