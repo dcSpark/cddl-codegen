@@ -267,6 +267,7 @@ impl GenerationScope {
                             bounds,
                             false,
                             rt.is_preserve_pair_map(),
+                            true,
                             cli,
                         );
                     } else if rt.is_non_empty_map() {

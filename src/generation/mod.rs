@@ -941,6 +941,7 @@ impl GenerationScope {
                                 !types.is_synthesized_collection(rust_ident),
                                 rust_struct.config().duplicates
                                     == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                                true,
                                 cli,
                             );
                         } else if cli.wasm && !anon {

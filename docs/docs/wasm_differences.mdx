@@ -66,8 +66,15 @@ collection: keys of type `[* uint]`, `[+ uint]`, and `[2*5 uint]` all return `Ar
 `insert`/`get` doors still take the appropriate loose, non-empty, or bounded key wrapper; the
 returned keys list projects cloned restricted keys to their loose boundary values. A bounded table's
 loose `MapKeyToValue` construction door follows the same rule and re-checks each key when converting
-to the named restricted table. This preserves both the existing JS names and the authored key
-constraints without assigning one class name to several incompatible native representations.
+to the named restricted table. A named bounded table establishes the loose direct-array source for
+its structural `MapKeyToValue` shape across the finalized IR, so a nested use cannot make that source
+depend on traversal order. An anonymous bounded table with no such named owner instead retains its
+native carrier when it is another table's key. In either case, an outer table key remains the native
+restricted wrapper — including nested map/list/set/pair-map carriers such as `BoundedVec` — rather
+than recursively loosening the whole value. An ordinary loose map of the same structural name as a
+named bounded-table source is rejected: one wasm class cannot simultaneously be the loose conversion
+source and the native infallible parent-boundary carrier. This preserves existing JS names and
+authored key constraints without assigning one class name to incompatible native representations.
 
 A structural class is not *always* minted here, though: when its element/key/value is a type this
 crate declares `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` and a sibling wasm
