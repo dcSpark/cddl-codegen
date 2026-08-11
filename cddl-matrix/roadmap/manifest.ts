@@ -1,0 +1,193 @@
+import type { RoadmapIssue } from "./errors.ts";
+import type {
+  Fragment,
+  GeneratedSlot,
+  LegacyMarker,
+  ManifestEntry,
+  Part,
+  RecordNode,
+  RoadmapDocument,
+  Section,
+} from "./model/documents.ts";
+
+export type RenderNode =
+  | { kind: "section"; id: string; value: Section }
+  | { kind: "fragment"; id: string; value: Fragment }
+  | { kind: "legacy_marker"; id: string; value: LegacyMarker }
+  | { kind: "record"; id: string; value: RecordNode }
+  | { kind: "part"; id: string; value: Part }
+  | { kind: "generated_slot"; id: string; value: GeneratedSlot };
+
+export interface RenderOp {
+  readonly manifest_index: number;
+  readonly entry: ManifestEntry;
+  readonly node: RenderNode;
+}
+
+export interface ManifestResolution {
+  readonly ops: readonly RenderOp[];
+  readonly issues: readonly RoadmapIssue[];
+}
+
+const codePointSort = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+function issue(
+  document: RoadmapDocument,
+  code: Extract<RoadmapIssue["code"], `E-MANIFEST-${string}`>,
+  logical_path: string,
+  message: string,
+): RoadmapIssue {
+  return {
+    code,
+    source: document.document.source_path,
+    logical_path,
+    message,
+    exit: 1,
+  };
+}
+
+function entryTarget(entry: ManifestEntry): { kind: ManifestEntry["kind"]; id: string } {
+  switch (entry.kind) {
+    case "section": return { kind: entry.kind, id: entry.section_id };
+    case "fragment": return { kind: entry.kind, id: entry.fragment_id };
+    case "legacy_marker": return { kind: entry.kind, id: entry.marker_id };
+    case "record": return { kind: entry.kind, id: entry.record_id };
+    case "part": return { kind: entry.kind, id: entry.part_id };
+    case "generated_slot": return { kind: entry.kind, id: entry.slot_id };
+  }
+}
+
+function declaredNodes(document: RoadmapDocument): RenderNode[] {
+  return [
+    ...document.sections.map((value) => ({ kind: "section" as const, id: value.section_id, value })),
+    ...document.fragments.map((value) => ({ kind: "fragment" as const, id: value.fragment_id, value })),
+    ...document.legacy_markers.map((value) => ({
+      kind: "legacy_marker" as const,
+      id: value.marker_id,
+      value,
+    })),
+    ...document.records.map((value) => ({ kind: "record" as const, id: value.id, value })),
+    ...document.parts.map((value) => ({ kind: "part" as const, id: value.part_id, value })),
+    ...document.generated_slots.map((value) => ({
+      kind: "generated_slot" as const,
+      id: value.slot_id,
+      value,
+    })),
+  ];
+}
+
+function nodeKey(kind: ManifestEntry["kind"], id: string): string {
+  return JSON.stringify([kind, id]);
+}
+
+/** Resolve the authored linear manifest without rendering or reordering any node. */
+export function resolveManifest(document: RoadmapDocument): ManifestResolution {
+  const issues: RoadmapIssue[] = [];
+  const declared = declaredNodes(document);
+  const byKey = new Map<string, RenderNode>();
+  const kindsById = new Map<string, Set<ManifestEntry["kind"]>>();
+
+  for (const node of declared) {
+    const key = nodeKey(node.kind, node.id);
+    if (byKey.has(key)) {
+      issues.push(issue(
+        document,
+        "E-MANIFEST-DUPLICATE",
+        `${node.kind}[${JSON.stringify(node.id)}]`,
+        `render node ${node.kind} ${JSON.stringify(node.id)} is declared more than once`,
+      ));
+      continue;
+    }
+    byKey.set(key, node);
+    const kinds = kindsById.get(node.id) ?? new Set<ManifestEntry["kind"]>();
+    kinds.add(node.kind);
+    kindsById.set(node.id, kinds);
+  }
+
+  const sectionIds = new Set(document.sections.map((section) => String(section.section_id)));
+  const recordIds = new Set(document.records.map((record) => String(record.id)));
+  for (const fragment of document.fragments) {
+    if (!sectionIds.has(fragment.projection_group)) {
+      issues.push(issue(
+        document,
+        "E-MANIFEST-ORPHAN",
+        `fragment[${JSON.stringify(fragment.fragment_id)}].projection_group`,
+        `fragment refers to missing section ${JSON.stringify(fragment.projection_group)}`,
+      ));
+    }
+  }
+  for (const record of document.records) {
+    if (!sectionIds.has(record.projection_group)) {
+      issues.push(issue(
+        document,
+        "E-MANIFEST-ORPHAN",
+        `record[${JSON.stringify(record.id)}].projection_group`,
+        `record refers to missing section ${JSON.stringify(record.projection_group)}`,
+      ));
+    }
+  }
+  for (const part of document.parts) {
+    if (!recordIds.has(part.parent_record_id)) {
+      issues.push(issue(
+        document,
+        "E-MANIFEST-ORPHAN",
+        `part[${JSON.stringify(part.part_id)}].parent_record_id`,
+        `part refers to missing record ${JSON.stringify(part.parent_record_id)}`,
+      ));
+    }
+  }
+
+  const placed = new Set<string>();
+  const ops: RenderOp[] = [];
+  for (const [manifest_index, entry] of document.manifest.entries()) {
+    const target = entryTarget(entry);
+    const key = nodeKey(target.kind, target.id);
+    const logicalPath = `manifest[${manifest_index}]`;
+    if (placed.has(key)) {
+      issues.push(issue(
+        document,
+        "E-MANIFEST-DUPLICATE",
+        logicalPath,
+        `${target.kind} ${JSON.stringify(target.id)} is placed more than once`,
+      ));
+      continue;
+    }
+    const node = byKey.get(key);
+    if (node === undefined) {
+      const otherKinds = [...(kindsById.get(target.id) ?? [])].sort(codePointSort);
+      if (otherKinds.length > 0) {
+        issues.push(issue(
+          document,
+          "E-MANIFEST-KIND",
+          logicalPath,
+          `${JSON.stringify(target.id)} is declared as ${otherKinds.join(", ")}, not ${target.kind}`,
+        ));
+      } else {
+        issues.push(issue(
+          document,
+          "E-MANIFEST-UNKNOWN",
+          logicalPath,
+          `${target.kind} ${JSON.stringify(target.id)} is not declared`,
+        ));
+      }
+      continue;
+    }
+    placed.add(key);
+    ops.push({ manifest_index, entry, node });
+  }
+
+  for (const node of declared) {
+    const key = nodeKey(node.kind, node.id);
+    if (!placed.has(key)) {
+      issues.push(issue(
+        document,
+        "E-MANIFEST-MISSING",
+        `${node.kind}[${JSON.stringify(node.id)}]`,
+        `declared ${node.kind} ${JSON.stringify(node.id)} has no manifest placement`,
+      ));
+    }
+  }
+
+  return { ops: Object.freeze(ops), issues: Object.freeze(issues) };
+}
