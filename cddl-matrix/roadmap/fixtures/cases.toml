@@ -1,0 +1,152 @@
+[[case]]
+kind = "single_file"
+id = "fixture_codec_leading_eof"
+class = "codec"
+input = "codec/hazards-leading-and-eof.md"
+expected = "codec/hazards-leading-and-eof.toml.expected"
+adapter = "codec"
+projection_eof = "lf"
+
+[[case]]
+kind = "single_file"
+id = "fixture_codec_no_eof"
+class = "codec"
+input = "codec/hazards-no-eof.md"
+expected = "codec/hazards-no-eof.toml.expected"
+adapter = "codec"
+projection_eof = "none"
+
+[[case]]
+kind = "single_file"
+id = "fixture_codec_controls"
+class = "codec"
+input = "codec/control-scalars.bytes"
+expected = "codec/control-scalars.toml.expected"
+adapter = "codec"
+projection_eof = "none"
+
+[[case]]
+kind = "single_file"
+id = "fixture_minimal_matrix_v0"
+class = "positive"
+input = "positive/minimal-matrix-v0.toml"
+expected = "positive/minimal-matrix-v0.expected.md"
+adapter = "matrix"
+schema_version = 0
+projection_eof = "lf"
+
+[[case]]
+kind = "single_file"
+id = "fixture_minimal_testing_v0"
+class = "positive"
+input = "positive/minimal-testing-v0.toml"
+expected = "positive/minimal-testing-v0.expected.md"
+adapter = "testing"
+schema_version = 0
+projection_eof = "none"
+
+[[case]]
+kind = "single_file"
+id = "fixture_mixed_matrix_v1"
+class = "positive"
+input = "positive/mixed-matrix-v1.toml"
+expected = "positive/mixed-matrix-v1.expected.md"
+adapter = "matrix"
+schema_version = 1
+projection_eof = "lf"
+
+[[case]]
+kind = "single_file"
+id = "fixture_mixed_testing_v1"
+class = "positive"
+input = "positive/mixed-testing-v1.toml"
+expected = "positive/mixed-testing-v1.expected.md"
+adapter = "testing"
+schema_version = 1
+projection_eof = "none"
+
+[[case]]
+kind = "single_file"
+id = "fixture_all_fields_matrix_v1"
+class = "all_fields"
+input = "all-fields/matrix-v1.toml"
+expected = "all-fields/matrix-v1.expected.md"
+adapter = "matrix"
+schema_version = 1
+projection_eof = "lf"
+
+[[case]]
+kind = "single_file"
+id = "fixture_all_fields_testing_v1"
+class = "all_fields"
+input = "all-fields/testing-v1.toml"
+expected = "all-fields/testing-v1.expected.md"
+adapter = "testing"
+schema_version = 1
+projection_eof = "lf"
+
+[[case]]
+kind = "single_file"
+id = "fixture_campaign_pre_cutover"
+class = "all_fields"
+input = "all-fields/campaign-pre-cutover.toml"
+adapter = "campaign"
+schema_version = 1
+
+[[case]]
+kind = "single_file"
+id = "fixture_campaign_matrix_cutover"
+class = "all_fields"
+input = "all-fields/campaign-matrix-cutover.toml"
+adapter = "campaign"
+schema_version = 1
+
+[[case]]
+kind = "single_file"
+id = "fixture_campaign_both_cut_over"
+class = "all_fields"
+input = "all-fields/campaign-both-cut-over.toml"
+adapter = "campaign"
+schema_version = 1
+
+[[case]]
+kind = "single_file"
+id = "fixture_retired_ids_v1"
+class = "all_fields"
+input = "all-fields/retired-ids-v1.toml"
+adapter = "retired"
+schema_version = 1
+
+[[case]]
+kind = "single_file"
+id = "fixture_irregular_matrix_v0"
+class = "irregular"
+input = "irregular/matrix-v0.toml"
+expected = "irregular/matrix-v0.expected.md"
+adapter = "matrix"
+schema_version = 0
+projection_eof = "lf"
+
+[[case]]
+kind = "single_file"
+id = "fixture_irregular_testing_v0"
+class = "irregular"
+input = "irregular/testing-v0.toml"
+expected = "irregular/testing-v0.expected.md"
+adapter = "testing"
+schema_version = 0
+projection_eof = "none"
+
+[[case]]
+kind = "status_compat_bundle"
+id = "fixture_status_compat"
+class = "status-compat"
+files = ["status-compat/diagnostics.toml", "status-compat/inputs.toml", "status-compat/matrix-readme.after.md", "status-compat/matrix-readme.before.md", "status-compat/modes.toml", "status-compat/roadmap.after.md", "status-compat/roadmap.before.md", "status-compat/tests-readme.after.md", "status-compat/tests-readme.before.md"]
+inputs = "status-compat/inputs.toml"
+modes = "status-compat/modes.toml"
+diagnostics = "status-compat/diagnostics.toml"
+
+[case.golden_targets]
+"status-compat/matrix-readme.before.md" = "status-compat/matrix-readme.after.md"
+"status-compat/roadmap.before.md" = "status-compat/roadmap.after.md"
+"status-compat/tests-readme.before.md" = "status-compat/tests-readme.after.md"

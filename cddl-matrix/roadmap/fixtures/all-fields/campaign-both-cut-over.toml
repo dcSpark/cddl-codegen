@@ -1,0 +1,24 @@
+[campaign]
+schema_version = 1
+matrix_authority = "authoritative"
+testing_authority = "authoritative"
+
+[[selection]]
+item_id = "matrix.fixture-campaign-task"
+target_kind = "active_id"
+selected_state = "selected"
+priority_class = "normal"
+selection_reason_md = """The matrix fixture resolves through active authority."""
+cycle = "fixture-cycle"
+remaining_scope_md = """Keep the active matrix work visible."""
+
+[[selection]]
+item_id = "testing.fixture-campaign-task"
+target_kind = "active_id"
+selected_state = "in_progress"
+priority_class = "high"
+selection_reason_md = """The testing fixture resolves through active authority."""
+cycle = "fixture-cycle"
+remaining_scope_md = """Complete the active testing work."""
+assignee = "fixture-owner"
+pickup_commit = "1111111111111111111111111111111111111111"

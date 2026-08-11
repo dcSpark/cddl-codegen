@@ -1,0 +1,1 @@
+No terminal LF: quotes "" and apostrophes '''; astral scalar 😀; Windows C:\fixture\path; final slash\

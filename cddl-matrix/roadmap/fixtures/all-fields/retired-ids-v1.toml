@@ -1,0 +1,31 @@
+[retired_ids]
+schema_version = 1
+
+[[retired_ids.entry]]
+id = "matrix.fixture-retired-file"
+last_active_at = "1111111111111111111111111111111111111111"
+
+[retired_ids.entry.replacement]
+kind = "file_heading"
+path = "cddl-matrix/README.md"
+heading = "What lives here"
+claim_md = """The durable matrix documentation owns the replacement claim."""
+
+[[retired_ids.entry]]
+id = "matrix.fixture-retired-gate"
+last_active_at = "2222222222222222222222222222222222222222"
+
+[retired_ids.entry.replacement]
+kind = "gate"
+gate_id = "roadmap_projection_check"
+claim_md = """The roadmap gate owns the replacement claim."""
+
+[[retired_ids.entry]]
+id = "testing.fixture-retired-test"
+last_active_at = "3333333333333333333333333333333333333333"
+
+[retired_ids.entry.replacement]
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::snapshot_tests::fixture_symbol"
+symbol = "tests::snapshot_tests::fixture_symbol"
+claim_md = """The exact derived test symbol owns the replacement claim."""

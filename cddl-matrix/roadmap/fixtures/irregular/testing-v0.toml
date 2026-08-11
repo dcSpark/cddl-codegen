@@ -1,0 +1,76 @@
+[document]
+schema_version = 0
+authority = "shadow"
+roadmap = "testing"
+source_path = "cddl-matrix/roadmap/fixtures/irregular/testing-v0.toml"
+projection_path = "cddl-matrix/roadmap/fixtures/irregular/testing-v0.expected.md"
+frozen_source_sha256 = "6a534b366375755d0906ecb431cac596fa9c80f028816fdf63a20ca578b56575"
+frozen_source_byte_length = 593
+frozen_source_line_count = 26
+frozen_source_eof = "none"
+
+[[section]]
+section_id = "fixture"
+title = "Irregular testing fixture"
+source_block_md = """# Irregular testing fixture
+
+"""
+span_ids = ["section"]
+
+[[record]]
+id = "testing.fixture-irregular"
+title = "Irregular testing transport"
+projection_group = "fixture"
+source_block_md = """Transition without another heading.
+
+1. first lifecycle
+3. numbering gap
+   - delivered subpart
+   - future subpart
+
+Trigger A: a second sighting.
+Trigger B: a bounded cost increase.
+
+| acceptance | owner |
+| --- | --- |
+| exact bytes | fixture |
+
+- detector branch: capture the full log
+- umbrella hole: a skipped gate stays visible
+- consumer report: synthetic only
+- attributed incident: not a watch
+- permanent decline: no implicit reopening
+- unrelated tool decline
+- ambiguous deferred wording
+- live fact versus historical observation
+
+~1s / ~1 min / ~2 min"""
+span_ids = ["record"]
+
+[[manifest.entry]]
+kind = "section"
+section_id = "fixture"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-irregular"
+
+[[source_span]]
+id = "section"
+start_byte = 0
+end_byte = 29
+sha256 = "abcc257a4b9b3490a1d4dce1f0695235b300243c8d340003c44579044eadeeba"
+source_kind = "section"
+owner_id = "fixture"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record"
+start_byte = 29
+end_byte = 593
+sha256 = "5e6fe6d6726593565a60d86985cb9d0dfdb06d8bb3039091cffd9fa360081bd4"
+source_kind = "record"
+owner_id = "testing.fixture-irregular"
+owner_field = "source_block_md"
+migration_status = "raw"

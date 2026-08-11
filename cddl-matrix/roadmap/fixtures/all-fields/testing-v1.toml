@@ -1,0 +1,711 @@
+[document]
+schema_version = 1
+authority = "authoritative"
+roadmap = "testing"
+source_path = "cddl-matrix/roadmap/fixtures/all-fields/testing-v1.toml"
+projection_path = "cddl-matrix/roadmap/fixtures/all-fields/testing-v1.expected.md"
+frozen_source_sha256 = "d3018104605ecdfd007ed99f9d157e7faa9dda00b952a6f5213078b73d495d54"
+frozen_source_byte_length = 697
+frozen_source_line_count = 21
+frozen_source_eof = "lf"
+frozen_legacy_span_ids = ["section", "semantic-detail", "semantic-summary", "span-admission-bounded", "span-admission-independent", "span-admission-silent", "span-all-fields-raw", "span-control-review", "span-cost-historical", "span-evidence-gate", "span-incident-attributed", "span-incident-historical", "span-incident-live", "span-operational-attributed", "span-operational-retire-pending", "span-operational-watching", "span-signal-escalation", "span-systematic-observed", "span-task-ready"]
+
+[[section]]
+section_id = "fixture"
+title = "Testing all-fields fixture"
+render_authority = "raw"
+source_block_md = """# Testing all-fields fixture
+
+"""
+span_ids = ["section"]
+
+[[record]]
+id = "testing.fixture-admission-bounded"
+title = "Bounded denominator admission"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-admission-bounded
+"""
+span_ids = ["span-admission-bounded"]
+
+[record.semantic_shadow]
+kind = "testing_system_admission"
+summary_md = """Bounded denominator admission."""
+admission_kind = "bounded_denominator"
+claim_md = """A reviewed systematic family and live cost bound the denominator."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+family_id = "testing.fixture-systematic-observed"
+cost_record_id = "testing.fixture-all-fields-semantic"
+
+[[record]]
+id = "testing.fixture-admission-independent"
+title = "Independent recurrence admission"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-admission-independent
+"""
+span_ids = ["span-admission-independent"]
+
+[record.semantic_shadow]
+kind = "testing_system_admission"
+summary_md = """Independent recurrence admission."""
+admission_kind = "independent_recurrence"
+claim_md = """Two distinct incidents recur independently."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+incident_ids = ["testing.fixture-incident-attributed", "testing.fixture-incident-live"]
+
+[[record]]
+id = "testing.fixture-admission-silent"
+title = "Silent corruption admission"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-admission-silent
+"""
+span_ids = ["span-admission-silent"]
+
+[record.semantic_shadow]
+kind = "testing_system_admission"
+summary_md = """Silent corruption admission."""
+admission_kind = "silent_corruption"
+claim_md = """The evidence demonstrates a silent-corruption risk."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+
+[[record]]
+id = "testing.fixture-all-fields-raw"
+title = "All-fields raw owner"
+projection_group = "fixture"
+tags = ["coverage:admission_kind:bounded_denominator", "coverage:admission_kind:independent_recurrence", "coverage:admission_kind:silent_corruption", "coverage:cost_posture:historical_observation", "coverage:cost_posture:live_registry", "coverage:incident_posture:attributed", "coverage:incident_posture:historical", "coverage:incident_posture:live", "coverage:payload_kind:testing_cost", "coverage:payload_kind:testing_incident", "coverage:payload_kind:testing_operational_watch", "coverage:payload_kind:testing_system_admission", "coverage:roadmap:testing", "coverage:watch_state:attributed", "coverage:watch_state:retire_pending", "coverage:watch_state:watching"]
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-all-fields-raw
+"""
+span_ids = ["span-all-fields-raw"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Pending-review migration owner."""
+work_state = "pending_review"
+work_intent = "build_system"
+work_kind = "infrastructure"
+risk = "false_pass_or_red"
+family_classification = "pending"
+uncertainty_md = """This arm is valid only as a frozen semantic shadow."""
+
+[[record]]
+id = "testing.fixture-all-fields-semantic"
+title = "Testing semantic cost"
+projection_group = "fixture"
+render_authority = "semantic"
+
+[record.payload]
+kind = "testing_cost"
+summary_md = """## Testing semantic cost
+
+"""
+cost_posture = "live_registry"
+unit = "milliseconds"
+scope_md = """Live fixture timing registry.
+"""
+gate_reference_id = "semantic-cost-gate"
+
+[[record.source_replacement]]
+span_id = "semantic-detail"
+replacement_field = "payload.scope_md"
+review_note_md = """Reviewed semantic scope replacement."""
+
+[[record.source_replacement]]
+span_id = "semantic-summary"
+replacement_field = "payload.summary_md"
+review_note_md = """Reviewed semantic summary replacement."""
+
+[[record]]
+id = "testing.fixture-control-review"
+title = "Review rule control"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-control-review
+"""
+span_ids = ["span-control-review"]
+
+[record.semantic_shadow]
+kind = "control"
+summary_md = """Review-rule control."""
+control_kind = "review_rule"
+control_state = "live"
+reference_ids = ["control-review-heading"]
+claim_md = """The fixture review rule stays live."""
+boundary_md = """It covers only the synthetic all-fields fixture."""
+
+[[record]]
+id = "testing.fixture-cost-historical"
+title = "Historical cost"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-cost-historical
+"""
+span_ids = ["span-cost-historical"]
+
+[record.semantic_shadow]
+kind = "testing_cost"
+summary_md = """Historical cost observation."""
+cost_posture = "historical_observation"
+unit = "milliseconds"
+scope_md = """One synthetic fixture execution."""
+value_min = 10
+value_max = 20
+observed_at = "2026-08-11"
+environment_md = """Pinned synthetic executor."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+
+[[record]]
+id = "testing.fixture-evidence-gate"
+title = "Gate evidence"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-evidence-gate
+"""
+span_ids = ["span-evidence-gate"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Live gate evidence."""
+evidence_kind = "gate"
+claim_md = """A non-stub synthetic gate protects this fixture."""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["evidence-gate-target"]
+unprobed_remainder_md = """No production roadmap is probed."""
+refresh_reference_id = "evidence-gate-target"
+
+[record.semantic_shadow.scope]
+tiers = ["local"]
+
+[[record]]
+id = "testing.fixture-incident-attributed"
+title = "Attributed incident"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-incident-attributed
+"""
+span_ids = ["span-incident-attributed"]
+
+[record.semantic_shadow]
+kind = "testing_incident"
+summary_md = """Attributed incident."""
+incident_posture = "attributed"
+signature_md = """Synthetic attributed signature."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+attribution_md = """The fixture identifies the synthetic cause."""
+operating_rule_reference_id = "incident-attributed-rule"
+
+[[record]]
+id = "testing.fixture-incident-historical"
+title = "Historical incident"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-incident-historical
+"""
+span_ids = ["span-incident-historical"]
+
+[record.semantic_shadow]
+kind = "testing_incident"
+summary_md = """Historical incident."""
+incident_posture = "historical"
+signature_md = """Synthetic historical signature."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+attribution_md = """The fixture identifies the retired synthetic cause."""
+operating_rule_reference_id = "incident-historical-rule"
+retirement_reference_id = "incident-historical-retirement"
+
+[[record]]
+id = "testing.fixture-incident-live"
+title = "Live incident"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-incident-live
+"""
+span_ids = ["span-incident-live"]
+
+[record.semantic_shadow]
+kind = "testing_incident"
+summary_md = """Live incident."""
+incident_posture = "live"
+signature_md = """Synthetic live signature."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+
+[[record]]
+id = "testing.fixture-operational-attributed"
+title = "Attributed operational watch"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-operational-attributed
+"""
+span_ids = ["span-operational-attributed"]
+
+[record.semantic_shadow]
+kind = "testing_operational_watch"
+summary_md = """Attributed operational watch."""
+watch_state = "attributed"
+signature_md = """Synthetic attributed watch signature."""
+attribution_md = """The fixture attributes the watch."""
+operating_rule_reference_id = "operational-attributed-rule"
+response_md = """Capture and retain exact evidence."""
+escalation_transition_id = "testing.fixture-signal-escalation"
+retirement_semantics_md = """Retire after the operating rule proves stable."""
+
+[[record.semantic_shadow.capture_step]]
+step_id = "capture"
+capture_md = """Capture the full synthetic diagnostic."""
+
+[[record]]
+id = "testing.fixture-operational-retire-pending"
+title = "Retire-pending operational watch"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-operational-retire-pending
+"""
+span_ids = ["span-operational-retire-pending"]
+
+[record.semantic_shadow]
+kind = "testing_operational_watch"
+summary_md = """Retire-pending operational watch."""
+watch_state = "retire_pending"
+signature_md = """Synthetic retire-pending watch signature."""
+attribution_md = """The fixture attributes the retired watch."""
+operating_rule_reference_id = "operational-retire-rule"
+response_md = """Retain the capture until retirement completes."""
+escalation_transition_id = "testing.fixture-signal-escalation"
+retirement_reference_id = "operational-retire-pin"
+retirement_semantics_md = """Retire when the replacement pin resolves."""
+
+[[record.semantic_shadow.capture_step]]
+step_id = "capture"
+capture_md = """Capture the full synthetic diagnostic."""
+
+[[record]]
+id = "testing.fixture-operational-watching"
+title = "Watching operational watch"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-operational-watching
+"""
+span_ids = ["span-operational-watching"]
+
+[record.semantic_shadow]
+kind = "testing_operational_watch"
+summary_md = """Watching operational watch."""
+watch_state = "watching"
+signature_md = """Synthetic watching signature."""
+response_md = """Capture the failure before responding."""
+escalation_transition_id = "testing.fixture-signal-escalation"
+retirement_semantics_md = """Retire after the watch predicate remains clear."""
+
+[[record.semantic_shadow.capture_step]]
+step_id = "capture"
+capture_md = """Capture the full synthetic diagnostic."""
+
+[[record]]
+id = "testing.fixture-signal-escalation"
+title = "Watch escalation"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-signal-escalation
+"""
+span_ids = ["span-signal-escalation"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Watch escalation signal."""
+transition_kind = "watch_escalation"
+failure_signature_md = """The synthetic watch signature recurs."""
+capture_procedure_md = """Capture the exact fixture output."""
+response_md = """Attribute or quarantine the recurrence."""
+escalation_action_md = """Promote the watch to active repair work."""
+retirement_semantics_md = """Retire after the recurrence remains absent."""
+evaluation = "unknown"
+
+[[record]]
+id = "testing.fixture-systematic-observed"
+title = "Observed systematic family"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-systematic-observed
+"""
+span_ids = ["span-systematic-observed"]
+
+[record.semantic_shadow]
+kind = "family"
+summary_md = """Observed systematic family."""
+family_maturity = "observed_only"
+campaign_state = "designing"
+goal_md = """Bound the synthetic testing denominator."""
+boundary_md = """Only this fixture is included."""
+work_ids = ["testing.fixture-task-ready"]
+observation_reference_ids = ["systematic-observation"]
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+control_ids = ["testing.fixture-control-review"]
+completion_owner_reference_id = "systematic-completion"
+retirement_owner_reference_id = "systematic-retirement"
+
+[[record]]
+id = "testing.fixture-task-ready"
+title = "Ready missing-system task"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """RAW testing.fixture-task-ready
+"""
+span_ids = ["span-task-ready"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Ready missing-system task."""
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "false_pass_or_red"
+family_id = "testing.fixture-systematic-observed"
+acceptance_md = """The bounded-denominator admission remains live."""
+priority_band = "high"
+priority_rationale_md = """Silent failure makes this fixture task high priority."""
+admission_ids = ["testing.fixture-admission-bounded"]
+
+[[manifest.entry]]
+kind = "section"
+section_id = "fixture"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-task-ready"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-systematic-observed"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-signal-escalation"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-operational-watching"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-operational-retire-pending"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-operational-attributed"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-incident-live"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-incident-historical"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-incident-attributed"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-evidence-gate"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-cost-historical"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-control-review"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-all-fields-semantic"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-all-fields-raw"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-admission-silent"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-admission-independent"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-admission-bounded"
+
+[[source_span]]
+id = "section"
+start_byte = 0
+end_byte = 30
+sha256 = "15bc1c2b9c4fd8e22d9111cd8f8361895119cf9dabe6b444b4d001cebde8fdc8"
+source_kind = "section"
+owner_id = "fixture"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-task-ready"
+start_byte = 30
+end_byte = 61
+sha256 = "bf89b863944b5e92c9dcf167632a22569d88a5b3a02890abaded2ef1e6909188"
+source_kind = "record"
+owner_id = "testing.fixture-task-ready"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-systematic-observed"
+start_byte = 61
+end_byte = 101
+sha256 = "a4b21839986c5850a42ad0050fa5beb1e7f224ec8e7fb37a38e9e171e7ae8265"
+source_kind = "record"
+owner_id = "testing.fixture-systematic-observed"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-signal-escalation"
+start_byte = 101
+end_byte = 139
+sha256 = "baa720b23a6c65938f10a7ac3c71a74301a4c85e71ea841f83c7a013c7eb6fc4"
+source_kind = "record"
+owner_id = "testing.fixture-signal-escalation"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-operational-watching"
+start_byte = 139
+end_byte = 180
+sha256 = "7d4ae6c2a1e097d00d43896bf16f28885008a7f27b42a5f0077ed4d166d8e47c"
+source_kind = "record"
+owner_id = "testing.fixture-operational-watching"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-operational-retire-pending"
+start_byte = 180
+end_byte = 227
+sha256 = "2203af39e0faa006da8be36379997e71a617e2df39292ba82eac57fd347e82ef"
+source_kind = "record"
+owner_id = "testing.fixture-operational-retire-pending"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-operational-attributed"
+start_byte = 227
+end_byte = 270
+sha256 = "cf7463af7869dbb5ff1bfa73bf356fbd7349624396a56b9a3da49acf0bd7c019"
+source_kind = "record"
+owner_id = "testing.fixture-operational-attributed"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-incident-live"
+start_byte = 270
+end_byte = 304
+sha256 = "20ded88f6790f4db56fae0f72b2d370d667c84e25c848df808bdea0fb36415b3"
+source_kind = "record"
+owner_id = "testing.fixture-incident-live"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-incident-historical"
+start_byte = 304
+end_byte = 344
+sha256 = "7397c55c454a73eb58357ede4bb5d83b540b672a3090aa41178d1611b972f197"
+source_kind = "record"
+owner_id = "testing.fixture-incident-historical"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-incident-attributed"
+start_byte = 344
+end_byte = 384
+sha256 = "de2ed10b799fd7fa37fd3a988d9699b5a3856b592f980a6d2024e51101950ff8"
+source_kind = "record"
+owner_id = "testing.fixture-incident-attributed"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-evidence-gate"
+start_byte = 384
+end_byte = 418
+sha256 = "17e248c9a03dbd1a1b713c617627e6e6731b24a58ae58b895a3144d87574735e"
+source_kind = "record"
+owner_id = "testing.fixture-evidence-gate"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-cost-historical"
+start_byte = 418
+end_byte = 454
+sha256 = "8e746d59587aa167ee0e56c1a1905ee7a7b55e9c69ae37bf9b046de794b08b60"
+source_kind = "record"
+owner_id = "testing.fixture-cost-historical"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-control-review"
+start_byte = 454
+end_byte = 489
+sha256 = "c34ec0303eb7c8db68b77fe6d8cd947532962deb078b45254cf098de0d4eac6d"
+source_kind = "record"
+owner_id = "testing.fixture-control-review"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "semantic-summary"
+start_byte = 489
+end_byte = 515
+sha256 = "0fe2df9dd8168e373acf5b59d1e241dca72da320f23a2380d9d35da7e3757f49"
+source_kind = "record"
+owner_id = "testing.fixture-all-fields-semantic"
+owner_field = "payload.summary_md"
+migration_status = "replaced"
+
+[[source_span]]
+id = "semantic-detail"
+start_byte = 515
+end_byte = 545
+sha256 = "3348fc81c46daab24e04d7c11264ca100a8174414f96ecb27763a820bc498f20"
+source_kind = "record"
+owner_id = "testing.fixture-all-fields-semantic"
+owner_field = "payload.scope_md"
+migration_status = "replaced"
+
+[[source_span]]
+id = "span-all-fields-raw"
+start_byte = 545
+end_byte = 580
+sha256 = "e5d4e6f26afc1547f649d1659246b33131257a0c8d561d2c0697526183fd9c75"
+source_kind = "record"
+owner_id = "testing.fixture-all-fields-raw"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-admission-silent"
+start_byte = 580
+end_byte = 617
+sha256 = "f971fd6db1ed95d8c8f1a60301d99ab537e1618604e97caf74d5b15916815e27"
+source_kind = "record"
+owner_id = "testing.fixture-admission-silent"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-admission-independent"
+start_byte = 617
+end_byte = 659
+sha256 = "8c55711e3f26cf8109c60df9ff344943305bfed4b4cc4d386050129f4a5d35a0"
+source_kind = "record"
+owner_id = "testing.fixture-admission-independent"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "span-admission-bounded"
+start_byte = 659
+end_byte = 697
+sha256 = "b24076ef58b95dc4fa32ae85573aefb4112b180d575e35024734fb9b07cdb601"
+source_kind = "record"
+owner_id = "testing.fixture-admission-bounded"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[reference]]
+id = "semantic-cost-gate"
+source = "testing.fixture-all-fields-semantic"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "control-review-heading"
+source = "testing.fixture-control-review"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "evidence-gate-target"
+source = "testing.fixture-evidence-gate"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "incident-attributed-rule"
+source = "testing.fixture-incident-attributed"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "incident-historical-rule"
+source = "testing.fixture-incident-historical"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "incident-historical-retirement"
+source = "testing.fixture-incident-historical"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "operational-attributed-rule"
+source = "testing.fixture-operational-attributed"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "operational-retire-rule"
+source = "testing.fixture-operational-retire-pending"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "operational-retire-pin"
+source = "testing.fixture-operational-retire-pending"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "systematic-completion"
+source = "testing.fixture-systematic-observed"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "systematic-observation"
+source = "testing.fixture-systematic-observed"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "systematic-retirement"
+source = "testing.fixture-systematic-observed"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::snapshot_tests::fixture_symbol"
+symbol = "tests::snapshot_tests::fixture_symbol"

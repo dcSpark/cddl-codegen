@@ -1,0 +1,65 @@
+[[diagnostic]]
+id = "write_missing_marker"
+argv = ["--write"]
+target = "cddl-matrix/ROADMAP.md"
+mutation = "remove_marker_pair"
+marker_id = "roadmap-counts"
+exit_code = 1
+stdout_md = """"""
+stderr_md = """FAIL ROADMAP.md: span 'roadmap-counts' has no <!-- gen:sh:roadmap-counts --> … <!-- /gen:sh:roadmap-counts --> markers — hand-place them once around the phrase.
+"""
+writes = 0
+
+[[diagnostic]]
+id = "check_missing_open"
+argv = ["--check"]
+target = "cddl-matrix/ROADMAP.md"
+mutation = "remove_open_marker"
+marker_id = "roadmap-counts"
+exit_code = 1
+stdout_md = """status-header count gate: 1 problem(s)
+  FAIL ROADMAP.md: open marker for span 'roadmap-counts' appears 0 time(s), expected exactly 1
+"""
+stderr_md = """"""
+writes = 0
+
+[[diagnostic]]
+id = "check_missing_close"
+argv = ["--check"]
+target = "cddl-matrix/ROADMAP.md"
+mutation = "remove_close_marker"
+marker_id = "roadmap-counts"
+exit_code = 1
+stdout_md = """status-header count gate: 1 problem(s)
+  FAIL ROADMAP.md: close marker for span 'roadmap-counts' appears 0 time(s), expected exactly 1
+"""
+stderr_md = """"""
+writes = 0
+
+[[diagnostic]]
+id = "check_stale_inner"
+argv = ["--check"]
+target = "cddl-matrix/ROADMAP.md"
+mutation = "replace_payload"
+marker_id = "roadmap-counts"
+replacement = "STALE"
+exit_code = 1
+stdout_md = """status-header count gate: 1 problem(s)
+  FAIL ROADMAP.md: span 'roadmap-counts' is stale — has \"STALE\", expected \"90 features (30 RFC8610 + 30 RFC9682 + 30 `CDDL_CODEGEN` vendor profile), 60 containment cells, and 80 cddl-codegen annotations\" (run `bun run project_status_headers.ts --write`)
+"""
+stderr_md = """"""
+writes = 0
+
+[[diagnostic]]
+id = "derivation_vacuity"
+argv = ["--check"]
+target = "status-compat/inputs.toml"
+mutation = "remove_all_features"
+exit_code = 1
+stdout_md = """status-header count gate: 3 problem(s)
+  FAIL only 0 feature rows read (expected >= 90) — the matrix read looks broken/empty
+  FAIL ROADMAP.md: span 'roadmap-counts' is stale — has \"90 features (30 RFC8610 + 30 RFC9682 + 30 `CDDL_CODEGEN` vendor profile), 60 containment cells, and 80 cddl-codegen annotations\", expected \"0 features (0 RFC8610 + 0 RFC9682 + 0 `CDDL_CODEGEN` vendor profile), 60 containment cells, and 80 cddl-codegen annotations\" (run `bun run project_status_headers.ts --write`)
+  FAIL README.md: span 'readme-counts' is stale — has \"90 features and 60 containment cells\", expected \"0 features and 60 containment cells\" (run `bun run project_status_headers.ts --write`)
+"""
+stderr_md = """"""
+writes = 0

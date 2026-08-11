@@ -1,0 +1,20 @@
+value = """\nStraight \"quotes\", Unicode “quotes”, and runs: \"\"\" / \"\"\"\" / ''' / ''''.
+Literal backslashes: \\\\ and text \\\\u1234 and C:\\\\fixture\\\\path\\\\.
+A line ending in a backslash \\
+CJK 日本語; astral 😀; RTL مرحبا; decomposed é; precomposed é.
+\tTabbed text, trailing spaces.  
+
+<!-- marker-like <!-- gen:sh:fixture --> text -->
+`<!-- /gen:sh:fixture -->`
+
+```toml
+[[record]]
+value = \"\"\"not a delimiter for the outer codec\"\"\"
+```
+
+1. first
+3. intentional gap
+   - nested bullet
+     lazy continuation
+
+"""

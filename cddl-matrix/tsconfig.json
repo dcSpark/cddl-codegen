@@ -13,5 +13,5 @@
     "verbatimModuleSyntax": false,
     "lib": ["esnext"]
   },
-  "include": ["*.ts", "types/*.d.ts"]
+  "include": ["*.ts", "types/*.d.ts", "roadmap/**/*.ts"]
 }

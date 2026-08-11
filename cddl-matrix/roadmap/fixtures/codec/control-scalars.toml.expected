@@ -1,0 +1,1 @@
+value = """LEFT\tMID\bMID\fMID\u0000MID\u001fMID\u007fRIGHT"""

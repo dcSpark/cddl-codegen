@@ -1,0 +1,152 @@
+[document]
+schema_version = 0
+authority = "shadow"
+roadmap = "matrix"
+source_path = "cddl-matrix/roadmap/fixtures/irregular/matrix-v0.toml"
+projection_path = "cddl-matrix/roadmap/fixtures/irregular/matrix-v0.expected.md"
+frozen_source_sha256 = "082ca4b29af3659c35f95ed94012c00809deb0d0a0584f3144a2115bf6a12bb3"
+frozen_source_byte_length = 710
+frozen_source_line_count = 29
+frozen_source_eof = "lf"
+
+[[section]]
+section_id = "fixture"
+title = "Irregular matrix fixture"
+source_block_md = """# Irregular matrix fixture
+
+"""
+span_ids = ["section"]
+
+[[record]]
+id = "matrix.fixture-irregular"
+title = "Irregular matrix transport"
+projection_group = "fixture"
+source_block_md = """- Generation
+  - strict: rejects unsupported shape
+  - preserve: keeps source encoding
+  - json: emits a helper
+  - component: projects a WIT face
+
+## External close-out
+
+If upstream closes:
+
+1. verify the release
+2. prune the workaround
+
+| branch | action |
+| --- | --- |
+| fixed | remove |
+| open | retain |
+
+```toml
+state = \"marker-like <!-- gen:sh:roadmap-counts -->\"
+```
+
+<!-- marker-like prose remains raw -->
+"""
+span_ids = ["record"]
+
+[[generated_slot]]
+slot_id = "constraint"
+binding = "status_header_markers:roadmap-constraint"
+span_ids = ["slot-constraint"]
+
+[[generated_slot]]
+slot_id = "counts"
+binding = "status_header_markers:roadmap-counts"
+span_ids = ["slot-counts"]
+
+[[generated_slot]]
+slot_id = "emission"
+binding = "status_header_markers:roadmap-emission"
+span_ids = ["slot-emission"]
+
+[[generated_slot]]
+slot_id = "ops"
+binding = "status_header_markers:roadmap-ops"
+span_ids = ["slot-ops"]
+
+[[manifest.entry]]
+kind = "section"
+section_id = "fixture"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-irregular"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "counts"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "ops"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "emission"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "constraint"
+
+[[source_span]]
+id = "section"
+start_byte = 0
+end_byte = 28
+sha256 = "ea230acbb42d8cdc0445d7e279f1298be91a862fc0fa4e415257d3e0c594a6bd"
+source_kind = "section"
+owner_id = "fixture"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record"
+start_byte = 28
+end_byte = 444
+sha256 = "c8a6932bb7ae20242f9b850c7aced8563ad2f9743fa66f96b229c21a79c3209a"
+source_kind = "record"
+owner_id = "matrix.fixture-irregular"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "slot-counts"
+start_byte = 444
+end_byte = 574
+sha256 = "f2addfb663b708a41246e5aa071243de643658cd2e5d3ef23fc8597a637c7aab"
+source_kind = "generated_slot"
+owner_id = "counts"
+owner_field = "generated"
+migration_status = "generated"
+
+[[source_span]]
+id = "slot-ops"
+start_byte = 574
+end_byte = 597
+sha256 = "aa1385c5c104c2d1ef55dbcc62a38dd7ab7142e1a008699de9a98625713619c9"
+source_kind = "generated_slot"
+owner_id = "ops"
+owner_field = "generated"
+migration_status = "generated"
+
+[[source_span]]
+id = "slot-emission"
+start_byte = 597
+end_byte = 632
+sha256 = "c5864c7aebf1915150ef2858a4662cfd5a3dbdda0fa8028366dc28010d968245"
+source_kind = "generated_slot"
+owner_id = "emission"
+owner_field = "generated"
+migration_status = "generated"
+
+[[source_span]]
+id = "slot-constraint"
+start_byte = 632
+end_byte = 710
+sha256 = "a74850b30723278d8970452cb7779d2e7c2991b3842e89a168d2f868f09a3a86"
+source_kind = "generated_slot"
+owner_id = "constraint"
+owner_field = "generated"
+migration_status = "generated"

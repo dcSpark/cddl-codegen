@@ -1,0 +1,2856 @@
+[document]
+schema_version = 1
+authority = "authoritative"
+roadmap = "matrix"
+source_path = "cddl-matrix/roadmap/fixtures/all-fields/matrix-v1.toml"
+projection_path = "cddl-matrix/roadmap/fixtures/all-fields/matrix-v1.expected.md"
+frozen_source_sha256 = "b2765963f11f64eef353816becee357c2c53ff4b8912798e063b73ce4c79e1ea"
+frozen_source_byte_length = 3051
+frozen_source_line_count = 66
+frozen_source_eof = "lf"
+frozen_legacy_span_ids = ["fragment", "legacy-marker", "part", "record-fixture-closeout-a", "record-fixture-closeout-b", "record-fixture-closeout-c", "record-fixture-control-a", "record-fixture-control-b", "record-fixture-control-c", "record-fixture-control-d", "record-fixture-control-e", "record-fixture-control-f", "record-fixture-control-g", "record-fixture-decision-a", "record-fixture-decision-b", "record-fixture-decision-c", "record-fixture-decision-d", "record-fixture-evidence-a", "record-fixture-evidence-b", "record-fixture-evidence-c", "record-fixture-evidence-d", "record-fixture-evidence-e", "record-fixture-evidence-f", "record-fixture-evidence-g", "record-fixture-evidence-h", "record-fixture-evidence-i", "record-fixture-evidence-j", "record-fixture-evidence-k", "record-fixture-evidence-l", "record-fixture-evidence-m", "record-fixture-family-a", "record-fixture-family-b", "record-fixture-family-c", "record-fixture-family-d", "record-fixture-policy-a", "record-fixture-policy-b", "record-fixture-policy-c", "record-fixture-raw-owner", "record-fixture-signal-a", "record-fixture-signal-b", "record-fixture-signal-c", "record-fixture-signal-d", "record-fixture-signal-e", "record-fixture-signal-f", "record-fixture-signal-g", "record-fixture-signal-h", "record-fixture-signal-i", "record-fixture-signal-j", "record-fixture-signal-k", "record-fixture-work-a", "record-fixture-work-b", "record-fixture-work-c", "record-fixture-work-d", "record-fixture-work-e", "record-fixture-work-f", "record-fixture-work-g", "record-fixture-work-h", "record-fixture-work-i", "record-fixture-work-j", "section", "semantic-detail", "semantic-summary"]
+
+[[section]]
+section_id = "fixture"
+title = "Matrix all-fields fixture"
+render_authority = "raw"
+source_block_md = """# Matrix all-fields fixture
+"""
+span_ids = ["section"]
+
+[[fragment]]
+fragment_id = "fixture-fragment"
+projection_group = "fixture"
+title = "Raw fragment placement"
+render_authority = "raw"
+source_block_md = """RAW FRAGMENT PLACEMENT
+"""
+span_ids = ["fragment"]
+
+[[legacy_marker]]
+marker_id = "fixture-marker"
+legacy_aliases = ["matrix-all-fields-marker"]
+render_authority = "raw"
+source_block_md = """RAW LEGACY MARKER PLACEMENT
+"""
+span_ids = ["legacy-marker"]
+
+[[record]]
+id = "matrix.fixture-choice-a"
+title = "Decision arm a"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """DECISION a — pending.
+"""
+span_ids = ["record-fixture-decision-a"]
+
+[record.semantic_shadow]
+kind = "decision"
+summary_md = """Decision a: pending.
+"""
+decision_state = "pending"
+question_md = """Which branch should become authoritative?
+"""
+transition_ids = ["matrix.fixture-signal-h"]
+
+[[record]]
+id = "matrix.fixture-choice-b"
+title = "Decision arm b"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """DECISION b — held.
+"""
+span_ids = ["record-fixture-decision-b"]
+
+[record.semantic_shadow]
+kind = "decision"
+summary_md = """Decision b: held.
+"""
+decision_state = "held"
+rationale_md = """The reviewed choice remains reopenable.
+"""
+permanence = "reopenable"
+transition_ids = ["matrix.fixture-signal-f"]
+
+[[record]]
+id = "matrix.fixture-choice-c"
+title = "Decision arm c"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """DECISION c — decided.
+"""
+span_ids = ["record-fixture-decision-c"]
+
+[record.semantic_shadow]
+kind = "decision"
+summary_md = """Decision c: decided.
+"""
+decision_state = "decided"
+rationale_md = """The authority permanently closes this branch.
+"""
+authority_reference_id = "ref-spec"
+permanence = "permanent"
+
+[[record]]
+id = "matrix.fixture-choice-d"
+title = "Decision arm d"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """DECISION d — decided; reopenable.
+"""
+span_ids = ["record-fixture-decision-d"]
+
+[record.semantic_shadow]
+kind = "decision"
+summary_md = """Decision d: decided and reopenable.
+"""
+decision_state = "decided"
+rationale_md = """The authority allows reopening on the declared transition.
+"""
+authority_reference_id = "ref-spec"
+permanence = "reopenable"
+transition_ids = ["matrix.fixture-signal-f"]
+
+[[record]]
+id = "matrix.fixture-control-a"
+title = "Control arm a"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CONTROL a — gate; live.
+"""
+span_ids = ["record-fixture-control-a"]
+
+[record.semantic_shadow]
+kind = "control"
+summary_md = """Control a: gate.
+"""
+control_kind = "gate"
+control_state = "live"
+reference_ids = ["ref-gate"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-b"
+title = "Control arm b"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CONTROL b — test; proposed.
+"""
+span_ids = ["record-fixture-control-b"]
+
+[record.semantic_shadow]
+kind = "control"
+summary_md = """Control b: test.
+"""
+control_kind = "test"
+control_state = "proposed"
+reference_ids = ["ref-test"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-c"
+title = "Control arm c"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CONTROL c — fixture; stale.
+"""
+span_ids = ["record-fixture-control-c"]
+
+[record.semantic_shadow]
+kind = "control"
+summary_md = """Control c: fixture.
+"""
+control_kind = "fixture"
+control_state = "stale"
+reference_ids = ["ref-file"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-d"
+title = "Control arm d"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CONTROL d — review_rule; live.
+"""
+span_ids = ["record-fixture-control-d"]
+
+[record.semantic_shadow]
+kind = "control"
+summary_md = """Control d: review_rule.
+"""
+control_kind = "review_rule"
+control_state = "live"
+reference_ids = ["ref-file"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-e"
+title = "Control arm e"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CONTROL e — consumer_ci; proposed.
+"""
+span_ids = ["record-fixture-control-e"]
+
+[record.semantic_shadow]
+kind = "control"
+summary_md = """Control e: consumer_ci.
+"""
+control_kind = "consumer_ci"
+control_state = "proposed"
+reference_ids = ["ref-consumer"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-f"
+title = "Control arm f"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CONTROL f — upstream_issue; stale.
+"""
+span_ids = ["record-fixture-control-f"]
+
+[record.semantic_shadow]
+kind = "control"
+summary_md = """Control f: upstream_issue.
+"""
+control_kind = "upstream_issue"
+control_state = "stale"
+reference_ids = ["ref-issue"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-g"
+title = "Control arm g"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CONTROL g — operator_procedure; live.
+"""
+span_ids = ["record-fixture-control-g"]
+
+[record.semantic_shadow]
+kind = "control"
+summary_md = """Control g: operator_procedure.
+"""
+control_kind = "operator_procedure"
+control_state = "live"
+reference_ids = ["ref-file"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-evidence-a"
+title = "Evidence arm a"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE a — regression_pin; live; proposed.
+"""
+span_ids = ["record-fixture-evidence-a"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence a: regression_pin.
+"""
+evidence_kind = "regression_pin"
+claim_md = """The regression_pin evidence arm is represented.
+"""
+evidence_verdict = "proposed"
+freshness = "live"
+reference_ids = ["ref-gate"]
+unprobed_remainder_md = """No unprobed scope remains in the declared synthetic view.
+"""
+refresh_reference_id = "ref-gate"
+
+[record.semantic_shadow.scope]
+surfaces = ["rust", "wasm"]
+profiles = ["default", "preserve"]
+flags = ["--wasm=false"]
+input_modes = ["file"]
+toolchains = ["1.88.0"]
+executors = ["fixture"]
+tiers = ["focused"]
+cell_ids = ["matrix.fixture-coordinate-a"]
+
+[[record]]
+id = "matrix.fixture-evidence-b"
+title = "Evidence arm b"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE b — gate; as_of; confirmed.
+"""
+span_ids = ["record-fixture-evidence-b"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence b: gate.
+"""
+evidence_kind = "gate"
+claim_md = """The gate evidence arm is represented.
+"""
+evidence_verdict = "confirmed"
+freshness = "as_of"
+reference_ids = ["ref-gate"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+valid_through = "2026-08-12"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+profiles = ["fixture-b"]
+
+[[record]]
+id = "matrix.fixture-evidence-c"
+title = "Evidence arm c"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE c — harness_free_repro; historical; falsified.
+"""
+span_ids = ["record-fixture-evidence-c"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence c: harness_free_repro.
+"""
+evidence_kind = "harness_free_repro"
+claim_md = """The harness_free_repro evidence arm is represented.
+"""
+evidence_verdict = "falsified"
+freshness = "historical"
+reference_ids = ["ref-gate"]
+command_md = """bun run fixture-repro
+"""
+result_md = """The harness-free reproduction completed.
+"""
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+flags = ["fixture-c"]
+
+[[record]]
+id = "matrix.fixture-evidence-d"
+title = "Evidence arm d"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE d — committed_vector; stale; unknown.
+"""
+span_ids = ["record-fixture-evidence-d"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence d: committed_vector.
+"""
+evidence_kind = "committed_vector"
+claim_md = """The committed_vector evidence arm is represented.
+"""
+evidence_verdict = "unknown"
+freshness = "stale"
+reference_ids = ["ref-file", "ref-test"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+input_modes = ["fixture-d"]
+
+[[record]]
+id = "matrix.fixture-evidence-e"
+title = "Evidence arm e"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE e — execution_probe; as_of; inapplicable.
+"""
+span_ids = ["record-fixture-evidence-e"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence e: execution_probe.
+"""
+evidence_kind = "execution_probe"
+claim_md = """The execution_probe evidence arm is represented.
+"""
+evidence_verdict = "inapplicable"
+freshness = "as_of"
+reference_ids = ["ref-gate"]
+command_md = """bun run fixture-probe
+"""
+result_md = """The execution probe completed.
+"""
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+toolchains = ["fixture-e"]
+
+[[record]]
+id = "matrix.fixture-evidence-f"
+title = "Evidence arm f"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE f — registry_enumeration; as_of; proposed.
+"""
+span_ids = ["record-fixture-evidence-f"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence f: registry_enumeration.
+"""
+evidence_kind = "registry_enumeration"
+claim_md = """The registry_enumeration evidence arm is represented.
+"""
+evidence_verdict = "proposed"
+freshness = "as_of"
+reference_ids = ["ref-feature", "ref-file"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+enumerated_registry = "matrix-features"
+
+[record.semantic_shadow.scope]
+executors = ["fixture-f"]
+
+[[record]]
+id = "matrix.fixture-evidence-g"
+title = "Evidence arm g"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE g — source_read; historical; confirmed.
+"""
+span_ids = ["record-fixture-evidence-g"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence g: source_read.
+"""
+evidence_kind = "source_read"
+claim_md = """The source_read evidence arm is represented.
+"""
+evidence_verdict = "confirmed"
+freshness = "historical"
+reference_ids = ["ref-file"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+tiers = ["fixture-g"]
+
+[[record]]
+id = "matrix.fixture-evidence-h"
+title = "Evidence arm h"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE h — spec_read; stale; falsified.
+"""
+span_ids = ["record-fixture-evidence-h"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence h: spec_read.
+"""
+evidence_kind = "spec_read"
+claim_md = """The spec_read evidence arm is represented.
+"""
+evidence_verdict = "falsified"
+freshness = "stale"
+reference_ids = ["ref-spec"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+surfaces = ["fixture-h"]
+
+[[record]]
+id = "matrix.fixture-evidence-i"
+title = "Evidence arm i"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE i — consumer_report; as_of; unknown.
+"""
+span_ids = ["record-fixture-evidence-i"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence i: consumer_report.
+"""
+evidence_kind = "consumer_report"
+claim_md = """The consumer_report evidence arm is represented.
+"""
+evidence_verdict = "unknown"
+freshness = "as_of"
+reference_ids = ["ref-consumer"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+profiles = ["fixture-i"]
+
+[[record]]
+id = "matrix.fixture-evidence-j"
+title = "Evidence arm j"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE j — incident; as_of; inapplicable.
+"""
+span_ids = ["record-fixture-evidence-j"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence j: incident.
+"""
+evidence_kind = "incident"
+claim_md = """The incident evidence arm is represented.
+"""
+evidence_verdict = "inapplicable"
+freshness = "as_of"
+reference_ids = ["ref-file"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+flags = ["fixture-j"]
+
+[[record]]
+id = "matrix.fixture-evidence-k"
+title = "Evidence arm k"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE k — external_issue; historical; proposed.
+"""
+span_ids = ["record-fixture-evidence-k"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence k: external_issue.
+"""
+evidence_kind = "external_issue"
+claim_md = """The external_issue evidence arm is represented.
+"""
+evidence_verdict = "proposed"
+freshness = "historical"
+reference_ids = ["ref-issue"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+input_modes = ["fixture-k"]
+
+[[record]]
+id = "matrix.fixture-evidence-l"
+title = "Evidence arm l"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE l — external_commit; stale; confirmed.
+"""
+span_ids = ["record-fixture-evidence-l"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence l: external_commit.
+"""
+evidence_kind = "external_commit"
+claim_md = """The external_commit evidence arm is represented.
+"""
+evidence_verdict = "confirmed"
+freshness = "stale"
+reference_ids = ["ref-commit"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.semantic_shadow.scope]
+toolchains = ["fixture-l"]
+
+[[record]]
+id = "matrix.fixture-evidence-m"
+title = "Evidence arm m"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """EVIDENCE m — decision; live; falsified.
+"""
+span_ids = ["record-fixture-evidence-m"]
+
+[record.semantic_shadow]
+kind = "evidence"
+summary_md = """Evidence m: decision.
+"""
+evidence_kind = "decision"
+claim_md = """The decision evidence arm is represented.
+"""
+evidence_verdict = "falsified"
+freshness = "live"
+reference_ids = ["ref-roadmap"]
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+refresh_reference_id = "ref-roadmap"
+
+[record.semantic_shadow.scope]
+executors = ["fixture-m"]
+
+[[record]]
+id = "matrix.fixture-policy-a"
+title = "Maintenance policy"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """POLICY a — maintenance_protocol.
+"""
+span_ids = ["record-fixture-policy-a"]
+
+[record.semantic_shadow]
+kind = "matrix_policy"
+summary_md = """Matrix maintenance protocol.
+"""
+policy_kind = "maintenance_protocol"
+authority_reference_id = "ref-file"
+protocol_md = """Run the fixture review at every declared cadence.
+"""
+cadence_transition_id = "matrix.fixture-signal-k"
+
+[[record]]
+id = "matrix.fixture-policy-b"
+title = "Permanent boundary policy"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """POLICY b — boundary; permanent.
+"""
+span_ids = ["record-fixture-policy-b"]
+
+[record.semantic_shadow]
+kind = "matrix_policy"
+summary_md = """Permanent matrix boundary.
+"""
+policy_kind = "boundary"
+authority_reference_id = "ref-file"
+rationale_md = """The fixture scope is permanently bounded.
+"""
+permanence = "permanent"
+
+[[record]]
+id = "matrix.fixture-policy-c"
+title = "Reopenable boundary policy"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """POLICY c — boundary; reopenable.
+"""
+span_ids = ["record-fixture-policy-c"]
+
+[record.semantic_shadow]
+kind = "matrix_policy"
+summary_md = """Reopenable matrix boundary.
+"""
+policy_kind = "boundary"
+authority_reference_id = "ref-file"
+rationale_md = """The fixture scope reopens on its declared signal.
+"""
+permanence = "reopenable"
+reopening_transition_id = "matrix.fixture-signal-f"
+
+[[record]]
+id = "matrix.fixture-raw-owner"
+title = "Raw authority sentinel"
+projection_group = "fixture"
+tags = ["coverage:authority:authoritative", "coverage:authority_kind:grammar", "coverage:authority_kind:registry", "coverage:authority_kind:reviewed_relation", "coverage:campaign_state:closing", "coverage:campaign_state:designing", "coverage:campaign_state:enumerating", "coverage:cell_disposition:deliberately_unsupported", "coverage:cell_disposition:safely_refused", "coverage:cell_disposition:supported", "coverage:cell_disposition:unknown", "coverage:closeout_state:blocked", "coverage:closeout_state:due", "coverage:closeout_state:waiting", "coverage:comparator:eq", "coverage:comparator:ge", "coverage:comparator:gt", "coverage:comparator:le", "coverage:comparator:lt", "coverage:control_kind:consumer_ci", "coverage:control_kind:fixture", "coverage:control_kind:gate", "coverage:control_kind:operator_procedure", "coverage:control_kind:review_rule", "coverage:control_kind:test", "coverage:control_kind:upstream_issue", "coverage:control_state:live", "coverage:control_state:proposed", "coverage:control_state:stale", "coverage:decision_arm:decided_permanent", "coverage:decision_arm:decided_reopenable", "coverage:decision_arm:held_reopenable", "coverage:decision_arm:pending", "coverage:decision_state:decided", "coverage:decision_state:held", "coverage:decision_state:pending", "coverage:evidence_kind:committed_vector", "coverage:evidence_kind:consumer_report", "coverage:evidence_kind:decision", "coverage:evidence_kind:execution_probe", "coverage:evidence_kind:external_commit", "coverage:evidence_kind:external_issue", "coverage:evidence_kind:gate", "coverage:evidence_kind:harness_free_repro", "coverage:evidence_kind:incident", "coverage:evidence_kind:registry_enumeration", "coverage:evidence_kind:regression_pin", "coverage:evidence_kind:source_read", "coverage:evidence_kind:spec_read", "coverage:evidence_stage:compiled", "coverage:evidence_stage:constraint_enforced", "coverage:evidence_stage:executed", "coverage:evidence_stage:generated", "coverage:evidence_stage:independently_decoded", "coverage:evidence_stage:over_accepted", "coverage:evidence_stage:round_tripped", "coverage:evidence_verdict:confirmed", "coverage:evidence_verdict:falsified", "coverage:evidence_verdict:inapplicable", "coverage:evidence_verdict:proposed", "coverage:evidence_verdict:unknown", "coverage:family_classification:none_reviewed", "coverage:family_classification:pending", "coverage:family_maturity:observed_only", "coverage:family_maturity:under_design", "coverage:freshness:as_of", "coverage:freshness:historical", "coverage:freshness:live", "coverage:freshness:stale", "coverage:frozen_source_eof:lf", "coverage:manifest_kind:fragment", "coverage:manifest_kind:generated_slot", "coverage:manifest_kind:legacy_marker", "coverage:manifest_kind:part", "coverage:manifest_kind:record", "coverage:manifest_kind:section", "coverage:migration_status:generated", "coverage:migration_status:raw", "coverage:migration_status:replaced", "coverage:payload_kind:control", "coverage:payload_kind:decision", "coverage:payload_kind:evidence", "coverage:payload_kind:family", "coverage:payload_kind:matrix_external_closeout", "coverage:payload_kind:matrix_policy", "coverage:payload_kind:signal", "coverage:payload_kind:work", "coverage:permanence:permanent", "coverage:permanence:reopenable", "coverage:policy_kind:boundary", "coverage:policy_kind:maintenance_protocol", "coverage:predicate_kind:event", "coverage:predicate_kind:manual", "coverage:predicate_kind:quantitative", "coverage:priority_band:critical", "coverage:priority_band:high", "coverage:priority_band:low", "coverage:priority_band:normal", "coverage:reference_kind:consumer_report", "coverage:reference_kind:external_commit", "coverage:reference_kind:external_issue", "coverage:reference_kind:external_release", "coverage:reference_kind:file_heading", "coverage:reference_kind:gate", "coverage:reference_kind:matrix_cell", "coverage:reference_kind:matrix_feature", "coverage:reference_kind:matrix_role", "coverage:reference_kind:roadmap", "coverage:reference_kind:spec_passage", "coverage:reference_kind:test_symbol", "coverage:reference_kind:unresolved_migration", "coverage:relation_kind:blocked_by", "coverage:relation_kind:complements", "coverage:relation_kind:delegates_to", "coverage:relation_kind:depends_on", "coverage:relation_kind:overlaps", "coverage:relation_kind:parent_of", "coverage:relation_kind:related", "coverage:relation_kind:reopens", "coverage:relation_kind:split_from", "coverage:relation_kind:supersedes", "coverage:render_authority:raw", "coverage:render_authority:semantic", "coverage:risk:abort_or_panic", "coverage:risk:compile_failure", "coverage:risk:cosmetic", "coverage:risk:false_pass_or_red", "coverage:risk:invalid_acceptance", "coverage:risk:misleading_docs", "coverage:risk:resource_exhaustion", "coverage:risk:silent_wrong_bytes", "coverage:risk:valid_rejection", "coverage:risk:wrong_public_api", "coverage:roadmap:matrix", "coverage:schema_version:1", "coverage:signal_evaluation:met", "coverage:signal_evaluation:stale", "coverage:signal_evaluation:unknown", "coverage:signal_evaluation:unmet", "coverage:source_kind:fragment", "coverage:source_kind:generated_slot", "coverage:source_kind:legacy_marker", "coverage:source_kind:part", "coverage:source_kind:record", "coverage:source_kind:section", "coverage:spec_legality:illegal", "coverage:spec_legality:legal", "coverage:transition_kind:cadence", "coverage:transition_kind:promotion_trigger", "coverage:transition_kind:reopening_signal", "coverage:transition_kind:retirement_predicate", "coverage:transition_kind:unblock_predicate", "coverage:transition_kind:watch_escalation", "coverage:work_intent:add_regression", "coverage:work_intent:build_capability", "coverage:work_intent:build_system", "coverage:work_intent:change_documentation", "coverage:work_intent:establish_honest_refusal", "coverage:work_intent:optimize", "coverage:work_intent:repair", "coverage:work_kind:coverage_cell", "coverage:work_kind:defect", "coverage:work_kind:documentation_integrity", "coverage:work_kind:feature", "coverage:work_kind:infrastructure", "coverage:work_kind:missing_system", "coverage:work_kind:optimization", "coverage:work_kind:regression_gap", "coverage:work_state:armed", "coverage:work_state:blocked", "coverage:work_state:deferred", "coverage:work_state:delegated", "coverage:work_state:pending_review", "coverage:work_state:ready", "coverage:work_state:waiting_external"]
+render_authority = "raw"
+source_block_md = """RAW OWNER — semantic shadow stays non-rendering.
+"""
+span_ids = ["record-fixture-raw-owner"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Raw authority shadow.
+"""
+work_state = "pending_review"
+work_intent = "build_system"
+work_kind = "infrastructure"
+risk = "false_pass_or_red"
+family_classification = "pending"
+uncertainty_md = """Migration classification remains explicit.
+"""
+
+[[record]]
+id = "matrix.fixture-semantic-owner"
+title = "Semantic authority boundary"
+projection_group = "fixture"
+render_authority = "semantic"
+
+[record.payload]
+kind = "matrix_policy"
+summary_md = """## Semantic authority boundary
+"""
+policy_kind = "boundary"
+authority_reference_id = "ref-file"
+rationale_md = """Permanent matrix fixture boundary.
+"""
+permanence = "permanent"
+
+[[record.source_replacement]]
+span_id = "semantic-detail"
+replacement_field = "payload.rationale_md"
+review_note_md = """Reviewed semantic rationale replacement.
+"""
+
+[[record.source_replacement]]
+span_id = "semantic-summary"
+replacement_field = "payload.summary_md"
+review_note_md = """Reviewed semantic summary replacement.
+"""
+
+[[record]]
+id = "matrix.fixture-signal-a"
+title = "Quantitative signal a"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL a — promotion_trigger; quantitative; lt; met.
+"""
+span_ids = ["record-fixture-signal-a"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Quantitative signal lt.
+"""
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+predicate_kind = "quantitative"
+current_evidence_ids = ["matrix.fixture-evidence-a"]
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "met"
+
+[record.semantic_shadow.predicate]
+predicate_kind = "quantitative"
+comparator = "lt"
+threshold = 1
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 0
+as_of = "2026-08-11"
+
+[[record]]
+id = "matrix.fixture-signal-b"
+title = "Quantitative signal b"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL b — promotion_trigger; quantitative; le; unmet.
+"""
+span_ids = ["record-fixture-signal-b"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Quantitative signal le.
+"""
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+predicate_kind = "quantitative"
+current_evidence_ids = ["matrix.fixture-evidence-a"]
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "unmet"
+
+[record.semantic_shadow.predicate]
+predicate_kind = "quantitative"
+comparator = "le"
+threshold = 2
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 3
+as_of = "2026-08-11"
+
+[[record]]
+id = "matrix.fixture-signal-c"
+title = "Quantitative signal c"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL c — promotion_trigger; quantitative; eq; unmet.
+"""
+span_ids = ["record-fixture-signal-c"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Quantitative signal eq.
+"""
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+predicate_kind = "quantitative"
+current_evidence_ids = ["matrix.fixture-evidence-a"]
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "unmet"
+
+[record.semantic_shadow.predicate]
+predicate_kind = "quantitative"
+comparator = "eq"
+threshold = 3
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 2
+as_of = "2026-08-11"
+
+[[record]]
+id = "matrix.fixture-signal-d"
+title = "Quantitative signal d"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL d — promotion_trigger; quantitative; ge; stale.
+"""
+span_ids = ["record-fixture-signal-d"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Quantitative signal ge.
+"""
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+predicate_kind = "quantitative"
+current_evidence_ids = ["matrix.fixture-evidence-d"]
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "stale"
+
+[record.semantic_shadow.predicate]
+predicate_kind = "quantitative"
+comparator = "ge"
+threshold = 4
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 3
+as_of = "2026-08-11"
+
+[[record]]
+id = "matrix.fixture-signal-e"
+title = "Quantitative signal e"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL e — promotion_trigger; quantitative; gt; met.
+"""
+span_ids = ["record-fixture-signal-e"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Quantitative signal gt.
+"""
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+predicate_kind = "quantitative"
+current_evidence_ids = ["matrix.fixture-evidence-a"]
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "met"
+
+[record.semantic_shadow.predicate]
+predicate_kind = "quantitative"
+comparator = "gt"
+threshold = 5
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 6
+as_of = "2026-08-11"
+
+[[record]]
+id = "matrix.fixture-signal-f"
+title = "Event reopening signal"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL f — reopening_signal; event; unmet.
+"""
+span_ids = ["record-fixture-signal-f"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Event reopening signal.
+"""
+transition_kind = "reopening_signal"
+observer = "fixture-observer"
+dimension = "fixture-event"
+observable = "fixture-event-arrival"
+predicate_kind = "event"
+current_evidence_ids = ["matrix.fixture-evidence-b"]
+action_on_fire_md = """Reopen the held decision.
+"""
+evaluation = "unmet"
+
+[record.semantic_shadow.predicate]
+predicate_kind = "event"
+event_md = """A reviewed event is recorded.
+"""
+evidence_ids = ["matrix.fixture-evidence-b"]
+
+[[record]]
+id = "matrix.fixture-signal-g"
+title = "Manual promotion signal"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL g — promotion_trigger; manual; unknown.
+"""
+span_ids = ["record-fixture-signal-g"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Manual promotion signal.
+"""
+transition_kind = "promotion_trigger"
+observer = "fixture-reviewer"
+dimension = "fixture-review"
+observable = "fixture-signoff"
+predicate_kind = "manual"
+current_evidence_ids = ["matrix.fixture-evidence-c"]
+action_on_fire_md = """Promote after review.
+"""
+evaluation = "unknown"
+
+[record.semantic_shadow.predicate]
+predicate_kind = "manual"
+review_procedure_md = """Inspect every declared fixture arm.
+"""
+evidence_ids = ["matrix.fixture-evidence-c"]
+
+[[record]]
+id = "matrix.fixture-signal-h"
+title = "Unblock signal"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL h — unblock_predicate; stale.
+"""
+span_ids = ["record-fixture-signal-h"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Unblock predicate.
+"""
+transition_kind = "unblock_predicate"
+owner_reference_id = "ref-release"
+event_md = """The dependency release is published.
+"""
+check_procedure_md = """Resolve the release reference.
+"""
+due_action_md = """Unblock the associated work.
+"""
+evaluation = "stale"
+
+[[record]]
+id = "matrix.fixture-signal-i"
+title = "Watch escalation signal"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL i — watch_escalation; met.
+"""
+span_ids = ["record-fixture-signal-i"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Watch escalation.
+"""
+transition_kind = "watch_escalation"
+failure_signature_md = """The fixture signature recurs.
+"""
+capture_procedure_md = """Capture the complete reproduction.
+"""
+response_md = """Classify the recurrence.
+"""
+escalation_action_md = """Escalate to the named owner.
+"""
+retirement_semantics_md = """Retire only after the control proves the claim.
+"""
+evaluation = "met"
+
+[[record]]
+id = "matrix.fixture-signal-j"
+title = "Retirement signal"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL j — retirement_predicate; unmet.
+"""
+span_ids = ["record-fixture-signal-j"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Retirement predicate.
+"""
+transition_kind = "retirement_predicate"
+external_owner_reference_id = "ref-issue"
+external_predicate_md = """The external owner closes the issue.
+"""
+verification_md = """Verify the released behavior.
+"""
+due_action_md = """Retire the waiting work.
+"""
+evaluation = "unmet"
+
+[[record]]
+id = "matrix.fixture-signal-k"
+title = "Cadence signal"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """SIGNAL k — cadence; unknown.
+"""
+span_ids = ["record-fixture-signal-k"]
+
+[record.semantic_shadow]
+kind = "signal"
+summary_md = """Cadence signal.
+"""
+transition_kind = "cadence"
+owner_reference_id = "ref-file"
+event_source = "fixture-calendar"
+period_or_event_md = """Review once per fixture revision.
+"""
+checklist_md = """Check schema, spans, references, and projection.
+"""
+missed_action_md = """Escalate a missed review.
+"""
+last_completion_reference_id = "ref-commit"
+due_on = "2026-08-12"
+as_of = "2026-08-11"
+evaluation = "unknown"
+
+[[record]]
+id = "matrix.fixture-systematic-a"
+title = "Systematic family a"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """FAMILY a — observed_only; designing.
+"""
+span_ids = ["record-fixture-family-a"]
+
+[record.semantic_shadow]
+kind = "family"
+summary_md = """Systematic family a.
+"""
+family_maturity = "observed_only"
+campaign_state = "designing"
+goal_md = """Enumerate the declared synthetic coordinate space.
+"""
+boundary_md = """Only the fixture axes and profiles are in scope.
+"""
+work_ids = ["matrix.fixture-task-a"]
+observation_reference_ids = ["ref-consumer"]
+affected_profiles = ["default", "preserve"]
+affected_faces = ["rust", "wasm"]
+control_ids = ["matrix.fixture-control-a"]
+completion_owner_reference_id = "ref-file"
+retirement_owner_reference_id = "ref-file"
+
+[[record.semantic_shadow.axis]]
+id = "matrix.fixture-dimension-a"
+label = "Axis a"
+authority_reference_id = "ref-spec"
+
+[[record.semantic_shadow.axis.value]]
+id = "matrix.fixture-option-a-one"
+label = "Value a one"
+source_reference_id = "ref-spec"
+
+[[record.semantic_shadow.axis.value]]
+id = "matrix.fixture-option-a-two"
+label = "Value a two"
+source_reference_id = "ref-spec"
+
+[[record.semantic_shadow.evidence_requirement]]
+id = "matrix.fixture-requirement-a"
+profiles = ["default", "preserve"]
+faces = ["rust", "wasm"]
+stages = ["compiled", "constraint_enforced", "executed", "generated", "independently_decoded", "over_accepted", "round_tripped"]
+
+[[record.semantic_shadow.cell]]
+id = "matrix.fixture-coordinate-a"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+evidence_ids = ["matrix.fixture-evidence-a"]
+work_id = "matrix.fixture-task-a"
+
+[[record.semantic_shadow.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-one"
+
+[[record.semantic_shadow.cell]]
+id = "matrix.fixture-coordinate-b"
+spec_legality = "legal"
+cell_disposition = "safely_refused"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+
+[[record.semantic_shadow.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-two"
+
+[[record.semantic_shadow.cell]]
+id = "matrix.fixture-coordinate-c"
+spec_legality = "legal"
+cell_disposition = "deliberately_unsupported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+
+[[record.semantic_shadow.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-one"
+
+[[record.semantic_shadow.cell]]
+id = "matrix.fixture-coordinate-d"
+spec_legality = "legal"
+cell_disposition = "unknown"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+
+[[record.semantic_shadow.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-two"
+
+[[record.semantic_shadow.exclusion]]
+id = "matrix.fixture-exclusion-a"
+spec_legality = "illegal"
+reason_md = """The authority excludes this coordinate.
+"""
+owner_reference_id = "ref-file"
+source_reference_id = "ref-spec"
+liveness_reference_id = "ref-gate"
+
+[[record.semantic_shadow.exclusion.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-one"
+
+[[record]]
+id = "matrix.fixture-systematic-b"
+title = "Systematic family b"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """FAMILY b — under_design; enumerating; grammar.
+"""
+span_ids = ["record-fixture-family-b"]
+
+[record.semantic_shadow]
+kind = "family"
+summary_md = """Systematic family b.
+"""
+family_maturity = "under_design"
+campaign_state = "enumerating"
+goal_md = """Enumerate the declared synthetic coordinate space.
+"""
+boundary_md = """Only the fixture axes and profiles are in scope.
+"""
+work_ids = ["matrix.fixture-task-a"]
+authority_kind = "grammar"
+authority_reference_id = "ref-spec"
+derivation_md = """Derive coordinates from the declared authority.
+"""
+legality_rule_md = """A coordinate is legal exactly when the authority admits it.
+"""
+legality_owner_reference_id = "ref-spec"
+affected_profiles = ["default", "preserve"]
+affected_faces = ["rust", "wasm"]
+control_ids = ["matrix.fixture-control-a"]
+completion_owner_reference_id = "ref-file"
+retirement_owner_reference_id = "ref-file"
+denominator_unknowns_md = """One coordinate remains debt until its authority is extended.
+"""
+
+[[record.semantic_shadow.axis]]
+id = "matrix.fixture-dimension-b"
+label = "Axis b"
+authority_reference_id = "ref-spec"
+
+[[record.semantic_shadow.axis.value]]
+id = "matrix.fixture-option-b-one"
+label = "Value b one"
+source_reference_id = "ref-spec"
+
+[[record.semantic_shadow.evidence_requirement]]
+id = "matrix.fixture-requirement-b"
+profiles = ["default", "preserve"]
+faces = ["rust", "wasm"]
+stages = ["generated"]
+
+[[record.semantic_shadow.cell]]
+id = "matrix.fixture-coordinate-bx"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+evidence_ids = ["matrix.fixture-evidence-a"]
+work_id = "matrix.fixture-task-a"
+
+[[record.semantic_shadow.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-b"
+value_id = "matrix.fixture-option-b-one"
+
+[[record.semantic_shadow.exclusion]]
+id = "matrix.fixture-exclusion-b"
+spec_legality = "illegal"
+reason_md = """The authority excludes this coordinate.
+"""
+owner_reference_id = "ref-file"
+source_reference_id = "ref-spec"
+liveness_reference_id = "ref-gate"
+
+[[record.semantic_shadow.exclusion.coordinate]]
+axis_id = "matrix.fixture-dimension-b"
+value_id = "matrix.fixture-option-b-one"
+
+[[record]]
+id = "matrix.fixture-systematic-c"
+title = "Systematic family c"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """FAMILY c — under_design; closing; registry.
+"""
+span_ids = ["record-fixture-family-c"]
+
+[record.semantic_shadow]
+kind = "family"
+summary_md = """Systematic family c.
+"""
+family_maturity = "under_design"
+campaign_state = "closing"
+goal_md = """Enumerate the declared synthetic coordinate space.
+"""
+boundary_md = """Only the fixture axes and profiles are in scope.
+"""
+work_ids = ["matrix.fixture-task-a"]
+authority_kind = "registry"
+authority_reference_id = "ref-feature"
+derivation_md = """Derive coordinates from the declared authority.
+"""
+legality_rule_md = """A coordinate is legal exactly when the authority admits it.
+"""
+legality_owner_reference_id = "ref-spec"
+affected_profiles = ["default", "preserve"]
+affected_faces = ["rust", "wasm"]
+control_ids = ["matrix.fixture-control-a"]
+completion_owner_reference_id = "ref-file"
+retirement_owner_reference_id = "ref-file"
+
+[[record.semantic_shadow.axis]]
+id = "matrix.fixture-dimension-c"
+label = "Axis c"
+authority_reference_id = "ref-spec"
+
+[[record.semantic_shadow.axis.value]]
+id = "matrix.fixture-option-c-one"
+label = "Value c one"
+source_reference_id = "ref-spec"
+
+[[record.semantic_shadow.evidence_requirement]]
+id = "matrix.fixture-requirement-c"
+profiles = ["default", "preserve"]
+faces = ["rust", "wasm"]
+stages = ["generated"]
+
+[[record.semantic_shadow.cell]]
+id = "matrix.fixture-coordinate-cx"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+evidence_ids = ["matrix.fixture-evidence-a"]
+work_id = "matrix.fixture-task-a"
+
+[[record.semantic_shadow.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-c"
+value_id = "matrix.fixture-option-c-one"
+
+[[record.semantic_shadow.exclusion]]
+id = "matrix.fixture-exclusion-c"
+spec_legality = "illegal"
+reason_md = """The authority excludes this coordinate.
+"""
+owner_reference_id = "ref-file"
+source_reference_id = "ref-spec"
+liveness_reference_id = "ref-gate"
+
+[[record.semantic_shadow.exclusion.coordinate]]
+axis_id = "matrix.fixture-dimension-c"
+value_id = "matrix.fixture-option-c-one"
+
+[[record]]
+id = "matrix.fixture-systematic-d"
+title = "Systematic family d"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """FAMILY d — under_design; designing; reviewed_relation.
+"""
+span_ids = ["record-fixture-family-d"]
+
+[record.semantic_shadow]
+kind = "family"
+summary_md = """Systematic family d.
+"""
+family_maturity = "under_design"
+campaign_state = "designing"
+goal_md = """Enumerate the declared synthetic coordinate space.
+"""
+boundary_md = """Only the fixture axes and profiles are in scope.
+"""
+work_ids = ["matrix.fixture-task-a"]
+authority_kind = "reviewed_relation"
+authority_reference_id = "ref-roadmap"
+derivation_md = """Derive coordinates from the declared authority.
+"""
+legality_rule_md = """A coordinate is legal exactly when the authority admits it.
+"""
+legality_owner_reference_id = "ref-spec"
+affected_profiles = ["default", "preserve"]
+affected_faces = ["rust", "wasm"]
+control_ids = ["matrix.fixture-control-a"]
+completion_owner_reference_id = "ref-file"
+retirement_owner_reference_id = "ref-file"
+
+[[record.semantic_shadow.axis]]
+id = "matrix.fixture-dimension-d"
+label = "Axis d"
+authority_reference_id = "ref-spec"
+
+[[record.semantic_shadow.axis.value]]
+id = "matrix.fixture-option-d-one"
+label = "Value d one"
+source_reference_id = "ref-spec"
+
+[[record.semantic_shadow.evidence_requirement]]
+id = "matrix.fixture-requirement-d"
+profiles = ["default", "preserve"]
+faces = ["rust", "wasm"]
+stages = ["generated"]
+
+[[record.semantic_shadow.cell]]
+id = "matrix.fixture-coordinate-dx"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+evidence_ids = ["matrix.fixture-evidence-a"]
+work_id = "matrix.fixture-task-a"
+
+[[record.semantic_shadow.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-d"
+value_id = "matrix.fixture-option-d-one"
+
+[[record.semantic_shadow.exclusion]]
+id = "matrix.fixture-exclusion-d"
+spec_legality = "illegal"
+reason_md = """The authority excludes this coordinate.
+"""
+owner_reference_id = "ref-file"
+source_reference_id = "ref-spec"
+liveness_reference_id = "ref-gate"
+
+[[record.semantic_shadow.exclusion.coordinate]]
+axis_id = "matrix.fixture-dimension-d"
+value_id = "matrix.fixture-option-d-one"
+
+[[record]]
+id = "matrix.fixture-task-a"
+title = "Work arm a"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK a — ready; repair; defect; silent_wrong_bytes; critical.
+"""
+span_ids = ["record-fixture-work-a"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work a: ready.
+"""
+detail_md = """Exercises every optional work-base linkage.
+"""
+work_state = "ready"
+work_intent = "repair"
+work_kind = "defect"
+risk = "silent_wrong_bytes"
+family_id = "matrix.fixture-systematic-a"
+evidence_ids = ["matrix.fixture-evidence-a", "matrix.fixture-evidence-c"]
+control_ids = ["matrix.fixture-control-a"]
+regression_evidence_ids = ["matrix.fixture-evidence-b"]
+regression_gap_ids = ["matrix.fixture-task-b"]
+acceptance_md = """Ready work a has explicit acceptance.
+"""
+priority_band = "critical"
+priority_rationale_md = """Priority critical is explicit.
+"""
+
+[[record]]
+id = "matrix.fixture-task-b"
+title = "Work arm b"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK b — ready; add_regression; regression_gap; invalid_acceptance; high.
+"""
+span_ids = ["record-fixture-work-b"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work b: ready.
+"""
+work_state = "ready"
+work_intent = "add_regression"
+work_kind = "regression_gap"
+risk = "invalid_acceptance"
+family_classification = "none_reviewed"
+acceptance_md = """Ready work b has explicit acceptance.
+"""
+priority_band = "high"
+priority_rationale_md = """Priority high is explicit.
+"""
+
+[[record]]
+id = "matrix.fixture-task-c"
+title = "Work arm c"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK c — ready; build_capability; coverage_cell; valid_rejection; normal.
+"""
+span_ids = ["record-fixture-work-c"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work c: ready.
+"""
+work_state = "ready"
+work_intent = "build_capability"
+work_kind = "coverage_cell"
+risk = "valid_rejection"
+family_classification = "none_reviewed"
+acceptance_md = """Ready work c has explicit acceptance.
+"""
+priority_band = "normal"
+priority_rationale_md = """Priority normal is explicit.
+"""
+
+[[record]]
+id = "matrix.fixture-task-d"
+title = "Work arm d"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK d — ready; build_system; infrastructure; wrong_public_api; low.
+"""
+span_ids = ["record-fixture-work-d"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work d: ready.
+"""
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "infrastructure"
+risk = "wrong_public_api"
+family_classification = "none_reviewed"
+acceptance_md = """Ready work d has explicit acceptance.
+"""
+priority_band = "low"
+priority_rationale_md = """Priority low is explicit.
+"""
+
+[[record]]
+id = "matrix.fixture-task-e"
+title = "Work arm e"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK e — blocked; establish_honest_refusal; feature; compile_failure.
+"""
+span_ids = ["record-fixture-work-e"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work e: blocked.
+"""
+work_state = "blocked"
+work_intent = "establish_honest_refusal"
+work_kind = "feature"
+risk = "compile_failure"
+family_classification = "none_reviewed"
+blocker_md = """A named dependency blocks execution.
+"""
+transition_ids = ["matrix.fixture-signal-h"]
+
+[[record]]
+id = "matrix.fixture-task-f"
+title = "Work arm f"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK f — armed; optimize; optimization; abort_or_panic.
+"""
+span_ids = ["record-fixture-work-f"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work f: armed.
+"""
+work_state = "armed"
+work_intent = "optimize"
+work_kind = "optimization"
+risk = "abort_or_panic"
+family_classification = "none_reviewed"
+control_ids = ["matrix.fixture-control-a"]
+transition_ids = ["matrix.fixture-signal-b"]
+
+[[record]]
+id = "matrix.fixture-task-g"
+title = "Work arm g"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK g — deferred; change_documentation; documentation_integrity; false_pass_or_red.
+"""
+span_ids = ["record-fixture-work-g"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work g: deferred.
+"""
+work_state = "deferred"
+work_intent = "change_documentation"
+work_kind = "documentation_integrity"
+risk = "false_pass_or_red"
+family_classification = "none_reviewed"
+transition_ids = ["matrix.fixture-signal-f"]
+
+[[record]]
+id = "matrix.fixture-task-h"
+title = "Work arm h"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK h — waiting_external; repair; missing_system; misleading_docs.
+"""
+span_ids = ["record-fixture-work-h"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work h: waiting_external.
+"""
+work_state = "waiting_external"
+work_intent = "repair"
+work_kind = "missing_system"
+risk = "misleading_docs"
+family_classification = "none_reviewed"
+transition_ids = ["matrix.fixture-signal-j"]
+external_owner_reference_id = "ref-issue"
+
+[[record]]
+id = "matrix.fixture-task-i"
+title = "Work arm i"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK i — delegated; add_regression; defect; resource_exhaustion.
+"""
+span_ids = ["record-fixture-work-i"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work i: delegated.
+"""
+work_state = "delegated"
+work_intent = "add_regression"
+work_kind = "defect"
+risk = "resource_exhaustion"
+family_classification = "none_reviewed"
+evidence_ids = ["matrix.fixture-evidence-c"]
+regression_evidence_ids = ["matrix.fixture-evidence-a"]
+regression_gap_ids = ["matrix.fixture-task-b"]
+return_condition_md = """Return after the delegated review completes.
+"""
+
+[[record]]
+id = "matrix.fixture-task-j"
+title = "Work arm j"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """WORK j — pending_review; build_capability; regression_gap; cosmetic.
+"""
+span_ids = ["record-fixture-work-j"]
+
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Work j: pending_review.
+"""
+work_state = "pending_review"
+work_intent = "build_capability"
+work_kind = "regression_gap"
+risk = "cosmetic"
+family_classification = "pending"
+uncertainty_md = """Review must resolve the remaining classification.
+"""
+
+[[record]]
+id = "matrix.fixture-upstream-a"
+title = "Matrix closeout a"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CLOSEOUT a — waiting.
+"""
+span_ids = ["record-fixture-closeout-a"]
+
+[record.semantic_shadow]
+kind = "matrix_external_closeout"
+summary_md = """Matrix external closeout waiting.
+"""
+closeout_state = "waiting"
+upstream_owner_reference_id = "ref-issue"
+current_upstream_state_md = """The upstream state is waiting.
+"""
+transition_ids = ["matrix.fixture-signal-j"]
+verification_md = """Verify the referenced upstream behavior.
+"""
+prune_reference_ids = ["ref-issue"]
+
+[[record.semantic_shadow.action]]
+action_id = "action-a-one"
+action_md = """Execute the closeout verification.
+"""
+
+[[record.semantic_shadow.action]]
+action_id = "action-a-two"
+action_md = """Record the closeout result.
+"""
+
+[[record.semantic_shadow.branch]]
+branch_id = "branch-a-one"
+predicate_md = """The upstream result satisfies the fixture predicate.
+"""
+prune_reference_ids = ["ref-issue"]
+
+[[record.semantic_shadow.branch.action]]
+action_id = "action-a-one"
+
+[[record.semantic_shadow.branch.action]]
+action_id = "action-a-two"
+
+[[record]]
+id = "matrix.fixture-upstream-b"
+title = "Matrix closeout b"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CLOSEOUT b — due.
+"""
+span_ids = ["record-fixture-closeout-b"]
+
+[record.semantic_shadow]
+kind = "matrix_external_closeout"
+summary_md = """Matrix external closeout due.
+"""
+closeout_state = "due"
+upstream_owner_reference_id = "ref-issue"
+current_upstream_state_md = """The upstream state is due.
+"""
+transition_ids = ["matrix.fixture-signal-j"]
+verification_md = """Verify the referenced upstream behavior.
+"""
+
+[[record.semantic_shadow.action]]
+action_id = "action-b-one"
+action_md = """Execute the closeout verification.
+"""
+
+[[record.semantic_shadow.action]]
+action_id = "action-b-two"
+action_md = """Record the closeout result.
+"""
+
+[[record.semantic_shadow.branch]]
+branch_id = "branch-b-one"
+predicate_md = """The upstream result satisfies the fixture predicate.
+"""
+
+[[record.semantic_shadow.branch.action]]
+action_id = "action-b-one"
+
+[[record.semantic_shadow.branch.action]]
+action_id = "action-b-two"
+
+[[record]]
+id = "matrix.fixture-upstream-c"
+title = "Matrix closeout c"
+projection_group = "fixture"
+render_authority = "raw"
+source_block_md = """CLOSEOUT c — blocked.
+"""
+span_ids = ["record-fixture-closeout-c"]
+
+[record.semantic_shadow]
+kind = "matrix_external_closeout"
+summary_md = """Matrix external closeout blocked.
+"""
+closeout_state = "blocked"
+upstream_owner_reference_id = "ref-issue"
+current_upstream_state_md = """The upstream state is blocked.
+"""
+blocker_md = """The upstream artifact is unavailable.
+"""
+transition_ids = ["matrix.fixture-signal-j"]
+verification_md = """Verify the referenced upstream behavior.
+"""
+
+[[record.semantic_shadow.action]]
+action_id = "action-c-one"
+action_md = """Execute the closeout verification.
+"""
+
+[[record.semantic_shadow.action]]
+action_id = "action-c-two"
+action_md = """Record the closeout result.
+"""
+
+[[record.semantic_shadow.branch]]
+branch_id = "branch-c-one"
+predicate_md = """The upstream result satisfies the fixture predicate.
+"""
+
+[[record.semantic_shadow.branch.action]]
+action_id = "action-c-one"
+
+[[record.semantic_shadow.branch.action]]
+action_id = "action-c-two"
+
+[[part]]
+part_id = "fixture-part"
+parent_record_id = "matrix.fixture-semantic-owner"
+title = "Raw part placement"
+render_authority = "raw"
+source_block_md = """RAW PART PLACEMENT
+"""
+span_ids = ["part"]
+
+[[generated_slot]]
+slot_id = "constraint"
+binding = "status_header_markers:roadmap-constraint"
+span_ids = ["slot-constraint"]
+
+[[generated_slot]]
+slot_id = "counts"
+binding = "status_header_markers:roadmap-counts"
+span_ids = ["slot-counts"]
+
+[[generated_slot]]
+slot_id = "emission"
+binding = "status_header_markers:roadmap-emission"
+span_ids = ["slot-emission"]
+
+[[generated_slot]]
+slot_id = "ops"
+binding = "status_header_markers:roadmap-ops"
+span_ids = ["slot-ops"]
+
+[[manifest.entry]]
+kind = "section"
+section_id = "fixture"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-upstream-c"
+
+[[manifest.entry]]
+kind = "fragment"
+fragment_id = "fixture-fragment"
+
+[[manifest.entry]]
+kind = "legacy_marker"
+marker_id = "fixture-marker"
+
+[[manifest.entry]]
+kind = "part"
+part_id = "fixture-part"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-upstream-b"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-upstream-a"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-j"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-i"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-h"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-g"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-f"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-e"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-d"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-c"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-b"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-a"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-systematic-d"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-systematic-c"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-systematic-b"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-systematic-a"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-k"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-j"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-i"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-h"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-g"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-f"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-e"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-d"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-c"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-b"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-signal-a"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-semantic-owner"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-raw-owner"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-policy-c"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-policy-b"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-policy-a"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-m"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-l"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-k"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-j"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-i"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-h"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-g"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-f"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-e"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-d"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-c"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-b"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-evidence-a"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-control-g"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-control-f"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-control-e"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-control-d"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-control-c"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-control-b"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-control-a"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-choice-d"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-choice-c"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-choice-b"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-choice-a"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "counts"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "ops"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "emission"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "constraint"
+
+[[source_span]]
+id = "section"
+start_byte = 0
+end_byte = 28
+sha256 = "7065bf7e9745c3c1ccabd7a5043f15ed6ec0d91c256532df2a1e5c2292fdb89b"
+source_kind = "section"
+owner_id = "fixture"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-closeout-c"
+start_byte = 28
+end_byte = 52
+sha256 = "cf42a6ac0dd1f33b604665d4329644759a32691002e0e5a71bf1e18821ee9ad7"
+source_kind = "record"
+owner_id = "matrix.fixture-upstream-c"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "fragment"
+start_byte = 52
+end_byte = 75
+sha256 = "34fade6908b16a5ac2eb0d84bff6786cf422c2a1b972e6c0be2c8ab442a368a2"
+source_kind = "fragment"
+owner_id = "fixture-fragment"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "legacy-marker"
+start_byte = 75
+end_byte = 103
+sha256 = "e0450c0f8892ccec59e2c3f149d364647f8615a33dcd74ad5d89410a3936ea53"
+source_kind = "legacy_marker"
+owner_id = "fixture-marker"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "part"
+start_byte = 103
+end_byte = 122
+sha256 = "e1d77b1749ccf7a5e060d37a37718aff290cc7ed3dffd2fbc30394ca2a1160c9"
+source_kind = "part"
+owner_id = "fixture-part"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-closeout-b"
+start_byte = 122
+end_byte = 142
+sha256 = "c0b5bf1cfe195d740b8ca6a0e8dfd0c24ddf91f9231a9e504237825f47edbed7"
+source_kind = "record"
+owner_id = "matrix.fixture-upstream-b"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-closeout-a"
+start_byte = 142
+end_byte = 166
+sha256 = "7619e2a691f237c050deba7653211d392b898956ef5da545ba686901be1ec18b"
+source_kind = "record"
+owner_id = "matrix.fixture-upstream-a"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-j"
+start_byte = 166
+end_byte = 237
+sha256 = "92c8b139a716fc9c03a01ae83e5c68587a585249332404707f1ce8b479e5703b"
+source_kind = "record"
+owner_id = "matrix.fixture-task-j"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-i"
+start_byte = 237
+end_byte = 304
+sha256 = "0b70d5d66a12e990bb00534fe1a39c34f2e17a64e401a1734eb088fcf5eab273"
+source_kind = "record"
+owner_id = "matrix.fixture-task-i"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-h"
+start_byte = 304
+end_byte = 374
+sha256 = "667b6530e23b76ec5f8aeba26dd23a996f7553ce7517930ef38a0af2021776ab"
+source_kind = "record"
+owner_id = "matrix.fixture-task-h"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-g"
+start_byte = 374
+end_byte = 461
+sha256 = "8346f73305735cda2ddc9731d89d29ddd4a539eab70fac2c33d451296c93049c"
+source_kind = "record"
+owner_id = "matrix.fixture-task-g"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-f"
+start_byte = 461
+end_byte = 519
+sha256 = "ba3b7fe51aac44483b5926aa39c95726216a41074d2d2e98f8951543d10a3098"
+source_kind = "record"
+owner_id = "matrix.fixture-task-f"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-e"
+start_byte = 519
+end_byte = 591
+sha256 = "b4e79b02fc774f673de20e58bf0f6743319c948193bec9ce5c4067a5654e7611"
+source_kind = "record"
+owner_id = "matrix.fixture-task-e"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-d"
+start_byte = 591
+end_byte = 662
+sha256 = "b419ce2dc057533cfc1eb4e89a0d4cd203c5f681610bc56d714f1966fd72bbab"
+source_kind = "record"
+owner_id = "matrix.fixture-task-d"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-c"
+start_byte = 662
+end_byte = 738
+sha256 = "b8375f714c71aae8039cf7b01bb348cf02d234b4990f854fe914da6ac3edfd15"
+source_kind = "record"
+owner_id = "matrix.fixture-task-c"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-b"
+start_byte = 738
+end_byte = 814
+sha256 = "a9b4aaae1768bf5e8d84725eb64192ea70f19365d3f9aeec15020283f4032af9"
+source_kind = "record"
+owner_id = "matrix.fixture-task-b"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-work-a"
+start_byte = 814
+end_byte = 878
+sha256 = "e85c332b98a894ff23f7428f2369338a3b54653aa51b9960f9a0f5f33dca3844"
+source_kind = "record"
+owner_id = "matrix.fixture-task-a"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-family-d"
+start_byte = 878
+end_byte = 935
+sha256 = "647fcc6ddc9834b89e445757220f2aab110f71175fb462a048c3e6dacd523428"
+source_kind = "record"
+owner_id = "matrix.fixture-systematic-d"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-family-c"
+start_byte = 935
+end_byte = 981
+sha256 = "a1650486ecb95a27d27cff66899df1edaf090dfcc9b9847b6489f8bb09ab2337"
+source_kind = "record"
+owner_id = "matrix.fixture-systematic-c"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-family-b"
+start_byte = 981
+end_byte = 1030
+sha256 = "4013ace05828b17e3792ecd23a57e5c00d7273030a27ad485db62a71061d67c5"
+source_kind = "record"
+owner_id = "matrix.fixture-systematic-b"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-family-a"
+start_byte = 1030
+end_byte = 1069
+sha256 = "02af4be3fe90e0b3995f03e1e031df8d1bb2a730fb08f8d5cc8c894613ff877d"
+source_kind = "record"
+owner_id = "matrix.fixture-systematic-a"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-k"
+start_byte = 1069
+end_byte = 1100
+sha256 = "b40282aa76685cc59d2e1d99166370d6efc27383861b2203b0a7bdeeabcbb6a3"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-k"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-j"
+start_byte = 1100
+end_byte = 1142
+sha256 = "b71d992b3395d0c5882f51c1f045a13cdc37f15f8d32175127c82556144bafa2"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-j"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-i"
+start_byte = 1142
+end_byte = 1178
+sha256 = "67f38ac2451344a391f03c2ee724709fdd652cf82cd396e519055843b687aed5"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-i"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-h"
+start_byte = 1178
+end_byte = 1217
+sha256 = "3670bac5c3ab5e97feb368d306104fb60bf295c4be3ab406f90605d60bfd81ee"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-h"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-g"
+start_byte = 1217
+end_byte = 1266
+sha256 = "b6be3f646914d8ce25326661325a2765139d69e0bda0ee4ddefd1e8197088bf7"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-g"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-f"
+start_byte = 1266
+end_byte = 1311
+sha256 = "a9cbe83c4acc14d0a1f1d7dd36cb332eb0639a18c692fdafe41854b90e80434b"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-f"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-e"
+start_byte = 1311
+end_byte = 1366
+sha256 = "ccd09dcdcde0013539eb3658d9f8cd03efc3c237f5bf366a76449444bbf842ea"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-e"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-d"
+start_byte = 1366
+end_byte = 1423
+sha256 = "dd9ca57aa3b420c1136267f1f151c1762feb38a7b21826f205c6acaa895ac060"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-d"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-c"
+start_byte = 1423
+end_byte = 1480
+sha256 = "eb47430bc4fa46737e75c0a402fac86e9c6b88e8e054ed2e877052f900815c59"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-c"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-b"
+start_byte = 1480
+end_byte = 1537
+sha256 = "b7f88a9ca2152590bed7b912ff27949db6fb9cc8586fda600ba4f57c719defde"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-b"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-signal-a"
+start_byte = 1537
+end_byte = 1592
+sha256 = "fc4870e773c5f26d18e3a4090e8cda106ab06bf3a173ee363f9b671403d0936c"
+source_kind = "record"
+owner_id = "matrix.fixture-signal-a"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "semantic-summary"
+start_byte = 1592
+end_byte = 1623
+sha256 = "02aa4fee5c544c103a4431e24dcf7487ca172439ec013e20b6ca46e32f4bfa1a"
+source_kind = "record"
+owner_id = "matrix.fixture-semantic-owner"
+owner_field = "payload.summary_md"
+migration_status = "replaced"
+
+[[source_span]]
+id = "semantic-detail"
+start_byte = 1623
+end_byte = 1658
+sha256 = "01d7154e8efea4fc24769a1fcc200657954e31ea258d1c36816d5bf531a2cd06"
+source_kind = "record"
+owner_id = "matrix.fixture-semantic-owner"
+owner_field = "payload.rationale_md"
+migration_status = "replaced"
+
+[[source_span]]
+id = "record-fixture-raw-owner"
+start_byte = 1658
+end_byte = 1709
+sha256 = "df3a073ed11bc047402dac0fa85053037cc09e7429d8ff0abd92e738134a5402"
+source_kind = "record"
+owner_id = "matrix.fixture-raw-owner"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-policy-c"
+start_byte = 1709
+end_byte = 1744
+sha256 = "6653e031c115a9f26a983e427e4307272f3272c7e96cf57a2c3f3174144e85d7"
+source_kind = "record"
+owner_id = "matrix.fixture-policy-c"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-policy-b"
+start_byte = 1744
+end_byte = 1778
+sha256 = "14bb0f9c6ee2b48fbb59b88aff219af04a2376566fa5b691a46b3f12a6c57556"
+source_kind = "record"
+owner_id = "matrix.fixture-policy-b"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-policy-a"
+start_byte = 1778
+end_byte = 1813
+sha256 = "d854fa9b17aead4acffbfbcb16bf03d8af038182278124869ac53aba7beaf75f"
+source_kind = "record"
+owner_id = "matrix.fixture-policy-a"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-m"
+start_byte = 1813
+end_byte = 1855
+sha256 = "8f5680f8db8dc9f515ef89a1f28a22b3ba56a8b6ad264201332520884f29f1d8"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-m"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-l"
+start_byte = 1855
+end_byte = 1905
+sha256 = "4e079fa0931a3c3a43f50f4efec50e74702ec05b10972e240d032e7076da7209"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-l"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-k"
+start_byte = 1905
+end_byte = 1958
+sha256 = "642762ef70cf64200eb0ba989d1870428f83bfdb5229f39b0a633694c5df8136"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-k"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-j"
+start_byte = 1958
+end_byte = 2004
+sha256 = "0f992a45b5d5f514e5ac9abfd7a169b0504721376249c4c9c01c45e0fdd97a2f"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-j"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-i"
+start_byte = 2004
+end_byte = 2052
+sha256 = "3211ca42aadfa1d96aeb01ff9eeae9d3023d65856800404bb423312d9687dda0"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-i"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-h"
+start_byte = 2052
+end_byte = 2096
+sha256 = "32c7494e9951aaea7d90df902c82a975aaef4b1a568d6638c7be4e59509d2604"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-h"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-g"
+start_byte = 2096
+end_byte = 2147
+sha256 = "4f6f579333d445a3a873056452897a0c87bae47ae5b5cc58fef6b059e9ffe501"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-g"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-f"
+start_byte = 2147
+end_byte = 2201
+sha256 = "2b2633d82aa787a8da7bb0d5a5bd9ae2cb8b5cdd016859db0db42c107a58a563"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-f"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-e"
+start_byte = 2201
+end_byte = 2254
+sha256 = "f51b1056481596e57bd37acf3e117285e66194f19b9508047dbc50264be31cbd"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-e"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-d"
+start_byte = 2254
+end_byte = 2303
+sha256 = "b518fe775893cfe9b967915975b2fece2ccda2ed04159b253cc36ddce5e2d72e"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-d"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-c"
+start_byte = 2303
+end_byte = 2361
+sha256 = "1b0de224ef44bc0c160f5f83e22832c1574fb3cdd0c07ca6c8b6a94fad0c3128"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-c"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-b"
+start_byte = 2361
+end_byte = 2400
+sha256 = "3fdb5ac6f908323baf08209e141f45613332b5e156fc7676774cc07611539860"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-b"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-evidence-a"
+start_byte = 2400
+end_byte = 2447
+sha256 = "76a62563d5c6848a752e5924f6b96f4e3073e2fad9b1e8e2ff38bae3b078383f"
+source_kind = "record"
+owner_id = "matrix.fixture-evidence-a"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-control-g"
+start_byte = 2447
+end_byte = 2487
+sha256 = "8df3186eb9a27b99ee2a5e62860e60bd6f99e6de5479ba5d3b3cc80fb5f84d6e"
+source_kind = "record"
+owner_id = "matrix.fixture-control-g"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-control-f"
+start_byte = 2487
+end_byte = 2524
+sha256 = "730e1df4f3a9f0cb69d8ae0c344545b578774b3753a387938434ac489f8d54b4"
+source_kind = "record"
+owner_id = "matrix.fixture-control-f"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-control-e"
+start_byte = 2524
+end_byte = 2561
+sha256 = "0b73d46d545b0707bde03c30635d03413f0778ad6cbb9a7fb43a41a1f88b831b"
+source_kind = "record"
+owner_id = "matrix.fixture-control-e"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-control-d"
+start_byte = 2561
+end_byte = 2594
+sha256 = "f081d4492dd0bc90ce6f5787ce7c1ed34ffd6b75b71d3615f60446b228be8dcc"
+source_kind = "record"
+owner_id = "matrix.fixture-control-d"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-control-c"
+start_byte = 2594
+end_byte = 2624
+sha256 = "888d45388848a068931c05d23bbaf7d5276945329c5e3ca936b28c669b0055c0"
+source_kind = "record"
+owner_id = "matrix.fixture-control-c"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-control-b"
+start_byte = 2624
+end_byte = 2654
+sha256 = "6091e4098dfdfc5ede961f5a337a401e7c7ce756eb2220ce44de39e61e420631"
+source_kind = "record"
+owner_id = "matrix.fixture-control-b"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-control-a"
+start_byte = 2654
+end_byte = 2680
+sha256 = "8ab9f7fccb5cac14c58304cd8861fd28ccba53c49620b3f49986b5ca53969465"
+source_kind = "record"
+owner_id = "matrix.fixture-control-a"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-decision-d"
+start_byte = 2680
+end_byte = 2716
+sha256 = "131b04fe6dd06225dede447e18d824cf9ecaf8cf61ba1f07259b72e92a3d875e"
+source_kind = "record"
+owner_id = "matrix.fixture-choice-d"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-decision-c"
+start_byte = 2716
+end_byte = 2740
+sha256 = "f1abefd3bcc0b97e2f4e5aa6f3dfbbd21c04ef4395a0615ddfe3f87d8503be65"
+source_kind = "record"
+owner_id = "matrix.fixture-choice-c"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-decision-b"
+start_byte = 2740
+end_byte = 2761
+sha256 = "58ff045caf3d0ced21c88cb7905d43b8cb596a7ccbcbc577c8412888b6525acb"
+source_kind = "record"
+owner_id = "matrix.fixture-choice-b"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record-fixture-decision-a"
+start_byte = 2761
+end_byte = 2785
+sha256 = "a977eea485e0255d1d6529c87e8c7385dedf6847e41f9da87928f7ccc80100b6"
+source_kind = "record"
+owner_id = "matrix.fixture-choice-a"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "slot-counts"
+start_byte = 2785
+end_byte = 2915
+sha256 = "f2addfb663b708a41246e5aa071243de643658cd2e5d3ef23fc8597a637c7aab"
+source_kind = "generated_slot"
+owner_id = "counts"
+owner_field = "generated"
+migration_status = "generated"
+
+[[source_span]]
+id = "slot-ops"
+start_byte = 2915
+end_byte = 2938
+sha256 = "aa1385c5c104c2d1ef55dbcc62a38dd7ab7142e1a008699de9a98625713619c9"
+source_kind = "generated_slot"
+owner_id = "ops"
+owner_field = "generated"
+migration_status = "generated"
+
+[[source_span]]
+id = "slot-emission"
+start_byte = 2938
+end_byte = 2973
+sha256 = "c5864c7aebf1915150ef2858a4662cfd5a3dbdda0fa8028366dc28010d968245"
+source_kind = "generated_slot"
+owner_id = "emission"
+owner_field = "generated"
+migration_status = "generated"
+
+[[source_span]]
+id = "slot-constraint"
+start_byte = 2973
+end_byte = 3051
+sha256 = "a74850b30723278d8970452cb7779d2e7c2991b3842e89a168d2f868f09a3a86"
+source_kind = "generated_slot"
+owner_id = "constraint"
+owner_field = "generated"
+migration_status = "generated"
+
+[[relation]]
+source = "matrix.fixture-task-a"
+kind = "parent_of"
+target = "matrix.fixture-semantic-owner"
+note_md = """The fixture relation is intentionally explicit.
+"""
+
+[[relation]]
+source = "matrix.fixture-task-b"
+kind = "depends_on"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-c"
+kind = "blocked_by"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-d"
+kind = "supersedes"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-e"
+kind = "split_from"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-f"
+kind = "reopens"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-g"
+kind = "overlaps"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-h"
+kind = "complements"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-i"
+kind = "delegates_to"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-i"
+kind = "related"
+target = "matrix.fixture-semantic-owner"
+
+[[reference]]
+id = "ref-consumer"
+source = "matrix.fixture-semantic-owner"
+kind = "consumer_report"
+consumer = "fixture-consumer"
+report_reference = "report-1"
+
+[[reference]]
+id = "ref-commit"
+source = "matrix.fixture-semantic-owner"
+kind = "external_commit"
+repository = "example/upstream"
+commit = "0123456789abcdef0123456789abcdef01234567"
+
+[[reference]]
+id = "ref-issue"
+source = "matrix.fixture-semantic-owner"
+kind = "external_issue"
+repository = "example/upstream"
+issue = "17"
+
+[[reference]]
+id = "ref-release"
+source = "matrix.fixture-semantic-owner"
+kind = "external_release"
+project = "example-upstream"
+release = "v1.0.0"
+
+[[reference]]
+id = "ref-file"
+source = "matrix.fixture-semantic-owner"
+kind = "file_heading"
+path = "cddl-matrix/README.md"
+heading = "What lives here"
+
+[[reference]]
+id = "ref-gate"
+source = "matrix.fixture-semantic-owner"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "ref-cell"
+source = "matrix.fixture-semantic-owner"
+kind = "matrix_cell"
+cell_id = "contain.map-value.type.choice"
+
+[[reference]]
+id = "ref-feature"
+source = "matrix.fixture-semantic-owner"
+kind = "matrix_feature"
+feature_id = "type2.value"
+
+[[reference]]
+id = "ref-role"
+source = "matrix.fixture-semantic-owner"
+kind = "matrix_role"
+role_id = "role.top-level"
+
+[[reference]]
+id = "ref-roadmap"
+source = "matrix.fixture-semantic-owner"
+kind = "roadmap"
+target_id = "matrix.fixture-task-a"
+
+[[reference]]
+id = "ref-spec"
+source = "matrix.fixture-semantic-owner"
+kind = "spec_passage"
+document = "RFC 8610"
+passage = "Section 3"
+
+[[reference]]
+id = "ref-test"
+source = "matrix.fixture-semantic-owner"
+kind = "test_symbol"
+test_id = "robustness_tests"
+symbol = "plain_group_type_choice_arm_rejects_gracefully_at_every_spelling"
+
+[[reference]]
+id = "ref-migration"
+source = "matrix.fixture-semantic-owner"
+kind = "unresolved_migration"
+local_reference = "legacy matrix fixture line"
+uncertainty_md = """The synthetic migration reference intentionally remains unresolved.
+"""
+expires_at = "campaign-cutover"

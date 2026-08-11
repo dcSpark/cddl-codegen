@@ -1,0 +1,73 @@
+[document]
+schema_version = 0
+authority = "shadow"
+roadmap = "testing"
+source_path = "cddl-matrix/roadmap/fixtures/positive/minimal-testing-v0.toml"
+projection_path = "cddl-matrix/roadmap/fixtures/positive/minimal-testing-v0.expected.md"
+frozen_source_sha256 = "c28a295d23b89a8aee8b223db16d12a847004468572fff2b26b3107371daa675"
+frozen_source_byte_length = 66
+frozen_source_line_count = 4
+frozen_source_eof = "none"
+
+[[section]]
+section_id = "fixture"
+title = "Testing fixture"
+source_block_md = """# Testing fixture
+
+"""
+span_ids = ["section"]
+
+[[record]]
+id = "testing.fixture-minimal"
+title = "Minimal testing fixture"
+projection_group = "fixture"
+source_block_md = """Testing raw item.
+"""
+span_ids = ["record"]
+
+[[generated_slot]]
+slot_id = "ignored-gates"
+binding = "status_header_markers:tests-ignored-gates"
+span_ids = ["slot"]
+
+[[manifest.entry]]
+kind = "section"
+section_id = "fixture"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-minimal"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "ignored-gates"
+
+[[source_span]]
+id = "section"
+start_byte = 0
+end_byte = 19
+sha256 = "8bd9f3322ad4a1fc45a490f1a6e385d45e492631bb16b26b398f81d37c71108e"
+source_kind = "section"
+owner_id = "fixture"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "record"
+start_byte = 19
+end_byte = 37
+sha256 = "92b2b503aec23f1a2ef253301ebcd5797e519fee3d4d1a822bf88f09e6f66e37"
+source_kind = "record"
+owner_id = "testing.fixture-minimal"
+owner_field = "source_block_md"
+migration_status = "raw"
+
+[[source_span]]
+id = "slot"
+start_byte = 37
+end_byte = 66
+sha256 = "01f2121e84abf720f4b510bdfec777f4c14d4db27d0b9b0b6f068407066ac0ae"
+source_kind = "generated_slot"
+owner_id = "ignored-gates"
+owner_field = "generated"
+migration_status = "generated"

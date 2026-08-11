@@ -1,0 +1,94 @@
+[[mode]]
+id = "default"
+argv = []
+target_state = "none"
+exit_code = 0
+stdout_md = """\nstatus-header counts (derived from matrix.json + catalog.toml + check.ts registry)
+
+  features:            90  (30 RFC8610 + 30 RFC9682 + 30 `CDDL_CODEGEN` vendor profile)
+  containment cells:   60
+  cddl-codegen annos:  80
+  IANA control ops:    30
+  emission divergences:1  (all `preserve`-side)
+      - annotation-divergent  [preserve]
+  constraint vectors:  1  over 1 enforce-green row(s)
+      feature-rfc8610-01
+  manual #[ignore]d gates: 2  (two)
+      - manual_gate_a
+      - manual_gate_b
+
+(run with --write to regenerate the spans, --check for the drift gate)
+
+"""
+stderr_md = """"""
+target_reads = 0
+claim_resolutions = 0
+writes = 0
+write_order = []
+
+[[mode]]
+id = "check"
+argv = ["--check"]
+target_state = "after"
+exit_code = 0
+stdout_md = """status-header count gate OK — 90 features (30 RFC8610 + 30 RFC9682 + 30 `CDDL_CODEGEN` vendor profile) · 60 containment · 80 annotations · 30 IANA ops · 1 emission divergence(s) (all `preserve`-side) · 1 constraint vectors over 1 enforce-green rows · 2 manual #[ignore]d gates · all spans in sync
+"""
+stderr_md = """"""
+target_reads = 3
+claim_resolutions = 12
+writes = 0
+write_order = []
+
+[[mode]]
+id = "write"
+argv = ["--write"]
+target_state = "before"
+exit_code = 0
+stdout_md = """status-headers: wrote 12 generated span(s) across 3 file(s).
+"""
+stderr_md = """"""
+target_reads = 3
+claim_resolutions = 12
+writes = 3
+write_order = ["cddl-matrix/ROADMAP.md", "cddl-matrix/README.md", "tests/README.md"]
+
+[[mode]]
+id = "write_and_check_write_wins"
+argv = ["--write", "--check"]
+target_state = "before"
+exit_code = 0
+stdout_md = """status-headers: wrote 12 generated span(s) across 3 file(s).
+"""
+stderr_md = """"""
+target_reads = 3
+claim_resolutions = 12
+writes = 3
+write_order = ["cddl-matrix/ROADMAP.md", "cddl-matrix/README.md", "tests/README.md"]
+
+[[mode]]
+id = "unrelated_arg_default"
+argv = ["unrelated"]
+target_state = "none"
+exit_code = 0
+stdout_md = """\nstatus-header counts (derived from matrix.json + catalog.toml + check.ts registry)
+
+  features:            90  (30 RFC8610 + 30 RFC9682 + 30 `CDDL_CODEGEN` vendor profile)
+  containment cells:   60
+  cddl-codegen annos:  80
+  IANA control ops:    30
+  emission divergences:1  (all `preserve`-side)
+      - annotation-divergent  [preserve]
+  constraint vectors:  1  over 1 enforce-green row(s)
+      feature-rfc8610-01
+  manual #[ignore]d gates: 2  (two)
+      - manual_gate_a
+      - manual_gate_b
+
+(run with --write to regenerate the spans, --check for the drift gate)
+
+"""
+stderr_md = """"""
+target_reads = 0
+claim_resolutions = 0
+writes = 0
+write_order = []
