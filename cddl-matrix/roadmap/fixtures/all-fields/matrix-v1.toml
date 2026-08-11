@@ -1426,14 +1426,14 @@ work_kind = "defect"
 risk = "silent_wrong_bytes"
 family_id = "matrix.fixture-systematic-a"
 evidence_ids = ["matrix.fixture-evidence-a", "matrix.fixture-evidence-c"]
-control_ids = ["matrix.fixture-control-a"]
-regression_evidence_ids = ["matrix.fixture-evidence-b"]
-regression_gap_ids = ["matrix.fixture-task-b"]
 acceptance_md = """Ready work a has explicit acceptance.
 """
 priority_band = "critical"
 priority_rationale_md = """Priority critical is explicit.
 """
+control_ids = ["matrix.fixture-control-a"]
+regression_evidence_ids = ["matrix.fixture-evidence-b"]
+regression_gap_ids = ["matrix.fixture-task-b"]
 
 [[record]]
 id = "matrix.fixture-task-b"
@@ -1610,10 +1610,10 @@ work_kind = "defect"
 risk = "resource_exhaustion"
 family_classification = "none_reviewed"
 evidence_ids = ["matrix.fixture-evidence-c"]
-regression_evidence_ids = ["matrix.fixture-evidence-a"]
-regression_gap_ids = ["matrix.fixture-task-b"]
 return_condition_md = """Return after the delegated review completes.
 """
+regression_evidence_ids = ["matrix.fixture-evidence-a"]
+regression_gap_ids = ["matrix.fixture-task-b"]
 
 [[record]]
 id = "matrix.fixture-task-j"
