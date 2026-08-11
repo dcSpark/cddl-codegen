@@ -18,6 +18,15 @@ import type {
   SemanticPayload,
   ShadowRecordClaim,
 } from "./model/documents.ts";
+import {
+  createImmutableByteView,
+  type ImmutableByteView,
+  type ImmutableByteViewInput,
+} from "./render_ir.ts";
+
+export { createImmutableByteView };
+export type ByteView = ImmutableByteView;
+export type ByteViewInput = ImmutableByteViewInput;
 
 const codePointSort = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -33,10 +42,12 @@ const AUTHORITY_RANK: Readonly<Record<RoadmapAuthorityState, number>> = {
   authoritative: 2,
 };
 
-export interface CampaignRoadmapSnapshot {
-  readonly markdown: Uint8Array;
+export interface CampaignRoadmapSnapshot<Markdown extends ImmutableByteViewInput = Uint8Array> {
+  readonly markdown: Markdown;
   readonly document?: RoadmapDocument;
 }
+
+export type LifecycleRoadmapSnapshot = CampaignRoadmapSnapshot<ImmutableByteViewInput>;
 
 export interface CrossRoadmapAllowlistEntry {
   readonly source: RoadmapId;
@@ -60,7 +71,7 @@ export interface LegacyTitleBindingFact {
 
 export interface CampaignValidationInputs {
   readonly campaign: CampaignDocumentV1;
-  readonly roadmaps: Readonly<Record<RoadmapName, CampaignRoadmapSnapshot>>;
+  readonly roadmaps: Readonly<Record<RoadmapName, LifecycleRoadmapSnapshot>>;
   /** The final global identity view, assembled with `owners` below. */
   readonly identity?: GlobalIdentityResult;
   readonly legacy_title_bindings?: readonly LegacyTitleBindingFact[];
@@ -85,7 +96,7 @@ const validatedCampaignResults = new WeakMap<object, {
 }>();
 const validatedLegacyTitleBindings = new WeakMap<object, {
   readonly reservation: LegacyMarkdownReservationV1;
-  readonly markdown: Uint8Array;
+  readonly markdown: ImmutableByteViewInput;
   readonly signature: string;
 }>();
 
@@ -172,13 +183,14 @@ function markdownHeadingTitle(source: Uint8Array): string | undefined {
  */
 export function validateLegacyTitleBinding(
   reservation: LegacyMarkdownReservationV1,
-  markdown: Uint8Array,
+  markdown: ImmutableByteViewInput,
 ): LegacyTitleBindingFact | undefined {
+  const view = createImmutableByteView(markdown);
   const start = reservation.source_start_byte;
   const end = reservation.source_end_byte;
-  if (start < 0 || end <= start || end > markdown.byteLength ||
-    sha256(markdown) !== reservation.whole_source_sha256) return undefined;
-  const source = markdown.subarray(start, end);
+  if (start < 0 || end <= start || end > view.byte_length ||
+    view.wholeSha256() !== reservation.whole_source_sha256) return undefined;
+  const source = view.sliceBytes(start, end);
   if (sha256(source) !== reservation.source_sha256 ||
     markdownHeadingTitle(source) !== reservation.source_title) return undefined;
   const binding: LegacyTitleBindingFact = Object.freeze({
@@ -199,22 +211,11 @@ export function validateLegacyTitleBinding(
 function isValidatedLegacyTitleBinding(
   binding: LegacyTitleBindingFact,
   reservation: LegacyMarkdownReservationV1,
-  markdown: Uint8Array,
+  markdown: ImmutableByteViewInput,
 ): boolean {
   const validated = validatedLegacyTitleBindings.get(binding);
   return validated?.reservation === reservation && validated.markdown === markdown &&
     validated.signature === titleBindingSignature(binding);
-}
-
-function containsBytes(haystack: Uint8Array, needle: Uint8Array): boolean {
-  if (needle.byteLength === 0 || needle.byteLength > haystack.byteLength) return false;
-  outer: for (let start = 0; start <= haystack.byteLength - needle.byteLength; start += 1) {
-    for (let offset = 0; offset < needle.byteLength; offset += 1) {
-      if (haystack[start + offset] !== needle[offset]) continue outer;
-    }
-    return true;
-  }
-  return false;
 }
 
 function namespaceFor(id: RoadmapId): RoadmapName {
@@ -247,9 +248,10 @@ function payloadOfRecord(record: RecordNode): SemanticPayload | undefined {
 function exactShadowClaim(
   id: RoadmapId,
   namespace: RoadmapName,
-  snapshot: CampaignRoadmapSnapshot,
+  snapshot: LifecycleRoadmapSnapshot,
   reservation?: LegacyMarkdownReservationV1,
 ): ShadowRecordClaim | undefined {
+  const markdown = createImmutableByteView(snapshot.markdown);
   const document = snapshot.document;
   if (document === undefined || document.document.schema_version !== 0) return undefined;
   const matches = document.records.filter((record) => record.id === id);
@@ -275,11 +277,11 @@ function exactShadowClaim(
     ordered.some((span, index) => index > 0 && ordered[index - 1]!.end_byte !== span.start_byte) ||
     ordered.some((span) => span.source_kind !== "record" || span.owner_id !== id ||
       span.owner_field !== "source_block_md" || span.migration_status !== "raw" ||
-      span.start_byte < 0 || span.end_byte <= span.start_byte || span.end_byte > snapshot.markdown.byteLength ||
-      sha256(snapshot.markdown.subarray(span.start_byte, span.end_byte)) !== span.sha256) ||
+      span.start_byte < 0 || span.end_byte <= span.start_byte || span.end_byte > markdown.byte_length ||
+      sha256(markdown.sliceBytes(span.start_byte, span.end_byte)) !== span.sha256) ||
     allOwnerSpans.length !== claimedSpans.length ||
     allOwnerSpans.some((spanId, index) => claimedSpans[index] !== spanId) ||
-    !bytesEqual(record.source_block_md, snapshot.markdown.subarray(start, end)) ||
+    !bytesEqual(record.source_block_md, markdown.sliceBytes(start, end)) ||
     markdownHeadingTitle(record.source_block_md) !== record.title ||
     (reservation !== undefined && (
       sha256(record.source_block_md) !== reservation.source_sha256 ||
@@ -298,10 +300,11 @@ function exactShadowClaim(
 function validateAuthorityState(
   campaign: CampaignDocumentV1,
   roadmap: RoadmapName,
-  snapshot: CampaignRoadmapSnapshot,
+  snapshot: LifecycleRoadmapSnapshot,
   issues: RoadmapIssue[],
 ): void {
   const state = campaignAuthority(campaign, roadmap);
+  const markdown = createImmutableByteView(snapshot.markdown);
   const document = snapshot.document;
   const path = `campaign.${roadmap}_authority`;
   if (state === "legacy_markdown") {
@@ -318,8 +321,8 @@ function validateAuthorityState(
   }
   if (state === "shadow" && document.document.schema_version === 0 &&
     (document.document.authority !== "shadow" ||
-      document.document.frozen_source_sha256 !== sha256(snapshot.markdown) ||
-      document.document.frozen_source_byte_length !== snapshot.markdown.byteLength)) {
+      document.document.frozen_source_sha256 !== markdown.wholeSha256() ||
+      document.document.frozen_source_byte_length !== markdown.byte_length)) {
     issues.push(issue("E-SCHEMA-STATE", path, `${roadmap} shadow metadata must exactly bind the immutable Markdown snapshot`));
   }
 }
@@ -327,7 +330,7 @@ function validateAuthorityState(
 function validateReservationBinding(
   reservation: LegacyMarkdownReservationV1,
   campaign: CampaignDocumentV1,
-  snapshot: CampaignRoadmapSnapshot,
+  snapshot: LifecycleRoadmapSnapshot,
   titleBindings: readonly LegacyTitleBindingFact[],
   logicalPath: string,
   issues: RoadmapIssue[],
@@ -342,21 +345,21 @@ function validateReservationBinding(
     issues.push(issue("E-CAMPAIGN-TARGET-EXPIRED", logicalPath, `${namespace} reservations expire at authoritative v1`));
     return { valid: false };
   }
-  const markdown = snapshot.markdown;
+  const markdown = createImmutableByteView(snapshot.markdown);
   const { source_start_byte: start, source_end_byte: end } = reservation;
-  const source = start >= 0 && end > start && end <= markdown.byteLength
-    ? markdown.subarray(start, end)
+  const source = start >= 0 && end > start && end <= markdown.byte_length
+    ? markdown.sliceBytes(start, end)
     : undefined;
   const titleMatches = titleBindings.filter((fact) =>
     fact.id === reservation.id && fact.roadmap_path === reservation.roadmap_path &&
     fact.source_title === reservation.source_title &&
     fact.source_start_byte === reservation.source_start_byte &&
     fact.source_end_byte === reservation.source_end_byte &&
-    isValidatedLegacyTitleBinding(fact, reservation, markdown)
+    isValidatedLegacyTitleBinding(fact, reservation, snapshot.markdown)
   );
   if (
     source === undefined || sha256(source) !== reservation.source_sha256 ||
-    sha256(markdown) !== reservation.whole_source_sha256 || titleMatches.length !== 1
+    markdown.wholeSha256() !== reservation.whole_source_sha256 || titleMatches.length !== 1
   ) {
     issues.push(issue(
       "E-CAMPAIGN-TARGET",
@@ -566,17 +569,18 @@ export function validateCampaign(inputs: CampaignValidationInputs): CampaignVali
 
 /** Validate the pre-root bootstrap's v0 shadow IDs without treating them as active records. */
 export function validateBootstrapShadowOwners(
-  roadmaps: Readonly<Record<RoadmapName, CampaignRoadmapSnapshot>>,
+  roadmaps: Readonly<Record<RoadmapName, LifecycleRoadmapSnapshot>>,
 ): ValidatedCampaignIdentityOwners {
   const ownerEvidence: CampaignIdentityOwnerEvidence[] = [];
   const issues: RoadmapIssue[] = [];
   for (const roadmap of ["matrix", "testing"] as const) {
     const snapshot = roadmaps[roadmap];
+    const markdown = createImmutableByteView(snapshot.markdown);
     const document = snapshot.document;
     if (document === undefined) continue;
     if (document.document.schema_version !== 0 || document.document.authority !== "shadow" ||
-      document.document.frozen_source_sha256 !== sha256(snapshot.markdown) ||
-      document.document.frozen_source_byte_length !== snapshot.markdown.byteLength) {
+      document.document.frozen_source_sha256 !== markdown.wholeSha256() ||
+      document.document.frozen_source_byte_length !== markdown.byte_length) {
       issues.push(issue("E-SCHEMA-STATE", `bootstrap.${roadmap}`, "bootstrap roadmap must be one exact v0 shadow snapshot"));
       continue;
     }
@@ -666,18 +670,19 @@ export function validateCampaignTransition(inputs: CampaignTransitionInputs): re
 
 export function reservationBoundBytes(
   reservation: LegacyMarkdownReservationV1,
-  markdown: Uint8Array,
+  markdown: ImmutableByteViewInput,
 ): Uint8Array | undefined {
+  const view = createImmutableByteView(markdown);
   if (
     reservation.source_start_byte < 0 || reservation.source_end_byte <= reservation.source_start_byte ||
-    reservation.source_end_byte > markdown.byteLength
+    reservation.source_end_byte > view.byte_length
   ) return undefined;
-  const value = markdown.slice(reservation.source_start_byte, reservation.source_end_byte);
+  const value = view.sliceBytes(reservation.source_start_byte, reservation.source_end_byte);
   return sha256(value) === reservation.source_sha256 ? value : undefined;
 }
 
-export function markdownContainsBytes(markdown: Uint8Array, needle: Uint8Array): boolean {
-  return containsBytes(markdown, needle);
+export function markdownContainsBytes(markdown: ImmutableByteViewInput, needle: Uint8Array): boolean {
+  return createImmutableByteView(markdown).contains(needle);
 }
 
 export function expectedRoadmapPath(roadmap: RoadmapName): RepoPath {

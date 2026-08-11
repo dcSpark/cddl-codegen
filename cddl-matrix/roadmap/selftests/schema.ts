@@ -2,8 +2,9 @@ import { RoadmapWireError, bytesEqual, encodeMarkdownString } from "../markdown_
 import type { RoadmapIssue } from "../errors.ts";
 import type { RepoPath, RoadmapName } from "../model/core.ts";
 import type { RoadmapDocumentV1 } from "../model/documents.ts";
-import type { SelfTestCase, SelfTestContext, SelfTestResult } from "../selftest.ts";
+import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import { compareAllFieldsCoverageTags } from "./fixtures.ts";
+import { observeSelfTestIssue } from "./observations.ts";
 import { composeCampaignDocument, composeRetiredIdsDocument, composeRoadmapDocument } from "../compose.ts";
 import { decodeCampaignSource, CAMPAIGN_ENUM_FIELDS, CAMPAIGN_SCHEMA_ROWS } from "../decode/campaign.ts";
 import { decodeMatrixPayload, MATRIX_ENUM_FIELDS, MATRIX_SCHEMA_ROWS } from "../decode/matrix.ts";
@@ -57,6 +58,7 @@ function expectFailure(run: () => unknown, codes: readonly string[], path?: stri
     assert(error instanceof RoadmapWireError, `expected RoadmapWireError, got ${String(error)}`);
     assert(codes.includes(error.issue.code), `expected ${codes.join("|")}, got ${error.issue.code}`);
     if (path !== undefined) assert(error.issue.logical_path === path, `expected ${path}, got ${error.issue.logical_path}`);
+    observeSelfTestIssue(error.issue);
     return error;
   }
   throw new Error(`expected ${codes.join("|")}`);
@@ -131,6 +133,10 @@ function fixtureIdentity(context: SelfTestContext): void {
 function allFieldsCoverage(context: SelfTestContext): void {
   const matrix = roadmapFixture(context, "all-fields/matrix-v1.toml", "matrix");
   const testing = roadmapFixture(context, "all-fields/testing-v1.toml", "testing");
+  assert(
+    [matrix.document.roadmap, testing.document.roadmap].sort().join("|") === "matrix|testing",
+    "all-fields documents must structurally cover both RoadmapName values",
+  );
   const tags = [...matrix.records, ...testing.records].flatMap((record) => record.tags ?? []);
   const comparison = compareAllFieldsCoverageTags(tags);
   assert(comparison.ok, `all-fields closed set: ${JSON.stringify(comparison)}`);
@@ -231,6 +237,7 @@ interface FixtureMutationProof {
   readonly receipt: SchemaFixtureMutationReceipt;
   readonly row_counts: ReadonlyMap<ExactSchemaRow, RowMutationCounts>;
   readonly enum_counts: ReadonlyMap<string, number>;
+  readonly observed_issues: readonly RoadmapIssue[];
 }
 
 const SCHEMA_ROW_GROUPS: readonly { readonly name: SchemaGroupName; readonly rows: readonly ExactSchemaRow[] }[] = [
@@ -254,11 +261,11 @@ const ENUM_FIELD_GROUPS: readonly { readonly name: EnumGroupName; readonly field
 ];
 
 const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
-  "roadmap:authority_v0": "authority",
-  "roadmap:authority_v1": "authority",
-  "roadmap:manifest_kind": "kind",
-  "roadmap:relation_kind": "kind",
-  "roadmap:reference_kind": "kind",
+  [["roadmap", "authority_v0"].join(":")]: "authority",
+  [["roadmap", "authority_v1"].join(":")]: "authority",
+  [["roadmap", "manifest_kind"].join(":")]: "kind",
+  [["roadmap", "relation_kind"].join(":")]: "kind",
+  [["roadmap", "reference_kind"].join(":")]: "kind",
   "semantic:shared_semantic_kind": "kind",
   "semantic:decision_permanence": "permanence",
   "semantic:signal_evaluation": "evaluation",
@@ -619,6 +626,7 @@ function buildFixtureMutationProof(context: SelfTestContext): FixtureMutationPro
   }
 
   const rowCounts = new Map<ExactSchemaRow, RowMutationCounts>();
+  const observedIssues: RoadmapIssue[] = [];
   let mutationLoads = 0;
   let unknownMutations = 0;
   let requiredMutations = 0;
@@ -628,11 +636,11 @@ function buildFixtureMutationProof(context: SelfTestContext): FixtureMutationPro
     const counts: RowMutationCounts = { unknown: 0, required: 0, forbidden: 0 };
     const unknownKey = "fixture_schema_unknown";
     const unknown = insertAssignment(target.fixture.bytes, target.logical_path, unknownKey, "true");
-    expectFailure(
+    observedIssues.push(expectFailure(
       () => loadFixtureSource(target.fixture, unknown),
       ["E-SCHEMA-UNKNOWN-KEY"],
       childLogicalPath(target.logical_path, unknownKey),
-    );
+    ).issue);
     counts.unknown++;
     unknownMutations++;
     mutationLoads++;
@@ -640,11 +648,11 @@ function buildFixtureMutationProof(context: SelfTestContext): FixtureMutationPro
     for (const key of row.required) {
       const missing = removeRequiredKey(target.fixture.bytes, target.logical_path, key);
       try {
-        expectFailure(
+        observedIssues.push(expectFailure(
           () => loadFixtureSource(target.fixture, missing),
           ["E-SCHEMA-MISSING-KEY"],
           childLogicalPath(target.logical_path, key),
-        );
+        ).issue);
       } catch (error) {
         throw new Error(`${row.name}.${key} fixture mutation: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -655,11 +663,11 @@ function buildFixtureMutationProof(context: SelfTestContext): FixtureMutationPro
     for (const key of row.forbidden ?? []) {
       const forbidden = insertAssignment(target.fixture.bytes, target.logical_path, key, "true");
       try {
-        expectFailure(
+        observedIssues.push(expectFailure(
           () => loadFixtureSource(target.fixture, forbidden),
           ["E-SCHEMA-FORBIDDEN-KEY"],
           childLogicalPath(target.logical_path, key),
-        );
+        ).issue);
       } catch (error) {
         throw new Error(`${row.name}.${key} fixture mutation: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -678,7 +686,7 @@ function buildFixtureMutationProof(context: SelfTestContext): FixtureMutationPro
       const target = enumTargets.get(id)!;
       const expression = target.expected_code === "E-SCHEMA-VERSION" ? "2" : target.indexed ? '["__invalid__"]' : '"__invalid__"';
       const invalid = replaceAssignmentExpression(target.fixture.bytes, target.logical_path, target.key, expression);
-      expectFailure(() => loadFixtureSource(target.fixture, invalid), [target.expected_code], target.field_path);
+      observedIssues.push(expectFailure(() => loadFixtureSource(target.fixture, invalid), [target.expected_code], target.field_path).issue);
       enumCounts.set(id, 1);
       enumMutations++;
       mutationLoads++;
@@ -690,6 +698,7 @@ function buildFixtureMutationProof(context: SelfTestContext): FixtureMutationPro
   return {
     row_counts: rowCounts,
     enum_counts: enumCounts,
+    observed_issues: Object.freeze(observedIssues),
     receipt: {
       fixture_reads: reads,
       discovery_loads: discoveryLoads,
@@ -712,6 +721,15 @@ function fixtureMutationProof(context: SelfTestContext): FixtureMutationProof {
   const proof = buildFixtureMutationProof(context);
   FIXTURE_MUTATION_PROOFS.set(context, proof);
   return proof;
+}
+
+function observeProofIssue(
+  proof: FixtureMutationProof,
+  predicate: (issue: RoadmapIssue) => boolean,
+): void {
+  const matched = proof.observed_issues.find(predicate);
+  assert(matched !== undefined, "fixture mutation proof lacks its declared representative issue");
+  observeSelfTestIssue(matched);
 }
 
 function assertNeedlesInOrder(source: string, needles: readonly string[], message: string): void {
@@ -744,6 +762,7 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       for (const group of ENUM_FIELD_GROUPS) {
         for (const field of group.fields) assert(proof.enum_counts.get(enumFieldId(group.name, field)) === 1, `${enumFieldId(group.name, field)} production enum mutation`);
       }
+      observeProofIssue(proof, (issue) => issue.code === "E-SCHEMA-VERSION" || issue.code === "E-SCHEMA-ENUM");
       return;
     }
     case "strict_unknown_enum": expectFailure(() => decodePayload(READY.replace('work_state = "ready"', 'work_state = "unknown"'), "matrix"), ["E-SCHEMA-ENUM"], "p.work_state"); return;
@@ -961,7 +980,9 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     }
     case "schema_campaign_selection_binding_keys_forbidden": case "campaign_inline_legacy_binding_rejected": {
       assert(context !== undefined, `${id} requires fixture ports`);
-      assertRowMutationCoverage(fixtureMutationProof(context), [CAMPAIGN_SCHEMA_ROWS[3], CAMPAIGN_SCHEMA_ROWS[4]]);
+      const proof = fixtureMutationProof(context);
+      assertRowMutationCoverage(proof, [CAMPAIGN_SCHEMA_ROWS[3], CAMPAIGN_SCHEMA_ROWS[4]]);
+      observeProofIssue(proof, (issue) => issue.code === "E-SCHEMA-FORBIDDEN-KEY" && issue.logical_path.includes("selection"));
       return;
     }
     case "schema_due_on_valid_through_postures": {
@@ -1104,7 +1125,13 @@ for (const id of REQUIRED_SCHEMA_SELFTEST_CASE_IDS) assert(SCHEMA_CASE_POLARITY.
 
 export const SCHEMA_SELFTEST_CASES: readonly SelfTestCase[] = REQUIRED_SCHEMA_SELFTEST_CASE_IDS.map((id) => ({
   id,
-  category: id.includes("testing") ? "domain-testing" as const : id.includes("matrix") ? "domain-matrix" as const : id.includes("v0") ? "schema-v0" as const : "schema-v1" as const,
+  category: id === "domain_state_required_forbidden" || id.includes("matrix")
+    ? "domain-matrix" as const
+    : id === "domain_defect_regression_required" || id.includes("testing")
+    ? "domain-testing" as const
+    : id.includes("v0")
+    ? "schema-v0" as const
+    : "schema-v1" as const,
   run(context): SelfTestResult {
     const polarity = SCHEMA_CASE_POLARITY.get(id)!;
     try { execute(id, context); return { ok: true, polarity }; }

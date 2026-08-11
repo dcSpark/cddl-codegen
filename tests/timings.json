@@ -913,6 +913,9 @@
       ]
     },
     {
+      "gate": "roadmap_projection_check"
+    },
+    {
       "gate": "rust_oracle_fingerprint",
       "warm_ms": 44000,
       "n": 19,

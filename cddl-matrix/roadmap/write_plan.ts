@@ -15,8 +15,8 @@ export interface ProjectionWriteRequest {
   readonly write_coordinate: "projection";
   readonly roadmap: RoadmapName;
   readonly document: RoadmapDocument;
-  readonly projection_bytes: Uint8Array;
-  readonly output_authority: ValidatedOutputAuthority;
+  readonly projection_bytes?: Uint8Array;
+  readonly output_authority?: ValidatedOutputAuthority;
   readonly validation_issues: readonly RoadmapIssue[];
 }
 
@@ -54,7 +54,9 @@ function forbiddenAuthorityPath(path: string): boolean {
 export function createProjectionWritePlan(request: ProjectionWriteRequest): ProjectionWritePlanResult {
   const issues: RoadmapIssue[] = [...request.validation_issues];
   const meta = request.document.document;
-  if (!isProductionOutputAuthority(request.output_authority)) {
+  const authorityValid = request.output_authority !== undefined &&
+    isProductionOutputAuthority(request.output_authority);
+  if (!authorityValid) {
     issues.push(issue(request, "E-OUTPUT-AUTHORITY", "output_claims.scope", "projection write requires authority from the fixed production output inventory"));
   }
   if (request.write_coordinate !== "projection") {
@@ -72,10 +74,12 @@ export function createProjectionWritePlan(request: ProjectionWriteRequest): Proj
   if (forbiddenAuthorityPath(meta.projection_path)) {
     issues.push(issue(request, "E-OUTPUT-PATH", "document.projection_path", "projection target is not an authorized whole-file Markdown path"));
   }
-  if (request.projection_bytes.byteLength === 0) {
+  if (authorityValid && (request.projection_bytes === undefined || request.projection_bytes.byteLength === 0)) {
     issues.push(issue(request, "E-OUTPUT-WRITER", "projection", "projection write payload is empty"));
   }
-  const wholeClaim = resolvedWholeFileClaim(request.output_authority, meta.projection_path);
+  const wholeClaim = request.output_authority === undefined
+    ? undefined
+    : resolvedWholeFileClaim(request.output_authority, meta.projection_path);
   if (wholeClaim === undefined) {
     issues.push(issue(
       request,
@@ -103,13 +107,15 @@ export function createProjectionWritePlan(request: ProjectionWriteRequest): Proj
     ));
   }
   if (issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
+  const projectionBytes = request.projection_bytes;
+  if (projectionBytes === undefined) throw new Error("internal: validated projection write lost its payload");
   const plan: ValidatedProjectionWritePlan = Object.freeze({
     roadmap: request.roadmap,
     target: meta.projection_path,
-    bytes: new Uint8Array(request.projection_bytes),
+    bytes: new Uint8Array(projectionBytes),
   });
   validatedPlans.add(plan);
-  privatePlanBytes.set(plan, new Uint8Array(request.projection_bytes));
+  privatePlanBytes.set(plan, new Uint8Array(projectionBytes));
   return Object.freeze({ ok: true, plan, issues: Object.freeze([]) as readonly [] });
 }
 

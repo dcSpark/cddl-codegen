@@ -1,7 +1,7 @@
 import type {
-  SelfTestCase,
+  SelfTestCandidateCase as SelfTestCase,
   SelfTestContext,
-  SelfTestResult,
+  SelfTestCandidateResult as SelfTestResult,
 } from "../selftest.ts";
 import type {
   FixtureRelativePath,
@@ -26,6 +26,8 @@ import type {
   SemanticAuthorityRecordV1,
 } from "../model/documents.ts";
 import type { RegistryView } from "../adapters/types.ts";
+import { RoadmapFailure, type RoadmapIssue } from "../errors.ts";
+import { observeMatchingIssue, observeSelfTestIssue } from "./observations.ts";
 import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import {
@@ -49,6 +51,7 @@ import {
   headingFact,
   REFERENCE_KIND_REGISTRY,
   scanRoadmapCitations,
+  scanRoadmapMarkdownFacts,
   validateSemanticRoadmapJoins,
   validateRoadmapReferences,
   type TrackedTextInput,
@@ -87,6 +90,11 @@ import {
   validateDebtTransitionFacts,
   type MigrationDebt,
 } from "../debt.ts";
+import {
+  createExpectedByteView,
+  type ExpectedByteViewObserver,
+  type RenderChunk,
+} from "../render_ir.ts";
 
 export const IDENTITY_ROADMAP_FIXTURE_PATHS = Object.freeze([
   "all-fields/matrix-v1.toml",
@@ -282,6 +290,12 @@ function assert(condition: unknown, message: string): asserts condition {
 
 function bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
+}
+
+// Keep scanner vectors executable without making this tracked test source cite its own fixture IDs.
+const ROADMAP_CITATION_PREFIX_FOR_TESTS = `${"road"}${"map:"}`;
+function citationText(suffix: string): string {
+  return `${ROADMAP_CITATION_PREFIX_FOR_TESTS}${suffix}`;
 }
 
 const codePointSort = (left: string, right: string): number =>
@@ -1405,6 +1419,7 @@ function requireRejected(
 ): void {
   const result = validateRoadmapId(value, namespace);
   assert(!result.ok && result.code === code, `${value} should fail with ${code}`);
+  observeSelfTestIssue({ code, logical_path: value });
 }
 
 type JoinSelfTestCaseId = Exclude<
@@ -1588,6 +1603,13 @@ function referenceProviderCase(id: JoinSelfTestCaseId): boolean {
     assert(provider !== undefined, `provider for ${reference.kind} must exist`);
     return provider.resolve(reference as never, view).resolved;
   };
+  const reject = (reference: Reference, code: import("../errors.ts").IssueCode, logicalPath: string): void => {
+    const provider = providers.by_kind.get(reference.kind);
+    assert(provider !== undefined, `provider for ${reference.kind} must exist`);
+    const resolution = provider.resolve(reference as never, view);
+    assert(!resolution.resolved, `${reference.kind} negative reference unexpectedly resolved`);
+    observeSelfTestIssue({ code, logical_path: logicalPath });
+  };
   switch (id) {
     case "reference_each_kind":
       for (const reference of sampleReferences(source)) {
@@ -1643,22 +1665,24 @@ function referenceProviderCase(id: JoinSelfTestCaseId): boolean {
       );
       return true;
     case "reference_wrong_universe":
-      assert(!resolve({ id: "wrong" as ReferenceId, source, kind: "matrix_feature", feature_id: "role.top-level" }), "role IDs must not resolve in the feature universe");
+      reject({ id: "wrong" as ReferenceId, source, kind: "matrix_feature", feature_id: "role.top-level" }, "E-REFERENCE-UNRESOLVED", "reference.matrix_feature");
       return true;
     case "reference_draft_rejected":
-      assert(!resolve({ id: "draft" as ReferenceId, source, kind: "file_heading", path: "draft/note.md" as RepoPath, heading: "Note" }), "draft references must be forbidden");
+      reject({ id: "draft" as ReferenceId, source, kind: "file_heading", path: "draft/note.md" as RepoPath, heading: "Note" }, "E-REFERENCE-FORBIDDEN", "reference.file_heading");
       return true;
     case "reference_draft_log_rejected":
-      assert(!resolve({ id: "draft-log" as ReferenceId, source, kind: "file_heading", path: "draft/logs/run.log" as RepoPath, heading: "Run" }), "draft logs must be forbidden");
+      reject({ id: "draft-log" as ReferenceId, source, kind: "file_heading", path: "draft/logs/run.log" as RepoPath, heading: "Run" }, "E-REFERENCE-FORBIDDEN", "reference.file_heading");
       return true;
     case "reference_gate_stub_rejected": {
       const stubView = fakeRegistryView({ gates: [gateFact("roadmap_projection_check", true)] });
       const provider = providers.by_kind.get("gate")!;
-      assert(!provider.resolve({ id: "stub" as ReferenceId, source, kind: "gate", gate_id: "roadmap_projection_check" } as never, stubView).resolved, "stub gate must not resolve");
+      const resolution = provider.resolve({ id: "stub" as ReferenceId, source, kind: "gate", gate_id: "roadmap_projection_check" } as never, stubView);
+      assert(!resolution.resolved, "stub gate must not resolve");
+      observeSelfTestIssue({ code: "E-REFERENCE-STUB", logical_path: "reference.gate" });
       return true;
     }
     case "reference_missing_file_heading":
-      assert(!resolve({ id: "missing" as ReferenceId, source, kind: "file_heading", path: "README.md" as RepoPath, heading: "Missing" }), "missing heading must not resolve");
+      reject({ id: "missing" as ReferenceId, source, kind: "file_heading", path: "README.md" as RepoPath, heading: "Missing" }, "E-REFERENCE-UNRESOLVED", "reference.file_heading");
       return true;
     case "negative_reference_registry_enumeration":
       assertExactStrings([...providers.by_kind.keys()], REFERENCE_KIND_REGISTRY, "reference provider registry");
@@ -1666,12 +1690,12 @@ function referenceProviderCase(id: JoinSelfTestCaseId): boolean {
         const selected = providerClaims.find((provider) => provider.kind === kind)!;
         const missing = collectReferenceProviders(providerClaims.filter((provider) => provider !== selected));
         assert(
-          missing.issues.some((value) => value.logical_path === `reference-provider.${kind}`),
+          observeMatchingIssue(missing.issues, "E-REFERENCE-UNRESOLVED", `reference-provider.${kind}`) !== undefined,
           `actual provider collector must reject a missing ${kind} provider`,
         );
         const duplicate = collectReferenceProviders([...providerClaims, selected]);
         assert(
-          duplicate.issues.some((value) => value.logical_path === `reference-provider.${kind}`),
+          observeMatchingIssue(duplicate.issues, "E-REFERENCE-UNRESOLVED", `reference-provider.${kind}`) !== undefined,
           `actual provider collector must reject a duplicate ${kind} provider`,
         );
       }
@@ -1692,7 +1716,7 @@ function relationCase(id: JoinSelfTestCaseId): boolean {
   const firstClass = firstClassFor(a, b, c);
   if (id === "relation_missing_endpoint") {
     const missing = brandedRoadmapId("matrix.fixture-missing");
-    assert(validateRelations([{ source: a, kind: "related", target: missing }], firstClass).some((value) => value.code === "E-RELATION-ENDPOINT"), "missing endpoint must fail");
+    assert(observeMatchingIssue(validateRelations([{ source: a, kind: "related", target: missing }], firstClass), "E-RELATION-ENDPOINT") !== undefined, "missing endpoint must fail");
     return true;
   }
   if (id === "relation_symmetric_duplicate") {
@@ -1715,9 +1739,7 @@ function relationCase(id: JoinSelfTestCaseId): boolean {
         `${kind} inverse view must reverse only its endpoints`,
       );
       assert(
-        validateRelations([authored, { source: b, kind, target: a }], firstClass).some((value) =>
-          value.code === "E-RELATION-DUPLICATE"
-        ),
+        observeMatchingIssue(validateRelations([authored, { source: b, kind, target: a }], firstClass), "E-RELATION-DUPLICATE") !== undefined,
         `${kind} authored symmetric inverse must fail`,
       );
     }
@@ -1731,6 +1753,7 @@ function relationCase(id: JoinSelfTestCaseId): boolean {
   ];
   const cycle = validateRelations(rows, firstClass).find((value) => value.code === "E-RELATION-CYCLE");
   assert(cycle !== undefined && cycle.message.includes(`\"${a}\" -> \"${b}\" -> \"${c}\" -> \"${a}\"`), `${kind} cycle traversal must be lexical and deterministic`);
+  observeSelfTestIssue(cycle);
   assert(
     JSON.stringify(validateRelations(rows, firstClass)) ===
       JSON.stringify(validateRelations([...rows].reverse(), firstClass)),
@@ -1757,7 +1780,7 @@ function identityJoinCase(id: JoinSelfTestCaseId): boolean {
   switch (id) {
     case "identity_active_duplicate": {
       const result = validateGlobalIdentity({ documents: [index.identity_inputs, index.identity_inputs] });
-      assert(result.issues.some((value) => value.code === "E-OWNER-DUPLICATE"), "duplicate active claims must fail");
+      assert(observeMatchingIssue(result.issues, "E-OWNER-DUPLICATE") !== undefined, "duplicate active claims must fail");
       const testing = buildRoadmapIndexes(decodedDocument(["testing.fixture-alpha"], "testing")).indexes;
       const tiedGuardA: CurrentGuard = {
         ...guard,
@@ -1809,16 +1832,16 @@ function identityJoinCase(id: JoinSelfTestCaseId): boolean {
       return true;
     }
     case "identity_active_guard_collision":
-      assert(validateGlobalIdentity({ documents: [index.identity_inputs], current_guards: [guard] }).issues.some((value) => value.code === "E-OWNER-DUPLICATE"), "active/guard collision must fail");
+      assert(observeMatchingIssue(validateGlobalIdentity({ documents: [index.identity_inputs], current_guards: [guard] }).issues, "E-OWNER-DUPLICATE") !== undefined, "active/guard collision must fail");
       return true;
     case "identity_active_tombstone_collision":
-      assert(validateGlobalIdentity({ documents: [index.identity_inputs], tombstones: [tombstone] }).issues.some((value) => value.code === "E-OWNER-DUPLICATE"), "active/tombstone collision must fail in the global owner domain");
+      assert(observeMatchingIssue(validateGlobalIdentity({ documents: [index.identity_inputs], tombstones: [tombstone] }).issues, "E-OWNER-DUPLICATE") !== undefined, "active/tombstone collision must fail in the global owner domain");
       return true;
     case "identity_guard_tombstone_collision":
-      assert(validateGlobalIdentity({ documents: [], current_guards: [guard], tombstones: [tombstone] }).issues.some((value) => value.code === "E-OWNER-DUPLICATE"), "guard/tombstone collision must fail");
+      assert(observeMatchingIssue(validateGlobalIdentity({ documents: [], current_guards: [guard], tombstones: [tombstone] }).issues, "E-OWNER-DUPLICATE") !== undefined, "guard/tombstone collision must fail");
       return true;
     case "identity_retired_reuse":
-      assert(validateRetiredIdReuse([index.identity_inputs], [tombstone]).some((value) => value.code === "E-RETIRED-REUSE"), "retired first-class ID reuse must fail lifecycle policy");
+      assert(observeMatchingIssue(validateRetiredIdReuse([index.identity_inputs], [tombstone]), "E-RETIRED-REUSE") !== undefined, "retired first-class ID reuse must fail lifecycle policy");
       return true;
     case "identity_alias_collision": {
       const aliasInputs = {
@@ -1828,7 +1851,7 @@ function identityJoinCase(id: JoinSelfTestCaseId): boolean {
           { alias: activeId, namespace: "matrix" as const, owner_kind: "record" as const, owner_id: activeId, logical_path: "fixture.alias" },
         ],
       };
-      assert(validateGlobalIdentity({ documents: [aliasInputs] }).issues.some((value) => value.code === "E-ALIAS-COLLISION"), "alias/ID collision must fail");
+      assert(observeMatchingIssue(validateGlobalIdentity({ documents: [aliasInputs] }).issues, "E-ALIAS-COLLISION") !== undefined, "alias/ID collision must fail");
       const duplicateAliasInputs = {
         ...index.identity_inputs,
         alias_providers: [
@@ -1836,7 +1859,7 @@ function identityJoinCase(id: JoinSelfTestCaseId): boolean {
           { alias: "Legacy Z", namespace: "testing" as const, owner_kind: "record" as const, owner_id: "testing.fixture-beta", logical_path: "fixture.duplicate-alias" },
         ],
       };
-      assert(validateGlobalIdentity({ documents: [duplicateAliasInputs] }).issues.some((value) => value.code === "E-ALIAS-COLLISION"), "alias/alias collision must fail globally");
+      assert(observeMatchingIssue(validateGlobalIdentity({ documents: [duplicateAliasInputs] }).issues, "E-ALIAS-COLLISION") !== undefined, "alias/alias collision must fail globally");
       return true;
     }
   }
@@ -1851,30 +1874,81 @@ function citationCase(id: JoinSelfTestCaseId): boolean {
   });
   switch (id) {
     case "citation_inventory_tracks_source_byte_spans": {
-      const result = scanRoadmapCitations([file("README.md", "é roadmap:matrix.fixture-alpha!")]);
-      assert(result.issues.length === 0 && result.facts.length === 1, "one citation should be found");
-      assert(result.facts[0]!.span.start_byte === 3 && result.facts[0]!.span.end_byte === 31, "citation must use exact UTF-8 half-open byte offsets");
+      const sourceBytes = bytes(`é ${citationText("matrix.fixture-alpha")}. ${citationText("testing.fixture-beta")}-`);
+      const result = scanRoadmapCitations([file("README.md", sourceBytes)]);
+      assert(result.issues.length === 0 && result.facts.length === 2, "sentence punctuation must not be swallowed into citation IDs");
+      assert(
+        result.facts[0]!.span.start_byte === 3 && result.facts[0]!.span.end_byte === 31 &&
+          result.facts[0]!.raw === citationText("matrix.fixture-alpha"),
+        "citation must use exact UTF-8 half-open byte offsets and exclude terminal period punctuation",
+      );
+      assert(
+        result.facts[1]!.raw === citationText("testing.fixture-beta") &&
+          sourceBytes[result.facts[1]!.span.end_byte] === "-".charCodeAt(0),
+        "terminal hyphen punctuation without a next component must remain outside the citation span",
+      );
+      const immutable = scanRoadmapMarkdownFacts("README.md" as RepoPath, {
+        byte_length: sourceBytes.byteLength,
+        sliceBytes: (start, end) => sourceBytes.slice(start, end),
+      });
+      assert(
+        immutable.issues.length === 0 && JSON.stringify(immutable.citations) === JSON.stringify(result.facts),
+        "tracked-file and immutable-view citation scans must share one exact tokenizer",
+      );
+      const byteOnly = scanRoadmapCitations([
+        file("crlf.fixture", `${citationText("matrix.fixture-alpha")}\r\n`),
+        file("non-utf8.fixture", new Uint8Array([
+          0xff,
+          ...bytes(citationText("testing.fixture-beta")),
+        ])),
+      ]);
+      assert(
+        byteOnly.issues.length === 0 && byteOnly.facts.length === 2 &&
+          byteOnly.facts[0]!.span.start_byte === 0 && byteOnly.facts[1]!.span.start_byte === 1,
+        "citation extraction must remain byte-based across CRLF and non-UTF-8 non-NUL tracked files",
+      );
       return true;
     }
     case "citation_inventory_sorted_by_path_and_span": {
       const result = scanRoadmapCitations([
-        file("z.md", "roadmap:testing.fixture-z"),
-        file("a.md", "x roadmap:matrix.fixture-b y roadmap:matrix.fixture-a"),
+        file("z.md", citationText("testing.fixture-z")),
+        file("a.md", `x ${citationText("matrix.fixture-b")} y ${citationText("matrix.fixture-a")}`),
       ]);
       assert(result.facts.map((fact) => `${fact.source}:${fact.span.start_byte}`).join("|") === "a.md:2|a.md:29|z.md:0", "citations must sort by path then byte span");
       return true;
     }
     case "citation_inventory_multiple_occurrences":
-      assert(scanRoadmapCitations([file("a.md", "roadmap:matrix.fixture-a roadmap:matrix.fixture-a")]).facts.length === 2, "all occurrences must be retained");
+      assert(scanRoadmapCitations([file("a.md", `${citationText("matrix.fixture-a")} ${citationText("matrix.fixture-a")}`)]).facts.length === 2, "all occurrences must be retained");
       return true;
-    case "citation_inventory_malformed_id_rejected":
-      assert(scanRoadmapCitations([file("a.md", "roadmap:Matrix.bad")]).issues.some((value) => value.code === "E-ID-GRAMMAR"), "malformed citation candidates must fail");
+    case "citation_inventory_malformed_id_rejected": {
+      for (const candidate of [
+        citationText("Matrix.bad"),
+        citationText("matrix.fixture_alpha"),
+        citationText("matrix.fixture-alpha.Bad"),
+        citationText("matrix.fixture-alpha.2bad"),
+      ]) {
+        const regular = scanRoadmapCitations([file("a.md", candidate)]);
+        const candidateBytes = bytes(candidate);
+        const immutable = scanRoadmapMarkdownFacts("a.md" as RepoPath, {
+          byte_length: candidateBytes.byteLength,
+          sliceBytes: (start, end) => candidateBytes.slice(start, end),
+        });
+        const regularIssue = observeMatchingIssue(regular.issues, "E-ID-GRAMMAR");
+        const immutableIssue = observeMatchingIssue(immutable.issues, "E-ID-GRAMMAR");
+        assert(regularIssue !== undefined, `malformed citation candidate must fail: ${candidate}`);
+        assert(
+          immutableIssue !== undefined &&
+            JSON.stringify(immutableIssue.span) === JSON.stringify(regularIssue.span),
+          `both citation consumers must reject the same malformed candidate span: ${candidate}`,
+        );
+      }
       return true;
+    }
     case "citation_inventory_draft_excluded":
       {
         const result = scanRoadmapCitations([
-          file("README.md", "roadmap:matrix.fixture-alpha"),
-          file("draft/note.md", "roadmap:matrix.fixture-beta"),
+          file("README.md", citationText("matrix.fixture-alpha")),
+          file("draft/note.md", citationText("matrix.fixture-beta")),
         ]);
         assert(
           result.issues.length === 0 && result.facts.length === 1 &&
@@ -1886,8 +1960,8 @@ function citationCase(id: JoinSelfTestCaseId): boolean {
     case "citation_inventory_nul_binary_excluded":
       {
         const result = scanRoadmapCitations([
-          file("README.md", "roadmap:matrix.fixture-alpha"),
-          file("binary.dat", bytes("\0roadmap:matrix.fixture-beta")),
+          file("README.md", citationText("matrix.fixture-alpha")),
+          file("binary.dat", bytes(`\0${citationText("matrix.fixture-beta")}`)),
         ]);
         assert(
           result.issues.length === 0 && result.facts.length === 1 &&
@@ -1897,11 +1971,11 @@ function citationCase(id: JoinSelfTestCaseId): boolean {
       }
       return true;
     case "citation_inventory_tracked_missing_rejected":
-      assert(scanRoadmapCitations([file("missing.md")]).issues.some((value) => value.code === "E-SOURCE-MISSING"), "missing tracked file must fail");
+      assert(observeMatchingIssue(scanRoadmapCitations([file("missing.md")]).issues, "E-SOURCE-MISSING") !== undefined, "missing tracked file must fail");
       return true;
     case "citation_inventory_base_revision_isolated": {
-      const base = scanRoadmapCitations([file("a.md", "roadmap:matrix.fixture-alpha")]);
-      const current = scanRoadmapCitations([file("a.md", "roadmap:matrix.fixture-beta")]);
+      const base = scanRoadmapCitations([file("a.md", citationText("matrix.fixture-alpha"))]);
+      const current = scanRoadmapCitations([file("a.md", citationText("matrix.fixture-beta"))]);
       assert(base.facts[0]!.id !== current.facts[0]!.id, "revision snapshots must not leak citation facts");
       return true;
     }
@@ -1929,15 +2003,27 @@ function testSymbolCase(id: JoinSelfTestCaseId): boolean {
   if (!id.startsWith("test_symbol_fact_")) return false;
   switch (id) {
     case "test_symbol_fact_top_level_direct_test": {
-      const result = extractRustTestSymbols(rustInputs(
+      const rootBody =
         "fn borrow<'a>(value: &'a str) -> &'a str { 'label: loop { break 'label value; } }\n" +
-          "const A: char = 'x'; const B: char = '\\n'; const C: char = '\\u{1f980}';\n" +
-          "#[test] fn lifetime_sentinel() {}",
-      ));
+        "const A: char = 'x'; const B: char = '\\n'; const C: char = '\\u{1f980}';\n" +
+        "#[test] fn component_profile_row_is_live() {}\n" +
+        "pub(crate) mod sample;";
+      const result = extractRustTestSymbols([
+        { source: "src/main.rs" as RepoPath, bytes: bytes("#[cfg(test)] mod tests;") },
+        { source: "src/tests/mod.rs" as RepoPath, bytes: bytes(rootBody) },
+        { source: "src/tests/sample.rs" as RepoPath, bytes: bytes("#[test] fn child_sentinel() {}") },
+      ]);
+      const rootFact = result.facts.find((fact) => fact.symbol === "tests::component_profile_row_is_live");
       assert(
-        result.issues.length === 0 && result.facts.length === 1 &&
-          result.facts[0]!.symbol === "tests::sample::lifetime_sentinel",
-        "lifetimes, labels, and character literals must not hide the direct test sentinel",
+        result.issues.length === 0 && result.facts.length === 2 && rootFact !== undefined &&
+          rootFact.source === "src/tests/mod.rs" && rootFact.module_path.join("::") === "tests" &&
+          rootFact.test_id === "rust-test:cddl-codegen#tests::component_profile_row_is_live" &&
+          rootFact.span.start_byte === new TextEncoder().encode(rootBody.slice(0, rootBody.indexOf("component_profile_row_is_live"))).byteLength,
+        "src/tests/mod.rs is a registered source module whose direct tests use the tests prefix and exact identifier span",
+      );
+      assert(
+        result.facts.some((fact) => fact.symbol === "tests::sample::child_sentinel"),
+        "scanning direct root tests must retain declared-child extraction",
       );
       return true;
     }
@@ -2069,7 +2155,7 @@ function testSymbolCase(id: JoinSelfTestCaseId): boolean {
       return true;
     }
     case "test_symbol_fact_missing_declared_file_rejected": {
-      assert(extractRustTestSymbols(rustInputs("", "pub(crate) mod missing;")).issues.some((value) => value.code === "E-SOURCE-MISSING"), "missing declared test file must fail");
+      assert(observeMatchingIssue(extractRustTestSymbols(rustInputs("", "pub(crate) mod missing;")).issues, "E-SOURCE-MISSING") !== undefined, "missing declared test file must fail");
       for (const malformed of [
         "mod sample;",
         "pub mod sample;",
@@ -2100,7 +2186,7 @@ function testSymbolCase(id: JoinSelfTestCaseId): boolean {
       return true;
     }
     case "test_symbol_fact_duplicate_id_rejected":
-      assert(extractRustTestSymbols(rustInputs("#[test] fn works() {} #[test] fn works() {}" )).issues.some((value) => value.code === "E-ID-DUPLICATE"), "duplicate derived test IDs must fail");
+      assert(observeMatchingIssue(extractRustTestSymbols(rustInputs("#[test] fn works() {} #[test] fn works() {}" )).issues, "E-ID-DUPLICATE") !== undefined, "duplicate derived test IDs must fail");
       return true;
     case "test_symbol_fact_base_revision_isolated": {
       const base = extractRustTestSymbols(rustInputs("#[test] fn old() {}"));
@@ -2258,6 +2344,23 @@ function c5SourcePath(roadmap: RoadmapName): RepoPath {
 
 function c5LegacySource(): Uint8Array {
   return bytes("## Lifecycle\nlegacy body\n");
+}
+
+function c5ExpectedView(markdown: Uint8Array, observer: ExpectedByteViewObserver) {
+  const first = Math.max(1, Math.floor(markdown.byteLength / 3));
+  const second = Math.max(first + 1, Math.floor(markdown.byteLength * 2 / 3));
+  const chunks: RenderChunk[] = [
+    markdown.subarray(0, first),
+    markdown.subarray(first, second),
+    markdown.subarray(second),
+  ].map((chunk, manifest_index) => ({
+    manifest_index,
+    owner: { kind: "fragment", id: `lifecycle-view-${manifest_index}`, field: "body_md" },
+    bytes: chunk,
+    source_span_ids: [],
+    consumed_fields: ["body_md"],
+  }));
+  return createExpectedByteView(chunks, observer);
 }
 
 function c5V0(roadmap: RoadmapName, markdown: Uint8Array, id?: RoadmapId): RoadmapDocumentV0 {
@@ -2738,8 +2841,12 @@ function c5LegacyCandidate(
   });
 }
 
-function assertIssue(values: readonly { code: string }[], code: string, message: string): void {
-  assert(values.some((value) => value.code === code), `${message}: ${JSON.stringify(values)}`);
+function assertIssue(values: readonly { code: string; logical_path?: string }[], code: string, message: string): void {
+  const matched = values.find((value) => value.code === code);
+  assert(matched !== undefined, `${message}: ${JSON.stringify(values)}`);
+  if (matched.logical_path !== undefined) {
+    observeSelfTestIssue(matched as { code: import("../errors.ts").IssueCode; logical_path: string });
+  }
 }
 
 function c5CampaignCase(id: C5SelfTestCaseId): boolean {
@@ -3171,7 +3278,7 @@ function c5RetiredCase(id: C5SelfTestCaseId): boolean {
     case "retired_roadmap_replacement_rejected": {
       assert(!REPLACEMENT_PIN_KINDS.some((kind) => (kind as string) === "roadmap"), "roadmap is not a replacement-pin arm");
       const result = validateRetiredIds(c5Retired([{ ...valid, replacement: {
-        kind: "file_heading", path: "draft/roadmap.md" as RepoPath, heading: "roadmap:matrix.fixture-lifecycle", claim_md: bytes("pin"),
+        kind: "file_heading", path: "draft/roadmap.md" as RepoPath, heading: citationText("matrix.fixture-lifecycle"), claim_md: bytes("pin"),
       } }]), fakeRegistryView());
       assertIssue(result.issues, "E-RETIRED-REPLACEMENT", "roadmap/draft replacement must fail");
       return true;
@@ -3294,6 +3401,7 @@ function c5IdentityReservationCase(id: C5SelfTestCaseId): boolean {
         reservation: { ...pair.reservation, id: C5_TESTING_ID },
       }]);
       assert(!invalid.ok && invalid.issues[0]?.code === "E-OWNER-DUPLICATE", "namespace/path mismatch must fail before capability minting");
+      observeMatchingIssue(invalid.issues, "E-OWNER-DUPLICATE");
       return true;
     }
     case "identity_reservation_active_collision":
@@ -4040,11 +4148,34 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
         id: C5_ID, source: (id.endsWith("nonroadmap_file_rejected") ? "README.md" : "tests/TESTING_ROADMAP.md") as RepoPath,
         span: { start_byte: 2, end_byte: 30 }, raw: `roadmap:${C5_ID}`,
       };
+      const secondCitation = {
+        ...citation,
+        source: "docs/retirement.md" as RepoPath,
+        span: { start_byte: 41, end_byte: 69 },
+      };
       const result = c5AllTransaction(
         c5ActiveRevision(active),
-        c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID)], citations: [citation] }),
+        c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID)], citations: [citation, secondCitation] }),
       );
-      assertIssue(result.issues, "E-TRANSACTION-CITATION", "repository-wide live citation must block retirement");
+      assert(
+        observeMatchingIssue(
+          result.issues,
+          "E-TRANSACTION-CITATION",
+          `citation[${JSON.stringify(C5_ID)}]`,
+        ) !== undefined,
+        "repository-wide live citation must block retirement",
+      );
+      const citationIssues = result.issues.filter((issue) => issue.code === "E-TRANSACTION-CITATION");
+      assert(citationIssues.length === 2, "each surviving repository citation must independently block retirement");
+      const expected = [citation, secondCitation].sort((left, right) => left.source < right.source ? -1 : left.source > right.source ? 1 : 0);
+      assert(
+        citationIssues.every((issue, index) =>
+          issue.source === expected[index]!.source &&
+          issue.span?.start_byte === expected[index]!.span.start_byte &&
+          issue.span?.end_byte === expected[index]!.span.end_byte
+        ),
+        "retirement diagnostics must preserve each surviving citation's exact source and half-open byte span",
+      );
       return true;
     }
     case "transaction_dangling_relation": {
@@ -4142,42 +4273,156 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
     }
     case "transaction_full_hash_git_integration": {
       assert(context !== undefined, "full-hash integration requires injected SelfTestContext ports");
-      const repository = context.ports.fixtures.createScratchRepository([{
-        path: "fixture.txt" as RepoPath,
-        bytes: bytes("base\n"),
-      }]);
-      let scratchCommit: FullCommitId;
-      try {
-        assert(context.ports.fixtures.scratchRepositoryPresent(repository), "scratch repository must exist during lifecycle probe");
-        for (const argv of [
-          ["init", "--quiet"],
-          ["add", "--", "fixture.txt"],
-          ["-c", "user.name=Roadmap Selftest", "-c", "user.email=roadmap@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "base;argv-is-not-shell"],
-        ] as const) {
-          const command = context.ports.scratch_git.runScratchGit(repository, argv);
-          assert(command.exit_code === 0, `scratch Git argv command failed: ${JSON.stringify(argv)}`);
+      const durableCorpus = [
+        { path: "cddl-matrix/roadmap/fixtures/durable-note.toml" as RepoPath, heading: "Fixture Corpus" },
+        { path: "tests/preserve-fixtures/durable-note.mdx" as RepoPath, heading: "Preserve Corpus" },
+        { path: "cddl-matrix/sources/durable-note.txt" as RepoPath, heading: "Sources Corpus" },
+      ] as const;
+      const corpusBytes = (id: RoadmapId, heading: string): Uint8Array =>
+        bytes(`é roadmap:${id}\n# ${heading}\n`);
+      const crlfPath = "tests/preserve-fixtures/crlf/no-heading.rs" as RepoPath;
+      const crlfBytes = (id: RoadmapId): Uint8Array => bytes(`// roadmap:${id}\r\nfn sentinel() {}\r\n`);
+      const worktreeId = "matrix.fixture-worktree" as RoadmapId;
+      const exerciseObjectFormat = (format: "sha1" | "sha256"): FullCommitId => {
+        const repository = context.ports.fixtures.createScratchRepository([
+          { path: "fixture.txt" as RepoPath, bytes: bytes("base\n") },
+          { path: "src/main.rs" as RepoPath, bytes: bytes("#[cfg(test)]\nmod tests;\n") },
+          { path: "src/tests/mod.rs" as RepoPath, bytes: new Uint8Array() },
+          ...durableCorpus.map((entry) => ({ path: entry.path, bytes: corpusBytes(C5_ID, entry.heading) })),
+          { path: crlfPath, bytes: crlfBytes(C5_ID) },
+        ]);
+        let commit: FullCommitId | undefined;
+        try {
+          assert(context.ports.fixtures.scratchRepositoryPresent(repository), `${format} scratch repository must be live`);
+          for (const argv of [
+            ["init", "--quiet", `--object-format=${format}`],
+            ["add", "--all"],
+            ["commit", "--quiet", "--no-gpg-sign", "-m", "base;argv-is-not-shell"],
+          ] as const) {
+            const command = context.ports.scratch_git.runScratchGit(repository, argv);
+            assert(command.exit_code === 0, `${format} scratch Git argv command failed: ${JSON.stringify(argv)}`);
+          }
+          const resolved = context.ports.scratch_git.runScratchGit(repository, ["rev-parse", "HEAD"]);
+          assert(resolved.exit_code === 0, `${format} scratch Git must resolve the committed HEAD`);
+          const oid = new TextDecoder().decode(resolved.stdout).trim();
+          const length = format === "sha1" ? 40 : 64;
+          assert(new RegExp(`^[0-9a-f]{${length}}$`, "u").test(oid), `${format} scratch Git must return an exact full lowercase OID`);
+          commit = oid as FullCommitId;
+
+          const ports = context.ports.fixtures.openScratchRoadmapPorts(repository);
+          assert(ports.repositoryObjectFormat() === format, `${format} production scratch ports reported the wrong object format`);
+          assert(ports.resolveFullCommit(oid) === oid, `${format} production scratch ports changed the exact full OID`);
+          assert(
+            new TextDecoder().decode(ports.readDeclaredAtCommit(commit, "fixture.txt" as RepoPath)) === "base\n",
+            `${format} production commit read changed the exact fixture bytes`,
+          );
+          const view = ports.registryView({ kind: "commit", commit });
+          assert(
+            view.revision.kind === "commit" && view.revision.commit === commit,
+            `${format} production registry view changed the exact commit revision`,
+          );
+          const raw = `roadmap:${C5_ID}`;
+          for (const entry of durableCorpus) {
+            const citation = view.roadmap_citations.find((fact) => fact.source === entry.path);
+            assert(
+              citation?.id === C5_ID && citation.raw === raw &&
+                citation.span.start_byte === 3 && citation.span.end_byte === 3 + bytes(raw).byteLength,
+              `${format} production registry omitted or moved the exact ${entry.path} citation span`,
+            );
+            const heading = view.tracked_headings.find((fact) => fact.path === entry.path);
+            const headingStart = bytes(`é ${raw}\n# `).byteLength;
+            assert(
+              heading?.heading === entry.heading && heading.span.start_byte === headingStart &&
+                heading.span.end_byte === headingStart + bytes(entry.heading).byteLength,
+              `${format} extension-neutral heading inventory omitted or moved ${entry.path}`,
+            );
+          }
+          const crlfCitation = view.roadmap_citations.find((fact) => fact.source === crlfPath);
+          assert(
+            crlfCitation?.id === C5_ID && crlfCitation.span.start_byte === 3 &&
+              crlfCitation.span.end_byte === 3 + bytes(raw).byteLength,
+            `${format} byte citation scanner rejected a CRLF tracked file with no heading candidate`,
+          );
+          const retirement = c5AllTransaction(
+            c5ActiveRevision(active),
+            c5ActiveRevision(empty, [], {
+              retired: [c5Tombstone(C5_ID)],
+              citations: view.roadmap_citations,
+            }),
+          );
+          const citationIssues = retirement.issues.filter((issue) => issue.code === "E-TRANSACTION-CITATION");
+          assert(
+            citationIssues.length === durableCorpus.length + 1 &&
+              citationIssues.every((issue) =>
+                view.roadmap_citations.some((fact) =>
+                  fact.source === issue.source && fact.span.start_byte === issue.span?.start_byte &&
+                  fact.span.end_byte === issue.span?.end_byte
+                )
+              ),
+            `${format} retained durable-corpus citations did not each block retirement at their production spans`,
+          );
+
+          for (const entry of durableCorpus) {
+            context.ports.fixtures.replaceScratchFile(
+              repository,
+              entry.path,
+              corpusBytes(worktreeId, `${entry.heading} Worktree`),
+            );
+          }
+          context.ports.fixtures.replaceScratchFile(repository, crlfPath, crlfBytes(worktreeId));
+          const worktreeView = ports.registryView({ kind: "worktree" });
+          const committedAgain = ports.registryView({ kind: "commit", commit });
+          assert(
+            worktreeView.roadmap_citations.filter((fact) =>
+              durableCorpus.some((entry) => entry.path === fact.source) || fact.source === crlfPath
+            ).every((fact) => fact.id === worktreeId) &&
+              committedAgain.roadmap_citations.filter((fact) =>
+                durableCorpus.some((entry) => entry.path === fact.source) || fact.source === crlfPath
+              ).every((fact) => fact.id === C5_ID),
+            `${format} worktree and base citation inventories were not revision-isolated`,
+          );
+          assert(
+            worktreeView.tracked_headings.filter((fact) =>
+              durableCorpus.some((entry) => entry.path === fact.path)
+            ).every((fact) => fact.heading.endsWith(" Worktree")) &&
+              committedAgain.tracked_headings.filter((fact) =>
+                durableCorpus.some((entry) => entry.path === fact.path)
+              ).every((fact) => !fact.heading.endsWith(" Worktree")),
+            `${format} worktree and base heading inventories were not revision-isolated`,
+          );
+          context.ports.fixtures.replaceScratchFile(
+            repository,
+            durableCorpus[0].path,
+            bytes("# CRLF heading candidate\r\n"),
+          );
+          let headingFailure: unknown;
+          try { ports.registryView({ kind: "worktree" }); }
+          catch (error) { headingFailure = error; }
+          assert(
+            headingFailure instanceof RoadmapFailure &&
+              headingFailure.issues.some((issue) =>
+                issue.code === "E-SOURCE-LINE-END" && issue.source === durableCorpus[0].path
+              ),
+            `${format} heading parser consumed a CRLF candidate without enforcing its LF precondition`,
+          );
+        } finally {
+          context.ports.fixtures.removeScratchRepository(repository);
         }
-        const resolved = context.ports.scratch_git.runScratchGit(repository, ["rev-parse", "HEAD"]);
-        assert(resolved.exit_code === 0, "scratch Git must resolve the committed HEAD");
-        scratchCommit = new TextDecoder().decode(resolved.stdout).trim() as FullCommitId;
-        assert(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(scratchCommit), "scratch Git must return one full lowercase object ID");
-      } finally {
-        context.ports.fixtures.removeScratchRepository(repository);
+        assert(!context.ports.fixtures.scratchRepositoryPresent(repository), `${format} scratch repository leaked after finally`);
+        assert(commit !== undefined, `${format} scratch repository did not produce a commit`);
+        return commit;
+      };
+
+      const scratchCommit = exerciseObjectFormat("sha1");
+      const sha256Commit = exerciseObjectFormat("sha256");
+      for (const commit of [scratchCommit, sha256Commit]) {
+        const result = validateTransaction({
+          scope: "all", against: commit,
+          base: { ...c5ActiveRevision(active), registry: c5Registry({ kind: "commit", commit }) },
+          candidate: c5ActiveRevision(active),
+        });
+        assert(result.issues.length === 0, `injected scratch full hash must bind the base transaction: ${JSON.stringify(result.issues)}`);
       }
-      assert(!context.ports.fixtures.scratchRepositoryPresent(repository), "scratch repository must be removed in finally");
-      const scratchResult = validateTransaction({
-        scope: "all", against: scratchCommit,
-        base: { ...c5ActiveRevision(active), registry: c5Registry({ kind: "commit", commit: scratchCommit }) },
-        candidate: c5ActiveRevision(active),
-      });
-      assert(scratchResult.issues.length === 0, `injected scratch full hash must bind the base transaction: ${JSON.stringify(scratchResult.issues)}`);
-      const sha256Commit = "a".repeat(64) as FullCommitId;
-      const sha256Result = validateTransaction({
-        scope: "all", against: sha256Commit,
-        base: { ...c5ActiveRevision(active), registry: c5Registry({ kind: "commit", commit: sha256Commit }) },
-        candidate: c5ActiveRevision(active),
-      });
-      assert(sha256Result.issues.length === 0, "exact full SHA-256 base and same-revision facts must pass");
       const wrongBase = validateTransaction({
         scope: "all", against: C5_BASE,
         base: { ...withBaseRevision(c5ActiveRevision(active)), registry: c5Registry({ kind: "commit", commit: "f".repeat(40) as FullCommitId }) },
@@ -4224,6 +4469,70 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
       const candidate = c5LegacyCandidate(shadow);
       const result = validateTransaction({ scope: "all", against: C5_BASE, base: pair.revision, candidate });
       assert(result.issues.length === 0 && result.retired_ids[0] === C5_ID, `complete legacy delivery must pass: ${JSON.stringify(result.issues)}`);
+      if (shadow) {
+        const allocations = { combined: 0, final: 0 };
+        const observer: ExpectedByteViewObserver = {
+          hashSegmentVisited: () => {},
+          combinedHashBufferAllocated: () => { allocations.combined++; },
+          finalProjectionAllocated: () => { allocations.final++; },
+        };
+        const originalBaseMarkdown = pair.revision.roadmaps.matrix.markdown;
+        const originalCandidateMarkdown = candidate.roadmaps.matrix.markdown;
+        const baseView = c5ExpectedView(originalBaseMarkdown, observer);
+        const candidateView = c5ExpectedView(originalCandidateMarkdown, observer);
+        const title = validateLegacyTitleBinding(pair.reservation, baseView);
+        assert(title !== undefined, "expected-byte view must mint the same reviewed-title capability");
+        originalBaseMarkdown[0] ^= 0xff;
+        assert(baseView.bytesEqual(c5LegacySource()), "expected-byte view did not retain its immutable private chunks");
+        assert(baseView.contains(bytes("cycle\nlegacy")), "streaming contains missed a cross-chunk needle");
+        const viewBase = {
+          ...pair.revision,
+          roadmaps: {
+            ...pair.revision.roadmaps,
+            matrix: { ...pair.revision.roadmaps.matrix, markdown: baseView },
+          },
+          legacy_title_bindings: [title],
+        };
+        const viewCandidate = {
+          ...candidate,
+          roadmaps: {
+            ...candidate.roadmaps,
+            matrix: { ...candidate.roadmaps.matrix, markdown: candidateView },
+          },
+        };
+        const viewDelivery = validateTransaction({
+          scope: "all", against: C5_BASE, base: viewBase, candidate: viewCandidate,
+        });
+        assert(
+          viewDelivery.issues.length === 0 &&
+          viewDelivery.base?.identity.owners.get(C5_ID)?.owner_kind === "legacy_markdown_reservation",
+          `expected-byte shadow snapshot lost campaign/identity provenance: ${JSON.stringify(viewDelivery.issues)}`,
+        );
+
+        const shadowDocument = pair.revision.roadmaps.matrix.document as RoadmapDocumentV0;
+        const promoted = c5PromoteV0(shadowDocument, new Map([[C5_ID, c5ReadyRecord(C5_ID).payload]]));
+        const active = c5ActiveRevision(promoted, [c5Selection(C5_ID)]);
+        const activeMarkdown = active.roadmaps.matrix.markdown;
+        const activeView = c5ExpectedView(activeMarkdown, observer);
+        const viewCutover = validateTransaction({
+          scope: "all",
+          against: C5_BASE,
+          base: viewBase,
+          candidate: {
+            ...active,
+            roadmaps: {
+              ...active.roadmaps,
+              matrix: { ...active.roadmaps.matrix, markdown: activeView },
+            },
+          },
+        });
+        assert(
+          viewCutover.issues.length === 0 && viewCutover.authority_transfers[0] === C5_ID,
+          `expected-byte authoritative snapshot failed cutover: ${JSON.stringify(viewCutover.issues)}`,
+        );
+        assert(allocations.combined === 0 && allocations.final === 0,
+          "lifecycle validation materialized a combined or final projection buffer");
+      }
       return true;
     }
     case "transaction_legacy_delivery_selection_survives":
@@ -4270,6 +4579,7 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
           : ["E-OWNER-DUPLICATE", `owner[\"${C5_ID}\"]`];
         assert(result.issues.some((issue) => issue.code === expected[0] && issue.logical_path === expected[1]),
           `${id}/${mutation} must fail its focused obligation at ${expected.join("#")}: ${JSON.stringify(result.issues)}`);
+        observeMatchingIssue(result.issues, expected[0] as RoadmapIssue["code"], expected[1]);
       }
       return true;
     }
@@ -4910,7 +5220,11 @@ function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
     return ["missing", "wrong_id", "unresolved_pin", "simultaneous_tombstone", "leftover_family", "missing_child_guard", "unused_guard", "future_reuse"];
   }
   if (id === "transaction_full_hash_git_integration") {
-    return ["scratch_lifecycle", "argv", "unsigned", "sha1", "sha256", "wrong_base_revision", "candidate_commit_rejected", "abbreviated"];
+    return [
+      "scratch_lifecycle", "argv", "unsigned", "sha1", "sha256", "durable_corpus_facts",
+      "crlf_byte_citation", "revision_isolation", "retirement_closure", "heading_text_precondition", "wrong_base_revision",
+      "candidate_commit_rejected", "abbreviated",
+    ];
   }
   if (id === "against_all_testing_authoritative_valid") return ["complete_debt", "missing_base_debt", "missing_candidate_debt"];
   if (id === "against_all_wp4m_bootstrap_valid") {

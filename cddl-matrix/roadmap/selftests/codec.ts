@@ -1,6 +1,7 @@
 import { RoadmapWireError, bytesEqual, decodeMarkdownToken, encodeMarkdownString } from "../markdown_codec.ts";
 import type { RoadmapIssue } from "../errors.ts";
-import type { SelfTestCase, SelfTestResult } from "../selftest.ts";
+import type { SelfTestCandidateCase as SelfTestCase, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
+import { observeSelfTestIssue } from "./observations.ts";
 import { expectString, type DecodeContext } from "../decode/primitives.ts";
 import {
   childLogicalPath,
@@ -74,6 +75,7 @@ function expectCode(run: () => unknown, code: string, path?: string): void {
     assert(error instanceof RoadmapWireError, `expected RoadmapWireError, got ${String(error)}`);
     assert(error.issue.code === code, `expected ${code}, got ${error.issue.code}`);
     if (path !== undefined) assert(error.issue.logical_path === path, `expected path ${path}, got ${error.issue.logical_path}`);
+    observeSelfTestIssue(error.issue);
     return;
   }
   throw new Error(`expected ${code}`);

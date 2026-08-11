@@ -43,7 +43,7 @@ import {
   deriveUnresolvedMigrationAuthority,
   validateRoadmapReferences,
 } from "../references.ts";
-import type { SelfTestCase, SelfTestContext, SelfTestResult } from "../selftest.ts";
+import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 
 export const REQUIRED_ADAPTER_SELFTEST_CASE_IDS = [
   "decoder_domain_dispatch_once",
@@ -1168,15 +1168,16 @@ export const ADAPTER_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
     id,
     category: "adapter-pipeline" as const,
     run(context: SelfTestContext): SelfTestResult {
+      const subcases = id === "decoder_domain_dispatch_once" ? ADAPTER_SELFTEST_SUBCASES : undefined;
       try {
         execute(id, fixtureBundleFromContext(context));
-        return { ok: true, polarity: "positive", subcases: ADAPTER_SELFTEST_SUBCASES };
+        return { ok: true, polarity: "positive", subcases };
       } catch (error) {
         return {
           ok: false,
           polarity: "positive",
           issues: [failure(id, error)],
-          subcases: ADAPTER_SELFTEST_SUBCASES,
+          subcases,
         };
       }
     },

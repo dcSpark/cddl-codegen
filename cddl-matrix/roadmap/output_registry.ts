@@ -47,6 +47,10 @@ export type ClosedOutputRegistryResult =
   | { readonly ok: true; readonly registry: ClosedOutputRegistry; readonly issues: readonly [] }
   | { readonly ok: false; readonly issues: readonly RoadmapIssue[] };
 
+export type ProductionOutputRegistryValidation =
+  | { readonly ok: true; readonly registry: ClosedOutputRegistry; readonly issues: readonly [] }
+  | { readonly ok: false; readonly issues: readonly RoadmapIssue[] };
+
 const registeredClaims = new WeakMap<object, readonly OutputClaim[]>();
 const productionRegistries = new WeakSet<object>();
 const testRegistries = new WeakSet<object>();
@@ -187,6 +191,47 @@ function fixedProductionRegistry(): ClosedOutputRegistry {
 
 /** The sole WP1 production inventory; it intentionally contains no projection whole-file claim. */
 export const LEGACY_STATUS_OUTPUT_REGISTRY = fixedProductionRegistry();
+
+/**
+ * Revalidate an injected revision view against WP1's one fixed production ownership inventory.
+ * This grants only the closed registry capability; exact byte intervals still require the
+ * separately explicit target snapshots accepted by resolveOutputClaims.
+ */
+export function validateProductionOutputRegistry(
+  claims: readonly OutputClaim[],
+): ProductionOutputRegistryValidation {
+  const inventory = registeredClaims.get(LEGACY_STATUS_OUTPUT_REGISTRY);
+  if (inventory === undefined) throw new Error("internal: fixed production output inventory lost provenance");
+  const issues: RoadmapIssue[] = [...validateOutputClaimInventory(claims)];
+  if (claims.length !== inventory.length) {
+    issues.push(issue(
+      "E-OUTPUT-CLAIM",
+      "<output-registry>",
+      "claims",
+      `production output inventory has ${claims.length} claims, expected exactly ${inventory.length}`,
+    ));
+  }
+  for (const [index, claim] of claims.entries()) {
+    const mismatch = registryMismatchIssue(claim, inventory, index);
+    if (mismatch !== undefined) issues.push(mismatch);
+  }
+  for (const [index, registered] of inventory.entries()) {
+    if (!claims.some((claim) => claimIndex(claim) === claimIndex(registered))) {
+      issues.push(issue(
+        "E-OUTPUT-CLAIM",
+        registered.path,
+        `inventory[${index}]`,
+        "registered production output claim is absent from the injected revision view",
+      ));
+    }
+  }
+  if (issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
+  return Object.freeze({
+    ok: true,
+    registry: LEGACY_STATUS_OUTPUT_REGISTRY,
+    issues: Object.freeze([]) as readonly [],
+  });
+}
 
 function registryMismatchIssue(
   requested: OutputClaim,

@@ -1,7 +1,17 @@
 import type { RoadmapSelfTestPorts } from "../io.ts";
 import type { ReadOnlyRoadmapPorts } from "../io.ts";
-import type { SelfTestCase, SelfTestCategory, SelfTestContext, SelfTestResult } from "../selftest.ts";
+import type {
+  SelfTestCandidateCase as SelfTestCase,
+  SelfTestCategory,
+  SelfTestContext,
+  SelfTestCandidateResult as SelfTestResult,
+} from "../selftest.ts";
 import type { RoadmapIssue } from "../errors.ts";
+import {
+  observeMatchingIssue,
+  observeSelfTestIssue,
+  observeUntypedSelfTestRejection,
+} from "./observations.ts";
 import type {
   FragmentId,
   FixtureRelativePath,
@@ -373,7 +383,9 @@ function issueCodes(issues: readonly RoadmapIssue[]): Set<string> {
 }
 
 function requireIssue(issues: readonly RoadmapIssue[], code: RoadmapIssue["code"]): void {
-  if (!issueCodes(issues).has(code)) fail(`expected ${code}, got ${[...issueCodes(issues)].join(", ")}`);
+  const matched = issues.find((issue) => issue.code === code);
+  if (matched === undefined) fail(`expected ${code}, got ${[...issueCodes(issues)].join(", ")}`);
+  observeSelfTestIssue(matched);
 }
 
 function pass(polarity: "positive" | "negative" = "positive", subcases?: readonly string[]): SelfTestResult {
@@ -430,25 +442,60 @@ function expectedByteViewCrossChunk(): readonly string[] {
 }
 
 function expectedByteViewIncrementalHash(): void {
-  const chunks: RenderChunk[] = ["one", "two", "three"].map((value, manifest_index) => ({
+  const chunks: RenderChunk[] = ["one\n", "two", "three\n"].map((value, manifest_index) => ({
     manifest_index,
     owner: { kind: "fragment", id: `hash-${manifest_index}`, field: "body_md" },
     bytes: bytes(value),
     source_span_ids: [],
     consumed_fields: ["body_md"],
   }));
-  const observed = { segments: 0, combined_allocations: 0, final_allocations: 0 };
+  const observed = {
+    slice_segments: 0,
+    source_fact_chunks: 0,
+    combined_allocations: 0,
+    final_allocations: 0,
+  };
   const observer: ExpectedByteViewObserver = {
-    hashSegmentVisited: () => { observed.segments++; },
+    hashSegmentVisited: () => { observed.slice_segments++; },
+    sourceFactChunkVisited: () => { observed.source_fact_chunks++; },
     combinedHashBufferAllocated: () => { observed.combined_allocations++; },
     finalProjectionAllocated: () => { observed.final_allocations++; },
   };
   const view = createExpectedByteView(chunks, observer);
-  const digest = new Bun.CryptoHasher("sha256").update(bytes("onetwothree")).digest("hex");
+  const digest = new Bun.CryptoHasher("sha256").update(bytes("one\ntwothree\n")).digest("hex");
   if (view.sha256(view.slice(0, view.byte_length)) !== digest) fail("incremental digest differs");
-  if (observed.segments <= 1) fail("incremental hash did not causally report multi-segment traversal");
+  if (observed.slice_segments <= 1) fail("incremental hash did not causally report multi-segment traversal");
   if (observed.combined_allocations !== 0 || observed.final_allocations !== 0) {
     fail("incremental hash allocated a combined/final projection buffer");
+  }
+  observed.slice_segments = 0;
+  observed.source_fact_chunks = 0;
+  observed.combined_allocations = 0;
+  observed.final_allocations = 0;
+  const facts = view.sourceFacts();
+  if (
+    facts.byte_length !== bytes("one\ntwothree\n").byteLength ||
+    facts.sha256 !== digest || facts.line_count !== 2 || facts.eof !== "lf"
+  ) fail("whole-source facts were not incrementally exact across chunks");
+  if (!Object.isFrozen(facts)) fail("whole-source facts were not frozen");
+  if (observed.source_fact_chunks !== chunks.length || observed.source_fact_chunks <= 1) {
+    fail("whole-source facts did not causally report every private chunk traversal");
+  }
+  if (observed.combined_allocations !== 0 || observed.final_allocations !== 0) {
+    fail("whole-source facts allocated a combined/final projection buffer");
+  }
+  const sliceVisitsAfterFirstCall = observed.slice_segments;
+  const visitsAfterFirstCall = observed.source_fact_chunks;
+  const combinedAfterFirstCall = observed.combined_allocations;
+  const finalAfterFirstCall = observed.final_allocations;
+  if (view.sourceFacts() !== facts) fail("whole-source facts did not return the cached object");
+  if (
+    observed.slice_segments !== sliceVisitsAfterFirstCall ||
+    observed.source_fact_chunks !== visitsAfterFirstCall ||
+    observed.combined_allocations !== combinedAfterFirstCall ||
+    observed.final_allocations !== finalAfterFirstCall
+  ) {
+    fail("cached whole-source facts repeated traversal or allocation");
   }
   renderValidatedChunks(chunks, [], view, observer);
   if (observed.combined_allocations !== 0 || Number(observed.final_allocations) !== 1) {
@@ -536,13 +583,13 @@ function testManifestCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult 
   return pass("negative");
 }
 
-function validateRawFixture(document: RoadmapDocumentV0, source: Uint8Array): readonly RoadmapIssue[] {
+function validateRawFixture(document: RoadmapDocumentV0): readonly RoadmapIssue[] {
   const placement = resolveManifest(document);
   const completed = complete(document).completed;
   return [
     ...placement.issues,
     ...validateCompletedChunks(document, placement.ops, completed),
-    ...validateSourceSpans({ document, completed, source_snapshot: source }),
+    ...validateSourceSpans({ document, completed }),
   ];
 }
 
@@ -556,7 +603,6 @@ function testSpanCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
   }
   const fixture = rawFixture();
   let document = fixture.document;
-  let source = fixture.source;
   let expected: RoadmapIssue["code"] | undefined;
   switch (id) {
     case "span_gap": {
@@ -606,15 +652,25 @@ function testSpanCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       }];
       const view = createExpectedByteView(chunks);
       if (!view.equals(view.slice(0, 2), bytes("é"))) fail("UTF-8 byte offsets were not used");
-      let rejected = false;
-      try { view.slice(1, 2); } catch { rejected = true; }
+      let rejection: unknown;
+      try { view.slice(1, 2); } catch (error) { rejection = error; }
+      const rejected = rejection !== undefined;
       if (!rejected) fail("mid-scalar byte boundary accepted");
+      if (id === "span_mid_scalar_boundary") observeUntypedSelfTestRejection(id, rejection);
       return pass(id === "span_mid_scalar_boundary" ? "negative" : "positive");
     }
     case "span_final_eof_owner": {
-      const issues = validateRawFixture(document, source);
+      const issues = validateRawFixture(document);
       if (issues.length !== 0) fail(`valid EOF ownership failed: ${issues.map((value) => value.code).join(",")}`);
-      return pass();
+      requireIssue(validateRawFixture({
+        ...document,
+        document: { ...document.document, frozen_source_line_count: 2 },
+      }), "E-SPAN-COVERAGE");
+      requireIssue(validateRawFixture({
+        ...document,
+        document: { ...document.document, frozen_source_eof: "lf" },
+      }), "E-SPAN-COVERAGE");
+      return pass("positive");
     }
     case "span_empty_vacuity":
       document = { ...document, spans: [] };
@@ -625,24 +681,49 @@ function testSpanCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       expected = "E-SPAN-COVERAGE";
       break;
     case "span_single_snapshot": {
+      const original = complete(document).completed;
       let reads = 0;
-      const input = {
-        document,
-        completed: complete(document).completed,
-        get source_snapshot(): Uint8Array { reads++; return source; },
+      const completed: CompletedRenderIr = {
+        ...original,
+        expected_bytes: {
+          ...original.expected_bytes,
+          sourceFacts() { reads++; return original.expected_bytes.sourceFacts(); },
+        },
       };
-      validateSourceSpans(input);
-      if (reads !== 1) fail(`source snapshot read ${reads} times`);
-      return pass();
+      const valid = validateSourceSpans({ document, completed });
+      if (valid.length !== 0 || reads !== 1) fail(`source facts acquired ${reads} times`);
+      requireIssue(validateSourceSpans({
+        document: {
+          ...document,
+          document: { ...document.document, frozen_source_byte_length: document.document.frozen_source_byte_length + 1 },
+        },
+        completed: original,
+      }), "E-SPAN-COVERAGE");
+      requireIssue(validateSourceSpans({
+        document: {
+          ...document,
+          document: { ...document.document, frozen_source_sha256: "0".repeat(64) },
+        },
+        completed: original,
+      }), "E-SOURCE-DIGEST");
+      return pass("positive");
     }
-    case "span_source_change_digest_rejected":
-      source = bytes("XFMRPG");
+    case "span_source_change_digest_rejected": {
+      document = {
+        ...document,
+        sections: document.sections.map((section, index) =>
+          index === 0 ? { ...section, source_block_md: bytes("X") } : section
+        ),
+      };
+      const changed = complete(document).completed;
+      if (changed.expected_bytes.sliceBytes(0, 1)[0] !== 0x58) fail("authority-byte mutation did not reach expected chunks");
       expected = "E-SOURCE-DIGEST";
       break;
+    }
     default:
       fail(`${id} is not a span case`);
   }
-  const issues = validateRawFixture(document, source);
+  const issues = validateRawFixture(document);
   if (expected === undefined) fail("span test lacks expected code");
   requireIssue(issues, expected);
   return pass("negative");
@@ -1042,9 +1123,10 @@ function testRenderCase(
     return pass();
   }
   if (id === "render_zero_chunks_rejected") {
-    let rejected = false;
-    try { renderValidatedChunks([], [], createExpectedByteView([])); } catch { rejected = true; }
-    if (!rejected) fail("zero chunks rendered successfully");
+    let rejection: unknown;
+    try { renderValidatedChunks([], [], createExpectedByteView([])); } catch (error) { rejection = error; }
+    if (rejection === undefined) fail("zero chunks rendered successfully");
+    observeUntypedSelfTestRejection(id, rejection);
     return pass("negative");
   }
   if (id === "render_semantic_consumption_once" || id === "render_chunks_precede_consumption_validation") {
@@ -1120,14 +1202,14 @@ function testRenderCase(
     const completed = complete(fixture.document).completed;
     const broken = { ...fixture.document, spans: [] };
     if (completed.chunks.length !== fixture.document.manifest.length) fail("chunks were not completed first");
-    requireIssue(validateSourceSpans({ document: broken, completed, source_snapshot: fixture.source }), "E-SPAN-EMPTY");
+    requireIssue(validateSourceSpans({ document: broken, completed }), "E-SPAN-EMPTY");
     return pass("negative");
   }
   if (id === "render_invalid_chunk_skips_projection_read") {
     const fixture = rawFixture();
     const completed = complete(fixture.document).completed;
     let reads = 0;
-    let rejected = false;
+    let rejection: unknown;
     try {
       renderThenCheckCommittedProjection(
         completed.chunks,
@@ -1136,8 +1218,11 @@ function testRenderCase(
         fixture.document.document.projection_path,
         () => { reads++; return fixture.source; },
       );
-    } catch { rejected = true; }
-    if (!rejected || reads !== 0) fail("invalid chunks reached committed projection read");
+    } catch (error) { rejection = error; }
+    if (rejection === undefined || reads !== 0) fail("invalid chunks reached committed projection read");
+    if (typeof rejection === "object" && rejection !== null && "issues" in rejection) {
+      observeMatchingIssue((rejection as { issues: readonly RoadmapIssue[] }).issues, "E-SPAN-GAP", "span");
+    }
     return pass("negative");
   }
   if (id === "render_committed_projection_read_last" || id === "render_projection_mutation_changes_only_drift") {
@@ -1156,6 +1241,7 @@ function testRenderCase(
     if (id === "render_committed_projection_read_last" && checked.issues.length !== 0) fail("matching projection drifted");
     if (id === "render_projection_mutation_changes_only_drift") {
       if (checked.issues.length !== 1 || checked.issues[0].code !== "E-PROJECTION-DRIFT") fail("mutation changed more than drift verdict");
+      observeMatchingIssue(checked.issues, "E-PROJECTION-DRIFT", "projection");
       if (
         !checked.issues[0].message.includes("expected context=") ||
         !checked.issues[0].message.includes("actual context=") ||
@@ -1568,6 +1654,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     if (issues.some((value) => value.message === "structured output binding is claimed more than once")) {
       fail("duplicate slot mutation accidentally duplicated the structured binding");
     }
+    observeMatchingIssue(issues, "E-OUTPUT-CLAIM");
     return pass("negative");
   }
   if (id === "outputs_duplicate_binding") {
@@ -1584,6 +1671,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     if (issues.some((value) => value.message === "path/slot pair is claimed more than once")) {
       fail("duplicate binding mutation accidentally duplicated the enclosing slot");
     }
+    observeMatchingIssue(issues, "E-OUTPUT-CLAIM");
     return pass("negative");
   }
   if (id === "outputs_whole_vs_slot") {
@@ -1615,6 +1703,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     });
     const overlaps = resolved.issues.filter((value) => value.code === "E-OUTPUT-CLAIM");
     if (overlaps.length !== 4) fail("whole-file handoff did not collide with each of the four live ROADMAP slots");
+    observeMatchingIssue(overlaps, "E-OUTPUT-CLAIM");
     return pass("negative");
   }
   if (id === "outputs_overlapping_slots") {
@@ -1699,7 +1788,6 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     if (!nestedIssues.some((value) =>
       value.code === "E-OUTPUT-SLOT" && value.logical_path === 'slot["one"]'
     )) fail("nested marker structure did not retain its typed output-slot coordinate");
-    executed.push("nested");
 
     const fixture = rawFixture();
     const completed = complete(fixture.document).completed;
@@ -1904,9 +1992,10 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       registryView: () => fail("unused"),
       atomicReplace: (_path: RepoPath, _bytes: Uint8Array) => { calls++; throw new Error("atomic failure"); },
     };
-    let rejected = false;
-    try { ports.atomicReplace(asRepoPath("fixture/projection.md"), bytes("new")); } catch { rejected = true; }
-    if (!rejected || calls !== 1 || new TextDecoder().decode(target) !== "old") fail("atomic failure changed original snapshot");
+    let rejection: unknown;
+    try { ports.atomicReplace(asRepoPath("fixture/projection.md"), bytes("new")); } catch (error) { rejection = error; }
+    if (rejection === undefined || calls !== 1 || new TextDecoder().decode(target) !== "old") fail("atomic failure changed original snapshot");
+    observeUntypedSelfTestRejection(id, rejection);
     return pass("negative");
   }
   fail(`${id} is not an output case`);
@@ -2053,6 +2142,7 @@ function testStatusCase(
       invalidUtf8Plan.exit_code !== 1 || invalidUtf8Plan.writes.length !== 0 ||
       !invalidUtf8Stdout.includes("[E-OUTPUT-SLOT] cddl-matrix/ROADMAP.md#claims[0]: output target is not strict UTF-8")
     ) fail("check decoded an invalid marker payload before returning its typed output-slot diagnostic");
+    observeSelfTestIssue({ code: "E-OUTPUT-SLOT", logical_path: "claims[0]" });
     return pass("negative", executed);
   }
   if (id === "status_projector_preflight_no_partial_write") {
@@ -2072,6 +2162,11 @@ function testStatusCase(
       !exactBytes(plan.stderr, expectedStderr) || spy.reads.size !== 3 ||
       [...spy.reads.values()].some((value) => value !== 1) || resolvedClaims !== 11
     ) fail("failed last-target preflight did not read/preflight all targets before planning zero writes");
+    observeMatchingIssue(resolveOutputClaims({
+      registry: LEGACY_STATUS_OUTPUT_REGISTRY,
+      claims: LEGACY_STATUS_OUTPUT_CLAIMS,
+      targets: before,
+    }).issues, "E-OUTPUT-SLOT");
     return pass("negative");
   }
   fail(`${id} is not a status case`);
@@ -2089,12 +2184,10 @@ function testDeterminismCase(
     const forward = validateSourceSpans({
       document: { ...fixture.document, spans: brokenSpans },
       completed: complete(fixture.document).completed,
-      source_snapshot: fixture.source,
     });
     const reverse = validateSourceSpans({
       document: { ...fixture.document, spans: [...brokenSpans].reverse() },
       completed: complete(fixture.document).completed,
-      source_snapshot: fixture.source,
     });
     const coordinates = (issues: readonly RoadmapIssue[]): string =>
       issues.map((value) => `${value.code}:${value.logical_path}`).join("|");

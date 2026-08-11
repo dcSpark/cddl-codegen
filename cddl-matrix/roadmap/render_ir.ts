@@ -52,17 +52,56 @@ export interface CompletedRenderIr {
 }
 
 export interface ExpectedByteView {
-  readonly prefix_offsets: readonly number[];
   readonly byte_length: number;
+  readonly prefix_offsets: readonly number[];
+  sourceFacts(): ExpectedSourceFacts;
+  wholeSha256(): string;
+  sliceBytes(start: number, end: number): Uint8Array;
+  bytesEqual(other: ImmutableByteView | Uint8Array): boolean;
+  contains(needle: Uint8Array): boolean;
   slice(start: number, end: number): ExpectedByteSlice;
   equals(slice: ExpectedByteSlice, bytes: Uint8Array): boolean;
   sha256(slice: ExpectedByteSlice): string;
 }
 
+export interface ExpectedSourceFacts {
+  readonly byte_length: number;
+  readonly sha256: string;
+  readonly line_count: number;
+  readonly eof: "lf" | "none";
+}
+
+/**
+ * Immutable streaming byte surface shared by generated projections and committed legacy Markdown.
+ * It exposes no backing chunk or implicit whole-file materializer; callers can request only an
+ * explicit checked byte range.
+ */
+export interface ImmutableByteView {
+  readonly byte_length: number;
+  wholeSha256(): string;
+  sliceBytes(start: number, end: number): Uint8Array;
+  bytesEqual(other: ImmutableByteView | Uint8Array): boolean;
+  contains(needle: Uint8Array): boolean;
+}
+
+export type ImmutableByteViewInput = ImmutableByteView | Uint8Array;
+
 export interface ExpectedByteViewObserver {
   hashSegmentVisited(segment: ExpectedByteSlice["segments"][number]): void;
+  sourceFactChunkVisited?(chunkIndex: number, byteLength: number): void;
   combinedHashBufferAllocated(byteLength: number): void;
   finalProjectionAllocated(byteLength: number): void;
+}
+
+interface PrivateByteView {
+  readonly chunks: readonly Uint8Array[];
+  source_facts?: ExpectedSourceFacts;
+}
+
+const privateByteViews = new WeakMap<object, PrivateByteView>();
+
+export function isImmutableByteView(value: unknown): value is ImmutableByteView {
+  return value !== null && typeof value === "object" && privateByteViews.has(value);
 }
 
 export interface ExpectedByteSlice {
@@ -195,6 +234,123 @@ function chunkForOffset(prefix: readonly number[], byteLength: number, offset: n
   return low;
 }
 
+function privateView(view: ImmutableByteView): PrivateByteView {
+  const value = privateByteViews.get(view as object);
+  if (value === undefined) throw new ExpectedByteViewError("foreign-slice", "byte view was not minted by this module");
+  return value;
+}
+
+function validateByteRange(byteLength: number, start: number, end: number): void {
+  if (
+    !Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+    start < 0 || start > end || end > byteLength
+  ) {
+    throw new ExpectedByteViewError("bounds", `invalid byte range [${start}, ${end})`);
+  }
+}
+
+function privateSliceBytes(view: ImmutableByteView, start: number, end: number): Uint8Array {
+  validateByteRange(view.byte_length, start, end);
+  const result = new Uint8Array(end - start);
+  if (start === end) return result;
+  let logicalOffset = 0;
+  let outputOffset = 0;
+  for (const chunk of privateView(view).chunks) {
+    const chunkEnd = logicalOffset + chunk.byteLength;
+    if (chunkEnd > start && logicalOffset < end) {
+      const from = Math.max(start, logicalOffset) - logicalOffset;
+      const to = Math.min(end, chunkEnd) - logicalOffset;
+      result.set(chunk.subarray(from, to), outputOffset);
+      outputOffset += to - from;
+    }
+    logicalOffset = chunkEnd;
+    if (logicalOffset >= end) break;
+  }
+  return result;
+}
+
+function computeSourceFacts(
+  view: ImmutableByteView,
+  observer?: ExpectedByteViewObserver,
+): ExpectedSourceFacts {
+  const privateValue = privateView(view);
+  if (privateValue.source_facts !== undefined) return privateValue.source_facts;
+  const hasher = new Bun.CryptoHasher("sha256");
+  let lfCount = 0;
+  let lastByte: number | undefined;
+  // Traversal reporting is mandatory. Any future implementation that materializes a combined
+  // source buffer must report that allocation through combinedHashBufferAllocated before use.
+  for (const [chunkIndex, chunk] of privateValue.chunks.entries()) {
+    observer?.sourceFactChunkVisited?.(chunkIndex, chunk.byteLength);
+    hasher.update(chunk);
+    for (const byte of chunk) {
+      if (byte === 0x0a) lfCount++;
+      lastByte = byte;
+    }
+  }
+  privateValue.source_facts = Object.freeze({
+    byte_length: view.byte_length,
+    sha256: hasher.digest("hex"),
+    line_count: view.byte_length === 0 ? 0 : lfCount + (lastByte === 0x0a ? 0 : 1),
+    eof: lastByte === 0x0a ? "lf" : "none",
+  });
+  return privateValue.source_facts;
+}
+
+function* privateBytes(view: ImmutableByteView): Generator<number> {
+  for (const chunk of privateView(view).chunks) {
+    for (const byte of chunk) yield byte;
+  }
+}
+
+function byteViewsEqual(left: ImmutableByteView, right: ImmutableByteView | Uint8Array): boolean {
+  if (left.byte_length !== (right instanceof Uint8Array ? right.byteLength : right.byte_length)) return false;
+  const leftBytes = privateBytes(left);
+  const rightBytes: Iterator<number> = right instanceof Uint8Array
+    ? right.values()
+    : privateBytes(right);
+  while (true) {
+    const leftNext = leftBytes.next();
+    const rightNext = rightBytes.next();
+    if (leftNext.done || rightNext.done) return leftNext.done === rightNext.done;
+    if (leftNext.value !== rightNext.value) return false;
+  }
+}
+
+function byteViewContains(view: ImmutableByteView, needle: Uint8Array): boolean {
+  if (needle.byteLength === 0 || needle.byteLength > view.byte_length) return false;
+  const fallback = new Uint32Array(needle.byteLength);
+  for (let index = 1, matched = 0; index < needle.byteLength; index++) {
+    while (matched > 0 && needle[index] !== needle[matched]) matched = fallback[matched - 1];
+    if (needle[index] === needle[matched]) matched++;
+    fallback[index] = matched;
+  }
+  let matched = 0;
+  for (const byte of privateBytes(view)) {
+    while (matched > 0 && byte !== needle[matched]) matched = fallback[matched - 1];
+    if (byte === needle[matched]) matched++;
+    if (matched === needle.byteLength) return true;
+  }
+  return false;
+}
+
+/** Snapshot legacy bytes, or preserve an already-minted immutable generated view. */
+export function createImmutableByteView(value: ImmutableByteViewInput): ImmutableByteView {
+  if (isImmutableByteView(value)) return value;
+  if (!(value instanceof Uint8Array)) throw new TypeError("immutable byte view input must be Uint8Array or a minted byte view");
+  const snapshot = cloneBytes(value);
+  let view: ImmutableByteView;
+  view = Object.freeze({
+    byte_length: snapshot.byteLength,
+    wholeSha256: () => computeSourceFacts(view).sha256,
+    sliceBytes: (start: number, end: number) => privateSliceBytes(view, start, end),
+    bytesEqual: (other: ImmutableByteView | Uint8Array) => byteViewsEqual(view, other),
+    contains: (needle: Uint8Array) => byteViewContains(view, needle),
+  });
+  privateByteViews.set(view, { chunks: Object.freeze([snapshot]) });
+  return view;
+}
+
 /**
  * Build an immutable coordinate view over private chunk snapshots.  Equality and hashing walk the
  * addressed segments and never materialize the conceptual concatenation.
@@ -216,9 +372,15 @@ export function createExpectedByteView(
   const isScalarBoundary = (offset: number): boolean =>
     offset === 0 || offset === byteLength || (byteAt(offset) & 0xc0) !== 0x80;
 
-  const view: ExpectedByteView = {
+  let view: ExpectedByteView;
+  view = {
     prefix_offsets: prefix,
     byte_length: byteLength,
+    sourceFacts: () => computeSourceFacts(view, observer),
+    wholeSha256: () => computeSourceFacts(view, observer).sha256,
+    sliceBytes: (start: number, end: number) => privateSliceBytes(view, start, end),
+    bytesEqual: (other: ImmutableByteView | Uint8Array) => byteViewsEqual(view, other),
+    contains: (needle: Uint8Array) => byteViewContains(view, needle),
     slice(start: number, end: number): ExpectedByteSlice {
       if (
         !Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
@@ -280,7 +442,9 @@ export function createExpectedByteView(
       return hasher.digest("hex");
     },
   };
-  return Object.freeze(view);
+  Object.freeze(view);
+  privateByteViews.set(view, { chunks: Object.freeze(privateChunks) });
+  return view;
 }
 
 function collectMarkdownFields(

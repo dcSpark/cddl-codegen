@@ -10,6 +10,11 @@ import type {
   RoadmapDocumentV0,
   ShadowRecordClaim,
 } from "./model/documents.ts";
+import {
+  createImmutableByteView,
+  isImmutableByteView,
+  type ImmutableByteViewInput,
+} from "./render_ir.ts";
 
 const codePointSort = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -47,14 +52,14 @@ export type CampaignIdentityOwnerEvidence =
   | {
       readonly kind: "legacy_markdown_reservation";
       readonly reservation: LegacyMarkdownReservationV1;
-      readonly markdown: Uint8Array;
+      readonly markdown: ImmutableByteViewInput;
       readonly shadow_document?: RoadmapDocumentV0;
     }
   | {
       readonly kind: "shadow_record_reservation";
       readonly id: RoadmapId;
       readonly namespace: RoadmapName;
-      readonly markdown: Uint8Array;
+      readonly markdown: ImmutableByteViewInput;
       readonly shadow_document: RoadmapDocumentV0;
     };
 
@@ -108,6 +113,9 @@ const OWNER_RANK: Readonly<Record<GlobalOwnerKind, number>> = Object.freeze({
 });
 
 function stableValueKey(value: unknown): string {
+  if (isImmutableByteView(value)) {
+    return `byte-view:${value.byte_length}:${value.wholeSha256()}`;
+  }
   if (value instanceof Uint8Array) {
     return `bytes:${[...value].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
   }
@@ -195,16 +203,17 @@ function ownerSignature(owners: readonly CampaignAdditionalOwnerFact[]): string 
 function exactShadowClaim(
   id: RoadmapId,
   namespace: RoadmapName,
-  markdown: Uint8Array,
+  markdownInput: ImmutableByteViewInput,
   document: RoadmapDocumentV0,
   reservation?: LegacyMarkdownReservationV1,
 ): ShadowRecordClaim | undefined {
+  const markdown = createImmutableByteView(markdownInput);
   if (
     namespaceOf(id) !== namespace || document.document.schema_version !== 0 ||
     document.document.authority !== "shadow" || document.document.roadmap !== namespace ||
     document.document.projection_path !== LEGACY_ROADMAP_PATH[namespace] ||
-    document.document.frozen_source_sha256 !== sha256(markdown) ||
-    document.document.frozen_source_byte_length !== markdown.byteLength
+    document.document.frozen_source_sha256 !== markdown.wholeSha256() ||
+    document.document.frozen_source_byte_length !== markdown.byte_length
   ) return undefined;
   const records = document.records.filter((record) => record.id === id);
   const manifestRows = document.manifest.filter((entry) =>
@@ -227,11 +236,11 @@ function exactShadowClaim(
     ordered.some((span, index) => index > 0 && ordered[index - 1]!.end_byte !== span.start_byte) ||
     ordered.some((span) => span.source_kind !== "record" || span.owner_id !== id ||
       span.owner_field !== "source_block_md" || span.migration_status !== "raw" ||
-      span.start_byte < 0 || span.end_byte <= span.start_byte || span.end_byte > markdown.byteLength ||
-      sha256(markdown.subarray(span.start_byte, span.end_byte)) !== span.sha256) ||
+      span.start_byte < 0 || span.end_byte <= span.start_byte || span.end_byte > markdown.byte_length ||
+      sha256(markdown.sliceBytes(span.start_byte, span.end_byte)) !== span.sha256) ||
     allOwnerSpans.length !== claimedSpans.length ||
     allOwnerSpans.some((spanId, index) => claimedSpans[index] !== spanId) ||
-    !bytesEqual(record.source_block_md, markdown.subarray(start, end)) ||
+    !bytesEqual(record.source_block_md, markdown.sliceBytes(start, end)) ||
     markdownHeadingTitle(record.source_block_md) !== record.title ||
     (reservation !== undefined && (
       reservation.id !== id || reservation.roadmap_path !== LEGACY_ROADMAP_PATH[namespace] ||
@@ -256,15 +265,17 @@ function deriveCampaignIdentityOwners(
     const logicalPath = `additional_owners[${index}]`;
     if (input.kind === "legacy_markdown_reservation") {
       const reservation = input.reservation;
+      const markdown = createImmutableByteView(input.markdown);
       const namespace = namespaceOf(reservation.id);
       const start = reservation.source_start_byte;
       const end = reservation.source_end_byte;
-      const source = start >= 0 && end > start && end <= input.markdown.byteLength
-        ? input.markdown.subarray(start, end)
+      const source = start >= 0 && end > start && end <= markdown.byte_length
+        ? markdown.sliceBytes(start, end)
         : undefined;
       const pairedShadow = namespace === undefined ? undefined : evidence.find((candidate) =>
         candidate.kind === "shadow_record_reservation" && candidate.id === reservation.id &&
-        candidate.namespace === namespace && bytesEqual(candidate.markdown, input.markdown)
+        candidate.namespace === namespace &&
+        createImmutableByteView(candidate.markdown).bytesEqual(markdown)
       );
       const shadowDocument = input.shadow_document ?? pairedShadow?.shadow_document;
       const shadow = namespace === undefined || shadowDocument === undefined
@@ -272,7 +283,7 @@ function deriveCampaignIdentityOwners(
         : exactShadowClaim(reservation.id, namespace, input.markdown, shadowDocument, reservation);
       if (
         namespace === undefined || reservation.roadmap_path !== LEGACY_ROADMAP_PATH[namespace] ||
-        source === undefined || reservation.whole_source_sha256 !== sha256(input.markdown) ||
+        source === undefined || reservation.whole_source_sha256 !== markdown.wholeSha256() ||
         reservation.source_sha256 !== sha256(source) ||
         markdownHeadingTitle(source) !== reservation.source_title ||
         (shadowDocument !== undefined && shadow === undefined)

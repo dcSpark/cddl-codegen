@@ -797,6 +797,7 @@ export const SCRATCH_PREFIXES: readonly string[] = [
   "cache_transparency_", // cddl-matrix/cache_transparency.ts
   "no-silent-dir-",      // cddl-matrix/no_silent_directive.ts
   "cddl-pin-cold-fetch-",// cddl-matrix/pin_cold_fetch.ts (scratch bare repo for the SHA probes)
+  "cddl-roadmap-selftest-",     // cddl-matrix/roadmap/io.ts (hermetic SHA-1/SHA-256 Git fixtures)
 ];
 
 /** 24 h: >40× the longest measured tier, so no live run's scratch can reach it. */
@@ -1527,6 +1528,10 @@ export const REGISTRY: Gate[] = [
   { id: "verify_selftest", tier: "local", kind: "cmd",
     cmd: ["bun", "run", "verify.ts", "--selftest"], cwd: MATRIX,
     desc: "verify.ts's pure startup deciders (evidence-vocabulary classifiers, the component leg's selection + ident mirror, the build-sweep classifier), whose failures are silent in production" },
+  { id: "roadmap_projection_check", tier: "local", kind: "cmd",
+    cmd: ["bun", "run", "project_roadmaps.ts", "--selftest"], cwd: MATRIX,
+    script: "project_roadmaps.ts",
+    desc: "roadmap schema/codec/identity/transaction/output-owner self-tests (hermetic fixture FS/Git, no cargo/network)" },
   // --- THE SUB-SECOND NO-CARGO FILE-SCANNER CLASS, promoted from `local` into `fast` (CI) ---
   // Eight gates: `lint_doc_citations`, `project_decode_conformance`, `project_recombination_check`,
   // the four `query_q*` gates and `project_status_headers`. Maintainer call, 2026-08-03 — the same

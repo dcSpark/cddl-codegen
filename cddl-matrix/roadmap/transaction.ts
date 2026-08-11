@@ -2,6 +2,7 @@ import type { RegistryView } from "./adapters/types.ts";
 import {
   campaignIdentityOwners,
   campaignAuthority,
+  createImmutableByteView,
   markdownContainsBytes,
   reservationBoundBytes,
   validateBootstrapShadowOwners,
@@ -10,6 +11,7 @@ import {
   workKindOfRecord,
   type CampaignRoadmapSnapshot,
   type CampaignValidationResult,
+  type ByteViewInput,
   type LegacyTitleBindingFact,
 } from "./campaign.ts";
 import {
@@ -53,7 +55,7 @@ const codePointSort = (left: string, right: string): number =>
 export interface LifecycleRevisionInput {
   readonly campaign?: CampaignDocumentV1;
   readonly retired?: RetiredIdsDocumentV1;
-  readonly roadmaps: Readonly<Record<RoadmapName, CampaignRoadmapSnapshot>>;
+  readonly roadmaps: Readonly<Record<RoadmapName, CampaignRoadmapSnapshot<ByteViewInput>>>;
   readonly registry: RegistryView;
   readonly legacy_title_bindings?: readonly LegacyTitleBindingFact[];
   readonly debt: Partial<Readonly<Record<RoadmapName, MigrationDebt>>>;
@@ -64,7 +66,7 @@ export interface ValidatedLifecycleRevision {
   readonly campaign_document?: CampaignDocumentV1;
   readonly retired?: RetiredValidationResult;
   readonly retired_document?: RetiredIdsDocumentV1;
-  readonly roadmaps: Readonly<Record<RoadmapName, CampaignRoadmapSnapshot>>;
+  readonly roadmaps: Readonly<Record<RoadmapName, CampaignRoadmapSnapshot<ByteViewInput>>>;
   readonly registry: RegistryView;
   readonly identity: GlobalIdentityResult;
   readonly debt: Partial<Readonly<Record<RoadmapName, MigrationDebt>>>;
@@ -133,10 +135,6 @@ function sortIssues(issues: readonly RoadmapIssue[]): readonly RoadmapIssue[] {
 
 function validCommit(value: string): boolean {
   return /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(value);
-}
-
-function sha256(value: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
 }
 
 function namespaceOf(id: RoadmapId): RoadmapName {
@@ -313,8 +311,21 @@ function validateRetirementClosure(
   if (selectionFor(candidate, id) !== undefined) {
     issues.push(issue("E-TRANSACTION-CAMPAIGN", `selection[${JSON.stringify(id)}]`, "retired owner remains selected"));
   }
-  if (candidate.registry.roadmap_citations.some((citation) => citation.id === id)) {
-    issues.push(issue("E-TRANSACTION-CITATION", `citation[${JSON.stringify(id)}]`, "retired ID remains cited in a durable tracked repository file"));
+  const survivingCitations = candidate.registry.roadmap_citations
+    .filter((citation) => citation.id === id)
+    .sort((left, right) =>
+      codePointSort(left.source, right.source) || left.span.start_byte - right.span.start_byte ||
+      left.span.end_byte - right.span.end_byte || codePointSort(left.raw, right.raw)
+    );
+  for (const citation of survivingCitations) {
+    issues.push({
+      code: "E-TRANSACTION-CITATION",
+      source: citation.source,
+      logical_path: `citation[${JSON.stringify(id)}]`,
+      message: "retired ID remains cited in a durable tracked repository file",
+      span: citation.span,
+      exit: 1,
+    });
   }
   if (candidateRelationsContain(candidate, id)) {
     issues.push(issue("E-TRANSACTION-REFERENCE", `relation[${JSON.stringify(id)}]`, "retired ID remains a relation endpoint"));
@@ -344,14 +355,15 @@ function validateLegacyDelivery(
     issues.push(issue("E-TRANSACTION-CAMPAIGN", `owner[${JSON.stringify(id)}].bound_source`, "candidate Markdown still contains the complete base bound source slice"));
   }
   const candidateDocument = candidate.roadmaps[namespace].document;
+  const candidateMarkdown = createImmutableByteView(candidate.roadmaps[namespace].markdown);
   if (candidateDocument?.records.some((record) => record.id === id)) {
     issues.push(issue("E-TRANSACTION-OWNER", `owner[${JSON.stringify(id)}].shadow`, "candidate shadow/active declaration survives legacy delivery"));
   }
   if (candidate.campaign_document !== undefined &&
     campaignAuthority(candidate.campaign_document, namespace) === "shadow" &&
     candidateDocument !== undefined &&
-    (candidateDocument.document.frozen_source_sha256 !== sha256(candidate.roadmaps[namespace].markdown) ||
-      candidateDocument.document.frozen_source_byte_length !== candidate.roadmaps[namespace].markdown.byteLength)) {
+    (candidateDocument.document.frozen_source_sha256 !== candidateMarkdown.wholeSha256() ||
+      candidateDocument.document.frozen_source_byte_length !== candidateMarkdown.byte_length)) {
     issues.push(issue("E-TRANSACTION-CAMPAIGN", `owner[${JSON.stringify(id)}].shadow_rebase`, "candidate shadow metadata is not rebased to the immutable candidate Markdown snapshot"));
   }
   const tombstone = candidate.retired?.entries.get(id);

@@ -74,7 +74,7 @@ evidence_ids = ["testing.fixture-evidence-gate"]
 id = "testing.fixture-all-fields-raw"
 title = "All-fields raw owner"
 projection_group = "fixture"
-tags = ["coverage:admission_kind:bounded_denominator", "coverage:admission_kind:independent_recurrence", "coverage:admission_kind:silent_corruption", "coverage:cost_posture:historical_observation", "coverage:cost_posture:live_registry", "coverage:incident_posture:attributed", "coverage:incident_posture:historical", "coverage:incident_posture:live", "coverage:payload_kind:testing_cost", "coverage:payload_kind:testing_incident", "coverage:payload_kind:testing_operational_watch", "coverage:payload_kind:testing_system_admission", "coverage:roadmap:testing", "coverage:watch_state:attributed", "coverage:watch_state:retire_pending", "coverage:watch_state:watching"]
+tags = ["coverage:admission_kind:bounded_denominator", "coverage:admission_kind:independent_recurrence", "coverage:admission_kind:silent_corruption", "coverage:cost_posture:historical_observation", "coverage:cost_posture:live_registry", "coverage:incident_posture:attributed", "coverage:incident_posture:historical", "coverage:incident_posture:live", "coverage:payload_kind:testing_cost", "coverage:payload_kind:testing_incident", "coverage:payload_kind:testing_operational_watch", "coverage:payload_kind:testing_system_admission", "coverage:watch_state:attributed", "coverage:watch_state:retire_pending", "coverage:watch_state:watching"]
 render_authority = "raw"
 source_block_md = """RAW testing.fixture-all-fields-raw
 """
