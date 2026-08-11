@@ -5,11 +5,22 @@ import type {
 } from "../selftest.ts";
 import type {
   FixtureRelativePath,
+  FullCommitId,
   RepoPath,
+  ReferenceId,
   RoadmapId,
   RoadmapName,
 } from "../model/core.ts";
-import type { RoadmapDocument } from "../model/documents.ts";
+import type {
+  CurrentGuard,
+  IdentityOwnerFact,
+  Reference,
+  Relation,
+  RetiredIdV1,
+  RoadmapDocument,
+} from "../model/documents.ts";
+import type { RegistryView } from "../adapters/types.ts";
+import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import {
   ROADMAP_ID_POLICY_V1,
@@ -20,7 +31,28 @@ import {
 import {
   buildRoadmapIndexes,
   type RoadmapIndexes,
+  type SemanticPayloadProviderFact,
 } from "../indexes.ts";
+import {
+  createCoreReferenceProviders,
+  collectReferenceProviders,
+  compareReferenceTargets,
+  deriveUnresolvedMigrationAuthority,
+  extractRustTestSymbols,
+  gateFact,
+  headingFact,
+  REFERENCE_KIND_REGISTRY,
+  scanRoadmapCitations,
+  validateSemanticRoadmapJoins,
+  validateRoadmapReferences,
+  type TrackedTextInput,
+} from "../references.ts";
+import { deriveRelationViews, validateRelations } from "../relations.ts";
+import {
+  identityOwnerClaimKey,
+  validateGlobalIdentity,
+  validateRetiredIdReuse,
+} from "../identity.ts";
 
 export const IDENTITY_ROADMAP_FIXTURE_PATHS = Object.freeze([
   "all-fields/matrix-v1.toml",
@@ -78,7 +110,44 @@ export type PermanentIdSelfTestCaseId = (typeof PERMANENT_ID_SELFTEST_CASE_IDS)[
 
 export const REQUIRED_IDENTITY_SELFTEST_CASE_IDS = [
   ...PERMANENT_ID_SELFTEST_CASE_IDS,
-  // Reference, relation, and global-identity modules append their case IDs here.
+  "identity_active_duplicate",
+  "identity_active_guard_collision",
+  "identity_active_tombstone_collision",
+  "identity_guard_tombstone_collision",
+  "identity_alias_collision",
+  "identity_retired_reuse",
+  "reference_each_kind",
+  "reference_wrong_universe",
+  "reference_draft_rejected",
+  "reference_draft_log_rejected",
+  "reference_gate_stub_rejected",
+  "reference_missing_file_heading",
+  "relation_missing_endpoint",
+  "relation_symmetric_duplicate",
+  "cycle_parent",
+  "cycle_depends",
+  "cycle_supersedes",
+  "negative_reference_registry_enumeration",
+  "citation_inventory_tracks_source_byte_spans",
+  "citation_inventory_sorted_by_path_and_span",
+  "citation_inventory_multiple_occurrences",
+  "citation_inventory_malformed_id_rejected",
+  "citation_inventory_draft_excluded",
+  "citation_inventory_nul_binary_excluded",
+  "citation_inventory_tracked_missing_rejected",
+  "citation_inventory_base_revision_isolated",
+  "test_symbol_fact_top_level_direct_test",
+  "test_symbol_fact_declared_module_prefix",
+  "test_symbol_fact_inline_module_path",
+  "test_symbol_fact_attribute_between_test_and_fn",
+  "test_symbol_fact_macro_template_excluded",
+  "test_symbol_fact_macro_invocation_excluded",
+  "test_symbol_fact_comments_and_strings_excluded",
+  "test_symbol_fact_undeclared_file_excluded",
+  "test_symbol_fact_missing_declared_file_rejected",
+  "test_symbol_fact_id_derivation_exact",
+  "test_symbol_fact_duplicate_id_rejected",
+  "test_symbol_fact_base_revision_isolated",
 ] as const;
 
 export type RequiredIdentitySelfTestCaseId =
@@ -872,6 +941,8 @@ function assertFixtureIndexes(
 }
 
 function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
+  const globalInputs: RoadmapIndexes["identity_inputs"][] = [];
+  let committedReferenceTemplates: readonly Reference[] | undefined;
   for (const path of IDENTITY_ROADMAP_FIXTURE_PATHS) {
     const expected = EXPECTED_FIXTURE_INDEXES[path];
     const document = decodeRoadmapSource(fixtureBytes(bundle, path), path, expected.roadmap);
@@ -881,7 +952,224 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
       `${path} must index without issues, got ${JSON.stringify(result.issues)}`,
     );
     assertFixtureIndexes(path, result.indexes, expected);
+    globalInputs.push(result.indexes.identity_inputs);
+    const references = [...result.indexes.references.values()].sort(compareReferenceTargets);
+    if (path === "all-fields/matrix-v1.toml") {
+      assert(
+        new Set(references.map((reference) => reference.kind)).size === REFERENCE_KIND_REGISTRY.length,
+        "matrix all-fields must provide one committed template for every Reference kind",
+      );
+      committedReferenceTemplates = Object.freeze([...references]);
+    }
+    const registry = registryViewForReferences(references);
+    const unresolvedAuthority = deriveUnresolvedMigrationAuthority(result.indexes, path);
+    assert(
+      unresolvedAuthority.issues.length === 0,
+      `${path} unresolved-migration authority derivation must succeed: ${JSON.stringify(unresolvedAuthority.issues)}`,
+    );
+    assert(
+      unresolvedAuthority.debt.length === (path === "all-fields/matrix-v1.toml" ? 1 : 0),
+      `${path} unresolved-migration debt enumeration must be exact`,
+    );
+    assert(
+      validateRoadmapReferences(result.indexes, registry, {
+        source: path,
+        providers: MATRIX_ADAPTER.referenceProviders(registry),
+        unresolved_migration_authority: unresolvedAuthority.authority,
+      }).length === 0,
+      `${path} references must resolve through the actual adapter providers and matching repository facts`,
+    );
+    assert(
+      validateSemanticRoadmapJoins(result.indexes, result.indexes, path).length === 0,
+      `${path} semantic roadmap-ID joins must resolve to their exact typed providers`,
+    );
+    assert(
+      validateRelations(result.indexes.relations, result.indexes.first_class, path).length === 0,
+      `${path} relations must validate against the committed first-class universe`,
+    );
+    if (path.startsWith("all-fields/")) {
+      assert(committedReferenceTemplates !== undefined, "matrix reference templates must precede all field-use mutations");
+      const candidates = committedReferenceTemplates
+        .filter((reference) => reference.kind !== "unresolved_migration")
+        .sort((left, right) => codePointSort(left.kind, right.kind));
+      let mutationCount = 0;
+      for (const use of result.indexes.reference_id_uses) {
+        const original = result.indexes.references.get(use.id);
+        assert(original !== undefined, `${path} use ${use.logical_path} must resolve before mutation`);
+        let rejectedKind: Reference["kind"] | undefined;
+        for (const template of candidates) {
+          if (template.kind === original.kind) continue;
+          const replacement = {
+            ...template,
+            id: original.id,
+            source: original.source,
+          } as Reference;
+          const mutatedReferences = new Map(result.indexes.references);
+          mutatedReferences.set(use.id, replacement);
+          const mutated = { ...result.indexes, references: mutatedReferences } as RoadmapIndexes;
+          const mutatedRegistry = registryViewForReferences([...mutatedReferences.values()]);
+          const adapterProviders = MATRIX_ADAPTER.referenceProviders(mutatedRegistry);
+          const providerRegistry = collectReferenceProviders(
+            mutated.first_class,
+            adapterProviders,
+            unresolvedAuthority.authority,
+            path,
+          );
+          assert(providerRegistry.issues.length === 0, `${path} mutation provider composition must remain valid`);
+          const selectedProvider = providerRegistry.by_kind.get(replacement.kind);
+          assert(selectedProvider !== undefined, `${path} replacement kind ${replacement.kind} must have a provider`);
+          if (!selectedProvider.resolve(replacement as never, mutatedRegistry).resolved) continue;
+          const mutationIssues = validateRoadmapReferences(mutated, mutatedRegistry, {
+            source: path,
+            providers: adapterProviders,
+            unresolved_migration_authority: unresolvedAuthority.authority,
+          });
+          if (mutationIssues.some((value) =>
+            value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path === use.logical_path
+          )) {
+            rejectedKind = template.kind;
+            break;
+          }
+        }
+        assert(
+          rejectedKind !== undefined,
+          `${path} ReferenceId use ${use.logical_path} has no closed wrong-kind rejection policy`,
+        );
+        mutationCount += 1;
+      }
+      assert(
+        mutationCount === result.indexes.reference_id_uses.length,
+        `${path} must fault-inject every collected ReferenceId use`,
+      );
+    }
+    const semanticUse = result.indexes.id_uses.find((use) => use.role === "semantic_target");
+    if (semanticUse !== undefined) {
+      const target = result.indexes.first_class.get(semanticUse.id)!;
+      const wrongKind = new Map(result.indexes.first_class);
+      wrongKind.set(semanticUse.id, {
+        ...target,
+        kind: target.kind === "record" ? "family_axis" : "record",
+      } as typeof target);
+      assert(
+        validateSemanticRoadmapJoins(result.indexes, {
+          first_class: wrongKind,
+          payload_records: result.indexes.payload_records,
+        }, path).some((value) => value.code === "E-REFERENCE-FORBIDDEN"),
+        `${path} semantic target wrong-universe mutation must fail`,
+      );
+      const missing = new Map(result.indexes.first_class);
+      missing.delete(semanticUse.id);
+      assert(
+        validateSemanticRoadmapJoins(result.indexes, {
+          first_class: missing,
+          payload_records: result.indexes.payload_records,
+        }, path).some((value) => value.code === "E-REFERENCE-UNRESOLVED"),
+        `${path} semantic target missing-provider mutation must fail`,
+      );
+    }
+    if (path === "all-fields/matrix-v1.toml") {
+      const mutateSemanticTarget = (
+        pathNeedle: string,
+        mutate: (payload: SemanticPayloadProviderFact["payload"]) => unknown,
+      ): ReturnType<typeof validateSemanticRoadmapJoins> => {
+        const use = result.indexes.id_uses.find((candidate) =>
+          candidate.role === "semantic_target" && candidate.logical_path.includes(pathNeedle)
+        );
+        assert(use !== undefined, `${path} must contain semantic use ${pathNeedle}`);
+        const target = result.indexes.first_class.get(use.id);
+        assert(target !== undefined, `${path} semantic mutation target must be first-class`);
+        const provider = result.indexes.payload_records.get(target.owner_record_id);
+        assert(provider !== undefined, `${path} semantic mutation target must own a payload`);
+        const payloadRecords = new Map(result.indexes.payload_records);
+        payloadRecords.set(target.owner_record_id, {
+          ...provider,
+          payload: mutate(provider.payload) as typeof provider.payload,
+        });
+        return validateSemanticRoadmapJoins(result.indexes, {
+          first_class: result.indexes.first_class,
+          payload_records: payloadRecords,
+        }, path);
+      };
+      assert(
+        mutateSemanticTarget("fixture-task-e\"].semantic_shadow.transition_ids", (payload) => ({
+          ...payload,
+          transition_kind: "cadence",
+        })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.includes("fixture-task-e")),
+        "blocked work must reject a cadence target in place of its unblock predicate",
+      );
+      assert(
+        mutateSemanticTarget("fixture-policy-a\"].semantic_shadow.cadence_transition_id", (payload) => ({
+          ...payload,
+          transition_kind: "reopening_signal",
+        })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.endsWith("cadence_transition_id")),
+        "maintenance policy cadence must reject a reopening signal",
+      );
+      assert(
+        mutateSemanticTarget("fixture-policy-c\"].semantic_shadow.reopening_transition_id", (payload) => ({
+          ...payload,
+          transition_kind: "cadence",
+        })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.endsWith("reopening_transition_id")),
+        "reopenable policy must reject a cadence signal",
+      );
+      assert(
+        mutateSemanticTarget("fixture-task-f\"].semantic_shadow.control_ids", (payload) => ({
+          ...payload,
+          control_state: "planned",
+        })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.includes("fixture-task-f")),
+        "armed work must resolve only to live controls",
+      );
+      const withoutDelegation = {
+        ...result.indexes,
+        relations: result.indexes.relations.filter((relation) => relation.kind !== "delegates_to"),
+      } as RoadmapIndexes;
+      assert(
+        validateSemanticRoadmapJoins(withoutDelegation, withoutDelegation, path).some((value) =>
+          value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.endsWith("delegates_to")
+        ),
+        "delegated work must reject a missing delegates_to relation",
+      );
+      const delegation = result.indexes.relations.find((relation) => relation.kind === "delegates_to");
+      assert(delegation !== undefined, "matrix all-fields must contain a delegates_to relation");
+      const duplicateDelegation = {
+        ...result.indexes,
+        relations: Object.freeze([...result.indexes.relations, delegation]),
+      } as RoadmapIndexes;
+      assert(
+        validateSemanticRoadmapJoins(duplicateDelegation, duplicateDelegation, path).some((value) =>
+          value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.endsWith("delegates_to")
+        ),
+        "delegated work must reject duplicate delegates_to relations",
+      );
+
+      const withoutShadowAuthority = {
+        ...result.indexes,
+        payload_records: new Map([...result.indexes.payload_records].map(([id, provider]) => [
+          id,
+          { ...provider, authority: "semantic" as const },
+        ])),
+      } as RoadmapIndexes;
+      const rejectedAuthority = deriveUnresolvedMigrationAuthority(withoutShadowAuthority, path);
+      assert(rejectedAuthority.authority === undefined, "semantic-only payloads must not mint unresolved-migration authority");
+      assert(
+        rejectedAuthority.issues.some((value) => value.code === "E-REFERENCE-FORBIDDEN") &&
+          rejectedAuthority.debt.length === 1,
+        "unresolved migration debt must remain observable when authority derivation fails",
+      );
+      assert(
+        validateRoadmapReferences(withoutShadowAuthority, registry, {
+          source: path,
+          providers: MATRIX_ADAPTER.referenceProviders(registry),
+        }).some((value) =>
+          value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path === "reference[\"ref-migration\"]"
+        ),
+        "unresolved migration must fail without structurally derived shadow authority",
+      );
+    }
   }
+  const global = validateGlobalIdentity({ documents: globalInputs });
+  assert(global.issues.length === 0, `committed roadmap fixtures must share one collision-free global identity domain: ${JSON.stringify(global.issues)}`);
+  const duplicate = validateGlobalIdentity({ documents: [...globalInputs, globalInputs[0]!] });
+  assert(duplicate.issues.some((value) => value.code === "E-OWNER-DUPLICATE"), "duplicating one committed document identity view must fail globally");
 }
 
 function identityFixtureBundleFromContext(context: SelfTestContext): IdentityFixtureBundle {
@@ -994,6 +1282,730 @@ function requireRejected(
 ): void {
   const result = validateRoadmapId(value, namespace);
   assert(!result.ok && result.code === code, `${value} should fail with ${code}`);
+}
+
+type JoinSelfTestCaseId = Exclude<
+  RequiredIdentitySelfTestCaseId,
+  PermanentIdSelfTestCaseId
+>;
+
+function brandedRoadmapId(value: string): RoadmapId {
+  return requireAccepted(value);
+}
+
+function fakeRegistryView(overrides: Partial<RegistryView> = {}): RegistryView {
+  return {
+    revision: { kind: "worktree" },
+    gates: [gateFact("roadmap_projection_check")],
+    matrix_features: [{ id: "type2.value" }],
+    matrix_roles: [{ id: "role.top-level" }],
+    matrix_cells: [{ id: "contain.map-value.type.choice" }],
+    tracked_headings: [headingFact("cddl-matrix/README.md" as RepoPath, "What lives here")],
+    test_symbols: [{
+      test_id: "rust-test:cddl-codegen#tests::sample::works",
+      symbol: "tests::sample::works",
+      source: "src/tests/sample.rs" as RepoPath,
+      span: { start_byte: 12, end_byte: 17 },
+      module_path: ["tests", "sample"],
+    }],
+    roadmap_citations: [],
+    current_guards: [],
+    output_claims: [],
+    matrix_status_inputs: {} as RegistryView["matrix_status_inputs"],
+    ...overrides,
+  };
+}
+
+function uniqueBy<T>(values: readonly T[], key: (value: T) => string): readonly T[] {
+  const byKey = new Map<string, T>();
+  for (const value of values) byKey.set(key(value), value);
+  return Object.freeze([...byKey].sort(([left], [right]) => codePointSort(left, right)).map(
+    ([, value]) => value,
+  ));
+}
+
+function registryViewForReferences(references: readonly Reference[]): RegistryView {
+  const sorted = [...references].sort(compareReferenceTargets);
+  return fakeRegistryView({
+    gates: uniqueBy(
+      sorted.filter((reference): reference is Extract<Reference, { kind: "gate" }> =>
+        reference.kind === "gate"
+      ).map((reference) => gateFact(reference.gate_id)),
+      (fact) => fact.id,
+    ),
+    matrix_features: uniqueBy(
+      sorted.filter((reference): reference is Extract<Reference, { kind: "matrix_feature" }> =>
+        reference.kind === "matrix_feature"
+      ).map((reference) => ({ id: reference.feature_id })),
+      (fact) => fact.id,
+    ),
+    matrix_roles: uniqueBy(
+      sorted.filter((reference): reference is Extract<Reference, { kind: "matrix_role" }> =>
+        reference.kind === "matrix_role"
+      ).map((reference) => ({ id: reference.role_id })),
+      (fact) => fact.id,
+    ),
+    matrix_cells: uniqueBy(
+      sorted.filter((reference): reference is Extract<Reference, { kind: "matrix_cell" }> =>
+        reference.kind === "matrix_cell"
+      ).map((reference) => ({ id: reference.cell_id })),
+      (fact) => fact.id,
+    ),
+    tracked_headings: uniqueBy(
+      sorted.filter((reference): reference is Extract<Reference, { kind: "file_heading" }> =>
+        reference.kind === "file_heading"
+      ).map((reference) => headingFact(reference.path, reference.heading)),
+      (fact) => JSON.stringify([fact.path, fact.heading]),
+    ),
+    test_symbols: uniqueBy(
+      sorted.filter((reference): reference is Extract<Reference, { kind: "test_symbol" }> =>
+        reference.kind === "test_symbol"
+      ).map((reference) => ({
+        test_id: reference.test_id,
+        symbol: reference.symbol,
+        source: "src/tests/fixture.rs" as RepoPath,
+        span: { start_byte: 0, end_byte: 1 },
+        module_path: Object.freeze(reference.symbol.split("::").slice(0, -1)),
+      })),
+      (fact) => JSON.stringify([fact.test_id, fact.symbol]),
+    ),
+  });
+}
+
+function firstClassFor(...ids: string[]): RoadmapIndexes["first_class"] {
+  return new Map(ids.map((id) => {
+    const roadmapId = brandedRoadmapId(id);
+    return [roadmapId, {
+      id: roadmapId,
+      namespace: id.startsWith("matrix.") ? "matrix" : "testing",
+      kind: "record",
+      owner_record_id: roadmapId,
+      logical_path: `record[${JSON.stringify(id)}]`,
+      value: {} as RoadmapIndexes["id_providers"][number]["value"],
+    }] as const;
+  }));
+}
+
+function sampleReferences(source: RoadmapId): readonly Reference[] {
+  const ref = (id: string): ReferenceId => id as ReferenceId;
+  return [
+    { id: ref("roadmap"), source, kind: "roadmap", target_id: source },
+    { id: ref("feature"), source, kind: "matrix_feature", feature_id: "type2.value" },
+    { id: ref("role"), source, kind: "matrix_role", role_id: "role.top-level" },
+    { id: ref("cell"), source, kind: "matrix_cell", cell_id: "contain.map-value.type.choice" },
+    { id: ref("gate"), source, kind: "gate", gate_id: "roadmap_projection_check" },
+    {
+      id: ref("test"), source, kind: "test_symbol",
+      test_id: "rust-test:cddl-codegen#tests::sample::works",
+      symbol: "tests::sample::works",
+    },
+    {
+      id: ref("heading"), source, kind: "file_heading",
+      path: "cddl-matrix/README.md" as RepoPath, heading: "What lives here",
+    },
+    { id: ref("spec"), source, kind: "spec_passage", document: "RFC 8610", passage: "Section 3" },
+    { id: ref("issue"), source, kind: "external_issue", repository: "example/upstream", issue: "17" },
+    {
+      id: ref("commit"), source, kind: "external_commit", repository: "example/upstream",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+    },
+    { id: ref("release"), source, kind: "external_release", project: "upstream", release: "v1" },
+    { id: ref("consumer"), source, kind: "consumer_report", consumer: "cml", report_reference: "r1" },
+    {
+      id: ref("migration"), source, kind: "unresolved_migration", local_reference: "legacy line",
+      uncertainty_md: bytes("unknown"), expires_at: "cutover",
+    },
+  ];
+}
+
+function referenceProviderCase(id: JoinSelfTestCaseId): boolean {
+  if (!id.startsWith("reference_") && id !== "negative_reference_registry_enumeration") return false;
+  const source = brandedRoadmapId("matrix.fixture-source");
+  const consumer = brandedRoadmapId("matrix.fixture-consumer");
+  const view = fakeRegistryView();
+  const base = buildRoadmapIndexes(decodedDocument([source, consumer])).indexes;
+  const allReferences = sampleReferences(source);
+  const gateReference = allReferences.find((reference) => reference.kind === "gate")!;
+  const joined = {
+    ...base,
+    references: new Map(allReferences.map((reference) => [reference.id, reference])),
+    reference_id_uses: [{
+      id: gateReference.id,
+      logical_path: `record[${JSON.stringify(consumer)}].semantic_shadow.reference_ids`,
+    }],
+    payload_records: new Map([[consumer, {
+      record: base.record_nodes.get(consumer)!,
+      payload: {
+        kind: "control",
+        summary_md: bytes("shared reference consumer\n"),
+        control_kind: "gate",
+        control_state: "live",
+        reference_ids: [gateReference.id],
+        claim_md: bytes("claim\n"),
+        boundary_md: bytes("boundary\n"),
+      },
+      authority: "semantic_shadow",
+      logical_path: `record[${JSON.stringify(consumer)}].semantic_shadow`,
+    }]]),
+  } as RoadmapIndexes;
+  const unresolvedAuthority = deriveUnresolvedMigrationAuthority(joined);
+  assert(
+    unresolvedAuthority.issues.length === 0 && unresolvedAuthority.authority !== undefined &&
+      unresolvedAuthority.debt.length === 1,
+    "synthetic semantic-shadow debt must derive non-mintable unresolved authority",
+  );
+  const providerClaims = Object.freeze([
+    ...createCoreReferenceProviders(joined.first_class, unresolvedAuthority.authority),
+    ...MATRIX_ADAPTER.referenceProviders(view),
+  ].sort((left, right) => codePointSort(left.kind, right.kind)));
+  const providers = collectReferenceProviders(providerClaims);
+  assert(providers.issues.length === 0, "actual core and matrix adapter providers must compose exactly once");
+  const resolve = (reference: Reference): boolean => {
+    const provider = providers.by_kind.get(reference.kind);
+    assert(provider !== undefined, `provider for ${reference.kind} must exist`);
+    return provider.resolve(reference as never, view).resolved;
+  };
+  switch (id) {
+    case "reference_each_kind":
+      for (const reference of sampleReferences(source)) {
+        assert(resolve(reference), `${reference.kind} sample should resolve`);
+      }
+      assert(
+        validateRoadmapReferences(joined, view, {
+          providers: MATRIX_ADAPTER.referenceProviders(view),
+          unresolved_migration_authority: unresolvedAuthority.authority,
+        }).length === 0,
+        "a typed semantic ReferenceId may consume another record's shared declaration",
+      );
+      const missingUse = {
+        ...joined,
+        reference_id_uses: [{ id: "missing" as ReferenceId, logical_path: "record.missing" }],
+      } as RoadmapIndexes;
+      assert(
+        validateRoadmapReferences(missingUse, view, {
+          providers: MATRIX_ADAPTER.referenceProviders(view),
+          unresolved_migration_authority: unresolvedAuthority.authority,
+        }).some((value) => value.code === "E-REFERENCE-UNRESOLVED"),
+        "well-formed missing ReferenceId uses must be retained until join validation",
+      );
+      const missingUses = [
+        { id: "missing-z" as ReferenceId, logical_path: "record.z" },
+        { id: "missing-a" as ReferenceId, logical_path: "record.a" },
+      ];
+      const referenceFaultSignature = (uses: typeof missingUses): string => JSON.stringify(
+        validateRoadmapReferences({ ...joined, reference_id_uses: uses } as RoadmapIndexes, view, {
+          providers: MATRIX_ADAPTER.referenceProviders(view),
+          unresolved_migration_authority: unresolvedAuthority.authority,
+        }),
+      );
+      assert(
+        referenceFaultSignature(missingUses) === referenceFaultSignature([...missingUses].reverse()),
+        "reference diagnostics must be deterministic under use-list reversal",
+      );
+      assert(
+        compareReferenceTargets({
+          id: "tuple-a" as ReferenceId,
+          source,
+          kind: "file_heading",
+          path: "a" as RepoPath,
+          heading: "z",
+        }, {
+          id: "tuple-b" as ReferenceId,
+          source,
+          kind: "file_heading",
+          path: "aa" as RepoPath,
+          heading: "a",
+        }) < 0,
+        "reference target tuples must compare element by element",
+      );
+      return true;
+    case "reference_wrong_universe":
+      assert(!resolve({ id: "wrong" as ReferenceId, source, kind: "matrix_feature", feature_id: "role.top-level" }), "role IDs must not resolve in the feature universe");
+      return true;
+    case "reference_draft_rejected":
+      assert(!resolve({ id: "draft" as ReferenceId, source, kind: "file_heading", path: "draft/note.md" as RepoPath, heading: "Note" }), "draft references must be forbidden");
+      return true;
+    case "reference_draft_log_rejected":
+      assert(!resolve({ id: "draft-log" as ReferenceId, source, kind: "file_heading", path: "draft/logs/run.log" as RepoPath, heading: "Run" }), "draft logs must be forbidden");
+      return true;
+    case "reference_gate_stub_rejected": {
+      const stubView = fakeRegistryView({ gates: [gateFact("roadmap_projection_check", true)] });
+      const provider = providers.by_kind.get("gate")!;
+      assert(!provider.resolve({ id: "stub" as ReferenceId, source, kind: "gate", gate_id: "roadmap_projection_check" } as never, stubView).resolved, "stub gate must not resolve");
+      return true;
+    }
+    case "reference_missing_file_heading":
+      assert(!resolve({ id: "missing" as ReferenceId, source, kind: "file_heading", path: "README.md" as RepoPath, heading: "Missing" }), "missing heading must not resolve");
+      return true;
+    case "negative_reference_registry_enumeration":
+      assertExactStrings([...providers.by_kind.keys()], REFERENCE_KIND_REGISTRY, "reference provider registry");
+      for (const kind of REFERENCE_KIND_REGISTRY) {
+        const selected = providerClaims.find((provider) => provider.kind === kind)!;
+        const missing = collectReferenceProviders(providerClaims.filter((provider) => provider !== selected));
+        assert(
+          missing.issues.some((value) => value.logical_path === `reference-provider.${kind}`),
+          `actual provider collector must reject a missing ${kind} provider`,
+        );
+        const duplicate = collectReferenceProviders([...providerClaims, selected]);
+        assert(
+          duplicate.issues.some((value) => value.logical_path === `reference-provider.${kind}`),
+          `actual provider collector must reject a duplicate ${kind} provider`,
+        );
+      }
+      return true;
+  }
+  return false;
+}
+
+function relationCase(id: JoinSelfTestCaseId): boolean {
+  const applicable = new Set<JoinSelfTestCaseId>([
+    "relation_missing_endpoint", "relation_symmetric_duplicate", "cycle_parent",
+    "cycle_depends", "cycle_supersedes",
+  ]);
+  if (!applicable.has(id)) return false;
+  const a = brandedRoadmapId("matrix.fixture-alpha");
+  const b = brandedRoadmapId("matrix.fixture-beta");
+  const c = brandedRoadmapId("matrix.fixture-gamma");
+  const firstClass = firstClassFor(a, b, c);
+  if (id === "relation_missing_endpoint") {
+    const missing = brandedRoadmapId("matrix.fixture-missing");
+    assert(validateRelations([{ source: a, kind: "related", target: missing }], firstClass).some((value) => value.code === "E-RELATION-ENDPOINT"), "missing endpoint must fail");
+    return true;
+  }
+  if (id === "relation_symmetric_duplicate") {
+    for (const kind of ["overlaps", "complements", "related"] as const) {
+      const authored: Relation = { source: a, kind, target: b };
+      const views = deriveRelationViews([authored]);
+      assert(views.length === 2, `${kind} must derive exactly two directional views`);
+      assert(
+        views.some((view) =>
+          view.source === a && view.target === b && view.kind === kind &&
+          view.direction === "forward" && view.authored === authored
+        ),
+        `${kind} forward view must preserve exact authored identity and content`,
+      );
+      assert(
+        views.some((view) =>
+          view.source === b && view.target === a && view.kind === kind &&
+          view.direction === "inverse" && view.authored === authored
+        ),
+        `${kind} inverse view must reverse only its endpoints`,
+      );
+      assert(
+        validateRelations([authored, { source: b, kind, target: a }], firstClass).some((value) =>
+          value.code === "E-RELATION-DUPLICATE"
+        ),
+        `${kind} authored symmetric inverse must fail`,
+      );
+    }
+    return true;
+  }
+  const kind = id === "cycle_parent" ? "parent_of" : id === "cycle_depends" ? "depends_on" : "supersedes";
+  const rows: Relation[] = [
+    { source: c, kind, target: a },
+    { source: a, kind, target: b },
+    { source: b, kind, target: c },
+  ];
+  const cycle = validateRelations(rows, firstClass).find((value) => value.code === "E-RELATION-CYCLE");
+  assert(cycle !== undefined && cycle.message.includes(`\"${a}\" -> \"${b}\" -> \"${c}\" -> \"${a}\"`), `${kind} cycle traversal must be lexical and deterministic`);
+  assert(
+    JSON.stringify(validateRelations(rows, firstClass)) ===
+      JSON.stringify(validateRelations([...rows].reverse(), firstClass)),
+    `${kind} diagnostics must be deterministic under authored-edge reversal`,
+  );
+  return true;
+}
+
+function identityJoinCase(id: JoinSelfTestCaseId): boolean {
+  if (!id.startsWith("identity_")) return false;
+  const document = decodedDocument(["matrix.fixture-alpha"]);
+  const index = buildRoadmapIndexes(document).indexes;
+  const activeId = brandedRoadmapId("matrix.fixture-alpha");
+  const guard: CurrentGuard = {
+    id: activeId,
+    replacement_pin: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("pin") },
+    owner_registry: "fixture-guards",
+  };
+  const tombstone: RetiredIdV1 = {
+    id: activeId,
+    last_active_at: "0".repeat(40) as FullCommitId,
+    replacement: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("pin") },
+  };
+  switch (id) {
+    case "identity_active_duplicate": {
+      const result = validateGlobalIdentity({ documents: [index.identity_inputs, index.identity_inputs] });
+      assert(result.issues.some((value) => value.code === "E-OWNER-DUPLICATE"), "duplicate active claims must fail");
+      const testing = buildRoadmapIndexes(decodedDocument(["testing.fixture-alpha"], "testing")).indexes;
+      const tiedGuardA: CurrentGuard = {
+        ...guard,
+        replacement_pin: { ...guard.replacement_pin, claim_md: bytes("alpha") },
+      };
+      const tiedGuardB: CurrentGuard = {
+        ...guard,
+        replacement_pin: { ...guard.replacement_pin, claim_md: bytes("beta") },
+      };
+      const tombstones: RetiredIdV1[] = [
+        { ...tombstone, id: brandedRoadmapId("matrix.fixture-retired-a") },
+        { ...tombstone, id: brandedRoadmapId("matrix.fixture-retired-b") },
+      ];
+      const additionalOwners: IdentityOwnerFact[] = [
+        {
+          owner_kind: "current_guard",
+          id: brandedRoadmapId("matrix.fixture-extra-a"),
+          namespace: "matrix",
+          guard: { ...guard, id: brandedRoadmapId("matrix.fixture-extra-a") },
+        },
+        {
+          owner_kind: "current_guard",
+          id: brandedRoadmapId("matrix.fixture-extra-b"),
+          namespace: "matrix",
+          guard: { ...guard, id: brandedRoadmapId("matrix.fixture-extra-b") },
+        },
+      ];
+      const forward = validateGlobalIdentity({
+        documents: [index.identity_inputs, testing.identity_inputs],
+        current_guards: [tiedGuardB, tiedGuardA],
+        tombstones,
+        additional_owners: additionalOwners,
+      });
+      const reversed = validateGlobalIdentity({
+        documents: [testing.identity_inputs, index.identity_inputs],
+        current_guards: [tiedGuardA, tiedGuardB],
+        tombstones: [...tombstones].reverse(),
+        additional_owners: [...additionalOwners].reverse(),
+      });
+      const claimsSignature = (value: typeof forward): string => JSON.stringify(
+        [...value.owner_claims].map(([ownerId, claims]) => [
+          ownerId,
+          claims.map((claim) => identityOwnerClaimKey(claim)),
+        ]),
+      );
+      const ownersSignature = (value: typeof forward): string => JSON.stringify(
+        [...value.owners].map(([ownerId, claim]) => [ownerId, identityOwnerClaimKey(claim)]),
+      );
+      assert(
+        claimsSignature(forward) === claimsSignature(reversed),
+        "global owner claims must be deterministic under exact-rank/source/path tie reversal",
+      );
+      assert(
+        JSON.stringify(forward.issues) === JSON.stringify(reversed.issues),
+        "global identity diagnostics must be deterministic under every input-list reversal",
+      );
+      assert(
+        ownersSignature(forward) === ownersSignature(reversed),
+        "normalized global owners must be deterministic under every input-list reversal",
+      );
+      return true;
+    }
+    case "identity_active_guard_collision":
+      assert(validateGlobalIdentity({ documents: [index.identity_inputs], current_guards: [guard] }).issues.some((value) => value.code === "E-OWNER-DUPLICATE"), "active/guard collision must fail");
+      return true;
+    case "identity_active_tombstone_collision":
+      assert(validateGlobalIdentity({ documents: [index.identity_inputs], tombstones: [tombstone] }).issues.some((value) => value.code === "E-OWNER-DUPLICATE"), "active/tombstone collision must fail in the global owner domain");
+      return true;
+    case "identity_guard_tombstone_collision":
+      assert(validateGlobalIdentity({ documents: [], current_guards: [guard], tombstones: [tombstone] }).issues.some((value) => value.code === "E-OWNER-DUPLICATE"), "guard/tombstone collision must fail");
+      return true;
+    case "identity_retired_reuse":
+      assert(validateRetiredIdReuse([index.identity_inputs], [tombstone]).some((value) => value.code === "E-RETIRED-REUSE"), "retired first-class ID reuse must fail lifecycle policy");
+      return true;
+    case "identity_alias_collision": {
+      const aliasInputs = {
+        ...index.identity_inputs,
+        alias_providers: [
+          ...index.identity_inputs.alias_providers,
+          { alias: activeId, namespace: "matrix" as const, owner_kind: "record" as const, owner_id: activeId, logical_path: "fixture.alias" },
+        ],
+      };
+      assert(validateGlobalIdentity({ documents: [aliasInputs] }).issues.some((value) => value.code === "E-ALIAS-COLLISION"), "alias/ID collision must fail");
+      const duplicateAliasInputs = {
+        ...index.identity_inputs,
+        alias_providers: [
+          ...index.identity_inputs.alias_providers,
+          { alias: "Legacy Z", namespace: "testing" as const, owner_kind: "record" as const, owner_id: "testing.fixture-beta", logical_path: "fixture.duplicate-alias" },
+        ],
+      };
+      assert(validateGlobalIdentity({ documents: [duplicateAliasInputs] }).issues.some((value) => value.code === "E-ALIAS-COLLISION"), "alias/alias collision must fail globally");
+      return true;
+    }
+  }
+  return false;
+}
+
+function citationCase(id: JoinSelfTestCaseId): boolean {
+  if (!id.startsWith("citation_inventory_")) return false;
+  const file = (source: string, value?: string | Uint8Array): TrackedTextInput => ({
+    source: source as RepoPath,
+    bytes: typeof value === "string" ? bytes(value) : value,
+  });
+  switch (id) {
+    case "citation_inventory_tracks_source_byte_spans": {
+      const result = scanRoadmapCitations([file("README.md", "é roadmap:matrix.fixture-alpha!")]);
+      assert(result.issues.length === 0 && result.facts.length === 1, "one citation should be found");
+      assert(result.facts[0]!.span.start_byte === 3 && result.facts[0]!.span.end_byte === 31, "citation must use exact UTF-8 half-open byte offsets");
+      return true;
+    }
+    case "citation_inventory_sorted_by_path_and_span": {
+      const result = scanRoadmapCitations([
+        file("z.md", "roadmap:testing.fixture-z"),
+        file("a.md", "x roadmap:matrix.fixture-b y roadmap:matrix.fixture-a"),
+      ]);
+      assert(result.facts.map((fact) => `${fact.source}:${fact.span.start_byte}`).join("|") === "a.md:2|a.md:29|z.md:0", "citations must sort by path then byte span");
+      return true;
+    }
+    case "citation_inventory_multiple_occurrences":
+      assert(scanRoadmapCitations([file("a.md", "roadmap:matrix.fixture-a roadmap:matrix.fixture-a")]).facts.length === 2, "all occurrences must be retained");
+      return true;
+    case "citation_inventory_malformed_id_rejected":
+      assert(scanRoadmapCitations([file("a.md", "roadmap:Matrix.bad")]).issues.some((value) => value.code === "E-ID-GRAMMAR"), "malformed citation candidates must fail");
+      return true;
+    case "citation_inventory_draft_excluded":
+      {
+        const result = scanRoadmapCitations([
+          file("README.md", "roadmap:matrix.fixture-alpha"),
+          file("draft/note.md", "roadmap:matrix.fixture-beta"),
+        ]);
+        assert(
+          result.issues.length === 0 && result.facts.length === 1 &&
+            result.facts[0]!.id === "matrix.fixture-alpha",
+          "draft exclusion must retain one eligible sentinel citation without diagnostics",
+        );
+      }
+      return true;
+    case "citation_inventory_nul_binary_excluded":
+      {
+        const result = scanRoadmapCitations([
+          file("README.md", "roadmap:matrix.fixture-alpha"),
+          file("binary.dat", bytes("\0roadmap:matrix.fixture-beta")),
+        ]);
+        assert(
+          result.issues.length === 0 && result.facts.length === 1 &&
+            result.facts[0]!.id === "matrix.fixture-alpha",
+          "NUL exclusion must retain one eligible sentinel citation without diagnostics",
+        );
+      }
+      return true;
+    case "citation_inventory_tracked_missing_rejected":
+      assert(scanRoadmapCitations([file("missing.md")]).issues.some((value) => value.code === "E-SOURCE-MISSING"), "missing tracked file must fail");
+      return true;
+    case "citation_inventory_base_revision_isolated": {
+      const base = scanRoadmapCitations([file("a.md", "roadmap:matrix.fixture-alpha")]);
+      const current = scanRoadmapCitations([file("a.md", "roadmap:matrix.fixture-beta")]);
+      assert(base.facts[0]!.id !== current.facts[0]!.id, "revision snapshots must not leak citation facts");
+      return true;
+    }
+  }
+  return false;
+}
+
+function rustInputs(body: string, modules = "pub(crate) mod sample;", extra: readonly TrackedTextInput[] = []): readonly TrackedTextInput[] {
+  return [
+    { source: "src/main.rs" as RepoPath, bytes: bytes("#[cfg(test)] mod tests;") },
+    { source: "src/tests/mod.rs" as RepoPath, bytes: bytes(modules) },
+    { source: "src/tests/sample.rs" as RepoPath, bytes: bytes(body) },
+    ...extra,
+  ];
+}
+
+function rustInputsWithRoot(root: string, modules: string): readonly TrackedTextInput[] {
+  return [
+    { source: "src/main.rs" as RepoPath, bytes: bytes(root) },
+    { source: "src/tests/mod.rs" as RepoPath, bytes: bytes(modules) },
+  ];
+}
+
+function testSymbolCase(id: JoinSelfTestCaseId): boolean {
+  if (!id.startsWith("test_symbol_fact_")) return false;
+  switch (id) {
+    case "test_symbol_fact_top_level_direct_test": {
+      const result = extractRustTestSymbols(rustInputs(
+        "fn borrow<'a>(value: &'a str) -> &'a str { 'label: loop { break 'label value; } }\n" +
+          "const A: char = 'x'; const B: char = '\\n'; const C: char = '\\u{1f980}';\n" +
+          "#[test] fn lifetime_sentinel() {}",
+      ));
+      assert(
+        result.issues.length === 0 && result.facts.length === 1 &&
+          result.facts[0]!.symbol === "tests::sample::lifetime_sentinel",
+        "lifetimes, labels, and character literals must not hide the direct test sentinel",
+      );
+      return true;
+    }
+    case "test_symbol_fact_declared_module_prefix": {
+      const result = extractRustTestSymbols([
+        { source: "src/main.rs" as RepoPath, bytes: bytes("#[cfg(test)] mod tests;") },
+        { source: "src/tests/mod.rs" as RepoPath, bytes: bytes("pub(crate) mod alternate;") },
+        { source: "src/tests/alternate.rs" as RepoPath, bytes: bytes("#[test] fn prefix_sentinel() {}") },
+      ]);
+      assert(
+        result.issues.length === 0 && result.facts.length === 1 &&
+          result.facts[0]!.symbol === "tests::alternate::prefix_sentinel",
+        "the exact declared filename must determine the test-symbol prefix",
+      );
+      return true;
+    }
+    case "test_symbol_fact_id_derivation_exact": {
+      const body = "const É: &str = \"é\";\n#[test] fn exact_identifier() {}";
+      const result = extractRustTestSymbols(rustInputs(body));
+      const identifierStart = new TextEncoder().encode(body.slice(0, body.indexOf("exact_identifier"))).byteLength;
+      assert(result.issues.length === 0 && result.facts.length === 1, "one exact-ID sentinel must be derived");
+      assert(result.facts[0]!.test_id === "rust-test:cddl-codegen#tests::sample::exact_identifier", "test ID derivation must be exact");
+      assert(
+        result.facts[0]!.span.start_byte === identifierStart &&
+          result.facts[0]!.span.end_byte === identifierStart + "exact_identifier".length,
+        "identifier span must use exact UTF-8 byte offsets",
+      );
+      return true;
+    }
+    case "test_symbol_fact_inline_module_path": {
+      const result = extractRustTestSymbols(rustInputs("mod outer { mod inner { #[test] fn nested_sentinel() {} } }"));
+      assert(
+        result.issues.length === 0 && result.facts.length === 1 &&
+          result.facts[0]!.symbol === "tests::sample::outer::inner::nested_sentinel",
+        "every inline module must extend the symbol path",
+      );
+      return true;
+    }
+    case "test_symbol_fact_attribute_between_test_and_fn": {
+      const result = extractRustTestSymbols(rustInputs(
+        "#[cfg_attr(test, test)] fn cfg_attr_fake() {}\n" +
+          "#[tokio::test] async fn tokio_fake() {}\n" +
+          "#[test] #[ignore] pub(crate) async fn async_sentinel() {}",
+      ));
+      assert(
+        result.issues.length === 0 && result.facts.length === 1 &&
+          result.facts[0]!.symbol.endsWith("::async_sentinel"),
+        "only direct #[test] with intervening attributes/visibility and async fn must be derived",
+      );
+      return true;
+    }
+    case "test_symbol_fact_macro_template_excluded":
+      for (const template of [
+        "macro_rules! make { () => { #[test] fn fake() {} } }",
+        "macro_rules! make ( () => { #[test] fn fake() {} } );",
+        "macro_rules! make [ () => { #[test] fn fake() {} } ];",
+      ]) {
+        const result = extractRustTestSymbols(rustInputs(`${template}\n#[test] fn macro_sentinel() {}`));
+        assert(
+          result.issues.length === 0 && result.facts.length === 1 &&
+            result.facts[0]!.symbol.endsWith("::macro_sentinel"),
+          "complete macro templates must be excluded for every delimiter while retaining a sentinel",
+        );
+      }
+      return true;
+    case "test_symbol_fact_macro_invocation_excluded": {
+      const macroRoots = ["(", "[", "{"].map((open) => {
+        const close = open === "(" ? ")" : open === "[" ? "]" : "}";
+        return `wrap!${open} #[cfg(test)] mod tests; ${close};`;
+      }).join("\n");
+      const macroModules = ["(", "[", "{"].map((open, index) => {
+        const close = open === "(" ? ")" : open === "[" ? "]" : "}";
+        return `qualified::wrap!${open} pub(crate) mod fake_${index}; ${close};`;
+      }).join("\n");
+      const macroTests = ["(", "[", "{"].map((open, index) => {
+        const close = open === "(" ? ")" : open === "[" ? "]" : "}";
+        return `wrap!${open} #[test] fn generated_fake_${index}() {} ${close};`;
+      }).join("\n");
+      const result = extractRustTestSymbols([
+        {
+          source: "src/main.rs" as RepoPath,
+          bytes: bytes(`${macroRoots}\n#[cfg(test)] mod tests;`),
+        },
+        {
+          source: "src/tests/mod.rs" as RepoPath,
+          bytes: bytes(`${macroModules}\npub(crate) mod sample;`),
+        },
+        {
+          source: "src/tests/sample.rs" as RepoPath,
+          bytes: bytes(`${macroTests}\n#[test] fn invocation_sentinel() {}`),
+        },
+      ]);
+      assert(
+        result.issues.length === 0 && result.facts.length === 1 &&
+          result.facts[0]!.symbol.endsWith("::invocation_sentinel"),
+        "(), [], and {} macro invocations must not mint root, module, or test facts",
+      );
+      return true;
+    }
+    case "test_symbol_fact_comments_and_strings_excluded": {
+      const result = extractRustTestSymbols(rustInputs(
+        "// #[test] fn line_fake() {}\n" +
+          "/* outer /* #[test] fn nested_comment_fake() {} */ end */\n" +
+          "const A: &str = \"#[test] fn string_fake() {}\";\n" +
+          "const B: &str = r#\"quote \\\" #[test] fn raw_fake() {}\"#;\n" +
+          "const C: &[u8] = br##\"quote \\\" #[test] fn byte_raw_fake() {}\"##;\n" +
+          "const D: &CStr = cr##\"quote \\\" #[test] fn c_raw_fake() {}\"##;\n" +
+          "const E: char = '\\'';\n#[test] fn literal_sentinel() {}",
+      ));
+      assert(
+        result.issues.length === 0 && result.facts.length === 1 &&
+          result.facts[0]!.symbol.endsWith("::literal_sentinel"),
+        "comments and every bounded literal form must be excluded while retaining one sentinel",
+      );
+      return true;
+    }
+    case "test_symbol_fact_undeclared_file_excluded": {
+      const extra = [{ source: "src/tests/hidden.rs" as RepoPath, bytes: bytes("#[test] fn hidden() {}") }];
+      const result = extractRustTestSymbols(rustInputs(
+        "#[test] fn declared_sentinel() {}",
+        "pub(crate) mod sample;",
+        extra,
+      ));
+      assert(
+        result.issues.length === 0 && result.facts.length === 1 &&
+          result.facts[0]!.symbol.endsWith("::declared_sentinel"),
+        "undeclared test files must be excluded while retaining the declared sentinel",
+      );
+      return true;
+    }
+    case "test_symbol_fact_missing_declared_file_rejected": {
+      assert(extractRustTestSymbols(rustInputs("", "pub(crate) mod missing;")).issues.some((value) => value.code === "E-SOURCE-MISSING"), "missing declared test file must fail");
+      for (const malformed of [
+        "mod sample;",
+        "pub mod sample;",
+        "pub(super) mod sample;",
+        "pub(in crate::tests) mod sample;",
+        "pub(crate) mod sample {}",
+        "#[path = \"other.rs\"] pub(crate) mod sample;",
+        "pub(crate) mod",
+        "pub",
+        "pub(",
+      ]) {
+        const result = extractRustTestSymbols(rustInputsWithRoot("#[cfg(test)] mod tests;", malformed));
+        assert(result.issues.length > 0, `malformed registry declaration must diagnose: ${malformed}`);
+      }
+      for (const malformedRoot of [
+        "mod outer { #[cfg(test)] mod tests; }",
+        "#[cfg(test)] mod tests {}",
+        "#[path = \"tests/mod.rs\"] #[cfg(test)] mod tests;",
+        "#[cfg(test)] #[path = \"tests/mod.rs\"] mod tests;",
+        "#[cfg_attr(test, cfg(test))] mod tests;",
+      ]) {
+        const result = extractRustTestSymbols(rustInputsWithRoot(malformedRoot, "pub(crate) mod sample;"));
+        assert(
+          result.issues.some((value) => value.source === "src/main.rs"),
+          `non-exact or nested root declaration must diagnose: ${malformedRoot}`,
+        );
+      }
+      return true;
+    }
+    case "test_symbol_fact_duplicate_id_rejected":
+      assert(extractRustTestSymbols(rustInputs("#[test] fn works() {} #[test] fn works() {}" )).issues.some((value) => value.code === "E-ID-DUPLICATE"), "duplicate derived test IDs must fail");
+      return true;
+    case "test_symbol_fact_base_revision_isolated": {
+      const base = extractRustTestSymbols(rustInputs("#[test] fn old() {}"));
+      const current = extractRustTestSymbols(rustInputs("#[test] fn new() {}"));
+      assert(base.facts[0]!.test_id !== current.facts[0]!.test_id, "revision snapshots must not leak test facts");
+      return true;
+    }
+  }
+  return false;
+}
+
+function executeJoin(id: JoinSelfTestCaseId): void {
+  assert(
+    referenceProviderCase(id) || relationCase(id) || identityJoinCase(id) || citationCase(id) || testSymbolCase(id),
+    `C4B-J case ${id} has no executable proof`,
+  );
 }
 
 function execute(
@@ -1127,8 +2139,76 @@ const CASE_POLARITY = new Map<PermanentIdSelfTestCaseId, "positive" | "negative"
 
 assert(CASE_POLARITY.size === PERMANENT_ID_SELFTEST_CASE_IDS.length, "permanent-ID polarity metadata must cover every case");
 
+const JOIN_CASE_IDS = REQUIRED_IDENTITY_SELFTEST_CASE_IDS.slice(
+  PERMANENT_ID_SELFTEST_CASE_IDS.length,
+) as readonly JoinSelfTestCaseId[];
+
+const POSITIVE_JOIN_CASES = new Set<JoinSelfTestCaseId>([
+  "reference_each_kind",
+  "citation_inventory_tracks_source_byte_spans",
+  "citation_inventory_sorted_by_path_and_span",
+  "citation_inventory_multiple_occurrences",
+  "citation_inventory_draft_excluded",
+  "citation_inventory_nul_binary_excluded",
+  "citation_inventory_base_revision_isolated",
+  "test_symbol_fact_top_level_direct_test",
+  "test_symbol_fact_declared_module_prefix",
+  "test_symbol_fact_inline_module_path",
+  "test_symbol_fact_attribute_between_test_and_fn",
+  "test_symbol_fact_macro_template_excluded",
+  "test_symbol_fact_macro_invocation_excluded",
+  "test_symbol_fact_comments_and_strings_excluded",
+  "test_symbol_fact_undeclared_file_excluded",
+  "test_symbol_fact_id_derivation_exact",
+  "test_symbol_fact_base_revision_isolated",
+]);
+
+function joinCategory(id: JoinSelfTestCaseId): SelfTestCase["category"] {
+  if (id.startsWith("citation_") || id.startsWith("test_symbol_")) return "repository-facts";
+  if (id.startsWith("identity_")) return "identity-retirement";
+  return "references-relations";
+}
+
+function joinSubcases(id: JoinSelfTestCaseId): readonly string[] | undefined {
+  if (id === "reference_each_kind" || id === "negative_reference_registry_enumeration") {
+    return REFERENCE_KIND_REGISTRY;
+  }
+  if (id === "identity_alias_collision") return ["alias_alias", "alias_first_class"];
+  if (id === "test_symbol_fact_macro_template_excluded") return ["brace", "bracket", "parenthesis"];
+  if (id === "test_symbol_fact_comments_and_strings_excluded") {
+    return ["block_comment", "character", "line_comment", "raw_string", "string"];
+  }
+  return undefined;
+}
+
+const JOIN_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(JOIN_CASE_IDS.map((id) => ({
+  id,
+  category: joinCategory(id),
+  run(): SelfTestResult {
+    const polarity = POSITIVE_JOIN_CASES.has(id) ? "positive" as const : "negative" as const;
+    const subcases = joinSubcases(id);
+    try {
+      executeJoin(id);
+      return { ok: true, polarity, subcases };
+    } catch (error) {
+      return {
+        ok: false,
+        polarity,
+        issues: [{
+          code: "E-SELFTEST-CASE",
+          source: "<selftest>",
+          logical_path: id,
+          message: error instanceof Error ? error.message : String(error),
+          exit: 1,
+        }],
+        subcases,
+      };
+    }
+  },
+})));
+
 export const IDENTITY_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
-  PERMANENT_ID_SELFTEST_CASE_IDS.map((id) => ({
+  [...PERMANENT_ID_SELFTEST_CASE_IDS.map((id) => ({
     id,
     category: "identity-retirement" as const,
     run(context: SelfTestContext): SelfTestResult {
@@ -1155,12 +2235,13 @@ export const IDENTITY_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
         };
       }
     },
-  })),
+  })), ...JOIN_SELFTEST_CASES],
 );
 
 export function runIdentitySelfTests(
   fixtureBundle: IdentityFixtureBundle,
 ): { readonly executed: number } {
   for (const id of PERMANENT_ID_SELFTEST_CASE_IDS) execute(id, fixtureBundle);
-  return { executed: PERMANENT_ID_SELFTEST_CASE_IDS.length };
+  for (const id of JOIN_CASE_IDS) executeJoin(id);
+  return { executed: REQUIRED_IDENTITY_SELFTEST_CASE_IDS.length };
 }

@@ -1,0 +1,546 @@
+import type { IssueCollector, RoadmapIssue } from "../errors.ts";
+import { buildRoadmapIndexes, type RoadmapIndexes } from "../indexes.ts";
+import { deriveMatrixStatusFacts, renderMatrixStatusPayloads } from "../matrix_status_facts.ts";
+import type { RepoPath, RoadmapId, SlotId } from "../model/core.ts";
+import type {
+  Reference,
+  RoadmapDocument,
+  SemanticPayload,
+  SemanticRecord,
+} from "../model/documents.ts";
+import type { MatrixSemanticPayload } from "../model/matrix.ts";
+import type { SemanticPayloadProviderFact } from "../indexes.ts";
+import {
+  validateRoadmapReferences,
+  validateSemanticRoadmapJoins,
+  type ReferenceProviderLike,
+  type SemanticJoinUniverse,
+  type UnresolvedMigrationAuthority,
+} from "../references.ts";
+import { validateRelations } from "../relations.ts";
+import type {
+  FieldConsumer,
+  GeneratedSlotResolver,
+  Indexes,
+  ReferenceProvider,
+  RegistryView,
+  RoadmapAdapter,
+} from "./types.ts";
+
+const MATRIX_SOURCE_PATH = "cddl-matrix/roadmap.toml" as RepoPath;
+const MATRIX_PROJECTION_PATH = "cddl-matrix/ROADMAP.md" as RepoPath;
+
+const SLOT_BINDINGS = Object.freeze([
+  ["constraint" as SlotId, "status_header_markers:roadmap-constraint"],
+  ["counts" as SlotId, "status_header_markers:roadmap-counts"],
+  ["emission" as SlotId, "status_header_markers:roadmap-emission"],
+  ["ops" as SlotId, "status_header_markers:roadmap-ops"],
+] as const);
+
+function issue(
+  provider: SemanticPayloadProviderFact,
+  source: string,
+  code: "E-SCHEMA-STATE" | "E-SCHEMA-FLOOR",
+  logicalPath: string,
+  message: string,
+): RoadmapIssue {
+  return {
+    code,
+    source,
+    logical_path: `${provider.logical_path}.${logicalPath}`,
+    message,
+    exit: 1,
+  };
+}
+
+function payloadAt(indexes: Indexes, id: RoadmapId): SemanticPayload | undefined {
+  if ("payload_records" in indexes) {
+    return (indexes as Indexes & Pick<RoadmapIndexes, "payload_records">).payload_records.get(id)?.payload;
+  }
+  return indexes.records.get(id)?.payload;
+}
+
+function requirePayloadKind(
+  provider: SemanticPayloadProviderFact,
+  source: string,
+  indexes: Indexes,
+  id: RoadmapId,
+  field: string,
+  predicate: (payload: SemanticPayload) => boolean,
+  expected: string,
+  out: IssueCollector,
+): void {
+  const target = payloadAt(indexes, id);
+  if (target === undefined || !predicate(target)) {
+    out.add(issue(provider, source, "E-SCHEMA-STATE", field, `${id} must resolve to ${expected}`));
+  }
+}
+
+export interface CanonicalSemanticMarkdownField {
+  readonly logical_path: string;
+  readonly bytes: Uint8Array;
+}
+
+export function canonicalSemanticMarkdownFields(
+  value: SemanticPayload,
+): readonly CanonicalSemanticMarkdownField[] {
+  const fields: CanonicalSemanticMarkdownField[] = [];
+  const add = (path: string, bytes: Uint8Array | undefined): void => {
+    if (bytes !== undefined) {
+      fields.push(Object.freeze({ logical_path: `payload.${path}`, bytes }));
+    }
+  };
+  add("summary_md", value.summary_md);
+  add("detail_md", value.detail_md);
+  switch (value.kind) {
+    case "work":
+      add("acceptance_md", value.acceptance_md);
+      if (value.work_state === "ready") add("priority_rationale_md", value.priority_rationale_md);
+      if (value.work_state === "blocked") add("blocker_md", value.blocker_md);
+      if (value.work_state === "delegated") add("return_condition_md", value.return_condition_md);
+      if (value.work_state === "pending_review") add("uncertainty_md", value.uncertainty_md);
+      break;
+    case "decision":
+      if (value.decision_state === "pending") add("question_md", value.question_md);
+      else add("rationale_md", value.rationale_md);
+      break;
+    case "signal":
+      if (value.transition_kind === "promotion_trigger" || value.transition_kind === "reopening_signal") {
+        add("action_on_fire_md", value.action_on_fire_md);
+        if (value.predicate.predicate_kind === "event") add("predicate.event_md", value.predicate.event_md);
+        if (value.predicate.predicate_kind === "manual") add("predicate.review_procedure_md", value.predicate.review_procedure_md);
+      } else if (value.transition_kind === "unblock_predicate") {
+        add("event_md", value.event_md);
+        add("check_procedure_md", value.check_procedure_md);
+        add("due_action_md", value.due_action_md);
+      } else if (value.transition_kind === "watch_escalation") {
+        add("failure_signature_md", value.failure_signature_md);
+        add("capture_procedure_md", value.capture_procedure_md);
+        add("response_md", value.response_md);
+        add("escalation_action_md", value.escalation_action_md);
+        add("retirement_semantics_md", value.retirement_semantics_md);
+      } else if (value.transition_kind === "retirement_predicate") {
+        add("external_predicate_md", value.external_predicate_md);
+        add("verification_md", value.verification_md);
+        add("due_action_md", value.due_action_md);
+      } else {
+        add("period_or_event_md", value.period_or_event_md);
+        add("checklist_md", value.checklist_md);
+        add("missed_action_md", value.missed_action_md);
+      }
+      break;
+    case "evidence":
+      add("claim_md", value.claim_md);
+      add("command_md", value.command_md);
+      add("result_md", value.result_md);
+      add("environment_md", value.environment_md);
+      add("unprobed_remainder_md", value.unprobed_remainder_md);
+      break;
+    case "control":
+      add("claim_md", value.claim_md);
+      add("boundary_md", value.boundary_md);
+      break;
+    case "family":
+      add("goal_md", value.goal_md);
+      add("boundary_md", value.boundary_md);
+      if (value.family_maturity === "under_design") {
+        add("derivation_md", value.derivation_md);
+        add("legality_rule_md", value.legality_rule_md);
+        add("denominator_unknowns_md", value.denominator_unknowns_md);
+      }
+      value.exclusions.forEach((entry, index) => add(`exclusions[${index}].reason_md`, entry.reason_md));
+      break;
+    case "matrix_external_closeout":
+      add("current_upstream_state_md", value.current_upstream_state_md);
+      if (value.closeout_state === "blocked") add("blocker_md", value.blocker_md);
+      add("verification_md", value.verification_md);
+      value.actions.forEach((entry, index) => add(`actions[${index}].action_md`, entry.action_md));
+      value.branches.forEach((entry, index) => add(`branches[${index}].predicate_md`, entry.predicate_md));
+      break;
+    case "matrix_policy":
+      if (value.policy_kind === "maintenance_protocol") add("protocol_md", value.protocol_md);
+      else add("rationale_md", value.rationale_md);
+      break;
+    case "testing_operational_watch":
+      add("signature_md", value.signature_md);
+      if (value.watch_state !== "watching") add("attribution_md", value.attribution_md);
+      add("response_md", value.response_md);
+      add("retirement_semantics_md", value.retirement_semantics_md);
+      value.capture_steps.forEach((entry, index) => add(`capture_steps[${index}].capture_md`, entry.capture_md));
+      break;
+    case "testing_incident":
+      add("signature_md", value.signature_md);
+      if (value.incident_posture !== "live") add("attribution_md", value.attribution_md);
+      break;
+    case "testing_cost":
+      add("scope_md", value.scope_md);
+      if (value.cost_posture === "historical_observation") add("environment_md", value.environment_md);
+      break;
+    case "testing_system_admission":
+      add("claim_md", value.claim_md);
+      break;
+    default: {
+      const exhaustive: never = value;
+      return exhaustive;
+    }
+  }
+  return Object.freeze(fields);
+}
+
+function concatenate(chunks: readonly Uint8Array[]): Uint8Array {
+  const length = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
+}
+
+/**
+ * Consume every decoded Markdown field exactly once. New semantic records project their authored
+ * summary/detail prose; converted owners project the reviewed replacement fields in canonical
+ * payload order. Metadata Markdown is still consumed so the completed-chunk ledger can prove that
+ * no decoded field escaped the adapter.
+ */
+export function renderCanonicalSemanticRecord(
+  record: SemanticRecord,
+  fields: FieldConsumer,
+): Uint8Array {
+  const replacements = new Set(record.source_replacements.map((entry) => entry.replacement_field));
+  const consumed = canonicalSemanticMarkdownFields(record.payload).map((entry) => {
+    const bytes = fields.consume(entry.logical_path, entry.bytes);
+    return { path: entry.logical_path, bytes };
+  });
+  const rendered = replacements.size === 0
+    ? consumed.filter((entry) => entry.path === "payload.summary_md" || entry.path === "payload.detail_md")
+    : consumed.filter((entry) => replacements.has(entry.path));
+  return concatenate(rendered.map((entry) => entry.bytes));
+}
+
+function exactRegistryProvider(
+  kind: "matrix_feature" | "matrix_role" | "matrix_cell",
+  members: (view: RegistryView) => readonly { id: string }[],
+): ReferenceProvider {
+  return Object.freeze({
+    kind,
+    resolve(reference: Reference, view: RegistryView) {
+      if (reference.kind !== kind) {
+        return { resolved: false as const, reason: `provider ${kind} received ${reference.kind}` };
+      }
+      const id = reference.kind === "matrix_feature"
+        ? reference.feature_id
+        : reference.kind === "matrix_role" ? reference.role_id : reference.cell_id;
+      const matches = members(view).filter((member) => member.id === id);
+      return matches.length === 1
+        ? { resolved: true as const, provider: `${kind}:${id}` }
+        : {
+            resolved: false as const,
+            reason: matches.length === 0
+              ? `${kind} ${JSON.stringify(id)} is absent from the injected registry view`
+              : `${kind} ${JSON.stringify(id)} has ${matches.length} injected registry claims`,
+          };
+    },
+  });
+}
+
+function matrixProviders(): readonly ReferenceProvider[] {
+  return Object.freeze([
+    exactRegistryProvider("matrix_cell", (view) => view.matrix_cells),
+    exactRegistryProvider("matrix_feature", (view) => view.matrix_features),
+    exactRegistryProvider("matrix_role", (view) => view.matrix_roles),
+  ]);
+}
+
+function matrixSlotResolvers(view: RegistryView): ReadonlyMap<SlotId, GeneratedSlotResolver> {
+  const facts = deriveMatrixStatusFacts(view.matrix_status_inputs);
+  if (facts.validation_problems.length > 0) {
+    throw new Error(`matrix status inputs fail anti-vacuity: ${facts.validation_problems.join("; ")}`);
+  }
+  const payloads = new Map<string, Uint8Array>(
+    renderMatrixStatusPayloads(facts)
+      .filter((payload) => payload.path === MATRIX_PROJECTION_PATH)
+      .map((payload) => {
+        // A manifest slot owns its complete fixture/projection line. The legacy status writer owns
+        // only the marker interior and therefore intentionally receives the helper's bare payload.
+        const line = new Uint8Array(payload.bytes.byteLength + 1);
+        line.set(payload.bytes);
+        line[payload.bytes.byteLength] = 0x0a;
+        return [`status_header_markers:${payload.slot_id}`, line] as const;
+      }),
+  );
+  return new Map(SLOT_BINDINGS.map(([slotId, expectedBinding]) => [
+    slotId,
+    Object.freeze({
+      resolve(slot) {
+        if (slot.slot_id !== slotId) {
+          throw new Error(`resolver ${slotId} cannot resolve slot ${slot.slot_id}`);
+        }
+        if (slot.binding !== expectedBinding) {
+          throw new Error(`slot ${slotId} binding must be ${expectedBinding}`);
+        }
+        const bytes = payloads.get(expectedBinding);
+        if (bytes === undefined || bytes.byteLength === 0) {
+          throw new Error(`slot ${slotId} produced no matrix roadmap status bytes`);
+        }
+        return { binding: expectedBinding, bytes: new Uint8Array(bytes) };
+      },
+    } satisfies GeneratedSlotResolver),
+  ]));
+}
+
+export function validateMatrixPayloadFact(
+  provider: SemanticPayloadProviderFact,
+  indexes: Indexes,
+  out: IssueCollector,
+  source: string = MATRIX_SOURCE_PATH,
+): void {
+  const payload = provider.payload;
+  if (payload.kind !== "matrix_external_closeout" && payload.kind !== "matrix_policy") return;
+  if (payload.kind === "matrix_external_closeout") {
+    if (payload.transition_ids.length !== 1) {
+      out.add(issue(provider, source, "E-SCHEMA-STATE", "transition_ids", "matrix closeout requires exactly one retirement predicate"));
+    }
+    for (const id of payload.transition_ids) {
+      requirePayloadKind(
+        provider,
+        source,
+        indexes,
+        id,
+        "transition_ids",
+        (target) => target.kind === "signal" && target.transition_kind === "retirement_predicate",
+        "one retirement-predicate signal",
+        out,
+      );
+    }
+    const actionIds = new Set<string>();
+    for (const action of payload.actions) {
+      if (actionIds.has(action.action_id)) {
+        out.add(issue(provider, source, "E-SCHEMA-STATE", `actions[${JSON.stringify(action.action_id)}]`, "closeout action ID is duplicated"));
+      }
+      actionIds.add(action.action_id);
+    }
+    const branchIds = new Set<string>();
+    for (const branch of payload.branches) {
+      if (branchIds.has(branch.branch_id)) {
+        out.add(issue(provider, source, "E-SCHEMA-STATE", `branches[${JSON.stringify(branch.branch_id)}]`, "closeout branch ID is duplicated"));
+      }
+      branchIds.add(branch.branch_id);
+      const branchActionIds = new Set<string>();
+      for (const actionId of branch.action_ids) {
+        if (branchActionIds.has(actionId)) {
+          out.add(issue(
+            provider,
+            source,
+            "E-SCHEMA-STATE",
+            `branches[${JSON.stringify(branch.branch_id)}].action_ids`,
+            `${actionId} is duplicated within the branch action sequence`,
+          ));
+        }
+        branchActionIds.add(actionId);
+        if (!actionIds.has(actionId)) {
+          out.add(issue(
+            provider,
+            source,
+            "E-SCHEMA-STATE",
+            `branches[${JSON.stringify(branch.branch_id)}].action_ids`,
+            `${actionId} does not resolve to a local closeout action`,
+          ));
+        }
+      }
+    }
+    return;
+  }
+  const targetId = payload.policy_kind === "maintenance_protocol"
+    ? payload.cadence_transition_id
+    : payload.reopening_transition_id;
+  if (targetId === undefined) {
+    if (payload.policy_kind === "boundary" && payload.permanence === "reopenable") {
+      out.add(issue(provider, source, "E-SCHEMA-STATE", "reopening_transition_id", "reopenable matrix boundary requires a reopening signal"));
+    }
+    return;
+  }
+  const expected = payload.policy_kind === "maintenance_protocol" ? "cadence" : "reopening_signal";
+  requirePayloadKind(
+    provider,
+    source,
+    indexes,
+    targetId,
+    payload.policy_kind === "maintenance_protocol" ? "cadence_transition_id" : "reopening_transition_id",
+    (target) => target.kind === "signal" && target.transition_kind === expected,
+    `${expected} signal`,
+    out,
+  );
+}
+
+export interface DecodedRoadmapValidationObserver {
+  sharedValidationStarted(indexes: RoadmapIndexes): void;
+  domainPayloadValidated(provider: SemanticPayloadProviderFact): void;
+}
+
+export interface DecodedRoadmapValidationOptions {
+  readonly universe?: SemanticJoinUniverse;
+  readonly unresolved_migration_authority?: UnresolvedMigrationAuthority;
+  readonly observer?: DecodedRoadmapValidationObserver;
+}
+
+export interface DecodedRoadmapValidationResult {
+  readonly indexes: RoadmapIndexes;
+  readonly issues: readonly RoadmapIssue[];
+}
+
+export type DomainPayloadFactValidator = (
+  provider: SemanticPayloadProviderFact,
+  indexes: RoadmapIndexes,
+  out: IssueCollector,
+  source: string,
+) => void;
+
+function sortIssues(values: readonly RoadmapIssue[]): readonly RoadmapIssue[] {
+  return Object.freeze([...values].sort((left, right) =>
+    (left.source < right.source ? -1 : left.source > right.source ? 1 : 0) ||
+    (left.logical_path < right.logical_path ? -1 : left.logical_path > right.logical_path ? 1 : 0) ||
+    (left.span?.start_byte ?? -1) - (right.span?.start_byte ?? -1) ||
+    (left.code < right.code ? -1 : left.code > right.code ? 1 : 0) ||
+    (left.message < right.message ? -1 : left.message > right.message ? 1 : 0)
+  ));
+}
+
+/**
+ * Pure production orchestration over one already-decoded document. C4A is the mandatory first
+ * callback boundary: any index issue returns immediately before floors, shared joins, relations,
+ * providers, or domain payload validation can run.
+ */
+export function validateDecodedRoadmapDocument(
+  document: RoadmapDocument,
+  view: RegistryView,
+  adapter: RoadmapAdapter<SemanticPayload>,
+  referenceProviders: readonly ReferenceProviderLike[],
+  validateDomainPayload: DomainPayloadFactValidator,
+  options: DecodedRoadmapValidationOptions = {},
+): DecodedRoadmapValidationResult {
+  const built = buildRoadmapIndexes(document);
+  if (built.issues.length > 0) {
+    return Object.freeze({ indexes: built.indexes, issues: built.issues });
+  }
+  const indexes = built.indexes;
+  const universe = options.universe ?? indexes;
+  const source = document.document.source_path;
+  options.observer?.sharedValidationStarted(indexes);
+  const issues: RoadmapIssue[] = [];
+  const collector: IssueCollector = { issues, add: (value) => issues.push(value) };
+  adapter.validateFloors(document, collector);
+  issues.push(...validateSemanticRoadmapJoins(indexes, universe, source));
+  issues.push(...validateRoadmapReferences(indexes, view, {
+    source,
+    providers: referenceProviders,
+    first_class: universe.first_class,
+    unresolved_migration_authority: options.unresolved_migration_authority,
+  }));
+  issues.push(...validateRelations(indexes.relations, universe.first_class, source));
+  for (const provider of indexes.payload_records.values()) {
+    validateDomainPayload(provider, indexes, collector, source);
+    options.observer?.domainPayloadValidated(provider);
+  }
+  return Object.freeze({ indexes, issues: sortIssues(issues) });
+}
+
+export const MATRIX_ADAPTER: RoadmapAdapter<SemanticPayload> = Object.freeze({
+  roadmap: "matrix",
+  namespace: "matrix",
+  source_path: MATRIX_SOURCE_PATH,
+  projection_path: MATRIX_PROJECTION_PATH,
+  validateExtension(record: SemanticRecord<SemanticPayload>, indexes: Indexes, out: IssueCollector) {
+    validateMatrixPayloadFact({
+      record,
+      payload: record.payload,
+      authority: "semantic",
+      logical_path: `record[${JSON.stringify(record.id)}].payload`,
+    }, indexes, out);
+  },
+  renderSemantic: renderCanonicalSemanticRecord,
+  referenceProviders(_view: RegistryView) {
+    return [...matrixProviders()];
+  },
+  slotResolvers(view: RegistryView) {
+    return matrixSlotResolvers(view);
+  },
+  validateFloors(doc: RoadmapDocument, out: IssueCollector) {
+    if (doc.document.roadmap !== "matrix") {
+      out.add({
+        code: "E-SCHEMA-FLOOR",
+        source: doc.document.source_path,
+        logical_path: "document.roadmap",
+        message: "matrix adapter requires a matrix roadmap document",
+        exit: 1,
+      });
+    }
+    if (doc.document.source_path !== MATRIX_SOURCE_PATH) {
+      out.add({
+        code: "E-SCHEMA-FLOOR",
+        source: doc.document.source_path,
+        logical_path: "document.source_path",
+        message: `matrix source path must be ${MATRIX_SOURCE_PATH}`,
+        exit: 1,
+      });
+    }
+    if (doc.document.projection_path !== MATRIX_PROJECTION_PATH) {
+      out.add({
+        code: "E-SCHEMA-FLOOR",
+        source: doc.document.source_path,
+        logical_path: "document.projection_path",
+        message: `matrix projection path must be ${MATRIX_PROJECTION_PATH}`,
+        exit: 1,
+      });
+    }
+    if (doc.records.length === 0 || doc.manifest.length === 0 || doc.spans.length === 0) {
+      out.add({
+        code: "E-SCHEMA-FLOOR",
+        source: doc.document.source_path,
+        logical_path: "$",
+        message: "matrix roadmap requires records, manifest placements, and source spans",
+        exit: 1,
+      });
+    }
+    const slots = new Map(doc.generated_slots.map((slot) => [slot.slot_id, slot]));
+    if (doc.generated_slots.length !== SLOT_BINDINGS.length || slots.size !== SLOT_BINDINGS.length) {
+      out.add({
+        code: "E-SCHEMA-FLOOR",
+        source: doc.document.source_path,
+        logical_path: "generated_slot",
+        message: "matrix roadmap requires exactly four distinct generated status slots",
+        exit: 1,
+      });
+    }
+    for (const [slotId, binding] of SLOT_BINDINGS) {
+      const slot = slots.get(slotId);
+      if (slot === undefined || slot.binding !== binding) {
+        out.add({
+          code: "E-SCHEMA-FLOOR",
+          source: doc.document.source_path,
+          logical_path: `generated_slot[${JSON.stringify(slotId)}].binding`,
+          message: `matrix slot ${slotId} must declare binding ${binding}`,
+          exit: 1,
+        });
+      }
+    }
+  },
+});
+
+export const MATRIX_GENERATED_SLOT_BINDINGS = SLOT_BINDINGS;
+
+export function validateMatrixRoadmapDocument(
+  document: RoadmapDocument,
+  view: RegistryView,
+  options: DecodedRoadmapValidationOptions = {},
+): DecodedRoadmapValidationResult {
+  return validateDecodedRoadmapDocument(
+    document,
+    view,
+    MATRIX_ADAPTER,
+    MATRIX_ADAPTER.referenceProviders(view),
+    validateMatrixPayloadFact,
+    options,
+  );
+}
