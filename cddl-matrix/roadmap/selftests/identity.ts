@@ -10,14 +10,20 @@ import type {
   ReferenceId,
   RoadmapId,
   RoadmapName,
+  WorkKind,
 } from "../model/core.ts";
 import type {
   CurrentGuard,
-  IdentityOwnerFact,
+  CampaignDocumentV1,
+  LegacyMarkdownReservationV1,
   Reference,
   Relation,
   RetiredIdV1,
+  RetiredIdsDocumentV1,
   RoadmapDocument,
+  RoadmapDocumentV0,
+  RoadmapDocumentV1,
+  SemanticAuthorityRecordV1,
 } from "../model/documents.ts";
 import type { RegistryView } from "../adapters/types.ts";
 import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
@@ -49,10 +55,38 @@ import {
 } from "../references.ts";
 import { deriveRelationViews, validateRelations } from "../relations.ts";
 import {
+  validateCampaignIdentityOwnerEvidence,
   identityOwnerClaimKey,
   validateGlobalIdentity,
   validateRetiredIdReuse,
+  type CampaignIdentityOwnerCapability,
+  type CampaignIdentityOwnerEvidence,
 } from "../identity.ts";
+import {
+  campaignIdentityOwners,
+  validateBootstrapShadowOwners,
+  validateCampaign,
+  validateCampaignTransition,
+  validateLegacyTitleBinding,
+  type CampaignRoadmapSnapshot,
+  type LegacyTitleBindingFact,
+} from "../campaign.ts";
+import { REPLACEMENT_PIN_KINDS, resolveReplacementPin, validateRetiredIds, validateRetiredTransition } from "../retired.ts";
+import {
+  TOMBSTONE_ELIGIBLE_BASE_OWNER_KINDS,
+  TOMBSTONE_INELIGIBLE_ORIGIN_LABELS,
+  validateLifecycleRevision,
+  validateTransaction,
+} from "../transaction.ts";
+import {
+  compareMigrationDebt,
+  debtOwnerIndex,
+  independentDebtIndex,
+  validateDebtGuardTransferFacts,
+  validateDebtRetirementFacts,
+  validateDebtTransitionFacts,
+  type MigrationDebt,
+} from "../debt.ts";
 
 export const IDENTITY_ROADMAP_FIXTURE_PATHS = Object.freeze([
   "all-fields/matrix-v1.toml",
@@ -148,6 +182,95 @@ export const REQUIRED_IDENTITY_SELFTEST_CASE_IDS = [
   "test_symbol_fact_id_derivation_exact",
   "test_symbol_fact_duplicate_id_rejected",
   "test_symbol_fact_base_revision_isolated",
+  "campaign_direct_matrix",
+  "campaign_direct_testing",
+  "campaign_legacy_matrix",
+  "campaign_legacy_testing",
+  "campaign_legacy_digest_title_span",
+  "campaign_legacy_whole_digest",
+  "campaign_expire_matrix_at_v1",
+  "campaign_expire_testing_at_v1",
+  "campaign_testing_survives_matrix_cutover",
+  "campaign_direct_requires_active_v1",
+  "campaign_active_work_only",
+  "campaign_unique_selection",
+  "campaign_state_fields",
+  "campaign_state_transition",
+  "campaign_deselect_active_allowed",
+  "campaign_fired_promotion_visible",
+  "campaign_allowlist_exhaustive",
+  "campaign_allowlist_stale_rejected",
+  "retired_bad_hash_length_case",
+  "retired_missing_replacement",
+  "retired_roadmap_replacement_rejected",
+  "retired_unresolved_replacement",
+  "retired_gate_stub",
+  "retired_preexisting_keeps_base",
+  "retired_new_last_active_matches_against",
+  "retired_wrong_against",
+  "transaction_complete_tombstone",
+  "transaction_complete_guard_transfer",
+  "transaction_missing_campaign_removal",
+  "transaction_live_citation",
+  "transaction_dangling_relation",
+  "transaction_dangling_reference",
+  "transaction_missing_tombstone",
+  "transaction_unused_tombstone",
+  "transaction_partial_guard",
+  "transaction_family_tombstone_rejected",
+  "transaction_linked_work_tombstone_required",
+  "transaction_duplicate_current_owner",
+  "transaction_deselect_active_allowed",
+  "transaction_full_hash_git_integration",
+  "campaign_reservation_owns_id_without_selection",
+  "campaign_deselect_keeps_reservation",
+  "campaign_reservation_work_kind_required",
+  "campaign_selection_target_kind_matches_owner",
+  "campaign_new_legacy_selection_is_atomic",
+  "campaign_reservation_rebinds_whole_source",
+  "identity_reservation_cross_namespace_collision",
+  "identity_reservation_active_collision",
+  "identity_reservation_tombstone_collision",
+  "identity_shadow_record_reserves_id",
+  "identity_reservation_shadow_coalesces",
+  "identity_reservation_shadow_binding_mismatch",
+  "identity_reservation_shadow_third_owner_rejected",
+  "transaction_legacy_cutover_transfer_selected",
+  "transaction_legacy_cutover_transfer_unselected",
+  "transaction_legacy_cutover_work_kind_mismatch",
+  "transaction_legacy_delivery_without_shadow",
+  "transaction_legacy_delivery_with_shadow",
+  "transaction_legacy_delivery_selection_survives",
+  "transaction_legacy_delivery_reservation_survives",
+  "transaction_legacy_delivery_bound_span_survives",
+  "transaction_legacy_delivery_shadow_owner_survives",
+  "transaction_legacy_delivery_missing_tombstone",
+  "transaction_legacy_delivery_wrong_last_active",
+  "transaction_legacy_delivery_live_repo_citation",
+  "transaction_shadow_only_delivery_rejected",
+  "transaction_single_roadmap_owner_removal_rejected",
+  "transaction_citation_in_nonroadmap_file_rejected",
+  "retired_test_symbol_requires_exact_id_and_symbol",
+  "against_matrix_v1_debt_allowed",
+  "against_testing_v1_debt_allowed",
+  "against_per_roadmap_does_not_load_other_base",
+  "against_per_roadmap_candidate_global_collision_rejected",
+  "against_per_roadmap_absent_selected_source_rejected",
+  "against_per_roadmap_shadow_selected_source_rejected",
+  "against_per_roadmap_owner_change_requires_all",
+  "against_all_testing_legacy_absent_valid",
+  "against_all_testing_shadow_valid",
+  "against_all_testing_authoritative_valid",
+  "against_all_state_forbids_unexpected_toml",
+  "against_all_state_requires_shadow_toml",
+  "against_all_state_requires_authoritative_toml",
+  "against_all_base_uses_base_authority_metadata",
+  "against_all_wp4m_bootstrap_valid",
+  "against_all_post_activation_missing_root_rejected",
+  "against_all_shadow_to_authoritative_transfer",
+  "against_all_reverse_authority_rejected",
+  "transaction_tombstone_eligible_base_owner_set",
+  "transaction_tombstone_ineligible_base_owner_rejected",
 ] as const;
 
 export type RequiredIdentitySelfTestCaseId =
@@ -1648,31 +1771,19 @@ function identityJoinCase(id: JoinSelfTestCaseId): boolean {
         { ...tombstone, id: brandedRoadmapId("matrix.fixture-retired-a") },
         { ...tombstone, id: brandedRoadmapId("matrix.fixture-retired-b") },
       ];
-      const additionalOwners: IdentityOwnerFact[] = [
-        {
-          owner_kind: "current_guard",
-          id: brandedRoadmapId("matrix.fixture-extra-a"),
-          namespace: "matrix",
-          guard: { ...guard, id: brandedRoadmapId("matrix.fixture-extra-a") },
-        },
-        {
-          owner_kind: "current_guard",
-          id: brandedRoadmapId("matrix.fixture-extra-b"),
-          namespace: "matrix",
-          guard: { ...guard, id: brandedRoadmapId("matrix.fixture-extra-b") },
-        },
+      const additionalGuards: CurrentGuard[] = [
+        { ...guard, id: brandedRoadmapId("matrix.fixture-extra-a") },
+        { ...guard, id: brandedRoadmapId("matrix.fixture-extra-b") },
       ];
       const forward = validateGlobalIdentity({
         documents: [index.identity_inputs, testing.identity_inputs],
-        current_guards: [tiedGuardB, tiedGuardA],
+        current_guards: [tiedGuardB, tiedGuardA, ...additionalGuards],
         tombstones,
-        additional_owners: additionalOwners,
       });
       const reversed = validateGlobalIdentity({
         documents: [testing.identity_inputs, index.identity_inputs],
-        current_guards: [tiedGuardA, tiedGuardB],
+        current_guards: [...additionalGuards].reverse().concat([tiedGuardA, tiedGuardB]),
         tombstones: [...tombstones].reverse(),
-        additional_owners: [...additionalOwners].reverse(),
       });
       const claimsSignature = (value: typeof forward): string => JSON.stringify(
         [...value.owner_claims].map(([ownerId, claims]) => [
@@ -2129,6 +2240,2525 @@ function execute(
   }
 }
 
+const C5_BASE = "0123456789abcdef0123456789abcdef01234567" as FullCommitId;
+const C5_ID = "matrix.fixture-lifecycle" as RoadmapId;
+const C5_TESTING_ID = "testing.fixture-lifecycle" as RoadmapId;
+
+function c5Sha(value: Uint8Array): string {
+  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
+}
+
+function c5Path(roadmap: RoadmapName): RepoPath {
+  return (roadmap === "matrix" ? "cddl-matrix/ROADMAP.md" : "tests/TESTING_ROADMAP.md") as RepoPath;
+}
+
+function c5SourcePath(roadmap: RoadmapName): RepoPath {
+  return `fixture/${roadmap}.toml` as RepoPath;
+}
+
+function c5LegacySource(): Uint8Array {
+  return bytes("## Lifecycle\nlegacy body\n");
+}
+
+function c5V0(roadmap: RoadmapName, markdown: Uint8Array, id?: RoadmapId): RoadmapDocumentV0 {
+  const records: RoadmapDocumentV0["records"] = id === undefined ? [] : [{
+    id,
+    title: "Lifecycle",
+    projection_group: "fixture" as RoadmapDocumentV0["records"][number]["projection_group"],
+    source_block_md: markdown.slice(),
+    span_ids: ["lifecycle" as RoadmapDocumentV0["spans"][number]["id"]],
+  }];
+  return {
+    document: {
+      schema_version: 0,
+      authority: "shadow",
+      roadmap,
+      source_path: c5SourcePath(roadmap),
+      projection_path: c5Path(roadmap),
+      frozen_source_sha256: c5Sha(markdown),
+      frozen_source_byte_length: markdown.byteLength,
+      frozen_source_line_count: [...markdown].filter((value) => value === 10).length,
+      frozen_source_eof: markdown.at(-1) === 10 ? "lf" : "none",
+    },
+    sections: [], fragments: [], legacy_markers: [], records, parts: [], generated_slots: [],
+    manifest: id === undefined ? [] : [{ kind: "record", record_id: id }],
+    spans: id === undefined ? [] : [{
+      id: "lifecycle" as RoadmapDocumentV0["spans"][number]["id"],
+      start_byte: 0,
+      end_byte: markdown.byteLength,
+      sha256: c5Sha(markdown),
+      source_kind: "record",
+      owner_id: id,
+      owner_field: "source_block_md",
+      migration_status: "raw",
+    }],
+  };
+}
+
+function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticAuthorityRecordV1 {
+  return {
+    id,
+    title: "Lifecycle",
+    projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
+    render_authority: "semantic",
+    payload: {
+      kind: "work",
+      summary_md: bytes("summary"),
+      work_state: "ready",
+      work_intent: "build_capability",
+      work_kind: workKind,
+      risk: "compile_failure",
+      family_classification: "none_reviewed",
+      acceptance_md: bytes("acceptance"),
+      priority_rationale_md: bytes("priority"),
+    },
+    source_replacements: [],
+  };
+}
+
+function c5FamilyRecord(id: RoadmapId, workIds: readonly RoadmapId[] = []): SemanticAuthorityRecordV1 {
+  const axisId = `${id}.fixture-dimension` as RoadmapId;
+  const valueId = `${id}.fixture-choice` as RoadmapId;
+  return {
+    id,
+    title: "Family",
+    projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
+    render_authority: "semantic",
+    payload: {
+      kind: "family",
+      summary_md: bytes("family"),
+      family_maturity: "observed_only",
+      campaign_state: "designing",
+      goal_md: bytes("goal"),
+      boundary_md: bytes("boundary"),
+      work_ids: [...workIds],
+      observation_reference_ids: [],
+      affected_profiles: [],
+      affected_faces: [],
+      control_ids: [],
+      completion_owner_reference_id: "completion" as ReferenceId,
+      retirement_owner_reference_id: "retirement" as ReferenceId,
+      axes: [{
+        id: axisId, label: "Axis", authority_reference_id: "axis-authority" as ReferenceId,
+        values: [{ id: valueId, label: "Value", source_reference_id: "axis-source" as ReferenceId }],
+      }],
+      evidence_requirements: [{
+        id: `${id}.fixture-proof` as RoadmapId,
+        profiles: ["default"], faces: ["rust"], stages: ["compiled"],
+      }],
+      cells: [{
+        id: `${id}.fixture-point` as RoadmapId,
+        spec_legality: "legal", cell_disposition: "unknown", affected_profiles: ["default"],
+        affected_faces: ["rust"], coordinates: [{ axis_id: axisId, value_id: valueId }],
+      }],
+      exclusions: [{
+        id: `${id}.fixture-excluded` as RoadmapId,
+        spec_legality: "illegal", reason_md: bytes("illegal"), owner_reference_id: "owner" as ReferenceId,
+        source_reference_id: "source" as ReferenceId, liveness_reference_id: "liveness" as ReferenceId,
+        coordinates: [{ axis_id: axisId, value_id: valueId }],
+      }],
+    },
+    source_replacements: [],
+  };
+}
+
+function c5FamilyChildIds(id: RoadmapId): readonly RoadmapId[] {
+  return Object.freeze([
+    `${id}.fixture-dimension` as RoadmapId,
+    `${id}.fixture-choice` as RoadmapId,
+    `${id}.fixture-proof` as RoadmapId,
+    `${id}.fixture-point` as RoadmapId,
+    `${id}.fixture-excluded` as RoadmapId,
+  ]);
+}
+
+const C5_FAMILY_PROVIDER_KINDS = Object.freeze([
+  "family_axis",
+  "family_axis_value",
+  "family_evidence_requirement",
+  "family_cell",
+  "family_exclusion",
+] as const);
+
+function c5FamilyRecordUsingChildIds(
+  id: RoadmapId,
+  childIds: readonly RoadmapId[],
+): SemanticAuthorityRecordV1 {
+  assert(childIds.length === 5, "family provider fixture requires five exact child IDs");
+  const record = c5FamilyRecord(id);
+  assert(record.payload.kind === "family", "family provider fixture must retain family payload");
+  record.payload.axes[0]!.id = childIds[0]!;
+  record.payload.axes[0]!.values[0]!.id = childIds[1]!;
+  record.payload.evidence_requirements[0]!.id = childIds[2]!;
+  record.payload.cells[0]!.id = childIds[3]!;
+  record.payload.exclusions[0]!.id = childIds[4]!;
+  return record;
+}
+
+function c5Guard(id: RoadmapId, gateId = "roadmap_projection_check"): CurrentGuard {
+  return {
+    id,
+    replacement_pin: { kind: "gate", gate_id: gateId, claim_md: bytes("guard") },
+    owner_registry: "fixture-guards",
+  };
+}
+
+function c5FamilyGuards(id: RoadmapId): readonly CurrentGuard[] {
+  return Object.freeze([c5Guard(id), ...c5FamilyChildIds(id).map((childId) => c5Guard(childId))]);
+}
+
+function c5V1(
+  roadmap: RoadmapName,
+  records: readonly RoadmapDocumentV1["records"][number][] = [],
+  relations: readonly Relation[] = [],
+  references: readonly Reference[] = [],
+): RoadmapDocumentV1 {
+  const markdown = bytes(`${roadmap}\n`);
+  return {
+    document: {
+      schema_version: 1,
+      authority: "authoritative",
+      roadmap,
+      source_path: c5SourcePath(roadmap),
+      projection_path: c5Path(roadmap),
+      frozen_source_sha256: c5Sha(markdown),
+      frozen_source_byte_length: markdown.byteLength,
+      frozen_source_line_count: 1,
+      frozen_source_eof: "lf",
+      frozen_legacy_span_ids: [],
+    },
+    sections: [], fragments: [], legacy_markers: [], records: [...records], parts: [],
+    generated_slots: [],
+    manifest: records.map((record) => ({ kind: "record" as const, record_id: record.id })),
+    spans: [], relations: [...relations], references: [...references],
+  };
+}
+
+function c5PromoteV0(
+  base: RoadmapDocumentV0,
+  semanticShadows: ReadonlyMap<RoadmapId, SemanticAuthorityRecordV1["payload"]> = new Map(),
+): RoadmapDocumentV1 {
+  return {
+    document: {
+      schema_version: 1,
+      authority: "authoritative",
+      roadmap: base.document.roadmap,
+      source_path: base.document.source_path,
+      projection_path: base.document.projection_path,
+      frozen_source_sha256: base.document.frozen_source_sha256,
+      frozen_source_byte_length: base.document.frozen_source_byte_length,
+      frozen_source_line_count: base.document.frozen_source_line_count,
+      frozen_source_eof: base.document.frozen_source_eof,
+      frozen_legacy_span_ids: base.spans.filter((span) => span.migration_status === "raw").map((span) => span.id),
+    },
+    sections: base.sections.map((value) => ({ ...value, render_authority: "raw" as const })),
+    fragments: base.fragments.map((value) => ({ ...value, render_authority: "raw" as const })),
+    legacy_markers: base.legacy_markers.map((value) => ({ ...value, render_authority: "raw" as const })),
+    records: base.records.map((value) => ({
+      ...value,
+      render_authority: "raw" as const,
+      ...(semanticShadows.has(value.id) ? { semantic_shadow: semanticShadows.get(value.id)! } : {}),
+    })),
+    parts: base.parts.map((value) => ({ ...value, render_authority: "raw" as const })),
+    generated_slots: [...base.generated_slots], manifest: [...base.manifest], spans: [...base.spans],
+    relations: [], references: [],
+  };
+}
+
+function c5Reservation(
+  id: RoadmapId,
+  markdown: Uint8Array,
+  workKind = "feature" as const,
+): LegacyMarkdownReservationV1 {
+  const roadmap = id.startsWith("matrix.") ? "matrix" : "testing";
+  return {
+    id,
+    work_kind: workKind,
+    roadmap_path: c5Path(roadmap) as LegacyMarkdownReservationV1["roadmap_path"],
+    source_title: "Lifecycle",
+    source_start_byte: 0,
+    source_end_byte: markdown.byteLength,
+    source_sha256: c5Sha(markdown),
+    whole_source_sha256: c5Sha(markdown),
+  };
+}
+
+function c5Title(
+  reservation: LegacyMarkdownReservationV1,
+  markdown: Uint8Array,
+): LegacyTitleBindingFact {
+  const binding = validateLegacyTitleBinding(reservation, markdown);
+  assert(binding !== undefined, "fixture reservation must mint one exact reviewed-title capability");
+  return binding;
+}
+
+function c5OwnerCapability(
+  evidence: readonly CampaignIdentityOwnerEvidence[],
+): CampaignIdentityOwnerCapability {
+  const result = validateCampaignIdentityOwnerEvidence(evidence);
+  assert(result.ok, `fixture campaign-owner evidence must mint: ${JSON.stringify(result.issues)}`);
+  return result.capability;
+}
+
+function c5Selection(id: RoadmapId, target: "active_id" | "legacy_markdown_reservation" = "active_id") {
+  return {
+    item_id: id,
+    target_kind: target,
+    selected_state: "selected" as const,
+    priority_class: "high" as CampaignDocumentV1["selections"][number]["priority_class"],
+    selection_reason_md: bytes("reason"),
+    cycle: "cycle-a" as CampaignDocumentV1["selections"][number]["cycle"],
+    remaining_scope_md: bytes("scope"),
+  };
+}
+
+function c5Campaign(
+  matrix: CampaignDocumentV1["campaign"]["matrix_authority"],
+  testing: CampaignDocumentV1["campaign"]["testing_authority"],
+  reservations: readonly LegacyMarkdownReservationV1[] = [],
+  selections: readonly CampaignDocumentV1["selections"][number][] = [],
+): CampaignDocumentV1 {
+  return {
+    campaign: { schema_version: 1, matrix_authority: matrix, testing_authority: testing },
+    legacy_markdown_reservations: [...reservations],
+    selections: [...selections],
+  };
+}
+
+function c5Retired(entries: readonly RetiredIdV1[] = []): RetiredIdsDocumentV1 {
+  return { retired_ids: { schema_version: 1 }, entries: [...entries] };
+}
+
+function c5Tombstone(id: RoadmapId, last = C5_BASE): RetiredIdV1 {
+  return {
+    id,
+    last_active_at: last,
+    replacement: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("replacement") },
+  };
+}
+
+function c5Registry(
+  revision: RegistryView["revision"],
+  overrides: Partial<RegistryView> = {},
+): RegistryView {
+  return fakeRegistryView({ revision, ...overrides });
+}
+
+function c5Snapshots(
+  matrix: CampaignRoadmapSnapshot,
+  testing: CampaignRoadmapSnapshot = { markdown: bytes("testing\n") },
+): Readonly<Record<RoadmapName, CampaignRoadmapSnapshot>> {
+  return { matrix, testing };
+}
+
+function c5EmptyDebt(): MigrationDebt {
+  return { owners: new Map(), independent: new Map(), frozen_legacy_spans: new Map() };
+}
+
+function c5Debt(document: RoadmapDocument): MigrationDebt {
+  const owners = new Map<string, { key: Parameters<typeof debtOwnerIndex>[0]; state: "raw_unclassified" | "raw_with_semantic_shadow" | "semantic" }>();
+  const frozen = new Map<string, Parameters<typeof debtOwnerIndex>[0]>();
+  const add = (key: Parameters<typeof debtOwnerIndex>[0], state: "raw_unclassified" | "raw_with_semantic_shadow" | "semantic"): void => {
+    owners.set(debtOwnerIndex(key), { key, state });
+  };
+  const collectMarkdown = (value: unknown, path: string, out: string[]): void => {
+    if (value instanceof Uint8Array) {
+      if (path.endsWith("_md")) out.push(path);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => collectMarkdown(item, `${path}[${index}]`, out));
+      return;
+    }
+    if (value !== null && typeof value === "object") {
+      for (const key of Object.keys(value).sort()) {
+        collectMarkdown((value as Record<string, unknown>)[key], `${path}.${key}`, out);
+      }
+    }
+  };
+  for (const record of document.records) {
+    if ("source_block_md" in record) {
+      add({
+        roadmap: document.document.roadmap,
+        owner_kind: "record",
+        owner_id: record.id,
+        owner_field: "source_block_md",
+      }, "semantic_shadow" in record && record.semantic_shadow !== undefined
+        ? "raw_with_semantic_shadow"
+        : "raw_unclassified");
+    } else {
+      const fields: string[] = [];
+      collectMarkdown(record.payload, "payload", fields);
+      for (const field of fields.sort()) add({
+        roadmap: document.document.roadmap,
+        owner_kind: "record",
+        owner_id: record.id,
+        owner_field: field,
+      }, "semantic");
+    }
+  }
+  for (const span of document.spans) {
+    const key: Parameters<typeof debtOwnerIndex>[0] = {
+      roadmap: document.document.roadmap,
+      owner_kind: "source_span",
+      owner_id: span.id,
+      owner_field: "coverage",
+    };
+    const ownerRecord = span.source_kind === "record"
+      ? document.records.find((record) => record.id === span.owner_id)
+      : undefined;
+    add(key, span.migration_status === "raw"
+      ? ownerRecord !== undefined && "semantic_shadow" in ownerRecord && ownerRecord.semantic_shadow !== undefined
+        ? "raw_with_semantic_shadow"
+        : "raw_unclassified"
+      : "semantic");
+    const frozenIds = document.document.schema_version === 0
+      ? document.spans.filter((value) => value.migration_status === "raw").map((value) => value.id)
+      : document.document.frozen_legacy_span_ids;
+    if (frozenIds.includes(span.id)) frozen.set(debtOwnerIndex(key), key);
+  }
+  return { owners, independent: new Map(), frozen_legacy_spans: frozen };
+}
+
+function c5SnapshotDebt(
+  snapshots: Readonly<Record<RoadmapName, CampaignRoadmapSnapshot>>,
+): Partial<Readonly<Record<RoadmapName, MigrationDebt>>> {
+  const debt: Partial<Record<RoadmapName, MigrationDebt>> = {};
+  for (const roadmap of ["matrix", "testing"] as const) {
+    const document = snapshots[roadmap].document;
+    if (document !== undefined) debt[roadmap] = c5Debt(document);
+  }
+  return debt;
+}
+
+function c5WithDebt<T extends {
+  readonly roadmaps: Readonly<Record<RoadmapName, CampaignRoadmapSnapshot>>;
+}>(revision: T): T & { readonly debt: Partial<Readonly<Record<RoadmapName, MigrationDebt>>> } {
+  return { ...revision, debt: c5SnapshotDebt(revision.roadmaps) };
+}
+
+function c5ActiveRevision(
+  document: RoadmapDocumentV1,
+  selections: readonly CampaignDocumentV1["selections"][number][] = [],
+  options: {
+    readonly retired?: readonly RetiredIdV1[];
+    readonly guards?: readonly CurrentGuard[];
+    readonly citations?: RegistryView["roadmap_citations"];
+  } = {},
+) {
+  return c5WithDebt({
+    campaign: c5Campaign("authoritative", "legacy_markdown", [], selections),
+    retired: c5Retired(options.retired),
+    roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document }),
+    registry: c5Registry({ kind: "worktree" }, {
+      current_guards: options.guards ?? [],
+      roadmap_citations: options.citations ?? [],
+    }),
+  });
+}
+
+function c5LegacyPair(shadow: boolean, selected = true, testingAuthoritative = false) {
+  const source = c5LegacySource();
+  const reservation = c5Reservation(C5_ID, source);
+  const state = shadow ? "shadow" as const : "legacy_markdown" as const;
+  return {
+    reservation,
+    revision: c5WithDebt({
+      campaign: c5Campaign(state, testingAuthoritative ? "authoritative" : "legacy_markdown", [reservation], selected ? [c5Selection(C5_ID, "legacy_markdown_reservation")] : []),
+      retired: c5Retired(),
+      roadmaps: c5Snapshots(
+        { markdown: source, ...(shadow ? { document: c5V0("matrix", source, C5_ID) } : {}) },
+        testingAuthoritative
+          ? { markdown: bytes("testing\n"), document: c5V1("testing") }
+          : { markdown: bytes("testing\n") },
+      ),
+      registry: c5Registry({ kind: "commit", commit: C5_BASE }, { roadmap_citations: [{
+        id: C5_ID,
+        source: "README.md" as RepoPath,
+        span: { start_byte: 0, end_byte: 28 },
+        raw: `roadmap:${C5_ID}`,
+      }] }),
+      legacy_title_bindings: [c5Title(reservation, source)],
+    }),
+  };
+}
+
+function c5LegacyCandidate(
+  shadow: boolean,
+  mutation: "none" | "selection" | "reservation" | "bytes" | "shadow" | "active" | "guard" | "alias" | "relation" | "reference" | "stale_shadow" | "missing_tombstone" | "wrong_commit" | "citation" = "none",
+) {
+  const baseSource = c5LegacySource();
+  const source = mutation === "shadow" ? baseSource
+    : mutation === "bytes" ? bytes("moved-prefix\n## Lifecycle\nlegacy body\n")
+    : mutation === "reservation" ? bytes("## Lifecycle\nrewritten open item\n")
+    : bytes("delivered\n");
+  const reservation = c5Reservation(C5_ID, baseSource);
+  const retainedReservation = mutation === "reservation" ? [c5Reservation(C5_ID, source)] : [];
+  const state = mutation === "active" ? "authoritative" as const : shadow ? "shadow" as const : "legacy_markdown" as const;
+  const testingSemantic = mutation === "alias" || mutation === "relation" || mutation === "reference";
+  const other = "testing.fixture-other" as RoadmapId;
+  const otherRecord = { ...c5ReadyRecord(other), ...(mutation === "alias" ? { legacy_aliases: [C5_ID] } : {}) };
+  const matrixDocument = mutation === "active"
+    ? c5V1("matrix", [c5ReadyRecord(C5_ID)])
+    : shadow
+    ? c5V0("matrix", source, mutation === "shadow" ? C5_ID : undefined)
+    : undefined;
+  if (mutation === "stale_shadow" && matrixDocument !== undefined) {
+    matrixDocument.document.frozen_source_sha256 = "0".repeat(64);
+  }
+  const guard: CurrentGuard | undefined = mutation === "guard" ? {
+    id: C5_ID,
+    replacement_pin: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("guard") },
+    owner_registry: "fixture-guards",
+  } : undefined;
+  return c5WithDebt({
+    campaign: c5Campaign(state, testingSemantic ? "authoritative" : "legacy_markdown", retainedReservation, mutation === "selection" ? [c5Selection(C5_ID, "legacy_markdown_reservation")] : []),
+    retired: c5Retired(mutation === "missing_tombstone" ? [] : [c5Tombstone(C5_ID, mutation === "wrong_commit" ? "f".repeat(40) as FullCommitId : C5_BASE)]),
+    roadmaps: c5Snapshots(
+      { markdown: source, ...(matrixDocument === undefined ? {} : { document: matrixDocument }) },
+      testingSemantic ? { markdown: bytes("testing\n"), document: c5V1(
+        "testing",
+        [otherRecord],
+        mutation === "relation" ? [{ source: other, kind: "related", target: C5_ID }] : [],
+        mutation === "reference" ? [{ id: "legacy-ref" as ReferenceId, source: other, kind: "roadmap", target_id: C5_ID }] : [],
+      ) } : { markdown: bytes("testing\n") },
+    ),
+    registry: c5Registry({ kind: "worktree" }, {
+      current_guards: guard === undefined ? [] : [guard],
+      roadmap_citations: mutation === "citation" ? [{
+        id: C5_ID,
+        source: "README.md" as RepoPath,
+        span: { start_byte: 0, end_byte: 28 },
+        raw: `roadmap:${C5_ID}`,
+      }] : [],
+    }),
+    legacy_title_bindings: mutation === "reservation"
+      ? [c5Title(retainedReservation[0]!, source)]
+      : [],
+  });
+}
+
+function assertIssue(values: readonly { code: string }[], code: string, message: string): void {
+  assert(values.some((value) => value.code === code), `${message}: ${JSON.stringify(values)}`);
+}
+
+function c5CampaignCase(id: C5SelfTestCaseId): boolean {
+  if (!id.startsWith("campaign_")) return false;
+  const matrixDocument = c5V1("matrix", [c5ReadyRecord(C5_ID)]);
+  const testingDocument = c5V1("testing", [c5ReadyRecord(C5_TESTING_ID)]);
+  const direct = (roadmap: RoadmapName) => {
+    const roadmaps = c5Snapshots(
+      roadmap === "matrix"
+        ? { markdown: bytes("matrix\n"), document: matrixDocument }
+        : { markdown: bytes("matrix\n") },
+      roadmap === "testing"
+        ? { markdown: bytes("testing\n"), document: testingDocument }
+        : { markdown: bytes("testing\n") },
+    );
+    return validateLifecycleRevision({
+      campaign: c5Campaign(
+      roadmap === "matrix" ? "authoritative" : "legacy_markdown",
+      roadmap === "testing" ? "authoritative" : "legacy_markdown",
+      [],
+      [c5Selection(roadmap === "matrix" ? C5_ID : C5_TESTING_ID)],
+    ),
+    retired: c5Retired(),
+    roadmaps,
+    registry: c5Registry({ kind: "worktree" }),
+    debt: c5SnapshotDebt(roadmaps),
+  });
+  };
+  switch (id) {
+    case "campaign_direct_matrix":
+    case "campaign_direct_testing":
+      assert(direct(id.endsWith("matrix") ? "matrix" : "testing").issues.length === 0, "direct authoritative work selection must resolve");
+      return true;
+    case "campaign_legacy_matrix":
+    case "campaign_legacy_testing": {
+      const roadmap = id.endsWith("matrix") ? "matrix" : "testing";
+      const target = roadmap === "matrix" ? C5_ID : C5_TESTING_ID;
+      const source = c5LegacySource();
+      const reservation = c5Reservation(target, source);
+      const result = validateCampaign({
+        campaign: c5Campaign("legacy_markdown", "legacy_markdown", [reservation], [c5Selection(target, "legacy_markdown_reservation")]),
+        roadmaps: c5Snapshots(
+          { markdown: roadmap === "matrix" ? source : bytes("matrix\n") },
+          { markdown: roadmap === "testing" ? source : bytes("testing\n") },
+        ),
+        legacy_title_bindings: [c5Title(reservation, source)],
+      });
+      assert(result.issues.length === 0, "legacy reservation selection must resolve against exact reviewed bytes");
+      return true;
+    }
+    case "campaign_legacy_digest_title_span": {
+      const { reservation, revision } = c5LegacyPair(false);
+      const mutations = [
+        { ...reservation, source_title: "Wrong" },
+        { ...reservation, source_start_byte: 1 },
+        { ...reservation, source_sha256: "0".repeat(64) },
+      ];
+      for (const mutated of mutations) {
+        const invalid = validateCampaign({
+          campaign: c5Campaign("legacy_markdown", "legacy_markdown", [mutated], [c5Selection(C5_ID, "legacy_markdown_reservation")]),
+          roadmaps: revision.roadmaps,
+          legacy_title_bindings: [c5Title(reservation, revision.roadmaps.matrix.markdown)],
+        });
+        assertIssue(invalid.issues, "E-CAMPAIGN-TARGET", "one title/range/span mutation must fail");
+        assert(!invalid.owners.some((owner) => owner.id === C5_ID), "invalid binding must fail closed before minting an identity owner");
+      }
+      const forged = { ...c5Title(reservation, revision.roadmaps.matrix.markdown) };
+      const forgedResult = validateCampaign({
+        campaign: revision.campaign,
+        roadmaps: revision.roadmaps,
+        legacy_title_bindings: [forged],
+      });
+      assertIssue(forgedResult.issues, "E-CAMPAIGN-TARGET", "structurally matching caller-created title fact must not carry reviewed provenance");
+      for (const mutation of ["owner", "digest", "range", "title", "index", "exhaustiveness"] as const) {
+        const shadowPair = c5LegacyPair(true);
+        const document = shadowPair.revision.roadmaps.matrix.document as RoadmapDocumentV0;
+        const span = document.spans[0]!;
+        if (mutation === "title") document.records[0]!.title = "Wrong title";
+        else if (mutation === "index") document.manifest = [];
+        else if (mutation === "exhaustiveness") {
+          document.spans.push({
+            ...span,
+            id: "unclaimed-lifecycle" as RoadmapDocumentV0["spans"][number]["id"],
+          });
+        }
+        else {
+          document.spans[0] = mutation === "owner"
+            ? { ...span, owner_id: "matrix.fixture-wrong" as RoadmapId }
+            : mutation === "digest"
+            ? { ...span, sha256: "0".repeat(64) }
+            : { ...span, end_byte: span.end_byte - 1 };
+        }
+        assertIssue(validateCampaign({
+          campaign: shadowPair.revision.campaign,
+          roadmaps: shadowPair.revision.roadmaps,
+          legacy_title_bindings: shadowPair.revision.legacy_title_bindings,
+        }).issues, "E-CAMPAIGN-TARGET", `shadow ${mutation} mutation must invalidate exact corroboration`);
+      }
+      return true;
+    }
+    case "campaign_legacy_whole_digest": {
+      const pair = c5LegacyPair(false);
+      const bad = { ...pair.reservation, whole_source_sha256: "0".repeat(64) };
+      assertIssue(validateCampaign({
+        campaign: c5Campaign("legacy_markdown", "legacy_markdown", [bad]),
+        roadmaps: pair.revision.roadmaps,
+        legacy_title_bindings: [c5Title(pair.reservation, pair.revision.roadmaps.matrix.markdown)],
+      }).issues, "E-CAMPAIGN-TARGET", "stale whole-source digest must fail");
+      return true;
+    }
+    case "campaign_expire_matrix_at_v1":
+    case "campaign_expire_testing_at_v1": {
+      const roadmap = id.includes("matrix") ? "matrix" : "testing";
+      const target = roadmap === "matrix" ? C5_ID : C5_TESTING_ID;
+      const source = c5LegacySource();
+      const reservation = c5Reservation(target, source);
+      const result = validateCampaign({
+        campaign: c5Campaign(roadmap === "matrix" ? "authoritative" : "legacy_markdown", roadmap === "testing" ? "authoritative" : "legacy_markdown", [reservation]),
+        roadmaps: c5Snapshots(
+          roadmap === "matrix" ? { markdown: source, document: matrixDocument } : { markdown: bytes("matrix\n") },
+          roadmap === "testing" ? { markdown: source, document: testingDocument } : { markdown: bytes("testing\n") },
+        ),
+        legacy_title_bindings: [c5Title(reservation, source)],
+      });
+      assertIssue(result.issues, "E-CAMPAIGN-TARGET-EXPIRED", "authoritative namespace must reject reservation");
+      return true;
+    }
+    case "campaign_testing_survives_matrix_cutover": {
+      const source = c5LegacySource();
+      const reservation = c5Reservation(C5_TESTING_ID, source);
+      const result = validateCampaign({
+        campaign: c5Campaign("authoritative", "legacy_markdown", [reservation], [c5Selection(C5_TESTING_ID, "legacy_markdown_reservation")]),
+        roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document: matrixDocument }, { markdown: source }),
+        legacy_title_bindings: [c5Title(reservation, source)],
+      });
+      assert(result.issues.length === 0, "testing reservation must survive matrix-only cutover");
+      return true;
+    }
+    case "campaign_direct_requires_active_v1": {
+      const source = c5LegacySource();
+      const shadow = c5V0("matrix", source, C5_ID);
+      for (const snapshots of [
+        c5Snapshots({ markdown: source, document: shadow }),
+        c5Snapshots({ markdown: source }),
+      ]) {
+        const result = validateCampaign({
+          campaign: c5Campaign("shadow", "legacy_markdown", [], [c5Selection(C5_ID)]),
+          roadmaps: snapshots,
+        });
+        assertIssue(result.issues, "E-CAMPAIGN-TARGET", "absent/v0 source must not satisfy active_id");
+      }
+      return true;
+    }
+    case "campaign_active_work_only": {
+      const family = c5V1("matrix", [c5FamilyRecord(C5_ID)]);
+      const decision: SemanticAuthorityRecordV1 = {
+        ...c5ReadyRecord(C5_ID),
+        payload: {
+          kind: "decision", summary_md: bytes("decision"), decision_state: "decided",
+          rationale_md: bytes("rationale"), authority_reference_id: "authority" as ReferenceId,
+          permanence: "permanent",
+        },
+      };
+      const raw: RoadmapDocumentV1["records"][number] = {
+        id: C5_ID, title: "Raw", projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
+        render_authority: "raw", source_block_md: bytes("raw"), span_ids: [],
+      };
+      const guard: CurrentGuard = {
+        id: C5_ID,
+        replacement_pin: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("pin") },
+        owner_registry: "fixture-guards",
+      };
+      for (const result of [
+        validateLifecycleRevision(c5ActiveRevision(family, [c5Selection(C5_ID)])),
+        validateLifecycleRevision(c5ActiveRevision(c5V1("matrix", [decision]), [c5Selection(C5_ID)])),
+        validateLifecycleRevision(c5ActiveRevision(c5V1("matrix"), [c5Selection(C5_ID)], { guards: [guard] })),
+        validateLifecycleRevision(c5ActiveRevision(c5V1("matrix"), [c5Selection(C5_ID)], { retired: [c5Tombstone(C5_ID)] })),
+        validateLifecycleRevision(c5ActiveRevision(c5V1("matrix", [raw]), [c5Selection(C5_ID)])),
+        validateLifecycleRevision(c5ActiveRevision(c5V1("matrix"), [c5Selection(C5_ID)])),
+      ]) assertIssue(result.issues, "E-CAMPAIGN-TARGET", "family/guard/tombstone/missing ID must not be a campaign work target");
+      const shadowSource = bytes("Lifecycle legacy body\n");
+      assertIssue(validateCampaign({
+        campaign: c5Campaign("shadow", "legacy_markdown", [], [c5Selection(C5_ID)]),
+        roadmaps: c5Snapshots({ markdown: shadowSource, document: c5V0("matrix", shadowSource, C5_ID) }),
+      }).issues, "E-CAMPAIGN-TARGET", "shadow-only owner must not be a campaign work target");
+      return true;
+    }
+    case "campaign_unique_selection": {
+      const progress = { ...c5Selection(C5_ID), selected_state: "in_progress" as const, assignee: "owner", pickup_commit: C5_BASE };
+      for (const rows of [[c5Selection(C5_ID), c5Selection(C5_ID)], [c5Selection(C5_ID), progress]]) {
+        const result = validateLifecycleRevision(c5ActiveRevision(matrixDocument, rows));
+        assertIssue(result.issues, "E-CAMPAIGN-DUPLICATE", "duplicate/conflicting-state selections must fail");
+      }
+      return true;
+    }
+    case "campaign_state_fields": {
+      for (const bad of [
+        { ...c5Selection(C5_ID), selected_state: "in_progress" as const },
+        { ...c5Selection(C5_ID), selected_state: "in_progress" as const, assignee: "maintainer" },
+        { ...c5Selection(C5_ID), pickup_commit: C5_BASE },
+      ]) {
+        const result = validateLifecycleRevision(c5ActiveRevision(matrixDocument, [bad]));
+        assertIssue(result.issues, "E-CAMPAIGN-STATE", "one selected/in-progress field mutation must fail");
+      }
+      return true;
+    }
+    case "campaign_state_transition": {
+      const base = validateLifecycleRevision(c5ActiveRevision(matrixDocument, [c5Selection(C5_ID)]));
+      const progress = {
+        ...c5Selection(C5_ID), selected_state: "in_progress" as const, assignee: "maintainer",
+        pickup_commit: C5_BASE,
+      };
+      const candidate = validateLifecycleRevision(c5ActiveRevision(matrixDocument, [progress]));
+      assert(base.campaign !== undefined && candidate.campaign !== undefined, "campaigns must validate");
+      assert(validateCampaignTransition({
+        base: base.campaign, candidate: candidate.campaign,
+        base_document: base.campaign_document!, candidate_document: candidate.campaign_document!, against: C5_BASE,
+      }).length === 0, "selected -> in_progress must pass");
+      const back = validateCampaignTransition({
+        base: candidate.campaign, candidate: base.campaign,
+        base_document: candidate.campaign_document!, candidate_document: base.campaign_document!, against: C5_BASE,
+      });
+      assert(back.length === 0, "in_progress -> selected must pass");
+      assert(validateCampaignTransition({
+        base: candidate.campaign,
+        candidate: validateLifecycleRevision(c5ActiveRevision(matrixDocument)).campaign!,
+        base_document: candidate.campaign_document!,
+        candidate_document: c5ActiveRevision(matrixDocument).campaign,
+        against: C5_BASE,
+      }).length === 0, "either state -> removal must pass when the active owner remains");
+      const invalidDocument = c5Campaign("authoritative", "legacy_markdown", [], [{ ...progress, cycle: "cycle-b" as typeof progress.cycle }]);
+      const invalid = validateCampaign({ campaign: invalidDocument, roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document: matrixDocument }) });
+      assertIssue(validateCampaignTransition({
+        base: candidate.campaign, candidate: invalid,
+        base_document: candidate.campaign_document!, candidate_document: invalidDocument, against: C5_BASE,
+      }), "E-CAMPAIGN-TRANSITION", "state transition cannot rewrite invariant selection fields");
+      return true;
+    }
+    case "campaign_deselect_keeps_reservation":
+    case "campaign_reservation_owns_id_without_selection":
+    case "campaign_deselect_active_allowed": {
+      if (id === "campaign_deselect_active_allowed") {
+        const base = validateLifecycleRevision(c5ActiveRevision(matrixDocument, [c5Selection(C5_ID)]));
+        const candidate = validateLifecycleRevision(c5ActiveRevision(matrixDocument));
+        assert(base.campaign !== undefined && candidate.campaign !== undefined && validateCampaignTransition({
+          base: base.campaign, candidate: candidate.campaign,
+          base_document: base.campaign_document!, candidate_document: candidate.campaign_document!, against: C5_BASE,
+        }).length === 0, "active deselection must pass while owner remains");
+      } else {
+        const pair = c5LegacyPair(false, false);
+        const result = validateLifecycleRevision(pair.revision);
+        assert(result.issues.length === 0 && result.identity.owners.has(C5_ID), "reservation must own ID without selection");
+        if (id === "campaign_deselect_keeps_reservation") {
+          const selectedPair = c5LegacyPair(false, true);
+          const selected = validateLifecycleRevision(selectedPair.revision);
+          assert(selected.campaign !== undefined && result.campaign !== undefined && validateCampaignTransition({
+            base: selected.campaign, candidate: result.campaign,
+            base_document: selectedPair.revision.campaign,
+            candidate_document: pair.revision.campaign,
+            against: C5_BASE,
+          }).length === 0, "legacy deselection must preserve its independently owning reservation");
+        }
+      }
+      return true;
+    }
+    case "campaign_fired_promotion_visible": {
+      // The all-fields fixture already proves domain validity; here a minimal semantic graph proves
+      // campaign visibility from the decoded evaluation/transition join.
+      const signalId = "matrix.fixture-promotion" as RoadmapId;
+      const armed: RoadmapDocumentV1["records"][number] = {
+        ...c5ReadyRecord(C5_ID),
+        payload: {
+          kind: "work", summary_md: bytes("armed"), work_state: "armed",
+          work_intent: "build_capability", work_kind: "feature", risk: "compile_failure",
+          family_classification: "none_reviewed", control_ids: [], transition_ids: [signalId],
+        },
+      };
+      const signal: RoadmapDocumentV1["records"][number] = {
+        ...c5ReadyRecord(signalId),
+        payload: {
+          kind: "signal", summary_md: bytes("fire"), transition_kind: "promotion_trigger",
+          observer: "fixture", dimension: "state", observable: "done", predicate_kind: "event",
+          current_evidence_ids: [], action_on_fire_md: bytes("select"), evaluation: "met",
+          predicate: { predicate_kind: "event", event_md: bytes("event"), evidence_ids: [] },
+        },
+      };
+      const result = validateLifecycleRevision(c5ActiveRevision(c5V1("matrix", [armed, signal])));
+      assertIssue(result.issues, "E-CAMPAIGN-FIRED-HIDDEN", "fired promotion must be selected/actionable");
+      const visible = validateLifecycleRevision(c5ActiveRevision(c5V1("matrix", [armed, signal]), [c5Selection(C5_ID)]));
+      assert(visible.issues.length === 0, "the same fired promotion must pass when visible in the actionable campaign");
+      return true;
+    }
+    case "campaign_allowlist_exhaustive":
+    case "campaign_allowlist_stale_rejected": {
+      const unresolved = [{ source: C5_ID, target: C5_TESTING_ID }];
+      const allowlist = [{ ...unresolved[0]!, expires_when: "testing_authoritative" as const }];
+      const campaign = c5Campaign("authoritative", id.endsWith("stale_rejected") ? "authoritative" : "legacy_markdown");
+      const result = validateCampaign({
+        campaign,
+        roadmaps: c5Snapshots(
+          { markdown: bytes("matrix\n"), document: matrixDocument },
+          id.endsWith("stale_rejected") ? { markdown: bytes("testing\n"), document: testingDocument } : { markdown: bytes("testing\n") },
+        ),
+        unresolved_cross_roadmap: unresolved,
+        cross_roadmap_allowlist: allowlist,
+      });
+      if (id.endsWith("stale_rejected")) assertIssue(result.issues, "E-CAMPAIGN-TARGET-EXPIRED", "stale allowlist must fail");
+      else {
+        assert(result.issues.length === 0, "exact typed allowlist must pass");
+        const reversed = validateCampaign({
+          campaign,
+          roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document: matrixDocument }),
+          unresolved_cross_roadmap: [...unresolved].reverse(),
+          cross_roadmap_allowlist: [...allowlist].reverse(),
+        });
+        assert(JSON.stringify(result.issues) === JSON.stringify(reversed.issues), "allowlist validation must be deterministic under fact reversal");
+        for (const mutated of [[], [...allowlist, allowlist[0]!], [...allowlist, { ...allowlist[0]!, target: C5_ID }]]) {
+          assert(validateCampaign({
+            campaign,
+            roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document: matrixDocument }),
+            unresolved_cross_roadmap: unresolved,
+            cross_roadmap_allowlist: mutated,
+          }).issues.length > 0, "missing, duplicate, and stale-extra allowlist mutations must fail");
+        }
+      }
+      return true;
+    }
+    case "campaign_reservation_work_kind_required": {
+      const pair = c5LegacyPair(true);
+      const active = c5V1("matrix", [c5ReadyRecord(C5_ID, "defect")]);
+      const candidate = c5ActiveRevision(active, [c5Selection(C5_ID)]);
+      const result = validateTransaction({ scope: "all", against: C5_BASE, base: pair.revision, candidate });
+      assertIssue(result.issues, "E-TRANSACTION-OWNER", "cutover work kind mismatch must fail");
+      return true;
+    }
+    case "campaign_selection_target_kind_matches_owner": {
+      const result = validateLifecycleRevision(c5ActiveRevision(matrixDocument, [c5Selection(C5_ID, "legacy_markdown_reservation")]));
+      assertIssue(result.issues, "E-CAMPAIGN-TARGET", "selection tag must match normalized owner");
+      const source = c5LegacySource();
+      const reservation = c5Reservation(C5_ID, source);
+      const invalid = validateCampaign({
+        campaign: c5Campaign(
+          "legacy_markdown",
+          "legacy_markdown",
+          [reservation],
+          [c5Selection(C5_ID, "active_id")],
+        ),
+        roadmaps: c5Snapshots({ markdown: source }),
+        legacy_title_bindings: [c5Title(reservation, source)],
+      });
+      assertIssue(invalid.issues, "E-CAMPAIGN-TARGET",
+        "valid reservation evidence must not excuse an invalid active_id selection");
+      assert(invalid.owners.length === 1 && campaignIdentityOwners(invalid) === undefined,
+        "campaign owner capability must remain unexposed when any independent campaign issue exists");
+      assertIssue(validateGlobalIdentity({
+        documents: [],
+        additional_owners: { owner_count: invalid.owners.length } as never,
+      }).issues, "E-OWNER-DUPLICATE", "structural substitute for an invalid campaign result must not install owners");
+      const invalidCapability = campaignIdentityOwners(invalid);
+      const undefinedIdentity = validateGlobalIdentity({
+        documents: [],
+        ...(invalidCapability === undefined ? {} : { additional_owners: invalidCapability }),
+      });
+      assert(undefinedIdentity.owners.size === 0,
+        "undefined capability from an invalid campaign result must not install owners");
+
+      const valid = validateCampaign({
+        campaign: c5Campaign(
+          "legacy_markdown",
+          "legacy_markdown",
+          [reservation],
+          [c5Selection(C5_ID, "legacy_markdown_reservation")],
+        ),
+        roadmaps: c5Snapshots({ markdown: source }),
+        legacy_title_bindings: [c5Title(reservation, source)],
+      });
+      const validCapability = campaignIdentityOwners(valid);
+      assert(valid.issues.length === 0 && validCapability !== undefined && validateGlobalIdentity({
+        documents: [], additional_owners: validCapability,
+      }).owners.get(C5_ID)?.owner_kind === "legacy_markdown_reservation",
+      "issue-free campaign result must retain its valid opaque capability path");
+      return true;
+    }
+    case "campaign_new_legacy_selection_is_atomic": {
+      const base = c5LegacyPair(false, false);
+      const baseValidated = validateLifecycleRevision(base.revision);
+      const candidateDoc = c5Campaign("legacy_markdown", "legacy_markdown", [], [c5Selection(C5_ID, "legacy_markdown_reservation")]);
+      const candidateValidated = validateCampaign({ campaign: candidateDoc, roadmaps: base.revision.roadmaps });
+      assert(baseValidated.campaign !== undefined, "base campaign must validate");
+      assertIssue(validateCampaignTransition({
+        base: baseValidated.campaign, candidate: candidateValidated,
+        base_document: base.revision.campaign, candidate_document: candidateDoc, against: C5_BASE,
+      }), "E-CAMPAIGN-TRANSITION", "new legacy selection without reservation must fail atomically");
+      return true;
+    }
+    case "campaign_reservation_rebinds_whole_source": {
+      const source = bytes("## Lifecycle\nlegacy body\nsecond\n");
+      const a = c5Reservation(C5_ID, source);
+      const b = c5Reservation("matrix.fixture-second" as RoadmapId, source);
+      const stale = { ...b, whole_source_sha256: "0".repeat(64) };
+      const result = validateCampaign({
+        campaign: c5Campaign("legacy_markdown", "legacy_markdown", [a, stale]),
+        roadmaps: c5Snapshots({ markdown: source }),
+        legacy_title_bindings: [c5Title(a, source), c5Title(b, source)],
+      });
+      assertIssue(result.issues, "E-CAMPAIGN-TARGET", "every surviving reservation must repeat the rebased whole digest");
+      return true;
+    }
+  }
+  return false;
+}
+
+function c5RetiredCase(id: C5SelfTestCaseId): boolean {
+  if (!id.startsWith("retired_")) return false;
+  const valid = c5Tombstone(C5_ID);
+  switch (id) {
+    case "retired_bad_hash_length_case": {
+      for (const hash of ["abc", "g".repeat(40), "A".repeat(40), "a".repeat(39), "a".repeat(41), "a".repeat(63), "a".repeat(65)]) {
+        const result = validateRetiredIds(c5Retired([{ ...valid, last_active_at: hash as FullCommitId }]), fakeRegistryView());
+        assertIssue(result.issues, "E-RETIRED-HASH", `invalid object-format hash ${hash.length} must fail`);
+      }
+      return true;
+    }
+    case "retired_missing_replacement": {
+      const result = validateRetiredIds(c5Retired([{ ...valid, replacement: { kind: "gate", gate_id: "missing", claim_md: bytes("pin") } }]), fakeRegistryView());
+      assertIssue(result.issues, "E-RETIRED-REPLACEMENT", "missing replacement must fail");
+      return true;
+    }
+    case "retired_roadmap_replacement_rejected": {
+      assert(!REPLACEMENT_PIN_KINDS.some((kind) => (kind as string) === "roadmap"), "roadmap is not a replacement-pin arm");
+      const result = validateRetiredIds(c5Retired([{ ...valid, replacement: {
+        kind: "file_heading", path: "draft/roadmap.md" as RepoPath, heading: "roadmap:matrix.fixture-lifecycle", claim_md: bytes("pin"),
+      } }]), fakeRegistryView());
+      assertIssue(result.issues, "E-RETIRED-REPLACEMENT", "roadmap/draft replacement must fail");
+      return true;
+    }
+    case "retired_unresolved_replacement": {
+      const view = fakeRegistryView();
+      assert(!REPLACEMENT_PIN_KINDS.some((kind) => ["external_issue", "bare_title", "unresolved"].includes(kind)), "external, bare-title, and unresolved pins are not replacement arms");
+      const pins = [
+        { kind: "gate" as const, gate_id: "missing", claim_md: bytes("pin") },
+        { kind: "test_symbol" as const, test_id: "missing", symbol: "tests::missing", claim_md: bytes("pin") },
+        { kind: "file_heading" as const, path: "README.md" as RepoPath, heading: "Missing", claim_md: bytes("pin") },
+        { kind: "file_heading" as const, path: "draft/note.md" as RepoPath, heading: "Note", claim_md: bytes("pin") },
+      ];
+      for (const replacement of pins) {
+        assertIssue(validateRetiredIds(c5Retired([{ ...valid, replacement }]), view).issues, "E-RETIRED-REPLACEMENT", `${replacement.kind} unresolved replacement must fail`);
+      }
+      const duplicate = fakeRegistryView({ gates: [gateFact("roadmap_projection_check"), gateFact("roadmap_projection_check")] });
+      assertIssue(validateRetiredIds(c5Retired([valid]), duplicate).issues, "E-RETIRED-REPLACEMENT", "duplicate replacement provider must fail exact-one resolution");
+      return true;
+    }
+    case "retired_gate_stub": {
+      const view = fakeRegistryView({ gates: [gateFact("roadmap_projection_check", true)] });
+      assertIssue(validateRetiredIds(c5Retired([valid]), view).issues, "E-RETIRED-REPLACEMENT", "stub gate must fail");
+      return true;
+    }
+    case "retired_preexisting_keeps_base": {
+      const entries: RetiredIdV1[] = [
+        valid,
+        { id: "matrix.fixture-retired-test" as RoadmapId, last_active_at: C5_BASE, replacement: {
+          kind: "test_symbol", test_id: "rust-test:cddl-codegen#tests::sample::works", symbol: "tests::sample::works", claim_md: bytes("test"),
+        } },
+        { id: "matrix.fixture-retired-heading" as RoadmapId, last_active_at: C5_BASE, replacement: {
+          kind: "file_heading", path: "cddl-matrix/README.md" as RepoPath, heading: "What lives here", claim_md: bytes("heading"),
+        } },
+      ];
+      const base = validateRetiredIds(c5Retired(entries), fakeRegistryView());
+      const unchanged = validateRetiredIds(c5Retired([...entries].reverse()), fakeRegistryView());
+      assert(validateRetiredTransition({ base, candidate: unchanged, against: C5_BASE, eligible_base_origins: [] }).length === 0, "preexisting gate/test/heading tombstones must remain immutable and order-independent");
+      const changed = validateRetiredIds(c5Retired([{ ...valid, last_active_at: "f".repeat(40) as FullCommitId }, ...entries.slice(1)]), fakeRegistryView());
+      assertIssue(validateRetiredTransition({ base, candidate: changed, against: C5_BASE, eligible_base_origins: [] }), "E-RETIRED-REUSE", "preexisting tombstone must preserve history");
+      return true;
+    }
+    case "retired_new_last_active_matches_against": {
+      const base = validateRetiredIds(c5Retired(), fakeRegistryView());
+      const candidate = validateRetiredIds(c5Retired([valid]), fakeRegistryView());
+      assert(validateRetiredTransition({
+        base, candidate, against: C5_BASE,
+        eligible_base_origins: [{ id: C5_ID, owner_kind: "active_record" }],
+      }).length === 0, "new tombstone must accept exact --against");
+      return true;
+    }
+    case "retired_wrong_against": {
+      const base = validateRetiredIds(c5Retired(), fakeRegistryView());
+      const candidate = validateRetiredIds(c5Retired([{ ...valid, last_active_at: "f".repeat(40) as FullCommitId }]), fakeRegistryView());
+      assertIssue(validateRetiredTransition({
+        base, candidate, against: C5_BASE,
+        eligible_base_origins: [{ id: C5_ID, owner_kind: "active_record" }],
+      }), "E-RETIRED-HASH", "wrong transaction base must fail");
+      return true;
+    }
+    case "retired_test_symbol_requires_exact_id_and_symbol": {
+      const pin = {
+        kind: "test_symbol" as const,
+        test_id: "rust-test:cddl-codegen#tests::sample::works",
+        symbol: "tests::sample::wrong",
+        claim_md: bytes("pin"),
+      };
+      assert(!resolveReplacementPin(pin, fakeRegistryView()).resolved, "test replacement must match exact derived tuple");
+      assert(!resolveReplacementPin({ ...pin, test_id: "rust-test:cddl-codegen#tests::sample::wrong", symbol: "tests::sample::works" }, fakeRegistryView()).resolved, "test replacement must reject a separate test-ID mutation");
+      const exact = { ...pin, symbol: "tests::sample::works" };
+      assert(resolveReplacementPin(exact, fakeRegistryView()).resolved, "exact derived test tuple must resolve");
+      const duplicate = fakeRegistryView({ test_symbols: [fakeRegistryView().test_symbols[0]!, fakeRegistryView().test_symbols[0]!] });
+      assert(!resolveReplacementPin(exact, duplicate).resolved, "replacement resolution must be exact-one");
+      return true;
+    }
+  }
+  return false;
+}
+
+function c5IdentityReservationCase(id: C5SelfTestCaseId): boolean {
+  if (!id.startsWith("identity_reservation_") && !id.startsWith("identity_shadow_")) return false;
+  const pair = c5LegacyPair(true);
+  const source = pair.revision.roadmaps.matrix.markdown;
+  const shadowDocument = pair.revision.roadmaps.matrix.document as RoadmapDocumentV0;
+  const campaign = validateCampaign({
+    campaign: pair.revision.campaign,
+    roadmaps: pair.revision.roadmaps,
+    legacy_title_bindings: pair.revision.legacy_title_bindings,
+  });
+  assert(campaign.issues.length === 0, "reservation/shadow fixture must mint exact owner capabilities");
+  const reservationOwner = campaign.owners.find((owner) => owner.owner_kind === "legacy_markdown_reservation")!;
+  const shadowOwner = campaign.owners.find((owner) => owner.owner_kind === "shadow_record_reservation")!;
+  const reservationEvidence: CampaignIdentityOwnerEvidence = {
+    kind: "legacy_markdown_reservation",
+    reservation: pair.reservation,
+    markdown: source,
+  };
+  const shadowEvidence: CampaignIdentityOwnerEvidence = {
+    kind: "shadow_record_reservation",
+    id: C5_ID,
+    namespace: "matrix",
+    markdown: source,
+    shadow_document: shadowDocument,
+  };
+  const reservationCapability = c5OwnerCapability([reservationEvidence]);
+  const shadowCapability = c5OwnerCapability([shadowEvidence]);
+  const pairCapability = campaignIdentityOwners(campaign);
+  assert(pairCapability !== undefined, "validated campaign result must expose one opaque owner capability");
+  const activeInput = buildRoadmapIndexes(c5V1("matrix", [c5ReadyRecord(C5_ID)])).indexes.identity_inputs;
+  const guard: CurrentGuard = {
+    id: C5_ID,
+    replacement_pin: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("pin") },
+    owner_registry: "fixture-guards",
+  };
+  const tombstone = c5Tombstone(C5_ID);
+  switch (id) {
+    case "identity_reservation_cross_namespace_collision": {
+      const invalid = validateCampaignIdentityOwnerEvidence([{
+        ...reservationEvidence,
+        reservation: { ...pair.reservation, id: C5_TESTING_ID },
+      }]);
+      assert(!invalid.ok && invalid.issues[0]?.code === "E-OWNER-DUPLICATE", "namespace/path mismatch must fail before capability minting");
+      return true;
+    }
+    case "identity_reservation_active_collision":
+      assertIssue(validateGlobalIdentity({ documents: [activeInput], additional_owners: reservationCapability }).issues, "E-OWNER-DUPLICATE", "active/reservation collision must fail");
+      return true;
+    case "identity_reservation_tombstone_collision":
+      assertIssue(validateGlobalIdentity({ documents: [], tombstones: [tombstone], additional_owners: reservationCapability }).issues, "E-OWNER-DUPLICATE", "reservation/tombstone collision must fail");
+      return true;
+    case "identity_shadow_record_reserves_id": {
+      const result = validateGlobalIdentity({ documents: [], additional_owners: shadowCapability });
+      assert(result.issues.length === 0 && result.owners.get(C5_ID)?.owner_kind === "shadow_record_reservation", "shadow-only v0 record must reserve but not activate ID");
+      return true;
+    }
+    case "identity_reservation_shadow_coalesces": {
+      const result = validateGlobalIdentity({ documents: [], additional_owners: pairCapability });
+      assert(result.issues.length === 0 && result.owners.get(C5_ID)?.owner_kind === "legacy_markdown_reservation", "exact reservation/shadow pair must coalesce");
+      const reversed = validateGlobalIdentity({
+        documents: [],
+        additional_owners: c5OwnerCapability([shadowEvidence, reservationEvidence]),
+      });
+      assert(JSON.stringify([...result.owners].map(([key, value]) => [key, identityOwnerClaimKey(value)])) === JSON.stringify([...reversed.owners].map(([key, value]) => [key, identityOwnerClaimKey(value)])), "coalescence must be deterministic under owner reversal");
+      return true;
+    }
+    case "identity_reservation_shadow_binding_mismatch": {
+      for (const forged of [
+        { ...pairCapability },
+        [reservationOwner, shadowOwner],
+        reservationOwner,
+        shadowOwner,
+      ]) {
+        assertIssue(validateGlobalIdentity({ documents: [], additional_owners: forged as never }).issues, "E-OWNER-DUPLICATE", "structural clones, arrays, and direct sole R/S facts must lack opaque campaign provenance");
+      }
+      const mutableShadowSource = c5LegacySource();
+      const mutableShadowDocument = c5V0("matrix", mutableShadowSource, C5_ID);
+      const mutableShadowCapability = c5OwnerCapability([{
+        kind: "shadow_record_reservation",
+        id: C5_ID,
+        namespace: "matrix",
+        markdown: mutableShadowSource,
+        shadow_document: mutableShadowDocument,
+      }]);
+      mutableShadowDocument.records[0]!.title = "Mutated after mint";
+      assertIssue(validateGlobalIdentity({
+        documents: [], additional_owners: mutableShadowCapability,
+      }).issues, "E-OWNER-DUPLICATE", "post-mint shadow evidence mutation must invalidate capability provenance");
+      const mutablePair = c5LegacyPair(false);
+      const minted = validateCampaign({
+        campaign: mutablePair.revision.campaign,
+        roadmaps: mutablePair.revision.roadmaps,
+        legacy_title_bindings: mutablePair.revision.legacy_title_bindings,
+      }).owners.find((owner) => owner.owner_kind === "legacy_markdown_reservation")!;
+      if (minted.owner_kind === "legacy_markdown_reservation") minted.reservation.source_sha256 = "0".repeat(64);
+      assertIssue(validateLifecycleRevision(mutablePair.revision).issues, "E-CAMPAIGN-TARGET", "post-mint nested mutation must invalidate campaign provenance before transaction identity assembly");
+      return true;
+    }
+    case "identity_reservation_shadow_third_owner_rejected": {
+      const labels = ["A", "R", "S", "G", "T"] as const;
+      for (let left = 0; left < labels.length; left += 1) {
+        for (let right = left; right < labels.length; right += 1) {
+          const a = labels[left]!;
+          const b = labels[right]!;
+          const ownerEvidence: CampaignIdentityOwnerEvidence[] = [];
+          for (const label of [a, b]) {
+            if (label === "R") ownerEvidence.push(reservationEvidence);
+            if (label === "S") ownerEvidence.push(shadowEvidence);
+          }
+          const result = validateGlobalIdentity({
+            documents: [a, b].filter((label) => label === "A").map(() => activeInput),
+            ...(ownerEvidence.length === 0
+              ? {}
+              : { additional_owners: c5OwnerCapability(ownerEvidence) }),
+            current_guards: [a, b].filter((label) => label === "G").map(() => guard),
+            tombstones: [a, b].filter((label) => label === "T").map(() => tombstone),
+          });
+          const validPair = a === "R" && b === "S";
+          assert(validPair ? result.issues.length === 0 : result.issues.some((value) => value.code === "E-OWNER-DUPLICATE"), `owner pair ${a}-${b} normalization differs`);
+        }
+      }
+      const reversedPair = validateGlobalIdentity({
+        documents: [],
+        additional_owners: c5OwnerCapability([shadowEvidence, reservationEvidence]),
+      });
+      assert(reversedPair.issues.length === 0, "valid R-S pair must remain valid under reversal");
+      for (const third of [
+        { documents: [activeInput], additional_owners: pairCapability },
+        { documents: [], additional_owners: c5OwnerCapability([reservationEvidence, shadowEvidence, reservationEvidence]) },
+        { documents: [], additional_owners: c5OwnerCapability([reservationEvidence, shadowEvidence, shadowEvidence]) },
+        { documents: [], additional_owners: pairCapability, current_guards: [guard] },
+        { documents: [], additional_owners: pairCapability, tombstones: [tombstone] },
+      ]) assertIssue(validateGlobalIdentity(third).issues, "E-OWNER-DUPLICATE", "each A/R/S/G/T third claim must invalidate coalesced pair");
+      const aliasInput = {
+        namespace: "matrix" as const,
+        id_providers: [],
+        alias_providers: [{ alias: C5_ID, namespace: "matrix" as const, owner_kind: "record" as const, owner_id: "matrix.fixture-alias-owner", logical_path: "fixture.alias" }],
+      };
+      for (const ownerInputs of [
+        { documents: [activeInput, aliasInput] },
+        { documents: [aliasInput], additional_owners: reservationCapability },
+        { documents: [aliasInput], additional_owners: shadowCapability },
+        { documents: [aliasInput], current_guards: [guard] },
+        { documents: [aliasInput], tombstones: [tombstone] },
+      ]) assertIssue(validateGlobalIdentity(ownerInputs).issues, "E-ALIAS-COLLISION", "alias must collide with every A/R/S/G/T owner kind");
+      for (const forgedOwner of [
+        { owner_kind: "active_record", id: C5_ID, namespace: "matrix", record: c5ReadyRecord(C5_ID) },
+        { owner_kind: "current_guard", id: C5_ID, namespace: "matrix", guard },
+        { owner_kind: "tombstone", id: C5_ID, namespace: "matrix", tombstone },
+      ]) {
+        assertIssue(validateGlobalIdentity({ documents: [], additional_owners: forgedOwner as never }).issues, "E-OWNER-DUPLICATE", "non-campaign owner must fail the additional-owner runtime channel");
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+function withBaseRevision<T extends { readonly registry: RegistryView }>(value: T): T {
+  return { ...value, registry: c5Registry({ kind: "commit", commit: C5_BASE }, {
+    current_guards: value.registry.current_guards,
+    roadmap_citations: value.registry.roadmap_citations,
+  }) };
+}
+
+function c5AllTransaction(base: Parameters<typeof validateTransaction>[0] extends never ? never : ReturnType<typeof c5ActiveRevision>, candidate: ReturnType<typeof c5ActiveRevision>) {
+  return validateTransaction({ scope: "all", against: C5_BASE, base: withBaseRevision(base), candidate });
+}
+
+function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boolean {
+  if (!id.startsWith("transaction_")) return false;
+  const active = c5V1("matrix", [c5ReadyRecord(C5_ID)]);
+  const empty = c5V1("matrix");
+  const positiveRetirementInputs = () => {
+    const other = "matrix.fixture-survivor" as RoadmapId;
+    const baseDocument = c5V1("matrix", [c5ReadyRecord(C5_ID), c5ReadyRecord(other)], [
+      { source: C5_ID, kind: "related", target: other },
+    ], [{ id: "retiring-ref" as ReferenceId, source: C5_ID, kind: "roadmap", target_id: other }]);
+    const candidateDocument = c5V1("matrix", [c5ReadyRecord(other)]);
+    return {
+      base: c5ActiveRevision(baseDocument, [c5Selection(C5_ID)], { citations: [{
+        id: C5_ID, source: "README.md" as RepoPath,
+        span: { start_byte: 0, end_byte: 28 }, raw: `roadmap:${C5_ID}`,
+      }] }),
+      candidate: c5ActiveRevision(candidateDocument, [], { retired: [c5Tombstone(C5_ID)] }),
+    };
+  };
+  const positiveRetirement = () => {
+    const inputs = positiveRetirementInputs();
+    return c5AllTransaction(inputs.base, inputs.candidate);
+  };
+  switch (id) {
+    case "transaction_complete_tombstone": {
+      const result = positiveRetirement();
+      assert(result.issues.length === 0 && result.retired_ids[0] === C5_ID, `complete active retirement must pass: ${JSON.stringify(result.issues)}`);
+      const inputs = positiveRetirementInputs();
+      for (const missing of ["base", "candidate"] as const) {
+        const base = withBaseRevision(inputs.base);
+        const transaction = validateTransaction({
+          scope: "all",
+          against: C5_BASE,
+          base: missing === "base" ? { ...base, debt: {} } : base,
+          candidate: missing === "candidate" ? { ...inputs.candidate, debt: {} } : inputs.candidate,
+        });
+        assert(transaction.issues.some((issue) => issue.code === "E-TRANSACTION-BASE" &&
+          issue.logical_path === "debt.matrix"), `${missing} debt is mandatory for active retirement`);
+      }
+      return true;
+    }
+    case "transaction_complete_guard_transfer": {
+      const workId = "matrix.fixture-linked-work" as RoadmapId;
+      const familyBase = c5V1(
+        "matrix",
+        [c5FamilyRecord(C5_ID, [workId]), c5ReadyRecord(workId)],
+        [{ source: C5_ID, kind: "parent_of", target: workId }],
+        [{ id: "family-work" as ReferenceId, source: C5_ID, kind: "roadmap", target_id: workId }],
+      );
+      const candidateDocument = c5V1("matrix", [c5ReadyRecord(workId)]);
+      const guards = c5FamilyGuards(C5_ID);
+      const familyBaseRevision = c5ActiveRevision(familyBase, [], { citations: [{
+          id: C5_ID, source: "README.md" as RepoPath,
+          span: { start_byte: 0, end_byte: 28 }, raw: `roadmap:${C5_ID}`,
+        }] });
+      const familyCandidateRevision = c5ActiveRevision(candidateDocument, [], { guards });
+      const result = c5AllTransaction(familyBaseRevision, familyCandidateRevision);
+      assert(result.issues.length === 0 && result.guard_transfers[0] === C5_ID, `complete family guard transfer with surviving linked work must pass: ${JSON.stringify(result.issues)}`);
+      for (const missing of ["base", "candidate"] as const) {
+        const base = withBaseRevision(familyBaseRevision);
+        const transaction = validateTransaction({
+          scope: "all",
+          against: C5_BASE,
+          base: missing === "base" ? { ...base, debt: {} } : base,
+          candidate: missing === "candidate"
+            ? { ...familyCandidateRevision, debt: {} }
+            : familyCandidateRevision,
+        });
+        assert(transaction.issues.some((issue) => issue.code === "E-TRANSACTION-BASE" &&
+          issue.logical_path === "debt.matrix"), `${missing} debt is mandatory for family guard transfer`);
+      }
+      const debt = c5Debt(familyBase);
+      const rootAtoms = [...debt.owners.values()].filter(({ key }) =>
+        key.owner_kind === "record" && key.owner_id === C5_ID
+      );
+      assertExactStrings(rootAtoms.map(({ key }) => key.owner_field), [
+        "payload.boundary_md",
+        "payload.exclusions[0].reason_md",
+        "payload.goal_md",
+        "payload.summary_md",
+      ], "family guard fixture exact removable record atoms");
+      assertExactStrings(c5FamilyChildIds(C5_ID), [
+        `${C5_ID}.fixture-dimension`, `${C5_ID}.fixture-choice`, `${C5_ID}.fixture-proof`,
+        `${C5_ID}.fixture-point`, `${C5_ID}.fixture-excluded`,
+      ], "family guard fixture systematic child denominator");
+      const baseProviders = buildRoadmapIndexes(familyBase).indexes.identity_inputs.id_providers.filter((provider) =>
+        provider.owner_record_id === C5_ID && provider.kind !== "record"
+      );
+      assertExactStrings(baseProviders.map((provider) => `${provider.id}:${provider.kind}`), [
+        `${C5_ID}.fixture-dimension:family_axis`,
+        `${C5_ID}.fixture-choice:family_axis_value`,
+        `${C5_ID}.fixture-proof:family_evidence_requirement`,
+        `${C5_ID}.fixture-point:family_cell`,
+        `${C5_ID}.fixture-excluded:family_exclusion`,
+      ], "family guard fixture exact systematic child IDs and provider kinds");
+      const baseDebt = c5Debt(familyBase);
+      const candidateDebt = c5Debt(candidateDocument);
+      const registry = c5Registry({ kind: "worktree" }, { current_guards: guards });
+      const request = {
+        base_owner: {
+          owner_kind: "active_record" as const,
+          id: C5_ID,
+          namespace: "matrix" as const,
+          record: familyBase.records[0]!,
+        },
+        candidate_guard: {
+          owner_kind: "current_guard" as const,
+          id: C5_ID,
+          namespace: "matrix" as const,
+          guard: guards[0]!,
+        },
+        candidate_guards: guards,
+        candidate_replacement_facts: [
+          ...registry.gates, ...registry.test_symbols, ...registry.tracked_headings,
+        ],
+      };
+      const capability = validateDebtGuardTransferFacts(
+        baseDebt,
+        candidateDebt,
+        { base_document: familyBase, candidate_document: candidateDocument },
+        [request],
+      );
+      assert(capability.ok, `exact guard-transfer debt capability must mint: ${JSON.stringify(capability.issues)}`);
+      const replacementFamilyId = "matrix.fixture-replacement-family" as RoadmapId;
+      const activeChildrenCandidate = c5V1("matrix", [
+        c5FamilyRecordUsingChildIds(replacementFamilyId, c5FamilyChildIds(C5_ID)),
+        c5ReadyRecord(workId),
+      ]);
+      const rootOnlyGuard = c5Guard(C5_ID);
+      const activeChildrenRegistry = c5Registry({ kind: "worktree" }, { current_guards: [rootOnlyGuard] });
+      const activeChildrenRequest = {
+        ...request,
+        candidate_guard: { ...request.candidate_guard, guard: rootOnlyGuard },
+        candidate_guards: [rootOnlyGuard],
+        candidate_replacement_facts: [
+          ...activeChildrenRegistry.gates,
+          ...activeChildrenRegistry.test_symbols,
+          ...activeChildrenRegistry.tracked_headings,
+        ],
+      };
+      const activeChildrenDebt = c5Debt(activeChildrenCandidate);
+      const activeChildrenCapability = validateDebtGuardTransferFacts(
+        baseDebt,
+        activeChildrenDebt,
+        { base_document: familyBase, candidate_document: activeChildrenCandidate },
+        [activeChildrenRequest],
+      );
+      assert(activeChildrenCapability.ok && compareMigrationDebt(baseDebt, activeChildrenDebt, {
+        base_document: familyBase,
+        candidate_document: activeChildrenCandidate,
+        transition_facts: activeChildrenCapability.facts,
+      }).length === 0, "sameActiveKind must preserve every one of the five systematic provider kinds without child guards");
+      const activeLifecycle = c5AllTransaction(
+        c5ActiveRevision(familyBase),
+        c5ActiveRevision(activeChildrenCandidate, [], { guards: [rootOnlyGuard] }),
+      );
+      assert(activeLifecycle.issues.length === 0, `sameActiveKind lifecycle arm must pass: ${JSON.stringify(activeLifecycle.issues)}`);
+      const swappedKinds = [...c5FamilyChildIds(C5_ID)];
+      [swappedKinds[0], swappedKinds[3]] = [swappedKinds[3]!, swappedKinds[0]!];
+      const wrongKindCandidate = c5V1("matrix", [
+        c5FamilyRecordUsingChildIds(replacementFamilyId, swappedKinds),
+        c5ReadyRecord(workId),
+      ]);
+      const wrongKind = validateDebtGuardTransferFacts(
+        baseDebt,
+        c5Debt(wrongKindCandidate),
+        { base_document: familyBase, candidate_document: wrongKindCandidate },
+        [{ ...activeChildrenRequest }],
+      );
+      assert(!wrongKind.ok && wrongKind.issues[0]?.code === "E-DEBT-OWNER-REGRESSION",
+        "same child IDs under wrong systematic provider kinds must not satisfy sameActiveKind");
+
+      const exactPins = [
+        { kind: "gate" as const, gate_id: "roadmap_projection_check", claim_md: bytes("gate") },
+        {
+          kind: "test_symbol" as const,
+          test_id: "rust-test:cddl-codegen#tests::sample::works",
+          symbol: "tests::sample::works",
+          claim_md: bytes("test"),
+        },
+        {
+          kind: "file_heading" as const,
+          path: "cddl-matrix/README.md" as RepoPath,
+          heading: "What lives here",
+          claim_md: bytes("heading"),
+        },
+      ];
+      for (const pin of exactPins) {
+        const exactGuard = { ...rootOnlyGuard, replacement_pin: pin };
+        const exact = validateDebtGuardTransferFacts(
+          baseDebt,
+          activeChildrenDebt,
+          { base_document: familyBase, candidate_document: activeChildrenCandidate },
+          [{
+            ...activeChildrenRequest,
+            candidate_guard: { ...request.candidate_guard, guard: exactGuard },
+            candidate_guards: [exactGuard],
+          }],
+        );
+        assert(exact.ok, `guard seam must resolve canonical ${pin.kind} replacement semantics itself`);
+      }
+      const invalidReplacementRequests = [
+        {
+          guard: { ...rootOnlyGuard, replacement_pin: { ...rootOnlyGuard.replacement_pin, claim_md: bytes("") } },
+          facts: activeChildrenRequest.candidate_replacement_facts,
+        },
+        {
+          guard: {
+            ...rootOnlyGuard,
+            replacement_pin: {
+              kind: "file_heading" as const,
+              path: "draft/review.md" as RepoPath,
+              heading: "Draft",
+              claim_md: bytes("draft"),
+            },
+          },
+          facts: [headingFact("draft/review.md" as RepoPath, "Draft")],
+        },
+        {
+          guard: rootOnlyGuard,
+          facts: [gateFact("roadmap_projection_check"), gateFact("roadmap_projection_check")],
+        },
+        {
+          guard: rootOnlyGuard,
+          facts: [gateFact("roadmap_projection_check", true)],
+        },
+      ];
+      for (const invalid of invalidReplacementRequests) {
+        const rejected = validateDebtGuardTransferFacts(
+          baseDebt,
+          activeChildrenDebt,
+          { base_document: familyBase, candidate_document: activeChildrenCandidate },
+          [{
+            ...activeChildrenRequest,
+            candidate_guard: { ...request.candidate_guard, guard: invalid.guard },
+            candidate_guards: [invalid.guard],
+            candidate_replacement_facts: invalid.facts,
+          }],
+        );
+        assert(!rejected.ok && rejected.issues[0]?.code === "E-DEBT-OWNER-REGRESSION",
+          "empty claim, draft heading, duplicate provider, and stub gate must fail inside the debt seam");
+      }
+      const reversedInputs = validateDebtGuardTransferFacts(
+        baseDebt,
+        candidateDebt,
+        { base_document: familyBase, candidate_document: candidateDocument },
+        [{
+          ...request,
+          candidate_guards: [...request.candidate_guards].reverse(),
+          candidate_replacement_facts: [...request.candidate_replacement_facts].reverse(),
+        }],
+      );
+      assert(reversedInputs.ok && compareMigrationDebt(baseDebt, candidateDebt, {
+        base_document: familyBase,
+        candidate_document: candidateDocument,
+        transition_facts: reversedInputs.facts,
+      }).length === 0, "valid complete guard inputs must be order-independent");
+      assertIssue(compareMigrationDebt(baseDebt, candidateDebt, {
+        base_document: familyBase,
+        candidate_document: candidateDocument,
+        transition_facts: { restructure_count: 0, retirement_count: 0, guard_transfer_count: 1 },
+      }), "E-DEBT-BASE-MISMATCH", "caller-shaped guard capability must be inert");
+      assertIssue(compareMigrationDebt(baseDebt, candidateDebt, {
+        base_document: familyBase,
+        candidate_document: candidateDocument,
+        transition_facts: [],
+      }), "E-DEBT-BASE-MISMATCH", "empty capability composition must fail closed");
+      for (const wrongRequest of [
+        { ...request, base_owner: { ...request.base_owner, record: { ...request.base_owner.record } } },
+        { ...request, candidate_guard: { ...request.candidate_guard, guard: { ...request.candidate_guard.guard } } },
+      ]) {
+        const wrong = validateDebtGuardTransferFacts(
+          baseDebt,
+          candidateDebt,
+          { base_document: familyBase, candidate_document: candidateDocument },
+          [wrongRequest],
+        );
+        assert(!wrong.ok && wrong.issues[0]?.code === "E-DEBT-OWNER-REGRESSION", "guard capability must require object-identical family and guard facts");
+      }
+      assertIssue(compareMigrationDebt(candidateDebt, baseDebt, {
+        base_document: candidateDocument,
+        candidate_document: familyBase,
+        transition_facts: capability.facts,
+      }), "E-DEBT-BASE-MISMATCH", "guard capability must be direction-bound");
+      assertIssue(compareMigrationDebt(baseDebt, candidateDebt, {
+        base_document: familyBase,
+        candidate_document: candidateDocument,
+        transition_facts: [capability.facts, capability.facts],
+      }), "E-DEBT-BASE-MISMATCH", "overlapping capability rights must not compose");
+      const unrelatedBase = c5V1("matrix", [c5FamilyRecord(C5_ID, [workId]), c5ReadyRecord(workId)]);
+      const unrelatedCandidate = c5V1("matrix", [c5ReadyRecord(workId)]);
+      const unrelatedGuards = c5FamilyGuards(C5_ID);
+      const unrelatedRegistry = c5Registry({ kind: "worktree" }, { current_guards: unrelatedGuards });
+      const unrelated = validateDebtGuardTransferFacts(
+        c5Debt(unrelatedBase), c5Debt(unrelatedCandidate),
+        { base_document: unrelatedBase, candidate_document: unrelatedCandidate },
+        [{
+          ...request,
+          base_owner: { ...request.base_owner, record: unrelatedBase.records[0]! },
+          candidate_guard: { ...request.candidate_guard, guard: unrelatedGuards[0]! },
+          candidate_guards: unrelatedGuards,
+          candidate_replacement_facts: [
+            ...unrelatedRegistry.gates, ...unrelatedRegistry.test_symbols, ...unrelatedRegistry.tracked_headings,
+          ],
+        }],
+      );
+      assert(unrelated.ok, "unrelated comparison must mint its own capability");
+      assertIssue(compareMigrationDebt(baseDebt, candidateDebt, {
+        base_document: familyBase,
+        candidate_document: candidateDocument,
+        transition_facts: unrelated.facts,
+      }), "E-DEBT-BASE-MISMATCH", "capability from another debt/document identity must fail");
+
+      const attachedBase = c5V1(
+        "matrix",
+        [c5FamilyRecord(C5_ID, [workId]), c5ReadyRecord(workId)],
+      );
+      const attachedBytes = bytes("matrix");
+      attachedBase.spans.push({
+        id: "family-summary-span" as RoadmapDocumentV1["spans"][number]["id"],
+        start_byte: 0,
+        end_byte: attachedBytes.byteLength,
+        sha256: c5Sha(attachedBytes),
+        source_kind: "record",
+        owner_id: C5_ID,
+        owner_field: "payload.summary_md",
+        migration_status: "replaced",
+      });
+      const attachedBaseDebt = c5Debt(attachedBase);
+      const attachedRequest = {
+        ...request,
+        base_owner: { ...request.base_owner, record: attachedBase.records[0]! },
+      };
+      const attachedCapability = validateDebtGuardTransferFacts(
+        attachedBaseDebt,
+        candidateDebt,
+        { base_document: attachedBase, candidate_document: candidateDocument },
+        [attachedRequest],
+      );
+      assert(attachedCapability.ok && compareMigrationDebt(attachedBaseDebt, candidateDebt, {
+        base_document: attachedBase,
+        candidate_document: candidateDocument,
+        transition_facts: attachedCapability.facts,
+      }).length === 0, "guard transfer must authorize each exact source span attached to a derived family field atom");
+      const unrelatedSpanBase = {
+        ...attachedBase,
+        spans: [...attachedBase.spans, {
+          id: "unrelated-work-span" as RoadmapDocumentV1["spans"][number]["id"],
+          start_byte: 0,
+          end_byte: attachedBytes.byteLength,
+          sha256: c5Sha(attachedBytes),
+          source_kind: "record" as const,
+          owner_id: workId,
+          owner_field: "payload.summary_md",
+          migration_status: "replaced" as const,
+        }],
+      };
+      const unrelatedSpanDebt = c5Debt(unrelatedSpanBase);
+      const unrelatedSpanCapability = validateDebtGuardTransferFacts(
+        unrelatedSpanDebt,
+        candidateDebt,
+        { base_document: unrelatedSpanBase, candidate_document: candidateDocument },
+        [{ ...attachedRequest, base_owner: { ...request.base_owner, record: unrelatedSpanBase.records[0]! } }],
+      );
+      assert(unrelatedSpanCapability.ok, "unrelated source span must not poison exact family capability minting");
+      assertIssue(compareMigrationDebt(unrelatedSpanDebt, candidateDebt, {
+        base_document: unrelatedSpanBase,
+        candidate_document: candidateDocument,
+        transition_facts: unrelatedSpanCapability.facts,
+      }), "E-DEBT-OWNER-REGRESSION", "guard capability must not authorize removal of an unrelated source span");
+
+      const compareWithGuard = (testBase: MigrationDebt, testCandidate: MigrationDebt) => {
+        const guarded = validateDebtGuardTransferFacts(
+          testBase,
+          testCandidate,
+          { base_document: familyBase, candidate_document: candidateDocument },
+          [request],
+        );
+        assert(guarded.ok, `debt policy fixture must retain a valid guard capability: ${JSON.stringify(guarded.issues)}`);
+        return compareMigrationDebt(testBase, testCandidate, {
+          base_document: familyBase,
+          candidate_document: candidateDocument,
+          transition_facts: guarded.facts,
+        });
+      };
+      const workSummaryKey = {
+        roadmap: "matrix" as const,
+        owner_kind: "record" as const,
+        owner_id: workId,
+        owner_field: "payload.summary_md",
+      };
+      const missingUnrelatedOwner: MigrationDebt = {
+        ...candidateDebt,
+        owners: new Map([...candidateDebt.owners].filter(([index]) => index !== debtOwnerIndex(workSummaryKey))),
+      };
+      assertIssue(compareWithGuard(baseDebt, missingUnrelatedOwner), "E-DEBT-OWNER-REGRESSION",
+        "guard transfer must not hide an unrelated owner regression");
+      const independentOwner = candidateDebt.owners.get(debtOwnerIndex(workSummaryKey))!.key;
+      const grownIndependent = {
+        roadmap: "matrix" as const,
+        category: "unresolved_references" as const,
+        owner: independentOwner,
+        subject: "fixture-growth",
+      };
+      const candidateIndependentGrowth: MigrationDebt = {
+        ...candidateDebt,
+        independent: new Map([[independentDebtIndex(grownIndependent), grownIndependent]]),
+      };
+      assertIssue(compareWithGuard(baseDebt, candidateIndependentGrowth), "E-DEBT-SET-GROWTH",
+        "guard transfer must not hide independent debt growth");
+      const baseIndependent = { ...grownIndependent, category: "raw_subordinate_lifecycles" as const };
+      const baseCategoryDebt: MigrationDebt = {
+        ...baseDebt,
+        independent: new Map([[independentDebtIndex(baseIndependent), baseIndependent]]),
+      };
+      assertIssue(compareWithGuard(baseCategoryDebt, candidateIndependentGrowth), "E-DEBT-CATEGORY-HIDE",
+        "guard transfer must not hide an independent debt category move");
+      const frozenGrowthKey = {
+        roadmap: "matrix" as const,
+        owner_kind: "source_span" as const,
+        owner_id: "fixture-frozen-growth" as RoadmapDocumentV1["spans"][number]["id"],
+        owner_field: "coverage" as const,
+      };
+      const candidateFrozenGrowth: MigrationDebt = {
+        ...candidateDebt,
+        frozen_legacy_spans: new Map([[debtOwnerIndex(frozenGrowthKey), frozenGrowthKey]]),
+      };
+      assertIssue(compareWithGuard(baseDebt, candidateFrozenGrowth), "E-DEBT-FROZEN-SET",
+        "guard transfer must not hide frozen legacy-span growth");
+
+      const retiringId = "matrix.fixture-retiring" as RoadmapId;
+      const composed = c5AllTransaction(
+        c5ActiveRevision(c5V1("matrix", [
+          c5FamilyRecord(C5_ID, [workId]), c5ReadyRecord(workId), c5ReadyRecord(retiringId),
+        ])),
+        c5ActiveRevision(c5V1("matrix", [c5ReadyRecord(workId)]), [], {
+          guards,
+          retired: [c5Tombstone(retiringId)],
+        }),
+      );
+      assert(composed.issues.length === 0 && composed.guard_transfers.includes(C5_ID) &&
+        composed.retired_ids.includes(retiringId), `disjoint guard+retirement capabilities must compose: ${JSON.stringify(composed.issues)}`);
+
+      const compositionBase = c5V1("matrix", [
+        c5FamilyRecord(C5_ID, [workId]),
+        c5ReadyRecord(workId),
+        c5ReadyRecord(retiringId),
+      ]);
+      const compositionCandidate = c5V1("matrix", [c5ReadyRecord(workId)]);
+      const compositionBaseDebt = c5Debt(compositionBase);
+      const compositionCandidateDebt = c5Debt(compositionCandidate);
+      const compositionRegistry = c5Registry({ kind: "worktree" }, { current_guards: guards });
+      const compositionGuard = validateDebtGuardTransferFacts(
+        compositionBaseDebt,
+        compositionCandidateDebt,
+        { base_document: compositionBase, candidate_document: compositionCandidate },
+        [{
+          ...request,
+          base_owner: { ...request.base_owner, record: compositionBase.records[0]! },
+          candidate_guard: { ...request.candidate_guard, guard: guards[0]! },
+          candidate_guards: guards,
+          candidate_replacement_facts: [
+            ...compositionRegistry.gates,
+            ...compositionRegistry.test_symbols,
+            ...compositionRegistry.tracked_headings,
+          ],
+        }],
+      );
+      const retirement = c5Tombstone(retiringId);
+      const retirementOwner = {
+        owner_kind: "tombstone" as const,
+        id: retiringId,
+        namespace: "matrix" as const,
+        tombstone: retirement,
+      };
+      const compositionRetirement = validateDebtRetirementFacts(
+        compositionBaseDebt,
+        compositionCandidateDebt,
+        { base_document: compositionBase, candidate_document: compositionCandidate },
+        [{
+          base_owner: {
+            owner_kind: "active_record",
+            id: retiringId,
+            namespace: "matrix",
+            record: compositionBase.records[2]!,
+          },
+          removed_debt_owners: [...compositionBaseDebt.owners.values()].filter(({ key }) =>
+            key.owner_kind === "record" && key.owner_id === retiringId
+          ).map(({ key }) => key),
+          base_commit: C5_BASE,
+          base_source: {
+            source_path: compositionBase.document.source_path,
+            sha256: compositionBase.document.frozen_source_sha256,
+            byte_length: compositionBase.document.frozen_source_byte_length,
+          },
+          candidate_source: {
+            source_path: compositionCandidate.document.source_path,
+            sha256: compositionCandidate.document.frozen_source_sha256,
+            byte_length: compositionCandidate.document.frozen_source_byte_length,
+          },
+          candidate_identity_facts: [retirementOwner],
+          candidate_tombstone: retirementOwner,
+          candidate_replacement_fact: compositionRegistry.gates[0],
+        }],
+      );
+      assert(compositionGuard.ok && compositionRetirement.ok,
+        "disjoint direct guard and retirement capabilities must both mint");
+      for (const facts of [
+        [compositionGuard.facts, compositionRetirement.facts],
+        [compositionRetirement.facts, compositionGuard.facts],
+      ]) {
+        assert(compareMigrationDebt(compositionBaseDebt, compositionCandidateDebt, {
+          base_document: compositionBase,
+          candidate_document: compositionCandidate,
+          transition_facts: facts,
+        }).length === 0, "disjoint guard+retirement capabilities must compose in both orders");
+      }
+
+      const restructureId = "matrix.fixture-restructure" as RoadmapId;
+      const oldSpanId = "restructure-old" as RoadmapDocumentV1["spans"][number]["id"];
+      const newSpanId = "restructure-new" as RoadmapDocumentV1["spans"][number]["id"];
+      const rawRecord: RoadmapDocumentV1["records"][number] = {
+        id: restructureId,
+        title: "Restructure",
+        projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
+        render_authority: "raw",
+        source_block_md: bytes("## Restructure\n"),
+        span_ids: [oldSpanId],
+      };
+      const semanticRecord = {
+        id: restructureId,
+        title: "Restructure",
+        projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
+        render_authority: "semantic" as const,
+        payload: { kind: "decision", summary_md: bytes("done") },
+        source_replacements: [{
+          span_id: newSpanId,
+          replacement_field: "payload.summary_md",
+          review_note_md: bytes("reviewed"),
+        }],
+      } as unknown as RoadmapDocumentV1["records"][number];
+      const restructureBase = c5V1("matrix", [c5FamilyRecord(C5_ID), rawRecord]);
+      restructureBase.spans.push({
+        id: oldSpanId,
+        start_byte: 0,
+        end_byte: 6,
+        sha256: c5Sha(bytes("matrix")),
+        source_kind: "record",
+        owner_id: restructureId,
+        owner_field: "source_block_md",
+        migration_status: "raw",
+      });
+      const restructureCandidate = c5V1("matrix", [semanticRecord]);
+      restructureCandidate.spans.push({
+        id: newSpanId,
+        start_byte: 0,
+        end_byte: 6,
+        sha256: c5Sha(bytes("matrix")),
+        source_kind: "record",
+        owner_id: restructureId,
+        owner_field: "payload.summary_md",
+        migration_status: "replaced",
+      });
+      const restructureBaseDebt = c5Debt(restructureBase);
+      const restructureCandidateDebt = c5Debt(restructureCandidate);
+      const restructureGuard = validateDebtGuardTransferFacts(
+        restructureBaseDebt,
+        restructureCandidateDebt,
+        { base_document: restructureBase, candidate_document: restructureCandidate },
+        [{
+          ...request,
+          base_owner: { ...request.base_owner, record: restructureBase.records[0]! },
+        }],
+      );
+      const restructure = validateDebtTransitionFacts(
+        restructureBaseDebt,
+        restructureCandidateDebt,
+        { base_document: restructureBase, candidate_document: restructureCandidate },
+        [{
+          removed: {
+            roadmap: "matrix",
+            owner_kind: "record",
+            owner_id: restructureId,
+            owner_field: "source_block_md",
+          },
+          added: [{
+            roadmap: "matrix",
+            owner_kind: "record",
+            owner_id: restructureId,
+            owner_field: "payload.summary_md",
+          }],
+        }],
+      );
+      assert(restructureGuard.ok && restructure.ok,
+        "disjoint direct guard and restructure capabilities must both mint");
+      for (const facts of [
+        [restructureGuard.facts, restructure.facts],
+        [restructure.facts, restructureGuard.facts],
+      ]) {
+        assert(compareMigrationDebt(restructureBaseDebt, restructureCandidateDebt, {
+          base_document: restructureBase,
+          candidate_document: restructureCandidate,
+          transition_facts: facts,
+        }).length === 0, "disjoint guard+restructure capabilities must compose in both orders");
+      }
+      return true;
+    }
+    case "transaction_missing_campaign_removal": {
+      const result = c5AllTransaction(
+        c5ActiveRevision(active, [c5Selection(C5_ID)]),
+        c5ActiveRevision(empty, [c5Selection(C5_ID)], { retired: [c5Tombstone(C5_ID)] }),
+      );
+      assertIssue(result.issues, "E-CAMPAIGN-TARGET", "retirement selection must fail closed before partial lifecycle authorization");
+      return true;
+    }
+    case "transaction_live_citation":
+    case "transaction_citation_in_nonroadmap_file_rejected": {
+      const citation = {
+        id: C5_ID, source: (id.endsWith("nonroadmap_file_rejected") ? "README.md" : "tests/TESTING_ROADMAP.md") as RepoPath,
+        span: { start_byte: 2, end_byte: 30 }, raw: `roadmap:${C5_ID}`,
+      };
+      const result = c5AllTransaction(
+        c5ActiveRevision(active),
+        c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID)], citations: [citation] }),
+      );
+      assertIssue(result.issues, "E-TRANSACTION-CITATION", "repository-wide live citation must block retirement");
+      return true;
+    }
+    case "transaction_dangling_relation": {
+      const other = "matrix.fixture-other" as RoadmapId;
+      const candidate = c5V1("matrix", [c5ReadyRecord(other)], [{ source: other, kind: "related", target: C5_ID }]);
+      const result = c5AllTransaction(c5ActiveRevision(active), c5ActiveRevision(candidate, [], { retired: [c5Tombstone(C5_ID)] }));
+      assertIssue(result.issues, "E-TRANSACTION-REFERENCE", "dangling relation must fail");
+      return true;
+    }
+    case "transaction_dangling_reference": {
+      const other = "matrix.fixture-other" as RoadmapId;
+      const candidate = c5V1("matrix", [c5ReadyRecord(other)], [], [{
+        id: "roadmap-ref" as ReferenceId, source: other, kind: "roadmap", target_id: C5_ID,
+      }]);
+      const result = c5AllTransaction(c5ActiveRevision(active), c5ActiveRevision(candidate, [], { retired: [c5Tombstone(C5_ID)] }));
+      assertIssue(result.issues, "E-TRANSACTION-REFERENCE", "dangling typed reference must fail");
+      return true;
+    }
+    case "transaction_missing_tombstone": {
+      const result = c5AllTransaction(c5ActiveRevision(active), c5ActiveRevision(empty));
+      assertIssue(result.issues, "E-TRANSACTION-OWNER", "active removal without tombstone must fail");
+      return true;
+    }
+    case "transaction_unused_tombstone": {
+      const result = c5AllTransaction(c5ActiveRevision(empty), c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID)] }));
+      assertIssue(result.issues, "E-TRANSACTION-ORIGIN", "unused tombstone must fail");
+      return true;
+    }
+    case "transaction_partial_guard": {
+      const workId = "matrix.fixture-linked-work" as RoadmapId;
+      const familyBase = c5V1("matrix", [c5FamilyRecord(C5_ID, [workId]), c5ReadyRecord(workId)]);
+      const survivor = c5V1("matrix", [c5ReadyRecord(workId)]);
+      const validGuards = c5FamilyGuards(C5_ID);
+      const validGuard = validGuards[0]!;
+      const candidates = [
+        c5ActiveRevision(survivor),
+        c5ActiveRevision(survivor, [], { guards: [{ ...validGuard, id: "matrix.fixture-wrong" as RoadmapId }, ...validGuards.slice(1)] }),
+        c5ActiveRevision(survivor, [], { guards: [{ ...validGuard, replacement_pin: { kind: "gate", gate_id: "missing", claim_md: bytes("pin") } }, ...validGuards.slice(1)] }),
+        c5ActiveRevision(survivor, [], { guards: validGuards, retired: [c5Tombstone(C5_ID)] }),
+        c5ActiveRevision(familyBase, [], { guards: validGuards }),
+        c5ActiveRevision(survivor, [], { guards: validGuards.slice(0, -1) }),
+      ];
+      for (const candidate of candidates) {
+        const result = c5AllTransaction(c5ActiveRevision(familyBase), candidate);
+        assert(result.issues.length > 0, "missing/wrong/unresolved/tombstoned/leftover family guard transfer must fail");
+      }
+      const unrelatedGuard = c5Guard("matrix.fixture-unused-guard" as RoadmapId);
+      assertIssue(c5AllTransaction(
+        c5ActiveRevision(familyBase),
+        c5ActiveRevision(survivor, [], { guards: [...validGuards, unrelatedGuard] }),
+      ).issues, "E-TRANSACTION-GUARD", "candidate-only unused guard must fail with no base owner");
+      const childId = c5FamilyChildIds(C5_ID)[0]!;
+      const retainedBase = withBaseRevision(c5ActiveRevision(c5V1("matrix"), [], { guards: validGuards }));
+      const reactivated = c5ActiveRevision(c5V1("matrix", [c5ReadyRecord(childId)]), [], {
+        guards: validGuards.filter((guard) => guard.id !== childId),
+      });
+      assertIssue(validateTransaction({
+        scope: "all", against: C5_BASE, base: retainedBase, candidate: reactivated,
+      }).issues, "E-TRANSACTION-OWNER", "a protected systematic child ID cannot be reactivated by dropping its guard");
+      return true;
+    }
+    case "transaction_family_tombstone_rejected": {
+      const family = c5V1("matrix", [c5FamilyRecord(C5_ID)]);
+      const result = c5AllTransaction(c5ActiveRevision(family), c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID)] }));
+      assertIssue(result.issues, "E-TRANSACTION-ORIGIN", "active family is not tombstone eligible");
+      return true;
+    }
+    case "transaction_linked_work_tombstone_required": {
+      const workId = "matrix.fixture-linked-work" as RoadmapId;
+      const family = c5FamilyRecord(C5_ID, [workId]);
+      const base = c5V1("matrix", [family, c5ReadyRecord(workId)]);
+      const candidate = c5V1("matrix", [family]);
+      const result = c5AllTransaction(c5ActiveRevision(base), c5ActiveRevision(candidate));
+      assertIssue(result.issues, "E-TRANSACTION-OWNER", "removed linked work needs its own tombstone");
+      return true;
+    }
+    case "transaction_duplicate_current_owner": {
+      const guard: CurrentGuard = {
+        id: C5_ID,
+        replacement_pin: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("pin") },
+        owner_registry: "fixture-guards",
+      };
+      const result = c5AllTransaction(c5ActiveRevision(active), c5ActiveRevision(active, [], { guards: [guard] }));
+      assertIssue(result.issues, "E-OWNER-DUPLICATE", "duplicate candidate owner must fail before transaction authorization");
+      const guardB: CurrentGuard = { ...guard, replacement_pin: { ...guard.replacement_pin, claim_md: bytes("other") } };
+      const forward = c5AllTransaction(c5ActiveRevision(active), c5ActiveRevision(active, [], { guards: [guard, guardB] }));
+      const reversed = c5AllTransaction(c5ActiveRevision(active), c5ActiveRevision(active, [], { guards: [guardB, guard] }));
+      assert(JSON.stringify(forward.issues) === JSON.stringify(reversed.issues), "transaction diagnostics must be deterministic under current-owner reversal");
+      return true;
+    }
+    case "transaction_deselect_active_allowed": {
+      const result = c5AllTransaction(c5ActiveRevision(active, [c5Selection(C5_ID)]), c5ActiveRevision(active));
+      assert(result.issues.length === 0, "deselection with active owner retained must pass");
+      return true;
+    }
+    case "transaction_full_hash_git_integration": {
+      assert(context !== undefined, "full-hash integration requires injected SelfTestContext ports");
+      const repository = context.ports.fixtures.createScratchRepository([{
+        path: "fixture.txt" as RepoPath,
+        bytes: bytes("base\n"),
+      }]);
+      let scratchCommit: FullCommitId;
+      try {
+        assert(context.ports.fixtures.scratchRepositoryPresent(repository), "scratch repository must exist during lifecycle probe");
+        for (const argv of [
+          ["init", "--quiet"],
+          ["add", "--", "fixture.txt"],
+          ["-c", "user.name=Roadmap Selftest", "-c", "user.email=roadmap@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "base;argv-is-not-shell"],
+        ] as const) {
+          const command = context.ports.scratch_git.runScratchGit(repository, argv);
+          assert(command.exit_code === 0, `scratch Git argv command failed: ${JSON.stringify(argv)}`);
+        }
+        const resolved = context.ports.scratch_git.runScratchGit(repository, ["rev-parse", "HEAD"]);
+        assert(resolved.exit_code === 0, "scratch Git must resolve the committed HEAD");
+        scratchCommit = new TextDecoder().decode(resolved.stdout).trim() as FullCommitId;
+        assert(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(scratchCommit), "scratch Git must return one full lowercase object ID");
+      } finally {
+        context.ports.fixtures.removeScratchRepository(repository);
+      }
+      assert(!context.ports.fixtures.scratchRepositoryPresent(repository), "scratch repository must be removed in finally");
+      const scratchResult = validateTransaction({
+        scope: "all", against: scratchCommit,
+        base: { ...c5ActiveRevision(active), registry: c5Registry({ kind: "commit", commit: scratchCommit }) },
+        candidate: c5ActiveRevision(active),
+      });
+      assert(scratchResult.issues.length === 0, `injected scratch full hash must bind the base transaction: ${JSON.stringify(scratchResult.issues)}`);
+      const sha256Commit = "a".repeat(64) as FullCommitId;
+      const sha256Result = validateTransaction({
+        scope: "all", against: sha256Commit,
+        base: { ...c5ActiveRevision(active), registry: c5Registry({ kind: "commit", commit: sha256Commit }) },
+        candidate: c5ActiveRevision(active),
+      });
+      assert(sha256Result.issues.length === 0, "exact full SHA-256 base and same-revision facts must pass");
+      const wrongBase = validateTransaction({
+        scope: "all", against: C5_BASE,
+        base: { ...withBaseRevision(c5ActiveRevision(active)), registry: c5Registry({ kind: "commit", commit: "f".repeat(40) as FullCommitId }) },
+        candidate: c5ActiveRevision(active),
+      });
+      assertIssue(wrongBase.issues, "E-TRANSACTION-BASE", "same full revision must supply base documents and facts");
+      const abbreviated = validateTransaction({
+        scope: "all", against: "0123456" as FullCommitId,
+        base: withBaseRevision(c5ActiveRevision(active)), candidate: c5ActiveRevision(active),
+      });
+      assertIssue(abbreviated.issues, "E-TRANSACTION-BASE", "abbreviated base must fail closed");
+      const candidateCommit = validateTransaction({
+        scope: "all", against: C5_BASE,
+        base: withBaseRevision(c5ActiveRevision(active)),
+        candidate: { ...c5ActiveRevision(active), registry: c5Registry({ kind: "commit", commit: C5_BASE }) },
+      });
+      assertIssue(candidateCommit.issues, "E-TRANSACTION-BASE", "candidate facts from an unrelated commit must not substitute for worktree facts");
+      return true;
+    }
+    case "transaction_legacy_cutover_transfer_selected":
+    case "transaction_legacy_cutover_transfer_unselected": {
+      const selected = id === "transaction_legacy_cutover_transfer_selected";
+      const pair = c5LegacyPair(true, selected);
+      const shadow = pair.revision.roadmaps.matrix.document as RoadmapDocumentV0;
+      const promoted = c5PromoteV0(shadow, new Map([[C5_ID, c5ReadyRecord(C5_ID).payload]]));
+      const candidate = c5ActiveRevision(promoted, selected ? [c5Selection(C5_ID)] : []);
+      const result = validateTransaction({ scope: "all", against: C5_BASE, base: pair.revision, candidate });
+      assert(result.issues.length === 0 && result.authority_transfers[0] === C5_ID, `complete reservation cutover must pass: ${JSON.stringify(result.issues)}`);
+      return true;
+    }
+    case "transaction_legacy_cutover_work_kind_mismatch": {
+      const pair = c5LegacyPair(true);
+      const shadow = pair.revision.roadmaps.matrix.document as RoadmapDocumentV0;
+      const promoted = c5PromoteV0(shadow, new Map([[C5_ID, c5ReadyRecord(C5_ID, "defect").payload]]));
+      const candidate = c5ActiveRevision(promoted, [c5Selection(C5_ID)]);
+      const result = validateTransaction({ scope: "all", against: C5_BASE, base: pair.revision, candidate });
+      assertIssue(result.issues, "E-TRANSACTION-OWNER", "cutover work kind mismatch must fail");
+      return true;
+    }
+    case "transaction_legacy_delivery_without_shadow":
+    case "transaction_legacy_delivery_with_shadow": {
+      const shadow = id.endsWith("with_shadow");
+      const pair = c5LegacyPair(shadow);
+      const candidate = c5LegacyCandidate(shadow);
+      const result = validateTransaction({ scope: "all", against: C5_BASE, base: pair.revision, candidate });
+      assert(result.issues.length === 0 && result.retired_ids[0] === C5_ID, `complete legacy delivery must pass: ${JSON.stringify(result.issues)}`);
+      return true;
+    }
+    case "transaction_legacy_delivery_selection_survives":
+    case "transaction_legacy_delivery_reservation_survives":
+    case "transaction_legacy_delivery_bound_span_survives":
+    case "transaction_legacy_delivery_shadow_owner_survives":
+    case "transaction_legacy_delivery_missing_tombstone":
+    case "transaction_legacy_delivery_wrong_last_active":
+    case "transaction_legacy_delivery_live_repo_citation": {
+      const mutations = {
+        transaction_legacy_delivery_selection_survives: "selection",
+        transaction_legacy_delivery_reservation_survives: "reservation",
+        transaction_legacy_delivery_bound_span_survives: "bytes",
+        transaction_legacy_delivery_shadow_owner_survives: "shadow",
+        transaction_legacy_delivery_missing_tombstone: "missing_tombstone",
+        transaction_legacy_delivery_wrong_last_active: "wrong_commit",
+        transaction_legacy_delivery_live_repo_citation: "citation",
+      } as const;
+      const selectedMutations = id === "transaction_legacy_delivery_shadow_owner_survives"
+        ? ["shadow", "active", "guard", "alias"] as const
+        : id === "transaction_legacy_delivery_bound_span_survives"
+        ? ["bytes", "stale_shadow"] as const
+        : id === "transaction_legacy_delivery_live_repo_citation"
+        ? ["citation", "relation", "reference"] as const
+        : [mutations[id]] as const;
+      for (const mutation of selectedMutations) {
+        const testingAuthoritative = mutation === "alias" || mutation === "relation" || mutation === "reference";
+        const shadow = mutation === "reservation" ? false : true;
+        const pair = c5LegacyPair(shadow, true, testingAuthoritative);
+        const result = validateTransaction({
+          scope: "all", against: C5_BASE, base: pair.revision,
+          candidate: c5LegacyCandidate(shadow, mutation),
+        });
+        const expected = mutation === "selection" ? ["E-CAMPAIGN-TARGET", "selection[0]"]
+          : mutation === "reservation" ? ["E-OWNER-DUPLICATE", `owner[\"${C5_ID}\"]`]
+          : mutation === "bytes" ? ["E-TRANSACTION-CAMPAIGN", `owner[\"${C5_ID}\"].bound_source`]
+          : mutation === "stale_shadow" ? ["E-SCHEMA-STATE", "campaign.matrix_authority"]
+          : mutation === "alias" ? ["E-ALIAS-COLLISION", `alias[\"${C5_ID}\"]`]
+          : mutation === "relation" ? ["E-TRANSACTION-REFERENCE", `relation[\"${C5_ID}\"]`]
+          : mutation === "reference" ? ["E-TRANSACTION-REFERENCE", `reference[\"${C5_ID}\"]`]
+          : mutation === "missing_tombstone" ? ["E-TRANSACTION-OWNER", `owner[\"${C5_ID}\"]`]
+          : mutation === "wrong_commit" ? ["E-RETIRED-HASH", `retired_ids.entry[\"${C5_ID}\"].last_active_at`]
+          : mutation === "citation" ? ["E-TRANSACTION-CITATION", `citation[\"${C5_ID}\"]`]
+          : ["E-OWNER-DUPLICATE", `owner[\"${C5_ID}\"]`];
+        assert(result.issues.some((issue) => issue.code === expected[0] && issue.logical_path === expected[1]),
+          `${id}/${mutation} must fail its focused obligation at ${expected.join("#")}: ${JSON.stringify(result.issues)}`);
+      }
+      return true;
+    }
+    case "transaction_shadow_only_delivery_rejected": {
+      const source = c5LegacySource();
+      const base = c5WithDebt({
+        campaign: c5Campaign("shadow", "legacy_markdown"), retired: c5Retired(),
+        roadmaps: c5Snapshots({ markdown: source, document: c5V0("matrix", source, C5_ID) }),
+        registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+      });
+      const result = validateTransaction({ scope: "all", against: C5_BASE, base, candidate: c5LegacyCandidate(true) });
+      assertIssue(result.issues, "E-TRANSACTION-ORIGIN", "shadow-only owner cannot retire before reviewed reservation/cutover");
+      return true;
+    }
+    case "transaction_single_roadmap_owner_removal_rejected": {
+      const baseIdentity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(active).indexes.identity_inputs] });
+      const candidateIdentity = validateGlobalIdentity({ documents: [] });
+      const result = validateTransaction({
+        scope: "matrix", against: C5_BASE,
+        load_base: () => ({
+          document: active, debt: c5Debt(active), identity: baseIdentity,
+          registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+        }),
+        candidate_document: empty, candidate_debt: c5Debt(empty),
+        candidate_registry: c5Registry({ kind: "worktree" }),
+        candidate_global_identity: candidateIdentity,
+      });
+      assertIssue(result.issues, "E-TRANSACTION-OWNER", "single-roadmap scope cannot authorize owner removal");
+      return true;
+    }
+    case "transaction_tombstone_eligible_base_owner_set": {
+      assertExactStrings(TOMBSTONE_ELIGIBLE_BASE_OWNER_KINDS, ["active_record", "current_guard", "legacy_markdown_reservation"], "eligible tombstone universe");
+      const activeResult = positiveRetirement();
+      assert(activeResult.issues.length === 0, "active_record origin must pass");
+      const legacy = c5LegacyPair(false);
+      assert(validateTransaction({ scope: "all", against: C5_BASE, base: legacy.revision, candidate: c5LegacyCandidate(false) }).issues.length === 0, "legacy reservation origin must pass");
+      const guard: CurrentGuard = {
+        id: C5_ID,
+        replacement_pin: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("old-pin") },
+        owner_registry: "fixture-guards",
+      };
+      const base = withBaseRevision(c5ActiveRevision(empty, [], { guards: [guard] }));
+      const candidate = c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID)] });
+      const guardResult = validateTransaction({ scope: "all", against: C5_BASE, base, candidate });
+      assert(guardResult.issues.length === 0, `current_guard origin accepts any resolving replacement, not byte-identical old pin: ${JSON.stringify(guardResult.issues)}`);
+      return true;
+    }
+    case "transaction_tombstone_ineligible_base_owner_rejected": {
+      assertExactStrings(TOMBSTONE_INELIGIBLE_ORIGIN_LABELS, ["shadow_only", "active_family", "alias", "selection", "preexisting_tombstone"], "ineligible tombstone universe");
+      const shadowSource = c5LegacySource();
+      const shadowBase = c5WithDebt({
+        campaign: c5Campaign("shadow", "legacy_markdown"), retired: c5Retired(),
+        roadmaps: c5Snapshots({ markdown: shadowSource, document: c5V0("matrix", shadowSource, C5_ID) }),
+        registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+      });
+      assertIssue(validateTransaction({ scope: "all", against: C5_BASE, base: shadowBase, candidate: c5LegacyCandidate(true) }).issues, "E-TRANSACTION-ORIGIN", "shadow-only origin must fail");
+      assertIssue(c5AllTransaction(c5ActiveRevision(c5V1("matrix", [c5FamilyRecord(C5_ID)])), c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID)] })).issues, "E-TRANSACTION-ORIGIN", "active family origin must fail");
+      const aliasOwner = "matrix.fixture-alias-owner" as RoadmapId;
+      const aliasRecord = { ...c5ReadyRecord(aliasOwner), legacy_aliases: [C5_ID] };
+      assertIssue(c5AllTransaction(
+        c5ActiveRevision(c5V1("matrix", [aliasRecord])),
+        c5ActiveRevision(c5V1("matrix", [aliasRecord]), [], { retired: [c5Tombstone(C5_ID)] }),
+      ).issues, "E-TRANSACTION-ORIGIN", "a real base alias cannot authorize a tombstone");
+      assertIssue(c5AllTransaction(
+        c5ActiveRevision(empty, [c5Selection(C5_ID)]),
+        c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID)] }),
+      ).issues, "E-CAMPAIGN-TARGET", "a real but ownerless base selection fails before it can authorize a tombstone");
+      assertIssue(c5AllTransaction(
+        c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID, "f".repeat(40) as FullCommitId)] }),
+        c5ActiveRevision(empty, [], { retired: [c5Tombstone(C5_ID)] }),
+      ).issues, "E-RETIRED-REUSE", "a real pre-existing tombstone is immutable and cannot become a new origin");
+      return true;
+    }
+  }
+  return false;
+}
+
+function c5AgainstCase(id: C5SelfTestCaseId): boolean {
+  if (!id.startsWith("against_")) return false;
+  const roadmap: RoadmapName = id.includes("testing") ? "testing" : "matrix";
+  const activeId = roadmap === "matrix" ? C5_ID : C5_TESTING_ID;
+  const document = c5V1(roadmap, [c5ReadyRecord(activeId)]);
+  const identity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(document).indexes.identity_inputs] });
+  const baseFacts = {
+    document,
+    debt: c5Debt(document),
+    identity,
+    registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+  };
+  const scoped = () => validateTransaction({
+    scope: roadmap,
+    against: C5_BASE,
+    load_base: () => baseFacts,
+    candidate_document: document,
+    candidate_debt: c5Debt(document),
+    candidate_registry: c5Registry({ kind: "worktree" }),
+    candidate_global_identity: identity,
+  });
+  const allSame = (
+    campaign: CampaignDocumentV1,
+    snapshots: Readonly<Record<RoadmapName, CampaignRoadmapSnapshot>>,
+  ) => {
+    const revision = c5WithDebt({
+      campaign,
+      retired: c5Retired(),
+      roadmaps: snapshots,
+      registry: c5Registry({ kind: "worktree" }),
+    });
+    return validateTransaction({ scope: "all", against: C5_BASE, base: withBaseRevision(revision), candidate: revision });
+  };
+  switch (id) {
+    case "against_matrix_v1_debt_allowed":
+    case "against_testing_v1_debt_allowed":
+      assert(scoped().issues.length === 0, `${id} selected-only authoritative debt comparison must pass without another base roadmap`);
+      return true;
+    case "against_per_roadmap_does_not_load_other_base": {
+      const other: RoadmapName = roadmap === "matrix" ? "testing" : "matrix";
+      const byRoadmap = new Proxy({ [roadmap]: baseFacts } as Record<RoadmapName, typeof baseFacts>, {
+        get(target, property, receiver) {
+          if (property === other) throw new Error("unselected base read");
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      const loaded: RoadmapName[] = [];
+      const result = validateTransaction({
+        scope: roadmap, against: C5_BASE,
+        load_base: (selected) => {
+          loaded.push(selected);
+          return byRoadmap[selected];
+        },
+        candidate_document: document, candidate_debt: c5Debt(document),
+        candidate_registry: c5Registry({ kind: "worktree" }), candidate_global_identity: identity,
+      });
+      assert(result.issues.length === 0 && loaded.length === 1 && loaded[0] === roadmap, "selected scope must call only the selected pure base loader once");
+      return true;
+    }
+    case "against_per_roadmap_candidate_global_collision_rejected": {
+      const guard: CurrentGuard = {
+        id: activeId,
+        replacement_pin: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("pin") },
+        owner_registry: "fixture-guards",
+      };
+      const collision = validateGlobalIdentity({
+        documents: [buildRoadmapIndexes(document).indexes.identity_inputs], current_guards: [guard],
+      });
+      const result = validateTransaction({
+        scope: roadmap, against: C5_BASE, load_base: () => baseFacts, candidate_document: document,
+        candidate_debt: c5Debt(document), candidate_registry: c5Registry({ kind: "worktree" }),
+        candidate_global_identity: collision,
+      });
+      assertIssue(result.issues, "E-OWNER-DUPLICATE", "candidate global collision must fail selected scope");
+      return true;
+    }
+    case "against_per_roadmap_absent_selected_source_rejected":
+    case "against_per_roadmap_shadow_selected_source_rejected": {
+      const shadow = c5V0(roadmap, c5LegacySource(), activeId);
+      const result = validateTransaction({
+        scope: roadmap, against: C5_BASE,
+        load_base: () => baseFacts,
+        candidate_document: id.includes("shadow") ? shadow : undefined,
+        candidate_debt: id.includes("shadow") ? c5Debt(shadow) : c5EmptyDebt(),
+        candidate_registry: c5Registry({ kind: "worktree" }),
+        candidate_global_identity: validateGlobalIdentity({ documents: [] }),
+      });
+      assertIssue(result.issues, "E-TRANSACTION-BASE", "selected scope requires authoritative-v1 source");
+      return true;
+    }
+    case "against_per_roadmap_owner_change_requires_all": {
+      const result = validateTransaction({
+        scope: roadmap, against: C5_BASE, load_base: () => baseFacts, candidate_document: c5V1(roadmap),
+        candidate_debt: c5Debt(c5V1(roadmap)), candidate_registry: c5Registry({ kind: "worktree" }),
+        candidate_global_identity: validateGlobalIdentity({ documents: [] }),
+      });
+      assertIssue(result.issues, "E-TRANSACTION-OWNER", "owner change requires all scope");
+      return true;
+    }
+    case "against_all_testing_legacy_absent_valid": {
+      const result = allSame(
+        c5Campaign("legacy_markdown", "legacy_markdown"),
+        c5Snapshots({ markdown: bytes("matrix\n") }, { markdown: bytes("testing\n") }),
+      );
+      assert(result.issues.length === 0, `legacy/absent authority state must pass: ${JSON.stringify(result.issues)}`);
+      return true;
+    }
+    case "against_all_testing_shadow_valid": {
+      const testingBytes = bytes("testing shadow\n");
+      const result = allSame(
+        c5Campaign("legacy_markdown", "shadow"),
+        c5Snapshots({ markdown: bytes("matrix\n") }, { markdown: testingBytes, document: c5V0("testing", testingBytes) }),
+      );
+      assert(result.issues.length === 0, `testing shadow authority state must pass: ${JSON.stringify(result.issues)}`);
+      return true;
+    }
+    case "against_all_testing_authoritative_valid": {
+      const campaign = c5Campaign("legacy_markdown", "authoritative");
+      const snapshots = c5Snapshots(
+        { markdown: bytes("matrix\n") },
+        { markdown: bytes("testing\n"), document: c5V1("testing") },
+      );
+      const result = allSame(campaign, snapshots);
+      assert(result.issues.length === 0, `testing authoritative state must pass: ${JSON.stringify(result.issues)}`);
+      const revision = c5WithDebt({
+        campaign, retired: c5Retired(), roadmaps: snapshots,
+        registry: c5Registry({ kind: "worktree" }),
+      });
+      for (const missing of ["base", "candidate"] as const) {
+        const transaction = validateTransaction({
+          scope: "all", against: C5_BASE,
+          base: missing === "base"
+            ? { ...withBaseRevision(revision), debt: {} }
+            : withBaseRevision(revision),
+          candidate: missing === "candidate" ? { ...revision, debt: {} } : revision,
+        });
+        assert(transaction.issues.some((issue) => issue.code === "E-TRANSACTION-BASE" &&
+          issue.logical_path === "debt.testing"), `${missing} missing relevant debt must fail at debt.testing`);
+      }
+      return true;
+    }
+    case "against_all_state_forbids_unexpected_toml": {
+      const revision = c5WithDebt({
+        campaign: c5Campaign("legacy_markdown", "legacy_markdown"), retired: c5Retired(),
+        roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document: c5V0("matrix", bytes("matrix\n")) }),
+        registry: fakeRegistryView(),
+      });
+      const result = validateLifecycleRevision(revision);
+      assertIssue(result.issues, "E-SCHEMA-STATE", "legacy state forbids TOML");
+      return true;
+    }
+    case "against_all_state_requires_shadow_toml":
+    case "against_all_state_requires_authoritative_toml": {
+      const state = id.includes("shadow") ? "shadow" as const : "authoritative" as const;
+      const result = validateLifecycleRevision(c5WithDebt({
+        campaign: c5Campaign(state, "legacy_markdown"), retired: c5Retired(),
+        roadmaps: c5Snapshots({ markdown: bytes("matrix\n") }), registry: fakeRegistryView(),
+      }));
+      assertIssue(result.issues, "E-SOURCE-MISSING", `${state} state requires TOML`);
+      return true;
+    }
+    case "against_all_base_uses_base_authority_metadata": {
+      const source = bytes("testing shadow\n");
+      const base = c5WithDebt({
+        campaign: c5Campaign("legacy_markdown", "shadow"), retired: c5Retired(),
+        roadmaps: c5Snapshots({ markdown: bytes("matrix\n") }, { markdown: source, document: c5V0("testing", source) }),
+        registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+      });
+      const candidate = c5WithDebt({
+        campaign: c5Campaign("legacy_markdown", "authoritative"), retired: c5Retired(),
+        roadmaps: c5Snapshots({ markdown: bytes("matrix\n") }, { markdown: bytes("testing\n"), document: c5V1("testing") }),
+        registry: c5Registry({ kind: "worktree" }),
+      });
+      const result = validateTransaction({ scope: "all", against: C5_BASE, base, candidate });
+      assert(result.issues.length === 0, `base must load from its own shadow metadata: ${JSON.stringify(result.issues)}`);
+      return true;
+    }
+    case "against_all_wp4m_bootstrap_valid": {
+      const matrixBytes = c5LegacySource();
+      const baseDocument = c5V0("matrix", matrixBytes, C5_ID);
+      const validBootstrapOwners = validateBootstrapShadowOwners(
+        c5Snapshots({ markdown: matrixBytes, document: baseDocument }),
+      );
+      const validBootstrapCapability = campaignIdentityOwners(validBootstrapOwners);
+      assert(validBootstrapOwners.issues.length === 0 && validBootstrapCapability !== undefined &&
+        validateGlobalIdentity({
+          documents: [], additional_owners: validBootstrapCapability,
+        }).owners.get(C5_ID)?.owner_kind === "shadow_record_reservation",
+      "issue-free bootstrap result must retain its valid opaque capability path");
+      const testingBytes = c5LegacySource();
+      const invalidTestingDocument = c5V0("testing", testingBytes);
+      invalidTestingDocument.document.frozen_source_sha256 = "0".repeat(64);
+      const invalidBootstrapOwners = validateBootstrapShadowOwners(c5Snapshots(
+        { markdown: matrixBytes, document: baseDocument },
+        { markdown: testingBytes, document: invalidTestingDocument },
+      ));
+      assertIssue(invalidBootstrapOwners.issues, "E-SCHEMA-STATE",
+        "independent invalid testing bootstrap metadata must fail alongside valid matrix owner evidence");
+      assert(invalidBootstrapOwners.owners.length === 1 &&
+        campaignIdentityOwners(invalidBootstrapOwners) === undefined,
+      "bootstrap capability must remain unexposed when any independent bootstrap issue exists");
+      assertIssue(validateGlobalIdentity({
+        documents: [],
+        additional_owners: { owner_count: invalidBootstrapOwners.owners.length } as never,
+      }).issues, "E-OWNER-DUPLICATE", "structural substitute for invalid bootstrap result must not install owners");
+      const invalidBootstrapCapability = campaignIdentityOwners(invalidBootstrapOwners);
+      const invalidBootstrapIdentity = validateGlobalIdentity({
+        documents: [],
+        ...(invalidBootstrapCapability === undefined
+          ? {}
+          : { additional_owners: invalidBootstrapCapability }),
+      });
+      assert(invalidBootstrapIdentity.owners.size === 0,
+        "undefined capability from invalid bootstrap result must not install owners");
+      const candidateDocument = c5PromoteV0(baseDocument, new Map([[C5_ID, c5ReadyRecord(C5_ID).payload]]));
+      const base = c5WithDebt({
+        roadmaps: c5Snapshots({ markdown: matrixBytes, document: baseDocument }),
+        registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+      });
+      const candidate = c5WithDebt({
+        campaign: c5Campaign("authoritative", "legacy_markdown", [], [c5Selection(C5_ID)]), retired: c5Retired(),
+        roadmaps: c5Snapshots({ markdown: matrixBytes, document: candidateDocument }),
+        registry: c5Registry({ kind: "worktree" }),
+      });
+      const result = validateTransaction({ scope: "all", against: C5_BASE, base, candidate, bootstrap: true });
+      assert(result.issues.length === 0, `exact WP4M bootstrap must pass: ${JSON.stringify(result.issues)}`);
+      for (const missing of ["base", "candidate"] as const) {
+        const transaction = validateTransaction({
+          scope: "all",
+          against: C5_BASE,
+          base: missing === "base" ? { ...base, debt: {} } : base,
+          candidate: missing === "candidate" ? { ...candidate, debt: {} } : candidate,
+          bootstrap: true,
+        });
+        assert(transaction.issues.some((issue) => issue.code === "E-TRANSACTION-BASE" &&
+          issue.logical_path === "debt.matrix"), `bootstrap requires ${missing} debt.matrix`);
+      }
+      const authoritativeTesting = c5WithDebt({
+        campaign: c5Campaign("authoritative", "authoritative", [], [c5Selection(C5_ID)]),
+        retired: c5Retired(),
+        roadmaps: c5Snapshots(
+          { markdown: matrixBytes, document: candidateDocument },
+          { markdown: bytes("testing\n"), document: c5V1("testing") },
+        ),
+        registry: c5Registry({ kind: "worktree" }),
+      });
+      const rejectedTestingAuthority = validateTransaction({
+        scope: "all",
+        against: C5_BASE,
+        base,
+        candidate: authoritativeTesting,
+        bootstrap: true,
+      });
+      assert(rejectedTestingAuthority.issues.some((issue) => issue.code === "E-TRANSACTION-BASE" &&
+        issue.logical_path === "bootstrap"), "WP4M bootstrap must reject candidate testing authoritative state");
+
+      const wrongOwnerDocument: RoadmapDocumentV0 = {
+        ...baseDocument,
+        spans: baseDocument.spans.map((span) => ({
+          ...span,
+          owner_id: span.owner_id === C5_ID ? "matrix.fixture-wrong-owner" : span.owner_id,
+        })),
+      };
+      const wrongOwnerBase = c5WithDebt({
+        roadmaps: c5Snapshots({ markdown: matrixBytes, document: wrongOwnerDocument }),
+        registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+      });
+      const wrongOwner = validateTransaction({
+        scope: "all", against: C5_BASE, base: wrongOwnerBase, candidate, bootstrap: true,
+      });
+      assert(wrongOwner.issues.some((issue) => issue.code === "E-CAMPAIGN-TARGET" &&
+        issue.logical_path === `bootstrap.matrix.record["${C5_ID}"]`),
+      "bootstrap must reject one altered shadow span owner coordinate");
+
+      const wrongFrozenDocument: RoadmapDocumentV1 = {
+        ...candidateDocument,
+        document: { ...candidateDocument.document, frozen_legacy_span_ids: [] },
+      };
+      const wrongFrozenCandidate = c5WithDebt({
+        ...candidate,
+        roadmaps: c5Snapshots({ markdown: matrixBytes, document: wrongFrozenDocument }),
+      });
+      const wrongFrozen = validateTransaction({
+        scope: "all", against: C5_BASE, base, candidate: wrongFrozenCandidate, bootstrap: true,
+      });
+      assert(wrongFrozen.issues.some((issue) => issue.code === "E-DEBT-FROZEN-SET" &&
+        issue.logical_path === "frozen_legacy_spans"),
+      "bootstrap must reject one altered frozen-span coordinate");
+
+      const candidateMatrixDebt = candidate.debt.matrix!;
+      const firstOwner = candidateMatrixDebt.owners.entries().next().value!;
+      const corruptedKey = {
+        ...firstOwner[1].key,
+        owner_field: `${firstOwner[1].key.owner_field}_wrong`,
+      } as Parameters<typeof debtOwnerIndex>[0];
+      const corruptedDebt: MigrationDebt = {
+        ...candidateMatrixDebt,
+        owners: new Map([
+          ...candidateMatrixDebt.owners,
+          [firstOwner[0], { ...firstOwner[1], key: corruptedKey }],
+        ]),
+      };
+      const wrongDebt = validateTransaction({
+        scope: "all",
+        against: C5_BASE,
+        base,
+        candidate: { ...candidate, debt: { ...candidate.debt, matrix: corruptedDebt } },
+        bootstrap: true,
+      });
+      assert(wrongDebt.issues.some((issue) => issue.code === "E-DEBT-BASE-MISMATCH" &&
+        issue.logical_path === "candidate.owners"),
+      "bootstrap must reject one altered migration-debt owner coordinate");
+      return true;
+    }
+    case "against_all_post_activation_missing_root_rejected": {
+      const candidate = c5WithDebt({
+        campaign: c5Campaign("legacy_markdown", "legacy_markdown"), retired: c5Retired(),
+        roadmaps: c5Snapshots({ markdown: bytes("matrix\n") }), registry: fakeRegistryView(),
+      });
+      for (const base of [
+        c5WithDebt({ retired: c5Retired(), roadmaps: c5Snapshots({ markdown: bytes("matrix\n") }), registry: c5Registry({ kind: "commit", commit: C5_BASE }) }),
+        c5WithDebt({ campaign: c5Campaign("legacy_markdown", "legacy_markdown"), roadmaps: c5Snapshots({ markdown: bytes("matrix\n") }), registry: c5Registry({ kind: "commit", commit: C5_BASE }) }),
+      ]) {
+        const result = validateTransaction({ scope: "all", against: C5_BASE, base, candidate });
+        assertIssue(result.issues, "E-SOURCE-MISSING", "post-activation missing campaign or retired root must fail");
+      }
+      return true;
+    }
+    case "against_all_shadow_to_authoritative_transfer": {
+      const pair = c5LegacyPair(true);
+      const shadow = pair.revision.roadmaps.matrix.document as RoadmapDocumentV0;
+      const promoted = c5PromoteV0(shadow, new Map([[C5_ID, c5ReadyRecord(C5_ID).payload]]));
+      const candidate = c5ActiveRevision(promoted, [c5Selection(C5_ID)]);
+      const result = validateTransaction({ scope: "all", against: C5_BASE, base: pair.revision, candidate });
+      assert(result.issues.length === 0, `shadow -> authoritative transfer must pass: ${JSON.stringify(result.issues)}`);
+      const shadowOnlyBase = c5WithDebt({
+        campaign: c5Campaign("shadow", "legacy_markdown"), retired: c5Retired(),
+        roadmaps: pair.revision.roadmaps,
+        registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+      });
+      const shadowOnly = validateTransaction({ scope: "all", against: C5_BASE, base: shadowOnlyBase, candidate });
+      assert(shadowOnly.issues.length === 0 && shadowOnly.authority_transfers.includes(C5_ID), `shadow-only same-ID cutover must pass exact owner/span/debt transfer: ${JSON.stringify(shadowOnly.issues)}`);
+      for (const [label, baseRevision] of [
+        ["reservation", pair.revision],
+        ["shadow_only", shadowOnlyBase],
+      ] as const) {
+        for (const missing of ["base", "candidate"] as const) {
+          const transaction = validateTransaction({
+            scope: "all",
+            against: C5_BASE,
+            base: missing === "base" ? { ...baseRevision, debt: {} } : baseRevision,
+            candidate: missing === "candidate" ? { ...candidate, debt: {} } : candidate,
+          });
+          assert(transaction.issues.some((issue) => issue.code === "E-TRANSACTION-BASE" &&
+            issue.logical_path === "debt.matrix"), `${label} cutover requires ${missing} debt.matrix`);
+        }
+      }
+      return true;
+    }
+    case "against_all_reverse_authority_rejected": {
+      const source = c5LegacySource();
+      const reservation = c5Reservation(C5_ID, source);
+      const base = withBaseRevision(c5ActiveRevision(c5V1("matrix", [c5ReadyRecord(C5_ID)])));
+      const candidate = c5WithDebt({
+        campaign: c5Campaign("shadow", "legacy_markdown", [reservation]), retired: c5Retired(),
+        roadmaps: c5Snapshots({ markdown: source, document: c5V0("matrix", source, C5_ID) }),
+        registry: fakeRegistryView(), legacy_title_bindings: [c5Title(reservation, source)],
+      });
+      const result = validateTransaction({ scope: "all", against: C5_BASE, base, candidate });
+      assertIssue(result.issues, "E-CAMPAIGN-TRANSITION", "reverse authority must fail");
+      const stateRevision = (
+        state: "legacy_markdown" | "shadow" | "authoritative",
+        baseRevision: boolean,
+      ) => c5WithDebt({
+        campaign: c5Campaign(state, "legacy_markdown"), retired: c5Retired(),
+        roadmaps: c5Snapshots({
+          markdown: source,
+          ...(state === "shadow" ? { document: c5V0("matrix", source) } :
+            state === "authoritative" ? { document: c5V1("matrix") } : {}),
+        }),
+        registry: c5Registry(baseRevision ? { kind: "commit", commit: C5_BASE } : { kind: "worktree" }),
+      });
+      const forward = validateTransaction({
+        scope: "all", against: C5_BASE,
+        base: stateRevision("legacy_markdown", true), candidate: stateRevision("shadow", false),
+      });
+      assert(forward.issues.length === 0, `legacy -> shadow one-step transition must pass: ${JSON.stringify(forward.issues)}`);
+      for (const [from, to] of [
+        ["shadow", "legacy_markdown"],
+        ["authoritative", "shadow"],
+        ["legacy_markdown", "authoritative"],
+      ] as const) {
+        const rejected = validateTransaction({
+          scope: "all", against: C5_BASE,
+          base: stateRevision(from, true), candidate: stateRevision(to, false),
+        });
+        assertIssue(rejected.issues, "E-CAMPAIGN-TRANSITION", `${from} -> ${to} authority transition must fail`);
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+function executeC5(id: C5SelfTestCaseId, context?: SelfTestContext): void {
+  assert(
+    c5CampaignCase(id) || c5RetiredCase(id) || c5IdentityReservationCase(id) ||
+      c5TransactionCase(id, context) || c5AgainstCase(id),
+    `C5 case ${id} has no executable proof`,
+  );
+}
+
 const CASE_POLARITY = new Map<PermanentIdSelfTestCaseId, "positive" | "negative">([
   ["id_grammar_accept", "positive"],
   ["id_reserved_tokens", "negative"],
@@ -2141,7 +4771,11 @@ assert(CASE_POLARITY.size === PERMANENT_ID_SELFTEST_CASE_IDS.length, "permanent-
 
 const JOIN_CASE_IDS = REQUIRED_IDENTITY_SELFTEST_CASE_IDS.slice(
   PERMANENT_ID_SELFTEST_CASE_IDS.length,
+  43,
 ) as readonly JoinSelfTestCaseId[];
+
+const C5_CASE_IDS = REQUIRED_IDENTITY_SELFTEST_CASE_IDS.slice(43);
+type C5SelfTestCaseId = (typeof C5_CASE_IDS)[number];
 
 const POSITIVE_JOIN_CASES = new Set<JoinSelfTestCaseId>([
   "reference_each_kind",
@@ -2184,11 +4818,120 @@ function joinSubcases(id: JoinSelfTestCaseId): readonly string[] | undefined {
 const JOIN_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(JOIN_CASE_IDS.map((id) => ({
   id,
   category: joinCategory(id),
-  run(): SelfTestResult {
+  run(context: SelfTestContext): SelfTestResult {
     const polarity = POSITIVE_JOIN_CASES.has(id) ? "positive" as const : "negative" as const;
     const subcases = joinSubcases(id);
     try {
       executeJoin(id);
+      return { ok: true, polarity, subcases };
+    } catch (error) {
+      return {
+        ok: false,
+        polarity,
+        issues: [{
+          code: "E-SELFTEST-CASE",
+          source: "<selftest>",
+          logical_path: id,
+          message: error instanceof Error ? error.message : String(error),
+          exit: 1,
+        }],
+        subcases,
+      };
+    }
+  },
+})));
+
+const POSITIVE_C5_CASES = new Set<C5SelfTestCaseId>([
+  "campaign_direct_matrix", "campaign_direct_testing", "campaign_legacy_matrix",
+  "campaign_legacy_testing", "campaign_testing_survives_matrix_cutover",
+  "campaign_state_transition", "campaign_deselect_active_allowed",
+  "campaign_allowlist_exhaustive", "campaign_reservation_owns_id_without_selection",
+  "campaign_deselect_keeps_reservation", "retired_new_last_active_matches_against",
+  "transaction_complete_tombstone", "transaction_complete_guard_transfer",
+  "transaction_deselect_active_allowed", "transaction_legacy_cutover_transfer_selected",
+  "transaction_legacy_cutover_transfer_unselected", "transaction_legacy_delivery_without_shadow",
+  "transaction_legacy_delivery_with_shadow", "identity_shadow_record_reserves_id",
+  "identity_reservation_shadow_coalesces", "against_matrix_v1_debt_allowed",
+  "against_testing_v1_debt_allowed", "against_per_roadmap_does_not_load_other_base",
+  "against_all_testing_legacy_absent_valid", "against_all_testing_shadow_valid",
+  "against_all_testing_authoritative_valid", "against_all_base_uses_base_authority_metadata",
+  "against_all_wp4m_bootstrap_valid", "against_all_shadow_to_authoritative_transfer",
+  "transaction_tombstone_eligible_base_owner_set", "retired_test_symbol_requires_exact_id_and_symbol",
+]);
+
+function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
+  if (id === "identity_reservation_shadow_third_owner_rejected") {
+    return ["A-A", "A-R", "A-S", "A-G", "A-T", "R-R", "R-R-cross-namespace", "R-S", "R-S-mismatch", "R-G", "R-T", "S-S", "S-G", "S-T", "G-G", "G-T", "T-T", "R-S-third-A", "R-S-third-R", "R-S-third-S", "R-S-third-G", "R-S-third-T", "alias-A", "alias-R", "alias-S", "alias-G", "alias-T", "reversal"];
+  }
+  if (id === "transaction_tombstone_eligible_base_owner_set") {
+    return ["active_record", "current_guard", "legacy_markdown_reservation"];
+  }
+  if (id === "transaction_tombstone_ineligible_base_owner_rejected") {
+    return ["shadow_only", "active_family", "alias", "selection", "preexisting_tombstone"];
+  }
+  if (id === "retired_unresolved_replacement") {
+    return ["gate", "test_symbol", "file_heading", "draft", "duplicate", "external", "bare_title"];
+  }
+  if (id === "retired_bad_hash_length_case") return ["character", "case", "sha1_length", "sha256_length", "object_format_length"];
+  if (id === "retired_preexisting_keeps_base") return ["gate", "test_symbol", "file_heading", "immutable", "reversal"];
+  if (id === "retired_test_symbol_requires_exact_id_and_symbol") return ["exact", "id_mutation", "symbol_mutation", "duplicate"];
+  if (id === "campaign_active_work_only") return ["decision", "family", "current_guard", "tombstone", "shadow_only", "raw_without_work_shadow", "missing"];
+  if (id === "campaign_state_fields") return ["in_progress_missing_both", "in_progress_missing_pickup", "selected_forbids_pickup"];
+  if (id === "campaign_state_transition") return ["selected_to_in_progress", "in_progress_to_selected", "removal", "invalid"];
+  if (id === "campaign_allowlist_exhaustive") return ["exact", "missing", "duplicate", "extra"];
+  if (id === "campaign_selection_target_kind_matches_owner") {
+    return ["active_owner_tag", "valid_owner_invalid_selection", "no_capability", "structural_substitute", "undefined_substitute", "valid_capability"];
+  }
+  if (id === "campaign_legacy_digest_title_span") {
+    return ["title", "range", "digest", "forged_title_capability", "shadow_owner", "shadow_digest", "shadow_range", "shadow_title", "shadow_index", "shadow_span_exhaustiveness"];
+  }
+  if (id === "identity_reservation_shadow_binding_mismatch") {
+    return ["cloned_capability", "owner_array", "sole_reservation", "sole_shadow", "shadow_evidence_mutation", "reservation_evidence_mutation"];
+  }
+  if (id === "transaction_legacy_delivery_shadow_owner_survives") return ["shadow", "active", "guard", "alias"];
+  if (id === "transaction_legacy_delivery_bound_span_survives") return ["moved_complete_slice", "stale_shadow_digest"];
+  if (id === "transaction_legacy_delivery_live_repo_citation") return ["repository_citation", "relation_endpoint", "typed_reference"];
+  if (id === "transaction_complete_guard_transfer") {
+    return [
+      "four_exact_debt_atoms", "five_exact_child_ids_and_kinds", "all_child_guards",
+      "missing_base_debt", "missing_candidate_debt",
+      "same_active_axis", "same_active_axis_value", "same_active_evidence", "same_active_cell",
+      "same_active_exclusion", "wrong_provider_kind", "gate_pin", "test_symbol_pin",
+      "file_heading_pin", "empty_claim", "draft_heading", "duplicate_provider", "stub_gate",
+      "valid_input_reversal", "forged", "empty", "wrong_family_object", "wrong_guard_object",
+      "direction_reversal", "overlap", "unrelated_capability", "attached_source_span",
+      "unrelated_source_span", "unrelated_owner_regression", "independent_growth",
+      "category_hide", "frozen_growth", "lifecycle_guard_retirement", "guard_retirement_forward",
+      "guard_retirement_reverse", "guard_restructure_forward", "guard_restructure_reverse",
+    ];
+  }
+  if (id === "transaction_complete_tombstone") return ["complete", "missing_base_debt", "missing_candidate_debt"];
+  if (id === "transaction_partial_guard") {
+    return ["missing", "wrong_id", "unresolved_pin", "simultaneous_tombstone", "leftover_family", "missing_child_guard", "unused_guard", "future_reuse"];
+  }
+  if (id === "transaction_full_hash_git_integration") {
+    return ["scratch_lifecycle", "argv", "unsigned", "sha1", "sha256", "wrong_base_revision", "candidate_commit_rejected", "abbreviated"];
+  }
+  if (id === "against_all_testing_authoritative_valid") return ["complete_debt", "missing_base_debt", "missing_candidate_debt"];
+  if (id === "against_all_wp4m_bootstrap_valid") {
+    return ["valid_capability", "independent_issue", "no_capability", "structural_substitute", "undefined_substitute", "complete", "missing_base_debt", "missing_candidate_debt", "testing_authoritative", "owner_coordinate", "frozen_span_coordinate", "debt_coordinate"];
+  }
+  if (id === "against_all_shadow_to_authoritative_transfer") {
+    return ["reservation_shadow_pair", "shadow_only", "reservation_missing_base_debt", "reservation_missing_candidate_debt", "shadow_missing_base_debt", "shadow_missing_candidate_debt"];
+  }
+  if (id === "against_all_reverse_authority_rejected") return ["legacy_to_shadow", "shadow_to_authoritative", "authoritative_to_shadow", "shadow_to_legacy", "legacy_to_authoritative_skipped"];
+  if (id === "against_all_post_activation_missing_root_rejected") return ["campaign", "retired"];
+  return undefined;
+}
+
+const C5_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(C5_CASE_IDS.map((id) => ({
+  id,
+  category: id.startsWith("campaign_") ? "campaign" as const : "identity-retirement" as const,
+  run(context: SelfTestContext): SelfTestResult {
+    const polarity = POSITIVE_C5_CASES.has(id) ? "positive" as const : "negative" as const;
+    const subcases = c5Subcases(id);
+    try {
+      executeC5(id, context);
       return { ok: true, polarity, subcases };
     } catch (error) {
       return {
@@ -2235,13 +4978,15 @@ export const IDENTITY_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
         };
       }
     },
-  })), ...JOIN_SELFTEST_CASES],
+  })), ...JOIN_SELFTEST_CASES, ...C5_SELFTEST_CASES],
 );
 
 export function runIdentitySelfTests(
   fixtureBundle: IdentityFixtureBundle,
+  context: SelfTestContext,
 ): { readonly executed: number } {
   for (const id of PERMANENT_ID_SELFTEST_CASE_IDS) execute(id, fixtureBundle);
   for (const id of JOIN_CASE_IDS) executeJoin(id);
+  for (const id of C5_CASE_IDS) executeC5(id, context);
   return { executed: REQUIRED_IDENTITY_SELFTEST_CASE_IDS.length };
 }

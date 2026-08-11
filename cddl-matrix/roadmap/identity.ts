@@ -5,7 +5,9 @@ import type { RoadmapId, RoadmapName } from "./model/core.ts";
 import type {
   CurrentGuard,
   IdentityOwnerFact,
+  LegacyMarkdownReservationV1,
   RetiredIdV1,
+  RoadmapDocumentV0,
   ShadowRecordClaim,
 } from "./model/documents.ts";
 
@@ -32,9 +34,50 @@ export interface GlobalIdentityValidationInputs {
   readonly documents: readonly DocumentIdentityInputs[];
   readonly current_guards?: readonly CurrentGuard[];
   readonly tombstones?: readonly RetiredIdV1[];
-  /** C5 supplies reservation/shadow facts after it has validated their byte binding. */
-  readonly additional_owners?: readonly IdentityOwnerFact[];
+  /** Opaque capability minted only from mechanically revalidated campaign evidence. */
+  readonly additional_owners?: CampaignIdentityOwnerCapability;
 }
+
+export type CampaignAdditionalOwnerFact = Extract<
+  IdentityOwnerFact,
+  { owner_kind: "legacy_markdown_reservation" | "shadow_record_reservation" }
+>;
+
+export type CampaignIdentityOwnerEvidence =
+  | {
+      readonly kind: "legacy_markdown_reservation";
+      readonly reservation: LegacyMarkdownReservationV1;
+      readonly markdown: Uint8Array;
+      readonly shadow_document?: RoadmapDocumentV0;
+    }
+  | {
+      readonly kind: "shadow_record_reservation";
+      readonly id: RoadmapId;
+      readonly namespace: RoadmapName;
+      readonly markdown: Uint8Array;
+      readonly shadow_document: RoadmapDocumentV0;
+    };
+
+declare const campaignIdentityOwnerCapabilityBrand: unique symbol;
+
+/** Nominally and dynamically opaque; structural clones have no WeakMap provenance. */
+export interface CampaignIdentityOwnerCapability {
+  readonly [campaignIdentityOwnerCapabilityBrand]: true;
+  readonly owner_count: number;
+}
+
+export type CampaignIdentityOwnerCapabilityResult =
+  | {
+      readonly ok: true;
+      readonly capability: CampaignIdentityOwnerCapability;
+      readonly owners: readonly CampaignAdditionalOwnerFact[];
+      readonly issues: readonly [];
+    }
+  | {
+      readonly ok: false;
+      readonly owners: readonly [];
+      readonly issues: readonly RoadmapIssue[];
+    };
 
 export interface GlobalIdentityResult {
   readonly owners: ReadonlyMap<RoadmapId, GlobalOwnerClaim>;
@@ -106,6 +149,229 @@ function namespaceOf(id: RoadmapId): RoadmapName | undefined {
   const result = validateRoadmapId(id);
   if (!result.ok) return undefined;
   return id.startsWith("matrix.") ? "matrix" : "testing";
+}
+
+const LEGACY_ROADMAP_PATH: Readonly<Record<RoadmapName, LegacyMarkdownReservationV1["roadmap_path"]>> = {
+  matrix: "cddl-matrix/ROADMAP.md",
+  testing: "tests/TESTING_ROADMAP.md",
+};
+
+interface PrivateCampaignIdentityOwnerCapability {
+  readonly evidence: readonly CampaignIdentityOwnerEvidence[];
+  readonly evidence_signature: string;
+  readonly owner_signature: string;
+}
+
+const campaignIdentityOwnerCapabilities = new WeakMap<object, PrivateCampaignIdentityOwnerCapability>();
+
+function sha256(value: Uint8Array): string {
+  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
+}
+
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function markdownHeadingTitle(source: Uint8Array): string | undefined {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(source);
+  } catch {
+    return undefined;
+  }
+  const newline = text.indexOf("\n");
+  const firstLine = text.slice(0, newline < 0 ? text.length : newline);
+  return /^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/.exec(firstLine)?.[2];
+}
+
+function ownerSignature(owners: readonly CampaignAdditionalOwnerFact[]): string {
+  return stableValueKey(owners);
+}
+
+function exactShadowClaim(
+  id: RoadmapId,
+  namespace: RoadmapName,
+  markdown: Uint8Array,
+  document: RoadmapDocumentV0,
+  reservation?: LegacyMarkdownReservationV1,
+): ShadowRecordClaim | undefined {
+  if (
+    namespaceOf(id) !== namespace || document.document.schema_version !== 0 ||
+    document.document.authority !== "shadow" || document.document.roadmap !== namespace ||
+    document.document.projection_path !== LEGACY_ROADMAP_PATH[namespace] ||
+    document.document.frozen_source_sha256 !== sha256(markdown) ||
+    document.document.frozen_source_byte_length !== markdown.byteLength
+  ) return undefined;
+  const records = document.records.filter((record) => record.id === id);
+  const manifestRows = document.manifest.filter((entry) =>
+    entry.kind === "record" && entry.record_id === id
+  );
+  if (records.length !== 1 || manifestRows.length !== 1) return undefined;
+  const record = records[0]!;
+  if (new Set(record.span_ids).size !== record.span_ids.length) return undefined;
+  const spans = record.span_ids.map((spanId) => document.spans.find((span) => span.id === spanId));
+  if (spans.length === 0 || spans.some((span) => span === undefined)) return undefined;
+  const ordered = spans.map((span) => span!).sort((left, right) => left.start_byte - right.start_byte);
+  const allOwnerSpans = document.spans.filter((span) =>
+    span.source_kind === "record" && span.owner_id === id && span.owner_field === "source_block_md"
+  ).map((span) => span.id).sort(codePointSort);
+  const claimedSpans = [...record.span_ids].sort(codePointSort);
+  const start = reservation?.source_start_byte ?? ordered[0]!.start_byte;
+  const end = reservation?.source_end_byte ?? ordered.at(-1)!.end_byte;
+  if (
+    ordered[0]!.start_byte !== start || ordered.at(-1)!.end_byte !== end ||
+    ordered.some((span, index) => index > 0 && ordered[index - 1]!.end_byte !== span.start_byte) ||
+    ordered.some((span) => span.source_kind !== "record" || span.owner_id !== id ||
+      span.owner_field !== "source_block_md" || span.migration_status !== "raw" ||
+      span.start_byte < 0 || span.end_byte <= span.start_byte || span.end_byte > markdown.byteLength ||
+      sha256(markdown.subarray(span.start_byte, span.end_byte)) !== span.sha256) ||
+    allOwnerSpans.length !== claimedSpans.length ||
+    allOwnerSpans.some((spanId, index) => claimedSpans[index] !== spanId) ||
+    !bytesEqual(record.source_block_md, markdown.subarray(start, end)) ||
+    markdownHeadingTitle(record.source_block_md) !== record.title ||
+    (reservation !== undefined && (
+      reservation.id !== id || reservation.roadmap_path !== LEGACY_ROADMAP_PATH[namespace] ||
+      reservation.source_title !== record.title || reservation.source_sha256 !== sha256(record.source_block_md)
+    ))
+  ) return undefined;
+  return Object.freeze({
+    id,
+    namespace,
+    source_path: document.document.source_path,
+    logical_path: `record[${JSON.stringify(id)}]`,
+    legacy_span_ids: Object.freeze(record.span_ids.slice()),
+  });
+}
+
+function deriveCampaignIdentityOwners(
+  evidence: readonly CampaignIdentityOwnerEvidence[],
+): { readonly owners: readonly CampaignAdditionalOwnerFact[]; readonly issues: readonly RoadmapIssue[] } {
+  const owners: CampaignAdditionalOwnerFact[] = [];
+  const issues: RoadmapIssue[] = [];
+  for (const [index, input] of evidence.entries()) {
+    const logicalPath = `additional_owners[${index}]`;
+    if (input.kind === "legacy_markdown_reservation") {
+      const reservation = input.reservation;
+      const namespace = namespaceOf(reservation.id);
+      const start = reservation.source_start_byte;
+      const end = reservation.source_end_byte;
+      const source = start >= 0 && end > start && end <= input.markdown.byteLength
+        ? input.markdown.subarray(start, end)
+        : undefined;
+      const pairedShadow = namespace === undefined ? undefined : evidence.find((candidate) =>
+        candidate.kind === "shadow_record_reservation" && candidate.id === reservation.id &&
+        candidate.namespace === namespace && bytesEqual(candidate.markdown, input.markdown)
+      );
+      const shadowDocument = input.shadow_document ?? pairedShadow?.shadow_document;
+      const shadow = namespace === undefined || shadowDocument === undefined
+        ? undefined
+        : exactShadowClaim(reservation.id, namespace, input.markdown, shadowDocument, reservation);
+      if (
+        namespace === undefined || reservation.roadmap_path !== LEGACY_ROADMAP_PATH[namespace] ||
+        source === undefined || reservation.whole_source_sha256 !== sha256(input.markdown) ||
+        reservation.source_sha256 !== sha256(source) ||
+        markdownHeadingTitle(source) !== reservation.source_title ||
+        (shadowDocument !== undefined && shadow === undefined)
+      ) {
+        issues.push(issue(
+          "E-OWNER-DUPLICATE",
+          logicalPath,
+          "campaign reservation evidence does not exactly bind its namespace/path/source bytes/title or shadow owner/index/span facts",
+        ));
+        continue;
+      }
+      const reservationOwner = Object.freeze({
+        owner_kind: "legacy_markdown_reservation" as const,
+        id: reservation.id,
+        namespace,
+        work_kind: reservation.work_kind,
+        reservation,
+        ...(shadow === undefined ? {} : { corroborating_shadow: shadow }),
+      });
+      owners.push(reservationOwner);
+      if (shadow !== undefined && input.shadow_document !== undefined) owners.push(Object.freeze({
+        owner_kind: "shadow_record_reservation" as const,
+        id: reservation.id,
+        namespace,
+        claim: shadow,
+      }));
+      continue;
+    }
+    const claim = exactShadowClaim(
+      input.id,
+      input.namespace,
+      input.markdown,
+      input.shadow_document,
+    );
+    if (claim === undefined) {
+      issues.push(issue(
+        "E-OWNER-DUPLICATE",
+        logicalPath,
+        "campaign shadow evidence does not exactly bind its namespace/path/source bytes/title or document/index/span facts",
+      ));
+      continue;
+    }
+    owners.push(Object.freeze({
+      owner_kind: "shadow_record_reservation" as const,
+      id: input.id,
+      namespace: input.namespace,
+      claim,
+    }));
+  }
+  owners.sort((left, right) => codePointSort(left.id, right.id) ||
+    codePointSort(left.owner_kind, right.owner_kind));
+  return {
+    owners: Object.freeze(owners),
+    issues: Object.freeze(issues),
+  };
+}
+
+/**
+ * Validate raw campaign evidence and mint its opaque identity capability. This is intentionally the
+ * only minting seam: it accepts no prevalidated owner facts or caller-asserted success flag.
+ */
+export function validateCampaignIdentityOwnerEvidence(
+  evidence: readonly CampaignIdentityOwnerEvidence[],
+): CampaignIdentityOwnerCapabilityResult {
+  const derived = deriveCampaignIdentityOwners(evidence);
+  if (derived.issues.length > 0) {
+    return Object.freeze({
+      ok: false,
+      owners: Object.freeze([]) as readonly [],
+      issues: derived.issues,
+    });
+  }
+  const capability = Object.freeze({
+    owner_count: derived.owners.length,
+  }) as CampaignIdentityOwnerCapability;
+  campaignIdentityOwnerCapabilities.set(capability, {
+    evidence: Object.freeze(evidence.slice()),
+    evidence_signature: stableValueKey(evidence),
+    owner_signature: ownerSignature(derived.owners),
+  });
+  return Object.freeze({
+    ok: true,
+    capability,
+    owners: derived.owners,
+    issues: Object.freeze([]) as readonly [],
+  });
+}
+
+function ownersFromCampaignCapability(
+  capability: CampaignIdentityOwnerCapability,
+): readonly CampaignAdditionalOwnerFact[] | undefined {
+  const stored = campaignIdentityOwnerCapabilities.get(capability);
+  if (stored === undefined) return undefined;
+  const derived = deriveCampaignIdentityOwners(stored.evidence);
+  return derived.issues.length === 0 && capability.owner_count === derived.owners.length &&
+      stored.evidence_signature === stableValueKey(stored.evidence) &&
+      stored.owner_signature === ownerSignature(derived.owners)
+    ? derived.owners
+    : undefined;
 }
 
 function shadowClaimsEqual(left: ShadowRecordClaim | undefined, right: ShadowRecordClaim): boolean {
@@ -245,7 +511,18 @@ export function validateGlobalIdentity(
       value: tombstone,
     });
   }
-  for (const owner of inputs.additional_owners ?? []) claims.push(toAdditionalClaim(owner));
+  if (inputs.additional_owners !== undefined) {
+    const additionalOwners = ownersFromCampaignCapability(inputs.additional_owners);
+    if (additionalOwners === undefined) {
+      issues.push(issue(
+        "E-OWNER-DUPLICATE",
+        "additional_owners",
+        "additional owners require one intact opaque campaign identity capability",
+      ));
+    } else {
+      for (const owner of additionalOwners) claims.push(toAdditionalClaim(owner));
+    }
+  }
   claims.sort(claimSort);
 
   const grouped = new Map<RoadmapId, GlobalOwnerClaim[]>();

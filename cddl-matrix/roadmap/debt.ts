@@ -12,6 +12,9 @@ import type {
   RepoPath,
 } from "./model/core.ts";
 import type {
+  ActiveRecordOwnerFact,
+  CurrentGuard,
+  CurrentGuardOwnerFact,
   IdentityOwnerFact,
   ReplacementPin,
   RoadmapDocument,
@@ -83,7 +86,12 @@ export interface DebtRestructureRequest {
 export interface ValidatedDebtTransitionFacts {
   readonly restructure_count: number;
   readonly retirement_count: number;
+  readonly guard_transfer_count?: number;
 }
+
+export type DebtTransitionFactsInput =
+  | ValidatedDebtTransitionFacts
+  | readonly ValidatedDebtTransitionFacts[];
 
 export type TombstoneEligibleIdentityOwnerFact = Extract<
   IdentityOwnerFact,
@@ -109,11 +117,22 @@ export interface DebtRetirementTransitionRequest {
   readonly candidate_replacement_fact?: DebtReplacementResolutionFact;
 }
 
+export interface DebtGuardTransferRequest {
+  /** Must name the exact family record object held by `base_document`. */
+  readonly base_owner: ActiveRecordOwnerFact;
+  /** Must wrap the exact same-ID guard object in `candidate_guards`. */
+  readonly candidate_guard: CurrentGuardOwnerFact;
+  /** Complete candidate guard registry, including guards for systematic child IDs. */
+  readonly candidate_guards: readonly CurrentGuard[];
+  /** Complete candidate gate/test-symbol/file-heading provider set. */
+  readonly candidate_replacement_facts: readonly DebtReplacementResolutionFact[];
+}
+
 export interface DebtComparisonOptions {
   readonly base_document: RoadmapDocument;
   readonly candidate_document: RoadmapDocument;
   /** Opaque facts minted by C3 after restructure checks or C5-supplied retirement coordinates. */
-  readonly transition_facts?: ValidatedDebtTransitionFacts;
+  readonly transition_facts?: DebtTransitionFactsInput;
 }
 
 export type DebtTransitionFactResult =
@@ -515,8 +534,19 @@ export function deriveMigrationDebt(
 function valueAtPath(value: unknown, path: readonly string[]): unknown {
   let current = value;
   for (const component of path) {
-    if (current === null || typeof current !== "object" || !(component in current)) return undefined;
-    current = (current as Record<string, unknown>)[component];
+    const field = /^[a-z][a-z0-9_]*/.exec(component)?.[0];
+    if (field === undefined || current === null || typeof current !== "object" || !(field in current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[field];
+    const suffix = component.slice(field.length);
+    let offset = 0;
+    for (const match of suffix.matchAll(/\[([0-9]+)\]/g)) {
+      if (match.index !== offset || !Array.isArray(current)) return undefined;
+      current = current[Number(match[1])];
+      offset += match[0].length;
+    }
+    if (offset !== suffix.length) return undefined;
   }
   return current;
 }
@@ -709,12 +739,98 @@ function pinIndex(pin: ReplacementPin): string {
 }
 
 function replacementResolves(pin: ReplacementPin, fact: DebtReplacementResolutionFact | undefined): boolean {
-  if (fact === undefined) return false;
+  if (fact === undefined || pin.claim_md.byteLength === 0) return false;
   if (pin.kind === "gate") return "stub" in fact && fact.id === pin.gate_id && !fact.stub;
   if (pin.kind === "test_symbol") {
     return "test_id" in fact && fact.test_id === pin.test_id && fact.symbol === pin.symbol;
   }
-  return "heading" in fact && fact.path === pin.path && fact.heading === pin.heading;
+  return pin.path !== "draft" && !pin.path.startsWith("draft/") &&
+    "heading" in fact && fact.path === pin.path && fact.heading === pin.heading;
+}
+
+function replacementResolvesExactlyOnce(
+  pin: ReplacementPin,
+  facts: readonly DebtReplacementResolutionFact[],
+): boolean {
+  return facts.filter((fact) => replacementResolves(pin, fact)).length === 1;
+}
+
+type SystematicProviderKind =
+  | "family_axis"
+  | "family_axis_value"
+  | "family_evidence_requirement"
+  | "family_cell"
+  | "family_exclusion";
+
+interface SystematicProvider {
+  readonly id: RoadmapId;
+  readonly kind: SystematicProviderKind;
+  readonly owner_record_id: RoadmapId;
+}
+
+function recordPayload(record: ActiveRecordOwnerFact["record"]): unknown {
+  if ("payload" in record) return record.payload;
+  return record.semantic_shadow;
+}
+
+function familySystematicProviders(
+  ownerRecordId: RoadmapId,
+  payload: unknown,
+): readonly SystematicProvider[] | undefined {
+  if (payload === null || typeof payload !== "object" || !("kind" in payload) || payload.kind !== "family" ||
+    !("axes" in payload) || !Array.isArray(payload.axes) ||
+    !("evidence_requirements" in payload) || !Array.isArray(payload.evidence_requirements) ||
+    !("cells" in payload) || !Array.isArray(payload.cells) ||
+    !("exclusions" in payload) || !Array.isArray(payload.exclusions)) return undefined;
+  const providers: SystematicProvider[] = [];
+  for (const axis of payload.axes) {
+    if (axis === null || typeof axis !== "object" || !("id" in axis) || !("values" in axis) ||
+      !Array.isArray(axis.values)) return undefined;
+    providers.push({ id: axis.id as RoadmapId, kind: "family_axis", owner_record_id: ownerRecordId });
+    for (const value of axis.values) {
+      if (value === null || typeof value !== "object" || !("id" in value)) return undefined;
+      providers.push({
+        id: value.id as RoadmapId,
+        kind: "family_axis_value",
+        owner_record_id: ownerRecordId,
+      });
+    }
+  }
+  for (const value of payload.evidence_requirements) {
+    if (value === null || typeof value !== "object" || !("id" in value)) return undefined;
+    providers.push({
+      id: value.id as RoadmapId,
+      kind: "family_evidence_requirement",
+      owner_record_id: ownerRecordId,
+    });
+  }
+  for (const value of payload.cells) {
+    if (value === null || typeof value !== "object" || !("id" in value)) return undefined;
+    providers.push({ id: value.id as RoadmapId, kind: "family_cell", owner_record_id: ownerRecordId });
+  }
+  for (const value of payload.exclusions) {
+    if (value === null || typeof value !== "object" || !("id" in value)) return undefined;
+    providers.push({
+      id: value.id as RoadmapId,
+      kind: "family_exclusion",
+      owner_record_id: ownerRecordId,
+    });
+  }
+  providers.sort((left, right) => codePointSort(left.id, right.id) || codePointSort(left.kind, right.kind));
+  return Object.freeze(providers);
+}
+
+function documentSystematicProviders(document: RoadmapDocument): readonly SystematicProvider[] {
+  const providers: SystematicProvider[] = [];
+  for (const record of document.records) {
+    if (!("render_authority" in record)) continue;
+    const payload = "payload" in record ? record.payload : record.semantic_shadow;
+    const familyProviders = familySystematicProviders(record.id, payload);
+    if (familyProviders !== undefined) providers.push(...familyProviders);
+  }
+  providers.sort((left, right) => codePointSort(left.id, right.id) || codePointSort(left.kind, right.kind) ||
+    codePointSort(left.owner_record_id, right.owner_record_id));
+  return Object.freeze(providers);
 }
 
 function activeRecordIsEligible(
@@ -872,20 +988,165 @@ export function validateDebtRetirementFacts(
   return Object.freeze({ ok: true, facts, issues: Object.freeze([]) as readonly [] });
 }
 
+/**
+ * C5 family-to-guard seam. Removed debt coordinates and systematic child IDs are derived from the
+ * exact base family object; callers cannot nominate either set.
+ */
+export function validateDebtGuardTransferFacts(
+  base: MigrationDebt,
+  candidate: MigrationDebt,
+  options: Pick<DebtComparisonOptions, "base_document" | "candidate_document">,
+  requests: readonly DebtGuardTransferRequest[],
+): DebtTransitionFactResult {
+  const comparisonOptions: DebtComparisonOptions = options;
+  const issues: RoadmapIssue[] = [];
+  const removed = new Set<string>();
+  const added = new Set<string>();
+  if (requests.length === 0) {
+    issues.push(issue(comparisonOptions, "E-DEBT-OWNER-REGRESSION", "guard_transfer", "guard-transfer transition fact set is empty"));
+  }
+  const candidateProviders = documentSystematicProviders(options.candidate_document);
+  for (const [requestIndex, request] of requests.entries()) {
+    const logicalPath = `guard_transfer[${requestIndex}]`;
+    const owner = request.base_owner;
+    const guardOwner = request.candidate_guard;
+    const baseRecordExact = options.base_document.records.some((record) => record === owner.record) &&
+      owner.owner_kind === "active_record" && owner.id === owner.record.id &&
+      owner.namespace === options.base_document.document.roadmap;
+    const familyProviders = baseRecordExact
+      ? familySystematicProviders(owner.id, recordPayload(owner.record))
+      : undefined;
+    const rootGuards = request.candidate_guards.filter((guard) => guard.id === owner.id);
+    const rootGuardExact = guardOwner.owner_kind === "current_guard" && guardOwner.id === owner.id &&
+      guardOwner.namespace === owner.namespace && guardOwner.guard.id === owner.id &&
+      rootGuards.length === 1 && rootGuards[0] === guardOwner.guard &&
+      replacementResolvesExactlyOnce(guardOwner.guard.replacement_pin, request.candidate_replacement_facts);
+    const candidateRootAbsent = !options.candidate_document.records.some((record) => record.id === owner.id);
+    const childIds = new Set<string>();
+    let childrenProtected = familyProviders !== undefined;
+    for (const provider of familyProviders ?? []) {
+      if (childIds.has(provider.id)) {
+        childrenProtected = false;
+        break;
+      }
+      childIds.add(provider.id);
+      const active = candidateProviders.filter((candidateProvider) =>
+        candidateProvider.id === provider.id && candidateProvider.kind === provider.kind
+      );
+      const guards = request.candidate_guards.filter((guard) => guard.id === provider.id);
+      const activeProtected = active.length === 1 && guards.length === 0;
+      const guardProtected = active.length === 0 && guards.length === 1 &&
+        replacementResolvesExactlyOnce(guards[0]!.replacement_pin, request.candidate_replacement_facts);
+      if (!activeProtected && !guardProtected) {
+        childrenProtected = false;
+        break;
+      }
+    }
+
+    const recordRows = [...base.owners].filter(([, value]) =>
+      value.key.roadmap === owner.namespace && value.key.owner_kind === "record" &&
+      value.key.owner_id === owner.id
+    );
+    const requestRemoved = new Set<string>();
+    let removalsExact = recordRows.length > 0;
+    for (const [index, value] of recordRows) {
+      if (candidate.owners.has(index) || !documentHasOwner(options.base_document, value.key) ||
+        documentHasOwner(options.candidate_document, value.key)) {
+        removalsExact = false;
+        break;
+      }
+      requestRemoved.add(index);
+      for (const spanId of ownerSpans(options.base_document, value.key)) {
+        const spanKey: DebtOwnerKey = {
+          roadmap: owner.namespace,
+          owner_kind: "source_span",
+          owner_id: spanId,
+          owner_field: "coverage",
+        };
+        const spanIndex = debtOwnerIndex(spanKey);
+        if (!base.owners.has(spanIndex) || candidate.owners.has(spanIndex) ||
+          documentHasOwner(options.candidate_document, spanKey)) {
+          removalsExact = false;
+          break;
+        }
+        requestRemoved.add(spanIndex);
+      }
+      if (!removalsExact) break;
+    }
+    if ([...requestRemoved].some((index) => removed.has(index))) removalsExact = false;
+    if (!baseRecordExact || familyProviders === undefined || !rootGuardExact || !candidateRootAbsent ||
+      !childrenProtected || !removalsExact) {
+      issues.push(issue(
+        comparisonOptions,
+        "E-DEBT-OWNER-REGRESSION",
+        logicalPath,
+        "guard transfer lacks one exact base family, same-ID resolving root guard, complete systematic child protection, or exact derived debt removal",
+      ));
+      continue;
+    }
+    for (const index of requestRemoved) removed.add(index);
+  }
+  if (issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
+  const facts: ValidatedDebtTransitionFacts = Object.freeze({
+    restructure_count: 0,
+    retirement_count: 0,
+    guard_transfer_count: requests.length,
+  });
+  validatedDebtTransitions.set(facts, {
+    base,
+    candidate,
+    base_document: options.base_document,
+    candidate_document: options.candidate_document,
+    base_signature: debtSignature(base),
+    candidate_signature: debtSignature(candidate),
+    base_document_signature: documentTransitionSignature(options.base_document),
+    candidate_document_signature: documentTransitionSignature(options.candidate_document),
+    removed,
+    added,
+  });
+  return Object.freeze({ ok: true, facts, issues: Object.freeze([]) as readonly [] });
+}
+
 function transitionFacts(
   base: MigrationDebt,
   candidate: MigrationDebt,
   options: DebtComparisonOptions,
 ): PrivateDebtTransitionFacts | undefined {
   if (options.transition_facts === undefined) return undefined;
-  const facts = validatedDebtTransitions.get(options.transition_facts);
-  return facts?.base === base && facts.candidate === candidate &&
-      facts.base_document === options.base_document && facts.candidate_document === options.candidate_document &&
-      facts.base_signature === debtSignature(base) && facts.candidate_signature === debtSignature(candidate) &&
-      facts.base_document_signature === documentTransitionSignature(options.base_document) &&
-      facts.candidate_document_signature === documentTransitionSignature(options.candidate_document)
-    ? facts
-    : undefined;
+  const supplied = Array.isArray(options.transition_facts)
+    ? options.transition_facts
+    : [options.transition_facts];
+  if (supplied.length === 0) return undefined;
+  const removed = new Set<string>();
+  const added = new Set<string>();
+  const claimed = new Set<string>();
+  for (const capability of supplied) {
+    const facts = validatedDebtTransitions.get(capability);
+    if (facts?.base !== base || facts.candidate !== candidate ||
+      facts.base_document !== options.base_document || facts.candidate_document !== options.candidate_document ||
+      facts.base_signature !== debtSignature(base) || facts.candidate_signature !== debtSignature(candidate) ||
+      facts.base_document_signature !== documentTransitionSignature(options.base_document) ||
+      facts.candidate_document_signature !== documentTransitionSignature(options.candidate_document)) return undefined;
+    for (const index of [...facts.removed, ...facts.added]) {
+      if (claimed.has(index)) return undefined;
+      claimed.add(index);
+    }
+    for (const index of facts.removed) removed.add(index);
+    for (const index of facts.added) added.add(index);
+  }
+  if (claimed.size === 0) return undefined;
+  return {
+    base,
+    candidate,
+    base_document: options.base_document,
+    candidate_document: options.candidate_document,
+    base_signature: debtSignature(base),
+    candidate_signature: debtSignature(candidate),
+    base_document_signature: documentTransitionSignature(options.base_document),
+    candidate_document_signature: documentTransitionSignature(options.candidate_document),
+    removed,
+    added,
+  };
 }
 
 function newSemanticRecord(
