@@ -66,6 +66,7 @@ import {
 import {
   collectManifestSlotBindingFacts,
   createTestOutputRegistry,
+  inspectStatusMarkerBinding,
   intervalsOverlap,
   resolveOutputClaims,
   validateOutputClaimInventory,
@@ -1229,6 +1230,8 @@ function markerDocument(id: string, payload = "value", prefix = ""): Uint8Array 
   return bytes(`${prefix}<!-- gen:sh:${id} -->${payload}<!-- /gen:sh:${id} -->`);
 }
 
+// C6 owns this test-only committed compatibility oracle. Production status/adapters receive only
+// MatrixStatusInputs; raw TOML decoding does not cross the fixture bundle boundary.
 function parseFixtureToml<T>(bundle: ProjectionFixtureBundle, path: ProjectionFixturePath): T {
   return Bun.TOML.parse(new TextDecoder("utf-8", { fatal: true }).decode(fixtureBytes(bundle, path))) as T;
 }
@@ -1348,6 +1351,64 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     ] as const;
     for (const [label, left, right, expected] of cases) {
       if (intervalsOverlap(left, right) !== expected) fail(`${label}: overlap verdict differs`);
+      const leftSlot = asSlotId("left");
+      const rightSlot = asSlotId("right");
+      const leftClaim: OutputClaim = label === "whole_vs_slot"
+        ? wholeClaim(path, "same-producer")
+        : {
+          kind: "slot",
+          producer: "same-producer",
+          path,
+          slot_id: leftSlot,
+          interval: {
+            kind: "binding",
+            binding: { kind: "manifest_generated_slot", roadmap: "matrix", slot_id: leftSlot },
+            cardinality: { exact: 1 },
+          },
+        };
+      const rightClaim: OutputClaim = {
+        kind: "slot",
+        producer: "same-producer",
+        path,
+        slot_id: rightSlot,
+        interval: {
+          kind: "binding",
+          binding: { kind: "manifest_generated_slot", roadmap: "matrix", slot_id: rightSlot },
+          cardinality: { exact: 1 },
+        },
+      };
+      const manifestSlots = [
+        ...(leftClaim.kind === "slot" ? [{
+          roadmap: "matrix" as const,
+          path,
+          slot_id: leftSlot,
+          declaration_count: 1,
+          placement_count: 1,
+          owner_span_count: 1,
+          interval: left,
+          payload_interval: left,
+        }] : []),
+        {
+          roadmap: "matrix" as const,
+          path,
+          slot_id: rightSlot,
+          declaration_count: 1,
+          placement_count: 1,
+          owner_span_count: 1,
+          interval: right,
+          payload_interval: right,
+        },
+      ];
+      const resolution = resolveOutputClaims({
+        registry: closedOutputRegistry([leftClaim, rightClaim]),
+        claims: [leftClaim, rightClaim],
+        targets: new Map([[path, bytes("12345678")]]),
+        manifest_slots: manifestSlots,
+      });
+      if (expected) requireIssue(resolution.issues, "E-OUTPUT-CLAIM");
+      else if (resolution.issues.length !== 0 || resolution.resolved.length !== 2) {
+        fail(`${label}: adjacent claims did not resolve independently`);
+      }
       executed.push(label);
     }
     return pass("negative", executed);
@@ -1359,7 +1420,25 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       claims: [claim],
       targets: new Map([[path, target]]),
     });
-    if (resolved.issues.length !== 0 || resolved.resolved[0].interval.start_byte !== 2) fail("slot interval used UTF-16 offsets");
+    const value = resolved.resolved[0];
+    if (
+      resolved.issues.length !== 0 || value.interval.start_byte !== 2 ||
+      value.interval.end_byte !== target.byteLength || value.payload_interval.start_byte !== 21 ||
+      value.payload_interval.end_byte !== 26
+    ) fail("complete/payload interval did not use exact UTF-8 byte offsets");
+    const whole = wholeClaim(path);
+    const wholeResolution = resolveOutputClaims({
+      registry: closedOutputRegistry([whole]),
+      claims: [whole],
+      targets: new Map([[path, target]]),
+    });
+    const wholeValue = wholeResolution.resolved[0];
+    if (
+      wholeResolution.issues.length !== 0 || wholeValue.interval.start_byte !== 0 ||
+      wholeValue.interval.end_byte !== target.byteLength ||
+      wholeValue.payload_interval.start_byte !== 0 ||
+      wholeValue.payload_interval.end_byte !== target.byteLength
+    ) fail("whole-file claim did not resolve to exact [0, UTF-8 byte length)");
     return pass();
   }
   if (id === "outputs_manifest_binding_owner") {
@@ -1384,7 +1463,26 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       targets: new Map(),
       manifest_slots: facts,
     });
-    if (resolved.issues.length !== 0 || resolved.resolved.length !== 1) fail("manifest slot owner did not resolve without a projection read");
+    if (
+      resolved.issues.length !== 0 || resolved.resolved.length !== 1 ||
+      resolved.resolved[0].interval.start_byte !== 5 || resolved.resolved[0].interval.end_byte !== 6 ||
+      resolved.resolved[0].payload_interval.start_byte !== 5 || resolved.resolved[0].payload_interval.end_byte !== 6
+    ) fail("manifest slot owner did not resolve its exact completed chunk without a projection read");
+    const mismatchedCompleted: CompletedRenderIr = {
+      ...completed,
+      slot_resolutions: completed.slot_resolutions.map((item) => ({
+        ...item,
+        resolution: item.resolution === undefined
+          ? undefined
+          : { ...item.resolution, binding: `${item.resolution.binding}-wrong` },
+      })),
+    };
+    requireIssue(resolveOutputClaims({
+      registry: closedOutputRegistry([manifestClaim]),
+      claims: [manifestClaim],
+      targets: new Map(),
+      manifest_slots: collectManifestSlotBindingFacts(fixture.document, mismatchedCompleted),
+    }).issues, "E-OUTPUT-SLOT");
     return pass();
   }
   if (id === "outputs_live_status_claims_all_twelve") {
@@ -1393,6 +1491,29 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       fail("live status claims are not distinct");
     }
     if (LEGACY_STATUS_OUTPUT_REGISTRY.claim_count !== 12) fail("closed live status registry does not contain twelve claims");
+    const expected = [
+      "cddl-matrix/ROADMAP.md:roadmap-counts",
+      "cddl-matrix/ROADMAP.md:roadmap-ops",
+      "cddl-matrix/ROADMAP.md:roadmap-emission",
+      "cddl-matrix/ROADMAP.md:roadmap-constraint",
+      "cddl-matrix/README.md:readme-counts",
+      "cddl-matrix/README.md:readme-annotations",
+      "cddl-matrix/README.md:readme-ops",
+      "cddl-matrix/README.md:readme-enforce-green",
+      "tests/README.md:tests-ignored-gates",
+      "tests/README.md:tests-tier-fast",
+      "tests/README.md:tests-tier-local",
+      "tests/README.md:tests-tier-full",
+    ];
+    const actual = LEGACY_STATUS_OUTPUT_CLAIMS.map((value) => {
+      if (
+        value.kind !== "slot" || value.producer !== "project_status_headers" ||
+        value.interval.binding.kind !== "status_header_markers" ||
+        value.interval.binding.marker_id !== value.slot_id
+      ) fail("live status claim is not one normalized marker binding");
+      return `${value.path}:${value.slot_id}`;
+    });
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) fail("live status claim coordinates differ from the exact twelve");
     const localRegistry = closedOutputRegistry([claim]);
     const target = markerDocument("one");
     requireIssue(resolveOutputClaims({
@@ -1429,17 +1550,71 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     requireIssue(validateOutputClaimInventory([wholeClaim(path), wholeClaim(path)]), "E-OUTPUT-CLAIM");
     return pass("negative");
   }
-  if (id === "outputs_duplicate_slot" || id === "outputs_duplicate_binding") {
-    requireIssue(validateOutputClaimInventory([claim, { ...claim, producer: "other" }]), "E-OUTPUT-CLAIM");
+  if (id === "outputs_duplicate_slot") {
+    const live = LEGACY_STATUS_OUTPUT_CLAIMS[0];
+    if (live.kind !== "slot") return fail("first live claim is not a slot");
+    const sameSlotDifferentBinding: OutputClaim = {
+      ...live,
+      interval: {
+        kind: "binding",
+        binding: { kind: "manifest_generated_slot", roadmap: "matrix", slot_id: live.slot_id },
+        cardinality: { exact: 1 },
+      },
+    };
+    const issues = validateOutputClaimInventory([live, sameSlotDifferentBinding]);
+    if (!issues.some((value) => value.message === "path/slot pair is claimed more than once")) {
+      fail("duplicate slot mutation did not produce its exact path/slot diagnostic");
+    }
+    if (issues.some((value) => value.message === "structured output binding is claimed more than once")) {
+      fail("duplicate slot mutation accidentally duplicated the structured binding");
+    }
     return pass("negative");
   }
-  if (id === "outputs_whole_vs_slot" || id === "outputs_matrix_handoff_collision") {
+  if (id === "outputs_duplicate_binding") {
+    const live = LEGACY_STATUS_OUTPUT_CLAIMS[0];
+    if (live.kind !== "slot") return fail("first live claim is not a slot");
+    const sameBindingDifferentSlot: OutputClaim = {
+      ...live,
+      slot_id: asSlotId("roadmap-counts-alias"),
+    };
+    const issues = validateOutputClaimInventory([live, sameBindingDifferentSlot]);
+    if (!issues.some((value) => value.message === "structured output binding is claimed more than once")) {
+      fail("duplicate binding mutation did not produce its exact structured-binding diagnostic");
+    }
+    if (issues.some((value) => value.message === "path/slot pair is claimed more than once")) {
+      fail("duplicate binding mutation accidentally duplicated the enclosing slot");
+    }
+    return pass("negative");
+  }
+  if (id === "outputs_whole_vs_slot") {
     const resolved = resolveOutputClaims({
       registry: closedOutputRegistry([wholeClaim(path), claim]),
       claims: [wholeClaim(path), claim],
       targets: new Map([[path, markerDocument("one")]]),
     });
     requireIssue(resolved.issues, "E-OUTPUT-CLAIM");
+    return pass("negative");
+  }
+  if (id === "outputs_matrix_handoff_collision") {
+    const roadmapPath = asRepoPath("cddl-matrix/ROADMAP.md");
+    const liveRoadmapClaims = LEGACY_STATUS_OUTPUT_CLAIMS.filter((value) => value.path === roadmapPath);
+    if (liveRoadmapClaims.length !== 4) fail("handoff mutation did not begin with the four live ROADMAP slots");
+    if (LEGACY_STATUS_OUTPUT_CLAIMS.filter((value) => value.path !== roadmapPath).length !== 8) {
+      fail("handoff mutation did not leave the eight README claims unaffected");
+    }
+    const projectorWhole = wholeClaim(roadmapPath, "roadmap-projector");
+    const target = bytes(liveRoadmapClaims.map((value) => {
+      if (value.kind !== "slot") return fail("ROADMAP live claim is not a slot");
+      return `<!-- gen:sh:${value.slot_id} -->value<!-- /gen:sh:${value.slot_id} -->`;
+    }).join("\n"));
+    const claims = [...liveRoadmapClaims, projectorWhole];
+    const resolved = resolveOutputClaims({
+      registry: closedOutputRegistry(claims),
+      claims,
+      targets: new Map([[roadmapPath, target]]),
+    });
+    const overlaps = resolved.issues.filter((value) => value.code === "E-OUTPUT-CLAIM");
+    if (overlaps.length !== 4) fail("whole-file handoff did not collide with each of the four live ROADMAP slots");
     return pass("negative");
   }
   if (id === "outputs_overlapping_slots") {
@@ -1492,27 +1667,42 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     ] as const;
     const registry = closedOutputRegistry([claim]);
     for (const [label, target] of statusCases) {
-      requireIssue(resolveOutputClaims({
+      const issues = resolveOutputClaims({
         registry,
         claims: [claim],
         targets: new Map([[path, target]]),
-      }).issues, "E-OUTPUT-SLOT");
+      }).issues;
+      if (!issues.some((value) =>
+        value.code === "E-OUTPUT-SLOT" && value.logical_path === 'slot["one"]'
+      )) fail(`${label}: marker cardinality did not retain its typed output-slot coordinate`);
       executed.push(label);
     }
 
     const secondClaim = statusClaim(path, "two");
     const crossed = bytes("<!-- gen:sh:one --><!-- gen:sh:two -->x<!-- /gen:sh:one --><!-- /gen:sh:two -->");
-    requireIssue(resolveOutputClaims({
+    const crossedIssues = resolveOutputClaims({
       registry: closedOutputRegistry([claim, secondClaim]),
       claims: [claim, secondClaim],
       targets: new Map([[path, crossed]]),
-    }).issues, "E-OUTPUT-SLOT");
+    }).issues;
+    if (!crossedIssues.some((value) =>
+      value.code === "E-OUTPUT-SLOT" && value.logical_path === 'slot["one"]'
+    )) fail("crossed marker structure did not retain its typed output-slot coordinate");
     executed.push("crossed");
+
+    const nested = bytes("<!-- gen:sh:one --><!-- gen:sh:two -->x<!-- /gen:sh:two --><!-- /gen:sh:one -->");
+    const nestedIssues = resolveOutputClaims({
+      registry: closedOutputRegistry([claim, secondClaim]),
+      claims: [claim, secondClaim],
+      targets: new Map([[path, nested]]),
+    }).issues;
+    if (!nestedIssues.some((value) =>
+      value.code === "E-OUTPUT-SLOT" && value.logical_path === 'slot["one"]'
+    )) fail("nested marker structure did not retain its typed output-slot coordinate");
+    executed.push("nested");
 
     const fixture = rawFixture();
     const completed = complete(fixture.document).completed;
-    const facts = collectManifestSlotBindingFacts(fixture.document, completed);
-    const fact = facts[0];
     const slot = fixture.document.generated_slots[0].slot_id;
     const manifestClaim: OutputClaim = {
       kind: "slot",
@@ -1526,18 +1716,34 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       },
     };
     const manifestRegistry = closedOutputRegistry([manifestClaim]);
-    const manifestCases = [
-      ["manifest_zero", []],
-      ["manifest_two_declarations", [{ ...fact, declaration_count: 2 }]],
-      ["manifest_two_placements", [{ ...fact, placement_count: 2 }]],
-      ["manifest_two_spans", [{ ...fact, owner_span_count: 2 }]],
+    const declaration = fixture.document.generated_slots[0];
+    const placement = fixture.document.manifest.find((entry) =>
+      entry.kind === "generated_slot" && entry.slot_id === slot
+    ) ?? fail("raw fixture generated-slot placement is missing");
+    const ownerSpan = fixture.document.spans.find((span) =>
+      span.source_kind === "generated_slot" && span.owner_id === slot
+    ) ?? fail("raw fixture generated-slot span is missing");
+    const manifestCases: readonly [string, RoadmapDocument][] = [
+      ["manifest_zero", { ...fixture.document, generated_slots: [] }],
+      ["manifest_two_declarations", {
+        ...fixture.document,
+        generated_slots: [declaration, { ...declaration }],
+      }],
+      ["manifest_two_placements", {
+        ...fixture.document,
+        manifest: [...fixture.document.manifest, { ...placement }],
+      }],
+      ["manifest_two_spans", {
+        ...fixture.document,
+        spans: [...fixture.document.spans, { ...ownerSpan, id: asSpanId("span-g-duplicate") }],
+      }],
     ] as const;
-    for (const [label, manifestFacts] of manifestCases) {
+    for (const [label, mutatedDocument] of manifestCases) {
       requireIssue(resolveOutputClaims({
         registry: manifestRegistry,
         claims: [manifestClaim],
         targets: new Map(),
-        manifest_slots: manifestFacts,
+        manifest_slots: collectManifestSlotBindingFacts(mutatedDocument, completed),
       }).issues, "E-OUTPUT-SLOT");
       executed.push(label);
     }
@@ -1560,8 +1766,40 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
         ? rawFixture().document
         : authoritativeFixture().document;
     }
+    let actualWp1Authority: ValidatedOutputAuthority | undefined;
+    if (id === "outputs_shadow_no_claim") {
+      if (
+        LEGACY_STATUS_OUTPUT_CLAIMS.some((value) =>
+          value.kind === "whole_file" || value.producer === "roadmap-projector"
+        )
+      ) {
+        fail("WP1 production inventory unexpectedly contains a whole-file/projector claim");
+      }
+      const claimsByPath = new Map<RepoPath, Extract<OutputClaim, { kind: "slot" }>[]>();
+      for (const value of LEGACY_STATUS_OUTPUT_CLAIMS) {
+        if (value.kind !== "slot") fail("WP1 status inventory contains a non-slot claim");
+        const values = claimsByPath.get(value.path) ?? [];
+        values.push(value);
+        claimsByPath.set(value.path, values);
+      }
+      const targets = new Map<RepoPath, Uint8Array>();
+      for (const [targetPath, targetClaims] of claimsByPath) {
+        targets.set(targetPath, bytes(targetClaims.map((value) =>
+          `<!-- gen:sh:${value.slot_id} -->value<!-- /gen:sh:${value.slot_id} -->`
+        ).join("\n")));
+      }
+      const resolution = resolveOutputClaims({
+        registry: LEGACY_STATUS_OUTPUT_REGISTRY,
+        claims: LEGACY_STATUS_OUTPUT_CLAIMS,
+        targets,
+      });
+      if (resolution.issues.length !== 0 || resolution.authority === undefined) {
+        fail("actual WP1 production status inventory did not resolve");
+      }
+      actualWp1Authority = resolution.authority;
+    }
     const authority = id === "outputs_shadow_no_claim"
-      ? ({ resolved_count: 1 } as ValidatedOutputAuthority)
+      ? actualWp1Authority as ValidatedOutputAuthority
       : id === "outputs_projection_path_floor"
         ? wholeFileAuthority(asRepoPath("fixture/other-projection.md"))
         : wholeFileAuthority(document.document.projection_path);
@@ -1580,6 +1818,12 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       id === "outputs_projection_path_floor" || id === "outputs_shadow_no_claim" ||
       id === "write_shadow_rejected" || id === "write_all_rejected" || id === "format_source_single_explicit"
     ) requireIssue(result.issues, "E-OUTPUT-AUTHORITY");
+    if (
+      id === "outputs_shadow_no_claim" &&
+      !result.issues.some((value) =>
+        value.logical_path === "output_claims" && value.message.includes("lacks an opaque validated whole-file authority")
+      )
+    ) fail("actual WP1 inventory did not prove the projection has no whole-file claim");
     const intendedCoordinate = id === "write_all_rejected" ? "document.roadmap"
       : id === "format_source_single_explicit" ? "write_coordinate"
         : id === "write_shadow_rejected" ? "document.authority"
@@ -1792,14 +2036,42 @@ function testStatusCase(
       ) fail(`${diagnostic.id}: committed diagnostic receipt differs`);
       executed.push(diagnostic.id);
     }
+    const invalidUtf8Targets = new Map(statusTargets(fixtureBundle, "after"));
+    const invalidPath = asRepoPath("cddl-matrix/ROADMAP.md");
+    const invalidSnapshot = new Uint8Array(invalidUtf8Targets.get(invalidPath) ?? fail("status ROADMAP fixture is absent"));
+    const invalidBinding = inspectStatusMarkerBinding(invalidSnapshot, asSlotId("roadmap-counts"));
+    if (invalidBinding.payload_interval === undefined) fail("status ROADMAP fixture marker is unresolved");
+    invalidSnapshot[invalidBinding.payload_interval.start_byte] = 0xff;
+    invalidUtf8Targets.set(invalidPath, invalidSnapshot);
+    const invalidUtf8Plan = planLegacyStatusHeaderRun(inputs, {
+      mode: "check",
+      argv: ["--check"],
+      targets: invalidUtf8Targets,
+    });
+    const invalidUtf8Stdout = new TextDecoder().decode(invalidUtf8Plan.stdout);
+    if (
+      invalidUtf8Plan.exit_code !== 1 || invalidUtf8Plan.writes.length !== 0 ||
+      !invalidUtf8Stdout.includes("[E-OUTPUT-SLOT] cddl-matrix/ROADMAP.md#claims[0]: output target is not strict UTF-8")
+    ) fail("check decoded an invalid marker payload before returning its typed output-slot diagnostic");
     return pass("negative", executed);
   }
   if (id === "status_projector_preflight_no_partial_write") {
     const before = new Map(statusTargets(fixtureBundle, "before"));
     const lastPath = asRepoPath("tests/README.md");
     before.set(lastPath, bytes(new TextDecoder().decode(before.get(lastPath)).replace("<!-- /gen:sh:tests-tier-full -->", "")));
-    const plan = planLegacyStatusHeaderRun(inputs, { mode: "write", argv: ["--write"], targets: before });
-    if (plan.exit_code !== 1 || plan.writes.length !== 0) fail("failed last-target preflight planned partial writes");
+    const spy = targetReadSpy(before);
+    let resolvedClaims = 0;
+    const plan = planLegacyStatusHeaderRun(
+      inputs,
+      { mode: "write", argv: ["--write"], targets: spy.targets },
+      { claimResolved: () => { resolvedClaims++; } },
+    );
+    const expectedStderr = bytes("FAIL ../tests/README.md: span 'tests-tier-full' has no <!-- gen:sh:tests-tier-full --> … <!-- /gen:sh:tests-tier-full --> markers — hand-place them once around the phrase.\n");
+    if (
+      plan.exit_code !== 1 || plan.writes.length !== 0 || plan.stdout.byteLength !== 0 ||
+      !exactBytes(plan.stderr, expectedStderr) || spy.reads.size !== 3 ||
+      [...spy.reads.values()].some((value) => value !== 1) || resolvedClaims !== 11
+    ) fail("failed last-target preflight did not read/preflight all targets before planning zero writes");
     return pass("negative");
   }
   fail(`${id} is not a status case`);

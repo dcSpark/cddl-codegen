@@ -302,8 +302,41 @@ export function collectManifestSlotBindingFacts(
       chunk.owner.kind === "generated_slot" && chunk.owner.id === slotId &&
       chunk.owner.field === "generated"
     );
-    const singleSpan = spans.length === 1 && chunks.length === 1 && chunks[0].source_span_ids.length === 1 &&
-      chunks[0].source_span_ids[0] === spans[0].id;
+    const resolutions = completed.slot_resolutions.filter((item) => item.slot.slot_id === slotId);
+    const placementIndex = document.manifest.findIndex((entry) =>
+      entry.kind === "generated_slot" && entry.slot_id === slotId
+    );
+    const chunkIndex = chunks.length === 1 ? completed.chunks.indexOf(chunks[0]) : -1;
+    const chunkInterval = chunkIndex >= 0
+      ? {
+        start_byte: completed.expected_bytes.prefix_offsets[chunkIndex],
+        end_byte: completed.expected_bytes.prefix_offsets[chunkIndex + 1],
+      }
+      : undefined;
+    const declaration = declarations.length === 1 ? declarations[0] : undefined;
+    const span = spans.length === 1 ? spans[0] : undefined;
+    const resolutionItem = resolutions.length === 1 ? resolutions[0] : undefined;
+    const resolution = resolutionItem?.resolution;
+    const resolverIsExact =
+      declaration !== undefined && resolutionItem !== undefined && resolution !== undefined &&
+      placements.length === 1 && chunks.length === 1 && placementIndex >= 0 &&
+      resolutionItem.manifest_index === placementIndex && chunks[0].manifest_index === placementIndex &&
+      resolutionItem.slot.binding === declaration.binding &&
+      resolutionItem.slot.span_ids.length === declaration.span_ids.length &&
+      resolutionItem.slot.span_ids.every((value, index) => value === declaration.span_ids[index]) &&
+      resolution.binding === declaration.binding && resolution.bytes.byteLength > 0 &&
+      resolution.bytes.byteLength === chunks[0].bytes.byteLength &&
+      resolution.bytes.every((value, index) => value === chunks[0].bytes[index]);
+    const ownerSpanIsExact =
+      declaration !== undefined && span !== undefined && chunkInterval !== undefined &&
+      declaration.span_ids.length === 1 && declaration.span_ids[0] === span.id &&
+      chunks[0].source_span_ids.length === 1 && chunks[0].source_span_ids[0] === span.id &&
+      span.start_byte === chunkInterval.start_byte && span.end_byte === chunkInterval.end_byte;
+    const resolvedInterval =
+      resolverIsExact && ownerSpanIsExact && chunkInterval !== undefined &&
+        chunkInterval.start_byte < chunkInterval.end_byte
+        ? Object.freeze(chunkInterval)
+        : undefined;
     facts.push(Object.freeze({
       roadmap: document.document.roadmap,
       path: document.document.projection_path,
@@ -311,10 +344,10 @@ export function collectManifestSlotBindingFacts(
       declaration_count: declarations.length,
       placement_count: placements.length,
       owner_span_count: spans.length,
-      ...(singleSpan ? {
-        interval: Object.freeze({ start_byte: spans[0].start_byte, end_byte: spans[0].end_byte }),
-        payload_interval: Object.freeze({ start_byte: spans[0].start_byte, end_byte: spans[0].end_byte }),
-      } : {}),
+      ...(resolvedInterval === undefined ? {} : {
+        interval: resolvedInterval,
+        payload_interval: resolvedInterval,
+      }),
     }));
   }
   return Object.freeze(facts);

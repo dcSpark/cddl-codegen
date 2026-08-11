@@ -310,12 +310,34 @@ export function planLegacyStatusHeaderRun(
     inspections.set(JSON.stringify([payload.path, payload.slot_id]), inspectStatusMarkerBinding(snapshot, payload.slot_id));
   }
 
+  // Resolve the complete typed inventory before either mode can decide to write.  The resolver is
+  // deliberately fed only the three immutable snapshots above; callers cannot make a later claim
+  // observe bytes different from the drift/replacement pass.
+  const resolution = resolveOutputClaims({
+    registry: LEGACY_STATUS_OUTPUT_REGISTRY,
+    claims: LEGACY_STATUS_OUTPUT_CLAIMS,
+    targets: targetSnapshots,
+    observer: { claimResolved: (claim) => observer?.claimResolved(claim) },
+  });
+
   if (invocation.mode === "write") {
     for (const payload of payloads) {
       const inspected = inspections.get(JSON.stringify([payload.path, payload.slot_id]));
+      // Missing markers and a reversed single pair had a stable historical write diagnostic.
+      // Duplicate/crossed/nested pairs did not have defined safe replacement semantics and use the
+      // typed structural claim diagnostic below.
+      if (inspected === undefined || inspected.open_count === 0 || inspected.close_count === 0) {
+        const text = `FAIL ${legacyPath(payload.path)}: span '${payload.slot_id}' has no <!-- gen:sh:${payload.slot_id} --> … <!-- /gen:sh:${payload.slot_id} --> markers — hand-place them once around the phrase.\n`;
+        return Object.freeze({
+          exit_code: 1,
+          stdout: new Uint8Array(),
+          stderr: encoder.encode(text),
+          writes: Object.freeze([]),
+        });
+      }
       if (
-        inspected === undefined || inspected.open_count !== 1 || inspected.close_count !== 1 ||
-        !inspected.ordered || inspected.payload_interval === undefined
+        inspected.open_count === 1 && inspected.close_count === 1 && !inspected.ordered &&
+        inspected.open_offsets[0] > inspected.close_offsets[0]
       ) {
         const text = `FAIL ${legacyPath(payload.path)}: span '${payload.slot_id}' has no <!-- gen:sh:${payload.slot_id} --> … <!-- /gen:sh:${payload.slot_id} --> markers — hand-place them once around the phrase.\n`;
         return Object.freeze({
@@ -326,12 +348,6 @@ export function planLegacyStatusHeaderRun(
         });
       }
     }
-    const resolution = resolveOutputClaims({
-      registry: LEGACY_STATUS_OUTPUT_REGISTRY,
-      claims: LEGACY_STATUS_OUTPUT_CLAIMS,
-      targets: targetSnapshots,
-      observer: { claimResolved: (claim) => observer?.claimResolved(claim) },
-    });
     if (resolution.issues.length > 0) {
       const first = resolution.issues[0];
       return Object.freeze({
@@ -359,7 +375,7 @@ export function planLegacyStatusHeaderRun(
   }
 
   const problems = [...facts.validation_problems];
-  for (const payload of payloads) {
+  for (const [payloadIndex, payload] of payloads.entries()) {
     const inspected = inspections.get(JSON.stringify([payload.path, payload.slot_id]));
     if (inspected === undefined) continue;
     if (inspected.open_count !== 1) {
@@ -369,6 +385,17 @@ export function planLegacyStatusHeaderRun(
       problems.push(`${legacyPath(payload.path)}: close marker for span '${payload.slot_id}' appears ${inspected.close_count} time(s), expected exactly 1`);
     }
     if (inspected.open_count !== 1 || inspected.close_count !== 1) continue;
+    const structural = resolution.issues.find((value) =>
+      value.code === "E-OUTPUT-SLOT" && value.source === payload.path &&
+      (
+        value.logical_path === `slot[${JSON.stringify(payload.slot_id)}]` ||
+        value.logical_path === `claims[${payloadIndex}]`
+      )
+    );
+    if (structural !== undefined) {
+      problems.push(`[${structural.code}] ${structural.source}#${structural.logical_path}: ${structural.message}`);
+      continue;
+    }
     if (!inspected.ordered || inspected.payload_interval === undefined) {
       problems.push(`${legacyPath(payload.path)}: markers for span '${payload.slot_id}' are reversed or crossed`);
       continue;
@@ -382,12 +409,6 @@ export function planLegacyStatusHeaderRun(
       problems.push(`${legacyPath(payload.path)}: span '${payload.slot_id}' is stale — has ${JSON.stringify(decoder.decode(actual))}, expected ${JSON.stringify(decoder.decode(payload.bytes))} (run \`bun run project_status_headers.ts --write\`)`);
     }
   }
-  const resolution = resolveOutputClaims({
-    registry: LEGACY_STATUS_OUTPUT_REGISTRY,
-    claims: LEGACY_STATUS_OUTPUT_CLAIMS,
-    targets: targetSnapshots,
-    observer: { claimResolved: (claim) => observer?.claimResolved(claim) },
-  });
   for (const outputIssue of resolution.issues.filter((value) => value.code === "E-OUTPUT-CLAIM")) {
     problems.push(`[${outputIssue.code}] ${outputIssue.source}#${outputIssue.logical_path}: ${outputIssue.message}`);
   }
