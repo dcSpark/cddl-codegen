@@ -353,10 +353,41 @@ export type ReplacementPin =
   | { kind: "test_symbol"; test_id: string; symbol: string; claim_md: Uint8Array }
   | { kind: "file_heading"; path: RepoPath; heading: string; claim_md: Uint8Array };
 
-export interface CurrentGuard {
+export type FamilyGuardRole =
+  | "closed_family_root"
+  | "family_axis"
+  | "family_axis_value"
+  | "family_evidence_requirement"
+  | "family_cell"
+  | "family_exclusion";
+
+interface CurrentGuardBase {
   id: RoadmapId;
   replacement_pin: ReplacementPin;
   owner_registry: string;
+}
+
+/** Durable typed guard for a delivered systematic-family provider. */
+export interface CurrentFamilyGuard extends CurrentGuardBase {
+  guard_role: FamilyGuardRole;
+  family_root_id: RoadmapId;
+}
+
+/** Existing non-family guard registries remain structurally distinct. */
+export interface CurrentGenericGuard extends CurrentGuardBase {
+  guard_role: "generic";
+  family_root_id?: never;
+}
+
+export type CurrentGuard = CurrentFamilyGuard | CurrentGenericGuard;
+
+/** Reviewed delivered-closure facts derived from the exact baseline and current live authority. */
+export interface FixedValueClosureAuthorityFact {
+  baseline_commit: FullCommitId;
+  expected_guards: readonly { readonly id: RoadmapId; readonly guard_role: FamilyGuardRole }[];
+  retained_evidence_ids: readonly RoadmapId[];
+  legal_cell_count: number;
+  evidence_coordinate_count: number;
 }
 
 export interface ActiveRecordOwnerFact {

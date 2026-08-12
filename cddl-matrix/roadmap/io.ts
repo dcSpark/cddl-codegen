@@ -20,6 +20,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { spawnSync } from "node:child_process";
 import type { RegistryView } from "./adapters/types.ts";
 import { decodeCampaignSource } from "./decode/campaign.ts";
+import { decodeRoadmapSource } from "./decode/roadmap.ts";
+import { decodeRetiredSource } from "./decode/retired.ts";
 import {
   classifyRoadmapIoError,
   RoadmapFailure,
@@ -40,6 +42,8 @@ import {
   type TrackedTextInput,
 } from "./references.ts";
 import { extractFixedValueSourceFacts } from "./source_facts.ts";
+import { deriveFixedValueCurrentGuards, fixedValueGuardActivationState } from "./fixed_value_guards.ts";
+import { FIXED_VALUE_DELIVERY_BASE } from "./fixed_value_guards.ts";
 
 declare const scratchRepositoryHandleBrand: unique symbol;
 export type ScratchRepositoryHandle = {
@@ -950,7 +954,7 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
       throw new RoadmapFailure(issue("E-SCHEMA-STATE", "src/intermediate/rust_type.rs", "fixed-value-source", error instanceof Error ? error.message : String(error), 1));
     }
   }
-  return Object.freeze({
+  const registryWithoutGuards: RegistryView = Object.freeze({
     revision,
     production_output_stage: outputInventory.stage,
     gates: Object.freeze(status.registry.gates.map((gate) => ({ id: gate.id, kind: gate.kind, stub: gate.kind === "stub" }))),
@@ -969,6 +973,41 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
       codePointSort(left.kind === "slot" ? left.slot_id : "", right.kind === "slot" ? right.slot_id : "")
     )),
     matrix_status_inputs: status,
+  });
+  // Registry discovery is also used by isolated/scratch repositories whose tracked files are not
+  // roadmap sources. Their normal lifecycle loader owns schema diagnostics; guard discovery must
+  // remain an optional refinement rather than turning registry construction into a second decoder.
+  const optionalDecode = <T>(decode: () => T): T | undefined => {
+    try {
+      return decode();
+    } catch {
+      return undefined;
+    }
+  };
+  const matrixRoadmapBytes = byPath.get("cddl-matrix/roadmap.toml" as RepoPath);
+  const matrixRoadmap = matrixRoadmapBytes === undefined
+    ? undefined
+    : optionalDecode(() => decodeRoadmapSource(matrixRoadmapBytes, "cddl-matrix/roadmap.toml", "matrix", true));
+  const retiredBytes = byPath.get("roadmap-retired-ids.toml" as RepoPath);
+  const retired = retiredBytes === undefined
+    ? undefined
+    : optionalDecode(() => decodeRetiredSource(retiredBytes, "roadmap-retired-ids.toml", true));
+  const baselineRoadmapBytes = !fixedValueGuardActivationState(matrixRoadmap, retired)
+    ? undefined
+    : readTracked(root, { kind: "commit", commit: FIXED_VALUE_DELIVERY_BASE }, "cddl-matrix/roadmap.toml" as RepoPath);
+  const baselineRoadmap = baselineRoadmapBytes === undefined
+    ? undefined
+    : decodeRoadmapSource(baselineRoadmapBytes, "cddl-matrix/roadmap.toml", "matrix", true);
+  const fixedValue = deriveFixedValueCurrentGuards(
+    matrixRoadmap,
+    baselineRoadmap,
+    retired,
+    registryWithoutGuards,
+  );
+  return Object.freeze({
+    ...registryWithoutGuards,
+    current_guards: fixedValue.guards,
+    ...(fixedValue.closure === undefined ? {} : { fixed_value_closure: fixedValue.closure }),
   });
 }
 

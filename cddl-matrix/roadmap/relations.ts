@@ -3,6 +3,7 @@ import type { RoadmapIdProviderFact } from "./indexes.ts";
 import type { RoadmapId } from "./model/core.ts";
 import type { RoadmapName } from "./model/core.ts";
 import type { Relation, RelationKind } from "./model/documents.ts";
+import type { CurrentGuard } from "./model/documents.ts";
 
 const codePointSort = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -108,9 +109,11 @@ export function validateRelations(
   firstClass: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>,
   source = "<relations>",
   deferForeignRoadmapJoins?: RoadmapName,
+  currentGuards: readonly CurrentGuard[] = [],
 ): readonly RoadmapIssue[] {
   const issues: RoadmapIssue[] = [];
   const sorted = [...relations].sort(relationSort);
+  const guards = new Map(currentGuards.map((guard) => [guard.id, guard]));
   const exact = new Map<string, number>();
   const symmetric = new Map<string, Relation[]>();
   const deferredForeign = (id: RoadmapId): boolean => {
@@ -128,12 +131,23 @@ export function validateRelations(
         `relation source ${JSON.stringify(relation.source)} is not an active first-class ID`,
       ));
     }
-    if (!firstClass.has(relation.target) && !deferredForeign(relation.target)) {
+    const targetGuard = guards.get(relation.target);
+    const guardedReopen = relation.kind === "reopens" &&
+      targetGuard?.guard_role === "closed_family_root";
+    if (!firstClass.has(relation.target) && !guardedReopen && !deferredForeign(relation.target)) {
       issues.push(issue(
         "E-RELATION-ENDPOINT",
         source,
         `${path}.target`,
         `relation target ${JSON.stringify(relation.target)} is not an active first-class ID`,
+      ));
+    }
+    if (relation.kind === "reopens" && targetGuard !== undefined && !guardedReopen) {
+      issues.push(issue(
+        "E-RELATION-ENDPOINT",
+        source,
+        `${path}.target`,
+        `reopens target guard ${JSON.stringify(relation.target)} must be a closed-family root`,
       ));
     }
     const key = relationKey(relation);

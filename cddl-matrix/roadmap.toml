@@ -4,9 +4,9 @@ authority = "authoritative"
 roadmap = "matrix"
 source_path = "cddl-matrix/roadmap.toml"
 projection_path = "cddl-matrix/ROADMAP.md"
-frozen_source_sha256 = "4c75615331221fbec14ea689c6cd2b027533f7a7d2967ca8144a30ea5b034dc0"
-frozen_source_byte_length = 84591
-frozen_source_line_count = 995
+frozen_source_sha256 = "eef6a05153a042e8ce10c30503af94740f572a5e51575e24e92c6570454dcbd4"
+frozen_source_byte_length = 83655
+frozen_source_line_count = 985
 frozen_source_eof = "lf"
 projection_layout = "curated_v1"
 
@@ -1359,45 +1359,6 @@ boundary_md = """This control owns current enforcement only. Nint feature work b
 
 [[record.source_replacement]]
 span_id = "record-fixed-map-key-kinds"
-replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
-"""
-
-[[record]]
-id = "matrix.fixed-value-choice-member"
-title = "Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`)."
-projection_group = "matrix-side-work"
-render_authority = "semantic"
-projection_visibility = "document"
-
-[record.payload]
-kind = "work"
-summary_md = """Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).
-"""
-detail_md = """- **Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).**
-  Buildable now, same shape as the float enumeration that exposed it: the delivered float cells
-  cover the member and group-choice-arm positions, and a due-diligence probe of the THIRD
-  arm position found `t = 1.5 / tstr` and `t = -1 / null / tstr` refused for an unspellable derived
-  variant identifier (`F1.5`, `U-1` — § findings, \"No auto-naming scheme for a DERIVED variant
-  identifier…\") while the uint/text kinds are fine — exactly the known-NON-uniform kind axis
-  measured on two of three positions. Add choice-member cells per fixed kind with truthful verdicts
-  (uint and text as accept rows; float and nint as reject rows carrying the graceful-refusal
-  evidence, which is what they stay until a derived-name scheme lands), so the kind × position
-  product stops relying on per-delivery diligence for its last column.
-"""
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "coverage_cell"
-risk = "false_pass_or_red"
-family_id = "matrix.systematic.fixed-value-choice-member"
-acceptance_md = """Add one role.choice-member row for each source-derived fixed kind, with uint and text represented as supported and float and nint represented by their current graceful-refusal evidence; do not claim kinds not derived by the reviewed source.
-"""
-priority_band = "normal"
-priority_rationale_md = """This is the explicit buildable-now last-column hole in an already measured non-uniform kind × arm-position product.
-"""
-
-[[record.source_replacement]]
-span_id = "record-fixed-value-choice-member"
 replacement_field = "payload.detail_md"
 review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
@@ -4106,480 +4067,6 @@ completion_owner_reference_id = "ref-matrix-systematic-control-host-placement-co
 retirement_owner_reference_id = "ref-matrix-systematic-control-host-placement-retirement"
 
 [[record]]
-id = "matrix.systematic.fixed-value-choice-member"
-title = "Closed canonical fixed-value representatives in bare type-choice arms."
-projection_group = "matrix-side-work"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "family"
-summary_md = """Closed canonical fixed-value representatives in bare type-choice arms.
-"""
-family_maturity = "closed_denominator"
-campaign_state = "closing"
-goal_md = """Maintain exactly one reviewed canonical bare-choice representative for every FixedValue IR variant, with truthful support or graceful-refusal evidence.
-"""
-boundary_md = """This closes representative-by-kind coverage only: it does not claim every literal within a kind behaves uniformly. In particular, canonical text `\"x\"` is supported while keyword-minting text `\"self\"` remains a separately pinned graceful refusal.
-"""
-work_ids = ["matrix.fixed-value-choice-member"]
-authority_kind = "registry"
-authority_reference_id = "ref-matrix-systematic-fixed-value-choice-member-authority"
-derivation_md = """Read the exact `FixedValue` enum and cross-check `type2_to_fixed_value`; join each variant to its reviewed containment row and execution-minted support evidence. Any source, row, applicability, disposition, or stage-outcome drift invalidates closure.
-"""
-legality_rule_md = """Each of the eight source-derived FixedValue variants has exactly one spec-allowed canonical representative in a bare rule-level type-choice arm; there are no exclusions. Representative literals are reviewed coordinates, not claims over all values of their kind.
-"""
-legality_owner_reference_id = "ref-matrix-systematic-fixed-value-choice-member-legality"
-affected_profiles = ["default"]
-affected_faces = ["rust", "wasm"]
-control_ids = ["matrix.control.fixed-value-choice-member-closure"]
-completion_owner_reference_id = "ref-matrix-systematic-fixed-value-choice-member-completion"
-retirement_owner_reference_id = "ref-matrix-systematic-fixed-value-choice-member-retirement"
-drift_check_reference_id = "ref-matrix-systematic-fixed-value-choice-member-drift"
-mutation_test_reference_id = "ref-matrix-systematic-fixed-value-choice-member-completion"
-
-[[record.payload.axis]]
-id = "matrix.fixed-value-representative-kind"
-label = "FixedValue representative kind"
-authority_reference_id = "ref-matrix-fixed-value-choice-member-axis"
-
-[[record.payload.axis.value]]
-id = "matrix.fixed-value-kind.bool"
-label = "bool"
-source_reference_id = "ref-matrix-fixed-value-choice-member-kind-bool"
-
-[[record.payload.axis.value]]
-id = "matrix.fixed-value-kind.bytes"
-label = "bytes"
-source_reference_id = "ref-matrix-fixed-value-choice-member-kind-bytes"
-
-[[record.payload.axis.value]]
-id = "matrix.fixed-value-kind.float"
-label = "float"
-source_reference_id = "ref-matrix-fixed-value-choice-member-kind-float"
-
-[[record.payload.axis.value]]
-id = "matrix.fixed-value-kind.nint"
-label = "nint"
-source_reference_id = "ref-matrix-fixed-value-choice-member-kind-nint"
-
-[[record.payload.axis.value]]
-id = "matrix.fixed-value-kind.null"
-label = "null"
-source_reference_id = "ref-matrix-fixed-value-choice-member-kind-null"
-
-[[record.payload.axis.value]]
-id = "matrix.fixed-value-kind.text"
-label = "text"
-source_reference_id = "ref-matrix-fixed-value-choice-member-kind-text"
-
-[[record.payload.axis.value]]
-id = "matrix.fixed-value-kind.uint"
-label = "uint"
-source_reference_id = "ref-matrix-fixed-value-choice-member-kind-uint"
-
-[[record.payload.axis.value]]
-id = "matrix.fixed-value-kind.undefined"
-label = "undefined"
-source_reference_id = "ref-matrix-fixed-value-choice-member-kind-undefined"
-
-[[record.payload.evidence_requirement]]
-id = "matrix.requirement.fixed-value-choice-member-generation"
-profiles = ["default"]
-faces = ["rust"]
-stages = ["generated"]
-
-[[record.payload.evidence_requirement]]
-id = "matrix.requirement.fixed-value-choice-member-runtime"
-profiles = ["default"]
-faces = ["rust", "wasm"]
-stages = ["compiled", "round_tripped"]
-
-[[record.payload.cell]]
-id = "matrix.fixed-value-choice-member.coordinate-bool"
-spec_legality = "legal"
-cell_disposition = "supported"
-affected_profiles = ["default"]
-affected_faces = ["rust", "wasm"]
-work_id = "matrix.fixed-value-choice-member"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
-profile = "default"
-face = "rust"
-stage = "generated"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
-
-[[record.payload.cell.coordinate]]
-axis_id = "matrix.fixed-value-representative-kind"
-value_id = "matrix.fixed-value-kind.bool"
-
-[[record.payload.cell]]
-id = "matrix.fixed-value-choice-member.coordinate-bytes"
-spec_legality = "legal"
-cell_disposition = "supported"
-affected_profiles = ["default"]
-affected_faces = ["rust", "wasm"]
-work_id = "matrix.fixed-value-choice-member"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
-profile = "default"
-face = "rust"
-stage = "generated"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
-
-[[record.payload.cell.coordinate]]
-axis_id = "matrix.fixed-value-representative-kind"
-value_id = "matrix.fixed-value-kind.bytes"
-
-[[record.payload.cell]]
-id = "matrix.fixed-value-choice-member.coordinate-float"
-spec_legality = "legal"
-cell_disposition = "safely_refused"
-affected_profiles = ["default"]
-affected_faces = ["rust"]
-work_id = "matrix.fixed-value-choice-member"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
-profile = "default"
-face = "rust"
-stage = "generated"
-outcome = "safely_refused"
-evidence_id = "matrix.evidence.fixed-value-choice-member.float"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "compiled"
-outcome = "inapplicable"
-evidence_id = "matrix.evidence.fixed-value-choice-member.float"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "round_tripped"
-outcome = "inapplicable"
-evidence_id = "matrix.evidence.fixed-value-choice-member.float"
-
-[[record.payload.cell.coordinate]]
-axis_id = "matrix.fixed-value-representative-kind"
-value_id = "matrix.fixed-value-kind.float"
-
-[[record.payload.cell]]
-id = "matrix.fixed-value-choice-member.coordinate-nint"
-spec_legality = "legal"
-cell_disposition = "safely_refused"
-affected_profiles = ["default"]
-affected_faces = ["rust"]
-work_id = "matrix.fixed-value-choice-member"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
-profile = "default"
-face = "rust"
-stage = "generated"
-outcome = "safely_refused"
-evidence_id = "matrix.evidence.fixed-value-choice-member.nint"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "compiled"
-outcome = "inapplicable"
-evidence_id = "matrix.evidence.fixed-value-choice-member.nint"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "round_tripped"
-outcome = "inapplicable"
-evidence_id = "matrix.evidence.fixed-value-choice-member.nint"
-
-[[record.payload.cell.coordinate]]
-axis_id = "matrix.fixed-value-representative-kind"
-value_id = "matrix.fixed-value-kind.nint"
-
-[[record.payload.cell]]
-id = "matrix.fixed-value-choice-member.coordinate-null"
-spec_legality = "legal"
-cell_disposition = "supported"
-affected_profiles = ["default"]
-affected_faces = ["rust", "wasm"]
-work_id = "matrix.fixed-value-choice-member"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
-profile = "default"
-face = "rust"
-stage = "generated"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.null"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.null"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.null"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.null"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.null"
-
-[[record.payload.cell.coordinate]]
-axis_id = "matrix.fixed-value-representative-kind"
-value_id = "matrix.fixed-value-kind.null"
-
-[[record.payload.cell]]
-id = "matrix.fixed-value-choice-member.coordinate-text"
-spec_legality = "legal"
-cell_disposition = "supported"
-affected_profiles = ["default"]
-affected_faces = ["rust", "wasm"]
-work_id = "matrix.fixed-value-choice-member"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
-profile = "default"
-face = "rust"
-stage = "generated"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.text"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.text"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.text"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.text"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.text"
-
-[[record.payload.cell.coordinate]]
-axis_id = "matrix.fixed-value-representative-kind"
-value_id = "matrix.fixed-value-kind.text"
-
-[[record.payload.cell]]
-id = "matrix.fixed-value-choice-member.coordinate-uint"
-spec_legality = "legal"
-cell_disposition = "supported"
-affected_profiles = ["default"]
-affected_faces = ["rust", "wasm"]
-work_id = "matrix.fixed-value-choice-member"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
-profile = "default"
-face = "rust"
-stage = "generated"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
-
-[[record.payload.cell.coordinate]]
-axis_id = "matrix.fixed-value-representative-kind"
-value_id = "matrix.fixed-value-kind.uint"
-
-[[record.payload.cell]]
-id = "matrix.fixed-value-choice-member.coordinate-undefined"
-spec_legality = "legal"
-cell_disposition = "supported"
-affected_profiles = ["default"]
-affected_faces = ["rust", "wasm"]
-work_id = "matrix.fixed-value-choice-member"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
-profile = "default"
-face = "rust"
-stage = "generated"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "rust"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "compiled"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
-
-[[record.payload.cell.evidence_binding]]
-requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
-profile = "default"
-face = "wasm"
-stage = "round_tripped"
-outcome = "succeeded"
-evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
-
-[[record.payload.cell.coordinate]]
-axis_id = "matrix.fixed-value-representative-kind"
-value_id = "matrix.fixed-value-kind.undefined"
-
-[[record]]
 id = "matrix.systematic.named-group-reference-grid"
 title = "Observed named-group reference placement and modifier failures."
 projection_group = "matrix-side-work"
@@ -5934,10 +5421,6 @@ record_id = "matrix.named-group-reference-grid"
 
 [[manifest.entry]]
 kind = "record"
-record_id = "matrix.fixed-value-choice-member"
-
-[[manifest.entry]]
-kind = "record"
 record_id = "matrix.grammar-derived-legality"
 
 [[manifest.entry]]
@@ -6359,19 +5842,9 @@ owner_field = "payload.detail_md"
 migration_status = "replaced"
 
 [[source_span]]
-id = "record-fixed-value-choice-member"
-start_byte = 13351
-end_byte = 14287
-sha256 = "f7d7e19e887d9f2ea51378696abaff2d42f4ad6524f214046db8b7ff55ed8f23"
-source_kind = "record"
-owner_id = "matrix.fixed-value-choice-member"
-owner_field = "payload.detail_md"
-migration_status = "replaced"
-
-[[source_span]]
 id = "record-grammar-derived-legality"
-start_byte = 14287
-end_byte = 15467
+start_byte = 13351
+end_byte = 14531
 sha256 = "d53cad4f906852b6fa5019aa13c218c9b04f050aa005153b5002b66f4a00bca8"
 source_kind = "record"
 owner_id = "matrix.grammar-derived-legality"
@@ -6380,8 +5853,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-per-value-encoding-reachability"
-start_byte = 15467
-end_byte = 16805
+start_byte = 14531
+end_byte = 15869
 sha256 = "3fb7cfce420a25c8525050875aeacb7f3195b6761613df05abc24f6c386c91c9"
 source_kind = "record"
 owner_id = "matrix.per-value-encoding-reachability"
@@ -6390,8 +5863,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-emission-narrowing-fixture-floor"
-start_byte = 16805
-end_byte = 18094
+start_byte = 15869
+end_byte = 17158
 sha256 = "762641ea4b525b8894e5b6f54850551a5a9d31b4a52f3d691526cf49fbf467bf"
 source_kind = "record"
 owner_id = "matrix.emission-narrowing-fixture-floor"
@@ -6400,8 +5873,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-tag-registry-boundary"
-start_byte = 18094
-end_byte = 18765
+start_byte = 17158
+end_byte = 17829
 sha256 = "c63f42ea7d1449c9eeb4157fc4f986591dfed5e9199bb1a606a382f5c6c72052"
 source_kind = "record"
 owner_id = "matrix.tag-registry-boundary"
@@ -6410,8 +5883,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-expansion"
-start_byte = 18765
-end_byte = 18795
+start_byte = 17829
+end_byte = 17859
 sha256 = "e0bada7d20f97cd000afa22c21074c75f5d5b7a32015d4a506a085610f807d03"
 source_kind = "section"
 owner_id = "expansion"
@@ -6420,8 +5893,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-profile-version-scope"
-start_byte = 18795
-end_byte = 19604
+start_byte = 17859
+end_byte = 18668
 sha256 = "003a6a5b00ca3483048c035640b1c9c8eb3be83fbe950638908ad0118284a744"
 source_kind = "record"
 owner_id = "matrix.profile-version-scope"
@@ -6430,8 +5903,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-additional-tool-annotations"
-start_byte = 19604
-end_byte = 19730
+start_byte = 18668
+end_byte = 18794
 sha256 = "d8d9563f876538f7fe655360b70598c40de459c3fc76d3ab4934d0ab0b87b0d9"
 source_kind = "record"
 owner_id = "matrix.additional-tool-annotations"
@@ -6440,8 +5913,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-intra-alternative-variations"
-start_byte = 19730
-end_byte = 22543
+start_byte = 18794
+end_byte = 21607
 sha256 = "987aabd6fe6a3da8731711bf3e0009b03f974b499532e992bb92966c4f2c9908"
 source_kind = "record"
 owner_id = "matrix.intra-alternative-variations"
@@ -6450,8 +5923,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-control-host-placement-space"
-start_byte = 22543
-end_byte = 24738
+start_byte = 21607
+end_byte = 23802
 sha256 = "09f7b9c90ac0fecfd100b898e5ada7f95b8fce5a7829654638aee3751a7d210d"
 source_kind = "record"
 owner_id = "matrix.control-host-placement-space"
@@ -6460,8 +5933,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-refusal-spelling-space"
-start_byte = 24738
-end_byte = 26541
+start_byte = 23802
+end_byte = 25605
 sha256 = "9eb7afc27a3b86b4fa37f64269cf2851c69db861f22b254bfe5ac4442ce5efe4"
 source_kind = "record"
 owner_id = "matrix.refusal-spelling-space"
@@ -6470,8 +5943,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-findings-open"
-start_byte = 26541
-end_byte = 28704
+start_byte = 25605
+end_byte = 27768
 sha256 = "df8a02b6ae0614a1574b41850349edca2753e130e7fa7f1631ede49888498f7d"
 source_kind = "section"
 owner_id = "findings-open"
@@ -6480,8 +5953,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-multi-choice-group-rule"
-start_byte = 28704
-end_byte = 30718
+start_byte = 27768
+end_byte = 29782
 sha256 = "2448efe2f1c26226c6fbbfaea45c6fbfd248cbc6238f2fbf051407edea52f28a"
 source_kind = "record"
 owner_id = "matrix.multi-choice-group-rule"
@@ -6490,8 +5963,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-derived-variant-naming"
-start_byte = 30718
-end_byte = 32961
+start_byte = 29782
+end_byte = 32025
 sha256 = "20578c4d6bd3f6b340f8a5ba0bccc424919c7db64630021361cc140509b88710"
 source_kind = "record"
 owner_id = "matrix.derived-variant-naming"
@@ -6500,8 +5973,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-nominal-custom-pair-wrapper"
-start_byte = 32961
-end_byte = 34560
+start_byte = 32025
+end_byte = 33624
 sha256 = "2d4a37c1f2433ccb358b3c33035eba1dc7639114b191e4670d06ed96c7c2d1e5"
 source_kind = "record"
 owner_id = "matrix.nominal-custom-pair-wrapper"
@@ -6510,8 +5983,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-duplicate-rejection-diagnostics"
-start_byte = 34560
-end_byte = 36593
+start_byte = 33624
+end_byte = 35657
 sha256 = "4b86d63098fba9a99326b3ab8f6ffe6e0e91cf76cf54d9acb59619d856f04bde"
 source_kind = "record"
 owner_id = "matrix.duplicate-rejection-diagnostics"
@@ -6520,8 +5993,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-incremental-group-choice-extension"
-start_byte = 36593
-end_byte = 37825
+start_byte = 35657
+end_byte = 36889
 sha256 = "a9878400eb0cea9da1f3c893846fecbf12d12c285c423090525338cc11e9eae0"
 source_kind = "record"
 owner_id = "matrix.incremental-group-choice-extension"
@@ -6530,8 +6003,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-heterogeneous-array-occurrence-bounds"
-start_byte = 37825
-end_byte = 39036
+start_byte = 36889
+end_byte = 38100
 sha256 = "39849ed617cdbd32e67ccc4a928462dc843e991ac67998ff8d1f13be884e11fa"
 source_kind = "record"
 owner_id = "matrix.heterogeneous-array.occurrence-bounds"
@@ -6540,8 +6013,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-open-array-optional-adjacency"
-start_byte = 39036
-end_byte = 39972
+start_byte = 38100
+end_byte = 39036
 sha256 = "639458e89864e0ee8135ebc5a1524deb7e6a5c198cd3160de2dbaf5026899cc3"
 source_kind = "record"
 owner_id = "matrix.open-array.optional-adjacency"
@@ -6550,8 +6023,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-open-table-bounded-rest-rows"
-start_byte = 39972
-end_byte = 40524
+start_byte = 39036
+end_byte = 39588
 sha256 = "e559c31dfb12e975f885361f7cc1caf9a6109e8a3fe55ea378f4e9a73c394627"
 source_kind = "record"
 owner_id = "matrix.open-table.bounded-rest-rows"
@@ -6560,8 +6033,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-open-table-min-one-hardening"
-start_byte = 40524
-end_byte = 41523
+start_byte = 39588
+end_byte = 40587
 sha256 = "ffffbdf16e5f91f0125043e3a6c1304b8fac97ff2d0db52973cbc3119c40b11e"
 source_kind = "record"
 owner_id = "matrix.open-table.min-one-hardening"
@@ -6570,8 +6043,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-atomic-bounds-handover"
-start_byte = 41523
-end_byte = 41809
+start_byte = 40587
+end_byte = 40873
 sha256 = "672a008182443c5a58041e636fd98d27a11d11b04397639308f4e91c5c12e217"
 source_kind = "record"
 owner_id = "matrix.heterogeneous-array.atomic-bounds-handover"
@@ -6580,8 +6053,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-fixed-byte-representation"
-start_byte = 41809
-end_byte = 42085
+start_byte = 40873
+end_byte = 41149
 sha256 = "942342366b072327abf649a4b27074cf944e7987ebd22f3a70bafb79cc4cbabc"
 source_kind = "record"
 owner_id = "matrix.fixed-bytes.static-representation"
@@ -6590,8 +6063,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-array-static-representation"
-start_byte = 42085
-end_byte = 42568
+start_byte = 41149
+end_byte = 41632
 sha256 = "10d4b6b6c28b78b3e66f7f726d7fe6db498951614134310a662fdccf17afca7b"
 source_kind = "record"
 owner_id = "matrix.fixed-array.static-representation"
@@ -6600,8 +6073,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-shared-carrier-delivery-requirements"
-start_byte = 42568
-end_byte = 43018
+start_byte = 41632
+end_byte = 42082
 sha256 = "55defa8bb6a21bf9996748aa859afd9ee86dcf5f4dba451af5c4948de55d26c3"
 source_kind = "part"
 owner_id = "shared-carrier-delivery-requirements"
@@ -6610,8 +6083,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-keyed-struct-map-zero-permitting-fields"
-start_byte = 43018
-end_byte = 43896
+start_byte = 42082
+end_byte = 42960
 sha256 = "0afc8ea453c4789aa77722ec8ddc445d73147f3a5c90efd568631df5476eea0a"
 source_kind = "record"
 owner_id = "matrix.keyed-struct-map.zero-permitting-fields"
@@ -6620,8 +6093,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-inline-group-occurrence-carrier"
-start_byte = 43896
-end_byte = 44993
+start_byte = 42960
+end_byte = 44057
 sha256 = "1947b119555e5077af454c4503c87ddb6121502b2673ef1091872f84dde6870d"
 source_kind = "record"
 owner_id = "matrix.inline-group-occurrence-carrier"
@@ -6630,8 +6103,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-cbor-any-boundary"
-start_byte = 44993
-end_byte = 45376
+start_byte = 44057
+end_byte = 44440
 sha256 = "b866e2bd958f4aae9ea3f2ca2ac24bc5494e517059e15521c40029c3031924ba"
 source_kind = "record"
 owner_id = "matrix.cbor-any-boundary"
@@ -6640,8 +6113,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-anonymous-nested-map"
-start_byte = 45376
-end_byte = 46505
+start_byte = 44440
+end_byte = 45569
 sha256 = "4c68f3a5ed479f87cb2dbb7dec808a478d31de182ac82d20415e7664e1b8fb01"
 source_kind = "record"
 owner_id = "matrix.anonymous-nested-map"
@@ -6650,8 +6123,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-inline-group-choice-arm"
-start_byte = 46505
-end_byte = 47375
+start_byte = 45569
+end_byte = 46439
 sha256 = "540fb77a3548258598f7981d03744fc3829c2a228ded9009b9b3cbd3c76764ff"
 source_kind = "record"
 owner_id = "matrix.inline-group-choice-arm"
@@ -6660,8 +6133,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-float-table-key-domain"
-start_byte = 47375
-end_byte = 48444
+start_byte = 46439
+end_byte = 47508
 sha256 = "2b31fe1da5e3847bbf864829e0a37d198c130c49745edf0264ca4d93fad37aa1"
 source_kind = "record"
 owner_id = "matrix.float-table-key-domain"
@@ -6670,8 +6143,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-map-key-kinds"
-start_byte = 48444
-end_byte = 49997
+start_byte = 47508
+end_byte = 49061
 sha256 = "c3c1e82d1b703f83cbf0d8fca620529a32db4d26f3f1d80d842d7143f82657b9"
 source_kind = "record"
 owner_id = "matrix.fixed-map-key-kinds"
@@ -6680,8 +6153,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-nint-capability"
-start_byte = 49997
-end_byte = 51696
+start_byte = 49061
+end_byte = 50760
 sha256 = "98003f25889ca9bafe692cd996661138aebbd0ef30849089c8c8fa5d1beff3bb"
 source_kind = "record"
 owner_id = "matrix.nint-capability"
@@ -6690,8 +6163,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-wasm-extern-wrapper-demand"
-start_byte = 51696
-end_byte = 53419
+start_byte = 50760
+end_byte = 52483
 sha256 = "e45d8cb2ab268e3eb091423c3be675d5424185b18a3842c9a11f8ef10f6fbfe3"
 source_kind = "record"
 owner_id = "matrix.wasm-extern-wrapper-demand"
@@ -6700,8 +6173,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-extern-execution-multifile"
-start_byte = 53419
-end_byte = 53964
+start_byte = 52483
+end_byte = 53028
 sha256 = "7e7e4739d4257688425ccfa9c26656042a49fe5727896046e6f8d848ac812aaf"
 source_kind = "record"
 owner_id = "matrix.extern-execution-multifile"
@@ -6710,8 +6183,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-extern-execution"
-start_byte = 53964
-end_byte = 54360
+start_byte = 53028
+end_byte = 53424
 sha256 = "69ff3395188a6ac513e2e9aa65a6f0a719589d34d2804c2a10aaba1b27284bdc"
 source_kind = "part"
 owner_id = "extern-execution"
@@ -6720,8 +6193,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-multifile-extern-exclusion"
-start_byte = 54360
-end_byte = 55051
+start_byte = 53424
+end_byte = 54115
 sha256 = "8e2e1583f7ba1139054f79574aebe5f26dc0def6b8b26300aa2c143088d4fa47"
 source_kind = "record"
 owner_id = "matrix.multifile.extern-shape-coverage"
@@ -6730,8 +6203,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-upstream-closeouts"
-start_byte = 55051
-end_byte = 55573
+start_byte = 54115
+end_byte = 54637
 sha256 = "5361d6e914f624daf6da58ca49e659948ecf02587f423697dd3d67b71e5f4ad9"
 source_kind = "section"
 owner_id = "upstream-closeouts"
@@ -6740,8 +6213,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-prelude-number-float-upstream"
-start_byte = 55573
-end_byte = 56564
+start_byte = 54637
+end_byte = 55628
 sha256 = "2648c798c0459a0c0a8845d1bce0eaea8974af6fc755b746175c46053ee636ab"
 source_kind = "record"
 owner_id = "matrix.prelude-number-float-upstream"
@@ -6750,8 +6223,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-float-key-null-upstream"
-start_byte = 56564
-end_byte = 56787
+start_byte = 55628
+end_byte = 55851
 sha256 = "cf7192f403a91fac090b7131eab761654be08f26685cf2ee649d90573f8484f9"
 source_kind = "record"
 owner_id = "matrix.float-key-null-upstream"
@@ -6760,8 +6233,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-uint-control-operator-upstream"
-start_byte = 56787
-end_byte = 56924
+start_byte = 55851
+end_byte = 55988
 sha256 = "a5f0bf87f9b1f0479b74e15fecd4e44fc12bf78d528d5dc47e26afec912fbb51"
 source_kind = "record"
 owner_id = "matrix.uint-control-operator-upstream"
@@ -6770,8 +6243,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-array-sequence-upstream"
-start_byte = 56924
-end_byte = 57141
+start_byte = 55988
+end_byte = 56205
 sha256 = "023f6a2eea1c0a172f6c2b3aa6f36ceffc2dee8cbb158feec850ddb857699d2a"
 source_kind = "record"
 owner_id = "matrix.array-sequence-upstream"
@@ -6780,8 +6253,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-non-uint-range-upstream"
-start_byte = 57141
-end_byte = 57325
+start_byte = 56205
+end_byte = 56389
 sha256 = "d1fd66ad5e87a59e1580f9d72e339df064e0eaab29322093fa7d7d0e5f15efe7"
 source_kind = "record"
 owner_id = "matrix.non-uint-range-upstream"
@@ -6790,8 +6263,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-radix-literal-upstream"
-start_byte = 57325
-end_byte = 57894
+start_byte = 56389
+end_byte = 56958
 sha256 = "93d455448e7e7c9b9b5f67a243694ef4048c4e99d2c3df96406fe4ae4a517b79"
 source_kind = "record"
 owner_id = "matrix.radix-literal-upstream"
@@ -6800,8 +6273,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-signed-int-size-upstream"
-start_byte = 57894
-end_byte = 58942
+start_byte = 56958
+end_byte = 58006
 sha256 = "9b2fcea408e02de9d15f8f28a3a6043b9d767fa72c57615c8dca5b451360b0d3"
 source_kind = "record"
 owner_id = "matrix.signed-int-size-upstream"
@@ -6810,8 +6283,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-ruby-inline-controller-upstream"
-start_byte = 58942
-end_byte = 59718
+start_byte = 58006
+end_byte = 58782
 sha256 = "977e8f4e8466fdb6c5ba95a473d19ad57d3beddb6d4fe4809b1093dbbf1f0c7e"
 source_kind = "record"
 owner_id = "matrix.ruby-inline-controller-upstream"
@@ -6820,8 +6293,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-bignum-key-tag-upstream"
-start_byte = 59718
-end_byte = 60015
+start_byte = 58782
+end_byte = 59079
 sha256 = "ec2fc4abadc2f3932d5ebb23974f5e96be3871f9cedef9c44f9dbede708238c0"
 source_kind = "record"
 owner_id = "matrix.bignum-key-tag-upstream"
@@ -6830,8 +6303,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-undefined-validator-upstream"
-start_byte = 60015
-end_byte = 60900
+start_byte = 59079
+end_byte = 59964
 sha256 = "9d77556ae2e249dfa9a93c870b785ae685f5a113298d8652f620f61db5c775e6"
 source_kind = "record"
 owner_id = "matrix.undefined-validator-upstream"
@@ -6840,8 +6313,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-undefined-ciborium-upstream"
-start_byte = 60900
-end_byte = 61542
+start_byte = 59964
+end_byte = 60606
 sha256 = "781ea9bdb73a63be314c1611520272f21473c1f252060c6a372c4aa7cf985bf7"
 source_kind = "record"
 owner_id = "matrix.undefined-ciborium-upstream"
@@ -6850,8 +6323,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-bytes-lowercase-base64-parser"
-start_byte = 61542
-end_byte = 62300
+start_byte = 60606
+end_byte = 61364
 sha256 = "983a9b7d7a6036a47e839daf2351724aab45a58d29b8ff8bc5c711b176bc18d9"
 source_kind = "record"
 owner_id = "matrix.fixed-bytes.lowercase-base64-parser"
@@ -6860,8 +6333,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-bytes-validator-corroboration"
-start_byte = 62300
-end_byte = 63423
+start_byte = 61364
+end_byte = 62487
 sha256 = "34cd01a9540a8d3c9e6b59ad95d6d1e1044a4098de48dc70b5b294cf82289cc4"
 source_kind = "record"
 owner_id = "matrix.fixed-bytes.validator-corroboration"
@@ -6870,8 +6343,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-tag-map-key-upstream"
-start_byte = 63423
-end_byte = 64072
+start_byte = 62487
+end_byte = 63136
 sha256 = "1f7d7077e777ce789f2a430cbbf5b7afd44d5888cbd384facaf0c30d7da0bdf0"
 source_kind = "record"
 owner_id = "matrix.tag-map-key-upstream"
@@ -6880,8 +6353,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-named-rule-map-key-upstream"
-start_byte = 64072
-end_byte = 64961
+start_byte = 63136
+end_byte = 64025
 sha256 = "0e854fad5c253e7768b8592fe856dd8d858da6cee65818bd47b9ce5a3966131e"
 source_kind = "record"
 owner_id = "matrix.named-rule-map-key-upstream"
@@ -6890,8 +6363,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-optional-closed-map-upstream"
-start_byte = 64961
-end_byte = 65553
+start_byte = 64025
+end_byte = 64617
 sha256 = "774f00f6f28ceef03c58d863f828e7f2a60505048677fbd69c1e4598fc47057e"
 source_kind = "record"
 owner_id = "matrix.optional-closed-map-upstream"
@@ -6900,8 +6373,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-float-prelude-name-upstream"
-start_byte = 65553
-end_byte = 66835
+start_byte = 64617
+end_byte = 65899
 sha256 = "52433e7bc8de265d86e47d033d4533fd32922fd870818ea0b2593046905a5ede"
 source_kind = "record"
 owner_id = "matrix.float-prelude-name-upstream"
@@ -6910,8 +6383,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-typed-tag-report-upstream"
-start_byte = 66835
-end_byte = 67700
+start_byte = 65899
+end_byte = 66764
 sha256 = "693aaf5c56252b287f0b599028606796dc2066fa06f4b502deae1b5a97f7332e"
 source_kind = "record"
 owner_id = "matrix.typed-tag-report-upstream"
@@ -6920,8 +6393,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-wasm-abi-multifile"
-start_byte = 67700
-end_byte = 68479
+start_byte = 66764
+end_byte = 67543
 sha256 = "e234b9652a695f4265ae7a6e9756f7450b663efcc484c898ec1dcb4cba3f9dcc"
 source_kind = "section"
 owner_id = "wasm-abi-multifile"
@@ -6930,8 +6403,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-root-reference-placement"
-start_byte = 68479
-end_byte = 69748
+start_byte = 67543
+end_byte = 68812
 sha256 = "d0161c7e317dc323c540730bd5b2f29896fafbd0864bfc36382f3c740d75d3be"
 source_kind = "record"
 owner_id = "matrix.root-reference-placement"
@@ -6940,8 +6413,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-periodic-coverage-honesty"
-start_byte = 69748
-end_byte = 70762
+start_byte = 68812
+end_byte = 69826
 sha256 = "138ac2836c12a785482f238049f46e2e396bca7aa8b8a4659e6c2c8a0ac8f849"
 source_kind = "record"
 owner_id = "matrix.periodic-coverage-honesty"
@@ -6950,8 +6423,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-fix-review-reach"
-start_byte = 70762
-end_byte = 70946
+start_byte = 69826
+end_byte = 70010
 sha256 = "d6ca52ff836551a22afc7c9304737a32597c0cf8fdac8b3e23f0ae42e16d231b"
 source_kind = "part"
 owner_id = "fix-review-reach"
@@ -6960,8 +6433,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-test-steering-comment"
-start_byte = 70946
-end_byte = 71181
+start_byte = 70010
+end_byte = 70245
 sha256 = "a8b99ca84d22dbbc4fd9088f783605bc8d6e53de7e5158de9783dfc58b4119ca"
 source_kind = "part"
 owner_id = "test-steering-comment"
@@ -6970,8 +6443,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-consumer-hand-patch"
-start_byte = 71181
-end_byte = 71578
+start_byte = 70245
+end_byte = 70642
 sha256 = "95ec09f3d651cddb7697f092fc16ca8cec5339609a99f3f339d49c54d564825a"
 source_kind = "part"
 owner_id = "consumer-hand-patch"
@@ -6980,8 +6453,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-exclusion-comment-audit"
-start_byte = 71578
-end_byte = 73021
+start_byte = 70642
+end_byte = 72085
 sha256 = "a3ee430bc280c71d08351e6a452b213369f0772a36e7359b0061399599716750"
 source_kind = "part"
 owner_id = "exclusion-comment-audit"
@@ -6990,8 +6463,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-emission-input-mode-honesty"
-start_byte = 73021
-end_byte = 74083
+start_byte = 72085
+end_byte = 73147
 sha256 = "26b8fe7e6c790963bfd48e0d3d6fe7a07ac92e0134dfb0d7ea1befdef4b798fa"
 source_kind = "record"
 owner_id = "matrix.emission-input-mode-honesty"
@@ -7000,8 +6473,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-emitted-conformance-directory"
-start_byte = 74083
-end_byte = 74364
+start_byte = 73147
+end_byte = 73428
 sha256 = "45c2e46e73b900fa8e0a262db593e3a9381e6644aa174fe881906d8613cdafdd"
 source_kind = "part"
 owner_id = "emitted-conformance-directory"
@@ -7010,8 +6483,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-wasm-macro-directory"
-start_byte = 74364
-end_byte = 74786
+start_byte = 73428
+end_byte = 73850
 sha256 = "2dd55afebade3f0a7852990fb89ed6ddfb9fa45115c43d7c953f8bfc56d89b4b"
 source_kind = "part"
 owner_id = "wasm-macro-directory"
@@ -7020,8 +6493,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-json-gen-cross-module-execution"
-start_byte = 74786
-end_byte = 76826
+start_byte = 73850
+end_byte = 75890
 sha256 = "454cabc136e4c9cda31d901b95264d5385b235733412bc8c79c14b2ea9ba846d"
 source_kind = "part"
 owner_id = "json-gen-cross-module-execution"
@@ -7030,8 +6503,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-explicit-boundaries"
-start_byte = 76826
-end_byte = 76986
+start_byte = 75890
+end_byte = 76050
 sha256 = "5ba4ba0b045f674d93f19fd741acfedb04eb73cfd91d83506ebe3fb7a2f79e81"
 source_kind = "section"
 owner_id = "explicit-boundaries"
@@ -7040,8 +6513,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-matching-semantics-boundary"
-start_byte = 76986
-end_byte = 77152
+start_byte = 76050
+end_byte = 76216
 sha256 = "dd117ac22e03c2a79bdda2b1b8a20c130ea7f3c238a1311be5347adab8b0ca9a"
 source_kind = "record"
 owner_id = "matrix.matching-semantics-boundary"
@@ -7050,8 +6523,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-interaction-tuples-boundary"
-start_byte = 77152
-end_byte = 77279
+start_byte = 76216
+end_byte = 76343
 sha256 = "1776d75742a9c36621eee90bc2b1ba27a2ea8d4bb4276f449e7c9f4e4e2e91df"
 source_kind = "record"
 owner_id = "matrix.interaction-tuples-boundary"
@@ -7060,8 +6533,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-over-acceptance-ast-notes"
-start_byte = 77279
-end_byte = 77379
+start_byte = 76343
+end_byte = 76443
 sha256 = "69003851ce48007d2add6662f37d9a9e522b2322f97da8080f20a7c1d7178c26"
 source_kind = "record"
 owner_id = "matrix.over-acceptance-ast-notes"
@@ -7070,8 +6543,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-wasm-macro-behavior-boundary"
-start_byte = 77379
-end_byte = 77908
+start_byte = 76443
+end_byte = 76972
 sha256 = "21563af1427e1d35a824d0f860e4624e2d5843e1bd23b115019be681e624baaf"
 source_kind = "record"
 owner_id = "matrix.wasm-macro-behavior-boundary"
@@ -7080,8 +6553,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-extern-emitted-test-boundary"
-start_byte = 77908
-end_byte = 79549
+start_byte = 76972
+end_byte = 78613
 sha256 = "b475e495a1c959ae26455d41357cd881194a1d28488f73a13de9a0f9137f6e5c"
 source_kind = "record"
 owner_id = "matrix.extern-emitted-test-boundary"
@@ -7090,8 +6563,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-extern-interface-sentinel-boundary"
-start_byte = 79549
-end_byte = 80269
+start_byte = 78613
+end_byte = 79333
 sha256 = "dfc0393b6482fd64b93dcb4f7bd637cfd562040bd557bfc18b01faeadcbe6cc4"
 source_kind = "record"
 owner_id = "matrix.extern-interface-sentinel-boundary"
@@ -7100,8 +6573,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-inline-cbor-containment-boundary"
-start_byte = 80269
-end_byte = 81242
+start_byte = 79333
+end_byte = 80306
 sha256 = "21c83d82f7ca7a96c275ff76dff41fc45dbe17c9f49951d255f3108d5585913a"
 source_kind = "record"
 owner_id = "matrix.inline-cbor-containment-boundary"
@@ -7110,8 +6583,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-pending-decisions"
-start_byte = 81242
-end_byte = 81284
+start_byte = 80306
+end_byte = 80348
 sha256 = "b5c093a1cebbb54aea951d3f29506b193181718c327dbf530096398b86519c1c"
 source_kind = "section"
 owner_id = "pending-decisions"
@@ -7120,8 +6593,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-over-acceptance-denominator"
-start_byte = 81284
-end_byte = 82015
+start_byte = 80348
+end_byte = 81079
 sha256 = "32ca7852921c4ea6589f34afc9bf94b22ebdc6cbef672ee197994cc090972dc5"
 source_kind = "record"
 owner_id = "matrix.over-acceptance-denominator"
@@ -7130,8 +6603,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-maintenance"
-start_byte = 82015
-end_byte = 84390
+start_byte = 81079
+end_byte = 83454
 sha256 = "09ea997b7e555cb5f88ba625f44d02bc6c1ae6d9fc90169d534e5c1de347f5ce"
 source_kind = "section"
 owner_id = "maintenance"
@@ -7140,8 +6613,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-related"
-start_byte = 84390
-end_byte = 84591
+start_byte = 83454
+end_byte = 83655
 sha256 = "dfd87477a732da1720c66a34a55a37dd209c9f303d70604a0bdcab17a3a5540d"
 source_kind = "section"
 owner_id = "related"
@@ -8045,13 +7518,6 @@ test_id = "rust-test:cddl-codegen#tests::robustness_tests::fixed_key_arrow_singl
 symbol = "tests::robustness_tests::fixed_key_arrow_single_entry_routes_to_record_path"
 
 [[reference]]
-id = "ref-matrix-fixed-value-choice-member-source"
-source = "matrix.fixed-value-choice-member"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Matrix-side work — the model and the projections it renders"
-
-[[reference]]
 id = "ref-matrix-float-key-null-upstream-upstream"
 source = "matrix.float-key-null-upstream"
 kind = "external_release"
@@ -8574,101 +8040,6 @@ id = "ref-matrix-systematic-control-host-placement-completion"
 source = "matrix.systematic.control-host-placement"
 kind = "gate"
 gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "ref-matrix-systematic-fixed-value-choice-member-legality"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "file_heading"
-path = "cddl-matrix/README.md"
-heading = "Registering a CONTAINMENT cell"
-
-[[reference]]
-id = "ref-matrix-systematic-fixed-value-choice-member-retirement"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Matrix-side work — the model and the projections it renders"
-
-[[reference]]
-id = "ref-matrix-systematic-fixed-value-choice-member-completion"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "gate"
-gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "ref-matrix-systematic-fixed-value-choice-member-drift"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "gate"
-gate_id = "verify"
-
-[[reference]]
-id = "ref-matrix-systematic-fixed-value-choice-member-authority"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "matrix_cell"
-cell_id = "contain.choice-member.prelude.true.fixed-kind"
-
-[[reference]]
-id = "ref-matrix-fixed-value-choice-member-kind-bool"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "spec_passage"
-document = "src/intermediate/rust_type.rs"
-passage = "FixedValue::Bool(bool)"
-
-[[reference]]
-id = "ref-matrix-fixed-value-choice-member-kind-bytes"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "spec_passage"
-document = "src/intermediate/rust_type.rs"
-passage = "FixedValue::Bytes(Vec<u8>)"
-
-[[reference]]
-id = "ref-matrix-fixed-value-choice-member-kind-float"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "spec_passage"
-document = "src/intermediate/rust_type.rs"
-passage = "FixedValue::Float(f64)"
-
-[[reference]]
-id = "ref-matrix-fixed-value-choice-member-kind-nint"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "spec_passage"
-document = "src/intermediate/rust_type.rs"
-passage = "FixedValue::Nint(i128)"
-
-[[reference]]
-id = "ref-matrix-fixed-value-choice-member-kind-null"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "spec_passage"
-document = "src/intermediate/rust_type.rs"
-passage = "FixedValue::Null"
-
-[[reference]]
-id = "ref-matrix-fixed-value-choice-member-kind-text"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "spec_passage"
-document = "src/intermediate/rust_type.rs"
-passage = "FixedValue::Text(String)"
-
-[[reference]]
-id = "ref-matrix-fixed-value-choice-member-kind-uint"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "spec_passage"
-document = "src/intermediate/rust_type.rs"
-passage = "FixedValue::Uint(u64)"
-
-[[reference]]
-id = "ref-matrix-fixed-value-choice-member-kind-undefined"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "spec_passage"
-document = "src/intermediate/rust_type.rs"
-passage = "FixedValue::Undefined"
-
-[[reference]]
-id = "ref-matrix-fixed-value-choice-member-axis"
-source = "matrix.systematic.fixed-value-choice-member"
-kind = "spec_passage"
-document = "src/intermediate/rust_type.rs"
-passage = "pub enum FixedValue"
 
 [[reference]]
 id = "ref-matrix-systematic-named-group-reference-grid-retirement"

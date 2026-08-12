@@ -22,6 +22,7 @@ export type QueryView =
   | "debt"
   | "references"
   | "campaign"
+  | "burndown"
   | "signals"
   | "actionables"
   | "decisions"

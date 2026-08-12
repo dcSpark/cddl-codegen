@@ -288,9 +288,15 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["denominator_v2_synthetic_authority", [
     "valid", "production_empty_registry", "full_pipeline_injected", "full_pipeline_empty_registry", "real_completed_render", "missing_axis_value", "derived_extra_axis_value",
     "derived_extra_legal_cell", "authored_extra_cell", "legality_flip", "duplicate_coordinate",
-    "unknown_disposition", "loose_evidence", "missing_binding", "duplicate_binding",
-    "wrong_evidence_scope", "uncovered_applicability", "as_of_evidence", "stale_evidence", "zero_floor", "nan_floor",
+    "unknown_disposition", "disposition_drift", "loose_evidence", "missing_binding", "duplicate_binding",
+    "extra_binding", "outcome_drift", "wrong_evidence_scope", "uncovered_applicability", "affected_face_drift", "as_of_evidence", "stale_evidence", "zero_floor", "nan_floor",
     "fractional_floor", "stale_control", "missing_exclusion_liveness",
+  ]],
+  ["fixed_value_choice_member_authority_mutations", [
+    "enum_add", "enum_remove", "enum_rename", "payload_drift", "lowering_mismatch",
+    "containment_missing", "containment_extra", "feature_drift", "role_drift", "spec_drift",
+    "example_drift", "support_disposition_drift", "profile_face_exact", "exact_36_outcomes",
+    "fake_wasm_compile_only_rejected",
   ]],
   ["v2_migration_escape_hatches_rejected", [
     "semantic_conversion", "frozen_legacy_span_ids", "raw_section", "raw_fragment",
@@ -424,7 +430,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["fixture_read_permission_exit_two", ["eacces", "eperm"]],
   ["cli_check_each_roadmap", ["matrix", "testing", "all"]],
   ["cli_write_each_single_roadmap", ["matrix", "testing"]],
-  ["cli_query_each_view", ["summary", "debt", "references", "campaign", "signals", "actionables",
+  ["cli_query_each_view", ["summary", "debt", "references", "campaign", "burndown", "signals", "actionables",
     "decisions", "families", "watches", "content", "output-owners"]],
   ["dispatch_capability_narrowing", ["check_read_only", "query_read_only", "write_gets_atomic_replace", "format_gets_atomic_replace"]],
 ]);

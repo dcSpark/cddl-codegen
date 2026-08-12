@@ -153,17 +153,6 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   grid-BLANK cell): a
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
   targeted slice that does not wait for it.
-<a id="roadmap-id-matrix.fixed-value-choice-member"></a>
-- **Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).**
-  Buildable now, same shape as the float enumeration that exposed it: the delivered float cells
-  cover the member and group-choice-arm positions, and a due-diligence probe of the THIRD
-  arm position found `t = 1.5 / tstr` and `t = -1 / null / tstr` refused for an unspellable derived
-  variant identifier (`F1.5`, `U-1` — § findings, "No auto-naming scheme for a DERIVED variant
-  identifier…") while the uint/text kinds are fine — exactly the known-NON-uniform kind axis
-  measured on two of three positions. Add choice-member cells per fixed kind with truthful verdicts
-  (uint and text as accept rows; float and nint as reject rows carrying the graceful-refusal
-  evidence, which is what they stay until a derived-name scheme lands), so the kind × position
-  product stops relying on per-delivery diligence for its last column.
 <a id="roadmap-id-matrix.grammar-derived-legality"></a>
 - **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two

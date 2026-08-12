@@ -706,7 +706,14 @@ export function validateDecodedRoadmapDocument(
     return Object.freeze({ indexes: built.indexes, issues: built.issues });
   }
   const indexes = built.indexes;
-  const universe = options.universe ?? indexes;
+  const baseUniverse = options.universe ?? indexes;
+  const universe = Object.freeze({
+    first_class: baseUniverse.first_class,
+    payload_records: baseUniverse.payload_records,
+    current_guards: view.current_guards.length > 0
+      ? view.current_guards
+      : "current_guards" in baseUniverse ? baseUniverse.current_guards : undefined,
+  });
   // One-document adapter validation is the scoped lane. Supplying a combined universe closes the
   // seam and disables deferral unless a caller explicitly requests it for a focused probe.
   const deferredNamespace = options.defer_foreign_roadmap_joins === true ||
@@ -732,7 +739,7 @@ export function validateDecodedRoadmapDocument(
     defer_foreign_roadmap_joins: deferredNamespace,
     unresolved_migration_authority: options.unresolved_migration_authority,
   }));
-  issues.push(...validateRelations(indexes.relations, universe.first_class, source, deferredNamespace));
+  issues.push(...validateRelations(indexes.relations, universe.first_class, source, deferredNamespace, view.current_guards));
   if (document.document.schema_version === 2) {
     issues.push(...validateSystematicFamilies(
       indexes,

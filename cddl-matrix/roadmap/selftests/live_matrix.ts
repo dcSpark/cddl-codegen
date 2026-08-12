@@ -20,9 +20,95 @@ import type {
 const UTF8 = new TextEncoder();
 const MATRIX_SOURCE_PATH = "cddl-matrix/roadmap.toml" as RepoPath;
 const MATRIX_PROJECTION_PATH = "cddl-matrix/ROADMAP.md" as RepoPath;
+const RETIRED_FIXED_VALUE_CHOICE_MEMBER_LEGACY_BLOCK = `- **Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (\`role.choice-member\`).**
+  Buildable now, same shape as the float enumeration that exposed it: the delivered float cells
+  cover the member and group-choice-arm positions, and a due-diligence probe of the THIRD
+  arm position found \`t = 1.5 / tstr\` and \`t = -1 / null / tstr\` refused for an unspellable derived
+  variant identifier (\`F1.5\`, \`U-1\` — § findings, "No auto-naming scheme for a DERIVED variant
+  identifier…") while the uint/text kinds are fine — exactly the known-NON-uniform kind axis
+  measured on two of three positions. Add choice-member cells per fixed kind with truthful verdicts
+  (uint and text as accept rows; float and nint as reject rows carrying the graceful-refusal
+  evidence, which is what they stay until a derived-name scheme lands), so the kind × position
+  product stops relying on per-delivery diligence for its last column.
+`;
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function withRetiredFixedValueLegacyFloor(authoritative: RoadmapDocumentV1): RoadmapDocumentV1 {
+  if (authoritative.records.some((record) => record.id === "matrix.fixed-value-choice-member")) {
+    return authoritative;
+  }
+  const retiredId = "matrix.fixed-value-choice-member" as RoadmapDocumentV1["records"][number]["id"];
+  const retiredSpanId = "record-fixed-value-choice-member" as SpanId;
+  const grammarId = "matrix.grammar-derived-legality" as RoadmapDocumentV1["records"][number]["id"];
+  const record: RoadmapDocumentV1["records"][number] = {
+    id: retiredId,
+    title: "Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).",
+    projection_group: "matrix-side-work" as RoadmapDocumentV1["records"][number]["projection_group"],
+    render_authority: "semantic",
+    projection_visibility: "document",
+    payload: {
+      kind: "work",
+      summary_md: UTF8.encode("Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).\n"),
+      detail_md: UTF8.encode(RETIRED_FIXED_VALUE_CHOICE_MEMBER_LEGACY_BLOCK),
+      work_state: "ready",
+      work_intent: "add_regression",
+      work_kind: "coverage_cell",
+      risk: "false_pass_or_red",
+      family_id: "matrix.systematic.fixed-value-choice-member" as RoadmapDocumentV1["records"][number]["id"],
+      acceptance_md: UTF8.encode("Add one role.choice-member row for each source-derived fixed kind, with uint and text represented as supported and float and nint represented by their current graceful-refusal evidence; do not claim kinds not derived by the reviewed source.\n"),
+      priority_band: "normal",
+      priority_rationale_md: UTF8.encode("This is the explicit buildable-now last-column hole in an already measured non-uniform kind × arm-position product.\n"),
+    },
+    source_replacements: [{
+      span_id: retiredSpanId,
+      replacement_field: "payload.detail_md",
+      review_note_md: UTF8.encode("WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.\n"),
+    }],
+  };
+  const recordIndex = authoritative.records.findIndex((entry) => entry.id === grammarId);
+  const manifestIndex = authoritative.manifest.findIndex((entry) =>
+    entry.kind === "record" && entry.record_id === grammarId
+  );
+  assert(recordIndex >= 0 && manifestIndex >= 0, "legacy floor grammar insertion target is missing");
+  const shiftedSpans = authoritative.spans.map((span) => {
+    if (span.id === "slot-counts") return {
+      ...span,
+      sha256: "c4ba9082a3c86cee77945905c9e5e08430c6f7cfa6dbd39e4cf6d5066d10e6a9",
+    };
+    return span.start_byte < 13_351 ? span : {
+      ...span,
+      start_byte: span.start_byte + 936,
+      end_byte: span.end_byte + 936,
+    };
+  });
+  return {
+    ...authoritative,
+    document: {
+      ...authoritative.document,
+      frozen_source_sha256: "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d",
+      frozen_source_byte_length: 84_591,
+      frozen_source_line_count: 995,
+    },
+    records: [...authoritative.records.slice(0, recordIndex), record, ...authoritative.records.slice(recordIndex)],
+    manifest: [
+      ...authoritative.manifest.slice(0, manifestIndex),
+      { kind: "record" as const, record_id: retiredId },
+      ...authoritative.manifest.slice(manifestIndex),
+    ],
+    spans: [...shiftedSpans, {
+      id: retiredSpanId,
+      start_byte: 13_351,
+      end_byte: 14_287,
+      sha256: "f7d7e19e887d9f2ea51378696abaff2d42f4ad6524f214046db8b7ff55ed8f23",
+      source_kind: "record" as const,
+      owner_id: retiredId,
+      owner_field: "payload.detail_md",
+      migration_status: "replaced" as const,
+    }].sort((left, right) => left.start_byte - right.start_byte),
+  };
 }
 
 export function liveMatrixV2Document(): RoadmapDocumentV2 {
@@ -72,19 +158,34 @@ export function liveMatrixProjection(): Uint8Array {
   return UTF8.encode(liveMatrixProjectionText);
 }
 
-/** Frozen pre-WP7 projection used only by historical v0/v1 transition fixtures. */
-export function liveMatrixLegacyProjection(): Uint8Array {
-  const projection = UTF8.encode(liveMatrixProjectionText
+/** Current authored bytes with only the WP7 ownership/anchor layout removed. */
+export function liveMatrixCurrentLegacyProjection(): Uint8Array {
+  return UTF8.encode(liveMatrixProjectionText
     .replace(
       /^<!-- GENERATED FILE: owned by cddl-matrix\/roadmap\.toml; edit that TOML source and run project_roadmaps\.ts --write\. -->\n\n/u,
       "",
     )
     .replace(/^ *<a id="roadmap-id-[^"]+"><\/a>\n\n(?= *#)/gmu, "")
     .replace(/^ *<a id="roadmap-id-[^"]+"><\/a>\n/gmu, ""));
+}
+
+/** Frozen pre-WP7 projection used only by historical v0/v1 transition fixtures. */
+export function liveMatrixLegacyProjection(): Uint8Array {
+  const withoutWp7Layout = new TextDecoder().decode(liveMatrixCurrentLegacyProjection());
+  const projection = UTF8.encode(withoutWp7Layout
+    .replace(
+      "144 containment cells, and 301 cddl-codegen annotations",
+      "136 containment cells, and 293 cddl-codegen annotations",
+    )
+    .replace(
+      "- **Grammar-derived legality denominator for the role × feature grid.**",
+      `${RETIRED_FIXED_VALUE_CHOICE_MEMBER_LEGACY_BLOCK}- **Grammar-derived legality denominator for the role × feature grid.**`,
+    ));
+  const digest = sha256(projection);
   assert(
     projection.byteLength === 84_591 &&
-      sha256(projection) === "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d",
-    "reconstructed matrix legacy projection escaped its frozen length/digest",
+      digest === "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d",
+    `reconstructed matrix legacy projection escaped its frozen length/digest: ${projection.byteLength}/${digest}`,
   );
   return projection;
 }
@@ -161,6 +262,7 @@ function reconstructedRawFields(
 export function liveMatrixShadowV0Document(
   authoritative: RoadmapDocumentV1 = liveMatrixAuthoritativeDocument(),
 ): RoadmapDocumentV0 {
+  authoritative = withRetiredFixedValueLegacyFloor(authoritative);
   assert(
     authoritative.document.source_path === MATRIX_SOURCE_PATH &&
       authoritative.document.projection_path === MATRIX_PROJECTION_PATH,

@@ -53,6 +53,7 @@ import type {
 import type { CompletedRenderIr } from "./render_ir.ts";
 import {
   validateCombinedRoadmapReferences,
+  validateGuardedFamilyReopens,
   validateSemanticRoadmapJoins,
   type SemanticJoinUniverse,
 } from "./references.ts";
@@ -555,6 +556,13 @@ function firstClassProviderKind(claim: GlobalOwnerClaim): string | undefined {
     : undefined;
 }
 
+function guardRoleMatchesBaseProvider(guard: CurrentGuard, claim: GlobalOwnerClaim): boolean {
+  const providerKind = firstClassProviderKind(claim);
+  return guard.guard_role === "closed_family_root"
+    ? providerKind === "record"
+    : guard.guard_role !== undefined && guard.guard_role === providerKind;
+}
+
 function pinEqual(left: ReplacementPin, right: ReplacementPin): boolean {
   if (left.kind !== right.kind) return false;
   const bytes = (value: Uint8Array): string => [...value].join(",");
@@ -598,11 +606,12 @@ function validateCombinedRoadmapJoins(input: LifecycleRevisionInput): readonly R
   const universe: SemanticJoinUniverse = Object.freeze({
     first_class: firstClass,
     payload_records: payloadRecords,
+    current_guards: input.registry.current_guards,
   });
   const perRoadmapIssues = built.flatMap(({ indexes }) => [
     ...validateSemanticRoadmapJoins(indexes, universe, indexes.roadmap === "matrix"
       ? "cddl-matrix/roadmap.toml"
-      : "tests/testing-roadmap.toml"),
+      : "tests/testing-roadmap.toml", undefined, true),
     ...validateCombinedRoadmapReferences(indexes, universe.first_class, indexes.roadmap === "matrix"
       ? "cddl-matrix/roadmap.toml"
       : "tests/testing-roadmap.toml"),
@@ -612,7 +621,8 @@ function validateCombinedRoadmapJoins(input: LifecycleRevisionInput): readonly R
   const combinedRelations = built.flatMap(({ indexes }) => indexes.relations);
   return sortIssues([
     ...perRoadmapIssues,
-    ...validateRelations(combinedRelations, universe.first_class, "<combined-roadmaps>"),
+    ...validateGuardedFamilyReopens(payloadRecords, combinedRelations, input.registry.current_guards, "<combined-roadmaps>"),
+    ...validateRelations(combinedRelations, universe.first_class, "<combined-roadmaps>", undefined, input.registry.current_guards),
   ]);
 }
 
@@ -774,6 +784,56 @@ function validateRetirementClosure(
   }
   if (candidateReferencesContain(candidate, id)) {
     issues.push(issue("E-TRANSACTION-REFERENCE", `reference[${JSON.stringify(id)}]`, "retired ID remains a typed reference source or target"));
+  }
+}
+
+function validateLinkedFamilyWorkRetirement(
+  base: ValidatedLifecycleRevision,
+  candidate: ValidatedLifecycleRevision,
+  familyId: RoadmapId,
+  against: FullCommitId,
+  issues: RoadmapIssue[],
+): void {
+  const record = documentRecord(base, familyId);
+  const payload = record === undefined ? undefined : payloadOfRecord(record);
+  if (payload?.kind !== "family") return;
+  const baseDocument = base.roadmaps[namespaceOf(familyId)].document;
+  const linkedFromWork = (baseDocument?.records ?? []).flatMap((candidateRecord) => {
+    const candidatePayload = payloadOfRecord(candidateRecord);
+    return candidatePayload?.kind === "work" && candidatePayload.family_id === familyId
+      ? [candidateRecord.id]
+      : [];
+  }).sort(codePointSort);
+  const listed = [...payload.work_ids].sort(codePointSort);
+  if (new Set(listed).size !== listed.length || listed.length !== linkedFromWork.length ||
+    listed.some((id, index) => id !== linkedFromWork[index] ||
+      base.identity.owners.get(id)?.owner_kind !== "first_class")) {
+    issues.push(issue(
+      "E-TRANSACTION-GUARD",
+      `family[${JSON.stringify(familyId)}].work_ids`,
+      "base family work_ids must bijectively equal active work records back-linked to the family",
+    ));
+    return;
+  }
+  for (const workId of payload.work_ids) {
+    const owner = candidate.identity.owners.get(workId);
+    const tombstone = candidate.retired?.entries.get(workId);
+    if (owner?.owner_kind !== "tombstone") {
+      issues.push(issue(
+        "E-TRANSACTION-GUARD",
+        `family[${JSON.stringify(familyId)}].work_ids[${JSON.stringify(workId)}]`,
+        "family guard transfer requires every linked work item to disappear from active ownership",
+      ));
+    }
+    if (tombstone === undefined || tombstone.last_active_at !== against ||
+      !resolveReplacementPin(tombstone.replacement, candidate.registry).resolved) {
+      issues.push(issue(
+        "E-TRANSACTION-TOMBSTONE",
+        `retired_ids.entry[${JSON.stringify(workId)}]`,
+        "family guard transfer requires a same-transaction resolving tombstone for every linked work item",
+      ));
+    }
+    validateRetirementClosure(candidate, workId, issues);
   }
 }
 
@@ -1169,6 +1229,15 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
           "candidate-only guard has no exact base guard or family/systematic-child transfer origin",
         ));
       }
+      if ((rootTransfer || childTransfer) &&
+        (!guardRoleMatchesBaseProvider(guard, baseClaim!) ||
+          guard.family_root_id !== (rootTransfer ? guard.id : parent))) {
+        issues.push(issue(
+          "E-TRANSACTION-GUARD",
+          `guard[${JSON.stringify(guard.id)}]`,
+          "family guard role/root metadata must exactly match the base provider kind and owning family root",
+        ));
+      }
     }
     for (const [id, baseClaim] of base.identity.owners) {
       const candidateClaim = candidate.identity.owners.get(id);
@@ -1178,6 +1247,8 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
           firstClassProviderKind(candidateClaim) === firstClassProviderKind(baseClaim);
         const protectedGuard = candidateClaim?.owner_kind === "current_guard" &&
           guardFor(candidate, id) !== undefined &&
+          guardRoleMatchesBaseProvider(guardFor(candidate, id)!, baseClaim) &&
+          guardFor(candidate, id)!.family_root_id === componentOwner &&
           resolveReplacementPin(guardFor(candidate, id)!.replacement_pin, candidate.registry).resolved;
         if (!sameActiveKind && !protectedGuard) {
           issues.push(issue(
@@ -1205,10 +1276,12 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
         if (!isClosedFamily(base, id)) continue;
         const guard = guardFor(candidate, id);
         if (guard === undefined || !resolveReplacementPin(guard.replacement_pin, candidate.registry).resolved ||
+          guard.guard_role !== "closed_family_root" || guard.family_root_id !== id ||
           candidate.retired?.entries.has(id)) {
           issues.push(issue("E-TRANSACTION-GUARD", `guard[${JSON.stringify(id)}]`, "family guard transfer requires one resolving current guard and no tombstone"));
         }
         validateRetirementClosure(candidate, id, issues);
+        validateLinkedFamilyWorkRetirement(base, candidate, id, inputs.against, issues);
         const namespace = namespaceOf(id);
         familyGuardTransferIds.set(namespace, [...familyGuardTransferIds.get(namespace) ?? [], id]);
         guardTransfers.push(id);

@@ -79,6 +79,11 @@ import {
 } from "./transaction.ts";
 import { applyProjectionWritePlan, createProjectionWritePlan } from "./write_plan.ts";
 import { MATRIX_DENOMINATOR_AUTHORITIES } from "./fixed_value_authority.ts";
+import {
+  buildBurndownFourReport,
+  BURNDOWN_FOUR_BASE,
+  type BurndownLifecycleFacts,
+} from "./burndown.ts";
 
 export { createNodeRoadmapCliPorts } from "./io.ts";
 
@@ -563,7 +568,9 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
         payload.kind !== "work" || payload.work_state === "deferred" ? [] : [{
           roadmap, id, work_state: payload.work_state, work_kind: payload.work_kind,
           work_intent: payload.work_intent, consequence: payload.risk,
-          admission_basis: (payload.admission_ids?.length ?? 0) > 0 ? "admitted" : "unadmitted",
+          admission_basis: payload.work_kind !== "missing_system"
+            ? "not_applicable"
+            : (payload.admission_ids?.length ?? 0) > 0 ? "admitted" : "missing",
           admission_basis_ids: payload.admission_ids ?? [], family_id: payload.family_id ?? null,
           summary_md: payload.summary_md,
           ...(payload.work_state === "ready" ? { priority_band: payload.priority_band ?? "unbanded",
@@ -720,6 +727,8 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
       return { evaluation_as_of, claims: prepared.flatMap((item) => item.registry.output_claims) };
     case "campaign":
       return { evaluation_as_of, campaign: null, state: "not_loaded_without_lifecycle_scope" };
+    case "burndown":
+      return { evaluation_as_of, burndown: null, state: "not_loaded_without_lifecycle_scope" };
   }
 }
 
@@ -736,6 +745,36 @@ function queryRoadmaps(
   ports: ReadOnlyRoadmapPorts,
   json = false,
 ): Uint8Array {
+  if (view === "burndown") {
+    if (selection !== "all") {
+      failure([issue("E-CLI-INCOMPATIBLE", "<cli>", "--roadmap", "burndown query requires --roadmap all", 2)]);
+    }
+    const current = loadActivatedLifecycle(worktreeReader(ports));
+    const baseline = loadActivatedLifecycle(commitReader(ports, BURNDOWN_FOUR_BASE));
+    if (current === undefined || baseline === undefined || current.campaign === undefined ||
+      baseline.campaign === undefined || current.retired === undefined || baseline.retired === undefined) {
+      failure([issue("E-SOURCE-MISSING", "<burndown>", "$", "burndown requires activated current and baseline lifecycle roots", 1)]);
+    }
+    const currentValidation = validateLifecycleRevision(current);
+    const baselineValidation = validateLifecycleRevision(baseline);
+    if (currentValidation.issues.length > 0) failure(currentValidation.issues);
+    if (baselineValidation.issues.length > 0) failure(baselineValidation.issues);
+    const facts = (lifecycle: LifecycleRevisionInput): BurndownLifecycleFacts => ({
+      campaign: lifecycle.campaign!,
+      retired: lifecycle.retired!,
+      registry: lifecycle.registry,
+      documents: (["matrix", "testing"] as const).flatMap((roadmap) =>
+        lifecycle.roadmaps[roadmap].document === undefined
+          ? []
+          : [lifecycle.roadmaps[roadmap].document!]
+      ),
+    });
+    const value = stableJsonValue({
+      evaluation_as_of: asOf ?? null,
+      ...buildBurndownFourReport(facts(baseline), facts(current)),
+    });
+    return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
+  }
   if (view === "campaign") {
     const lifecycle = loadActivatedLifecycle(worktreeReader(ports));
     if (lifecycle === undefined) {

@@ -52,6 +52,7 @@ import { validateRelations } from "../relations.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import {
   liveMatrixAuthoritativeDocument,
+  liveMatrixCurrentLegacyProjection,
   liveMatrixLegacyProjection,
   liveMatrixProjection,
   liveMatrixShadowV0Document,
@@ -321,7 +322,7 @@ function liveMatrixStatusInputs(): MatrixStatusInputs {
     { id: "rfc9682", profile: "RFC9682" },
     ...Array.from({ length: 27 }, (_, index) => ({ id: `c-${index}`, profile: "CDDL_CODEGEN" })),
   ];
-  const annotations = Array.from({ length: 293 }, (_, index) => ({
+  const annotations = Array.from({ length: 301 }, (_, index) => ({
     id: index < 89 ? `row-${index}` : `annotation-${index}`,
     status: "supported",
     ...(index === 0 ? { emission: { preserve: { status: "unsupported" } } } : {}),
@@ -330,7 +331,7 @@ function liveMatrixStatusInputs(): MatrixStatusInputs {
     matrix: {
       annotations,
       features,
-      containment_ids: Array.from({ length: 136 }, (_, index) => `containment-${index}`),
+      containment_ids: Array.from({ length: 144 }, (_, index) => `containment-${index}`),
       control_operator_ids: Array.from({ length: 37 }, (_, index) => `control-${index}`),
     },
     catalog: { rows: Array.from({ length: 89 }, (_, index) => ({
@@ -381,7 +382,22 @@ function registryView(
       module_path: ["tests", "fixture"],
     })), (entry) => JSON.stringify([entry.test_id, entry.symbol])),
     roadmap_citations: [],
-    current_guards: [],
+    current_guards: document?.records.some((record) =>
+        "payload" in record && record.payload.kind === "evidence" &&
+        record.id.startsWith("matrix.evidence.fixed-value-choice-member.")
+      )
+      ? ["bool", "bytes", "float", "nint", "null", "text", "uint", "undefined"].map((value) => ({
+        id: `matrix.fixed-value-choice-member.coordinate-${value}` as RoadmapId,
+        guard_role: "family_cell" as const,
+        family_root_id: "matrix.systematic.fixed-value-choice-member" as RoadmapId,
+        owner_registry: "fixture-fixed-value-closure",
+        replacement_pin: {
+          kind: "gate" as const,
+          gate_id: "roadmap_projection_check",
+          claim_md: new Uint8Array(),
+        },
+      }))
+      : [],
     output_claims: [],
     matrix_status_inputs: statusInputs,
   };
@@ -1094,7 +1110,7 @@ function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
       `refreshed generated digest changed production inline ownership for ${slot.slot_id}`);
   }
 
-  const projection = liveMatrixLegacyProjection();
+  const projection = liveMatrixCurrentLegacyProjection();
   const rendered = renderFixture(mixed, MATRIX_ADAPTER, view);
   const semanticAuthorities = mixed.records.filter((record) => record.render_authority === "semantic").length;
   assert(rendered.semantic_calls === semanticAuthorities && (complete ? semanticAuthorities > 1 :
@@ -1107,8 +1123,8 @@ function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
       `live ${projection.byteLength}/${sha256(projection)})`,
   );
   assert(
-    rendered.bytes.byteLength === 84_591 &&
-      sha256(rendered.bytes) === "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d",
+    rendered.bytes.byteLength === 83_655 &&
+      sha256(rendered.bytes) === "eef6a05153a042e8ce10c30503af94740f572a5e51575e24e92c6570454dcbd4",
     "packet-1 mixed-v1 projection escaped the frozen live length/digest floor",
   );
 
@@ -1263,8 +1279,8 @@ function testMatrixV0ReconstructionVisibilityArms(bundle: AdapterFixtureBundle):
   const semanticOnly = withSemanticOnlyRecord(authoritative, "matrix.fixture-semantic-only" as RoadmapId);
   const rendered = renderFixture(semanticOnly, MATRIX_ADAPTER, registryView(bundle, semanticOnly, liveMatrixStatusInputs()));
   assert(
-    bytesEqual(rendered.bytes, liveMatrixLegacyProjection()),
-    "semantic-only matrix record changed the historical matrix projection bytes",
+    bytesEqual(rendered.bytes, liveMatrixCurrentLegacyProjection()),
+    "semantic-only matrix record changed the current pre-anchor projection bytes",
   );
   assert(bytesEqual(composeRoadmapDocument(liveMatrixShadowV0Document(semanticOnly)), liveMatrixShadowV0Source()), "matrix v0 reconstruction retained semantic-only record or placement");
   const documentVisible = withDocumentVisibleRecord(withRawDocumentVisibleRecord(authoritative));

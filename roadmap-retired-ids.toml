@@ -2,6 +2,16 @@
 schema_version = 1
 
 [[retired_ids.entry]]
+id = "matrix.fixed-value-choice-member"
+last_active_at = "8320fb3330c5d6febda8910e5a3bb944bcec1466"
+
+[retired_ids.entry.replacement]
+kind = "gate"
+gate_id = "roadmap_projection_check"
+claim_md = """The roadmap projection gate preserves the delivered FixedValue closure through typed current guards and retained live evidence.
+"""
+
+[[retired_ids.entry]]
 id = "testing.backgrounded-check-ts-full-launched-sub-agent-s"
 last_active_at = "6ec64028f86606b37c7be8dc743b76c97e0b4c4e"
 

@@ -9,6 +9,7 @@ import type {
 } from "../model/core.ts";
 import type {
   CurrentGuard,
+  FixedValueClosureAuthorityFact,
   GeneratedSlot,
   Reference,
   RoadmapDocument,
@@ -147,6 +148,7 @@ export interface RegistryView {
   readonly test_symbols: readonly TestSymbolFact[];
   readonly roadmap_citations: readonly RoadmapCitationFact[];
   readonly current_guards: readonly CurrentGuard[];
+  readonly fixed_value_closure?: FixedValueClosureAuthorityFact;
   readonly output_claims: readonly OutputClaim[];
   readonly matrix_status_inputs: MatrixStatusInputs;
 }

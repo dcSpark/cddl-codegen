@@ -2038,6 +2038,8 @@ export function validateDebtGuardTransferFacts(
     const rootGuards = request.candidate_guards.filter((guard) => guard.id === owner.id);
     const rootGuardExact = guardOwner.owner_kind === "current_guard" && guardOwner.id === owner.id &&
       guardOwner.namespace === owner.namespace && guardOwner.guard.id === owner.id &&
+      guardOwner.guard.guard_role === "closed_family_root" &&
+      guardOwner.guard.family_root_id === owner.id &&
       rootGuards.length === 1 && rootGuards[0] === guardOwner.guard &&
       replacementResolvesExactlyOnce(guardOwner.guard.replacement_pin, request.candidate_replacement_facts);
     const candidateRootAbsent = !options.candidate_document.records.some((record) => record.id === owner.id);
@@ -2055,6 +2057,7 @@ export function validateDebtGuardTransferFacts(
       const guards = request.candidate_guards.filter((guard) => guard.id === provider.id);
       const activeProtected = active.length === 1 && guards.length === 0;
       const guardProtected = active.length === 0 && guards.length === 1 &&
+        guards[0]!.guard_role === provider.kind && guards[0]!.family_root_id === owner.id &&
         replacementResolvesExactlyOnce(guards[0]!.replacement_pin, request.candidate_replacement_facts);
       if (!activeProtected && !guardProtected) {
         childrenProtected = false;

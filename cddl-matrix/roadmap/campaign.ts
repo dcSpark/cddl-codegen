@@ -366,15 +366,36 @@ function validateReservationBinding(
   return { valid: true, shadow: claim };
 }
 
-function activeWorkIds(inputs: CampaignValidationInputs): ReadonlyMap<RoadmapId, WorkKind> {
-  const result = new Map<RoadmapId, WorkKind>();
+interface ActiveWorkFact {
+  readonly work_kind: WorkKind;
+  readonly admission_ids: readonly RoadmapId[];
+}
+
+function activeWorkIds(inputs: CampaignValidationInputs): ReadonlyMap<RoadmapId, ActiveWorkFact> {
+  const result = new Map<RoadmapId, ActiveWorkFact>();
   for (const roadmap of ["matrix", "testing"] as const) {
     if (campaignAuthority(inputs.campaign, roadmap) !== "authoritative") continue;
     const document = inputs.roadmaps[roadmap].document;
     if (document?.document.schema_version === 0 || document === undefined) continue;
     for (const record of document.records) {
-      const kind = workKindOfRecord(document, record.id);
-      if (kind !== undefined) result.set(record.id, kind);
+      const payload = payloadOfRecord(record);
+      if (payload?.kind === "work") result.set(record.id, {
+        work_kind: payload.work_kind,
+        admission_ids: payload.admission_ids ?? [],
+      });
+    }
+  }
+  return result;
+}
+
+function activeTestingSystemAdmissions(inputs: CampaignValidationInputs): ReadonlySet<RoadmapId> {
+  const result = new Set<RoadmapId>();
+  for (const roadmap of ["matrix", "testing"] as const) {
+    if (campaignAuthority(inputs.campaign, roadmap) !== "authoritative") continue;
+    const document = inputs.roadmaps[roadmap].document;
+    if (document === undefined || document.document.schema_version === 0) continue;
+    for (const record of document.records) {
+      if (payloadOfRecord(record)?.kind === "testing_system_admission") result.add(record.id);
     }
   }
   return result;
@@ -503,6 +524,7 @@ export function validateCampaign(inputs: CampaignValidationInputs): CampaignVali
   const owners = ownerValidation.owners;
 
   const active = activeWorkIds(inputs);
+  const admissions = activeTestingSystemAdmissions(inputs);
   const selections = new Map<RoadmapId, CampaignSelectionV1>();
   const sortedSelections = [...inputs.campaign.selections].sort((left, right) =>
     codePointSort(left.item_id, right.item_id)
@@ -518,6 +540,15 @@ export function validateCampaign(inputs: CampaignValidationInputs): CampaignVali
     if (selection.target_kind === "active_id") {
       if (!active.has(selection.item_id) || reservation !== undefined) {
         issues.push(issue("E-CAMPAIGN-TARGET", path, "active_id must resolve to one authoritative-v1 work record and no reservation"));
+      }
+      const work = active.get(selection.item_id);
+      if (work?.work_kind === "missing_system" &&
+        !work.admission_ids.some((id) => admissions.has(id))) {
+        issues.push(issue(
+          "E-CAMPAIGN-TARGET",
+          path,
+          "selected missing_system work requires at least one qualifying testing-system admission",
+        ));
       }
     } else if (reservation === undefined) {
       issues.push(issue("E-CAMPAIGN-TARGET", path, "legacy target must resolve to one same-ID standalone reservation"));

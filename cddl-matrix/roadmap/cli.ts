@@ -13,7 +13,7 @@ export const ROADMAP_CLI_USAGE = `Usage:
   bun run project_roadmaps.ts --selftest
   bun run project_roadmaps.ts --roadmap matrix|testing|all --check [--against <full-lowercase-commit-id>]
   bun run project_roadmaps.ts --roadmap matrix|testing --write
-  bun run project_roadmaps.ts --roadmap matrix|testing|all --query summary|debt|references|campaign|actionables|signals|decisions|families|watches|content|output-owners [--json] [--as-of YYYY-MM-DD]
+  bun run project_roadmaps.ts --roadmap matrix|testing|all --query summary|debt|references|campaign|burndown|actionables|signals|decisions|families|watches|content|output-owners [--json] [--as-of YYYY-MM-DD]
   bun run project_roadmaps.ts --format-source <declared-repository-relative-toml-path>
 `;
 
@@ -41,6 +41,7 @@ const QUERY_VIEWS = new Set<QueryView>([
   "debt",
   "references",
   "campaign",
+  "burndown",
   "signals",
   "actionables",
   "decisions",

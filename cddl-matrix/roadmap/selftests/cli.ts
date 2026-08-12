@@ -2,9 +2,13 @@ import type { RegistryView } from "../adapters/types.ts";
 import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
 import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import { ROADMAP_CLI_USAGE } from "../cli.ts";
+import { burndownStableSetDelta } from "../burndown.ts";
 import { composeRoadmapDocument } from "../compose.ts";
+import { composeCampaignDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import { decodeCampaignSource } from "../decode/campaign.ts";
+import liveCampaignText from "../../../roadmap-campaign.toml" with { type: "text" };
+import liveRetiredText from "../../../roadmap-retired-ids.toml" with { type: "text" };
 import { RoadmapFailure } from "../errors.ts";
 import type { IssueCode } from "../errors.ts";
 import {
@@ -23,6 +27,16 @@ import type {
 } from "../io.ts";
 import type { FixtureRelativePath, RepoPath, RepositoryRevision, RoadmapId } from "../model/core.ts";
 import type { RoadmapDocumentV0, RoadmapDocumentV1, RoadmapDocumentV2, SemanticPayload } from "../model/documents.ts";
+import type { CurrentFamilyGuard, FixedValueClosureAuthorityFact } from "../model/documents.ts";
+import {
+  NORTH_STAR_STRUCTURAL_RELOCATION_GUARDS,
+  WP8_RETIRED_RELOCATION_GUARDS,
+  WP8_RETIRED_STRUCTURAL_PART_RELOCATION_GUARDS,
+} from "../relocation.ts";
+import {
+  FIXED_VALUE_DELIVERY_BASE,
+  FIXED_VALUE_FAMILY_ROOT,
+} from "../fixed_value_guards.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
 import { resolveManifest } from "../manifest.ts";
 import {
@@ -42,6 +56,7 @@ import { observeSelfTestIssue } from "./observations.ts";
 import {
   liveMatrixAuthoritativeDocument,
   liveMatrixAuthoritativeSource,
+  liveMatrixCurrentLegacyProjection,
   liveMatrixLegacyProjection,
   liveMatrixLegacyV2Document,
   liveMatrixProjection,
@@ -300,7 +315,33 @@ function liveRegistry(revision: RepositoryRevision): RegistryView {
       liveMatrixAuthoritativeDocument(),
       liveTestingAuthoritativeDocument(),
     ]);
-  return { ...cachedLiveRegistry, revision };
+  const relocation = [
+    ...NORTH_STAR_STRUCTURAL_RELOCATION_GUARDS,
+    ...WP8_RETIRED_RELOCATION_GUARDS,
+    ...WP8_RETIRED_STRUCTURAL_PART_RELOCATION_GUARDS,
+  ];
+  const relocationHeadings = [...new Map(relocation.map((guard) => {
+    const key = JSON.stringify([guard.path, guard.heading]);
+    const claims = relocation.filter((candidate) =>
+      candidate.path === guard.path && candidate.heading === guard.heading && candidate.claim_text !== undefined
+    ).map((candidate) => candidate.claim_text).join("\n");
+    return [key, {
+      path: guard.path as RepoPath,
+      heading: guard.heading,
+      span: { start_byte: 0, end_byte: 1 },
+      section_text: `${guard.heading}\n${claims}\n`,
+    }] as const;
+  })).values()];
+  return {
+    ...cachedLiveRegistry,
+    revision,
+    current_guards: burndownGuards(),
+    tracked_headings: [...new Map(
+      [...cachedLiveRegistry.tracked_headings, ...relocationHeadings].map((fact) =>
+        [JSON.stringify([fact.path, fact.heading]), fact] as const
+      ),
+    ).values()],
+  };
 }
 
 interface FakeOptions {
@@ -727,7 +768,7 @@ function promotionDocuments(
   return {
     base,
     candidate,
-    projection: roadmap === "matrix" ? liveMatrixLegacyProjection() : liveTestingLegacyProjection(),
+    projection: roadmap === "matrix" ? liveMatrixCurrentLegacyProjection() : liveTestingLegacyProjection(),
   };
 }
 
@@ -840,7 +881,7 @@ function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
   const candidate = new Map<RepoPath, Uint8Array>([
     ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(candidateMatrix)],
     ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(candidateTesting)],
-    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixLegacyProjection()],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixCurrentLegacyProjection()],
     ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingLegacyProjection()],
     ["roadmap-campaign.toml" as RepoPath, candidateCampaign],
     ["roadmap-retired-ids.toml" as RepoPath, candidateRetired],
@@ -848,7 +889,7 @@ function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
   const base = new Map<RepoPath, Uint8Array>([
     ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(baseMatrix)],
     ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(baseTesting)],
-    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixLegacyProjection()],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixCurrentLegacyProjection()],
     ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingLegacyProjection()],
     ["roadmap-campaign.toml" as RepoPath, campaign],
     ["roadmap-retired-ids.toml" as RepoPath, retired],
@@ -899,7 +940,7 @@ function projectionForLayout(document: RoadmapDocumentV2, registry: RegistryView
   });
   const renderIssues = [...manifest.issues, ...validateCompletedChunks(document, manifest.ops, completed)];
   assert(renderIssues.length === 0, `WP7 stage projection failed render validation: ${JSON.stringify(renderIssues)}`);
-  const legacy = document.document.roadmap === "matrix" ? liveMatrixLegacyProjection() : liveTestingLegacyProjection();
+  const legacy = document.document.roadmap === "matrix" ? liveMatrixCurrentLegacyProjection() : liveTestingLegacyProjection();
   const views = buildProjectionViews(document, completed, legacy);
   assert(views.issues.length === 0, `WP7 stage projection failed view validation: ${JSON.stringify(views.issues)}`);
   return views.full;
@@ -958,7 +999,7 @@ function wp7LayoutPorts(
   const candidateMatrixProjection = liveProjectionForLayout("matrix", candidateLayout, registry);
   const candidateTestingProjection = liveProjectionForLayout("testing", candidateLayout, registry);
   const baseMatrixProjection = baseMatrix.document.schema_version === 1
-    ? liveMatrixLegacyProjection()
+    ? liveMatrixCurrentLegacyProjection()
     : liveProjectionForLayout("matrix", baseLayout, registry);
   const baseTestingProjection = baseTesting.document.schema_version === 1
     ? liveTestingLegacyProjection()
@@ -1166,7 +1207,7 @@ function liveMatrixStatusInputs(): MatrixStatusInputs {
     { id: "rfc9682", profile: "RFC9682" },
     ...Array.from({ length: 27 }, (_, index) => ({ id: `c-${index}`, profile: "CDDL_CODEGEN" })),
   ];
-  const annotations = Array.from({ length: 293 }, (_, index) => ({
+  const annotations = Array.from({ length: 301 }, (_, index) => ({
     id: index < 89 ? `row-${index}` : `annotation-${index}`,
     status: "supported",
     ...(index === 0 ? { emission: { preserve: { status: "unsupported" } } } : {}),
@@ -1175,7 +1216,7 @@ function liveMatrixStatusInputs(): MatrixStatusInputs {
     matrix: {
       annotations,
       features,
-      containment_ids: Array.from({ length: 136 }, (_, index) => `containment-${index}`),
+      containment_ids: Array.from({ length: 144 }, (_, index) => `containment-${index}`),
       control_operator_ids: Array.from({ length: 37 }, (_, index) => `control-${index}`),
     },
     catalog: { rows: Array.from({ length: 89 }, (_, index) => ({
@@ -1195,6 +1236,18 @@ function liveMatrixStatusInputs(): MatrixStatusInputs {
       { tier: "local", wall_ms: 2000 },
       { tier: "full", wall_ms: 3000 },
     ] },
+  };
+}
+
+function legacyMatrixStatusInputs(): MatrixStatusInputs {
+  const current = liveMatrixStatusInputs();
+  return {
+    ...current,
+    matrix: {
+      ...current.matrix,
+      annotations: current.matrix.annotations.slice(0, 293),
+      containment_ids: current.matrix.containment_ids.slice(0, 136),
+    },
   };
 }
 
@@ -1218,7 +1271,7 @@ function validGenericAllPorts(_context: SelfTestContext): RoadmapCliPorts {
     registry(revision) {
       return {
         ...emptyRegistry(revision),
-        matrix_status_inputs: liveMatrixStatusInputs(),
+        matrix_status_inputs: legacyMatrixStatusInputs(),
       };
     },
   });
@@ -1291,6 +1344,91 @@ schema_version = 1
       };
     },
     atomic,
+  });
+}
+
+const BURNDOWN_GUARD_ROLES = Object.freeze([
+  [FIXED_VALUE_FAMILY_ROOT, "closed_family_root"],
+  ["matrix.fixed-value-representative-kind", "family_axis"],
+  ...["bool", "bytes", "float", "nint", "null", "text", "uint", "undefined"].map((value) =>
+    [`matrix.fixed-value-kind.${value}`, "family_axis_value"] as const
+  ),
+  ["matrix.requirement.fixed-value-choice-member-generation", "family_evidence_requirement"],
+  ["matrix.requirement.fixed-value-choice-member-runtime", "family_evidence_requirement"],
+  ...["bool", "bytes", "float", "nint", "null", "text", "uint", "undefined"].map((value) =>
+    [`matrix.fixed-value-choice-member.coordinate-${value}`, "family_cell"] as const
+  ),
+] as const);
+
+function burndownGuards(): readonly CurrentFamilyGuard[] {
+  return BURNDOWN_GUARD_ROLES.map(([id, guard_role]) => ({
+    id: id as RoadmapId,
+    guard_role,
+    family_root_id: FIXED_VALUE_FAMILY_ROOT,
+    owner_registry: "fixed-value-choice-member-closure",
+    replacement_pin: {
+      kind: "gate", gate_id: "roadmap_projection_check", claim_md: UTF8.encode("Delivered closure."),
+    },
+  }));
+}
+
+interface BurndownQueryMutation {
+  readonly campaign?: Uint8Array;
+  readonly testing?: RoadmapDocumentV2;
+  readonly closure?: FixedValueClosureAuthorityFact;
+}
+
+function burndownQueryPorts(mutation: BurndownQueryMutation = {}): RoadmapCliPorts {
+  const matrix = liveMatrixV2Document();
+  const testing = mutation.testing ?? liveTestingV2Document();
+  const guards = burndownGuards();
+  const cellIds = new Set(guards.filter((guard) => guard.guard_role === "family_cell").map((guard) => guard.id));
+  const retainedEvidenceIds = matrix.records.flatMap((record) => {
+    const payload = record.payload;
+    return payload.kind === "evidence" && payload.scope.cell_ids?.some((id: RoadmapId) => cellIds.has(id))
+      ? [record.id]
+      : [];
+  }).sort();
+  const closure: FixedValueClosureAuthorityFact = mutation.closure ?? {
+    baseline_commit: FIXED_VALUE_DELIVERY_BASE,
+    expected_guards: BURNDOWN_GUARD_ROLES.map(([id, guard_role]) => ({ id: id as RoadmapId, guard_role })),
+    retained_evidence_ids: retainedEvidenceIds,
+    legal_cell_count: 8,
+    evidence_coordinate_count: 36,
+  };
+  const campaign = mutation.campaign ?? UTF8.encode(liveCampaignText);
+  const retired = UTF8.encode(liveRetiredText);
+  const matrixSource = composeRoadmapDocument(matrix);
+  const testingSource = composeRoadmapDocument(testing);
+  return fakePorts({
+    read(path) {
+      if (path === "cddl-matrix/roadmap.toml") return matrixSource;
+      if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
+      if (path === "tests/testing-roadmap.toml") return testingSource;
+      if (path === "tests/TESTING_ROADMAP.md") return liveTestingProjection();
+      if (path === "roadmap-campaign.toml") return campaign;
+      if (path === "roadmap-retired-ids.toml") return retired;
+      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
+    },
+    readAtCommit(path) {
+      if (path === "roadmap-campaign.toml") return UTF8.encode(liveCampaignText);
+      if (path === "roadmap-retired-ids.toml") return retired;
+      if (path === "cddl-matrix/roadmap.toml") return matrixSource;
+      if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
+      if (path === "tests/testing-roadmap.toml") return composeRoadmapDocument(liveTestingV2Document());
+      if (path === "tests/TESTING_ROADMAP.md") return liveTestingProjection();
+      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
+    },
+    registry(revision) {
+      return {
+        ...liveRegistry(revision),
+        production_output_stage: "both_authoritative",
+        output_claims: productionOutputInventory("both_authoritative").claims,
+        matrix_status_inputs: liveMatrixStatusInputs(),
+        current_guards: guards,
+        fixed_value_closure: closure,
+      };
+    },
   });
 }
 
@@ -1420,8 +1558,12 @@ function scopedDebtMutationPorts(mutation: ScopedDebtMutation): RoadmapCliPorts 
         ...registry,
         production_output_stage: mutation.stage ?? "both_authoritative",
         output_claims: productionOutputInventory(mutation.stage ?? "both_authoritative").claims,
-        matrix_status_inputs: liveMatrixStatusInputs(),
-        current_guards: mutation.guards ?? [],
+        matrix_status_inputs: mutation.stage === "pre_cutover"
+          ? legacyMatrixStatusInputs()
+          : liveMatrixStatusInputs(),
+        current_guards: mutation.guards === undefined
+          ? registry.current_guards
+          : [...registry.current_guards, ...mutation.guards],
         gates,
       };
     },
@@ -1473,7 +1615,7 @@ schema_version = 1
         ...preRoots.read.registryView(revision),
         production_output_stage: stage,
         output_claims: productionOutputInventory(stage).claims,
-        matrix_status_inputs: liveMatrixStatusInputs(),
+        matrix_status_inputs: legacyMatrixStatusInputs(),
       };
     },
   });
@@ -1526,7 +1668,8 @@ schema_version = 1
         ...liveRegistry(revision),
         production_output_stage: stage,
         output_claims: productionOutputInventory(stage).claims,
-        matrix_status_inputs: liveMatrixStatusInputs(),
+        matrix_status_inputs: legacyMatrixStatusInputs(),
+        current_guards: [],
       };
     },
   });
@@ -1558,7 +1701,7 @@ schema_version = 1
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     registry(revision) {
-      return { ...emptyRegistry(revision), matrix_status_inputs: liveMatrixStatusInputs() };
+      return { ...emptyRegistry(revision), matrix_status_inputs: legacyMatrixStatusInputs() };
     },
   });
 }
@@ -1731,8 +1874,123 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
           decoded.campaign.campaign.testing_authority === "legacy_markdown",
         `campaign query did not expose the decoded lifecycle document: ${text(decodedCampaign.stderr)}`,
       );
-      return pass("positive", ["summary", "debt", "references", "campaign", "signals", "actionables",
-        "decisions", "families", "watches", "content", "output-owners"]);
+      const alpha = "testing.fixture-alpha" as RoadmapId;
+      const beta = "testing.fixture-beta" as RoadmapId;
+      const gamma = "testing.fixture-gamma" as RoadmapId;
+      const stable = burndownStableSetDelta([alpha, beta], [alpha, beta]);
+      const drifted = burndownStableSetDelta([alpha, beta], [alpha, gamma]);
+      assert(stable.stable && !drifted.stable && drifted.missing[0] === beta &&
+        drifted.unexpected[0] === gamma,
+      "burndown cohort deltas must expose exact stable, missing, and unexpected sets");
+      const queryBurndown = (ports: RoadmapCliPorts): Record<string, any> => {
+        const result = run(["--roadmap", "all", "--query", "burndown", "--json"], ports);
+        assert(result.exit_code === 0 && result.stderr.byteLength === 0,
+          `burndown query failed: ${text(result.stderr)}`);
+        return JSON.parse(text(result.stdout));
+      };
+      const burndown = queryBurndown(burndownQueryPorts());
+      assert(burndown.cohort.stable_set_delta.stable === true &&
+        burndown.cohort.current_items.length === 7 &&
+        burndown.cohort.current_items.every((item: any) =>
+          item.work_state === "ready" && item.admission_status === "not_applicable"
+        ) &&
+        burndown.retired_family.current.guarded === true &&
+        burndown.retired_family.current.total_guard_count === 20 &&
+        burndown.retired_family.current.retained_evidence_count === 8 &&
+        burndown.retired_family.deltas.active_items === -1 &&
+        burndown.retired_family.deltas.active_cells === -8 &&
+        burndown.retired_family.deltas.active_evidence_coordinates === -36 &&
+        burndown.active_open_families.every((family: any) =>
+          Number.isInteger(family.observed_lower_bound) && !("percentage" in family)
+        ) &&
+        burndown.structured_costs.status === "unknown" &&
+        burndown.structured_costs.reason === "unrecorded",
+      "end-to-end burndown query omitted a cohort/family/delta/lower-bound/admission/cost contract");
+
+      const decodedCampaignDocument = decodeCampaignSource(
+        UTF8.encode(liveCampaignText), "roadmap-campaign.toml", true,
+      );
+      const missingCohort = composeCampaignDocument({
+        ...decodedCampaignDocument,
+        selections: decodedCampaignDocument.selections.slice(1),
+      });
+      const missingReport = queryBurndown(burndownQueryPorts({ campaign: missingCohort }));
+      assert(missingReport.cohort.stable_set_delta.stable === false &&
+        missingReport.cohort.stable_set_delta.missing.length === 1,
+      "end-to-end burndown query must expose a missing cohort member");
+
+      const targetId = decodedCampaignDocument.selections[0]!.item_id;
+      const testing = liveTestingV2Document();
+      const stateRecords = testing.records.map((record) => {
+        if (record.id !== targetId || record.payload.kind !== "work" || record.payload.work_state !== "ready") return record;
+        const {
+          acceptance_md: _acceptance,
+          priority_rationale_md: _priority,
+          priority_band: _band,
+          ...rest
+        } = record.payload;
+        return { ...record, payload: {
+          ...rest,
+          work_state: "blocked" as const,
+          blocker_md: UTF8.encode("Blocked mutation."),
+          transition_ids: ["testing.predicate.convenience-cbor-bytes-ruling" as RoadmapId],
+        } };
+      });
+      const stateReport = queryBurndown(burndownQueryPorts({
+        testing: { ...testing, records: stateRecords },
+      }));
+      assert(stateReport.cohort.current_items.find((item: any) => item.id === targetId)?.work_state === "blocked",
+        "end-to-end burndown query must report current work state");
+
+      const reopeningRecords = testing.records.map((record) => {
+        if (record.id !== targetId || record.payload.kind !== "work") return record;
+        const { family_classification: _classification, ...payload } = record.payload;
+        return { ...record, payload: { ...payload, family_id: FIXED_VALUE_FAMILY_ROOT } };
+      });
+      const reopeningReport = queryBurndown(burndownQueryPorts({ testing: {
+        ...testing,
+        records: reopeningRecords,
+        relations: [...testing.relations, {
+          source: targetId, kind: "reopens" as const, target: FIXED_VALUE_FAMILY_ROOT,
+        }],
+      } }));
+      assert(reopeningReport.retired_family.same_family_reopening_rows.length === 1 &&
+        reopeningReport.retired_family.same_family_reopening_rows[0].source_work_id === targetId,
+      "end-to-end burndown query must report paired same-family reopening rows");
+
+      const admissionId = testing.records.find((record) =>
+        record.payload.kind === "testing_system_admission"
+      )?.id;
+      assert(admissionId !== undefined, "live testing roadmap lacks an admission fixture");
+      const admissionRecords = testing.records.map((record) =>
+        record.id === targetId && record.payload.kind === "work"
+          ? { ...record, payload: {
+            ...record.payload,
+            work_kind: "missing_system" as const,
+            admission_ids: [admissionId],
+          } }
+          : record
+      );
+      const admissionReport = queryBurndown(burndownQueryPorts({
+        testing: { ...testing, records: admissionRecords },
+      }));
+      assert(admissionReport.cohort.current_items.find((item: any) => item.id === targetId)?.admission_status === "admitted",
+        "end-to-end burndown query must report qualifying missing-system admission");
+
+      const changedClosure = {
+        ...burndownQueryPorts().read.registryView({ kind: "worktree" }).fixed_value_closure!,
+        retained_evidence_ids: burndownQueryPorts().read.registryView({ kind: "worktree" })
+          .fixed_value_closure!.retained_evidence_ids.slice(1),
+        legal_cell_count: 9,
+        evidence_coordinate_count: 37,
+      };
+      const changedDeltaReport = queryBurndown(burndownQueryPorts({ closure: changedClosure }));
+      assert(changedDeltaReport.retired_family.current.retained_evidence_count === 7 &&
+        changedDeltaReport.retired_family.deltas.active_cells === -9 &&
+        changedDeltaReport.retired_family.deltas.active_evidence_coordinates === -37,
+      "end-to-end burndown query must derive exact retained evidence membership and cell/evidence deltas from authority facts");
+      return pass("positive", ["summary", "debt", "references", "campaign", "burndown", "signals",
+        "actionables", "decisions", "families", "watches", "content", "output-owners"]);
     }
     case "cli_no_args_rejected": expectFailure([], cliIssue("E-CLI-MODE", 0, "exactly one primary mode is required"), fakePorts(), true); return pass("negative");
     case "cli_unknown_option": expectFailure(["--wat"], cliIssue("E-CLI-UNKNOWN-OPTION", 0, 'unknown option "--wat"'), fakePorts(), true); return pass("negative");
@@ -1836,6 +2094,7 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
       const mismatch = (
         source: Uint8Array,
         stage: "pre_cutover" | "matrix_authoritative" | "both_authoritative",
+        matrixStatusInputs: MatrixStatusInputs,
       ) => fakePorts({
         read: (path) => path === "cddl-matrix/roadmap.toml"
           ? new Uint8Array(source)
@@ -1844,18 +2103,20 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
           ...liveRegistry(revision),
           production_output_stage: stage,
           output_claims: productionOutputInventory(stage).claims,
-          matrix_status_inputs: liveMatrixStatusInputs(),
+          matrix_status_inputs: matrixStatusInputs,
         }),
       });
-      for (const [source, stage, message] of [
+      for (const [source, stage, matrixStatusInputs, message] of [
         [
           liveMatrixAuthoritativeSource(),
           "pre_cutover",
+          liveMatrixStatusInputs(),
           "authoritative roadmap requires its same-revision production whole-file projection claim",
         ],
         [
           liveMatrixShadowV0Source(),
           "matrix_authoritative",
+          legacyMatrixStatusInputs(),
           "shadow roadmap forbids an authoritative whole-file projection claim",
         ],
       ] as const) {
@@ -1868,7 +2129,7 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
             message,
             1,
           ),
-          mismatch(source, stage),
+          mismatch(source, stage, matrixStatusInputs),
         );
       }
       const lifecycle = wp4mMixedAuthorityPorts(context, [], []);
@@ -1897,7 +2158,11 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
           recognizedWrongStage,
         );
       }
-      const preActivationWrongStage = mismatch(liveMatrixAuthoritativeSource(), "both_authoritative");
+      const preActivationWrongStage = mismatch(
+        liveMatrixAuthoritativeSource(),
+        "both_authoritative",
+        liveMatrixStatusInputs(),
+      );
       for (const argv of [
         ["--roadmap", "matrix", "--query", "summary"],
         ["--roadmap", "matrix", "--check"],
@@ -2042,6 +2307,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           const guard = {
             id: reservedId as import("../model/core.ts").RoadmapId,
             owner_registry: "fixture",
+            guard_role: "generic" as const,
             replacement_pin: { kind: "gate" as const, gate_id: validGate.id, claim_md: UTF8.encode("Pin.") },
           };
           for (const [subcase, collision] of [
@@ -2115,7 +2381,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           expected = { code: "E-OWNER-DUPLICATE", source: "<identity>", path: `owner[${JSON.stringify(activeId)}]` };
           break;
         case "query_debt_active_guard_collision_rejected":
-          mutation = { gates: [validGate], guards: [{ id: activeId as import("../model/core.ts").RoadmapId, owner_registry: "fixture", replacement_pin: { kind: "gate", gate_id: validGate.id, claim_md: UTF8.encode("Pin.") } }] };
+          mutation = { gates: [validGate], guards: [{ id: activeId as import("../model/core.ts").RoadmapId, owner_registry: "fixture", guard_role: "generic", replacement_pin: { kind: "gate", gate_id: validGate.id, claim_md: UTF8.encode("Pin.") } }] };
           expected = { code: "E-OWNER-DUPLICATE", source: "<identity>", path: `owner[${JSON.stringify(activeId)}]` };
           break;
         case "query_debt_active_reservation_collision_rejected":
@@ -2123,7 +2389,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           expected = { code: "E-OWNER-DUPLICATE", source: "<identity>", path: `owner[${JSON.stringify(activeId)}]` };
           break;
         case "query_debt_invalid_guard_pin_rejected":
-          mutation = { guards: [{ id: "matrix.fixture-guard" as import("../model/core.ts").RoadmapId, owner_registry: "fixture", replacement_pin: { kind: "gate", gate_id: "missing", claim_md: UTF8.encode("Pin.") } }] };
+          mutation = { guards: [{ id: "matrix.fixture-guard" as import("../model/core.ts").RoadmapId, owner_registry: "fixture", guard_role: "generic", replacement_pin: { kind: "gate", gate_id: "missing", claim_md: UTF8.encode("Pin.") } }] };
           expected = { code: "E-TRANSACTION-GUARD", source: "<transaction>", path: `guard["matrix.fixture-guard"]` };
           break;
         case "query_debt_authority_mismatch_rejected":
@@ -2319,7 +2585,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       assert(result.exit_code === 0 && result.stderr.byteLength === 0, `live matrix summary failed: ${text(result.stderr)}`);
       const payload = JSON.parse(text(result.stdout));
       const families = payload.roadmaps?.find((row: { roadmap: string }) => row.roadmap === "matrix")?.families;
-      assert(Array.isArray(families) && families.length === 7, `live summary did not expose exactly 7 matrix families: ${JSON.stringify(payload)}`);
+      assert(Array.isArray(families) && families.length === 6, `live summary did not expose exactly 6 active matrix families: ${JSON.stringify(payload)}`);
       for (const family of families as readonly Record<string, unknown>[]) {
         assert(family.denominator_maturity === "observed_only", `live family is unexpectedly closable: ${JSON.stringify(family)}`);
         assert(typeof family.observed_lower_bound === "number", `open family omitted observed_lower_bound: ${JSON.stringify(family)}`);
@@ -2430,7 +2696,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         !("consequence" in syntheticActionables.costs[0]),
       "delegated ownership or cost/effort separation is absent from the actionable dashboard");
       const familyDashboard = dashboards.get("families")!.families as readonly Record<string, unknown>[];
-      assert(familyDashboard.length === 7 && familyDashboard.every((family) =>
+      assert(familyDashboard.length === 6 && familyDashboard.every((family) =>
         family.denominator_maturity === "observed_only" && typeof family.observed_lower_bound === "number" &&
         typeof family.explicit_unknown === "number" && family.unmodelled_population === "unknown_open_denominator" &&
         family.denominator_authority === "observed_only" && Array.isArray(family.observation_reference_ids) &&
@@ -2594,8 +2860,8 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           matrix.migration_progress.frozen_spans.count === (complete ? 0 : 86) &&
           matrix.migration_progress.semantic_shadows.count === (complete ? 0 : 59) &&
           matrix.migration_progress.boundary_debt.count === (complete ? 0 : 4) &&
-          matrix.migration_progress.replacement_coverage.denominator === (complete ? 86 : 0) &&
-          matrix.migration_progress.replacement_coverage.numerator === (complete ? 86 : 0) &&
+          matrix.migration_progress.replacement_coverage.denominator === (complete ? 85 : 0) &&
+          matrix.migration_progress.replacement_coverage.numerator === (complete ? 85 : 0) &&
           matrix.migration_progress.completion_audit.lane_blockers.length === (complete ? 0 : 321) &&
           matrix.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
         "matrix exact completed migration facts drifted",

@@ -549,6 +549,27 @@ export function validateGlobalIdentity(
       if (!result.ok) issues.push(issue(result.code, `guard[${JSON.stringify(guard.id)}]`, result.message));
       continue;
     }
+    if (guard.guard_role !== "generic") {
+      const familyResult = validateRoadmapId(guard.family_root_id);
+      if (!familyResult.ok) {
+        issues.push(issue(
+          familyResult.code,
+          `guard[${JSON.stringify(guard.id)}].family_root_id`,
+          familyResult.message,
+        ));
+        continue;
+      }
+      const familyNamespace = namespaceOf(guard.family_root_id);
+      if (familyNamespace !== namespace ||
+        (guard.guard_role === "closed_family_root") !== (guard.family_root_id === guard.id)) {
+        issues.push(issue(
+          "E-ID-NAMESPACE",
+          `guard[${JSON.stringify(guard.id)}].family_root_id`,
+          "family guard root metadata must share the guard namespace and be self-identical exactly for the root role",
+        ));
+        continue;
+      }
+    }
     claims.push({
       id: guard.id,
       namespace,
