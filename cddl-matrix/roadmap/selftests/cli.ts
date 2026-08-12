@@ -135,6 +135,12 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_against_semantic_promotion_scoped_testing",
   "cli_against_semantic_promotion_all_simultaneous",
   "cli_against_semantic_promotion_other_base_not_loaded",
+  "cli_against_structural_promotion_scoped_matrix",
+  "cli_against_structural_promotion_scoped_testing",
+  "cli_against_structural_promotion_all_simultaneous",
+  "cli_against_structural_promotion_other_base_not_loaded",
+  "cli_against_structural_record_composition",
+  "cli_against_structural_semantic_only_composition",
   "cli_semantic_conversion_current_omission_rejected",
 ] as const;
 
@@ -306,6 +312,11 @@ function fixture(context: SelfTestContext, path: string): Uint8Array {
 function promotionDocuments(
   _context: SelfTestContext,
   roadmap: "matrix" | "testing",
+  options: {
+    readonly record?: boolean;
+    readonly structural?: boolean;
+    readonly semantic_only?: boolean;
+  } = {},
 ): { readonly base: RoadmapDocumentV1; readonly candidate: RoadmapDocumentV1; readonly projection: Uint8Array } {
   const sourcePath = (roadmap === "matrix" ? "cddl-matrix/roadmap.toml" : "tests/testing-roadmap.toml") as RepoPath;
   const source = roadmap === "matrix" ? liveMatrixAuthoritativeSource() : liveTestingAuthoritativeSource();
@@ -328,17 +339,47 @@ function promotionDocuments(
     acceptance_md: UTF8.encode("Reviewed promotion preserves the exact legacy bytes."),
     priority_rationale_md: UTF8.encode("Fixture promotion is transaction-scoped."),
   };
+  const includeRecord = options.record ?? true;
+  const includeStructural = options.structural ?? false;
   const base: RoadmapDocumentV1 = {
     ...v1,
-    records: v1.records.map((record) => record === rawRecord ? { ...rawRecord, semantic_shadow: payload } : record),
+    records: includeRecord
+      ? v1.records.map((record) => record === rawRecord ? { ...rawRecord, semantic_shadow: payload } : record)
+      : v1.records,
   };
-  const candidate: RoadmapDocumentV1 = {
-    ...base,
-    document: {
-      ...base.document,
-      frozen_legacy_span_ids: base.document.frozen_legacy_span_ids.filter((spanId) => !rawRecord.span_ids.includes(spanId)),
-    },
-    records: base.records.map((record) => record.id === rawRecord.id ? {
+  const section = includeStructural ? base.sections.find((value) =>
+    "source_block_md" in value && value.span_ids.length === 1
+  ) : undefined;
+  const fragment = includeStructural ? base.fragments.find((value) =>
+    "source_block_md" in value && value.span_ids.length === 1 &&
+    "lifecycle_disposition" in value && value.lifecycle_disposition === "document_prose"
+  ) : undefined;
+  const part = includeStructural ? base.parts.find((value) =>
+    "source_block_md" in value && value.span_ids.length === 1 &&
+    "lifecycle_disposition" in value && value.lifecycle_disposition === "parent_supporting_prose"
+  ) : undefined;
+  const rawSection = section !== undefined && "source_block_md" in section ? section : undefined;
+  const rawFragment = fragment !== undefined && "source_block_md" in fragment ? fragment : undefined;
+  const rawPart = part !== undefined && "source_block_md" in part ? part : undefined;
+  if (includeStructural && (rawSection === undefined || rawFragment === undefined || rawPart === undefined)) {
+    throw new Error(`${roadmap} structural promotion fixture lacks reviewed singleton owners`);
+  }
+  const structuralSpanIds = new Set([
+    ...(rawSection?.span_ids ?? []),
+    ...(rawFragment?.span_ids ?? []),
+    ...(rawPart?.span_ids ?? []),
+  ]);
+  const convertedSpanIds = new Set([
+    ...(includeRecord ? rawRecord.span_ids : []),
+    ...structuralSpanIds,
+  ]);
+  const replacement = (span_id: (typeof base.spans)[number]["id"]) => ({
+    span_id,
+    replacement_field: "body_md",
+    review_note_md: UTF8.encode("Reviewed exact same-kind structural promotion."),
+  });
+  let records: RoadmapDocumentV1["records"] = includeRecord
+    ? base.records.map((record) => record.id === rawRecord.id ? {
       id: rawRecord.id,
       title: rawRecord.title,
       projection_group: rawRecord.projection_group,
@@ -350,10 +391,60 @@ function promotionDocuments(
         replacement_field: "payload.summary_md",
         review_note_md: UTF8.encode("Reviewed exact raw-span promotion."),
       })),
-    } : record),
-    spans: base.spans.map((span) => rawRecord.span_ids.includes(span.id) ? {
+    } : record)
+    : base.records;
+  let manifest = base.manifest;
+  if (options.semantic_only === true) {
+    const semanticOnlyId = `${roadmap}.fixture-semantic-only-structural` as (typeof rawRecord)["id"];
+    records = [...records, {
+      id: semanticOnlyId,
+      title: "Semantic-only structural companion",
+      projection_group: rawRecord.projection_group,
+      render_authority: "semantic",
+      projection_visibility: "semantic_only",
+      payload,
+      source_replacements: [],
+    }];
+    manifest = [...manifest, { kind: "record", record_id: semanticOnlyId }];
+  }
+  const candidate: RoadmapDocumentV1 = {
+    ...base,
+    document: {
+      ...base.document,
+      frozen_legacy_span_ids: base.document.frozen_legacy_span_ids.filter((spanId) => !convertedSpanIds.has(spanId)),
+    },
+    sections: rawSection === undefined ? base.sections : base.sections.map((value) => value !== rawSection ? value : {
+      section_id: rawSection.section_id,
+      title: rawSection.title,
+      ...(rawSection.legacy_aliases === undefined ? {} : { legacy_aliases: rawSection.legacy_aliases }),
+      render_authority: "semantic",
+      body_md: rawSection.source_block_md,
+      source_replacements: rawSection.span_ids.map(replacement),
+    }),
+    fragments: rawFragment === undefined ? base.fragments : base.fragments.map((value) => value !== rawFragment ? value : {
+      fragment_id: rawFragment.fragment_id,
+      projection_group: rawFragment.projection_group,
+      ...(rawFragment.title === undefined ? {} : { title: rawFragment.title }),
+      ...(rawFragment.legacy_aliases === undefined ? {} : { legacy_aliases: rawFragment.legacy_aliases }),
+      render_authority: "semantic",
+      lifecycle_disposition: "document_prose",
+      body_md: rawFragment.source_block_md,
+      source_replacements: rawFragment.span_ids.map(replacement),
+    }),
+    parts: rawPart === undefined ? base.parts : base.parts.map((value) => value !== rawPart ? value : {
+      part_id: rawPart.part_id,
+      parent_record_id: rawPart.parent_record_id,
+      ...(rawPart.title === undefined ? {} : { title: rawPart.title }),
+      render_authority: "semantic",
+      lifecycle_disposition: "parent_supporting_prose",
+      body_md: rawPart.source_block_md,
+      source_replacements: rawPart.span_ids.map(replacement),
+    }),
+    records,
+    manifest,
+    spans: base.spans.map((span) => convertedSpanIds.has(span.id) ? {
       ...span,
-      owner_field: "payload.summary_md",
+      owner_field: structuralSpanIds.has(span.id) ? "body_md" : "payload.summary_md",
       migration_status: "replaced" as const,
     } : span),
   };
@@ -368,9 +459,10 @@ function promotionPorts(
   context: SelfTestContext,
   selection: "matrix" | "testing" | "all",
   baseReads: RepoPath[] = [],
+  options: Parameters<typeof promotionDocuments>[2] = {},
 ): RoadmapCliPorts {
-  const matrix = promotionDocuments(context, "matrix");
-  const testing = promotionDocuments(context, "testing");
+  const matrix = promotionDocuments(context, "matrix", options);
+  const testing = promotionDocuments(context, "testing", options);
   const campaign = UTF8.encode(`[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`);
   const retired = UTF8.encode(`[retired_ids]\nschema_version = 1\n`);
   const candidate = new Map<RepoPath, Uint8Array>([
@@ -1431,6 +1523,35 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         assert(
           JSON.stringify(baseReads) === JSON.stringify(["cddl-matrix/roadmap.toml"]),
           `scoped promotion loaded an unselected base roadmap: ${JSON.stringify(baseReads)}`,
+        );
+      }
+      return pass("positive");
+    }
+    case "cli_against_structural_promotion_scoped_matrix":
+    case "cli_against_structural_promotion_scoped_testing":
+    case "cli_against_structural_promotion_all_simultaneous":
+    case "cli_against_structural_promotion_other_base_not_loaded":
+    case "cli_against_structural_record_composition":
+    case "cli_against_structural_semantic_only_composition": {
+      const selection = id.includes("all_simultaneous") ? "all" : id.includes("testing") ? "testing" : "matrix";
+      const baseReads: RepoPath[] = [];
+      const options = id === "cli_against_structural_record_composition"
+        ? { record: true, structural: true }
+        : id === "cli_against_structural_semantic_only_composition"
+          ? { record: false, structural: true, semantic_only: true }
+          : { record: false, structural: true };
+      const result = run(
+        ["--check", "--roadmap", selection, "--against", HASH],
+        promotionPorts(context, selection, baseReads, options),
+      );
+      assert(
+        result.exit_code === 0 && result.stderr.byteLength === 0 && text(result.stdout).includes("CHECK OK\n"),
+        `${id} failed through public structural --against: ${text(result.stderr)}`,
+      );
+      if (id === "cli_against_structural_promotion_other_base_not_loaded") {
+        assert(
+          JSON.stringify(baseReads) === JSON.stringify(["cddl-matrix/roadmap.toml"]),
+          `scoped structural promotion loaded an unselected base roadmap: ${JSON.stringify(baseReads)}`,
         );
       }
       return pass("positive");

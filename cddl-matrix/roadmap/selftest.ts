@@ -271,6 +271,21 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["debt_semantic_promotion_capability_mutation_rejected", [
     "payload_after_mint", "completed_content_after_mint", "completed_clone_after_mint", "expected_bytes_after_mint",
   ]],
+  ["debt_structural_promotion_exact", ["section", "fragment", "part", "aggregate_count"]],
+  ["debt_structural_promotion_rejections", [
+    "fragment_pending", "fragment_independent", "part_pending", "part_independent", "legacy_marker",
+    "body_bytes", "title", "legacy_aliases", "projection_group", "parent_record", "missing_replacement",
+    "duplicate_replacement", "wrong_replacement_field", "empty_review_note", "span_coordinate", "span_digest",
+    "span_kind", "span_owner", "span_owner_field", "span_status", "extra_owner_span", "retained_frozen",
+    "base_unfrozen", "manifest_index", "missing_base_completed", "missing_candidate_completed",
+    "missing_segment", "expected_byte_drift", "debt_join",
+  ]],
+  ["debt_structural_promotion_capability_replay", [
+    "body_after_mint", "metadata_after_mint", "disposition_after_mint", "review_note_after_mint",
+    "manifest_after_mint", "relations_after_mint", "references_after_mint", "frozen_after_mint",
+    "document_clone", "completed_clone", "expected_bytes_after_mint",
+  ]],
+  ["debt_structural_promotion_composes", ["record_shadow", "structural", "semantic_only_addition"]],
   ["render_structural_exact_field_binding_all_kinds", [
     "section", "fragment", "legacy_marker", "record", "part", "semantic_only_zero_segments",
     "progress_coverage",
@@ -450,6 +465,8 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["debt_semantic_promotion_rejection_matrix", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
   ["debt_semantic_promotion_swapped_segment_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
   ["debt_semantic_promotion_capability_mutation_rejected", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
+  ["debt_structural_promotion_rejections", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "fragment[\"fragment\"]" }],
+  ["debt_structural_promotion_capability_replay", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
   ["render_zero_chunks_rejected", { code: "E-SELFTEST-CASE", logical_path: "render_zero_chunks_rejected" }],
   ["render_semantic_consumption_once", { code: "E-FIELD-CONSUMPTION", logical_path: "record[\"matrix.fixture-work\"]" }],
   ["render_semantic_only_identity_debt", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],

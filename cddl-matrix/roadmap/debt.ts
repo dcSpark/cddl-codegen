@@ -16,6 +16,7 @@ import type {
   CurrentGuard,
   CurrentGuardOwnerFact,
   IdentityOwnerFact,
+  ManifestEntry,
   ReplacementPin,
   RoadmapDocument,
   SemanticPayload,
@@ -270,15 +271,16 @@ interface PrivateDebtTransitionFacts {
 const validatedDebtTransitions = new WeakMap<object, PrivateDebtTransitionFacts>();
 
 function exactValueSignature(value: unknown): unknown {
-  if (value instanceof Uint8Array) return ["bytes", ...value];
-  if (Array.isArray(value)) return value.map(exactValueSignature);
+  if (value === undefined) return ["undefined"];
+  if (value instanceof Uint8Array) return ["bytes", [...value]];
+  if (Array.isArray(value)) return ["array", value.map(exactValueSignature)];
   if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.keys(value).sort(codePointSort).map((key) => [
+    return ["object", Object.keys(value).sort(codePointSort).map((key) => [
       key,
       exactValueSignature((value as Record<string, unknown>)[key]),
-    ]));
+    ])];
   }
-  return value;
+  return [typeof value, value];
 }
 
 function semanticDocumentSignature(base: RoadmapDocument, candidate: RoadmapDocument): string {
@@ -323,71 +325,7 @@ function debtSignature(debt: MigrationDebt): string {
 }
 
 function documentTransitionSignature(document: RoadmapDocument): string {
-  const replacementRows: string[][] = [];
-  const addReplacements = (kind: string, id: string, value: object): void => {
-    if (!("source_replacements" in value) || !Array.isArray(value.source_replacements)) return;
-    for (const replacement of value.source_replacements) {
-      replacementRows.push([kind, id, replacement.span_id, replacement.replacement_field]);
-    }
-  };
-  for (const value of document.sections) addReplacements("section", value.section_id, value);
-  for (const value of document.fragments) addReplacements("fragment", value.fragment_id, value);
-  for (const value of document.legacy_markers) addReplacements("legacy_marker", value.marker_id, value);
-  for (const value of document.records) addReplacements("record", value.id, value);
-  for (const value of document.parts) addReplacements("part", value.part_id, value);
-  const ownerRows = [
-    ...document.sections.map((value) => ["section", value.section_id, "source_block_md" in value ? "source_block_md" : "body_md"]),
-    ...document.fragments.map((value) => ["fragment", value.fragment_id, "source_block_md" in value ? "source_block_md" : "body_md"]),
-    ...document.legacy_markers.map((value) => ["legacy_marker", value.marker_id, "source_block_md" in value ? "source_block_md" : "marker_md"]),
-    ...document.records.flatMap((value) => {
-      if ("source_block_md" in value) return [["record", value.id, "source_block_md"]];
-      const fields: string[] = [];
-      const collect = (candidate: unknown, path: string): void => {
-        if (candidate instanceof Uint8Array) {
-          if (path.endsWith("_md")) fields.push(path);
-          return;
-        }
-        if (Array.isArray(candidate)) {
-          candidate.forEach((item, index) => collect(item, `${path}[${index}]`));
-        } else if (candidate !== null && typeof candidate === "object") {
-          for (const key of Object.keys(candidate).sort(codePointSort)) {
-            collect((candidate as Record<string, unknown>)[key], `${path}.${key}`);
-          }
-        }
-      };
-      collect(value.payload, "payload");
-      return fields.map((field) => ["record", value.id, value.projection_visibility, field]);
-    }),
-    ...document.parts.map((value) => ["part", value.part_id, "source_block_md" in value ? "source_block_md" : "body_md"]),
-  ].sort((left, right) => codePointSort(JSON.stringify(left), JSON.stringify(right)));
-  const spanRows = document.spans.map((span) => [
-    span.id,
-    span.source_kind,
-    span.owner_id,
-    span.owner_field,
-    span.migration_status,
-    span.start_byte,
-    span.end_byte,
-    span.sha256,
-  ]).sort((left, right) => codePointSort(JSON.stringify(left), JSON.stringify(right)));
-  replacementRows.sort((left, right) => codePointSort(JSON.stringify(left), JSON.stringify(right)));
-  return JSON.stringify({
-    document: [
-      document.document.roadmap,
-      document.document.source_path,
-      document.document.projection_path,
-      document.document.schema_version,
-      document.document.schema_version === 1
-        ? [
-          document.document.semantic_conversion ?? "omitted",
-          document.document.semantic_conversion ?? "converting",
-        ]
-        : ["omitted", "not_applicable"],
-    ],
-    owners: ownerRows,
-    spans: spanRows,
-    replacements: replacementRows,
-  });
+  return JSON.stringify(exactValueSignature(document));
 }
 
 const codePointSort = (left: string, right: string): number =>
@@ -832,6 +770,245 @@ function semanticMarkdownFields(payload: unknown): readonly string[] {
   return Object.freeze(fields.sort(codePointSort));
 }
 
+type StructuralPromotionKind = "section" | "fragment" | "part";
+
+interface StructuralPromotionRow {
+  readonly kind: StructuralPromotionKind;
+  readonly id: string;
+  readonly value: object;
+}
+
+function structuralPromotionRows(document: RoadmapDocument): readonly StructuralPromotionRow[] {
+  return Object.freeze([
+    ...document.sections.map((value) => ({ kind: "section" as const, id: value.section_id, value })),
+    ...document.fragments.map((value) => ({ kind: "fragment" as const, id: value.fragment_id, value })),
+    ...document.parts.map((value) => ({ kind: "part" as const, id: value.part_id, value })),
+  ]);
+}
+
+function structuralMetadata(kind: StructuralPromotionKind, value: object): unknown {
+  const row = value as Record<string, unknown>;
+  if (kind === "section") return [row.title, row.legacy_aliases];
+  if (kind === "fragment") {
+    return [row.projection_group, row.title, row.legacy_aliases, row.lifecycle_disposition];
+  }
+  return [row.parent_record_id, row.title, row.lifecycle_disposition];
+}
+
+function manifestEntryMatches(entry: ManifestEntry, kind: StructuralPromotionKind, id: string): boolean {
+  if (entry.kind !== kind) return false;
+  if (entry.kind === "section") return entry.section_id === id;
+  if (entry.kind === "fragment") return entry.fragment_id === id;
+  return entry.part_id === id;
+}
+
+function exactOwnerChunk(
+  completed: CompletedRenderIr | undefined,
+  kind: StructuralPromotionKind,
+  id: string,
+): RenderChunk | undefined {
+  const rows = completed?.chunks.filter((chunk) => chunk.owner.kind === kind && chunk.owner.id === id) ?? [];
+  return rows.length === 1 ? rows[0] : undefined;
+}
+
+function structuralDebtKey(
+  roadmap: RoadmapName,
+  kind: StructuralPromotionKind,
+  id: string,
+  ownerField: "source_block_md" | "body_md",
+): DebtOwnerKey {
+  if (kind === "section") {
+    return { roadmap, owner_kind: kind, owner_id: id as SectionId, owner_field: ownerField };
+  }
+  if (kind === "fragment") {
+    return { roadmap, owner_kind: kind, owner_id: id as FragmentId, owner_field: ownerField };
+  }
+  return { roadmap, owner_kind: kind, owner_id: id as PartId, owner_field: ownerField };
+}
+
+function structuralPromotionFacts(
+  base: MigrationDebt,
+  candidate: MigrationDebt,
+  options: Pick<DebtComparisonOptions, "base_document" | "candidate_document"> & {
+    readonly base_completed?: CompletedRenderIr;
+    readonly candidate_completed?: CompletedRenderIr;
+  },
+  removed: Set<string>,
+  added: Set<string>,
+  issues: RoadmapIssue[],
+): number {
+  const comparisonOptions: DebtComparisonOptions = options;
+  let count = 0;
+  const baseRows = structuralPromotionRows(options.base_document);
+  for (const candidateRow of structuralPromotionRows(options.candidate_document)) {
+    if ("source_block_md" in candidateRow.value) continue;
+    const matchingBase = baseRows.filter((row) => row.kind === candidateRow.kind && row.id === candidateRow.id);
+    const baseRow = matchingBase[0];
+    if (matchingBase.length !== 1 || baseRow === undefined || !("source_block_md" in baseRow.value)) continue;
+    count++;
+    const path = `${candidateRow.kind}[${JSON.stringify(candidateRow.id)}]`;
+    const baseValue = baseRow.value as Record<string, unknown> & {
+      readonly source_block_md: Uint8Array;
+      readonly span_ids: readonly SpanId[];
+    };
+    const candidateValue = candidateRow.value as Record<string, unknown> & {
+      readonly body_md: Uint8Array;
+      readonly source_replacements: readonly {
+        readonly span_id: SpanId;
+        readonly replacement_field: string;
+        readonly review_note_md: Uint8Array;
+      }[];
+    };
+    const baseDispositionValid = candidateRow.kind === "section" ||
+      (candidateRow.kind === "fragment" && baseValue.lifecycle_disposition === "document_prose") ||
+      (candidateRow.kind === "part" && baseValue.lifecycle_disposition === "parent_supporting_prose");
+    let valid = options.base_document.document.schema_version === 1 &&
+      options.candidate_document.document.schema_version === 1 && baseDispositionValid &&
+      exactSemanticValue(
+        structuralMetadata(candidateRow.kind, baseRow.value),
+        structuralMetadata(candidateRow.kind, candidateRow.value),
+      ) && baseValue.source_block_md instanceof Uint8Array && candidateValue.body_md instanceof Uint8Array &&
+      bytesEqual(baseValue.source_block_md, candidateValue.body_md) &&
+      baseValue.span_ids.length === 1 && candidateValue.source_replacements.length === 1;
+    const spanId = baseValue.span_ids[0];
+    const replacement = candidateValue.source_replacements[0];
+    valid = valid && spanId !== undefined && replacement !== undefined && replacement.span_id === spanId &&
+      replacement.replacement_field === "body_md" && replacement.review_note_md instanceof Uint8Array &&
+      replacement.review_note_md.byteLength > 0;
+
+    const baseSpans = spanId === undefined ? [] : options.base_document.spans.filter((span) => span.id === spanId);
+    const candidateSpans = spanId === undefined ? [] : options.candidate_document.spans.filter((span) => span.id === spanId);
+    const baseSpan = baseSpans[0];
+    const candidateSpan = candidateSpans[0];
+    const baseOwnerSpans = options.base_document.spans.filter((span) =>
+      span.source_kind === candidateRow.kind && span.owner_id === candidateRow.id
+    );
+    const candidateOwnerSpans = options.candidate_document.spans.filter((span) =>
+      span.source_kind === candidateRow.kind && span.owner_id === candidateRow.id
+    );
+    valid = valid && baseSpans.length === 1 && candidateSpans.length === 1 &&
+      baseOwnerSpans.length === 1 && candidateOwnerSpans.length === 1 &&
+      baseSpan !== undefined && candidateSpan !== undefined &&
+      baseSpan.id === candidateSpan.id && baseSpan.start_byte === candidateSpan.start_byte &&
+      baseSpan.end_byte === candidateSpan.end_byte && baseSpan.sha256 === candidateSpan.sha256 &&
+      baseSpan.source_kind === candidateRow.kind && candidateSpan.source_kind === candidateRow.kind &&
+      baseSpan.owner_id === candidateRow.id && candidateSpan.owner_id === candidateRow.id &&
+      baseSpan.owner_field === "source_block_md" && candidateSpan.owner_field === "body_md" &&
+      baseSpan.migration_status === "raw" && candidateSpan.migration_status === "replaced" &&
+      options.base_document.document.schema_version === 1 && spanId !== undefined &&
+      options.base_document.document.frozen_legacy_span_ids.includes(spanId) &&
+      options.candidate_document.document.schema_version === 1 &&
+      !options.candidate_document.document.frozen_legacy_span_ids.includes(spanId);
+
+    const baseManifestIndexes = options.base_document.manifest.flatMap((entry, index) =>
+      manifestEntryMatches(entry, candidateRow.kind, candidateRow.id) ? [index] : []
+    );
+    const candidateManifestIndexes = options.candidate_document.manifest.flatMap((entry, index) =>
+      manifestEntryMatches(entry, candidateRow.kind, candidateRow.id) ? [index] : []
+    );
+    valid = valid && baseManifestIndexes.length === 1 && candidateManifestIndexes.length === 1 &&
+      baseManifestIndexes[0] === candidateManifestIndexes[0];
+
+    const baseChunk = exactOwnerChunk(options.base_completed, candidateRow.kind, candidateRow.id);
+    const candidateChunk = exactOwnerChunk(options.candidate_completed, candidateRow.kind, candidateRow.id);
+    const candidateLedgers = options.candidate_completed?.field_consumption.filter((ledger) =>
+      ledger.owner_kind === candidateRow.kind && ledger.owner_id === candidateRow.id
+    ) ?? [];
+    valid = valid && baseChunk !== undefined && candidateChunk !== undefined &&
+      baseChunk.manifest_index === baseManifestIndexes[0] &&
+      candidateChunk.manifest_index === candidateManifestIndexes[0] &&
+      baseChunk.owner.field === "source_block_md" && candidateChunk.owner.field === "body_md" &&
+      bytesEqual(baseChunk.bytes, baseValue.source_block_md) &&
+      bytesEqual(candidateChunk.bytes, candidateValue.body_md) && bytesEqual(baseChunk.bytes, candidateChunk.bytes) &&
+      spanId !== undefined && exactSemanticValue(baseChunk.source_span_ids, [spanId]) &&
+      exactSemanticValue(candidateChunk.source_span_ids, [spanId]) &&
+      exactSemanticValue(baseChunk.consumed_fields, ["source_block_md"]) &&
+      exactSemanticValue(candidateChunk.consumed_fields, ["body_md"]) &&
+      candidateLedgers.length === 1 && exactSemanticValue(candidateLedgers[0]?.expected_fields, ["body_md"]) &&
+      exactSemanticValue(candidateLedgers[0]?.consumed_fields, ["body_md"]) &&
+      candidateLedgers[0]?.duplicate_fields.length === 0 && candidateLedgers[0]?.unknown_fields.length === 0 &&
+      candidateLedgers[0]?.mismatched_fields.length === 0 &&
+      options.base_completed?.build_issues.length === 0 && options.candidate_completed?.build_issues.length === 0 &&
+      options.base_completed?.expected_bytes.bytesEqual(options.candidate_completed!.expected_bytes) === true &&
+      candidateSpan !== undefined && candidateChunk !== undefined && exactProjectedFieldSegment(
+        options.candidate_completed!,
+        candidateChunk,
+        candidateRow.kind,
+        candidateRow.id,
+        "body_md",
+        candidateSpan.start_byte,
+        candidateSpan.end_byte,
+      ) !== undefined;
+
+    const removedKey = structuralDebtKey(
+      options.base_document.document.roadmap,
+      candidateRow.kind,
+      candidateRow.id,
+      "source_block_md",
+    );
+    const addedKey = structuralDebtKey(
+      options.candidate_document.document.roadmap,
+      candidateRow.kind,
+      candidateRow.id,
+      "body_md",
+    );
+    const spanKey: DebtOwnerKey | undefined = spanId === undefined ? undefined : {
+      roadmap: options.base_document.document.roadmap,
+      owner_kind: "source_span",
+      owner_id: spanId,
+      owner_field: "coverage",
+    };
+    const removedIndex = debtOwnerIndex(removedKey);
+    const addedIndex = debtOwnerIndex(addedKey);
+    const spanIndex = spanKey === undefined ? undefined : debtOwnerIndex(spanKey);
+    const lifecycleDebt = (debt: MigrationDebt): boolean => [...debt.independent.values()].some((item) =>
+      item.category === "raw_subordinate_lifecycles" && item.owner.owner_kind === candidateRow.kind &&
+      item.owner.owner_id === candidateRow.id
+    );
+    valid = valid && base.owners.get(removedIndex)?.state === "raw_unclassified" &&
+      !candidate.owners.has(removedIndex) && !base.owners.has(addedIndex) &&
+      candidate.owners.get(addedIndex)?.state === "semantic" && spanIndex !== undefined &&
+      base.owners.get(spanIndex)?.state === "raw_unclassified" &&
+      candidate.owners.get(spanIndex)?.state === "semantic" &&
+      base.frozen_legacy_spans.has(spanIndex) && !candidate.frozen_legacy_spans.has(spanIndex) &&
+      !lifecycleDebt(base) && !lifecycleDebt(candidate) &&
+      [...base.owners.values()].filter(({ key }) =>
+        key.owner_kind === candidateRow.kind && key.owner_id === candidateRow.id
+      ).length === 1 && [...candidate.owners.values()].filter(({ key }) =>
+        key.owner_kind === candidateRow.kind && key.owner_id === candidateRow.id
+      ).length === 1;
+    if (!valid) {
+      issues.push(issue(
+        comparisonOptions,
+        "E-DEBT-OWNER-REGRESSION",
+        path,
+        "same-kind structural promotion lacks reviewed disposition, exact metadata/bytes, singleton replacement/span, stable manifest/chunks, exact projected segment, frozen removal, or debt-owner joins",
+      ));
+      continue;
+    }
+    removed.add(removedIndex);
+    added.add(addedIndex);
+  }
+
+  if (options.base_document.document.schema_version === 1 && options.candidate_document.document.schema_version === 1) {
+    for (const candidateMarker of options.candidate_document.legacy_markers) {
+      if ("source_block_md" in candidateMarker) continue;
+      const baseMarker = options.base_document.legacy_markers.find((marker) =>
+        marker.marker_id === candidateMarker.marker_id
+      );
+      if (baseMarker !== undefined && "source_block_md" in baseMarker) {
+        issues.push(issue(
+          comparisonOptions,
+          "E-DEBT-OWNER-REGRESSION",
+          `legacy_marker[${JSON.stringify(candidateMarker.marker_id)}]`,
+          "raw legacy-marker conversion is not authorized by the same-kind structural promotion packet",
+        ));
+      }
+    }
+  }
+  return count;
+}
+
 /**
  * Recognize the one public raw+shadow -> document-visible semantic conversion. The request is
  * derived entirely from exact base/candidate documents and completed render IR; no caller-shaped
@@ -851,6 +1028,7 @@ export function validateSemanticConversionFacts(
   const added = new Set<string>();
   const baseRecords = new Map(options.base_document.records.map((record) => [record.id, record]));
   let promotionCount = 0;
+  promotionCount += structuralPromotionFacts(base, candidate, options, removed, added, issues);
 
   for (const candidateRecord of options.candidate_document.records) {
     const baseRecord = baseRecords.get(candidateRecord.id);
@@ -939,7 +1117,7 @@ export function validateSemanticConversionFacts(
       candidateChunk.source_span_ids.every((spanId) => baseSpanIds.has(spanId));
 
     const projectedFields = new Set((options.candidate_completed?.projected_field_segments ?? [])
-      .filter((segment) => segment.owner_id === candidateRecord.id)
+      .filter((segment) => segment.owner_kind === "record" && segment.owner_id === candidateRecord.id)
       .map((segment) => segment.logical_path));
     valid = valid && projectedFields.size === replacementFields.size &&
       [...replacementFields].every((field) => projectedFields.has(field));

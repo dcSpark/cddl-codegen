@@ -152,6 +152,10 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "debt_semantic_promotion_retirement_composes",
   "debt_semantic_promotion_swapped_segment_rejected",
   "debt_semantic_promotion_capability_mutation_rejected",
+  "debt_structural_promotion_exact",
+  "debt_structural_promotion_rejections",
+  "debt_structural_promotion_capability_replay",
+  "debt_structural_promotion_composes",
   "render_irregular_matrix_exact",
   "render_irregular_testing_exact",
   "render_zero_chunks_rejected",
@@ -952,6 +956,10 @@ function testDebtCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     || id === "debt_semantic_promotion_retirement_composes"
     || id === "debt_semantic_promotion_swapped_segment_rejected"
     || id === "debt_semantic_promotion_capability_mutation_rejected"
+    || id === "debt_structural_promotion_exact"
+    || id === "debt_structural_promotion_rejections"
+    || id === "debt_structural_promotion_capability_replay"
+    || id === "debt_structural_promotion_composes"
   ) return testRenderCase(id);
   if (id.startsWith("debt_cutover_revealed_")) return testCutoverRevealedDebtCase(id);
   if (
@@ -1529,6 +1537,7 @@ function completeSemantic(document: RoadmapDocumentV1, calls: { value: number })
       if (mode === "duplicate") fields.consume("payload.summary_md", payload.summary_md);
       const second = mode === "missing" ? new Uint8Array() : fields.consume("payload.acceptance_md", payload.acceptance_md);
       const third = fields.consume("payload.priority_rationale_md", payload.priority_rationale_md);
+      if (record.projection_visibility === "semantic_only") return new Uint8Array();
       const output = new Uint8Array(first.byteLength + second.byteLength + third.byteLength);
       output.set(first);
       output.set(second, first.byteLength);
@@ -1684,6 +1693,104 @@ function structuralSemanticFixture(): {
   return { document, completed: complete(document).completed };
 }
 
+function structuralPromotionFixture(): {
+  readonly base: RoadmapDocumentV1;
+  readonly candidate: RoadmapDocumentV1;
+  readonly baseCompleted: CompletedRenderIr;
+  readonly candidateCompleted: CompletedRenderIr;
+} {
+  const raw = authoritativeFixture().document;
+  const rawSection = raw.sections[0]!;
+  const rawFragment = raw.fragments[0]!;
+  const rawPart = raw.parts[0]!;
+  if (!("source_block_md" in rawSection) || !("source_block_md" in rawFragment) ||
+    !("source_block_md" in rawPart)) fail("structural promotion fixture lacks raw owners");
+  const base: RoadmapDocumentV1 = {
+    ...raw,
+    fragments: [{ ...rawFragment, lifecycle_disposition: "document_prose" }],
+    parts: [{ ...rawPart, lifecycle_disposition: "parent_supporting_prose" }],
+  };
+  const converted = new Set([...rawSection.span_ids, ...rawFragment.span_ids, ...rawPart.span_ids]);
+  const replacement = (span_id: SpanId) => ({
+    span_id,
+    replacement_field: "body_md",
+    review_note_md: bytes("Reviewed exact same-kind structural promotion."),
+  });
+  const candidate: RoadmapDocumentV1 = {
+    ...base,
+    document: {
+      ...base.document,
+      frozen_legacy_span_ids: base.document.frozen_legacy_span_ids.filter((id) => !converted.has(id)),
+    },
+    sections: [{
+      section_id: rawSection.section_id,
+      title: rawSection.title,
+      ...(rawSection.legacy_aliases === undefined ? {} : { legacy_aliases: rawSection.legacy_aliases }),
+      render_authority: "semantic",
+      body_md: rawSection.source_block_md,
+      source_replacements: rawSection.span_ids.map(replacement),
+    }],
+    fragments: [{
+      fragment_id: rawFragment.fragment_id,
+      projection_group: rawFragment.projection_group,
+      ...(rawFragment.title === undefined ? {} : { title: rawFragment.title }),
+      ...(rawFragment.legacy_aliases === undefined ? {} : { legacy_aliases: rawFragment.legacy_aliases }),
+      render_authority: "semantic",
+      lifecycle_disposition: "document_prose",
+      body_md: rawFragment.source_block_md,
+      source_replacements: rawFragment.span_ids.map(replacement),
+    }],
+    parts: [{
+      part_id: rawPart.part_id,
+      parent_record_id: rawPart.parent_record_id,
+      ...(rawPart.title === undefined ? {} : { title: rawPart.title }),
+      render_authority: "semantic",
+      lifecycle_disposition: "parent_supporting_prose",
+      body_md: rawPart.source_block_md,
+      source_replacements: rawPart.span_ids.map(replacement),
+    }],
+    spans: base.spans.map((span) => converted.has(span.id) ? {
+      ...span,
+      owner_field: "body_md",
+      migration_status: "replaced" as const,
+    } : span),
+  };
+  return {
+    base,
+    candidate,
+    baseCompleted: complete(base).completed,
+    candidateCompleted: complete(candidate).completed,
+  };
+}
+
+function validateStructuralPromotion(
+  fixture: ReturnType<typeof structuralPromotionFixture>,
+  overrides: Partial<{
+    readonly base: RoadmapDocumentV1;
+    readonly candidate: RoadmapDocumentV1;
+    readonly baseCompleted: CompletedRenderIr;
+    readonly candidateCompleted: CompletedRenderIr;
+    readonly baseDebt: MigrationDebt;
+    readonly candidateDebt: MigrationDebt;
+  }> = {},
+) {
+  const base = overrides.base ?? fixture.base;
+  const candidate = overrides.candidate ?? fixture.candidate;
+  const baseCompleted = "baseCompleted" in overrides ? overrides.baseCompleted : fixture.baseCompleted;
+  const candidateCompleted = "candidateCompleted" in overrides ? overrides.candidateCompleted : fixture.candidateCompleted;
+  const debtBaseCompleted = baseCompleted ?? fixture.baseCompleted;
+  const debtCandidateCompleted = candidateCompleted ?? fixture.candidateCompleted;
+  const baseDebt = overrides.baseDebt ?? deriveMigrationDebt(base, debtBaseCompleted);
+  const candidateDebt = overrides.candidateDebt ?? deriveMigrationDebt(candidate, debtCandidateCompleted);
+  const transition = validateSemanticConversionFacts(baseDebt, candidateDebt, {
+    base_document: base,
+    candidate_document: candidate,
+    ...(baseCompleted === undefined ? {} : { base_completed: baseCompleted }),
+    ...(candidateCompleted === undefined ? {} : { candidate_completed: candidateCompleted }),
+  });
+  return { base, candidate, baseCompleted, candidateCompleted, baseDebt, candidateDebt, transition };
+}
+
 function structuralSectionWithReplacements(
   document: RoadmapDocumentV1,
   source_replacements: Extract<RoadmapDocumentV1["sections"][number], { render_authority: "semantic" }>["source_replacements"],
@@ -1726,6 +1833,263 @@ function testRenderCase(
   id: RequiredProjectionSelfTestCaseId,
   fixtureBundle?: ProjectionFixtureBundle,
 ): SelfTestResult {
+  if (id === "debt_structural_promotion_exact") {
+    const result = validateStructuralPromotion(structuralPromotionFixture());
+    if (!result.transition.ok || result.transition.facts === undefined) {
+      fail(`exact structural promotion did not mint: ${result.transition.issues.map((issue) => issue.message).join(";")}`);
+    }
+    if (result.transition.facts.restructure_count !== 3) fail("structural aggregate count is not three");
+    const issues = compareMigrationDebt(result.baseDebt, result.candidateDebt, {
+      base_document: result.base,
+      candidate_document: result.candidate,
+      base_completed: result.baseCompleted,
+      candidate_completed: result.candidateCompleted,
+      transition_facts: result.transition.facts,
+    });
+    if (issues.length !== 0) fail(`exact structural debt comparison failed: ${issues.map((issue) => issue.message).join(";")}`);
+    return pass("positive", ["section", "fragment", "part", "aggregate_count"]);
+  }
+  if (id === "debt_structural_promotion_rejections") {
+    type Variant = {
+      readonly name: string;
+      readonly build: (fixture: ReturnType<typeof structuralPromotionFixture>) =>
+        Parameters<typeof validateStructuralPromotion>[1];
+    };
+    const mutateFragment = (
+      document: RoadmapDocumentV1,
+      update: (value: RoadmapDocumentV1["fragments"][number]) => RoadmapDocumentV1["fragments"][number],
+    ): RoadmapDocumentV1 => ({ ...document, fragments: document.fragments.map(update) });
+    const mutatePart = (
+      document: RoadmapDocumentV1,
+      update: (value: RoadmapDocumentV1["parts"][number]) => RoadmapDocumentV1["parts"][number],
+    ): RoadmapDocumentV1 => ({ ...document, parts: document.parts.map(update) });
+    const mutateSection = (
+      document: RoadmapDocumentV1,
+      update: (value: RoadmapDocumentV1["sections"][number]) => RoadmapDocumentV1["sections"][number],
+    ): RoadmapDocumentV1 => ({ ...document, sections: document.sections.map(update) });
+    const fragmentSpanId = asSpanId("span-f");
+    const variants: readonly Variant[] = [
+      { name: "fragment_pending", build: (f) => ({ base: mutateFragment(f.base, (value) => {
+        if (!("source_block_md" in value)) return value;
+        const { lifecycle_disposition: _removed, ...rest } = value;
+        return rest;
+      }) }) },
+      { name: "fragment_independent", build: (f) => ({ base: mutateFragment(f.base, (value) =>
+        "source_block_md" in value ? { ...value, lifecycle_disposition: "independent_record" } : value) }) },
+      { name: "part_pending", build: (f) => ({ base: mutatePart(f.base, (value) => {
+        if (!("source_block_md" in value)) return value;
+        const { lifecycle_disposition: _removed, ...rest } = value;
+        return rest;
+      }) }) },
+      { name: "part_independent", build: (f) => ({ base: mutatePart(f.base, (value) =>
+        "source_block_md" in value ? { ...value, lifecycle_disposition: "independent_record" } : value) }) },
+      { name: "legacy_marker", build: (f) => {
+        const markerFixture = structuralSemanticFixture();
+        const marker = markerFixture.document.legacy_markers[0]!;
+        const markerSpan = markerFixture.document.spans.find((span) => span.source_kind === "legacy_marker")!;
+        const candidate: RoadmapDocumentV1 = {
+          ...f.base,
+          document: {
+            ...f.base.document,
+            frozen_legacy_span_ids: f.base.document.frozen_legacy_span_ids.filter((span) => span !== markerSpan.id),
+          },
+          legacy_markers: [marker],
+          spans: f.base.spans.map((span) => span.id === markerSpan.id ? markerSpan : span),
+        };
+        return { candidate, candidateCompleted: complete(candidate).completed };
+      } },
+      { name: "body_bytes", build: (f) => ({ candidate: mutateFragment(f.candidate, (value) =>
+        "body_md" in value ? { ...value, body_md: bytes("changed") } : value) }) },
+      { name: "title", build: (f) => ({ candidate: mutateSection(f.candidate, (value) => ({ ...value, title: "changed" })) }) },
+      { name: "legacy_aliases", build: (f) => ({ candidate: mutateSection(f.candidate, (value) => ({ ...value, legacy_aliases: ["changed"] })) }) },
+      { name: "projection_group", build: (f) => ({ candidate: mutateFragment(f.candidate, (value) =>
+        "body_md" in value ? { ...value, projection_group: asSectionId("changed") } : value) }) },
+      { name: "parent_record", build: (f) => ({ candidate: mutatePart(f.candidate, (value) =>
+        "body_md" in value ? { ...value, parent_record_id: asRoadmapId("matrix.changed") } : value) }) },
+      { name: "missing_replacement", build: (f) => ({ candidate: mutateFragment(f.candidate, (value) =>
+        "body_md" in value ? { ...value, source_replacements: [] } : value) }) },
+      { name: "duplicate_replacement", build: (f) => ({ candidate: mutateFragment(f.candidate, (value) =>
+        "body_md" in value ? { ...value, source_replacements: [...value.source_replacements, value.source_replacements[0]!] } : value) }) },
+      { name: "wrong_replacement_field", build: (f) => ({ candidate: mutateFragment(f.candidate, (value) =>
+        "body_md" in value ? { ...value, source_replacements: value.source_replacements.map((row) => ({ ...row, replacement_field: "marker_md" })) } : value) }) },
+      { name: "empty_review_note", build: (f) => ({ candidate: mutateFragment(f.candidate, (value) =>
+        "body_md" in value ? { ...value, source_replacements: value.source_replacements.map((row) => ({ ...row, review_note_md: new Uint8Array() })) } : value) }) },
+      { name: "span_coordinate", build: (f) => ({ candidate: { ...f.candidate, spans: f.candidate.spans.map((span) =>
+        span.id === fragmentSpanId ? { ...span, start_byte: span.start_byte + 1 } : span) } }) },
+      { name: "span_digest", build: (f) => ({ candidate: { ...f.candidate, spans: f.candidate.spans.map((span) =>
+        span.id === fragmentSpanId ? { ...span, sha256: "0".repeat(64) } : span) } }) },
+      { name: "span_kind", build: (f) => ({ candidate: { ...f.candidate, spans: f.candidate.spans.map((span) =>
+        span.id === fragmentSpanId ? { ...span, source_kind: "section" as const } : span) } }) },
+      { name: "span_owner", build: (f) => ({ candidate: { ...f.candidate, spans: f.candidate.spans.map((span) =>
+        span.id === fragmentSpanId ? { ...span, owner_id: "wrong" } : span) } }) },
+      { name: "span_owner_field", build: (f) => ({ candidate: { ...f.candidate, spans: f.candidate.spans.map((span) =>
+        span.id === fragmentSpanId ? { ...span, owner_field: "marker_md" } : span) } }) },
+      { name: "span_status", build: (f) => ({ candidate: { ...f.candidate, spans: f.candidate.spans.map((span) =>
+        span.id === fragmentSpanId ? { ...span, migration_status: "raw" as const } : span) } }) },
+      { name: "extra_owner_span", build: (f) => {
+        const span = f.candidate.spans.find((value) => value.id === fragmentSpanId)!;
+        return { candidate: { ...f.candidate, spans: [...f.candidate.spans, { ...span, id: asSpanId("extra-fragment-span") }] } };
+      } },
+      { name: "retained_frozen", build: (f) => ({ candidate: {
+        ...f.candidate,
+        document: { ...f.candidate.document, frozen_legacy_span_ids: [...f.candidate.document.frozen_legacy_span_ids, fragmentSpanId].sort() },
+      } }) },
+      { name: "base_unfrozen", build: (f) => ({ base: {
+        ...f.base,
+        document: { ...f.base.document, frozen_legacy_span_ids: f.base.document.frozen_legacy_span_ids.filter((id) => id !== fragmentSpanId) },
+      } }) },
+      { name: "manifest_index", build: (f) => {
+        const manifest = [...f.candidate.manifest];
+        const index = manifest.findIndex((entry) => entry.kind === "fragment");
+        [manifest[index], manifest[index + 1]] = [manifest[index + 1]!, manifest[index]!];
+        return { candidate: { ...f.candidate, manifest } };
+      } },
+      { name: "missing_base_completed", build: () => ({ baseCompleted: undefined as never }) },
+      { name: "missing_candidate_completed", build: () => ({ candidateCompleted: undefined as never }) },
+      { name: "missing_segment", build: (f) => ({ candidateCompleted: {
+        ...f.candidateCompleted,
+        projected_field_segments: f.candidateCompleted.projected_field_segments.filter((segment) => segment.owner_kind !== "fragment"),
+      } }) },
+      { name: "expected_byte_drift", build: (f) => ({ candidateCompleted: {
+        ...f.candidateCompleted,
+        expected_bytes: createExpectedByteView([{ ...f.candidateCompleted.chunks[0]!, bytes: bytes("changed") }]),
+      } }) },
+      { name: "debt_join", build: (f) => {
+        const debt = deriveMigrationDebt(f.candidate, f.candidateCompleted);
+        const owners = new Map(debt.owners);
+        const key = debtOwnerIndex(owner("fragment", "fragment", "body_md"));
+        owners.delete(key);
+        return { candidateDebt: { ...debt, owners } };
+      } },
+    ];
+    const executed: string[] = [];
+    let firstIssues: readonly RoadmapIssue[] | undefined;
+    for (const variant of variants) {
+      const fixture = structuralPromotionFixture();
+      const result = validateStructuralPromotion(fixture, variant.build(fixture));
+      if (result.transition.ok) fail(`${variant.name}: invalid structural promotion minted facts`);
+      firstIssues ??= result.transition.issues;
+      executed.push(variant.name);
+    }
+    if (observeMatchingIssue(firstIssues ?? [], "E-DEBT-OWNER-REGRESSION", 'fragment["fragment"]') === undefined) {
+      fail("structural rejection matrix did not observe its pinned fragment issue");
+    }
+    return pass("negative", Object.freeze(executed));
+  }
+  if (id === "debt_structural_promotion_capability_replay") {
+    const mutations = [
+      "body_after_mint", "metadata_after_mint", "disposition_after_mint", "review_note_after_mint",
+      "manifest_after_mint", "relations_after_mint", "references_after_mint", "frozen_after_mint",
+      "document_clone", "completed_clone", "expected_bytes_after_mint",
+    ] as const;
+    const executed: string[] = [];
+    for (const mutation of mutations) {
+      const fixture = structuralPromotionFixture();
+      const result = validateStructuralPromotion(fixture);
+      if (!result.transition.ok || result.transition.facts === undefined) fail(`${mutation}: control capability did not mint`);
+      let candidate = fixture.candidate;
+      let candidateCompleted = fixture.candidateCompleted;
+      if (mutation === "body_after_mint") {
+        const fragment = candidate.fragments[0]!;
+        if (!("body_md" in fragment)) fail("body replay mutation lacks semantic fragment");
+        fragment.body_md[0] = fragment.body_md[0]! ^ 1;
+      } else if (mutation === "metadata_after_mint") {
+        (candidate.sections[0] as { title: string }).title = "changed";
+      } else if (mutation === "disposition_after_mint") {
+        (candidate.fragments[0] as { lifecycle_disposition: string }).lifecycle_disposition = "changed";
+      } else if (mutation === "review_note_after_mint") {
+        const fragment = candidate.fragments[0]!;
+        if (!("source_replacements" in fragment)) fail("review replay mutation lacks replacement");
+        fragment.source_replacements[0]!.review_note_md[0] ^= 1;
+      } else if (mutation === "manifest_after_mint") {
+        candidate.manifest.reverse();
+      } else if (mutation === "relations_after_mint") {
+        candidate.relations.push({ source: asRoadmapId("matrix.a"), kind: "related", target: asRoadmapId("matrix.b") });
+      } else if (mutation === "references_after_mint") {
+        candidate.references.push({ id: "ref-replay" as never, source: asRoadmapId("matrix.fixture-work"), kind: "gate", gate_id: "gate" });
+      } else if (mutation === "frozen_after_mint") {
+        candidate.document.frozen_legacy_span_ids.push(asSpanId("span-f"));
+      } else if (mutation === "document_clone") {
+        candidate = { ...candidate };
+      } else if (mutation === "completed_clone") {
+        candidateCompleted = { ...candidateCompleted };
+      } else {
+        candidateCompleted = {
+          ...candidateCompleted,
+          expected_bytes: createExpectedByteView([{ ...candidateCompleted.chunks[0]!, bytes: bytes("changed") }]),
+        };
+      }
+      requireExactIssue(compareMigrationDebt(result.baseDebt, result.candidateDebt, {
+        base_document: fixture.base,
+        candidate_document: candidate,
+        base_completed: fixture.baseCompleted,
+        candidate_completed: candidateCompleted,
+        transition_facts: result.transition.facts,
+      }), "E-DEBT-BASE-MISMATCH", "transition_facts");
+      executed.push(mutation);
+    }
+    return pass("negative", Object.freeze(executed));
+  }
+  if (id === "debt_structural_promotion_composes") {
+    const recordPromotion = semanticPromotionFixture();
+    const structural = structuralPromotionFixture();
+    const convertedStructuralSpans = new Set([asSpanId("span-h"), asSpanId("span-f"), asSpanId("span-p")]);
+    const base: RoadmapDocumentV1 = {
+      ...recordPromotion.base,
+      fragments: structural.base.fragments,
+      parts: structural.base.parts,
+    };
+    const promotedRecord = recordPromotion.candidate.records.find((record) => "payload" in record);
+    if (promotedRecord === undefined || !("payload" in promotedRecord)) fail("composition lacks promoted record");
+    const semanticOnlyId = asRoadmapId("matrix.fixture-semantic-only-alongside-structural");
+    const candidate: RoadmapDocumentV1 = {
+      ...recordPromotion.candidate,
+      document: {
+        ...recordPromotion.candidate.document,
+        frozen_legacy_span_ids: recordPromotion.candidate.document.frozen_legacy_span_ids.filter((span) =>
+          !convertedStructuralSpans.has(span)
+        ),
+      },
+      sections: structural.candidate.sections,
+      fragments: structural.candidate.fragments,
+      parts: structural.candidate.parts,
+      records: [
+        ...recordPromotion.candidate.records,
+        { ...promotedRecord, id: semanticOnlyId, projection_visibility: "semantic_only", source_replacements: [] },
+      ],
+      manifest: [
+        ...recordPromotion.candidate.manifest,
+        { kind: "record", record_id: semanticOnlyId },
+      ],
+      spans: recordPromotion.candidate.spans.map((span) => convertedStructuralSpans.has(span.id) ? {
+        ...span,
+        owner_field: "body_md",
+        migration_status: "replaced" as const,
+      } : span),
+    };
+    const baseCompleted = complete(base).completed;
+    const candidateCompleted = completeSemantic(candidate, { value: 0 });
+    const baseDebt = deriveMigrationDebt(base, baseCompleted);
+    const candidateDebt = deriveMigrationDebt(candidate, candidateCompleted);
+    const transition = validateSemanticConversionFacts(baseDebt, candidateDebt, {
+      base_document: base,
+      candidate_document: candidate,
+      base_completed: baseCompleted,
+      candidate_completed: candidateCompleted,
+    });
+    if (!transition.ok || transition.facts === undefined || transition.facts.restructure_count !== 4) {
+      fail(`composed promotion did not mint four facts: ${transition.ok ? "wrong count" : transition.issues.map((issue) => issue.message).join(";")}`);
+    }
+    const issues = compareMigrationDebt(baseDebt, candidateDebt, {
+      base_document: base,
+      candidate_document: candidate,
+      base_completed: baseCompleted,
+      candidate_completed: candidateCompleted,
+      transition_facts: transition.facts,
+    });
+    if (issues.length !== 0) fail(`record+structural+semantic-only composition failed: ${issues.map((issue) => issue.message).join(";")}`);
+    return pass("positive", ["record_shadow", "structural", "semantic_only_addition"]);
+  }
   if (id === "debt_semantic_promotion_swapped_segment_rejected") {
     const fixture = semanticPromotionFixture();
     const record = fixture.candidate.records.find((candidate) => "payload" in candidate);
