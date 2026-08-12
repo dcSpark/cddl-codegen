@@ -33,7 +33,7 @@ export interface FieldConsumptionLedgerEntry {
 }
 
 export interface ProjectedFieldSegment {
-  readonly owner_kind: "record";
+  readonly owner_kind: Exclude<ManifestEntry["kind"], "generated_slot">;
   readonly owner_id: string;
   readonly logical_path: string;
   readonly start_in_chunk: number;
@@ -65,24 +65,38 @@ export interface CompletedRenderIr {
 export function exactProjectedFieldSegment(
   completed: CompletedRenderIr,
   chunk: RenderChunk,
+  ownerKind: Exclude<ManifestEntry["kind"], "generated_slot">,
   ownerId: string,
   logicalPath: string,
   startByte: number,
   endByte: number,
 ): ProjectedFieldSegment | undefined {
   const segments = completed.projected_field_segments.filter((segment) =>
-    segment.owner_kind === "record" && segment.owner_id === ownerId &&
+    segment.owner_kind === ownerKind && segment.owner_id === ownerId &&
     segment.logical_path === logicalPath
   );
   const segment = segments[0];
-  const chunkIndex = completed.chunks.indexOf(chunk);
+  const chunkIndexes = completed.chunks.flatMap((candidate, index) => candidate === chunk ? [index] : []);
+  const chunkIndex = chunkIndexes[0];
+  if (segments.length !== 1 || segment === undefined || chunkIndexes.length !== 1 ||
+    chunkIndex === undefined || chunk.owner.kind !== ownerKind || chunk.owner.id !== ownerId) {
+    return undefined;
+  }
   const chunkStart = completed.expected_bytes.prefix_offsets[chunkIndex];
-  if (segments.length !== 1 || segment === undefined || chunkStart === undefined ||
+  const exactStructuralField = ownerKind === "record" || (
+    chunk.owner.field === logicalPath && segment.start_in_chunk === 0 &&
+    segment.end_in_chunk === chunk.bytes.byteLength
+  );
+  const wholeStart = chunkStart === undefined ? undefined : chunkStart + segment.start_in_chunk;
+  const wholeEnd = chunkStart === undefined ? undefined : chunkStart + segment.end_in_chunk;
+  if (chunkStart === undefined || !exactStructuralField ||
+    !Number.isSafeInteger(chunkStart) || !Number.isSafeInteger(startByte) || !Number.isSafeInteger(endByte) ||
+    wholeStart === undefined || wholeEnd === undefined ||
+    !Number.isSafeInteger(wholeStart) || !Number.isSafeInteger(wholeEnd) ||
     !Number.isSafeInteger(segment.start_in_chunk) || !Number.isSafeInteger(segment.end_in_chunk) ||
     segment.start_in_chunk < 0 || segment.start_in_chunk >= segment.end_in_chunk ||
     segment.end_in_chunk > chunk.bytes.byteLength ||
-    startByte !== chunkStart + segment.start_in_chunk ||
-    endByte !== chunkStart + segment.end_in_chunk ||
+    startByte !== wholeStart || endByte !== wholeEnd ||
     segment.end_in_chunk - segment.start_in_chunk !== segment.bytes.byteLength ||
     !bytesEqual(chunk.bytes.subarray(segment.start_in_chunk, segment.end_in_chunk), segment.bytes)) {
     return undefined;
@@ -742,6 +756,27 @@ export function buildExpectedChunks(
         mismatched_fields: Object.freeze([]),
       });
       fieldConsumption.push(ledger);
+      const replacementRows = replacements(node.value);
+      if (
+        replacementRows.length !== 1 || replacementRows[0]?.replacement_field !== field ||
+        rendered.byteLength === 0
+      ) {
+        buildIssues.push(issue(
+          document,
+          "E-FIELD-CONSUMPTION",
+          `${node.kind}[${JSON.stringify(node.id)}].source_replacements`,
+          "semantic structural output requires one non-empty full-field replacement",
+        ));
+      } else {
+        projectedFieldSegments.push(Object.freeze({
+          owner_kind: node.kind,
+          owner_id: node.id,
+          logical_path: field,
+          start_in_chunk: 0,
+          end_in_chunk: rendered.byteLength,
+          bytes: cloneBytes(rendered),
+        }));
+      }
       chunks.push(immutableChunk({
         manifest_index: op.manifest_index,
         owner: { kind: node.kind, id: node.id, field },
@@ -881,12 +916,11 @@ export function validateCompletedChunks(
     }
   }
 
-  const semanticOps = ops.filter((op) =>
-    op.node.kind === "record" && "render_authority" in op.node.value &&
-    op.node.value.render_authority === "semantic"
-  );
+  const semanticOps = ops.filter((op) => expectedLedgerFields(op) !== undefined);
   for (const segment of completed.projected_field_segments) {
-    const owners = semanticOps.filter((op) => op.node.id === segment.owner_id);
+    const owners = semanticOps.filter((op) =>
+      op.node.kind === segment.owner_kind && op.node.id === segment.owner_id
+    );
     if (owners.length !== 1) {
       issues.push(issue(
         document,
@@ -897,10 +931,13 @@ export function validateCompletedChunks(
     }
   }
   for (const op of semanticOps) {
-    if (op.node.kind !== "record" || !("render_authority" in op.node.value) || op.node.value.render_authority !== "semantic") continue;
-    const logicalPath = `record[${JSON.stringify(op.node.id)}].projected_field_segments`;
-    const segments = completed.projected_field_segments.filter((segment) => segment.owner_id === op.node.id);
-    if (op.node.value.projection_visibility === "semantic_only") {
+    const logicalPath = `${op.node.kind}[${JSON.stringify(op.node.id)}].projected_field_segments`;
+    const segments = completed.projected_field_segments.filter((segment) =>
+      segment.owner_kind === op.node.kind && segment.owner_id === op.node.id
+    );
+    const semanticOnly = op.node.kind === "record" && "projection_visibility" in op.node.value &&
+      op.node.value.projection_visibility === "semantic_only";
+    if (semanticOnly) {
       if (segments.length !== 0) {
         issues.push(issue(document, "E-FIELD-CONSUMPTION", logicalPath, "semantic-only record has projected field segments"));
       }
@@ -910,14 +947,23 @@ export function validateCompletedChunks(
     const replacementFields = new Set(replacementRows.map((replacement) => replacement.replacement_field));
     const replacementSpanIds = new Set(replacementRows.map((replacement) => replacement.span_id));
     const ledger = completed.field_consumption.filter((entry) =>
-      entry.owner_kind === "record" && entry.owner_id === op.node.id
+      entry.owner_kind === op.node.kind && entry.owner_id === op.node.id
     );
-    const expectedPaths = (ledger[0]?.consumed_fields ?? []).filter((field) => replacementFields.has(field));
+    const structuralField = op.node.kind === "record"
+      ? undefined
+      : "marker_md" in op.node.value ? "marker_md" : "body_md";
+    const expectedPaths = structuralField === undefined
+      ? (ledger[0]?.consumed_fields ?? []).filter((field) => replacementFields.has(field))
+      : [structuralField];
     const actualPaths = segments.map((segment) => segment.logical_path);
     if (
       replacementFields.size !== replacementRows.length || replacementSpanIds.size !== replacementRows.length ||
       ledger.length !== 1 || !stringArraysEqual(actualPaths, expectedPaths) ||
-      segments.length !== replacementRows.length
+      segments.length !== replacementRows.length ||
+      (structuralField !== undefined && (
+        replacementRows.length !== 1 || replacementRows[0]?.replacement_field !== structuralField ||
+        !stringArraysEqual(ledger[0]?.consumed_fields ?? [], [structuralField])
+      ))
     ) {
       issues.push(issue(
         document,

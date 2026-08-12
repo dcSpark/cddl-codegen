@@ -271,6 +271,16 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["debt_semantic_promotion_capability_mutation_rejected", [
     "payload_after_mint", "completed_content_after_mint", "completed_clone_after_mint", "expected_bytes_after_mint",
   ]],
+  ["render_structural_exact_field_binding_all_kinds", [
+    "section", "fragment", "legacy_marker", "record", "part", "semantic_only_zero_segments",
+    "progress_coverage",
+  ]],
+  ["render_structural_exact_field_binding_rejections", [
+    "missing_segment", "duplicate_segment", "same_id_wrong_kind", "wrong_owner_id", "wrong_logical_path",
+    "partial_full_field", "unsafe_coordinate", "segment_byte_drift", "expected_view_drift",
+    "cloned_chunk_identity", "duplicate_chunk_identity", "missing_replacement", "duplicate_replacement",
+    "wrong_replacement_field", "whole_chunk_without_segment",
+  ]],
   ["outputs_slot_cardinality", ["status_zero_open", "status_two_open", "status_zero_close", "status_two_close", "reversed", "crossed", "manifest_zero", "manifest_two_declarations", "manifest_two_placements", "manifest_two_spans"]],
   ["outputs_interval_overlap", ["same_interval", "partial_left", "partial_right", "contained", "whole_vs_slot", "same_producer_overlap", "adjacent"]],
   ["status_projector_before_after_target_byte_parity", ["roadmap", "matrix_readme", "tests_readme"]],
@@ -447,6 +457,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["render_semantic_exact_field_binding_swapped_labels", { code: "E-SPAN-OWNER", logical_path: "source_span[\"span-summary\"]" }],
   ["render_semantic_exact_field_binding_partial", { code: "E-SPAN-OWNER", logical_path: "source_span[\"span-summary\"]" }],
   ["render_semantic_exact_field_binding_duplicate", { code: "E-FIELD-CONSUMPTION", logical_path: "record[\"matrix.fixture-work\"].projected_field_segments" }],
+  ["render_structural_exact_field_binding_rejections", { code: "E-FIELD-CONSUMPTION", logical_path: "section[\"heading\"].projected_field_segments" }],
   ["outputs_duplicate_whole", { code: "E-OUTPUT-CLAIM", logical_path: "claims[1]" }],
   ["outputs_whole_vs_slot", { code: "E-OUTPUT-CLAIM", logical_path: "overlap[0,1]" }],
   ["outputs_duplicate_slot", { code: "E-OUTPUT-CLAIM", logical_path: "claims[1]" }],

@@ -43,6 +43,7 @@ import {
   buildExpectedChunks,
   checkedPrefixOffsets,
   createExpectedByteView,
+  exactProjectedFieldSegment,
   validateCompletedChunks,
   type CompletedRenderIr,
   type ExpectedByteViewObserver,
@@ -163,6 +164,8 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "render_semantic_exact_field_binding_partial",
   "render_semantic_exact_field_binding_duplicate",
   "render_semantic_replacement_rows_order_independent",
+  "render_structural_exact_field_binding_all_kinds",
+  "render_structural_exact_field_binding_rejections",
   "render_shadow_ignored",
   "render_prior_projection_irrelevant",
   "outputs_duplicate_whole",
@@ -1602,6 +1605,99 @@ function validatePromotion(
   return { baseDebt, candidateDebt, transition };
 }
 
+function structuralSemanticFixture(): {
+  readonly document: RoadmapDocumentV1;
+  readonly completed: CompletedRenderIr;
+} {
+  const raw = authoritativeFixture().document;
+  const section = raw.sections[0]!;
+  const fragment = raw.fragments[0]!;
+  const marker = raw.legacy_markers[0]!;
+  const part = raw.parts[0]!;
+  if (!("source_block_md" in section) || !("source_block_md" in fragment) ||
+    !("source_block_md" in marker) || !("source_block_md" in part)) {
+    fail("structural semantic fixture lacks raw owners");
+  }
+  const replacement = (span_id: SpanId, replacement_field: "body_md" | "marker_md") => ({
+    span_id,
+    replacement_field,
+    review_note_md: bytes("Reviewed exact structural field replacement."),
+  });
+  const convertedSpanIds = new Set([
+    ...section.span_ids,
+    ...fragment.span_ids,
+    ...marker.span_ids,
+    ...part.span_ids,
+  ]);
+  const fieldForKind = (kind: SourceSpan["source_kind"]): string | undefined =>
+    kind === "section" || kind === "fragment" || kind === "part" ? "body_md"
+      : kind === "legacy_marker" ? "marker_md" : undefined;
+  const document: RoadmapDocumentV1 = {
+    ...raw,
+    document: {
+      ...raw.document,
+      frozen_legacy_span_ids: raw.document.frozen_legacy_span_ids.filter((id) => !convertedSpanIds.has(id)),
+    },
+    sections: [{
+      section_id: section.section_id,
+      title: section.title,
+      ...(section.legacy_aliases === undefined ? {} : { legacy_aliases: section.legacy_aliases }),
+      render_authority: "semantic",
+      body_md: section.source_block_md,
+      source_replacements: section.span_ids.map((id) => replacement(id, "body_md")),
+    }],
+    fragments: [{
+      fragment_id: fragment.fragment_id,
+      projection_group: fragment.projection_group,
+      ...(fragment.title === undefined ? {} : { title: fragment.title }),
+      ...(fragment.legacy_aliases === undefined ? {} : { legacy_aliases: fragment.legacy_aliases }),
+      render_authority: "semantic",
+      lifecycle_disposition: "document_prose",
+      body_md: fragment.source_block_md,
+      source_replacements: fragment.span_ids.map((id) => replacement(id, "body_md")),
+    }],
+    legacy_markers: [{
+      marker_id: marker.marker_id,
+      legacy_aliases: marker.legacy_aliases,
+      render_authority: "semantic",
+      marker_md: marker.source_block_md,
+      source_replacements: marker.span_ids.map((id) => replacement(id, "marker_md")),
+    }],
+    parts: [{
+      part_id: part.part_id,
+      parent_record_id: part.parent_record_id,
+      ...(part.title === undefined ? {} : { title: part.title }),
+      render_authority: "semantic",
+      lifecycle_disposition: "parent_supporting_prose",
+      body_md: part.source_block_md,
+      source_replacements: part.span_ids.map((id) => replacement(id, "body_md")),
+    }],
+    spans: raw.spans.map((span) => {
+      const field = fieldForKind(span.source_kind);
+      return field === undefined ? span : {
+        ...span,
+        owner_field: field,
+        migration_status: "replaced" as const,
+      };
+    }),
+  };
+  return { document, completed: complete(document).completed };
+}
+
+function structuralSectionWithReplacements(
+  document: RoadmapDocumentV1,
+  source_replacements: Extract<RoadmapDocumentV1["sections"][number], { render_authority: "semantic" }>["source_replacements"],
+): RoadmapDocumentV1 {
+  return {
+    ...document,
+    sections: document.sections.map((section) =>
+      "render_authority" in section && section.render_authority === "semantic"
+        ? { ...section, source_replacements }
+        : section
+    ),
+  };
+}
+
 function semanticOnlyCompletion(): {
   readonly document: RoadmapDocumentV1;
   readonly record: Extract<RoadmapDocumentV1["records"][number], { render_authority: "semantic" }>;
@@ -2246,6 +2342,268 @@ function testRenderCase(
       fail("replacement row order changed rendered bytes or canonical projected field segments");
     }
     return pass();
+  }
+  if (id === "render_structural_exact_field_binding_all_kinds") {
+    const fixture = structuralSemanticFixture();
+    const placement = resolveManifest(fixture.document);
+    const issues = [
+      ...validateCompletedChunks(fixture.document, placement.ops, fixture.completed),
+      ...validateSourceSpans({ document: fixture.document, completed: fixture.completed }),
+    ];
+    if (issues.length !== 0) fail(`exact structural binding failed: ${issues.map((issue) => issue.message).join(";")}`);
+    const expected: readonly [Exclude<SourceSpan["source_kind"], "generated_slot">, string, string][] = [
+      ["section", "heading", "body_md"],
+      ["fragment", "fragment", "body_md"],
+      ["legacy_marker", "marker", "marker_md"],
+    ];
+    const executed: string[] = [];
+    for (const [kind, ownerId, field] of expected) {
+      const chunk = fixture.completed.chunks.find((candidate) =>
+        candidate.owner.kind === kind && candidate.owner.id === ownerId
+      );
+      const span = fixture.document.spans.find((candidate) =>
+        candidate.source_kind === kind && candidate.owner_id === ownerId
+      );
+      if (chunk === undefined || span === undefined) fail(`${kind} exact-binding control is incomplete`);
+      if (exactProjectedFieldSegment(
+        fixture.completed, chunk, kind, ownerId, field, span.start_byte, span.end_byte,
+      ) === undefined) fail(`${kind} exact projected field did not resolve`);
+      executed.push(kind);
+    }
+    const recordFixture = semanticFixture("exact");
+    const recordCompleted = completeSemantic(recordFixture.document, recordFixture.renderCalls);
+    const record = recordFixture.document.records.find((candidate) =>
+      "render_authority" in candidate && candidate.render_authority === "semantic"
+    );
+    if (record === undefined || !("source_replacements" in record)) fail("record exact-binding control is incomplete");
+    const recordChunk = recordChunkFor(recordCompleted, record.id);
+    for (const replacement of record.source_replacements) {
+      const span = recordFixture.document.spans.find((candidate) => candidate.id === replacement.span_id);
+      if (span === undefined || exactProjectedFieldSegment(
+        recordCompleted,
+        recordChunk,
+        "record",
+        record.id,
+        replacement.replacement_field,
+        span.start_byte,
+        span.end_byte,
+      ) === undefined) fail("record exact projected field did not resolve");
+    }
+    executed.push("record");
+    const partChunk = fixture.completed.chunks.find((candidate) =>
+      candidate.owner.kind === "part" && candidate.owner.id === "part"
+    );
+    const partSpan = fixture.document.spans.find((candidate) =>
+      candidate.source_kind === "part" && candidate.owner_id === "part"
+    );
+    if (partChunk === undefined || partSpan === undefined || exactProjectedFieldSegment(
+      fixture.completed, partChunk, "part", "part", "body_md", partSpan.start_byte, partSpan.end_byte,
+    ) === undefined) fail("part exact projected field did not resolve");
+    executed.push("part");
+    const semanticOnly = semanticOnlyCompletion();
+    if (semanticOnly.completed.projected_field_segments.some((segment) =>
+      segment.owner_kind === "record" && segment.owner_id === semanticOnly.record.id
+    )) fail("semantic-only record minted a projected field segment");
+    executed.push("semantic_only_zero_segments");
+    const debt = deriveMigrationDebt(fixture.document, fixture.completed);
+    const report = migrationProgressReport(fixture.document, debt, fixture.completed);
+    const replaced = fixture.document.spans.filter((span) => span.migration_status === "replaced");
+    if (report.replacement_coverage.denominator !== replaced.length ||
+      report.replacement_coverage.numerator !== replaced.length) {
+      fail("structural exact segments did not count as exact migration coverage");
+    }
+    executed.push("progress_coverage");
+    return pass("positive", Object.freeze(executed));
+  }
+  if (id === "render_structural_exact_field_binding_rejections") {
+    const fixture = structuralSemanticFixture();
+    const section = fixture.document.sections[0]!;
+    if (!("render_authority" in section) || section.render_authority !== "semantic") {
+      fail("structural rejection fixture lacks semantic section");
+    }
+    const sectionChunk = fixture.completed.chunks.find((chunk) =>
+      chunk.owner.kind === "section" && chunk.owner.id === section.section_id
+    );
+    const sectionSpan = fixture.document.spans.find((span) =>
+      span.source_kind === "section" && span.owner_id === section.section_id
+    );
+    const segmentIndex = fixture.completed.projected_field_segments.findIndex((segment) =>
+      segment.owner_kind === "section" && segment.owner_id === section.section_id
+    );
+    const segment = fixture.completed.projected_field_segments[segmentIndex];
+    if (sectionChunk === undefined || sectionSpan === undefined || segmentIndex < 0 || segment === undefined) {
+      fail("structural rejection fixture lacks exact section facts");
+    }
+    const withSegments = (segments: CompletedRenderIr["projected_field_segments"]): CompletedRenderIr => ({
+      ...fixture.completed,
+      projected_field_segments: segments,
+    });
+    const requireCompletedSegmentIssue = (completed: CompletedRenderIr): void => requireExactIssue(
+      validateCompletedChunks(fixture.document, resolveManifest(fixture.document).ops, completed),
+      "E-FIELD-CONSUMPTION",
+      'section["heading"].projected_field_segments',
+    );
+    const executed: string[] = [];
+    const without = fixture.completed.projected_field_segments.filter((_, index) => index !== segmentIndex);
+    requireCompletedSegmentIssue(withSegments(without));
+    executed.push("missing_segment");
+    requireCompletedSegmentIssue(withSegments([...fixture.completed.projected_field_segments, segment]));
+    executed.push("duplicate_segment");
+    const fragmentChunkIndex = fixture.completed.chunks.findIndex((chunk) => chunk.owner.kind === "fragment");
+    const fragmentSegmentIndex = fixture.completed.projected_field_segments.findIndex((candidate) =>
+      candidate.owner_kind === "fragment"
+    );
+    const fragmentChunk = fixture.completed.chunks[fragmentChunkIndex];
+    const fragmentSegment = fixture.completed.projected_field_segments[fragmentSegmentIndex];
+    if (fragmentChunkIndex < 0 || fragmentSegmentIndex < 0 || fragmentChunk === undefined || fragmentSegment === undefined) {
+      fail("same-ID cross-kind fixture lacks fragment facts");
+    }
+    const collidingFragmentChunk: RenderChunk = {
+      ...fragmentChunk,
+      owner: { ...fragmentChunk.owner, id: section.section_id },
+    };
+    const collidingChunks = [...fixture.completed.chunks];
+    collidingChunks[fragmentChunkIndex] = collidingFragmentChunk;
+    const collidingSegments = [...fixture.completed.projected_field_segments];
+    collidingSegments[fragmentSegmentIndex] = { ...fragmentSegment, owner_id: section.section_id };
+    const collidingCompleted: CompletedRenderIr = {
+      ...fixture.completed,
+      chunks: collidingChunks,
+      projected_field_segments: collidingSegments,
+    };
+    if (exactProjectedFieldSegment(
+      collidingCompleted,
+      collidingFragmentChunk,
+      "section",
+      section.section_id,
+      "body_md",
+      sectionSpan.start_byte,
+      sectionSpan.end_byte,
+    ) !== undefined) fail("same textual ID under a different structural kind satisfied section binding");
+    executed.push("same_id_wrong_kind");
+    requireCompletedSegmentIssue(withSegments([...without, { ...segment, owner_id: "wrong" }]));
+    executed.push("wrong_owner_id");
+    requireCompletedSegmentIssue(withSegments([...without, { ...segment, logical_path: "marker_md" }]));
+    executed.push("wrong_logical_path");
+    const sectionChunkIndex = fixture.completed.chunks.indexOf(sectionChunk);
+    const widenedChunks = [...fixture.completed.chunks];
+    const widenedSectionChunk: RenderChunk = { ...sectionChunk, bytes: bytes("HH") };
+    widenedChunks[sectionChunkIndex] = widenedSectionChunk;
+    const partialSegment = { ...segment, end_in_chunk: 1, bytes: bytes("H") };
+    const partialCompleted: CompletedRenderIr = {
+      ...fixture.completed,
+      chunks: widenedChunks,
+      projected_field_segments: [...without, partialSegment],
+      expected_bytes: createExpectedByteView(widenedChunks),
+    };
+    if (exactProjectedFieldSegment(
+      partialCompleted,
+      widenedSectionChunk,
+      "section",
+      section.section_id,
+      "body_md",
+      sectionSpan.start_byte,
+      sectionSpan.end_byte,
+    ) !== undefined) fail("proper non-empty structural prefix satisfied full-field binding");
+    const partialReport = migrationProgressReport(
+      fixture.document,
+      deriveMigrationDebt(fixture.document, partialCompleted),
+      partialCompleted,
+    );
+    if (partialReport.replacement_coverage.covered_span_ids.includes(sectionSpan.id)) {
+      fail("proper structural prefix counted as complete migration coverage");
+    }
+    executed.push("partial_full_field");
+    const unsafeSegment = {
+      ...segment,
+      start_in_chunk: Number.MAX_SAFE_INTEGER + 1,
+      end_in_chunk: Number.MAX_SAFE_INTEGER + 2,
+    };
+    if (exactProjectedFieldSegment(
+      withSegments([...without, unsafeSegment]),
+      sectionChunk,
+      "section",
+      section.section_id,
+      "body_md",
+      sectionSpan.start_byte,
+      sectionSpan.end_byte,
+    ) !== undefined) fail("unsafe structural segment coordinate was accepted");
+    if (exactProjectedFieldSegment(
+      fixture.completed,
+      sectionChunk,
+      "section",
+      section.section_id,
+      "body_md",
+      Number.MAX_SAFE_INTEGER + 1,
+      Number.MAX_SAFE_INTEGER + 2,
+    ) !== undefined) fail("unsafe whole-document coordinate was accepted");
+    executed.push("unsafe_coordinate");
+    const driftedBytes = new Uint8Array(segment.bytes);
+    driftedBytes[0] = driftedBytes[0]! ^ 1;
+    requireIssue(validateCompletedChunks(fixture.document, resolveManifest(fixture.document).ops,
+      withSegments([...without, { ...segment, bytes: driftedBytes }])), "E-RENDER-AUTHORITY");
+    executed.push("segment_byte_drift");
+    const expectedDriftChunks = fixture.completed.chunks.map((chunk) =>
+      chunk === sectionChunk ? { ...chunk, bytes: bytes("X") } : chunk
+    );
+    const expectedDrift: CompletedRenderIr = {
+      ...fixture.completed,
+      expected_bytes: createExpectedByteView(expectedDriftChunks),
+    };
+    if (exactProjectedFieldSegment(
+      expectedDrift,
+      sectionChunk,
+      "section",
+      section.section_id,
+      "body_md",
+      sectionSpan.start_byte,
+      sectionSpan.end_byte,
+    ) !== undefined) fail("expected-byte-view drift did not invalidate structural binding");
+    executed.push("expected_view_drift");
+    if (exactProjectedFieldSegment(
+      fixture.completed,
+      { ...sectionChunk },
+      "section",
+      section.section_id,
+      "body_md",
+      sectionSpan.start_byte,
+      sectionSpan.end_byte,
+    ) !== undefined) fail("cloned chunk object satisfied structural binding");
+    executed.push("cloned_chunk_identity");
+    const duplicatedChunkCompleted: CompletedRenderIr = {
+      ...fixture.completed,
+      chunks: [sectionChunk, ...fixture.completed.chunks],
+    };
+    if (exactProjectedFieldSegment(
+      duplicatedChunkCompleted,
+      sectionChunk,
+      "section",
+      section.section_id,
+      "body_md",
+      sectionSpan.start_byte,
+      sectionSpan.end_byte,
+    ) !== undefined) fail("duplicated chunk object satisfied structural binding");
+    executed.push("duplicate_chunk_identity");
+    const missingReplacement = structuralSectionWithReplacements(fixture.document, []);
+    requireIssue(validateCompletedChunks(missingReplacement, resolveManifest(missingReplacement).ops, fixture.completed), "E-FIELD-CONSUMPTION");
+    executed.push("missing_replacement");
+    const row = section.source_replacements[0]!;
+    const duplicateReplacement = structuralSectionWithReplacements(fixture.document, [row, row]);
+    requireIssue(validateCompletedChunks(duplicateReplacement, resolveManifest(duplicateReplacement).ops, fixture.completed), "E-FIELD-CONSUMPTION");
+    executed.push("duplicate_replacement");
+    const wrongReplacement = structuralSectionWithReplacements(fixture.document, [{ ...row, replacement_field: "marker_md" }]);
+    requireIssue(validateCompletedChunks(wrongReplacement, resolveManifest(wrongReplacement).ops, fixture.completed), "E-FIELD-CONSUMPTION");
+    executed.push("wrong_replacement_field");
+    const noSegment = withSegments(without);
+    requireIssue(validateSourceSpans({ document: fixture.document, completed: noSegment }), "E-SPAN-OWNER");
+    const debt = deriveMigrationDebt(fixture.document, noSegment);
+    const report = migrationProgressReport(fixture.document, debt, noSegment);
+    if (report.replacement_coverage.covered_span_ids.includes(sectionSpan.id) ||
+      !report.completion_audit.lane_blockers.some((blocker) =>
+        blocker.category === "uncovered_replacement_span" && blocker.subject === sectionSpan.id
+      )) fail("whole structural chunk bypassed the missing projected-segment proof");
+    executed.push("whole_chunk_without_segment");
+    return pass("negative", Object.freeze(executed));
   }
   if (id === "render_shadow_ignored") {
     const fixture = semanticFixture("shadow");

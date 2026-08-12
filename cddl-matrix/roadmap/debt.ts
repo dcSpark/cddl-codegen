@@ -968,6 +968,7 @@ export function validateSemanticConversionFacts(
         exactProjectedFieldSegment(
           options.candidate_completed!,
           candidateChunk,
+          "record",
           candidateRecord.id,
           replacement.replacement_field,
           candidateSpan.start_byte,
@@ -1793,28 +1794,16 @@ function hasExactReplacementBinding(
   );
   const chunk = chunks[0];
   if (chunks.length !== 1 || chunk === undefined) return false;
-  if (span.source_kind === "record") {
-    return exactProjectedFieldSegment(
-      completed,
-      chunk,
-      span.owner_id,
-      span.owner_field,
-      span.start_byte,
-      span.end_byte,
-    ) !== undefined;
-  }
-  const chunkIndex = completed.chunks.indexOf(chunk);
-  const chunkStart = completed.expected_bytes.prefix_offsets[chunkIndex];
-  if (chunkStart === undefined || span.start_byte !== chunkStart ||
-    span.end_byte !== chunkStart + chunk.bytes.byteLength) return false;
-  try {
-    return completed.expected_bytes.equals(
-      completed.expected_bytes.slice(span.start_byte, span.end_byte),
-      chunk.bytes,
-    );
-  } catch {
-    return false;
-  }
+  if (span.source_kind === "generated_slot") return false;
+  return exactProjectedFieldSegment(
+    completed,
+    chunk,
+    span.source_kind,
+    span.owner_id,
+    span.owner_field,
+    span.start_byte,
+    span.end_byte,
+  ) !== undefined;
 }
 
 function progressBlockerSort(
