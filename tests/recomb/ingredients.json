@@ -576,6 +576,10 @@
       "role": "role.choice-member"
     },
     {
+      "feature": "prelude.undefined",
+      "role": "role.choice-member"
+    },
+    {
       "feature": "type2.array",
       "role": "role.choice-member"
     },
