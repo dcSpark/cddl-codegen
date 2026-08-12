@@ -557,15 +557,11 @@
     },
     {
       "gate": "no_silent_directive",
-      "warm_ms": 30000,
+      "warm_ms": 37000,
       "n": 20,
-      "measured": "2026-08-07",
+      "measured": "2026-08-12",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-29",
-          "warm_ms": 7000
-        },
         {
           "date": "2026-08-01",
           "warm_ms": 9000
@@ -581,6 +577,10 @@
         {
           "date": "2026-08-07",
           "warm_ms": 30000
+        },
+        {
+          "date": "2026-08-12",
+          "warm_ms": 37000
         }
       ]
     },
@@ -922,14 +922,18 @@
     },
     {
       "gate": "roadmap_projection_check",
-      "warm_ms": 13000,
-      "n": 8,
+      "warm_ms": 16000,
+      "n": 12,
       "measured": "2026-08-12",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-08-12",
           "warm_ms": 13000
+        },
+        {
+          "date": "2026-08-12",
+          "warm_ms": 16000
         }
       ]
     },
@@ -993,15 +997,11 @@
     },
     {
       "gate": "snapshot_quick",
-      "warm_ms": 33000,
+      "warm_ms": 40000,
       "n": 20,
-      "measured": "2026-08-10",
+      "measured": "2026-08-12",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-27",
-          "warm_ms": 15000
-        },
         {
           "date": "2026-07-29",
           "warm_ms": 18000
@@ -1017,6 +1017,10 @@
         {
           "date": "2026-08-10",
           "warm_ms": 33000
+        },
+        {
+          "date": "2026-08-12",
+          "warm_ms": 40000
         }
       ]
     },

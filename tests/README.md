@@ -28,7 +28,11 @@ ingredients, `query_q*`, status-header count and doc-citation gates
 (`project_decode_conformance.ts`, `project_recombination.ts`, the four `query_q*.ts`,
 `project_status_headers.ts`, `lint_doc_citations.ts`). What makes a gate a member — and what a new
 gate must satisfy to join, rather than defaulting to `local` — is that it reads only committed
-files: no cargo, no network, no `cddl-matrix/node_modules`, no `draft/` ledger. `local` is "run
+files: no cargo, no network, no `cddl-matrix/node_modules`, no `draft/` ledger. The separately
+approved `roadmap_projection_check` joined `fast` on
+2026-08-11 with the same pure committed-file boundary; it runs the hermetic roadmap self-tests and
+then byte-checks both committed roadmap shadows, so it is not included in the sub-second timing
+claim above. `local` is "run
 before considering work done" — the heavy correctness gates (full
 `cargo test`, corpus + wasm-matrix compiles) plus `matrix_typecheck` (`tsc --noEmit` over the
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in

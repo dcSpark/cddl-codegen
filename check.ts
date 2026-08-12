@@ -1528,10 +1528,10 @@ export const REGISTRY: Gate[] = [
   { id: "verify_selftest", tier: "local", kind: "cmd",
     cmd: ["bun", "run", "verify.ts", "--selftest"], cwd: MATRIX,
     desc: "verify.ts's pure startup deciders (evidence-vocabulary classifiers, the component leg's selection + ident mirror, the build-sweep classifier), whose failures are silent in production" },
-  { id: "roadmap_projection_check", tier: "local", kind: "cmd",
-    cmd: ["bun", "run", "project_roadmaps.ts", "--selftest"], cwd: MATRIX,
+  { id: "roadmap_projection_check", tier: "fast", kind: "cmd",
+    cmd: ["bun", "run", "project_roadmaps.ts", "--roadmap", "all", "--check"], cwd: MATRIX,
     script: "project_roadmaps.ts",
-    desc: "roadmap schema/codec/identity/transaction/output-owner self-tests (hermetic fixture FS/Git, no cargo/network)" },
+    desc: "roadmap schema/source-accounting/parity/identity/target-writer gate (pure committed files, no cargo/network)" },
   // --- THE SUB-SECOND NO-CARGO FILE-SCANNER CLASS, promoted from `local` into `fast` (CI) ---
   // Eight gates: `lint_doc_citations`, `project_decode_conformance`, `project_recombination_check`,
   // the four `query_q*` gates and `project_status_headers`. Maintainer call, 2026-08-03 — the same
@@ -1539,6 +1539,9 @@ export const REGISTRY: Gate[] = [
   // the whole class at once: measured 629 ms warm for all eight together, ~4 % of the fast tier's
   // wall, against a proven cost of the split (a HEAD commit shipped CI-green with three of these
   // red locally, surfacing one per session behind fail-fast).
+  // `roadmap_projection_check` is a separately approved ninth member (maintainer call,
+  // 2026-08-11): it has the same pure committed-file shape, and protects both roadmap shadows
+  // before either source becomes authoritative.
   //
   // THE CLASS BOUNDARY, so the next gate addition can answer for itself whether it belongs here:
   // pure reads of COMMITTED files, no cargo, no network, no `cddl-matrix/node_modules`, no `draft/`
