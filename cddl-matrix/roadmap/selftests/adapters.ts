@@ -1,4 +1,3 @@
-import matrixShadowSourceText from "../../roadmap.toml" with { type: "text" };
 import {
   canonicalSemanticMarkdownFields,
   MATRIX_ADAPTER,
@@ -46,6 +45,7 @@ import {
   validateRoadmapReferences,
 } from "../references.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
+import { liveMatrixShadowV0Document } from "./live_matrix.ts";
 
 export const REQUIRED_ADAPTER_SELFTEST_CASE_IDS = [
   "decoder_domain_dispatch_once",
@@ -296,6 +296,7 @@ function registryView(
     [...new Map(values.map((value) => [key(value), value])).values()];
   return {
     revision: { kind: "worktree" },
+    production_output_stage: "pre_cutover",
     gates: unique(references.filter((entry) => entry.kind === "gate").map((entry) => ({ id: entry.gate_id, kind: "cargo", stub: false })), (entry) => entry.id),
     matrix_features: unique(references.filter((entry) => entry.kind === "matrix_feature").map((entry) => ({ id: entry.feature_id })), (entry) => entry.id),
     matrix_roles: unique(references.filter((entry) => entry.kind === "matrix_role").map((entry) => ({ id: entry.role_id })), (entry) => entry.id),
@@ -821,13 +822,7 @@ function testSlots(bundle: AdapterFixtureBundle): void {
 }
 
 function liveMatrixFloorProbe(): RoadmapDocumentV0 {
-  const decoded = decodeRoadmapSource(
-    new TextEncoder().encode(matrixShadowSourceText),
-    "cddl-matrix/roadmap.toml" as RepoPath,
-    "matrix",
-  );
-  assert(decoded.document.schema_version === 0, "committed matrix floor probe is not schema v0");
-  return decoded as RoadmapDocumentV0;
+  return liveMatrixShadowV0Document();
 }
 
 function liveTestingFloorProbe(): RoadmapDocumentV0 {

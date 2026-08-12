@@ -9,7 +9,9 @@ import {
   inspectStatusMarkerBinding,
   LEGACY_STATUS_OUTPUT_CLAIMS,
   LEGACY_STATUS_OUTPUT_REGISTRY,
+  productionOutputInventory,
   resolveOutputClaims,
+  type ProductionOutputStage,
 } from "./output_registry.ts";
 
 export { LEGACY_STATUS_OUTPUT_CLAIMS, LEGACY_STATUS_OUTPUT_REGISTRY } from "./output_registry.ts";
@@ -277,6 +279,7 @@ export function planLegacyStatusHeaderRun(
   inputs: MatrixStatusInputs,
   invocation: ClassifiedLegacyStatusInvocation,
   observer?: { claimResolved(claim: ResolvedOutputClaim): void },
+  outputStage: ProductionOutputStage = "pre_cutover",
 ): LegacyStatusHeaderRunPlan {
   const facts = deriveMatrixStatusFacts(inputs);
   if (invocation.mode === "report") {
@@ -287,11 +290,19 @@ export function planLegacyStatusHeaderRun(
       writes: Object.freeze([]),
     });
   }
-  const payloads = renderMatrixStatusPayloads(facts);
+  const outputInventory = productionOutputInventory(outputStage);
+  const statusClaims = outputInventory.status_claims;
+  const ownedSlots = new Set(statusClaims.map((claim) => JSON.stringify([claim.path, claim.slot_id])));
+  const payloads = renderMatrixStatusPayloads(facts).filter((payload) =>
+    ownedSlots.has(JSON.stringify([payload.path, payload.slot_id]))
+  );
+  const targetPaths = Object.freeze(TARGET_PATHS.filter((path) =>
+    statusClaims.some((claim) => claim.path === path)
+  ));
   const inspections = new Map<string, ReturnType<typeof inspectStatusMarkerBinding>>();
   const targetSnapshots = new Map<RepoPath, Uint8Array>();
   const missingTargets: RepoPath[] = [];
-  for (const path of TARGET_PATHS) {
+  for (const path of targetPaths) {
     const target = invocation.targets.get(path);
     if (target === undefined) missingTargets.push(path);
     else targetSnapshots.set(path, new Uint8Array(target));
@@ -310,12 +321,12 @@ export function planLegacyStatusHeaderRun(
     inspections.set(JSON.stringify([payload.path, payload.slot_id]), inspectStatusMarkerBinding(snapshot, payload.slot_id));
   }
 
-  // Resolve the complete typed inventory before either mode can decide to write.  The resolver is
-  // deliberately fed only the three immutable snapshots above; callers cannot make a later claim
-  // observe bytes different from the drift/replacement pass.
+  // Resolve the complete status-writer subset for this campaign-selected production stage before
+  // either mode can decide to write. The resolver is deliberately fed only the immutable target
+  // snapshots above; callers cannot make a later claim observe different bytes.
   const resolution = resolveOutputClaims({
-    registry: LEGACY_STATUS_OUTPUT_REGISTRY,
-    claims: LEGACY_STATUS_OUTPUT_CLAIMS,
+    registry: outputInventory.registry,
+    claims: statusClaims,
     targets: targetSnapshots,
     observer: { claimResolved: (claim) => observer?.claimResolved(claim) },
   });
@@ -357,7 +368,7 @@ export function planLegacyStatusHeaderRun(
         writes: Object.freeze([]),
       });
     }
-    const writes = TARGET_PATHS.map((path) => {
+    const writes = targetPaths.map((path) => {
       const snapshot = targetSnapshots.get(path) as Uint8Array;
       const replacements = payloads.filter((payload) => payload.path === path).map((payload) => {
         const interval = inspections.get(JSON.stringify([path, payload.slot_id]))?.payload_interval;
@@ -368,7 +379,7 @@ export function planLegacyStatusHeaderRun(
     });
     return Object.freeze({
       exit_code: 0,
-      stdout: encoder.encode("status-headers: wrote 12 generated span(s) across 3 file(s).\n"),
+      stdout: encoder.encode(`status-headers: wrote ${statusClaims.length} generated span(s) across ${targetPaths.length} file(s).\n`),
       stderr: new Uint8Array(),
       writes: Object.freeze(writes),
     });

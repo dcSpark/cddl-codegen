@@ -14,6 +14,7 @@ import {
   type ByteViewInput,
   type LegacyTitleBindingFact,
 } from "./campaign.ts";
+import { validateCampaignAuthorityTuple } from "./campaign_authority.ts";
 import {
   compareMigrationDebt,
   debtOwnerIndex,
@@ -216,6 +217,30 @@ export function validateLifecycleRevision(input: LifecycleRevisionInput): Valida
   }
   if (input.retired === undefined) {
     issues.push(issue("E-SOURCE-MISSING", "retired_ids", "retired-ID root is required outside the one explicit bootstrap base"));
+  }
+  const authorityTupleIssues = input.campaign === undefined
+    ? []
+    : validateCampaignAuthorityTuple(input.campaign.campaign);
+  if (authorityTupleIssues.length > 0) {
+    const campaign = validateCampaign({
+      campaign: input.campaign!,
+      roadmaps: input.roadmaps,
+      legacy_title_bindings: input.legacy_title_bindings,
+    });
+    const retired = input.retired === undefined ? undefined : validateRetiredIds(input.retired, input.registry);
+    if (retired !== undefined) issues.push(...retired.issues);
+    issues.push(...campaign.issues);
+    return Object.freeze({
+      campaign,
+      campaign_document: input.campaign,
+      retired,
+      retired_document: input.retired,
+      roadmaps: input.roadmaps,
+      registry: input.registry,
+      identity: validateGlobalIdentity({ documents: [] }),
+      debt: input.debt,
+      issues: sortIssues(issues),
+    });
   }
   const firstCampaign = input.campaign === undefined ? undefined : validateCampaign({
     campaign: input.campaign,
@@ -660,7 +685,8 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
         }
         continue;
       }
-      if (candidateClaim !== undefined && ownerKind(candidateClaim) === ownerKind(baseClaim)) continue;
+      const candidateClaims = candidate.identity.owner_claims.get(id) ?? [];
+      if (candidateClaims.some((claim) => ownerKind(claim) === ownerKind(baseClaim))) continue;
       const origin = firstClassOrigin(base, baseClaim);
       if (baseClaim.owner_kind === "shadow_record_reservation" && candidateClaim?.owner_kind === "first_class") {
         validateShadowAuthorityTransfer(base, candidate, id, issues);

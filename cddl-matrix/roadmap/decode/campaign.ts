@@ -27,6 +27,7 @@ import {
   type SchemaDecodeTrace,
 } from "./primitives.ts";
 import { shieldTomlMarkdown, type MarkdownBindings } from "./raw_markdown.ts";
+import { campaignAuthorityTupleIsReachable } from "../campaign_authority.ts";
 
 export const CAMPAIGN_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "matrix_authority", values: ["legacy_markdown", "shadow", "authoritative"] },
@@ -112,11 +113,16 @@ export function decodeCampaignFromBindings(bindings: MarkdownBindings, schemaTra
     : [];
   reservations.sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
   selections.sort((left, right) => left.item_id < right.item_id ? -1 : left.item_id > right.item_id ? 1 : 0);
+  const matrixAuthority = expectEnum(ctx, requiredValue(campaign, "matrix_authority"), ["legacy_markdown", "shadow", "authoritative"] as const, "campaign.matrix_authority");
+  const testingAuthority = expectEnum(ctx, requiredValue(campaign, "testing_authority"), ["legacy_markdown", "shadow", "authoritative"] as const, "campaign.testing_authority");
+  if (!campaignAuthorityTupleIsReachable(matrixAuthority, testingAuthority)) {
+    schemaFail(ctx, "E-SCHEMA-STATE", "campaign.testing_authority", "testing authority cannot advance past matrix authority");
+  }
   const doc: CampaignDocumentV1 = {
     campaign: {
       schema_version: 1,
-      matrix_authority: expectEnum(ctx, requiredValue(campaign, "matrix_authority"), ["legacy_markdown", "shadow", "authoritative"] as const, "campaign.matrix_authority"),
-      testing_authority: expectEnum(ctx, requiredValue(campaign, "testing_authority"), ["legacy_markdown", "shadow", "authoritative"] as const, "campaign.testing_authority"),
+      matrix_authority: matrixAuthority,
+      testing_authority: testingAuthority,
     },
     legacy_markdown_reservations: reservations,
     selections,

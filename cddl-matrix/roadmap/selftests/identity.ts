@@ -58,6 +58,7 @@ import {
 } from "../references.ts";
 import { deriveRelationViews, validateRelations } from "../relations.ts";
 import {
+  inspectStableEvidenceDigest,
   validateCampaignIdentityOwnerEvidence,
   identityOwnerClaimKey,
   validateGlobalIdentity,
@@ -72,6 +73,7 @@ import {
   validateCampaignTransition,
   validateLegacyTitleBinding,
   type CampaignRoadmapSnapshot,
+  type CampaignValidationResult,
   type LegacyTitleBindingFact,
 } from "../campaign.ts";
 import { REPLACEMENT_PIN_KINDS, resolveReplacementPin, validateRetiredIds, validateRetiredTransition } from "../retired.ts";
@@ -91,6 +93,7 @@ import {
   type MigrationDebt,
 } from "../debt.ts";
 import {
+  createImmutableByteView,
   createExpectedByteView,
   type ExpectedByteViewObserver,
   type RenderChunk,
@@ -192,6 +195,7 @@ export const REQUIRED_IDENTITY_SELFTEST_CASE_IDS = [
   "test_symbol_fact_base_revision_isolated",
   "campaign_direct_matrix",
   "campaign_direct_testing",
+  "campaign_programmatic_impossible_authority_tuple",
   "campaign_legacy_matrix",
   "campaign_legacy_testing",
   "campaign_legacy_digest_title_span",
@@ -241,6 +245,7 @@ export const REQUIRED_IDENTITY_SELFTEST_CASE_IDS = [
   "identity_reservation_tombstone_collision",
   "identity_shadow_record_reserves_id",
   "identity_reservation_shadow_coalesces",
+  "identity_evidence_digest_binary_inputs",
   "identity_reservation_shadow_binding_mismatch",
   "identity_reservation_shadow_third_owner_rejected",
   "transaction_legacy_cutover_transfer_selected",
@@ -1434,6 +1439,7 @@ function brandedRoadmapId(value: string): RoadmapId {
 function fakeRegistryView(overrides: Partial<RegistryView> = {}): RegistryView {
   return {
     revision: { kind: "worktree" },
+    production_output_stage: "pre_cutover",
     gates: [gateFact("roadmap_projection_check")],
     matrix_features: [{ id: "type2.value" }],
     matrix_roles: [{ id: "role.top-level" }],
@@ -2760,20 +2766,18 @@ function c5ActiveRevision(
   });
 }
 
-function c5LegacyPair(shadow: boolean, selected = true, testingAuthoritative = false) {
+function c5LegacyPair(shadow: boolean, selected = true) {
   const source = c5LegacySource();
   const reservation = c5Reservation(C5_ID, source);
   const state = shadow ? "shadow" as const : "legacy_markdown" as const;
   return {
     reservation,
     revision: c5WithDebt({
-      campaign: c5Campaign(state, testingAuthoritative ? "authoritative" : "legacy_markdown", [reservation], selected ? [c5Selection(C5_ID, "legacy_markdown_reservation")] : []),
+      campaign: c5Campaign(state, "legacy_markdown", [reservation], selected ? [c5Selection(C5_ID, "legacy_markdown_reservation")] : []),
       retired: c5Retired(),
       roadmaps: c5Snapshots(
         { markdown: source, ...(shadow ? { document: c5V0("matrix", source, C5_ID) } : {}) },
-        testingAuthoritative
-          ? { markdown: bytes("testing\n"), document: c5V1("testing") }
-          : { markdown: bytes("testing\n") },
+        { markdown: bytes("testing\n") },
       ),
       registry: c5Registry({ kind: "commit", commit: C5_BASE }, { roadmap_citations: [{
         id: C5_ID,
@@ -2788,7 +2792,7 @@ function c5LegacyPair(shadow: boolean, selected = true, testingAuthoritative = f
 
 function c5LegacyCandidate(
   shadow: boolean,
-  mutation: "none" | "selection" | "reservation" | "bytes" | "shadow" | "active" | "guard" | "alias" | "relation" | "reference" | "stale_shadow" | "missing_tombstone" | "wrong_commit" | "citation" = "none",
+  mutation: "none" | "selection" | "reservation" | "bytes" | "shadow" | "active" | "guard" | "stale_shadow" | "missing_tombstone" | "wrong_commit" | "citation" = "none",
 ) {
   const baseSource = c5LegacySource();
   const source = mutation === "shadow" ? baseSource
@@ -2798,9 +2802,6 @@ function c5LegacyCandidate(
   const reservation = c5Reservation(C5_ID, baseSource);
   const retainedReservation = mutation === "reservation" ? [c5Reservation(C5_ID, source)] : [];
   const state = mutation === "active" ? "authoritative" as const : shadow ? "shadow" as const : "legacy_markdown" as const;
-  const testingSemantic = mutation === "alias" || mutation === "relation" || mutation === "reference";
-  const other = "testing.fixture-other" as RoadmapId;
-  const otherRecord = { ...c5ReadyRecord(other), ...(mutation === "alias" ? { legacy_aliases: [C5_ID] } : {}) };
   const matrixDocument = mutation === "active"
     ? c5V1("matrix", [c5ReadyRecord(C5_ID)])
     : shadow
@@ -2815,16 +2816,11 @@ function c5LegacyCandidate(
     owner_registry: "fixture-guards",
   } : undefined;
   return c5WithDebt({
-    campaign: c5Campaign(state, testingSemantic ? "authoritative" : "legacy_markdown", retainedReservation, mutation === "selection" ? [c5Selection(C5_ID, "legacy_markdown_reservation")] : []),
+    campaign: c5Campaign(state, "legacy_markdown", retainedReservation, mutation === "selection" ? [c5Selection(C5_ID, "legacy_markdown_reservation")] : []),
     retired: c5Retired(mutation === "missing_tombstone" ? [] : [c5Tombstone(C5_ID, mutation === "wrong_commit" ? "f".repeat(40) as FullCommitId : C5_BASE)]),
     roadmaps: c5Snapshots(
       { markdown: source, ...(matrixDocument === undefined ? {} : { document: matrixDocument }) },
-      testingSemantic ? { markdown: bytes("testing\n"), document: c5V1(
-        "testing",
-        [otherRecord],
-        mutation === "relation" ? [{ source: other, kind: "related", target: C5_ID }] : [],
-        mutation === "reference" ? [{ id: "legacy-ref" as ReferenceId, source: other, kind: "roadmap", target_id: C5_ID }] : [],
-      ) } : { markdown: bytes("testing\n") },
+      { markdown: bytes("testing\n") },
     ),
     registry: c5Registry({ kind: "worktree" }, {
       current_guards: guard === undefined ? [] : [guard],
@@ -2857,14 +2853,14 @@ function c5CampaignCase(id: C5SelfTestCaseId): boolean {
     const roadmaps = c5Snapshots(
       roadmap === "matrix"
         ? { markdown: bytes("matrix\n"), document: matrixDocument }
-        : { markdown: bytes("matrix\n") },
+        : { markdown: bytes("matrix\n"), document: c5V1("matrix") },
       roadmap === "testing"
         ? { markdown: bytes("testing\n"), document: testingDocument }
         : { markdown: bytes("testing\n") },
     );
     return validateLifecycleRevision({
       campaign: c5Campaign(
-      roadmap === "matrix" ? "authoritative" : "legacy_markdown",
+      "authoritative",
       roadmap === "testing" ? "authoritative" : "legacy_markdown",
       [],
       [c5Selection(roadmap === "matrix" ? C5_ID : C5_TESTING_ID)],
@@ -2880,6 +2876,67 @@ function c5CampaignCase(id: C5SelfTestCaseId): boolean {
     case "campaign_direct_testing":
       assert(direct(id.endsWith("matrix") ? "matrix" : "testing").issues.length === 0, "direct authoritative work selection must resolve");
       return true;
+    case "campaign_programmatic_impossible_authority_tuple": {
+      const impossible = c5Campaign(
+        "legacy_markdown",
+        "authoritative",
+        [],
+        [{ ...c5Selection(C5_ID), target_kind: "active_id", cycle: "cycle-b" as CampaignDocumentV1["selections"][number]["cycle"] }],
+      );
+      const roadmaps = c5Snapshots(
+        { markdown: bytes("matrix\n") },
+        { markdown: bytes("testing\n"), document: testingDocument },
+      );
+      const directResult = validateCampaign({ campaign: impossible, roadmaps });
+      assert(directResult.issues.length === 1,
+        `direct campaign tuple rejection must precede owner/selection work: ${JSON.stringify(directResult.issues)}`);
+      assertIssue(directResult.issues, "E-SCHEMA-STATE", "direct campaign validation must reject an impossible authority tuple");
+      assert(directResult.issues[0]!.logical_path === "campaign.testing_authority" &&
+        directResult.owners.length === 0 && campaignIdentityOwners(directResult) === undefined,
+      "impossible direct campaign must fail at the typed tuple coordinate without minting owners");
+
+      const lifecycleResult = validateLifecycleRevision(c5WithDebt({
+        campaign: impossible,
+        retired: c5Retired(),
+        roadmaps,
+        registry: c5Registry({ kind: "worktree" }, {
+          current_guards: [{
+            id: C5_ID,
+            replacement_pin: { kind: "gate", gate_id: "missing-gate", claim_md: bytes("missing") },
+            owner_registry: "fixture-guards",
+          }],
+        }),
+      }));
+      assert(lifecycleResult.issues.length === 1,
+        `lifecycle tuple rejection must precede owner/guard assembly: ${JSON.stringify(lifecycleResult.issues)}`);
+      assertIssue(lifecycleResult.issues, "E-SCHEMA-STATE", "lifecycle validation must reject an impossible authority tuple");
+      assert(lifecycleResult.issues[0]!.logical_path === "campaign.testing_authority" &&
+        lifecycleResult.identity.owners.size === 0,
+      "impossible lifecycle campaign must fail at the typed tuple coordinate before identity ownership");
+
+      const validBaseDocument = c5Campaign("authoritative", "legacy_markdown", [], [c5Selection(C5_ID)]);
+      const validBase = validateCampaign({
+        campaign: validBaseDocument,
+        roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document: matrixDocument }),
+      });
+      const transitionCandidate: CampaignValidationResult = Object.freeze({
+        ...directResult,
+        selections: new Map([[C5_ID, impossible.selections[0]!]]),
+      });
+      const transitionIssues = validateCampaignTransition({
+        base: validBase,
+        candidate: transitionCandidate,
+        base_document: validBaseDocument,
+        candidate_document: impossible,
+        against: C5_BASE,
+      });
+      assert(transitionIssues.length === 1,
+        `transition tuple rejection must precede authority deltas and selection rewrites: ${JSON.stringify(transitionIssues)}`);
+      assertIssue(transitionIssues, "E-SCHEMA-STATE", "campaign transition validation must reject an impossible authority tuple");
+      assert(transitionIssues[0]!.logical_path === "campaign.testing_authority",
+        "impossible transition campaign must fail at the typed tuple coordinate");
+      return true;
+    }
     case "campaign_legacy_matrix":
     case "campaign_legacy_testing": {
       const roadmap = id.endsWith("matrix") ? "matrix" : "testing";
@@ -2964,9 +3021,9 @@ function c5CampaignCase(id: C5SelfTestCaseId): boolean {
       const source = c5LegacySource();
       const reservation = c5Reservation(target, source);
       const result = validateCampaign({
-        campaign: c5Campaign(roadmap === "matrix" ? "authoritative" : "legacy_markdown", roadmap === "testing" ? "authoritative" : "legacy_markdown", [reservation]),
+        campaign: c5Campaign("authoritative", roadmap === "testing" ? "authoritative" : "legacy_markdown", [reservation]),
         roadmaps: c5Snapshots(
-          roadmap === "matrix" ? { markdown: source, document: matrixDocument } : { markdown: bytes("matrix\n") },
+          roadmap === "matrix" ? { markdown: source, document: matrixDocument } : { markdown: bytes("matrix\n"), document: c5V1("matrix") },
           roadmap === "testing" ? { markdown: source, document: testingDocument } : { markdown: bytes("testing\n") },
         ),
         legacy_title_bindings: [c5Title(reservation, source)],
@@ -3359,7 +3416,8 @@ function c5RetiredCase(id: C5SelfTestCaseId): boolean {
 }
 
 function c5IdentityReservationCase(id: C5SelfTestCaseId): boolean {
-  if (!id.startsWith("identity_reservation_") && !id.startsWith("identity_shadow_")) return false;
+  if (!id.startsWith("identity_reservation_") && !id.startsWith("identity_shadow_") &&
+    !id.startsWith("identity_evidence_")) return false;
   const pair = c5LegacyPair(true);
   const source = pair.revision.roadmaps.matrix.markdown;
   const shadowDocument = pair.revision.roadmaps.matrix.document as RoadmapDocumentV0;
@@ -3423,6 +3481,35 @@ function c5IdentityReservationCase(id: C5SelfTestCaseId): boolean {
         additional_owners: c5OwnerCapability([shadowEvidence, reservationEvidence]),
       });
       assert(JSON.stringify([...result.owners].map(([key, value]) => [key, identityOwnerClaimKey(value)])) === JSON.stringify([...reversed.owners].map(([key, value]) => [key, identityOwnerClaimKey(value)])), "coalescence must be deterministic under owner reversal");
+      return true;
+    }
+    case "identity_evidence_digest_binary_inputs": {
+      const viewA = createImmutableByteView(bytes("aa"));
+      const viewB = createImmutableByteView(bytes("bb"));
+      const firstView = inspectStableEvidenceDigest(viewA);
+      const secondView = inspectStableEvidenceDigest(viewB);
+      assert(
+        firstView.digest !== secondView.digest && firstView.unique_binary_inputs === 1 &&
+          secondView.unique_binary_inputs === 1,
+        "equal-length immutable byte views with different bytes must have distinct evidence digests",
+      );
+      const mutable = bytes("aa");
+      const beforeMutation = inspectStableEvidenceDigest(mutable).digest;
+      mutable[0] = "b".charCodeAt(0);
+      assert(
+        inspectStableEvidenceDigest(mutable).digest !== beforeMutation,
+        "mutating a raw byte input between evidence traversals must change its digest",
+      );
+      const shared = bytes("shared");
+      const sharedInputs = inspectStableEvidenceDigest([
+        shared,
+        { raw: shared, view: viewA },
+        viewA,
+      ]);
+      assert(
+        sharedInputs.unique_binary_inputs === 2,
+        `shared raw bytes and immutable views must each hash once per traversal, got ${sharedInputs.unique_binary_inputs}`,
+      );
       return true;
     }
     case "identity_reservation_shadow_binding_mismatch": {
@@ -4559,20 +4646,69 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
         ? ["citation", "relation", "reference"] as const
         : [mutations[id]] as const;
       for (const mutation of selectedMutations) {
-        const testingAuthoritative = mutation === "alias" || mutation === "relation" || mutation === "reference";
         const shadow = mutation === "reservation" ? false : true;
-        const pair = c5LegacyPair(shadow, true, testingAuthoritative);
+        const testsTestingLegacyReference = mutation === "alias" || mutation === "relation" || mutation === "reference";
+        const testingTarget = C5_TESTING_ID;
+        const testingSource = c5LegacySource();
+        const testingReservation = c5Reservation(testingTarget, testingSource);
+        const matrixRecord = {
+          ...c5ReadyRecord(C5_ID),
+          ...(mutation === "alias" ? { legacy_aliases: [testingTarget] } : {}),
+        };
+        const matrixDocument = c5V1(
+          "matrix",
+          [matrixRecord],
+          mutation === "relation"
+            ? [{ source: C5_ID, kind: "related", target: testingTarget }]
+            : [],
+          mutation === "reference"
+            ? [{ id: "legacy-ref" as ReferenceId, source: C5_ID, kind: "roadmap", target_id: testingTarget }]
+            : [],
+        );
+        const testingBaseDocument = c5V0("testing", testingSource, testingTarget);
+        const testingCandidateSource = bytes("delivered\n");
+        const pair = testsTestingLegacyReference
+          ? {
+            revision: c5WithDebt({
+              campaign: c5Campaign(
+                "authoritative",
+                "shadow",
+                [testingReservation],
+                [c5Selection(testingTarget, "legacy_markdown_reservation")],
+              ),
+              retired: c5Retired(),
+              roadmaps: c5Snapshots(
+                { markdown: bytes("matrix\n"), document: c5V1("matrix", [c5ReadyRecord(C5_ID)]) },
+                { markdown: testingSource, document: testingBaseDocument },
+              ),
+              registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+              legacy_title_bindings: [c5Title(testingReservation, testingSource)],
+            }),
+          }
+          : c5LegacyPair(shadow);
+        const candidate = testsTestingLegacyReference
+          ? c5WithDebt({
+            campaign: c5Campaign("authoritative", "shadow"),
+            retired: c5Retired([c5Tombstone(testingTarget)]),
+            roadmaps: c5Snapshots(
+              { markdown: bytes("matrix\n"), document: matrixDocument },
+              { markdown: testingCandidateSource, document: c5V0("testing", testingCandidateSource) },
+            ),
+            registry: c5Registry({ kind: "worktree" }),
+          })
+          : c5LegacyCandidate(shadow, mutation);
         const result = validateTransaction({
           scope: "all", against: C5_BASE, base: pair.revision,
-          candidate: c5LegacyCandidate(shadow, mutation),
+          candidate,
         });
+        const expectedTarget = testsTestingLegacyReference ? testingTarget : C5_ID;
         const expected = mutation === "selection" ? ["E-CAMPAIGN-TARGET", "selection[0]"]
           : mutation === "reservation" ? ["E-OWNER-DUPLICATE", `owner[\"${C5_ID}\"]`]
           : mutation === "bytes" ? ["E-TRANSACTION-CAMPAIGN", `owner[\"${C5_ID}\"].bound_source`]
           : mutation === "stale_shadow" ? ["E-SCHEMA-STATE", "campaign.matrix_authority"]
-          : mutation === "alias" ? ["E-ALIAS-COLLISION", `alias[\"${C5_ID}\"]`]
-          : mutation === "relation" ? ["E-TRANSACTION-REFERENCE", `relation[\"${C5_ID}\"]`]
-          : mutation === "reference" ? ["E-TRANSACTION-REFERENCE", `reference[\"${C5_ID}\"]`]
+          : mutation === "alias" ? ["E-ALIAS-COLLISION", `alias[\"${expectedTarget}\"]`]
+          : mutation === "relation" ? ["E-TRANSACTION-REFERENCE", `relation[\"${expectedTarget}\"]`]
+          : mutation === "reference" ? ["E-TRANSACTION-REFERENCE", `reference[\"${expectedTarget}\"]`]
           : mutation === "missing_tombstone" ? ["E-TRANSACTION-OWNER", `owner[\"${C5_ID}\"]`]
           : mutation === "wrong_commit" ? ["E-RETIRED-HASH", `retired_ids.entry[\"${C5_ID}\"].last_active_at`]
           : mutation === "citation" ? ["E-TRANSACTION-CITATION", `citation[\"${C5_ID}\"]`]
@@ -4765,18 +4901,22 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
       return true;
     }
     case "against_all_testing_shadow_valid": {
+      const matrixBytes = bytes("matrix shadow\n");
       const testingBytes = bytes("testing shadow\n");
       const result = allSame(
-        c5Campaign("legacy_markdown", "shadow"),
-        c5Snapshots({ markdown: bytes("matrix\n") }, { markdown: testingBytes, document: c5V0("testing", testingBytes) }),
+        c5Campaign("shadow", "shadow"),
+        c5Snapshots(
+          { markdown: matrixBytes, document: c5V0("matrix", matrixBytes) },
+          { markdown: testingBytes, document: c5V0("testing", testingBytes) },
+        ),
       );
       assert(result.issues.length === 0, `testing shadow authority state must pass: ${JSON.stringify(result.issues)}`);
       return true;
     }
     case "against_all_testing_authoritative_valid": {
-      const campaign = c5Campaign("legacy_markdown", "authoritative");
+      const campaign = c5Campaign("authoritative", "authoritative");
       const snapshots = c5Snapshots(
-        { markdown: bytes("matrix\n") },
+        { markdown: bytes("matrix\n"), document: c5V1("matrix") },
         { markdown: bytes("testing\n"), document: c5V1("testing") },
       );
       const result = allSame(campaign, snapshots);
@@ -4819,15 +4959,22 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
       return true;
     }
     case "against_all_base_uses_base_authority_metadata": {
+      const matrixSource = bytes("matrix shadow\n");
       const source = bytes("testing shadow\n");
       const base = c5WithDebt({
-        campaign: c5Campaign("legacy_markdown", "shadow"), retired: c5Retired(),
-        roadmaps: c5Snapshots({ markdown: bytes("matrix\n") }, { markdown: source, document: c5V0("testing", source) }),
+        campaign: c5Campaign("shadow", "shadow"), retired: c5Retired(),
+        roadmaps: c5Snapshots(
+          { markdown: matrixSource, document: c5V0("matrix", matrixSource) },
+          { markdown: source, document: c5V0("testing", source) },
+        ),
         registry: c5Registry({ kind: "commit", commit: C5_BASE }),
       });
       const candidate = c5WithDebt({
-        campaign: c5Campaign("legacy_markdown", "authoritative"), retired: c5Retired(),
-        roadmaps: c5Snapshots({ markdown: bytes("matrix\n") }, { markdown: bytes("testing\n"), document: c5V1("testing") }),
+        campaign: c5Campaign("authoritative", "authoritative"), retired: c5Retired(),
+        roadmaps: c5Snapshots(
+          { markdown: bytes("matrix\n"), document: c5V1("matrix") },
+          { markdown: bytes("testing\n"), document: c5V1("testing") },
+        ),
         registry: c5Registry({ kind: "worktree" }),
       });
       const result = validateTransaction({ scope: "all", against: C5_BASE, base, candidate });
@@ -4907,6 +5054,42 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
       });
       const result = validateTransaction({ scope: "all", against: C5_BASE, base, candidate, bootstrap: true });
       assert(result.issues.length === 0, `exact WP4M bootstrap must pass: ${JSON.stringify(result.issues)}`);
+      const testingShadowBytes = c5LegacySource();
+      const testingShadowDocument = c5V0("testing", testingShadowBytes, C5_TESTING_ID);
+      const testingReservation = c5Reservation(C5_TESTING_ID, testingShadowBytes);
+      const baseWithTestingShadow = c5WithDebt({
+        roadmaps: c5Snapshots(
+          { markdown: matrixBytes, document: baseDocument },
+          { markdown: testingShadowBytes, document: testingShadowDocument },
+        ),
+        registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+      });
+      const candidateRetainingTestingReservation = c5WithDebt({
+        campaign: c5Campaign(
+          "authoritative",
+          "shadow",
+          [testingReservation],
+          [c5Selection(C5_ID), c5Selection(C5_TESTING_ID, "legacy_markdown_reservation")],
+        ),
+        retired: c5Retired(),
+        roadmaps: c5Snapshots(
+          { markdown: matrixBytes, document: candidateDocument },
+          { markdown: testingShadowBytes, document: testingShadowDocument },
+        ),
+        registry: c5Registry({ kind: "worktree" }),
+        legacy_title_bindings: [c5Title(testingReservation, testingShadowBytes)],
+      });
+      const retainedTestingReservation = validateTransaction({
+        scope: "all",
+        against: C5_BASE,
+        base: baseWithTestingShadow,
+        candidate: candidateRetainingTestingReservation,
+        bootstrap: true,
+      });
+      assert(
+        retainedTestingReservation.issues.length === 0,
+        `WP4M bootstrap must retain a testing shadow owner when the candidate coalesces it with a same-ID reservation: ${JSON.stringify(retainedTestingReservation.issues)}`,
+      );
       for (const missing of ["base", "candidate"] as const) {
         const transaction = validateTransaction({
           scope: "all",
@@ -5186,6 +5369,7 @@ const POSITIVE_C5_CASES = new Set<C5SelfTestCaseId>([
   "transaction_legacy_cutover_transfer_unselected", "transaction_legacy_delivery_without_shadow",
   "transaction_legacy_delivery_with_shadow", "identity_shadow_record_reserves_id",
   "identity_reservation_shadow_coalesces", "against_matrix_v1_debt_allowed",
+  "identity_evidence_digest_binary_inputs",
   "against_testing_v1_debt_allowed", "against_per_roadmap_does_not_load_other_base",
   "against_all_testing_legacy_absent_valid", "against_all_testing_shadow_valid",
   "against_all_testing_authoritative_valid", "against_all_base_uses_base_authority_metadata",
@@ -5196,6 +5380,9 @@ const POSITIVE_C5_CASES = new Set<C5SelfTestCaseId>([
 function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
   if (id === "identity_reservation_shadow_third_owner_rejected") {
     return ["A-A", "A-R", "A-S", "A-G", "A-T", "R-R", "R-R-cross-namespace", "R-S", "R-S-mismatch", "R-G", "R-T", "S-S", "S-G", "S-T", "G-G", "G-T", "T-T", "R-S-third-A", "R-S-third-R", "R-S-third-S", "R-S-third-G", "R-S-third-T", "alias-A", "alias-R", "alias-S", "alias-G", "alias-T", "reversal"];
+  }
+  if (id === "identity_evidence_digest_binary_inputs") {
+    return ["equal_length_views", "raw_mutation", "shared_inputs"];
   }
   if (id === "transaction_tombstone_eligible_base_owner_set") {
     return ["active_record", "current_guard", "legacy_markdown_reservation"];
@@ -5210,6 +5397,7 @@ function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
   if (id === "retired_preexisting_keeps_base") return ["gate", "test_symbol", "file_heading", "immutable", "reversal"];
   if (id === "retired_test_symbol_requires_exact_id_and_symbol") return ["exact", "id_mutation", "symbol_mutation", "duplicate"];
   if (id === "campaign_active_work_only") return ["decision", "family", "current_guard", "tombstone", "shadow_only", "raw_without_work_shadow", "missing"];
+  if (id === "campaign_programmatic_impossible_authority_tuple") return ["campaign", "lifecycle", "transition"];
   if (id === "campaign_state_fields") return ["in_progress_missing_both", "in_progress_missing_pickup", "selected_forbids_pickup"];
   if (id === "campaign_state_transition") return ["selected_to_in_progress", "in_progress_to_selected", "removal", "invalid"];
   if (id === "campaign_allowlist_exhaustive") return ["exact", "missing", "duplicate", "extra"];
@@ -5252,7 +5440,7 @@ function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
   }
   if (id === "against_all_testing_authoritative_valid") return ["complete_debt", "missing_base_debt", "missing_candidate_debt"];
   if (id === "against_all_wp4m_bootstrap_valid") {
-    return ["valid_capability", "independent_issue", "no_capability", "structural_substitute", "undefined_substitute", "complete", "missing_base_debt", "missing_candidate_debt", "testing_authoritative", "owner_coordinate", "frozen_span_coordinate", "debt_coordinate"];
+    return ["valid_capability", "independent_issue", "no_capability", "structural_substitute", "undefined_substitute", "complete", "testing_shadow_reservation_retained", "missing_base_debt", "missing_candidate_debt", "testing_authoritative", "owner_coordinate", "frozen_span_coordinate", "debt_coordinate"];
   }
   if (id === "against_all_shadow_to_authoritative_transfer") {
     return ["reservation_shadow_pair", "shadow_only", "reservation_missing_base_debt", "reservation_missing_candidate_debt", "shadow_missing_base_debt", "shadow_missing_candidate_debt"];

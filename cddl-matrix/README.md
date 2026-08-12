@@ -113,7 +113,12 @@ regenerated, never hand-edited. `build_matrix.ts` also runs the **drift-check** 
 resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` holds the shared loaders
 + the byte-exact JSON serializer.
 
-> **Editing this README or `ROADMAP.md`?** They are themselves linted: the sibling script
+> **Editing this README or the roadmap?** This README remains hand-authored. The matrix roadmap's
+> authored source is `roadmap.toml`; format it with `bun run project_roadmaps.ts --format-source
+> cddl-matrix/roadmap.toml`, validate both roadmap projections with `bun run project_roadmaps.ts
+> --roadmap all --check`, and regenerate only with `bun run project_roadmaps.ts --roadmap matrix
+> --write`. Never hand-edit generated `ROADMAP.md`. The testing roadmap remains hand-authored in
+> `tests/TESTING_ROADMAP.md` until its separate authority cutover. These documents are linted: the sibling script
 > `lint_doc_citations.ts` (check.ts `local` tier; not matrix tooling — it lives here for the shared
 > tsc coverage, as does `no_std_check.ts`, the no_std drift gate, which additionally shares
 > `lib.ts`'s gate-cache helpers; see `tests/README.md` § "The no_std drift gate") asserts every
@@ -121,6 +126,20 @@ resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` ho
 > resolves in the tree, bans positional "…item `<N>`" citations, bans numbered section headings in
 > the hand docs (a numbered heading invites `§ <N>` citations, which silently retarget on
 > renumbering), and requires a blank line before headings.
+
+> **Campaign authority (effective with this cutover).** `roadmap-campaign.toml` is now the sole
+> authority for roadmap selection, deselection, assignment, pickup state, cycle, priority class,
+> selection reason, and remaining scope. Every `draft/burndown*/queue.md` file and every other draft
+> queue is historical, non-authoritative migration material: do not update it to change campaign
+> state, do not cite it as durable evidence, and do not make a gate or tool read it. Make every
+> campaign change in `roadmap-campaign.toml` together with any required authoritative-roadmap,
+> reservation, or retirement transaction.
+>
+> **Rollback.** Revert the complete WP4M cutover commit. That revert restores the byte-identical
+> hand-authored matrix Markdown, its prior status-slot ownership, and the pre-cutover operational
+> board at the exact cutover baseline; testing authority is unaffected. Do not partially remove the
+> campaign or retired-ID roots, manually reactivate a draft queue, or reverse an authority field in a
+> forward commit.
 
 Why this shape: the (construct × variation × nesting × encoding) cross-product is intractable and mostly
 meaningless. Normalizing keeps each fact in one place — e.g. "tags are supported but **nested** tags are

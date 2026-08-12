@@ -19,6 +19,10 @@ import type {
   ShadowRecordClaim,
 } from "./model/documents.ts";
 import {
+  campaignAuthorityRank,
+  validateCampaignAuthorityTuple,
+} from "./campaign_authority.ts";
+import {
   createImmutableByteView,
   type ImmutableByteView,
   type ImmutableByteViewInput,
@@ -35,12 +39,6 @@ const codePointSort = (left: string, right: string): number =>
 const ROADMAP_PATH: Readonly<Record<RoadmapName, LegacyMarkdownReservationV1["roadmap_path"]>> = {
   matrix: "cddl-matrix/ROADMAP.md",
   testing: "tests/TESTING_ROADMAP.md",
-};
-
-const AUTHORITY_RANK: Readonly<Record<RoadmapAuthorityState, number>> = {
-  legacy_markdown: 0,
-  shadow: 1,
-  authoritative: 2,
 };
 
 export interface CampaignRoadmapSnapshot<Markdown extends ImmutableByteViewInput = Uint8Array> {
@@ -428,6 +426,16 @@ function validateAllowlist(inputs: CampaignValidationInputs, issues: RoadmapIssu
 
 /** Validate one decoded campaign against immutable decoded roadmap/Markdown snapshots. */
 export function validateCampaign(inputs: CampaignValidationInputs): CampaignValidationResult {
+  const authorityTupleIssues = validateCampaignAuthorityTuple(inputs.campaign.campaign);
+  if (authorityTupleIssues.length > 0) {
+    return Object.freeze({
+      owners: Object.freeze([]),
+      selections: new Map(),
+      reservations: new Map(),
+      fired_promotions: Object.freeze([]),
+      issues: authorityTupleIssues,
+    });
+  }
   const issues: RoadmapIssue[] = [];
   validateAuthorityState(inputs.campaign, "matrix", inputs.roadmaps.matrix, issues);
   validateAuthorityState(inputs.campaign, "testing", inputs.roadmaps.testing, issues);
@@ -620,11 +628,15 @@ export interface CampaignTransitionInputs {
 
 /** Validate campaign-only transitions. Lifecycle removals remain transaction.ts's responsibility. */
 export function validateCampaignTransition(inputs: CampaignTransitionInputs): readonly RoadmapIssue[] {
+  const baseAuthorityIssues = validateCampaignAuthorityTuple(inputs.base_document.campaign);
+  if (baseAuthorityIssues.length > 0) return baseAuthorityIssues;
+  const candidateAuthorityIssues = validateCampaignAuthorityTuple(inputs.candidate_document.campaign);
+  if (candidateAuthorityIssues.length > 0) return candidateAuthorityIssues;
   const issues: RoadmapIssue[] = [];
   for (const roadmap of ["matrix", "testing"] as const) {
     const base = campaignAuthority(inputs.base_document, roadmap);
     const candidate = campaignAuthority(inputs.candidate_document, roadmap);
-    const delta = AUTHORITY_RANK[candidate] - AUTHORITY_RANK[base];
+    const delta = campaignAuthorityRank(candidate) - campaignAuthorityRank(base);
     if (delta < 0 || delta > 1) {
       issues.push(issue("E-CAMPAIGN-TRANSITION", `campaign.${roadmap}_authority`, `authority may move forward by one state only, got ${base} -> ${candidate}`));
     }

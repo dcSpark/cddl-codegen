@@ -1,6 +1,6 @@
 [document]
-schema_version = 0
-authority = "shadow"
+schema_version = 1
+authority = "authoritative"
 roadmap = "matrix"
 source_path = "cddl-matrix/roadmap.toml"
 projection_path = "cddl-matrix/ROADMAP.md"
@@ -8,10 +8,12 @@ frozen_source_sha256 = "f010705393ddbd0b5fa25368c7903df5c5f87a6e500bbdb9c99f7f22
 frozen_source_byte_length = 84580
 frozen_source_line_count = 996
 frozen_source_eof = "lf"
+frozen_legacy_span_ids = ["fragment-document-constraint-prefix", "fragment-document-counts-prefix", "fragment-document-emission-prefix", "fragment-document-ops-prefix", "fragment-document-tail", "part-atomic-bounds-handover", "part-consumer-hand-patch", "part-emitted-conformance-directory", "part-exclusion-comment-audit", "part-extern-execution", "part-fix-review-reach", "part-fixed-byte-representation", "part-json-gen-cross-module-execution", "part-multifile-extern-exclusion", "part-open-table-min-one-hardening", "part-shared-carrier-delivery-requirements", "part-test-steering-comment", "part-wasm-macro-directory", "record-additional-tool-annotations", "record-anonymous-nested-map", "record-array-sequence-upstream", "record-bignum-key-tag-upstream", "record-cbor-any-boundary", "record-control-host-placement-space", "record-derived-variant-naming", "record-duplicate-rejection-diagnostics", "record-emission-input-mode-honesty", "record-emission-narrowing-fixture-floor", "record-extern-emitted-test-boundary", "record-extern-execution-multifile", "record-extern-interface-sentinel-boundary", "record-fixed-array-static-representation", "record-fixed-bytes-lowercase-base64-parser", "record-fixed-bytes-validator-corroboration", "record-fixed-map-key-kinds", "record-fixed-value-choice-member", "record-float-key-null-upstream", "record-float-prelude-name-upstream", "record-float-table-key-domain", "record-grammar-derived-legality", "record-heterogeneous-array-occurrence-bounds", "record-incremental-group-choice-extension", "record-inline-cbor-containment-boundary", "record-inline-group-choice-arm", "record-inline-group-occurrence-carrier", "record-interaction-tuples-boundary", "record-intra-alternative-variations", "record-keyed-struct-map-zero-permitting-fields", "record-matching-semantics-boundary", "record-multi-choice-group-rule", "record-named-group-reference-grid", "record-named-rule-map-key-upstream", "record-nint-capability", "record-nominal-custom-pair-wrapper", "record-non-uint-range-upstream", "record-open-array-optional-adjacency", "record-open-table-bounded-rest-rows", "record-optional-closed-map-upstream", "record-over-acceptance-ast-notes", "record-over-acceptance-denominator", "record-per-value-encoding-reachability", "record-periodic-coverage-honesty", "record-prelude-number-float-upstream", "record-profile-version-scope", "record-radix-literal-upstream", "record-refusal-spelling-space", "record-root-reference-placement", "record-ruby-inline-controller-upstream", "record-signed-int-size-upstream", "record-tag-map-key-upstream", "record-tag-registry-boundary", "record-typed-tag-report-upstream", "record-uint-control-operator-upstream", "record-undefined-ciborium-upstream", "record-undefined-validator-upstream", "record-wasm-extern-wrapper-demand", "record-wasm-macro-behavior-boundary", "section-expansion", "section-explicit-boundaries", "section-findings-open", "section-maintenance", "section-matrix-side-work", "section-pending-decisions", "section-related", "section-upstream-closeouts", "section-wasm-abi-multifile"]
 
 [[section]]
 section_id = "expansion"
 title = "Expansion (when relevant)"
+render_authority = "raw"
 source_block_md = """## Expansion (when relevant)
 
 """
@@ -20,6 +22,7 @@ span_ids = ["section-expansion"]
 [[section]]
 section_id = "explicit-boundaries"
 title = "Explicitly out of scope (decided, not overlooked)"
+render_authority = "raw"
 source_block_md = """## Explicitly out of scope (decided, not overlooked)
 
 Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a concrete need surfaces):
@@ -29,6 +32,7 @@ span_ids = ["section-explicit-boundaries"]
 [[section]]
 section_id = "findings-open"
 title = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
+render_authority = "raw"
 source_block_md = """## Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)
 
 Every entry here is a defect or a missing capability in **this** generator that a probe, gate, or
@@ -61,6 +65,7 @@ span_ids = ["section-findings-open"]
 [[section]]
 section_id = "maintenance"
 title = "Maintenance"
+render_authority = "raw"
 source_block_md = """## Maintenance
 
 Upstream specs churn (IANA registries, the grammar). Refresh with `sources/fetch.sh` (re-fetches + verifies
@@ -96,6 +101,7 @@ span_ids = ["section-maintenance"]
 [[section]]
 section_id = "matrix-side-work"
 title = "Matrix-side work — the model and the projections it renders"
+render_authority = "raw"
 source_block_md = """## Matrix-side work — the model and the projections it renders
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What is left on the
@@ -109,6 +115,7 @@ span_ids = ["section-matrix-side-work"]
 [[section]]
 section_id = "pending-decisions"
 title = "Pending decisions (need a human call)"
+render_authority = "raw"
 source_block_md = """## Pending decisions (need a human call)
 
 """
@@ -117,6 +124,7 @@ span_ids = ["section-pending-decisions"]
 [[section]]
 section_id = "related"
 title = "Related"
+render_authority = "raw"
 source_block_md = """## Related
 
 Broader testing work (clear-wins, roadmap items, the trailing-bytes runtime change) lives in
@@ -127,6 +135,7 @@ span_ids = ["section-related"]
 [[section]]
 section_id = "upstream-closeouts"
 title = "Upstream close-outs (waiting on external releases)"
+render_authority = "raw"
 source_block_md = """## Upstream close-outs (waiting on external releases)
 
 Not cddl-codegen work: each entry is a PRUNE that becomes due when an external release ships a fix
@@ -141,6 +150,7 @@ span_ids = ["section-upstream-closeouts"]
 [[section]]
 section_id = "wasm-abi-multifile"
 title = "wasm-ABI & multifile placement matrices — remaining work"
+render_authority = "raw"
 source_block_md = """## wasm-ABI & multifile placement matrices — remaining work
 
 Current state — the grid, the three always-on axes (compile floor, round-trip, rust↔wasm API-surface
@@ -158,6 +168,7 @@ span_ids = ["section-wasm-abi-multifile"]
 fragment_id = "document-constraint-prefix"
 projection_group = "matrix-side-work"
 title = "Document preamble before constraint"
+render_authority = "raw"
 source_block_md = """<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->"""
 span_ids = ["fragment-document-constraint-prefix"]
@@ -166,6 +177,7 @@ span_ids = ["fragment-document-constraint-prefix"]
 fragment_id = "document-counts-prefix"
 projection_group = "matrix-side-work"
 title = "Document preamble before counts"
+render_authority = "raw"
 source_block_md = """# CDDL master matrix — roadmap (remaining work + findings)
 
 Read `README.md` first (the model + current state, including the durable gotchas and the
@@ -193,6 +205,7 @@ span_ids = ["fragment-document-counts-prefix"]
 fragment_id = "document-emission-prefix"
 projection_group = "matrix-side-work"
 title = "Document preamble before emission"
+render_authority = "raw"
 source_block_md = """<!-- /gen:sh:roadmap-ops -->):
 \"supported\" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -204,6 +217,7 @@ span_ids = ["fragment-document-emission-prefix"]
 fragment_id = "document-ops-prefix"
 projection_group = "matrix-side-work"
 title = "Document preamble before ops"
+render_authority = "raw"
 source_block_md = """<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->"""
 span_ids = ["fragment-document-ops-prefix"]
@@ -212,6 +226,7 @@ span_ids = ["fragment-document-ops-prefix"]
 fragment_id = "document-tail"
 projection_group = "matrix-side-work"
 title = "Document preamble after generated facts"
+render_authority = "raw"
 source_block_md = """<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries three temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
 every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
@@ -248,6 +263,7 @@ span_ids = ["fragment-document-tail"]
 id = "matrix.additional-tool-annotations"
 title = "More tools:"
 projection_group = "expansion"
+render_authority = "raw"
 source_block_md = """- **More tools:** the master is implementation-agnostic; add `annotations/<other-tool>.toml` if another
   consumer adopts it.
 """
@@ -257,6 +273,7 @@ span_ids = ["record-additional-tool-annotations"]
 id = "matrix.anonymous-nested-map"
 title = "Real support for the anonymous nested MAP in a type position"
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). Every one of those shapes rejects gracefully
@@ -276,6 +293,7 @@ span_ids = ["record-anonymous-nested-map"]
 id = "matrix.array-sequence-upstream"
 title = "When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
   crates.io: prune the fix-provenance notes (README gaps #2/#4, the draft repro table, the vector
   `reason` provenance).
@@ -286,6 +304,7 @@ span_ids = ["record-array-sequence-upstream"]
 id = "matrix.bignum-key-tag-upstream"
 title = "When a release ships the `c2ebf9f` bignum map-key/value-tag fix"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a release ships the `c2ebf9f` bignum map-key/value-tag fix (upstream PR pending — fix +
   30-test suite on the fork; README gap #6): prune the fix-provenance notes (README gap #6, the
   `RUST_ORACLE_SKIP` past-resident note, the two `bignint-*` fingerprint probes' provenance
@@ -297,6 +316,7 @@ span_ids = ["record-bignum-key-tag-upstream"]
 id = "matrix.cbor-any-boundary"
 title = "`cbor-any` is a decided permanent exclusion, not a candidate feature."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **`cbor-any` is a decided permanent exclusion, not a candidate feature.** Its
   `#6.55799(any)` self-describe tag is a property of a complete serialized CBOR stream, not an
   ordinary value a generated wrapper can hold. Keep its role-neutral graceful refusal and the
@@ -309,6 +329,7 @@ span_ids = ["record-cbor-any-boundary"]
 id = "matrix.control-host-placement-space"
 title = "A supported control's HOST-PLACEMENT spelling space — one support example proves ONE point of it."
 projection_group = "expansion"
+render_authority = "raw"
 source_block_md = """- **A supported control's HOST-PLACEMENT spelling space — one support example proves ONE point of
   it.** Distinct from the intra-alternative axis above (variation inside the controller): a
   control also varies by where its TARGET sits — occurrence (mandatory vs optional member),
@@ -339,6 +360,7 @@ span_ids = ["record-control-host-placement-space"]
 id = "matrix.derived-variant-naming"
 title = "No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
   — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
   arm with no member key takes its variant name from the value's LEXEME, which fails two ways:
@@ -372,6 +394,7 @@ span_ids = ["record-derived-variant-naming"]
 id = "matrix.duplicate-rejection-diagnostics"
 title = "Say each rejection once, so the count of messages is the count of problems."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **Say each rejection once, so the count of messages is the count of problems.** A single
   offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
   `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
@@ -401,6 +424,7 @@ span_ids = ["record-duplicate-rejection-diagnostics"]
 id = "matrix.emission-input-mode-honesty"
 title = "Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the SHAPES/ROLES rule above)."
 projection_group = "wasm-abi-multifile"
+render_authority = "raw"
 source_block_md = """- **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
   SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
   flag-gated emission surface can still be built against single-file assumptions and break only
@@ -419,6 +443,7 @@ span_ids = ["record-emission-input-mode-honesty"]
 id = "matrix.emission-narrowing-fixture-floor"
 title = "Narrowing at emission, in the golden fixture floor."
 projection_group = "matrix-side-work"
+render_authority = "raw"
 source_block_md = """- **Narrowing at emission, in the golden fixture floor.** The per-construct section of
   `tests/golden_hex/COVERAGE.md` marks a construct exercised when a golden rule NAMES it, corrected
   for the prelude's plain aliases (derivable, so applied rather than disclaimed). Not corrected: a
@@ -440,6 +465,7 @@ span_ids = ["record-emission-narrowing-fixture-floor"]
 id = "matrix.extern-emitted-test-boundary"
 title = "Behavioral emitted-test cells for extern / raw-bytes ctor args"
 projection_group = "explicit-boundaries"
+render_authority = "raw"
 source_block_md = """- **Behavioral emitted-test cells for extern / raw-bytes ctor args** — compile-verdict-permanent,
   decided 2026-08-04, same class as the `--wasm-*-macro` posture. This is about whether the
   AUTO-MINTER (`emit_tests`) learns these classes, NOT about the feature going untested: hand
@@ -465,6 +491,7 @@ span_ids = ["record-extern-emitted-test-boundary"]
 id = "matrix.extern-execution-multifile"
 title = "Corpus/matrix extern EXECUTION, and the multifile matrix's structural extern exclusion."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **Corpus/matrix extern EXECUTION, and the multifile matrix's structural extern exclusion.** The
   COMPILE side of extern breadth is delivered and is now current state, documented where it is
   enforced rather than here: the matrix rows in `README.md` § \"User-code rows are SEEDED, not
@@ -478,6 +505,7 @@ span_ids = ["record-extern-execution-multifile"]
 id = "matrix.extern-interface-sentinel-boundary"
 title = "Extern-interface seam sentinels"
 projection_group = "explicit-boundaries"
+render_authority = "raw"
 source_block_md = """- **Extern-interface seam sentinels** — the `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and
   `; unexported:` records that `--extern-import` input files carry beyond the two `ext.*` sentinels
   (strictly parsed at the seam; comments to the grammar). They are tool-interchange rather than
@@ -493,6 +521,7 @@ span_ids = ["record-extern-interface-sentinel-boundary"]
 id = "matrix.fixed-array.static-representation"
 title = "Fixed-array representation optimization"
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """### Fixed-array representation optimization
 
 An exact `n*n T` can map to `[T; n]`, so the representation itself carries the constraint. The
@@ -504,10 +533,23 @@ classification, and spec-derived boundary vectors.
 """
 span_ids = ["record-fixed-array-static-representation"]
 
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Represent exact homogeneous array bounds with `[T; n]` across generated surfaces.
+"""
+work_state = "pending_review"
+work_intent = "optimize"
+work_kind = "optimization"
+risk = "wrong_public_api"
+family_classification = "pending"
+uncertainty_md = """The source and campaign establish a selected optimization, but do not establish semantic readiness, reviewed acceptance criteria, or a reviewed family owner.
+"""
+
 [[record]]
 id = "matrix.fixed-bytes.lowercase-base64-parser"
 title = "When a `cddl` parser release accepts lowercase-hex and base64 fixed-byte literals"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """### When a `cddl` parser release accepts lowercase-hex and base64 fixed-byte literals
 
 The pinned parser accepts uppercase `h'CAFE'` and raw UTF-8 byte literals but rejects lowercase hex
@@ -521,10 +563,23 @@ fixed-value surfaces; it is independent of the CBOR validator repair below.
 """
 span_ids = ["record-fixed-bytes-lowercase-base64-parser"]
 
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Close parser-release corroboration for lowercase-hex and base64 fixed-byte literals.
+"""
+work_state = "pending_review"
+work_intent = "add_regression"
+work_kind = "coverage_cell"
+risk = "valid_rejection"
+family_classification = "pending"
+uncertainty_md = """The work is externally release-dependent, but the extraction has no reviewed external reference, transition record, or family owner required to classify it as waiting_external.
+"""
+
 [[record]]
 id = "matrix.fixed-bytes.validator-corroboration"
 title = "When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17)"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """### When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17)
 
 First confirm that
@@ -543,10 +598,23 @@ First confirm that
 """
 span_ids = ["record-fixed-bytes-validator-corroboration"]
 
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Close independent-validator corroboration for fixed-byte support.
+"""
+work_state = "pending_review"
+work_intent = "add_regression"
+work_kind = "coverage_cell"
+risk = "false_pass_or_red"
+family_classification = "pending"
+uncertainty_md = """The work is externally release-dependent, but the extraction has no reviewed external reference, transition record, or family owner required to classify it as waiting_external.
+"""
+
 [[record]]
 id = "matrix.fixed-map-key-kinds"
 title = "Bytes, nint, and float fixed map keys"
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- Bytes/nint/float fixed map keys are **rejected gracefully** — only uint and text fixed keys are
   implemented on the struct-map record path (pinned by
   `contain.map-key.memberkey.value.{nint,float}_colon_single`,
@@ -572,6 +640,7 @@ span_ids = ["record-fixed-map-key-kinds"]
 id = "matrix.fixed-value-choice-member"
 title = "Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`)."
 projection_group = "matrix-side-work"
+render_authority = "raw"
 source_block_md = """- **Enumerate the fixed-value KINDS in the bare TYPE-CHOICE arm role (`role.choice-member`).**
   Buildable now, same shape as the float enumeration that exposed it: the delivered float cells
   cover the member and group-choice-arm positions, and a due-diligence probe of the THIRD
@@ -589,6 +658,7 @@ span_ids = ["record-fixed-value-choice-member"]
 id = "matrix.float-key-null-upstream"
 title = "When a release ships the `707c038` float-key/null member-key fix (README gap #10)"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a release ships the `707c038` float-key/null member-key fix (README gap #10): prune the
   fix-provenance notes (README gap #10, the `float-key-accepts` / `null-key-rejects` fingerprint
   probes' provenance wording).
@@ -599,6 +669,7 @@ span_ids = ["record-float-key-null-upstream"]
 id = "matrix.float-prelude-name-upstream"
 title = "When the rust oracle starts distinguishing the float prelude names at all (README gap #12 — OPEN"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When the rust oracle starts distinguishing the float prelude names at all (README gap #12 — OPEN
   at the pinned `ac1b98e` rev: all six names collapse to one \"is it a float\" test). The ruby gem
   0.12.14 already implements the shortest-form partition head-independently, so this is a
@@ -620,6 +691,7 @@ span_ids = ["record-float-prelude-name-upstream"]
 id = "matrix.float-table-key-domain"
 title = "Float-family table key domains"
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- Float-family table key domains are **rejected gracefully** at generation — a key domain that is
   (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or an `OrderedHashMap` bounded
   `K: Hash + Eq + Ord` under `--preserve-encodings`), and floats implement none of `Eq`/`Ord`/`Hash`,
@@ -638,6 +710,7 @@ span_ids = ["record-float-table-key-domain"]
 id = "matrix.grammar-derived-legality"
 title = "Grammar-derived legality denominator for the role × feature grid."
 projection_group = "matrix-side-work"
+render_authority = "raw"
 source_block_md = """- **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § \"Role × feature containment grid\" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
@@ -658,6 +731,7 @@ span_ids = ["record-grammar-derived-legality"]
 id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record fields."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """### Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record fields.
 
 A **final-position** `* t` after ≥1 fixed member is the loose open-array rest tail;
@@ -677,10 +751,23 @@ A **final-position** `* t` after ≥1 fixed member is the loose open-array rest 
 """
 span_ids = ["record-heterogeneous-array-occurrence-bounds"]
 
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Support non-final and bounded heterogeneous-array occurrences without narrowing their cardinality.
+"""
+work_state = "pending_review"
+work_intent = "build_capability"
+work_kind = "feature"
+risk = "valid_rejection"
+family_classification = "pending"
+uncertainty_md = """The reviewed campaign inventory says the umbrella readiness was not truthful for every decomposed part; this record has no independently reviewed readiness decision or family owner.
+"""
+
 [[record]]
 id = "matrix.incremental-group-choice-extension"
 title = "Incremental GROUP-choice extension (`//=`) stays refused; honoring it is blocked on the choice-of-bodies design, not on this seam."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **Incremental GROUP-choice extension (`//=`) stays refused; honoring it is blocked on the
   choice-of-bodies design, not on this seam.** The type half is done — `merge_incremental_type_choice_extensions`
   splices every `/=` statement's arms into the first statement's before `ParentVisitor` is built, so
@@ -702,6 +789,7 @@ span_ids = ["record-incremental-group-choice-extension"]
 id = "matrix.inline-cbor-containment-boundary"
 title = "A containment-matrix row for the INLINE nested `.cbor` self-composition"
 projection_group = "explicit-boundaries"
+render_authority = "raw"
 source_block_md = """- **A containment-matrix row for the INLINE nested `.cbor` self-composition**
   (`bytes .cbor (bytes .cbor T)`, beside the four existing `contain.cbor-payload.*` rows). Declined
   because a row's whole job — keeping the construct's support claim measured — is already done at
@@ -721,6 +809,7 @@ span_ids = ["record-inline-cbor-containment-boundary"]
 id = "matrix.inline-group-choice-arm"
 title = "Real support for an inline group as a group-choice arm's sole entry"
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **Real support for an inline group as a group-choice arm's sole entry**
   (`t = [ (uint, tstr) // bytes ]`, and the map-rep `t = { (a: uint) // b: tstr }`). Both reject
   gracefully, pointing at the equivalent named form
@@ -738,6 +827,7 @@ span_ids = ["record-inline-group-choice-arm"]
 id = "matrix.inline-group-occurrence-carrier"
 title = "Honor zero-permitting occurrences on inline parenthesized groups when a carrier exists"
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """### Honor zero-permitting occurrences on inline parenthesized groups when a carrier exists
 
 An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]` — is **rejected
@@ -758,6 +848,7 @@ id = "matrix.interaction-tuples-boundary"
 title = "F9 — interaction tuples"
 projection_group = "explicit-boundaries"
 legacy_aliases = ["F9"]
+render_authority = "raw"
 source_block_md = """- **F9 — interaction tuples** (A-in-B-in-role-C-with-operator-D): richer-than-binary containment; stretch
   query (Q7) only.
 """
@@ -767,6 +858,7 @@ span_ids = ["record-interaction-tuples-boundary"]
 id = "matrix.intra-alternative-variations"
 title = "Intra-alternative variation rows (the enforcement-blind-spot class):"
 projection_group = "expansion"
+render_authority = "raw"
 source_block_md = """- **Intra-alternative variation rows (the enforcement-blind-spot class):** when a new variation axis
   appears *inside* one ABNF alternative (a new controller value class, a new literal lexeme, a new
   head-type × sign combination), enumerate it as a ROW with its `class=\"constraint\"` boundary-violation
@@ -803,6 +895,7 @@ span_ids = ["record-intra-alternative-variations"]
 id = "matrix.keyed-struct-map.zero-permitting-fields"
 title = "Honor zero-permitting occurrences on keyed struct-map fields"
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """### Honor zero-permitting occurrences on keyed struct-map fields
 
 Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
@@ -818,11 +911,24 @@ gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,
 """
 span_ids = ["record-keyed-struct-map-zero-permitting-fields"]
 
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Represent zero-permitting keyed struct-map fields without making them mandatory.
+"""
+work_state = "pending_review"
+work_intent = "build_capability"
+work_kind = "feature"
+risk = "valid_rejection"
+family_classification = "pending"
+uncertainty_md = """Selection and capability scope are reviewed, but semantic readiness, acceptance criteria, and family ownership have not been reviewed independently.
+"""
+
 [[record]]
 id = "matrix.matching-semantics-boundary"
 title = "F8 — matching semantics"
 projection_group = "explicit-boundaries"
 legacy_aliases = ["F8"]
+render_authority = "raw"
 source_block_md = """- **F8 — matching semantics** (prioritized-choice ordering, greedy occurrence, implicit `:` cut): a
   validation concern, not a cddl-codegen serialization concern.
 """
@@ -832,6 +938,7 @@ span_ids = ["record-matching-semantics-boundary"]
 id = "matrix.multi-choice-group-rule"
 title = "A group RULE whose body carries multiple group choices is refused with two verified remedies — the honoring design (a choice of bodies) is the missing capability, not the guard."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **A group RULE whose body carries multiple group choices is refused with two verified remedies —
   the honoring design (a choice of bodies) is the missing capability, not the guard.**
   `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
@@ -860,6 +967,7 @@ span_ids = ["record-multi-choice-group-rule"]
 id = "matrix.named-group-reference-grid"
 title = "Enumerate the named-group REFERENCE kind (`grpent.groupname`) across its container PLACEMENTS and member MODIFIERS — two explicit axes, not a \"remaining roles\" sweep."
 projection_group = "matrix-side-work"
+render_authority = "raw"
 source_block_md = """- **Enumerate the named-group REFERENCE kind (`grpent.groupname`) across its container PLACEMENTS
   and member MODIFIERS — two explicit axes, not a \"remaining roles\" sweep.** Buildable now, and the
   payoff is measured: every defect yet found in this kind's cells was caught by per-delivery ad-hoc
@@ -957,6 +1065,7 @@ span_ids = ["record-named-group-reference-grid"]
 id = "matrix.named-rule-map-key-upstream"
 title = "When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
   #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
   multi-entry-composite-array-key observations, and prune steps in
@@ -975,6 +1084,7 @@ span_ids = ["record-named-rule-map-key-upstream"]
 id = "matrix.nint-capability"
 title = "Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration cells of the matrix, not separate tasks."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration
   cells of the matrix, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully, its own entry; table domains and `@newtype` bounds — work; bare values, json,
@@ -1000,6 +1110,7 @@ span_ids = ["record-nint-capability"]
 id = "matrix.nominal-custom-pair-wrapper"
 title = "No opt-in NOMINAL wrapper over a custom pair, so a pair's wire has no standalone entry point."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **No opt-in NOMINAL wrapper over a custom pair, so a pair's wire has no standalone entry point.**
   A pair-carrying transparent alias mints no rust type (that is what gives one CDDL name one wire
   form: a `pub type` there would carry the aliased type's built-in codec as a standalone wire
@@ -1024,6 +1135,7 @@ span_ids = ["record-nominal-custom-pair-wrapper"]
 id = "matrix.non-uint-range-upstream"
 title = "When a release ships the `885c61c` non-uint-endpoint range fix"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending — PR material
   in `draft/rust-cddl-float-range-gap.md`): prune the fix-provenance notes (README gap #3, that
   draft, and the rangeop vectors' `reason` provenance).
@@ -1034,6 +1146,7 @@ span_ids = ["record-non-uint-range-upstream"]
 id = "matrix.open-array.optional-adjacency"
 title = "Resolve optional fields adjacent to open array tails or open-table rows"
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """### Resolve optional fields adjacent to open array tails or open-table rows
 
 Type-disjoint non-final optionals already decode by peeking at the next value's major type. An
@@ -1049,10 +1162,23 @@ Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived-vector surfac
 """
 span_ids = ["record-open-array-optional-adjacency"]
 
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Classify optional adjacency soundly, supporting only spellings with a spec-valid discriminator.
+"""
+work_state = "pending_review"
+work_intent = "build_capability"
+work_kind = "feature"
+risk = "invalid_acceptance"
+family_classification = "pending"
+uncertainty_md = """The source leaves the support boundary contingent on demonstrating a sound discriminator, so readiness and family ownership remain unresolved at migration.
+"""
+
 [[record]]
 id = "matrix.open-table.bounded-rest-rows"
 title = "Honor bounded occurrences on open-table rows"
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """### Honor bounded occurrences on open-table rows
 
 Bounded typed or catch-all rows in an open table/open struct remain rejected rather than being
@@ -1065,10 +1191,23 @@ lifecycle.
 """
 span_ids = ["record-open-table-bounded-rest-rows"]
 
+[record.semantic_shadow]
+kind = "work"
+summary_md = """Support bounded typed and catch-all rows in open tables and structs without narrowing cardinality.
+"""
+work_state = "pending_review"
+work_intent = "build_capability"
+work_kind = "feature"
+risk = "valid_rejection"
+family_classification = "pending"
+uncertainty_md = """Selection and capability scope are reviewed, but no carrier design, semantic readiness decision, acceptance criteria, or family owner has been reviewed.
+"""
+
 [[record]]
 id = "matrix.optional-closed-map-upstream"
 title = "When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix (upstream
   PR pending — fix + regression tests + 21/12-cell differential grid on the fork; README gap #9):
   prune the fix-provenance notes (README gap #9 and the two `optional-entry`/`closed-map`
@@ -1084,6 +1223,7 @@ id = "matrix.over-acceptance-ast-notes"
 title = "F10 / F11"
 projection_group = "explicit-boundaries"
 legacy_aliases = ["F10", "F11"]
+render_authority = "raw"
 source_block_md = """- **F10 / F11** — note-only (over-acceptance denominator; AST cross-check is weak corroboration).
 """
 span_ids = ["record-over-acceptance-ast-notes"]
@@ -1092,6 +1232,7 @@ span_ids = ["record-over-acceptance-ast-notes"]
 id = "matrix.over-acceptance-denominator"
 title = "Over-acceptance denominator:"
 projection_group = "pending-decisions"
+render_authority = "raw"
 source_block_md = """- **Over-acceptance denominator:** the `class=\"over-acceptance\"` vector class pins each CERTIFIED
   instance (the numerator; rows are enumerated per the \"Intra-alternative variation rows\" rule as
   instances surface). Still undecided is the DENOMINATOR for any completeness claim about that axis:
@@ -1109,6 +1250,7 @@ span_ids = ["record-over-acceptance-denominator"]
 id = "matrix.per-value-encoding-reachability"
 title = "Per-VALUE encoding reachability."
 projection_group = "matrix-side-work"
+render_authority = "raw"
 source_block_md = """- **Per-VALUE encoding reachability.** A head argument that is fixed by the construct's own definition
   is not a judgment call: a prelude construct declares the exact cell its head lands in, and
   `build_matrix.ts` re-derives that from the pinned prelude, so `bigfloat` (tag 5, at every value)
@@ -1130,6 +1272,7 @@ span_ids = ["record-per-value-encoding-reachability"]
 id = "matrix.periodic-coverage-honesty"
 title = "Keep EVERY matrix axis honest (periodic)."
 projection_group = "wasm-abi-multifile"
+render_authority = "raw"
 source_block_md = """- **Keep EVERY matrix axis honest (periodic).** Grid coverage equals the hand-curated lists the
   projections carry — `SHAPES` × `ROLES` in `project_wasm_matrix.ts`, `SHAPES` × reference MODE in
   `project_multifile_matrix.ts` — and a hole in ANY of them is silent, not a red cell. A wasm
@@ -1148,6 +1291,7 @@ span_ids = ["record-periodic-coverage-honesty"]
 id = "matrix.prelude-number-float-upstream"
 title = "When a release ships the `90f66ff` prelude-`number` float fix (README gap #7)"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a release ships the `90f66ff` prelude-`number` float fix (README gap #7): prune the
   fix-provenance notes (README gap #7, the `prelude-number-float-accepts` /
   `prelude-number-tstr-rejects` fingerprint probes' provenance wording). Separately citable while
@@ -1166,6 +1310,7 @@ span_ids = ["record-prelude-number-float-upstream"]
 id = "matrix.profile-version-scope"
 title = "Profiles/versions:"
 projection_group = "expansion"
+render_authority = "raw"
 source_block_md = """- **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + the IANA control-op registry (spans RFC
   8610/9090/9165/9741). The CDDL modules draft is now a pinned source
   (`sources/draft-ietf-cbor-cddl-modules-06.txt`; version-pinned URL — bump filename+URL+sum together)
@@ -1182,6 +1327,7 @@ span_ids = ["record-profile-version-scope"]
 id = "matrix.radix-literal-upstream"
 title = "When a release ships the `2c7548e` radix-literal lexer fix"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a release ships the `2c7548e` radix-literal lexer fix (upstream PR pending — fix +
   35-test suite on the fork; `draft/rust-cddl-radix-int-literal-gap.md`): prune the fix-provenance
   notes (README gap #5, that draft). Separately track the WG spec question the fix spawned
@@ -1196,6 +1342,7 @@ span_ids = ["record-radix-literal-upstream"]
 id = "matrix.refusal-spelling-space"
 title = "A REFUSED construct's spelling space — a refusal probed on one spelling is not a refusal of the class."
 projection_group = "expansion"
+render_authority = "raw"
 source_block_md = """- **A REFUSED construct's spelling space — a refusal probed on one spelling is not a refusal of
   the class.** The reject-side sibling of the two supported-op entries above: every layer that
   certifies a rejection (the matrix row's one `example`, the reject-catalog projection built from
@@ -1223,6 +1370,7 @@ span_ids = ["record-refusal-spelling-space"]
 id = "matrix.root-reference-placement"
 title = "Carry root-position references into the NON-structural reference positions."
 projection_group = "wasm-abi-multifile"
+render_authority = "raw"
 source_block_md = """- **Carry root-position references into the NON-structural reference positions.** The referencing
   module is now an axis: the `rootref` mode places the anon spelling in `lib.cddl` over the
   wrapper-minting shapes (`EXPECTED_ROOTREF_SHAPES`), so both halves of `mark_refs`' root behaviour
@@ -1243,6 +1391,7 @@ span_ids = ["record-root-reference-placement"]
 id = "matrix.ruby-inline-controller-upstream"
 title = "When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
   — gem 0.12.14 exit-65s at parse, so the whole containing spec becomes unjudgeable; repro +
   upstream steps in `draft/ruby-cddl-inline-composite-control-arg-gap.md`): remove the
@@ -1259,6 +1408,7 @@ span_ids = ["record-ruby-inline-controller-upstream"]
 id = "matrix.signed-int-size-upstream"
 title = "Signed int .size close-out"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- `.size` on a signed `int` — semantics CLARIFIED by the RFC author (cbor-wg/cddl#32): a control
   distributes over `int = uint / nint`, and an undefined application (`.size` on `nint`) is a
   per-value non-match, so `int .size N` matches exactly the `uint .size N` window. cddl-codegen
@@ -1277,6 +1427,7 @@ span_ids = ["record-signed-int-size-upstream"]
 id = "matrix.tag-map-key-upstream"
 title = "When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8)"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """### When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8)
 
 This remains OPEN at the pinned `ac1b98e` rev; the differential repro, suspected
@@ -1293,6 +1444,7 @@ span_ids = ["record-tag-map-key-upstream"]
 id = "matrix.tag-registry-boundary"
 title = "Tag registry — deliberately not pinned or enumerated."
 projection_group = "matrix-side-work"
+render_authority = "raw"
 source_block_md = """- **Tag registry — deliberately not pinned or enumerated.** cddl-codegen is tag-parametric, so the tag
   NUMBER is a parameter of the `type2.tag` feature rather than a construct of its own, and the few
   codegen-distinct tags are already prelude rows; the reasoning is current state in `README.md`
@@ -1308,6 +1460,7 @@ span_ids = ["record-tag-registry-boundary"]
 id = "matrix.typed-tag-report-upstream"
 title = "Typed-tag fixed-payload report"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- File the prepared typed-tag report for README gap #14:
   `cddl-matrix/upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md` is committed and
   paste-ready, but no upstream issue has been filed. The catalog exemption remains deliberately
@@ -1327,6 +1480,7 @@ span_ids = ["record-typed-tag-report-upstream"]
 id = "matrix.uint-control-operator-upstream"
 title = "When a rust `cddl` release ships the uint-target control-op fix"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
   README gap #1 and `draft/rust-cddl-uint-control-op-gap.md`.
 """
@@ -1336,6 +1490,7 @@ span_ids = ["record-uint-control-operator-upstream"]
 id = "matrix.undefined-ciborium-upstream"
 title = "When ciborium's generic value decoder preserves CBOR `undefined` (`f7`) distinctly instead of"
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When ciborium's generic value decoder preserves CBOR `undefined` (`f7`) distinctly instead of
   returning `Value::Null`, `reference_codec_differential_self_check` should fail stale. Teach
   `ciborium_value_to_tree` the new variant, remove the sole
@@ -1352,6 +1507,7 @@ span_ids = ["record-undefined-ciborium-upstream"]
 id = "matrix.undefined-validator-upstream"
 title = "When the pinned rust `cddl` validator accepts `validate_cbor_from_slice(\"x = undefined\","
 projection_group = "upstream-closeouts"
+render_authority = "raw"
 source_block_md = """- When the pinned rust `cddl` validator accepts `validate_cbor_from_slice(\"x = undefined\",
   &[0xf7], None)` (README gap #16): the exact-signature stale probe in
   `ir_conformance_corpus` will fail first. Confirm the fixed behavior is the intended RFC 8949
@@ -1369,6 +1525,7 @@ span_ids = ["record-undefined-validator-upstream"]
 id = "matrix.wasm-extern-wrapper-demand"
 title = "The wasm extern re-export glue demands a wrapper the wasm crate never uses."
 projection_group = "findings-open"
+render_authority = "raw"
 source_block_md = """- **The wasm extern re-export glue demands a wrapper the wasm crate never uses.** Every in-crate
   `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule gets `pub use crate::<Name>;`
   emitted into the wasm crate's generated module, and the \"Own-spec extern re-export contract\"
@@ -1395,6 +1552,7 @@ span_ids = ["record-wasm-extern-wrapper-demand"]
 id = "matrix.wasm-macro-behavior-boundary"
 title = "Behavioral wasm-surface rows for the `--wasm-*-macro` modes"
 projection_group = "explicit-boundaries"
+render_authority = "raw"
 source_block_md = """- **Behavioral wasm-surface rows for the `--wasm-*-macro` modes** — those flags replace the whole
   wrapper method surface with user-supplied macro definitions, so an assertion over that surface
   would judge the FIXTURE's macro bodies rather than the generator's output. The compile verdict
@@ -1408,6 +1566,7 @@ span_ids = ["record-wasm-macro-behavior-boundary"]
 part_id = "atomic-bounds-handover"
 parent_record_id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Atomically hand over bounded scalar and byte/text values to private-field newtypes"
+render_authority = "raw"
 source_block_md = """### Atomically hand over bounded scalar and byte/text values to private-field newtypes
 
 Value windows (`uint .le N`, `.size` ranges on bytes/text) need private-field newtypes whose
@@ -1421,6 +1580,7 @@ span_ids = ["part-atomic-bounds-handover"]
 part_id = "consumer-hand-patch"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "Hand-patched generated output in a consumer"
+render_authority = "raw"
 source_block_md = """  - **Hand-patched generated output in a consumer** — hand-added `use` lines, visibility flips, or
     `#[rustfmt::skip]` blocks living in a consumer's committed `src/generated/**`. Every regen
     deletes them, so each one is a workaround for a generator hole nobody filed; read the consumer's
@@ -1432,6 +1592,7 @@ span_ids = ["part-consumer-hand-patch"]
 part_id = "emitted-conformance-directory"
 parent_record_id = "matrix.emission-input-mode-honesty"
 title = "`--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` — a"
+render_authority = "raw"
 source_block_md = """  - `--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` — a
     multifile placement cell's non-root-module rule judged against the concatenated source spec, the
     spec-on-disk contract `docs/docs/command_line_flags.mdx` states for the flag.
@@ -1442,6 +1603,7 @@ span_ids = ["part-emitted-conformance-directory"]
 part_id = "exclusion-comment-audit"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "The EXCLUSION comments, not just the missing rows"
+render_authority = "raw"
 source_block_md = """  - **The EXCLUSION comments, not just the missing rows** — a shape excluded because the compile
     floor cannot build it standalone (`extern` / `rawbytes`) bounds the GATE, not the generator, and
     a consumer regen has already broken inside exactly such an exclusion. An exclusion justified by
@@ -1465,6 +1627,7 @@ span_ids = ["part-exclusion-comment-audit"]
 part_id = "extern-execution"
 parent_record_id = "matrix.extern-execution-multifile"
 title = "EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —"
+render_authority = "raw"
 source_block_md = """  - EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —
     is `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry. A seeded codec round-trips
     because the seed says so, which is why `feature_corpus_roundtrips_nondefault_profiles` skips
@@ -1476,6 +1639,7 @@ span_ids = ["part-extern-execution"]
 part_id = "fix-review-reach"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "Fix-review reach analysis"
+render_authority = "raw"
 source_block_md = """  - **Fix-review reach analysis** — after a fix, ask which OTHER rule families the changed code path
     can reach. The shapes it reaches and the grid does not are the missing rows.
 """
@@ -1485,6 +1649,7 @@ span_ids = ["part-fix-review-reach"]
 part_id = "fixed-byte-representation"
 parent_record_id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Fixed-byte representation optimization"
+render_authority = "raw"
 source_block_md = """### Fixed-byte representation optimization
 
 `bytes .size 32` can map to `[u8; 32]`: the representation itself carries the constraint. The
@@ -1498,6 +1663,7 @@ span_ids = ["part-fixed-byte-representation"]
 part_id = "json-gen-cross-module-execution"
 parent_record_id = "matrix.emission-input-mode-honesty"
 title = "EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module types is covered"
+render_authority = "raw"
 source_block_md = """  - EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module types is covered
     by `multifile_json_preserve`, whose `run_test` leg runs the json-gen binary over the
     four-submodule `tests/multifile/inputs` tree and asserts the emitted document.
@@ -1532,6 +1698,7 @@ span_ids = ["part-json-gen-cross-module-execution"]
 part_id = "multifile-extern-exclusion"
 parent_record_id = "matrix.extern-execution-multifile"
 title = "The multifile matrix never enumerates extern/rawbytes shapes at all"
+render_authority = "raw"
 source_block_md = """  - The multifile matrix never enumerates extern/rawbytes shapes at all
     (`project_multifile_matrix.ts`'s `SHAPES`), so its exclusion is structural rather than a skip
     list. Extern PLACEMENT across scopes is covered by `tests/extern-generic-scoped` and
@@ -1549,6 +1716,7 @@ span_ids = ["part-multifile-extern-exclusion"]
 part_id = "open-table-min-one-hardening"
 parent_record_id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Harden an open table's min-1 typed row when an invalid value is observed"
+render_authority = "raw"
 source_block_md = """### Harden an open table's min-1 typed row when an invalid value is observed
 
 An open table's min-1 typed row (`t = { + K_t => V_t, * K_r => V_r }`) is the one min-1 shape
@@ -1569,6 +1737,7 @@ span_ids = ["part-open-table-min-one-hardening"]
 part_id = "shared-carrier-delivery-requirements"
 parent_record_id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Shared delivery requirements for occurrence and bounds carrier classes"
+render_authority = "raw"
 source_block_md = """### Shared delivery requirements for occurrence and bounds carrier classes
 
 Each class above lands tests-first when picked up; the `+` case's fixture surface (the `nev_*` rules
@@ -1583,6 +1752,7 @@ span_ids = ["part-shared-carrier-delivery-requirements"]
 part_id = "test-steering-comment"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "A steering comment in a test"
+render_authority = "raw"
 source_block_md = """  - **A steering comment in a test** — a test that deliberately picks the easy variant (\"uses an
     exposable key so no wrapper is minted\") is a coverage hole wearing a disguise. Grepping for such
     steering is a cheap sweep arm.
@@ -1593,6 +1763,7 @@ span_ids = ["part-test-steering-comment"]
 part_id = "wasm-macro-directory"
 parent_record_id = "matrix.emission-input-mode-honesty"
 title = "The `--wasm-*-macro` modes × directory input are compile-gated by"
+render_authority = "raw"
 source_block_md = """  - The `--wasm-*-macro` modes × directory input are compile-gated by
     `wasm_macros_multifile_compiles` (per-module macro imports, invocations minted inside the
     submodule's own file, and the scoped rust path each invocation carries), which puts the

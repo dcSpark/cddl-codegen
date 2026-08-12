@@ -1,0 +1,86 @@
+[campaign]
+schema_version = 1
+matrix_authority = "authoritative"
+testing_authority = "shadow"
+
+[[legacy_markdown_reservation]]
+id = "testing.rule-trailing.directive-classification"
+work_kind = "feature"
+roadmap_path = "tests/TESTING_ROADMAP.md"
+source_title = "Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery — blocked on publishing the reviewed fork revision."
+source_start_byte = 8737
+source_end_byte = 11601
+source_sha256 = "c5a5b506dba80f59781f9024767bd7b6bd14d191981f1923553d12ad65b8d338"
+whole_source_sha256 = "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b4120d70e"
+
+[[selection]]
+item_id = "matrix.fixed-array.static-representation"
+target_kind = "active_id"
+selected_state = "selected"
+priority_class = "optimization"
+selection_reason_md = """The fixed-array representation remains explicitly selected as an optimization because an exact array type carries the cardinality invariant statically and avoids conflating this scope with the separate fixed-byte representation."""
+cycle = "burndown-three"
+remaining_scope_md = """Map exact n*n homogeneous array occurrences to [T; n], retain TryFrom as the ergonomic construction door, keep fixed-byte representation outside this identity, and update every applicable Rust, wasm, JSON, component, cross-crate, matrix, and boundary-vector surface."""
+
+[[selection]]
+item_id = "matrix.fixed-bytes.lowercase-base64-parser"
+target_kind = "active_id"
+selected_state = "selected"
+priority_class = "corroboration"
+selection_reason_md = """Lowercase-hex and base64 fixed-byte spellings remain selected solely to replace pinned upstream-parser accommodations with released, reproducible corroboration of the already delivered generator behavior."""
+cycle = "burndown-three"
+remaining_scope_md = """When an upstream parser release accepts the target lowercase-hex and base64 spellings, re-probe the exact literals, update the oracle revision and affected vectors, run the fixed-byte and recombination evidence surfaces, and remove only the accommodations proven stale by that release."""
+
+[[selection]]
+item_id = "matrix.fixed-bytes.validator-corroboration"
+target_kind = "active_id"
+selected_state = "selected"
+priority_class = "corroboration"
+selection_reason_md = """Fixed-byte execution support remains green, but the affected cells still need an independent validator oracle before their evidence can be considered fully corroborated."""
+cycle = "burndown-three"
+remaining_scope_md = """After a rust cddl release validates h'CAFE' and raw UTF-8 fixed-byte rules without panic, remove the three pinned decode-foreign accommodations, re-mint and fully verify their two-oracle evidence and reason-bearing constraint rejects, verify byte-safe B16 display behavior, and prune the durable gap wording only when those probes pass."""
+
+[[selection]]
+item_id = "matrix.heterogeneous-array.occurrence-bounds"
+target_kind = "active_id"
+selected_state = "selected"
+priority_class = "capability"
+selection_reason_md = """Spec-valid middle repetitions and bounded heterogeneous final or open tails remain valid rejections, so this selected capability closes a real supported-language boundary without reviving already delivered final unbounded tails."""
+cycle = "burndown-three"
+remaining_scope_md = """Define invariant-preserving carriers and construction doors for middle or non-final repetition and bounded heterogeneous final or open tails; honor RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable."""
+
+[[selection]]
+item_id = "matrix.keyed-struct-map.zero-permitting-fields"
+target_kind = "active_id"
+selected_state = "selected"
+priority_class = "capability"
+selection_reason_md = """Zero-permitting keyed struct-map fields are valid input and remain selected because the current mandatory representation would silently narrow them, while an Option-like carrier can preserve their absence semantics."""
+cycle = "burndown-three"
+remaining_scope_md = """Add an invariant-preserving optional carrier for *, 0*n, and *n keyed struct-map fields without changing the deliberate exactly-one collapse for lower bounds of at least one, then cover every generated face, cross-crate projection, matrix classification, and spec-derived boundary vector."""
+
+[[selection]]
+item_id = "matrix.open-array.optional-adjacency"
+target_kind = "active_id"
+selected_state = "selected"
+priority_class = "correctness"
+selection_reason_md = """Optional adjacency needs one explicit soundness result so type-disjoint forms remain supported and overlapping greedy forms cannot acquire an unsound decoder heuristic."""
+cycle = "burndown-three"
+remaining_scope_md = """Classify optional fields adjacent to open array tails and open-table rows, demonstrate a spec-valid discriminator before adding any new decode surface, preserve the intentional refusal for overlapping greedy non-backtracking spellings such as [? uint, uint], and add exact positive or refusal vectors for every resolved shape."""
+
+[[selection]]
+item_id = "matrix.open-table.bounded-rest-rows"
+target_kind = "active_id"
+selected_state = "selected"
+priority_class = "capability"
+selection_reason_md = """Bounded typed and catch-all rows remain a selected capability because silently narrowing their cardinality is invalid and a graceful refusal is not the desired end state."""
+cycle = "burndown-three"
+remaining_scope_md = """Define carriers and construction doors for bounded typed and catch-all rows in open-table and open-struct contexts, preserve every admitted cardinality, and cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable."""
+
+[[selection]]
+item_id = "testing.rule-trailing.directive-classification"
+target_kind = "legacy_markdown_reservation"
+selected_state = "selected"
+priority_class = "correctness"
+selection_reason_md = """The loud refusal is an interim safety boundary, while adopting the reviewed parser anchor is the only known sound route to classify rule-only directives without stealing the last entry's metadata."""
+cycle = "burndown-three"
+remaining_scope_md = """After explicit maintainer authorization, publish and adopt the reviewed parser revision, replace the pre-IR refusal with the RuleTrailing reader, retain the four meaningful directives as positive controls, reject the thirteen inapplicable directives with site-bearing diagnostics, and leave no no_silent_directive allowlist for those thirteen forms."""

@@ -1,7 +1,4 @@
 import type { RegistryView } from "../adapters/types.ts";
-// @ts-expect-error Bun's text loader supports the live Markdown pickup; TypeScript has no .md declaration.
-import matrixShadowProjectionText from "../../ROADMAP.md" with { type: "text" };
-import matrixShadowSourceText from "../../roadmap.toml" with { type: "text" };
 import { ROADMAP_CLI_USAGE } from "../cli.ts";
 import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
@@ -10,7 +7,6 @@ import type { IssueCode } from "../errors.ts";
 import {
   createNodeRoadmapCliPorts,
   runRoadmapCli,
-  validateChange,
   type RoadmapCliDispatchServices,
   type RoadmapCliResult,
 } from "../index.ts";
@@ -23,17 +19,26 @@ import type {
   ScratchGitHarnessPorts,
 } from "../io.ts";
 import type { FixtureRelativePath, RepoPath, RepositoryRevision } from "../model/core.ts";
-import type { RoadmapDocumentV0, RoadmapDocumentV1 } from "../model/documents.ts";
+import type { RoadmapDocumentV0 } from "../model/documents.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
-import { deriveMatrixStatusFacts, renderMatrixStatusPayloads } from "../matrix_status_facts.ts";
-import { LEGACY_STATUS_OUTPUT_CLAIMS } from "../output_registry.ts";
+import {
+  LEGACY_STATUS_OUTPUT_CLAIMS,
+  productionOutputInventory,
+} from "../output_registry.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import { observeSelfTestIssue } from "./observations.ts";
+import {
+  liveMatrixAuthoritativeSource,
+  liveMatrixProjection,
+  liveMatrixShadowV0Source,
+} from "./live_matrix.ts";
+import { liveTestingProjection, liveTestingShadowV0Source } from "./live_testing.ts";
 
 export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_selftest_exact",
   "cli_check_each_roadmap",
   "cli_write_each_single_roadmap",
+  "cli_write_authoritative_matrix",
   "cli_query_each_view",
   "cli_format_declared_source",
   "cli_no_args_rejected",
@@ -62,6 +67,7 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "exit_malformed_toml_one",
   "exit_atomic_write_two",
   "exit_internal_fault_two",
+  "exit_authority_stage_mismatch_one",
   "parse_error_stable_prefix",
   "query_stdout_payload_only",
   "failure_stdout_empty",
@@ -147,6 +153,7 @@ const fakeSelftestServices: RoadmapCliDispatchServices = {
 function emptyRegistry(revision: RepositoryRevision): RegistryView {
   return {
     revision,
+    production_output_stage: "pre_cutover",
     gates: [],
     matrix_features: [],
     matrix_roles: [],
@@ -322,11 +329,31 @@ repository = "fixture/repository"
 commit = "1111111111111111111111111111111111111111"
 `);
   const projection = fixture(context, "positive/mixed-testing-v1.expected.md");
+  const campaign = UTF8.encode(`[campaign]
+schema_version = 1
+matrix_authority = "authoritative"
+testing_authority = "authoritative"
+`);
+  const retired = UTF8.encode(`[retired_ids]
+schema_version = 1
+`);
   return fakePorts({
     read(path) {
       if (path === sourcePath) return new Uint8Array(source);
       if (path === projectionPath) return new Uint8Array(projection);
+      if (path === "cddl-matrix/roadmap.toml") return liveMatrixAuthoritativeSource();
+      if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
+      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
+      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
+    },
+    registry(revision) {
+      return {
+        ...emptyRegistry(revision),
+        production_output_stage: "both_authoritative",
+        output_claims: productionOutputInventory("both_authoritative").claims,
+        matrix_status_inputs: liveMatrixStatusInputs(),
+      };
     },
   });
 }
@@ -349,37 +376,6 @@ schema_version = 1
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
   });
-}
-
-function allFieldsStatusInputs(): MatrixStatusInputs {
-  const features = [
-    ...Array.from({ length: 95 }, (_, index) => ({ id: `r-${index}`, profile: "RFC8610" })),
-    { id: "rfc9682", profile: "RFC9682" },
-    ...Array.from({ length: 27 }, (_, index) => ({ id: `c-${index}`, profile: "CDDL_CODEGEN" })),
-  ];
-  const annotations = Array.from({ length: 293 }, (_, index) => ({
-    id: index < 20 ? `row-${index}` : `annotation-${index}`,
-    status: "supported",
-    ...(index < 6 ? { emission: { preserve: { status: "unsupported" } } } : {}),
-  }));
-  return {
-    matrix: {
-      annotations,
-      features,
-      containment_ids: Array.from({ length: 136 }, (_, index) => `containment-${index}`),
-      control_operator_ids: Array.from({ length: 37 }, (_, index) => `control-${index}`),
-    },
-    catalog: { rows: Array.from({ length: 20 }, (_, index) => ({
-      id: `row-${index}`,
-      vectors: Array.from({ length: index === 19 ? 1 : 5 }, () => ({ expect: "reject", class: "constraint" })),
-    })) },
-    registry: { gates: [{ id: "gate", kind: "cargo", ignored_test: "manual" }] },
-    timings: { tiers: [
-      { tier: "fast", wall_ms: 1000 },
-      { tier: "local", wall_ms: 2000 },
-      { tier: "full", wall_ms: 3000 },
-    ] },
-  };
 }
 
 function liveMatrixStatusInputs(): MatrixStatusInputs {
@@ -420,51 +416,28 @@ function liveMatrixStatusInputs(): MatrixStatusInputs {
   };
 }
 
-function validGenericAllPorts(context: SelfTestContext): RoadmapCliPorts {
+function validGenericAllPorts(_context: SelfTestContext): RoadmapCliPorts {
   const matrixSourcePath = "cddl-matrix/roadmap.toml" as RepoPath;
   const matrixProjectionPath = "cddl-matrix/ROADMAP.md" as RepoPath;
   const testingSourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const testingProjectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
-  const genericSource = (
-    relative: "irregular/matrix-v0.toml" | "irregular/testing-v0.toml",
-    roadmap: "matrix" | "testing",
-    sourcePath: RepoPath,
-    projectionPath: RepoPath,
-  ): Uint8Array => {
-    const legacy = text(fixture(context, relative));
-    const legacySourcePath = `cddl-matrix/roadmap/fixtures/${relative}`;
-    const legacyProjectionPath = legacySourcePath.replace(/\.toml$/u, ".expected.md");
-    const frozenIds = roadmap === "matrix"
-      ? '["record", "section", "slot-constraint", "slot-counts", "slot-emission", "slot-ops"]'
-      : '["record", "section"]';
-    const authoritative = legacy
-      .replace("schema_version = 0", "schema_version = 1")
-      .replace('authority = "shadow"', 'authority = "authoritative"')
-      .replace(legacySourcePath, sourcePath)
-      .replace(legacyProjectionPath, projectionPath)
-      .replace(/(frozen_source_eof = "(?:lf|none)"\n)/u, `$1frozen_legacy_span_ids = ${frozenIds}\n`)
-      .replace(/(title = [^\n]+\n)(source_block_md)/gu, '$1render_authority = "raw"\n$2')
-      .replace(/(projection_group = [^\n]+\n)(source_block_md)/gu, '$1render_authority = "raw"\n$2');
-    const decoded = decodeRoadmapSource(UTF8.encode(authoritative), relative, roadmap, false);
-    assert(decoded.document.schema_version === 1, `${relative} generic fixture is not v1`);
-    return composeRoadmapDocument(decoded);
-  };
-  const matrixSource = genericSource(
-    "irregular/matrix-v0.toml", "matrix", matrixSourcePath, matrixProjectionPath,
-  );
-  const testingSource = genericSource(
-    "irregular/testing-v0.toml", "testing", testingSourcePath, testingProjectionPath,
-  );
+  const matrixSource = liveMatrixShadowV0Source();
+  const matrixProjection = liveMatrixProjection();
+  const testingSource = liveTestingShadowV0Source();
+  const testingProjection = liveTestingProjection();
   return fakePorts({
     read(path) {
       if (path === matrixSourcePath) return new Uint8Array(matrixSource);
-      if (path === matrixProjectionPath) return fixture(context, "irregular/matrix-v0.expected.md");
+      if (path === matrixProjectionPath) return new Uint8Array(matrixProjection);
       if (path === testingSourcePath) return new Uint8Array(testingSource);
-      if (path === testingProjectionPath) return fixture(context, "irregular/testing-v0.expected.md");
+      if (path === testingProjectionPath) return new Uint8Array(testingProjection);
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     registry(revision) {
-      return { ...emptyRegistry(revision), matrix_status_inputs: allFieldsStatusInputs() };
+      return {
+        ...emptyRegistry(revision),
+        matrix_status_inputs: liveMatrixStatusInputs(),
+      };
     },
   });
 }
@@ -474,6 +447,11 @@ function wp4mBootstrapProbePorts(
   onBaseRead: (path: RepoPath) => void,
 ): RoadmapCliPorts {
   const preRoots = validGenericAllPorts(context);
+  const candidateMatrix = liveMatrixAuthoritativeSource();
+  const baseMatrix = liveMatrixShadowV0Source();
+  const matrixProjection = liveMatrixProjection();
+  const shadowTesting = liveTestingShadowV0Source();
+  const testingProjection = liveTestingProjection();
   const campaign = UTF8.encode(`[campaign]
 schema_version = 1
 matrix_authority = "authoritative"
@@ -486,6 +464,10 @@ schema_version = 1
     read(path) {
       if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
       if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
+      if (path === "cddl-matrix/roadmap.toml") return new Uint8Array(candidateMatrix);
+      if (path === "cddl-matrix/ROADMAP.md") return new Uint8Array(matrixProjection);
+      if (path === "tests/testing-roadmap.toml") return new Uint8Array(shadowTesting);
+      if (path === "tests/TESTING_ROADMAP.md") return new Uint8Array(testingProjection);
       return preRoots.read.readDeclared(path);
     },
     readAtCommit(path) {
@@ -493,9 +475,21 @@ schema_version = 1
       if (path === "roadmap-campaign.toml" || path === "roadmap-retired-ids.toml") {
         throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
       }
+      if (path === "cddl-matrix/roadmap.toml") return new Uint8Array(baseMatrix);
+      if (path === "cddl-matrix/ROADMAP.md") return new Uint8Array(matrixProjection);
+      if (path === "tests/testing-roadmap.toml") return new Uint8Array(shadowTesting);
+      if (path === "tests/TESTING_ROADMAP.md") return new Uint8Array(testingProjection);
       return preRoots.read.readDeclared(path);
     },
-    registry: preRoots.read.registryView,
+    registry(revision) {
+      const stage = revision.kind === "worktree" ? "matrix_authoritative" : "pre_cutover";
+      return {
+        ...preRoots.read.registryView(revision),
+        production_output_stage: stage,
+        output_claims: productionOutputInventory(stage).claims,
+        matrix_status_inputs: liveMatrixStatusInputs(),
+      };
+    },
   });
 }
 
@@ -508,70 +502,9 @@ function wp4mMixedAuthorityPorts(
   const matrixProjectionPath = "cddl-matrix/ROADMAP.md" as RepoPath;
   const testingSourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const testingProjectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
-  const baseMatrixSource = UTF8.encode(matrixShadowSourceText);
-  const baseMatrixDocument = decodeRoadmapSource(baseMatrixSource, matrixSourcePath, "matrix") as RoadmapDocumentV0;
-  assert(baseMatrixDocument.document.schema_version === 0, "WP4M live matrix bootstrap base is not v0");
-  const matrixProjection = UTF8.encode(matrixShadowProjectionText);
-  const candidateSlotPayloads = new Map(
-    renderMatrixStatusPayloads(deriveMatrixStatusFacts(liveMatrixStatusInputs()))
-      .filter((payload) => payload.path === matrixProjectionPath)
-      .map((payload) => [payload.slot_id.replace(/^roadmap-/u, ""), payload.bytes] as const),
-  );
-  const projectedChunks: Uint8Array[] = [];
-  const candidateSpans = baseMatrixDocument.spans.map((span) => {
-    const start_byte = projectedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    const sourceSlice = matrixProjection.slice(span.start_byte, span.end_byte);
-    const slotPayload = span.source_kind === "generated_slot"
-      ? candidateSlotPayloads.get(span.owner_id)
-      : undefined;
-    const bytes = slotPayload !== undefined
-      ? (() => {
-        const line = new Uint8Array(slotPayload.byteLength + 1);
-        line.set(slotPayload);
-        line[slotPayload.byteLength] = 0x0a;
-        return line;
-      })()
-      : sourceSlice;
-    projectedChunks.push(bytes);
-    return {
-      ...span,
-      start_byte,
-      end_byte: start_byte + bytes.byteLength,
-      sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex"),
-    };
-  });
-  const candidateProjection = new Uint8Array(
-    projectedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0),
-  );
-  let projectedOffset = 0;
-  for (const chunk of projectedChunks) {
-    candidateProjection.set(chunk, projectedOffset);
-    projectedOffset += chunk.byteLength;
-  }
-  const candidateMatrixDocument: RoadmapDocumentV1 = {
-    ...baseMatrixDocument,
-    document: {
-      ...baseMatrixDocument.document,
-      schema_version: 1,
-      authority: "authoritative",
-      frozen_source_sha256: new Bun.CryptoHasher("sha256").update(candidateProjection).digest("hex"),
-      frozen_source_byte_length: candidateProjection.byteLength,
-      frozen_source_line_count: matrixShadowProjectionText.split("\n").length - 1 +
-        baseMatrixDocument.generated_slots.length,
-      frozen_legacy_span_ids: baseMatrixDocument.spans
-        .filter((span) => span.migration_status === "raw")
-        .map((span) => span.id),
-    },
-    sections: baseMatrixDocument.sections.map((owner) => ({ ...owner, render_authority: "raw" })),
-    fragments: baseMatrixDocument.fragments.map((owner) => ({ ...owner, render_authority: "raw" })),
-    legacy_markers: baseMatrixDocument.legacy_markers.map((owner) => ({ ...owner, render_authority: "raw" })),
-    records: baseMatrixDocument.records.map((owner) => ({ ...owner, render_authority: "raw" })),
-    parts: baseMatrixDocument.parts.map((owner) => ({ ...owner, render_authority: "raw" })),
-    spans: candidateSpans,
-    relations: [],
-    references: [],
-  };
-  const candidateMatrixSource = composeRoadmapDocument(candidateMatrixDocument);
+  const baseMatrixSource = liveMatrixShadowV0Source();
+  const candidateMatrixSource = liveMatrixAuthoritativeSource();
+  const candidateProjection = liveMatrixProjection();
   const testingMarkdown = UTF8.encode("# Testing legacy authority\n");
   const campaign = UTF8.encode(`[campaign]
 schema_version = 1
@@ -594,7 +527,7 @@ schema_version = 1
     readAtCommit(path) {
       baseReads.push(path);
       if (path === matrixSourcePath) return new Uint8Array(baseMatrixSource);
-      if (path === matrixProjectionPath) return new Uint8Array(matrixProjection);
+      if (path === matrixProjectionPath) return new Uint8Array(candidateProjection);
       if (path === testingProjectionPath) return new Uint8Array(testingMarkdown);
       if (path === testingSourcePath || path === "roadmap-campaign.toml" || path === "roadmap-retired-ids.toml") {
         throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
@@ -602,7 +535,13 @@ schema_version = 1
       throw new Error(`unexpected WP4M base read ${path}`);
     },
     registry(revision) {
-      return { ...emptyRegistry(revision), matrix_status_inputs: liveMatrixStatusInputs() };
+      const stage = revision.kind === "worktree" ? "matrix_authoritative" : "pre_cutover";
+      return {
+        ...emptyRegistry(revision),
+        production_output_stage: stage,
+        output_claims: productionOutputInventory(stage).claims,
+        matrix_status_inputs: liveMatrixStatusInputs(),
+      };
     },
   });
 }
@@ -613,7 +552,7 @@ function shadowLifecyclePorts(
 ): RoadmapCliPorts {
   const matrixSourcePath = "cddl-matrix/roadmap.toml" as RepoPath;
   const matrixProjectionPath = "cddl-matrix/ROADMAP.md" as RepoPath;
-  const matrixSource = UTF8.encode(matrixShadowSourceText);
+  const matrixSource = liveMatrixShadowV0Source();
   const campaign = UTF8.encode(`[campaign]
 schema_version = 1
 matrix_authority = "shadow"
@@ -642,34 +581,25 @@ function scopedCandidateCollisionProbe(context: SelfTestContext): {
   readonly ports: RoadmapCliPorts;
   readonly candidate_reads: RepoPath[];
   readonly base_reads: RepoPath[];
+  readonly collision_id: string;
 } {
   const testingSourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const testingSource = UTF8.encode(text(fixture(context, "positive/mixed-testing-v1.toml"))
     .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.toml", testingSourcePath)
     .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.expected.md", "tests/TESTING_ROADMAP.md"));
-  const matrixMarkdown = UTF8.encode("# Legacy matrix item\n");
-  const matrixTitle = matrixMarkdown.subarray(0, matrixMarkdown.byteLength - 1);
-  const digest = (value: Uint8Array): string => new Bun.CryptoHasher("sha256").update(value).digest("hex");
+  const matrixSource = liveMatrixAuthoritativeSource();
+  const matrixMarkdown = liveMatrixProjection();
+  const collisionId = "matrix.additional-tool-annotations";
   const campaign = UTF8.encode(`[campaign]
 schema_version = 1
-matrix_authority = "legacy_markdown"
+matrix_authority = "authoritative"
 testing_authority = "authoritative"
-
-[[legacy_markdown_reservation]]
-id = "matrix.fixture-legacy"
-work_kind = "feature"
-roadmap_path = "cddl-matrix/ROADMAP.md"
-source_title = "Legacy matrix item"
-source_start_byte = 0
-source_end_byte = ${matrixTitle.byteLength}
-source_sha256 = "${digest(matrixTitle)}"
-whole_source_sha256 = "${digest(matrixMarkdown)}"
 `);
   const retired = UTF8.encode(`[retired_ids]
 schema_version = 1
 
 [[retired_ids.entry]]
-id = "matrix.fixture-legacy"
+id = "${collisionId}"
 last_active_at = "1111111111111111111111111111111111111111"
 
 [retired_ids.entry.replacement]
@@ -681,6 +611,7 @@ claim_md = """The durable gate owns the replacement claim."""
   const baseReads: RepoPath[] = [];
   const candidateSources = new Map<RepoPath, Uint8Array>([
     [testingSourcePath, testingSource],
+    ["cddl-matrix/roadmap.toml" as RepoPath, matrixSource],
     ["cddl-matrix/ROADMAP.md" as RepoPath, matrixMarkdown],
     ["roadmap-campaign.toml" as RepoPath, campaign],
     ["roadmap-retired-ids.toml" as RepoPath, retired],
@@ -698,14 +629,22 @@ claim_md = """The durable gate owns the replacement claim."""
       throw new Error(`single-roadmap comparison read unselected base path ${path}`);
     },
     registry(revision) {
+      const stage = "both_authoritative";
       return {
         ...emptyRegistry(revision),
+        production_output_stage: stage,
+        output_claims: productionOutputInventory(stage).claims,
         gates: [{ id: "durable-gate", kind: "cmd", stub: false }],
-        matrix_status_inputs: allFieldsStatusInputs(),
+        matrix_status_inputs: liveMatrixStatusInputs(),
       };
     },
   });
-  return { ports, candidate_reads: candidateReads, base_reads: baseReads };
+  return {
+    ports,
+    candidate_reads: candidateReads,
+    base_reads: baseReads,
+    collision_id: collisionId,
+  };
 }
 
 function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
@@ -738,6 +677,26 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
         );
       }
       return pass("positive", ["matrix", "testing"]);
+    case "cli_write_authoritative_matrix": {
+      const candidateReads: RepoPath[] = [];
+      const baseReads: RepoPath[] = [];
+      const replacements: { path: RepoPath; bytes: Uint8Array }[] = [];
+      const fixturePorts = wp4mMixedAuthorityPorts(context, candidateReads, baseReads);
+      const ports = fakePorts({
+        read: fixturePorts.read.readDeclared,
+        readAtCommit: (path) => fixturePorts.read.readDeclaredAtCommit(HASH as import("../model/core.ts").FullCommitId, path),
+        registry: fixturePorts.read.registryView,
+        atomic: (path, value) => replacements.push({ path, bytes: new Uint8Array(value) }),
+      });
+      const result = run(["--write", "--roadmap", "matrix"], ports);
+      assert(
+        result.exit_code === 0 && result.stderr.byteLength === 0 && replacements.length === 1 &&
+          replacements[0].path === "cddl-matrix/ROADMAP.md" && replacements[0].bytes.byteLength > 0 &&
+          text(result.stdout).startsWith("WRITE OK roadmap=matrix target=cddl-matrix/ROADMAP.md bytes="),
+        `authoritative matrix write did not apply exactly one validated whole-file plan: ${text(result.stderr)}`,
+      );
+      return pass("positive");
+    }
     case "cli_query_each_view": {
       for (const view of ["summary", "debt", "references", "signals", "output-owners"]) {
         expectFailure(
@@ -852,7 +811,7 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
           throw roadmapFailure("E-SOURCE-MISSING", path, "projection", "projection missing", 1);
         }
         return valid.read.readDeclared(path);
-      } });
+      }, registry: valid.read.registryView });
       expectFailure(["--check", "--roadmap", "testing"], expectedIssue("E-PROJECTION-MISSING", "tests/TESTING_ROADMAP.md", "projection", "projection missing", 1), ports);
       return pass("negative");
     }
@@ -863,6 +822,95 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
     case "parse_error_stable_prefix": expectFailure(["--query", "summary", "--roadmap", "matrix"], expectedIssue("E-TOML-PARSE", "cddl-matrix/roadmap.toml", "$", "Bun rejected TOML structure", 1, true), fakePorts({ read: () => UTF8.encode("not = [toml\n") })); return pass("negative");
     case "exit_atomic_write_two": expectFailure(["--format-source", "tests/testing-roadmap.toml"], expectedIssue("E-IO-WRITE", "tests/testing-roadmap.toml", "atomic_replace", "write failed", 2), validTestingPorts(context, (path) => { throw roadmapFailure("E-IO-WRITE", path, "atomic_replace", "write failed", 2); })); return pass("negative");
     case "exit_internal_fault_two": expectFailure(["--query", "summary", "--roadmap", "matrix"], expectedIssue("E-INTERNAL", "<internal>", "runRoadmapCli", "fault sentinel", 2), fakePorts({ read: () => { throw new Error("fault sentinel"); } })); return pass("negative");
+    case "exit_authority_stage_mismatch_one": {
+      const mismatch = (
+        source: Uint8Array,
+        stage: "pre_cutover" | "matrix_authoritative" | "both_authoritative",
+      ) => fakePorts({
+        read: (path) => path === "cddl-matrix/roadmap.toml"
+          ? new Uint8Array(source)
+          : (() => { throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1); })(),
+        registry: (revision) => ({
+          ...emptyRegistry(revision),
+          production_output_stage: stage,
+          output_claims: productionOutputInventory(stage).claims,
+          matrix_status_inputs: liveMatrixStatusInputs(),
+        }),
+      });
+      for (const [source, stage, message] of [
+        [
+          liveMatrixAuthoritativeSource(),
+          "pre_cutover",
+          "authoritative roadmap requires its same-revision production whole-file projection claim",
+        ],
+        [
+          liveMatrixShadowV0Source(),
+          "matrix_authoritative",
+          "shadow roadmap forbids an authoritative whole-file projection claim",
+        ],
+      ] as const) {
+        expectFailure(
+          ["--query", "summary", "--roadmap", "matrix"],
+          expectedIssue(
+            "E-OUTPUT-AUTHORITY",
+            "cddl-matrix/roadmap.toml",
+            "document.authority",
+            message,
+            1,
+          ),
+          mismatch(source, stage),
+        );
+      }
+      const lifecycle = wp4mMixedAuthorityPorts(context, [], []);
+      const recognizedWrongStage = fakePorts({
+        read: lifecycle.read.readDeclared,
+        registry: (revision) => ({
+          ...lifecycle.read.registryView(revision),
+          production_output_stage: "both_authoritative",
+          output_claims: productionOutputInventory("both_authoritative").claims,
+        }),
+      });
+      for (const argv of [
+        ["--roadmap", "matrix", "--query", "summary"],
+        ["--roadmap", "matrix", "--check"],
+        ["--format-source", "cddl-matrix/roadmap.toml"],
+      ]) {
+        expectFailure(
+          argv,
+          expectedIssue(
+            "E-OUTPUT-CLAIM",
+            "<output-registry>",
+            "production_output_stage",
+            "revision registry stage both_authoritative does not match campaign stage matrix_authoritative",
+            1,
+          ),
+          recognizedWrongStage,
+        );
+      }
+      const preActivationWrongStage = mismatch(liveMatrixAuthoritativeSource(), "both_authoritative");
+      for (const argv of [
+        ["--roadmap", "matrix", "--query", "summary"],
+        ["--roadmap", "matrix", "--check"],
+      ]) {
+        expectFailure(
+          argv,
+          expectedIssue(
+            "E-OUTPUT-CLAIM",
+            "<output-registry>",
+            "production_output_stage",
+            "pre-activation registry stage both_authoritative does not match canonical stage pre_cutover",
+            1,
+          ),
+          preActivationWrongStage,
+        );
+      }
+      return pass("negative", [
+        "authoritative_without_claim",
+        "shadow_with_claim",
+        "recognized_wrong_stage",
+        "preactivation_recognized_wrong_stage",
+      ]);
+    }
     case "failure_stdout_empty": {
       const result = expectFailure([], cliIssue("E-CLI-MODE", 0, "exactly one primary mode is required"), fakePorts(), true);
       assert(result.stdout.byteLength === 0, "failure wrote stdout");
@@ -930,6 +978,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const paths: RepoPath[] = [];
       const ports = fakePorts({
         read: valid.read.readDeclared,
+        registry: valid.read.registryView,
         onReadPath: (path) => paths.push(path),
       });
       const result = run(["--roadmap", "testing", "--query", "signals", "--json"], ports);
@@ -948,6 +997,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const ports = validTestingPorts(context);
       const wrapped = fakePorts({
         read: ports.read.readDeclared,
+        registry: ports.read.registryView,
         objectFormat: () => { git++; return "sha1"; },
         resolve: (value) => { git++; return value; },
       });
@@ -988,7 +1038,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       return pass("positive");
     }
     case "cli_shadow_authoritative_markdown_provenance": {
-      const validProjection = UTF8.encode(matrixShadowProjectionText);
+      const validProjection = liveMatrixProjection();
       const validReads: RepoPath[] = [];
       const valid = run(
         ["--roadmap", "all", "--query", "summary", "--json"],
@@ -1023,7 +1073,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
     case "cli_against_all_check_allowed": {
       const roadmap = id.includes("matrix") ? "matrix" : id.includes("testing") ? "testing" : "all";
       if (roadmap === "all") {
-        const result = run(["--check", "--roadmap", "all", "--against", HASH]);
+        const result = run(["--check", "--roadmap", "all", "--against", HASH], fakePorts());
         assert(
           result.exit_code === 1 && result.stdout.byteLength === 0 &&
             text(result.stderr) ===
@@ -1034,8 +1084,12 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         );
         const baseReads: RepoPath[] = [];
         const probe = wp4mBootstrapProbePorts(context, (path) => baseReads.push(path));
-        const transactionIssues = validateChange("all", HASH as import("../model/core.ts").FullCommitId, probe.read);
-        assert(transactionIssues.length > 0, "bootstrap probe fixture unexpectedly claimed a valid authority cutover");
+        const transaction = run(["--check", "--roadmap", "all", "--against", HASH], probe);
+        assert(
+          transaction.exit_code === 0 && transaction.stderr.byteLength === 0 &&
+            text(transaction.stdout).includes("CHECK OK\n"),
+          `valid bootstrap probe fixture did not complete the allowed all-roadmap comparison: ${text(transaction.stderr)}`,
+        );
         assert(
           baseReads.includes("roadmap-campaign.toml" as RepoPath) &&
             baseReads.includes("roadmap-retired-ids.toml" as RepoPath) &&
@@ -1055,7 +1109,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         assert(
           collision.exit_code === 1 && collision.stdout.byteLength === 0 &&
             text(collision.stderr) ===
-              "FAIL [E-OWNER-DUPLICATE] <identity>#owner[\"matrix.fixture-legacy\"]: global ID \"matrix.fixture-legacy\" has 2 claims (legacy_markdown_reservation, tombstone)\n" +
+              `FAIL [E-OWNER-DUPLICATE] <identity>#owner[${JSON.stringify(probe.collision_id)}]: global ID ${JSON.stringify(probe.collision_id)} has 2 claims (first_class, tombstone)\n` +
               "FAILED: 1 issue(s)\n",
           `single-roadmap service did not reject the unselected candidate/tombstone collision: ${text(collision.stderr)}`,
         );
@@ -1065,7 +1119,6 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
             "roadmap-campaign.toml",
             "roadmap-retired-ids.toml",
             "cddl-matrix/roadmap.toml",
-            "cddl-matrix/ROADMAP.md",
           ]),
           `single-roadmap service did not read the exact full candidate authority universe: ${JSON.stringify(probe.candidate_reads)}`,
         );

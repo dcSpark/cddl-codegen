@@ -1,14 +1,21 @@
 import type {
   ByteInterval,
   OutputClaim,
+  ProductionOutputStage,
   ResolvedOutputClaim,
 } from "./adapters/types.ts";
 import type { RoadmapIssue } from "./errors.ts";
 import type { RepoPath, RoadmapName, SlotId } from "./model/core.ts";
-import type { RoadmapDocument } from "./model/documents.ts";
+import type { CampaignDocumentV1, RoadmapDocument } from "./model/documents.ts";
 import type { CompletedRenderIr } from "./render_ir.ts";
+import { campaignAuthorityTupleIsReachable } from "./campaign_authority.ts";
 
-export type { ByteInterval, OutputClaim, ResolvedOutputClaim } from "./adapters/types.ts";
+export type {
+  ByteInterval,
+  OutputClaim,
+  ProductionOutputStage,
+  ResolvedOutputClaim,
+} from "./adapters/types.ts";
 
 export interface ManifestSlotBindingFact {
   readonly roadmap: RoadmapName;
@@ -48,8 +55,21 @@ export type ClosedOutputRegistryResult =
   | { readonly ok: false; readonly issues: readonly RoadmapIssue[] };
 
 export type ProductionOutputRegistryValidation =
-  | { readonly ok: true; readonly registry: ClosedOutputRegistry; readonly issues: readonly [] }
+  | {
+      readonly ok: true;
+      readonly stage: ProductionOutputStage;
+      readonly claims: readonly OutputClaim[];
+      readonly registry: ClosedOutputRegistry;
+      readonly issues: readonly [];
+    }
   | { readonly ok: false; readonly issues: readonly RoadmapIssue[] };
+
+export interface ProductionOutputInventory {
+  readonly stage: ProductionOutputStage;
+  readonly claims: readonly OutputClaim[];
+  readonly status_claims: readonly Extract<OutputClaim, { kind: "slot" }>[];
+  readonly registry: ClosedOutputRegistry;
+}
 
 const registeredClaims = new WeakMap<object, readonly OutputClaim[]>();
 const productionRegistries = new WeakSet<object>();
@@ -183,24 +203,107 @@ export const LEGACY_STATUS_OUTPUT_CLAIMS: readonly OutputClaim[] = Object.freeze
   });
 }));
 
-function fixedProductionRegistry(): ClosedOutputRegistry {
-  const result = createClosedOutputRegistry(LEGACY_STATUS_OUTPUT_CLAIMS, "production");
-  if (!result.ok) throw new Error("internal: fixed legacy status inventory is invalid");
-  return result.registry;
+const MATRIX_PROJECTION_PATH = "cddl-matrix/ROADMAP.md" as RepoPath;
+const TESTING_PROJECTION_PATH = "tests/TESTING_ROADMAP.md" as RepoPath;
+
+const README_STATUS_OUTPUT_CLAIMS = Object.freeze(
+  LEGACY_STATUS_OUTPUT_CLAIMS.filter((claim): claim is Extract<OutputClaim, { kind: "slot" }> =>
+    claim.kind === "slot" && claim.path !== MATRIX_PROJECTION_PATH
+  ),
+);
+
+function wholeProjectionClaim(path: RepoPath): OutputClaim {
+  return Object.freeze({
+    kind: "whole_file" as const,
+    producer: "roadmap-projector",
+    path,
+    interval: Object.freeze({ kind: "whole_file" as const }),
+  });
 }
 
-/** The sole WP1 production inventory; it intentionally contains no projection whole-file claim. */
-export const LEGACY_STATUS_OUTPUT_REGISTRY = fixedProductionRegistry();
+const PRODUCTION_CLAIMS: Readonly<Record<ProductionOutputStage, readonly OutputClaim[]>> = Object.freeze({
+  pre_cutover: LEGACY_STATUS_OUTPUT_CLAIMS,
+  matrix_authoritative: Object.freeze([
+    ...README_STATUS_OUTPUT_CLAIMS,
+    wholeProjectionClaim(MATRIX_PROJECTION_PATH),
+  ]),
+  both_authoritative: Object.freeze([
+    ...README_STATUS_OUTPUT_CLAIMS,
+    wholeProjectionClaim(MATRIX_PROJECTION_PATH),
+    wholeProjectionClaim(TESTING_PROJECTION_PATH),
+  ]),
+});
+
+function fixedProductionInventory(stage: ProductionOutputStage): ProductionOutputInventory {
+  const claims = PRODUCTION_CLAIMS[stage];
+  const result = createClosedOutputRegistry(claims, "production");
+  if (!result.ok) throw new Error(`internal: ${stage} production output inventory is invalid`);
+  return Object.freeze({
+    stage,
+    claims,
+    status_claims: Object.freeze(claims.filter(
+      (claim): claim is Extract<OutputClaim, { kind: "slot" }> =>
+        claim.kind === "slot" && claim.producer === "project_status_headers",
+    )),
+    registry: result.registry,
+  });
+}
+
+const PRODUCTION_OUTPUT_INVENTORIES: Readonly<Record<ProductionOutputStage, ProductionOutputInventory>> =
+  Object.freeze({
+    pre_cutover: fixedProductionInventory("pre_cutover"),
+    matrix_authoritative: fixedProductionInventory("matrix_authoritative"),
+    both_authoritative: fixedProductionInventory("both_authoritative"),
+  });
+
+/** Select the only reachable production ownership stage from canonical campaign authority. */
+export function productionOutputStage(
+  campaign?: Pick<CampaignDocumentV1, "campaign">,
+): ProductionOutputStage {
+  if (campaign !== undefined && !campaignAuthorityTupleIsReachable(
+    campaign.campaign.matrix_authority,
+    campaign.campaign.testing_authority,
+  )) {
+    throw new Error("internal: testing campaign authority cannot exceed matrix campaign authority");
+  }
+  if (campaign?.campaign.testing_authority === "authoritative") return "both_authoritative";
+  if (campaign?.campaign.matrix_authority === "authoritative") return "matrix_authoritative";
+  return "pre_cutover";
+}
+
+export function productionOutputInventory(stage: ProductionOutputStage): ProductionOutputInventory {
+  return PRODUCTION_OUTPUT_INVENTORIES[stage];
+}
+
+/** The pre-cutover compatibility aliases remain stable for the legacy status seam and fixtures. */
+export const LEGACY_STATUS_OUTPUT_REGISTRY = PRODUCTION_OUTPUT_INVENTORIES.pre_cutover.registry;
 
 /**
- * Revalidate an injected revision view against WP1's one fixed production ownership inventory.
- * This grants only the closed registry capability; exact byte intervals still require the
- * separately explicit target snapshots accepted by resolveOutputClaims.
+ * Revalidate an injected revision view against the campaign-selected closed production ownership
+ * inventory for that exact revision. The stage is mandatory: claim shape cannot infer campaign
+ * authority.
  */
 export function validateProductionOutputRegistry(
   claims: readonly OutputClaim[],
+  requiredStage: ProductionOutputStage,
 ): ProductionOutputRegistryValidation {
-  const inventory = registeredClaims.get(LEGACY_STATUS_OUTPUT_REGISTRY);
+  if (
+    requiredStage !== "pre_cutover" &&
+    requiredStage !== "matrix_authoritative" &&
+    requiredStage !== "both_authoritative"
+  ) {
+    return Object.freeze({
+      ok: false,
+      issues: Object.freeze([issue(
+        "E-OUTPUT-CLAIM",
+        "<output-registry>",
+        "stage",
+        "production output stage must be explicit and recognized",
+      )]),
+    });
+  }
+  const selected = PRODUCTION_OUTPUT_INVENTORIES[requiredStage];
+  const inventory = registeredClaims.get(selected.registry);
   if (inventory === undefined) throw new Error("internal: fixed production output inventory lost provenance");
   const issues: RoadmapIssue[] = [...validateOutputClaimInventory(claims)];
   if (claims.length !== inventory.length) {
@@ -228,7 +331,9 @@ export function validateProductionOutputRegistry(
   if (issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
   return Object.freeze({
     ok: true,
-    registry: LEGACY_STATUS_OUTPUT_REGISTRY,
+    stage: requiredStage,
+    claims: selected.claims,
+    registry: selected.registry,
     issues: Object.freeze([]) as readonly [],
   });
 }

@@ -78,8 +78,11 @@ import {
   createTestOutputRegistry,
   inspectStatusMarkerBinding,
   intervalsOverlap,
+  productionOutputInventory,
+  productionOutputStage,
   resolveOutputClaims,
   validateOutputClaimInventory,
+  validateProductionOutputRegistry,
   type OutputClaim,
   type ClosedOutputRegistry,
   type ValidatedOutputAuthority,
@@ -177,11 +180,15 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "outputs_interval_utf8_bytes",
   "outputs_manifest_binding_owner",
   "outputs_live_status_claims_all_twelve",
+  "outputs_production_stage_inventories",
+  "outputs_production_stage_required",
+  "outputs_production_whole_authority",
   "status_facts_derive_fixture_parity",
   "status_projector_before_after_target_byte_parity",
   "status_projector_before_after_mode_parity",
   "status_projector_before_after_message_parity",
   "status_projector_preflight_no_partial_write",
+  "status_projector_after_matrix_handoff",
   "span_expected_byte_view_cross_chunk",
   "span_expected_byte_view_incremental_hash",
 ] as const;
@@ -250,6 +257,7 @@ const FIXTURE_REQUIRED_CASES = new Set<RequiredProjectionSelfTestCaseId>([
   "status_projector_before_after_mode_parity",
   "status_projector_before_after_message_parity",
   "status_projector_preflight_no_partial_write",
+  "status_projector_after_matrix_handoff",
 ]);
 
 const encoder = new TextEncoder();
@@ -1624,6 +1632,87 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     }).issues, "E-OUTPUT-CLAIM");
     return pass();
   }
+  if (id === "outputs_production_stage_inventories") {
+    const pre = productionOutputInventory("pre_cutover");
+    const matrix = productionOutputInventory("matrix_authoritative");
+    const both = productionOutputInventory("both_authoritative");
+    if (pre.claims.length !== 12 || pre.status_claims.length !== 12 || pre.registry.claim_count !== 12) {
+      fail("pre-cutover production inventory is not the exact twelve legacy status slots");
+    }
+    if (matrix.claims.length !== 9 || matrix.status_claims.length !== 8 || matrix.registry.claim_count !== 9) {
+      fail("WP4M production inventory is not eight README slots plus one matrix whole-file claim");
+    }
+    if (both.claims.length !== 10 || both.status_claims.length !== 8 || both.registry.claim_count !== 10) {
+      fail("WP4T production inventory is not eight README slots plus both whole-file claims");
+    }
+    const wholePaths = (inventory: typeof matrix): string[] => inventory.claims.flatMap((claim) =>
+      claim.kind === "whole_file" ? [claim.path] : []
+    );
+    if (JSON.stringify(wholePaths(matrix)) !== JSON.stringify(["cddl-matrix/ROADMAP.md"])) {
+      fail("WP4M whole-file inventory does not name exactly the matrix projection");
+    }
+    if (JSON.stringify(wholePaths(both)) !== JSON.stringify(["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADMAP.md"])) {
+      fail("WP4T whole-file inventory does not name exactly both projections");
+    }
+    const campaign = (matrixAuthority: "legacy_markdown" | "shadow" | "authoritative", testingAuthority: "legacy_markdown" | "shadow" | "authoritative") => ({
+      campaign: { schema_version: 1 as const, matrix_authority: matrixAuthority, testing_authority: testingAuthority },
+    });
+    if (
+      productionOutputStage() !== "pre_cutover" ||
+      productionOutputStage(campaign("shadow", "shadow")) !== "pre_cutover" ||
+      productionOutputStage(campaign("authoritative", "shadow")) !== "matrix_authoritative" ||
+      productionOutputStage(campaign("authoritative", "authoritative")) !== "both_authoritative"
+    ) fail("campaign authority did not select the canonical production output stage");
+    try {
+      productionOutputStage(campaign("shadow", "authoritative"));
+      fail("an impossible campaign authority tuple selected a production output stage");
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("cannot exceed")) throw error;
+    }
+    if (validateProductionOutputRegistry(matrix.claims, "pre_cutover").ok) {
+      fail("a WP4M inventory validated against the pre-cutover revision stage");
+    }
+    if (!validateProductionOutputRegistry([...both.claims].reverse(), "both_authoritative").ok) {
+      fail("closed production inventory validation became order-sensitive");
+    }
+    return pass();
+  }
+  if (id === "outputs_production_stage_required") {
+    const claims = productionOutputInventory("pre_cutover").claims;
+    const invokeWithoutTypeFloor = validateProductionOutputRegistry as unknown as (
+      claims: readonly OutputClaim[],
+      stage?: unknown,
+    ) => ReturnType<typeof validateProductionOutputRegistry>;
+    const omitted = invokeWithoutTypeFloor(claims);
+    const invalid = invokeWithoutTypeFloor(claims, "claim-count-inferred");
+    if (omitted.ok || invalid.ok) {
+      fail("omitted or invalid production stage selected an inventory from claim shape");
+    }
+    requireIssue(omitted.issues, "E-OUTPUT-CLAIM");
+    requireIssue(invalid.issues, "E-OUTPUT-CLAIM");
+    if (omitted.issues[0]?.logical_path !== "stage" || invalid.issues[0]?.logical_path !== "stage") {
+      fail("invalid production stages did not report the explicit stage coordinate");
+    }
+    return pass("negative");
+  }
+  if (id === "outputs_production_whole_authority") {
+    const inventory = productionOutputInventory("matrix_authoritative");
+    const claim = inventory.claims.find((value) =>
+      value.kind === "whole_file" && value.path === "cddl-matrix/ROADMAP.md"
+    );
+    if (claim === undefined) fail("WP4M inventory omitted matrix whole-file ownership");
+    const resolution = resolveOutputClaims({
+      registry: inventory.registry,
+      claims: [claim],
+      targets: new Map([[claim.path, bytes("committed projection\n")]]),
+    });
+    if (resolution.issues.length !== 0 || resolution.authority === undefined ||
+      resolution.resolved.length !== 1 || resolution.resolved[0].interval.start_byte !== 0 ||
+      resolution.resolved[0].interval.end_byte !== bytes("committed projection\n").byteLength) {
+      fail("WP4M whole-file claim did not resolve to one opaque complete production interval");
+    }
+    return pass();
+  }
   if (id === "outputs_empty_inventory") {
     requireIssue(validateOutputClaimInventory([]), "E-OUTPUT-CLAIM");
     return pass("negative");
@@ -2168,6 +2257,27 @@ function testStatusCase(
       targets: before,
     }).issues, "E-OUTPUT-SLOT");
     return pass("negative");
+  }
+  if (id === "status_projector_after_matrix_handoff") {
+    const roadmapPath = asRepoPath("cddl-matrix/ROADMAP.md");
+    const ownedTargets = new Map(
+      [...statusTargets(fixtureBundle, "before")].filter(([path]) => path !== roadmapPath),
+    );
+    const spy = targetReadSpy(ownedTargets);
+    let resolutions = 0;
+    const plan = planLegacyStatusHeaderRun(
+      inputs,
+      { mode: "write", argv: ["--write"], targets: spy.targets },
+      { claimResolved: () => { resolutions++; } },
+      "matrix_authoritative",
+    );
+    if (
+      plan.exit_code !== 0 || plan.stderr.byteLength !== 0 || plan.writes.length !== 2 ||
+      resolutions !== 8 || spy.reads.size !== 2 || [...spy.reads.values()].some((count) => count !== 1) ||
+      plan.writes.some((write) => write.path === roadmapPath) ||
+      new TextDecoder().decode(plan.stdout) !== "status-headers: wrote 8 generated span(s) across 2 file(s).\n"
+    ) fail("WP4M status writer retained a matrix ROADMAP read, claim, or write");
+    return pass();
   }
   fail(`${id} is not a status case`);
 }

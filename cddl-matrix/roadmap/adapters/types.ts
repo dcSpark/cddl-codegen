@@ -103,8 +103,11 @@ export interface ResolvedOutputClaim {
   payload_interval: ByteInterval;
 }
 
+export type ProductionOutputStage = "pre_cutover" | "matrix_authoritative" | "both_authoritative";
+
 export interface RegistryView {
   readonly revision: RepositoryRevision;
+  readonly production_output_stage: ProductionOutputStage;
   readonly gates: readonly GateFact[];
   readonly matrix_features: readonly MatrixFeatureFact[];
   readonly matrix_roles: readonly MatrixRoleFact[];

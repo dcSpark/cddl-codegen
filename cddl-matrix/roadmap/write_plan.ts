@@ -57,7 +57,7 @@ export function createProjectionWritePlan(request: ProjectionWriteRequest): Proj
   const authorityValid = request.output_authority !== undefined &&
     isProductionOutputAuthority(request.output_authority);
   if (!authorityValid) {
-    issues.push(issue(request, "E-OUTPUT-AUTHORITY", "output_claims.scope", "projection write requires authority from the fixed production output inventory"));
+    issues.push(issue(request, "E-OUTPUT-AUTHORITY", "output_claims.scope", "projection write requires authority from the campaign-selected production output inventory"));
   }
   if (request.write_coordinate !== "projection") {
     issues.push(issue(request, "E-OUTPUT-AUTHORITY", "write_coordinate", "projection writer cannot authorize another write coordinate"));

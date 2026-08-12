@@ -27,18 +27,20 @@ export function shadowRecordSourceTitle(
   namespace: RoadmapName,
 ): string | undefined {
   const heading = markdownHeadingTitle(source);
-  if (heading !== undefined || namespace !== "matrix") return heading;
+  if (heading !== undefined) return heading;
   const text = utf8(source);
   if (text === undefined) return undefined;
   const newline = text.indexOf("\n");
   const firstLine = text.slice(0, newline < 0 ? text.length : newline);
-  if (!firstLine.startsWith("- ")) return undefined;
 
-  const bold = /^- \*\*([\s\S]*?)\*\*/u.exec(text)?.[1];
+  // Both reviewed pickups use bold list-item titles: matrix uses top-level bullets, while the
+  // testing roadmap additionally uses ordered items for its ranked work list.
+  const bold = /^(?:- |[1-9][0-9]*\. )\*\*([\s\S]*?)\*\*/u.exec(text)?.[1];
   if (bold !== undefined) {
     const title = bold.replace(/\n\s*/gu, " ");
     return title.length === 0 ? undefined : title;
   }
+  if (namespace !== "matrix" || !firstLine.startsWith("- ")) return undefined;
   if (firstLine.startsWith("- Float-family")) return "Float-family table key domains";
   if (firstLine.startsWith("- Bytes/nint/float")) return "Bytes, nint, and float fixed map keys";
   if (firstLine.startsWith("- `.size`")) return "Signed int .size close-out";

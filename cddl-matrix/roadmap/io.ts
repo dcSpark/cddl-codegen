@@ -19,13 +19,14 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import type { RegistryView } from "./adapters/types.ts";
+import { decodeCampaignSource } from "./decode/campaign.ts";
 import {
   classifyRoadmapIoError,
   RoadmapFailure,
   type IssueCode,
   type RoadmapIssue,
 } from "./errors.ts";
-import { LEGACY_STATUS_OUTPUT_CLAIMS } from "./output_registry.ts";
+import { productionOutputInventory, productionOutputStage } from "./output_registry.ts";
 import type {
   FixtureRelativePath,
   FullCommitId,
@@ -872,6 +873,11 @@ function headingFacts(inputs: readonly TrackedTextInput[]): HeadingFactResult {
 function buildRegistryView(root: string, revision: RepositoryRevision): RegistryView {
   const tracked = readAllTracked(root, revision);
   const byPath = new Map(tracked.flatMap((input) => input.bytes === undefined ? [] : [[input.source, input.bytes] as const]));
+  const campaignBytes = byPath.get("roadmap-campaign.toml" as RepoPath);
+  const campaign = campaignBytes === undefined
+    ? undefined
+    : decodeCampaignSource(campaignBytes, "roadmap-campaign.toml", true);
+  const outputInventory = productionOutputInventory(productionOutputStage(campaign));
   // Projection files are supplied later from the lifecycle stage-selected immutable view. Every
   // other tracked regular, non-draft path participates regardless of extension or corpus role.
   const citationInputs = tracked.filter((input) => !PROJECTION_PATHS.has(input.source));
@@ -895,6 +901,7 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
       .sort((left, right) => codePointSort(left.id, right.id)));
   return Object.freeze({
     revision,
+    production_output_stage: outputInventory.stage,
     gates: Object.freeze(status.registry.gates.map((gate) => ({ id: gate.id, kind: gate.kind, stub: gate.kind === "stub" }))),
     matrix_features: ids(matrix.features),
     matrix_roles: ids(matrix.roles),
@@ -903,7 +910,7 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
     test_symbols: testSymbols.facts,
     roadmap_citations: citations.facts,
     current_guards: Object.freeze([]),
-    output_claims: Object.freeze([...LEGACY_STATUS_OUTPUT_CLAIMS].sort((left, right) =>
+    output_claims: Object.freeze([...outputInventory.claims].sort((left, right) =>
       codePointSort(left.path, right.path) || codePointSort(left.producer, right.producer) ||
       codePointSort(left.kind === "slot" ? left.slot_id : "", right.kind === "slot" ? right.slot_id : "")
     )),

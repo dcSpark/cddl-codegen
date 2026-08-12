@@ -19,6 +19,7 @@ import { markdownHeadingTitle, shadowRecordSourceTitle } from "./shadow_title.ts
 
 const codePointSort = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
+const UTF8 = new TextEncoder();
 
 export type GlobalOwnerKind =
   | "first_class"
@@ -127,6 +128,68 @@ function stableValueKey(value: unknown): string {
     ).join(",")}}`;
   }
   return `${typeof value}:${JSON.stringify(value)}`;
+}
+
+/**
+ * Mutation signature for large, shared evidence graphs. Unlike stableValueKey(), this keeps only
+ * fixed-size child digests and hashes an object once per traversal, so 137 shadow records that all
+ * reference one document/Markdown snapshot remain linear in the unique input bytes.
+ */
+interface StableValueDigestStats {
+  binary_inputs: number;
+}
+
+function stableValueDigestInner(
+  value: unknown,
+  memo: WeakMap<object, string>,
+  stats: StableValueDigestStats,
+): string {
+  const digestParts = (kind: string, parts: readonly (string | Uint8Array)[]): string => {
+    const hasher = new Bun.CryptoHasher("sha256").update(`${kind}:${parts.length}:`);
+    for (const part of parts) {
+      const length = typeof part === "string" ? UTF8.encode(part).byteLength : part.byteLength;
+      hasher.update(`${length}:`).update(part);
+    }
+    return hasher.digest("hex");
+  };
+  if (value === null || typeof value !== "object") {
+    return digestParts(typeof value, [`${JSON.stringify(value)}`]);
+  }
+  const cached = memo.get(value);
+  if (cached !== undefined) return cached;
+  let digest: string;
+  if (isImmutableByteView(value)) {
+    stats.binary_inputs += 1;
+    digest = digestParts("byte-view", [`${value.byte_length}`, value.wholeSha256()]);
+  } else if (value instanceof Uint8Array) {
+    stats.binary_inputs += 1;
+    digest = digestParts("bytes", [value]);
+  } else if (Array.isArray(value)) {
+    digest = digestParts("array", value.map((entry) => stableValueDigestInner(entry, memo, stats)));
+  } else {
+    digest = digestParts("object", Object.keys(value).sort(codePointSort).flatMap((key) => [
+      key,
+      stableValueDigestInner((value as Record<string, unknown>)[key], memo, stats),
+    ]));
+  }
+  memo.set(value, digest);
+  return digest;
+}
+
+function stableValueDigest(value: unknown): string {
+  return stableValueDigestInner(value, new WeakMap(), { binary_inputs: 0 });
+}
+
+/** Focused inspection seam for the evidence-digest self-test; not re-exported by the service API. */
+export function inspectStableEvidenceDigest(value: unknown): {
+  readonly digest: string;
+  readonly unique_binary_inputs: number;
+} {
+  const stats = { binary_inputs: 0 };
+  return Object.freeze({
+    digest: stableValueDigestInner(value, new WeakMap(), stats),
+    unique_binary_inputs: stats.binary_inputs,
+  });
 }
 
 export function identityOwnerClaimKey(claim: GlobalOwnerClaim): readonly (string | number)[] {
@@ -350,7 +413,7 @@ export function validateCampaignIdentityOwnerEvidence(
   }) as CampaignIdentityOwnerCapability;
   campaignIdentityOwnerCapabilities.set(capability, {
     evidence: Object.freeze(evidence.slice()),
-    evidence_signature: stableValueKey(evidence),
+    evidence_signature: stableValueDigest(evidence),
     owner_signature: ownerSignature(derived.owners),
   });
   return Object.freeze({
@@ -368,7 +431,7 @@ function ownersFromCampaignCapability(
   if (stored === undefined) return undefined;
   const derived = deriveCampaignIdentityOwners(stored.evidence);
   return derived.issues.length === 0 && capability.owner_count === derived.owners.length &&
-      stored.evidence_signature === stableValueKey(stored.evidence) &&
+      stored.evidence_signature === stableValueDigest(stored.evidence) &&
       stored.owner_signature === ownerSignature(derived.owners)
     ? derived.owners
     : undefined;

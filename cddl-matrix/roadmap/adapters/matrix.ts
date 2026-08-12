@@ -6,6 +6,7 @@ import type {
   Reference,
   RoadmapDocument,
   RoadmapDocumentV0,
+  RoadmapDocumentV1,
   SemanticPayload,
   SemanticRecord,
 } from "../model/documents.ts";
@@ -293,6 +294,59 @@ function isExactLiveMatrixV0Shape(doc: RoadmapDocument): boolean {
   return issues.length === 0;
 }
 
+function isExactLiveMatrixV1CutoverShape(doc: RoadmapDocument): boolean {
+  if (doc.document.schema_version !== 1) return false;
+  const authorityDoc = doc as RoadmapDocumentV1;
+  if (
+    authorityDoc.document.source_path !== MATRIX_SOURCE_PATH ||
+    authorityDoc.document.projection_path !== MATRIX_PROJECTION_PATH ||
+    authorityDoc.relations.length !== 0 || authorityDoc.references.length !== 0 ||
+    authorityDoc.sections.some((owner) => owner.render_authority !== "raw") ||
+    authorityDoc.fragments.some((owner) => owner.render_authority !== "raw") ||
+    authorityDoc.legacy_markers.some((owner) => owner.render_authority !== "raw") ||
+    authorityDoc.records.some((owner) => owner.render_authority !== "raw") ||
+    authorityDoc.parts.some((owner) => owner.render_authority !== "raw")
+  ) return false;
+  const frozen = authorityDoc.spans.filter((span) => span.migration_status === "raw").map((span) => span.id).sort();
+  if (JSON.stringify(authorityDoc.document.frozen_legacy_span_ids) !== JSON.stringify(frozen)) return false;
+  const shadow: RoadmapDocumentV0 = {
+    document: {
+      ...authorityDoc.document,
+      schema_version: 0,
+      authority: "shadow",
+    },
+    sections: authorityDoc.sections.map((owner) => {
+      if (owner.render_authority !== "raw") throw new Error("internal: non-raw cutover section");
+      const { render_authority: _authority, ...raw } = owner;
+      return raw;
+    }),
+    fragments: authorityDoc.fragments.map((owner) => {
+      if (owner.render_authority !== "raw") throw new Error("internal: non-raw cutover fragment");
+      const { render_authority: _authority, ...raw } = owner;
+      return raw;
+    }),
+    legacy_markers: authorityDoc.legacy_markers.map((owner) => {
+      if (owner.render_authority !== "raw") throw new Error("internal: non-raw cutover marker");
+      const { render_authority: _authority, ...raw } = owner;
+      return raw;
+    }),
+    records: authorityDoc.records.map((owner) => {
+      if (owner.render_authority !== "raw") throw new Error("internal: non-raw cutover record");
+      const { render_authority: _authority, semantic_shadow: _shadow, ...raw } = owner;
+      return raw;
+    }),
+    parts: authorityDoc.parts.map((owner) => {
+      if (owner.render_authority !== "raw") throw new Error("internal: non-raw cutover part");
+      const { render_authority: _authority, ...raw } = owner;
+      return raw;
+    }),
+    generated_slots: authorityDoc.generated_slots,
+    manifest: authorityDoc.manifest,
+    spans: authorityDoc.spans,
+  };
+  return isExactLiveMatrixV0Shape(shadow);
+}
+
 function payloadAt(indexes: Indexes, id: RoadmapId): SemanticPayload | undefined {
   if ("payload_records" in indexes) {
     return (indexes as Indexes & Pick<RoadmapIndexes, "payload_records">).payload_records.get(id)?.payload;
@@ -501,16 +555,15 @@ function matrixSlotResolvers(
   if (facts.validation_problems.length > 0) {
     throw new Error(`matrix status inputs fail anti-vacuity: ${facts.validation_problems.join("; ")}`);
   }
-  const inlineProductionSlots = document.document.source_path === MATRIX_SOURCE_PATH &&
-    document.document.projection_path === MATRIX_PROJECTION_PATH &&
-    isExactLiveMatrixV0Shape(document);
+  const inlineProductionSlots = isExactLiveMatrixV0Shape(document) ||
+    isExactLiveMatrixV1CutoverShape(document);
   const payloads = new Map<string, Uint8Array>(
     renderMatrixStatusPayloads(facts)
       .filter((payload) => payload.path === MATRIX_PROJECTION_PATH)
       .map((payload) => {
         if (inlineProductionSlots) {
-          // The live roadmap slots own only inline marker interiors. Surrounding layout remains
-          // in their adjacent raw fragments, exactly as it does for the legacy status writer.
+          // The live roadmap slots own only inline marker interiors in the exact v0 shadow and the
+          // exact reviewed v1 cutover shape. Surrounding layout remains in adjacent raw owners.
           return [`status_header_markers:${payload.slot_id}`, payload.bytes] as const;
         }
         // WP1 compatibility fixtures model a slot as a complete standalone projection line.

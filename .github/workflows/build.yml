@@ -13,6 +13,8 @@ on:
     paths:
       - '.github/workflows/build.yml'
       - "check.ts"
+      - "roadmap-campaign.toml"
+      - "roadmap-retired-ids.toml"
       - "**/Cargo.*"
       - "rust-toolchain.toml"
       - "src/**"
@@ -37,6 +39,8 @@ on:
     paths:
       - '.github/workflows/build.yml'
       - "check.ts"
+      - "roadmap-campaign.toml"
+      - "roadmap-retired-ids.toml"
       - "**/Cargo.*"
       - "rust-toolchain.toml"
       - "src/**"
