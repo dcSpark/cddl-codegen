@@ -506,7 +506,9 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.array-element.type2.value.bare_exactly_once", "contain.array-element.value.number",
     "contain.array-element.value.number.float",
     "contain.array-element.value.number.nint", "contain.array-element.value.text",
-    "contain.choice-member.prelude.null", "contain.choice-member.prelude.true.same_major_brute",
+    "contain.choice-member.prelude.null", "contain.choice-member.prelude.null.fixed-kind",
+    "contain.choice-member.prelude.true.fixed-kind", "contain.choice-member.prelude.true.same_major_brute",
+    "contain.choice-member.type2.value.text.fixed-kind", "contain.choice-member.type2.value.uint.fixed-kind",
     "contain.choice-member.type2.value.fixed_null",
     "contain.group-choice-arm.memberkey.bareword.map",
     "contain.group-choice-arm.memberkey.bareword.record_map",
@@ -545,13 +547,14 @@ function vacuityProblems(rs: Directional[]): string[] {
   // direction): a NEW supported enforcement-bearing row landing vectorless would otherwise slide
   // into `unverified` with no gate noticing — the variation-row lesson (ROADMAP § Expansion) is that an unenumerated/unvectored
   // constraint is an enforcement blind spot, so growing this set must be a conscious pin edit.
-  // The three fixed-byte rows are temporarily vectorless because the pinned rust-cddl validator
+  // The four fixed-byte rows are temporarily vectorless because the pinned rust-cddl validator
   // panics on both valid and invalid instances before it can corroborate the spec verdict. Generated
   // execution separately pins exact byte equality and reason-bearing rejection; when the upstream
   // validator repair ships, re-mint both accept and constraint vectors and move these ids into the
   // green set above (cddl-matrix/README.md upstream gap #17).
   const EXPECTED_ENFORCE_UNVERIFIED: string[] = [
     "contain.array-element.value.bytes",
+    "contain.choice-member.type2.value.bytes.fixed-kind",
     "contain.map-value.value.bytes",
     "value.bytes",
   ];

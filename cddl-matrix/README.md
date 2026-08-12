@@ -188,7 +188,7 @@ excluded-endpoint number, NaN against a float window — each a valid instance o
 certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
 REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
 replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is
-<!-- gen:sh:readme-enforce-green -->89 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+<!-- gen:sh:readme-enforce-green -->93 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
 the guard that replaced the silent truncation this row's vector exposed; pinned by the
@@ -220,7 +220,7 @@ tag-11 arm vector is rejected by Ruby but accepted by the pinned rust oracle; it
 exemption and reversible RFC 8610 §3.6 argument are in
 `upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md`. Upstream rust-oracle
 gaps shape what "certified" means per family
-(`query_q4_directional.ts --check` pins the exact green set and the three-row fixed-byte unverified
+(`query_q4_directional.ts --check` pins the exact green set and the four-row fixed-byte unverified
 set, as well as the empty over-acceptance set, so
 a decay fails loudly rather than
 silently dropping enforcement evidence): the numeric ops' probe examples target `int` with literal,
@@ -536,8 +536,9 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     parser and compiler accept fixed-byte specifications such as `magic = h'CAFE'` and
     `a = [v: h'0102', x: uint]`, but `cddl --ci validate` exits 101 at
     `src/validator/cbor.rs:4840` for their spec-valid byte-string instances. Ruby cddl 0.12.14
-    accepts the same instances. The three matrix rows (`value.bytes`,
-    `contain.array-element.value.bytes`, and `contain.map-value.value.bytes`) consequently keep
+    accepts the same instances. The four matrix rows (`value.bytes`,
+    `contain.array-element.value.bytes`, `contain.map-value.value.bytes`, and
+    `contain.choice-member.type2.value.bytes.fixed-kind`) consequently keep
     pinned, vectorless decode-foreign rows; this removes independent decode corroboration and leaves
     their fixed-equality enforcement `unverified` in Q4 until reject vectors can be independently
     certified. Generated execution separately establishes their supported status and exact

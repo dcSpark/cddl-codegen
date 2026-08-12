@@ -1130,44 +1130,47 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "184c"
+hex = "1902fb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190399"
+hex = "190b7f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190511"
+hex = "190c4a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190765"
+hex = "190e60"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190a75"
+hex = "1910e6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190aa9"
+hex = "19113c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "686a756e6b65742773"
+hex = "6963686963616e657279"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "6c756e64657273656c6c696e67"
-source = "ruby-generate"
-expect = "accept"
+hex = "f4"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "false has the same CBOR special major as the fixed null arm, but is neither null nor either catch-all sibling (text or uint) in `t = null / tstr / uint`"
+expect_err = "Expected null, found other type"
 
 [[row.vector]]
 hex = "f6"
@@ -1183,49 +1186,37 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "66416c6f6e7a6f"
+hex = "644f6c6176"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "666c696e742773"
+hex = "6670726f642773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "6967696d6c6574696e67"
+hex = "676f637461676f6e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "69736879737465722773"
+hex = "6776657370657273"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "6a63726f74636865742773"
+hex = "6863616c6c6f776572"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "6a67697665617761792773"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "6a7472616e736c61746573"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "6b756e656d6f74696f6e616c"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "6d6e7574726974696f6e616c6c79"
-source = "ruby-generate"
-expect = "accept"
+hex = "f4"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "false has the same CBOR special major as the fixed true arm, but matches neither that selector nor the text sibling in `t = true / tstr`"
+expect_err = "Expected fixed value true found false"
 
 [[row.vector]]
 hex = "f5"
@@ -1590,27 +1581,27 @@ mode = "standalone"
 type_name = "T"
 
 [[row.vector]]
-hex = "1904e8"
+hex = "190542"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190695"
+hex = "190878"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "1906fe"
+hex = "190bbd"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190e71"
+hex = "190d4c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "190ecc"
+hex = "19113c"
 source = "ruby-generate"
 expect = "accept"
 
@@ -1618,6 +1609,14 @@ expect = "accept"
 hex = "6178"
 source = "ruby-generate"
 expect = "accept"
+
+[[row.vector]]
+hex = "6179"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "text `y` has the same CBOR text major as the fixed `x` arm, but matches neither that selector nor the uint sibling in `t = \"x\" / uint`"
+expect_err = "Expected fixed value \"x\" found \"y\""
 
 [[row]]
 id = "contain.choice-member.type2.value.uint.fixed-kind"
@@ -1633,32 +1632,35 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "684b656c7365792773"
+hex = "06"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "uint 6 has the same CBOR uint major as the fixed 5 arm, but matches neither that selector nor the text sibling in `t = 5 / tstr`"
+expect_err = "Expected fixed value 5 found 6"
+
+[[row.vector]]
+hex = "66626961736573"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "684d6f6e7463616c6d"
+hex = "674672616e6b2773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "696d6964646c656d616e"
+hex = "69616e6f64796e652773"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "696f766572636f617473"
+hex = "6a7574746572616e636573"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "6a70726f70656c6c657273"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "6f696e636f6e76656e69656e63696e67"
+hex = "6c61646d696e69737465726564"
 source = "ruby-generate"
 expect = "accept"
 

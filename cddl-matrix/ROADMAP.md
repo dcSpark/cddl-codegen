@@ -26,16 +26,16 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->1 divergences, all `preserve`-side<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->111 `class="constraint"` enforcement reject vectors over 89 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
-axis carries three temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->115 `class="constraint"` enforcement reject vectors over 93 enforce-green rows<!-- /gen:sh:roadmap-constraint --> — the enforcement
+axis carries four temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
 every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
-the pinned rust-cddl validator panic prevents the two fixed-byte member rows and their top-level
+the pinned rust-cddl validator panic prevents all three fixed-byte member rows plus the top-level
 feature row from gaining independently certified reject vectors until upstream gap #17 closes.
 For homogeneous tables, `*` is loose, `+`/`1*` is non-empty, and every other occurrence window
 (including omitted exact-once) is checked: unique keys use `BoundedMap`, while duplicate-preserving
 tables use entry-ordered `BoundedPairMap`. Only bounded rows in open-table/open-struct contexts remain
 rejected.
-The green, three-row unverified, and over-accepts (empty) sets are
+The green, four-row unverified, and over-accepts (empty) sets are
 each pinned exactly by `query_q4_directional.ts --check` (the over-acceptance vector class stays armed
 for the next certified instance).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
@@ -774,13 +774,12 @@ fixed-value surfaces; it is independent of the CBOR validator repair below.
 
 ### When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17)
 
-First confirm that
-  `h'CAFE'` and raw UTF-8 fixed-byte rules validate without a panic, then remove the three pinned
+Confirm `h'CAFE'` and raw UTF-8 fixed-byte rules validate without a panic, then remove the four pinned
   decode-foreign rows and re-mint them with
-  `bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes`.
-  Re-run the full verify pass so their evidence gains normal two-oracle corroboration, and mint
-  reason-bearing constraint rejects so all three rows move from Q4's unverified set to enforce-green.
-  Then prune README gap #17. This closes an
+  `bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes,contain.choice-member.type2.value.bytes.fixed-kind`.
+  Rerun full verify for normal two-oracle evidence, and mint
+  reason-bearing constraint rejects so all four rows move from Q4's unverified set to enforce-green.
+  Now prune README gap #17. This closes an
   independent-certification gap only; do not demote the execution-gated support rows while the external release is
   being evaluated. Also verify that upstream `B16ByteString` display no longer treats decoded bytes
   as UTF-8; re-run the fixed-member and recombination regressions before simplifying the generator's

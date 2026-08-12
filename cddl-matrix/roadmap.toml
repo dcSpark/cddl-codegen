@@ -4,9 +4,9 @@ authority = "authoritative"
 roadmap = "matrix"
 source_path = "cddl-matrix/roadmap.toml"
 projection_path = "cddl-matrix/ROADMAP.md"
-frozen_source_sha256 = "eef6a05153a042e8ce10c30503af94740f572a5e51575e24e92c6570454dcbd4"
-frozen_source_byte_length = 83655
-frozen_source_line_count = 985
+frozen_source_sha256 = "0f82fde27a06de8be795ef15f611ae74901771af876bfb65d856de0ef273f8df"
+frozen_source_byte_length = 83654
+frozen_source_line_count = 984
 frozen_source_eof = "lf"
 projection_layout = "curated_v1"
 
@@ -298,15 +298,15 @@ title = "Document preamble after generated facts"
 render_authority = "semantic"
 lifecycle_disposition = "document_prose"
 body_md = """<!-- /gen:sh:roadmap-constraint --> — the enforcement
-axis carries three temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
+axis carries four temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
 every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
-the pinned rust-cddl validator panic prevents the two fixed-byte member rows and their top-level
+the pinned rust-cddl validator panic prevents all three fixed-byte member rows plus the top-level
 feature row from gaining independently certified reject vectors until upstream gap #17 closes.
 For homogeneous tables, `*` is loose, `+`/`1*` is non-empty, and every other occurrence window
 (including omitted exact-once) is checked: unique keys use `BoundedMap`, while duplicate-preserving
 tables use entry-ordered `BoundedPairMap`. Only bounded rows in open-table/open-struct contexts remain
 rejected.
-The green, three-row unverified, and over-accepts (empty) sets are
+The green, four-row unverified, and over-accepts (empty) sets are
 each pinned exactly by `query_q4_directional.ts --check` (the over-acceptance vector class stays armed
 for the next certified instance).
 Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
@@ -1291,13 +1291,12 @@ summary_md = """When a rust `cddl` release fixes fixed-byte CBOR validation (REA
 """
 detail_md = """### When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17)
 
-First confirm that
-  `h'CAFE'` and raw UTF-8 fixed-byte rules validate without a panic, then remove the three pinned
+Confirm `h'CAFE'` and raw UTF-8 fixed-byte rules validate without a panic, then remove the four pinned
   decode-foreign rows and re-mint them with
-  `bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes`.
-  Re-run the full verify pass so their evidence gains normal two-oracle corroboration, and mint
-  reason-bearing constraint rejects so all three rows move from Q4's unverified set to enforce-green.
-  Then prune README gap #17. This closes an
+  `bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes,contain.choice-member.type2.value.bytes.fixed-kind`.
+  Rerun full verify for normal two-oracle evidence, and mint
+  reason-bearing constraint rejects so all four rows move from Q4's unverified set to enforce-green.
+  Now prune README gap #17. This closes an
   independent-certification gap only; do not demote the execution-gated support rows while the external release is
   being evaluated. Also verify that upstream `B16ByteString` display no longer treats decoded bytes
   as UTF-8; re-run the fixed-member and recombination regressions before simplifying the generator's
@@ -2953,7 +2952,7 @@ transition_kind = "retirement_predicate"
 external_owner_reference_id = "ref-matrix-fixed-bytes-validator-corroboration-upstream"
 external_predicate_md = """A published release validates h'CAFE' and raw UTF-8 fixed-byte rules without panic and renders arbitrary B16ByteString bytes without a UTF-8 assumption.
 """
-verification_md = """Run bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes; require normal two-oracle and constraint evidence; run fixed-member and recombination regressions before pruning gap 17 or simplifying diagnostics.
+verification_md = """Run bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes,contain.choice-member.type2.value.bytes.fixed-kind; require normal two-oracle and constraint evidence; run fixed-member and recombination regressions before pruning gap 17 or simplifying diagnostics.
 """
 due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 """
@@ -5805,7 +5804,7 @@ migration_status = "replaced"
 id = "slot-constraint"
 start_byte = 2685
 end_byte = 2763
-sha256 = "d90fb14d9c849dc14580f3eb966670a2e45c0800a3825b227105caed95503393"
+sha256 = "479bfe1507b84a4b19508b78ad50233c11964370206cb5b334a26fdfc535802e"
 source_kind = "generated_slot"
 owner_id = "constraint"
 owner_field = "generated"
@@ -5814,8 +5813,8 @@ migration_status = "generated"
 [[source_span]]
 id = "fragment-document-tail"
 start_byte = 2763
-end_byte = 4973
-sha256 = "d5e8cddd3fc0259cc99868dbb80d49743f7954d987b8215b6e0c758eac228d2d"
+end_byte = 4972
+sha256 = "5c3445c2e1b85b515d36be22a723989bd83de8106464728f7b73e3932afafaa2"
 source_kind = "fragment"
 owner_id = "document-tail"
 owner_field = "body_md"
@@ -5823,8 +5822,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-matrix-side-work"
-start_byte = 4973
-end_byte = 5404
+start_byte = 4972
+end_byte = 5403
 sha256 = "d4166662c7dc54d583600a4268859e59175f19c93ccd7adfb1e2344af6a3e6b2"
 source_kind = "section"
 owner_id = "matrix-side-work"
@@ -5833,8 +5832,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-named-group-reference-grid"
-start_byte = 5404
-end_byte = 13351
+start_byte = 5403
+end_byte = 13350
 sha256 = "7acd81f7665d86a79fa516d91d1a8ac82dc09d5e1996be185ded17d4898d8a7e"
 source_kind = "record"
 owner_id = "matrix.named-group-reference-grid"
@@ -5843,8 +5842,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-grammar-derived-legality"
-start_byte = 13351
-end_byte = 14531
+start_byte = 13350
+end_byte = 14530
 sha256 = "d53cad4f906852b6fa5019aa13c218c9b04f050aa005153b5002b66f4a00bca8"
 source_kind = "record"
 owner_id = "matrix.grammar-derived-legality"
@@ -5853,8 +5852,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-per-value-encoding-reachability"
-start_byte = 14531
-end_byte = 15869
+start_byte = 14530
+end_byte = 15868
 sha256 = "3fb7cfce420a25c8525050875aeacb7f3195b6761613df05abc24f6c386c91c9"
 source_kind = "record"
 owner_id = "matrix.per-value-encoding-reachability"
@@ -5863,8 +5862,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-emission-narrowing-fixture-floor"
-start_byte = 15869
-end_byte = 17158
+start_byte = 15868
+end_byte = 17157
 sha256 = "762641ea4b525b8894e5b6f54850551a5a9d31b4a52f3d691526cf49fbf467bf"
 source_kind = "record"
 owner_id = "matrix.emission-narrowing-fixture-floor"
@@ -5873,8 +5872,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-tag-registry-boundary"
-start_byte = 17158
-end_byte = 17829
+start_byte = 17157
+end_byte = 17828
 sha256 = "c63f42ea7d1449c9eeb4157fc4f986591dfed5e9199bb1a606a382f5c6c72052"
 source_kind = "record"
 owner_id = "matrix.tag-registry-boundary"
@@ -5883,8 +5882,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-expansion"
-start_byte = 17829
-end_byte = 17859
+start_byte = 17828
+end_byte = 17858
 sha256 = "e0bada7d20f97cd000afa22c21074c75f5d5b7a32015d4a506a085610f807d03"
 source_kind = "section"
 owner_id = "expansion"
@@ -5893,8 +5892,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-profile-version-scope"
-start_byte = 17859
-end_byte = 18668
+start_byte = 17858
+end_byte = 18667
 sha256 = "003a6a5b00ca3483048c035640b1c9c8eb3be83fbe950638908ad0118284a744"
 source_kind = "record"
 owner_id = "matrix.profile-version-scope"
@@ -5903,8 +5902,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-additional-tool-annotations"
-start_byte = 18668
-end_byte = 18794
+start_byte = 18667
+end_byte = 18793
 sha256 = "d8d9563f876538f7fe655360b70598c40de459c3fc76d3ab4934d0ab0b87b0d9"
 source_kind = "record"
 owner_id = "matrix.additional-tool-annotations"
@@ -5913,8 +5912,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-intra-alternative-variations"
-start_byte = 18794
-end_byte = 21607
+start_byte = 18793
+end_byte = 21606
 sha256 = "987aabd6fe6a3da8731711bf3e0009b03f974b499532e992bb92966c4f2c9908"
 source_kind = "record"
 owner_id = "matrix.intra-alternative-variations"
@@ -5923,8 +5922,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-control-host-placement-space"
-start_byte = 21607
-end_byte = 23802
+start_byte = 21606
+end_byte = 23801
 sha256 = "09f7b9c90ac0fecfd100b898e5ada7f95b8fce5a7829654638aee3751a7d210d"
 source_kind = "record"
 owner_id = "matrix.control-host-placement-space"
@@ -5933,8 +5932,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-refusal-spelling-space"
-start_byte = 23802
-end_byte = 25605
+start_byte = 23801
+end_byte = 25604
 sha256 = "9eb7afc27a3b86b4fa37f64269cf2851c69db861f22b254bfe5ac4442ce5efe4"
 source_kind = "record"
 owner_id = "matrix.refusal-spelling-space"
@@ -5943,8 +5942,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-findings-open"
-start_byte = 25605
-end_byte = 27768
+start_byte = 25604
+end_byte = 27767
 sha256 = "df8a02b6ae0614a1574b41850349edca2753e130e7fa7f1631ede49888498f7d"
 source_kind = "section"
 owner_id = "findings-open"
@@ -5953,8 +5952,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-multi-choice-group-rule"
-start_byte = 27768
-end_byte = 29782
+start_byte = 27767
+end_byte = 29781
 sha256 = "2448efe2f1c26226c6fbbfaea45c6fbfd248cbc6238f2fbf051407edea52f28a"
 source_kind = "record"
 owner_id = "matrix.multi-choice-group-rule"
@@ -5963,8 +5962,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-derived-variant-naming"
-start_byte = 29782
-end_byte = 32025
+start_byte = 29781
+end_byte = 32024
 sha256 = "20578c4d6bd3f6b340f8a5ba0bccc424919c7db64630021361cc140509b88710"
 source_kind = "record"
 owner_id = "matrix.derived-variant-naming"
@@ -5973,8 +5972,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-nominal-custom-pair-wrapper"
-start_byte = 32025
-end_byte = 33624
+start_byte = 32024
+end_byte = 33623
 sha256 = "2d4a37c1f2433ccb358b3c33035eba1dc7639114b191e4670d06ed96c7c2d1e5"
 source_kind = "record"
 owner_id = "matrix.nominal-custom-pair-wrapper"
@@ -5983,8 +5982,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-duplicate-rejection-diagnostics"
-start_byte = 33624
-end_byte = 35657
+start_byte = 33623
+end_byte = 35656
 sha256 = "4b86d63098fba9a99326b3ab8f6ffe6e0e91cf76cf54d9acb59619d856f04bde"
 source_kind = "record"
 owner_id = "matrix.duplicate-rejection-diagnostics"
@@ -5993,8 +5992,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-incremental-group-choice-extension"
-start_byte = 35657
-end_byte = 36889
+start_byte = 35656
+end_byte = 36888
 sha256 = "a9878400eb0cea9da1f3c893846fecbf12d12c285c423090525338cc11e9eae0"
 source_kind = "record"
 owner_id = "matrix.incremental-group-choice-extension"
@@ -6003,8 +6002,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-heterogeneous-array-occurrence-bounds"
-start_byte = 36889
-end_byte = 38100
+start_byte = 36888
+end_byte = 38099
 sha256 = "39849ed617cdbd32e67ccc4a928462dc843e991ac67998ff8d1f13be884e11fa"
 source_kind = "record"
 owner_id = "matrix.heterogeneous-array.occurrence-bounds"
@@ -6013,8 +6012,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-open-array-optional-adjacency"
-start_byte = 38100
-end_byte = 39036
+start_byte = 38099
+end_byte = 39035
 sha256 = "639458e89864e0ee8135ebc5a1524deb7e6a5c198cd3160de2dbaf5026899cc3"
 source_kind = "record"
 owner_id = "matrix.open-array.optional-adjacency"
@@ -6023,8 +6022,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-open-table-bounded-rest-rows"
-start_byte = 39036
-end_byte = 39588
+start_byte = 39035
+end_byte = 39587
 sha256 = "e559c31dfb12e975f885361f7cc1caf9a6109e8a3fe55ea378f4e9a73c394627"
 source_kind = "record"
 owner_id = "matrix.open-table.bounded-rest-rows"
@@ -6033,8 +6032,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-open-table-min-one-hardening"
-start_byte = 39588
-end_byte = 40587
+start_byte = 39587
+end_byte = 40586
 sha256 = "ffffbdf16e5f91f0125043e3a6c1304b8fac97ff2d0db52973cbc3119c40b11e"
 source_kind = "record"
 owner_id = "matrix.open-table.min-one-hardening"
@@ -6043,8 +6042,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-atomic-bounds-handover"
-start_byte = 40587
-end_byte = 40873
+start_byte = 40586
+end_byte = 40872
 sha256 = "672a008182443c5a58041e636fd98d27a11d11b04397639308f4e91c5c12e217"
 source_kind = "record"
 owner_id = "matrix.heterogeneous-array.atomic-bounds-handover"
@@ -6053,8 +6052,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-fixed-byte-representation"
-start_byte = 40873
-end_byte = 41149
+start_byte = 40872
+end_byte = 41148
 sha256 = "942342366b072327abf649a4b27074cf944e7987ebd22f3a70bafb79cc4cbabc"
 source_kind = "record"
 owner_id = "matrix.fixed-bytes.static-representation"
@@ -6063,8 +6062,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-array-static-representation"
-start_byte = 41149
-end_byte = 41632
+start_byte = 41148
+end_byte = 41631
 sha256 = "10d4b6b6c28b78b3e66f7f726d7fe6db498951614134310a662fdccf17afca7b"
 source_kind = "record"
 owner_id = "matrix.fixed-array.static-representation"
@@ -6073,8 +6072,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-shared-carrier-delivery-requirements"
-start_byte = 41632
-end_byte = 42082
+start_byte = 41631
+end_byte = 42081
 sha256 = "55defa8bb6a21bf9996748aa859afd9ee86dcf5f4dba451af5c4948de55d26c3"
 source_kind = "part"
 owner_id = "shared-carrier-delivery-requirements"
@@ -6083,8 +6082,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-keyed-struct-map-zero-permitting-fields"
-start_byte = 42082
-end_byte = 42960
+start_byte = 42081
+end_byte = 42959
 sha256 = "0afc8ea453c4789aa77722ec8ddc445d73147f3a5c90efd568631df5476eea0a"
 source_kind = "record"
 owner_id = "matrix.keyed-struct-map.zero-permitting-fields"
@@ -6093,8 +6092,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-inline-group-occurrence-carrier"
-start_byte = 42960
-end_byte = 44057
+start_byte = 42959
+end_byte = 44056
 sha256 = "1947b119555e5077af454c4503c87ddb6121502b2673ef1091872f84dde6870d"
 source_kind = "record"
 owner_id = "matrix.inline-group-occurrence-carrier"
@@ -6103,8 +6102,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-cbor-any-boundary"
-start_byte = 44057
-end_byte = 44440
+start_byte = 44056
+end_byte = 44439
 sha256 = "b866e2bd958f4aae9ea3f2ca2ac24bc5494e517059e15521c40029c3031924ba"
 source_kind = "record"
 owner_id = "matrix.cbor-any-boundary"
@@ -6113,8 +6112,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-anonymous-nested-map"
-start_byte = 44440
-end_byte = 45569
+start_byte = 44439
+end_byte = 45568
 sha256 = "4c68f3a5ed479f87cb2dbb7dec808a478d31de182ac82d20415e7664e1b8fb01"
 source_kind = "record"
 owner_id = "matrix.anonymous-nested-map"
@@ -6123,8 +6122,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-inline-group-choice-arm"
-start_byte = 45569
-end_byte = 46439
+start_byte = 45568
+end_byte = 46438
 sha256 = "540fb77a3548258598f7981d03744fc3829c2a228ded9009b9b3cbd3c76764ff"
 source_kind = "record"
 owner_id = "matrix.inline-group-choice-arm"
@@ -6133,8 +6132,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-float-table-key-domain"
-start_byte = 46439
-end_byte = 47508
+start_byte = 46438
+end_byte = 47507
 sha256 = "2b31fe1da5e3847bbf864829e0a37d198c130c49745edf0264ca4d93fad37aa1"
 source_kind = "record"
 owner_id = "matrix.float-table-key-domain"
@@ -6143,8 +6142,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-map-key-kinds"
-start_byte = 47508
-end_byte = 49061
+start_byte = 47507
+end_byte = 49060
 sha256 = "c3c1e82d1b703f83cbf0d8fca620529a32db4d26f3f1d80d842d7143f82657b9"
 source_kind = "record"
 owner_id = "matrix.fixed-map-key-kinds"
@@ -6153,8 +6152,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-nint-capability"
-start_byte = 49061
-end_byte = 50760
+start_byte = 49060
+end_byte = 50759
 sha256 = "98003f25889ca9bafe692cd996661138aebbd0ef30849089c8c8fa5d1beff3bb"
 source_kind = "record"
 owner_id = "matrix.nint-capability"
@@ -6163,8 +6162,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-wasm-extern-wrapper-demand"
-start_byte = 50760
-end_byte = 52483
+start_byte = 50759
+end_byte = 52482
 sha256 = "e45d8cb2ab268e3eb091423c3be675d5424185b18a3842c9a11f8ef10f6fbfe3"
 source_kind = "record"
 owner_id = "matrix.wasm-extern-wrapper-demand"
@@ -6173,8 +6172,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-extern-execution-multifile"
-start_byte = 52483
-end_byte = 53028
+start_byte = 52482
+end_byte = 53027
 sha256 = "7e7e4739d4257688425ccfa9c26656042a49fe5727896046e6f8d848ac812aaf"
 source_kind = "record"
 owner_id = "matrix.extern-execution-multifile"
@@ -6183,8 +6182,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-extern-execution"
-start_byte = 53028
-end_byte = 53424
+start_byte = 53027
+end_byte = 53423
 sha256 = "69ff3395188a6ac513e2e9aa65a6f0a719589d34d2804c2a10aaba1b27284bdc"
 source_kind = "part"
 owner_id = "extern-execution"
@@ -6193,8 +6192,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-multifile-extern-exclusion"
-start_byte = 53424
-end_byte = 54115
+start_byte = 53423
+end_byte = 54114
 sha256 = "8e2e1583f7ba1139054f79574aebe5f26dc0def6b8b26300aa2c143088d4fa47"
 source_kind = "record"
 owner_id = "matrix.multifile.extern-shape-coverage"
@@ -6203,8 +6202,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-upstream-closeouts"
-start_byte = 54115
-end_byte = 54637
+start_byte = 54114
+end_byte = 54636
 sha256 = "5361d6e914f624daf6da58ca49e659948ecf02587f423697dd3d67b71e5f4ad9"
 source_kind = "section"
 owner_id = "upstream-closeouts"
@@ -6213,8 +6212,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-prelude-number-float-upstream"
-start_byte = 54637
-end_byte = 55628
+start_byte = 54636
+end_byte = 55627
 sha256 = "2648c798c0459a0c0a8845d1bce0eaea8974af6fc755b746175c46053ee636ab"
 source_kind = "record"
 owner_id = "matrix.prelude-number-float-upstream"
@@ -6223,8 +6222,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-float-key-null-upstream"
-start_byte = 55628
-end_byte = 55851
+start_byte = 55627
+end_byte = 55850
 sha256 = "cf7192f403a91fac090b7131eab761654be08f26685cf2ee649d90573f8484f9"
 source_kind = "record"
 owner_id = "matrix.float-key-null-upstream"
@@ -6233,8 +6232,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-uint-control-operator-upstream"
-start_byte = 55851
-end_byte = 55988
+start_byte = 55850
+end_byte = 55987
 sha256 = "a5f0bf87f9b1f0479b74e15fecd4e44fc12bf78d528d5dc47e26afec912fbb51"
 source_kind = "record"
 owner_id = "matrix.uint-control-operator-upstream"
@@ -6243,8 +6242,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-array-sequence-upstream"
-start_byte = 55988
-end_byte = 56205
+start_byte = 55987
+end_byte = 56204
 sha256 = "023f6a2eea1c0a172f6c2b3aa6f36ceffc2dee8cbb158feec850ddb857699d2a"
 source_kind = "record"
 owner_id = "matrix.array-sequence-upstream"
@@ -6253,8 +6252,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-non-uint-range-upstream"
-start_byte = 56205
-end_byte = 56389
+start_byte = 56204
+end_byte = 56388
 sha256 = "d1fd66ad5e87a59e1580f9d72e339df064e0eaab29322093fa7d7d0e5f15efe7"
 source_kind = "record"
 owner_id = "matrix.non-uint-range-upstream"
@@ -6263,8 +6262,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-radix-literal-upstream"
-start_byte = 56389
-end_byte = 56958
+start_byte = 56388
+end_byte = 56957
 sha256 = "93d455448e7e7c9b9b5f67a243694ef4048c4e99d2c3df96406fe4ae4a517b79"
 source_kind = "record"
 owner_id = "matrix.radix-literal-upstream"
@@ -6273,8 +6272,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-signed-int-size-upstream"
-start_byte = 56958
-end_byte = 58006
+start_byte = 56957
+end_byte = 58005
 sha256 = "9b2fcea408e02de9d15f8f28a3a6043b9d767fa72c57615c8dca5b451360b0d3"
 source_kind = "record"
 owner_id = "matrix.signed-int-size-upstream"
@@ -6283,8 +6282,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-ruby-inline-controller-upstream"
-start_byte = 58006
-end_byte = 58782
+start_byte = 58005
+end_byte = 58781
 sha256 = "977e8f4e8466fdb6c5ba95a473d19ad57d3beddb6d4fe4809b1093dbbf1f0c7e"
 source_kind = "record"
 owner_id = "matrix.ruby-inline-controller-upstream"
@@ -6293,8 +6292,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-bignum-key-tag-upstream"
-start_byte = 58782
-end_byte = 59079
+start_byte = 58781
+end_byte = 59078
 sha256 = "ec2fc4abadc2f3932d5ebb23974f5e96be3871f9cedef9c44f9dbede708238c0"
 source_kind = "record"
 owner_id = "matrix.bignum-key-tag-upstream"
@@ -6303,8 +6302,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-undefined-validator-upstream"
-start_byte = 59079
-end_byte = 59964
+start_byte = 59078
+end_byte = 59963
 sha256 = "9d77556ae2e249dfa9a93c870b785ae685f5a113298d8652f620f61db5c775e6"
 source_kind = "record"
 owner_id = "matrix.undefined-validator-upstream"
@@ -6313,8 +6312,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-undefined-ciborium-upstream"
-start_byte = 59964
-end_byte = 60606
+start_byte = 59963
+end_byte = 60605
 sha256 = "781ea9bdb73a63be314c1611520272f21473c1f252060c6a372c4aa7cf985bf7"
 source_kind = "record"
 owner_id = "matrix.undefined-ciborium-upstream"
@@ -6323,8 +6322,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-bytes-lowercase-base64-parser"
-start_byte = 60606
-end_byte = 61364
+start_byte = 60605
+end_byte = 61363
 sha256 = "983a9b7d7a6036a47e839daf2351724aab45a58d29b8ff8bc5c711b176bc18d9"
 source_kind = "record"
 owner_id = "matrix.fixed-bytes.lowercase-base64-parser"
@@ -6333,9 +6332,9 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-bytes-validator-corroboration"
-start_byte = 61364
-end_byte = 62487
-sha256 = "34cd01a9540a8d3c9e6b59ad95d6d1e1044a4098de48dc70b5b294cf82289cc4"
+start_byte = 61363
+end_byte = 62486
+sha256 = "1f2bebaa80b0a42c193bcbb95b77e375b24d69a64a50ee1a9b7a3e740d8d36bb"
 source_kind = "record"
 owner_id = "matrix.fixed-bytes.validator-corroboration"
 owner_field = "payload.detail_md"
@@ -6343,8 +6342,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-tag-map-key-upstream"
-start_byte = 62487
-end_byte = 63136
+start_byte = 62486
+end_byte = 63135
 sha256 = "1f7d7077e777ce789f2a430cbbf5b7afd44d5888cbd384facaf0c30d7da0bdf0"
 source_kind = "record"
 owner_id = "matrix.tag-map-key-upstream"
@@ -6353,8 +6352,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-named-rule-map-key-upstream"
-start_byte = 63136
-end_byte = 64025
+start_byte = 63135
+end_byte = 64024
 sha256 = "0e854fad5c253e7768b8592fe856dd8d858da6cee65818bd47b9ce5a3966131e"
 source_kind = "record"
 owner_id = "matrix.named-rule-map-key-upstream"
@@ -6363,8 +6362,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-optional-closed-map-upstream"
-start_byte = 64025
-end_byte = 64617
+start_byte = 64024
+end_byte = 64616
 sha256 = "774f00f6f28ceef03c58d863f828e7f2a60505048677fbd69c1e4598fc47057e"
 source_kind = "record"
 owner_id = "matrix.optional-closed-map-upstream"
@@ -6373,8 +6372,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-float-prelude-name-upstream"
-start_byte = 64617
-end_byte = 65899
+start_byte = 64616
+end_byte = 65898
 sha256 = "52433e7bc8de265d86e47d033d4533fd32922fd870818ea0b2593046905a5ede"
 source_kind = "record"
 owner_id = "matrix.float-prelude-name-upstream"
@@ -6383,8 +6382,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-typed-tag-report-upstream"
-start_byte = 65899
-end_byte = 66764
+start_byte = 65898
+end_byte = 66763
 sha256 = "693aaf5c56252b287f0b599028606796dc2066fa06f4b502deae1b5a97f7332e"
 source_kind = "record"
 owner_id = "matrix.typed-tag-report-upstream"
@@ -6393,8 +6392,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-wasm-abi-multifile"
-start_byte = 66764
-end_byte = 67543
+start_byte = 66763
+end_byte = 67542
 sha256 = "e234b9652a695f4265ae7a6e9756f7450b663efcc484c898ec1dcb4cba3f9dcc"
 source_kind = "section"
 owner_id = "wasm-abi-multifile"
@@ -6403,8 +6402,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-root-reference-placement"
-start_byte = 67543
-end_byte = 68812
+start_byte = 67542
+end_byte = 68811
 sha256 = "d0161c7e317dc323c540730bd5b2f29896fafbd0864bfc36382f3c740d75d3be"
 source_kind = "record"
 owner_id = "matrix.root-reference-placement"
@@ -6413,8 +6412,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-periodic-coverage-honesty"
-start_byte = 68812
-end_byte = 69826
+start_byte = 68811
+end_byte = 69825
 sha256 = "138ac2836c12a785482f238049f46e2e396bca7aa8b8a4659e6c2c8a0ac8f849"
 source_kind = "record"
 owner_id = "matrix.periodic-coverage-honesty"
@@ -6423,8 +6422,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-fix-review-reach"
-start_byte = 69826
-end_byte = 70010
+start_byte = 69825
+end_byte = 70009
 sha256 = "d6ca52ff836551a22afc7c9304737a32597c0cf8fdac8b3e23f0ae42e16d231b"
 source_kind = "part"
 owner_id = "fix-review-reach"
@@ -6433,8 +6432,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-test-steering-comment"
-start_byte = 70010
-end_byte = 70245
+start_byte = 70009
+end_byte = 70244
 sha256 = "a8b99ca84d22dbbc4fd9088f783605bc8d6e53de7e5158de9783dfc58b4119ca"
 source_kind = "part"
 owner_id = "test-steering-comment"
@@ -6443,8 +6442,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-consumer-hand-patch"
-start_byte = 70245
-end_byte = 70642
+start_byte = 70244
+end_byte = 70641
 sha256 = "95ec09f3d651cddb7697f092fc16ca8cec5339609a99f3f339d49c54d564825a"
 source_kind = "part"
 owner_id = "consumer-hand-patch"
@@ -6453,8 +6452,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-exclusion-comment-audit"
-start_byte = 70642
-end_byte = 72085
+start_byte = 70641
+end_byte = 72084
 sha256 = "a3ee430bc280c71d08351e6a452b213369f0772a36e7359b0061399599716750"
 source_kind = "part"
 owner_id = "exclusion-comment-audit"
@@ -6463,8 +6462,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-emission-input-mode-honesty"
-start_byte = 72085
-end_byte = 73147
+start_byte = 72084
+end_byte = 73146
 sha256 = "26b8fe7e6c790963bfd48e0d3d6fe7a07ac92e0134dfb0d7ea1befdef4b798fa"
 source_kind = "record"
 owner_id = "matrix.emission-input-mode-honesty"
@@ -6473,8 +6472,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-emitted-conformance-directory"
-start_byte = 73147
-end_byte = 73428
+start_byte = 73146
+end_byte = 73427
 sha256 = "45c2e46e73b900fa8e0a262db593e3a9381e6644aa174fe881906d8613cdafdd"
 source_kind = "part"
 owner_id = "emitted-conformance-directory"
@@ -6483,8 +6482,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-wasm-macro-directory"
-start_byte = 73428
-end_byte = 73850
+start_byte = 73427
+end_byte = 73849
 sha256 = "2dd55afebade3f0a7852990fb89ed6ddfb9fa45115c43d7c953f8bfc56d89b4b"
 source_kind = "part"
 owner_id = "wasm-macro-directory"
@@ -6493,8 +6492,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-json-gen-cross-module-execution"
-start_byte = 73850
-end_byte = 75890
+start_byte = 73849
+end_byte = 75889
 sha256 = "454cabc136e4c9cda31d901b95264d5385b235733412bc8c79c14b2ea9ba846d"
 source_kind = "part"
 owner_id = "json-gen-cross-module-execution"
@@ -6503,8 +6502,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-explicit-boundaries"
-start_byte = 75890
-end_byte = 76050
+start_byte = 75889
+end_byte = 76049
 sha256 = "5ba4ba0b045f674d93f19fd741acfedb04eb73cfd91d83506ebe3fb7a2f79e81"
 source_kind = "section"
 owner_id = "explicit-boundaries"
@@ -6513,8 +6512,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-matching-semantics-boundary"
-start_byte = 76050
-end_byte = 76216
+start_byte = 76049
+end_byte = 76215
 sha256 = "dd117ac22e03c2a79bdda2b1b8a20c130ea7f3c238a1311be5347adab8b0ca9a"
 source_kind = "record"
 owner_id = "matrix.matching-semantics-boundary"
@@ -6523,8 +6522,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-interaction-tuples-boundary"
-start_byte = 76216
-end_byte = 76343
+start_byte = 76215
+end_byte = 76342
 sha256 = "1776d75742a9c36621eee90bc2b1ba27a2ea8d4bb4276f449e7c9f4e4e2e91df"
 source_kind = "record"
 owner_id = "matrix.interaction-tuples-boundary"
@@ -6533,8 +6532,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-over-acceptance-ast-notes"
-start_byte = 76343
-end_byte = 76443
+start_byte = 76342
+end_byte = 76442
 sha256 = "69003851ce48007d2add6662f37d9a9e522b2322f97da8080f20a7c1d7178c26"
 source_kind = "record"
 owner_id = "matrix.over-acceptance-ast-notes"
@@ -6543,8 +6542,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-wasm-macro-behavior-boundary"
-start_byte = 76443
-end_byte = 76972
+start_byte = 76442
+end_byte = 76971
 sha256 = "21563af1427e1d35a824d0f860e4624e2d5843e1bd23b115019be681e624baaf"
 source_kind = "record"
 owner_id = "matrix.wasm-macro-behavior-boundary"
@@ -6553,8 +6552,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-extern-emitted-test-boundary"
-start_byte = 76972
-end_byte = 78613
+start_byte = 76971
+end_byte = 78612
 sha256 = "b475e495a1c959ae26455d41357cd881194a1d28488f73a13de9a0f9137f6e5c"
 source_kind = "record"
 owner_id = "matrix.extern-emitted-test-boundary"
@@ -6563,8 +6562,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-extern-interface-sentinel-boundary"
-start_byte = 78613
-end_byte = 79333
+start_byte = 78612
+end_byte = 79332
 sha256 = "dfc0393b6482fd64b93dcb4f7bd637cfd562040bd557bfc18b01faeadcbe6cc4"
 source_kind = "record"
 owner_id = "matrix.extern-interface-sentinel-boundary"
@@ -6573,8 +6572,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-inline-cbor-containment-boundary"
-start_byte = 79333
-end_byte = 80306
+start_byte = 79332
+end_byte = 80305
 sha256 = "21c83d82f7ca7a96c275ff76dff41fc45dbe17c9f49951d255f3108d5585913a"
 source_kind = "record"
 owner_id = "matrix.inline-cbor-containment-boundary"
@@ -6583,8 +6582,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-pending-decisions"
-start_byte = 80306
-end_byte = 80348
+start_byte = 80305
+end_byte = 80347
 sha256 = "b5c093a1cebbb54aea951d3f29506b193181718c327dbf530096398b86519c1c"
 source_kind = "section"
 owner_id = "pending-decisions"
@@ -6593,8 +6592,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-over-acceptance-denominator"
-start_byte = 80348
-end_byte = 81079
+start_byte = 80347
+end_byte = 81078
 sha256 = "32ca7852921c4ea6589f34afc9bf94b22ebdc6cbef672ee197994cc090972dc5"
 source_kind = "record"
 owner_id = "matrix.over-acceptance-denominator"
@@ -6603,8 +6602,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-maintenance"
-start_byte = 81079
-end_byte = 83454
+start_byte = 81078
+end_byte = 83453
 sha256 = "09ea997b7e555cb5f88ba625f44d02bc6c1ae6d9fc90169d534e5c1de347f5ce"
 source_kind = "section"
 owner_id = "maintenance"
@@ -6613,8 +6612,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-related"
-start_byte = 83454
-end_byte = 83655
+start_byte = 83453
+end_byte = 83654
 sha256 = "dfd87477a732da1720c66a34a55a37dd209c9f303d70604a0bdcab17a3a5540d"
 source_kind = "section"
 owner_id = "related"

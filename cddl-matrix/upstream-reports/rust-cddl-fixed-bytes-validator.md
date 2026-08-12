@@ -44,8 +44,9 @@ against CBOR hex `824201021910fe`. Ruby `cddl` 0.12.14 accepts both valid instan
 The panic blocks independent Rust-oracle certification in two places; it does not control the
 support verdict:
 
-- the matrix rows `value.bytes`, `contain.array-element.value.bytes`, and
-  `contain.map-value.value.bytes` remain pinned/vectorless for foreign-decode corroboration and
+- the matrix rows `value.bytes`, `contain.array-element.value.bytes`,
+  `contain.map-value.value.bytes`, and `contain.choice-member.type2.value.bytes.fixed-kind` remain
+  pinned/vectorless for foreign-decode corroboration and
   explicitly read `enforce=unverified` in Q4;
 - the corpus `fixed_singletons` Rust conformance calls for exactly `bytes_hex`, `bytes_raw`,
   `bytes_empty`, `bytes_members`, `bytes_map_members`, `tagged_bytes`, and `cbor_bytes` are skipped.
@@ -66,7 +67,7 @@ The accommodations are deliberately narrower than either fixture:
   `(fixed_singletons.mixed_text_bytes_choice, wrong_major)`: changing the sampled text head in
   `82006161` to a byte head produces `82004161`, the choice's valid `h'61'` arm. `trunc_head` is
   forbidden from this ledger, and the row/mutant pair is stale-checked.
-- Q4 pins the exact three-row unverified set and the empty over-acceptance set. No fixture-wide or
+- Q4 pins the exact four-row unverified set and the empty over-acceptance set. No fixture-wide or
   all-fixed-byte oracle skip exists.
 
 Generator execution remains independently green: the fixed-singleton integration fixture checks
@@ -80,9 +81,9 @@ When a new pinned rust-cddl revision makes the minimal call return `Ok(())`:
 
 1. Remove the seven fixed-byte `RUST_ORACLE_RULE_SKIP` entries and replace or retire the panic
    preflight; do not bless a changed panic or returned error as a fix.
-2. Remove the three pinned decode-row reasons and re-mint with
-   `bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes`.
-3. Mint reason-bearing invalid fixed-byte vectors so those same three rows move from Q4's exact
+2. Remove the four pinned decode-row reasons and re-mint with
+   `bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes,contain.choice-member.type2.value.bytes.fixed-kind`.
+3. Mint reason-bearing invalid fixed-byte vectors so those same four rows move from Q4's exact
    unverified set to its enforce-green set.
 4. Remove `fixed_singletons.mixed_text_bytes_choice/2` from the corpus arm exemption and re-mint
    that corpus row. Re-evaluate the exact `wrong_major` header-mutant skip: the mutation still lands

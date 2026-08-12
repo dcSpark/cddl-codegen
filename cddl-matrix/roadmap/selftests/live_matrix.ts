@@ -78,7 +78,7 @@ function withRetiredFixedValueLegacyFloor(authoritative: RoadmapDocumentV1): Roa
       ...span,
       sha256: "c4ba9082a3c86cee77945905c9e5e08430c6f7cfa6dbd39e4cf6d5066d10e6a9",
     };
-    return span.start_byte < 13_351 ? span : {
+    return span.start_byte < 13_350 ? span : {
       ...span,
       start_byte: span.start_byte + 936,
       end_byte: span.end_byte + 936,
@@ -88,9 +88,9 @@ function withRetiredFixedValueLegacyFloor(authoritative: RoadmapDocumentV1): Roa
     ...authoritative,
     document: {
       ...authoritative.document,
-      frozen_source_sha256: "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d",
-      frozen_source_byte_length: 84_591,
-      frozen_source_line_count: 995,
+      frozen_source_sha256: "a5a90541a3d96d64107242653ae10d829fbf3d579223c1b9f4a5a5672819655f",
+      frozen_source_byte_length: 84_590,
+      frozen_source_line_count: 994,
     },
     records: [...authoritative.records.slice(0, recordIndex), record, ...authoritative.records.slice(recordIndex)],
     manifest: [
@@ -100,8 +100,8 @@ function withRetiredFixedValueLegacyFloor(authoritative: RoadmapDocumentV1): Roa
     ],
     spans: [...shiftedSpans, {
       id: retiredSpanId,
-      start_byte: 13_351,
-      end_byte: 14_287,
+      start_byte: 13_350,
+      end_byte: 14_286,
       sha256: "f7d7e19e887d9f2ea51378696abaff2d42f4ad6524f214046db8b7ff55ed8f23",
       source_kind: "record" as const,
       owner_id: retiredId,
@@ -183,8 +183,8 @@ export function liveMatrixLegacyProjection(): Uint8Array {
     ));
   const digest = sha256(projection);
   assert(
-    projection.byteLength === 84_591 &&
-      digest === "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d",
+    projection.byteLength === 84_590 &&
+      digest === "a5a90541a3d96d64107242653ae10d829fbf3d579223c1b9f4a5a5672819655f",
     `reconstructed matrix legacy projection escaped its frozen length/digest: ${projection.byteLength}/${digest}`,
   );
   return projection;

@@ -2140,7 +2140,7 @@ evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 [[support]]
 id = "contain.choice-member.prelude.null.fixed-kind"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -2149,7 +2149,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.choice-member.prelude.true.fixed-kind"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
@@ -2195,7 +2195,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.choice-member.type2.value.uint.fixed-kind"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"

@@ -1208,7 +1208,7 @@ function liveMatrixStatusInputs(): MatrixStatusInputs {
     ...Array.from({ length: 27 }, (_, index) => ({ id: `c-${index}`, profile: "CDDL_CODEGEN" })),
   ];
   const annotations = Array.from({ length: 301 }, (_, index) => ({
-    id: index < 89 ? `row-${index}` : `annotation-${index}`,
+    id: index < 93 ? `row-${index}` : `annotation-${index}`,
     status: "supported",
     ...(index === 0 ? { emission: { preserve: { status: "unsupported" } } } : {}),
   }));
@@ -1219,7 +1219,7 @@ function liveMatrixStatusInputs(): MatrixStatusInputs {
       containment_ids: Array.from({ length: 144 }, (_, index) => `containment-${index}`),
       control_operator_ids: Array.from({ length: 37 }, (_, index) => `control-${index}`),
     },
-    catalog: { rows: Array.from({ length: 89 }, (_, index) => ({
+    catalog: { rows: Array.from({ length: 93 }, (_, index) => ({
       id: `row-${index}`,
       vectors: Array.from({ length: index < 22 ? 2 : 1 }, () => ({
         expect: "reject",
