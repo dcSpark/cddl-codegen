@@ -8,7 +8,7 @@ frozen_source_sha256 = "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b
 frozen_source_byte_length = 323398
 frozen_source_line_count = 3597
 frozen_source_eof = "lf"
-projection_layout = "standing_v1"
+projection_layout = "unnumbered_v1"
 
 [[section]]
 section_id = "declined-boundaries"
@@ -22050,7 +22050,7 @@ id = "ref-testing-add-profile-wrapper-participation-grid-participation-differs-a
 source = "testing.add-profile-wrapper-participation-grid-participation-differs-across"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-add-profile-wrapper-participation-grid-participation-differs-across-authority"
@@ -22070,7 +22070,7 @@ id = "ref-testing-alloc-imports-nested-inline-modules-hand-carried-design-file-h
 source = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-arm-position-s-classifier-compile-time-forcing-function-gate-he00a841db53ba7a7564c502924f7598afeaf955962ec6bc5d5081a220a841f21"
@@ -22188,21 +22188,21 @@ id = "ref-testing-dependency-swap-pass-compile-parity-existing-gate-silently-fil
 source = "testing.dependency-swap-pass-compile-parity-existing-gate-silently"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-directive-dependent-emitter-edge-case-triggering-shape-hand-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-directive-s-documented-sentence-stay-true-consumer-visible-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-docs-vs-behavior-conformance-harness-comment-dsl-mdx-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
@@ -22269,14 +22269,14 @@ id = "ref-testing-dsl-position-tests-string-level-design-green-emitted-file-head
 source = "testing.dsl-position-tests-string-level-design-green-emitted"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-duplicates-policy-residuals-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.duplicates-policy-residuals"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-duplicates-dedicated-generic-collision-message-test-symbol-h5fad85f77abba604c3e768d2d77129d2a6a626795833b7048bb3e2e7d906dbc2"
@@ -22297,14 +22297,14 @@ id = "ref-testing-emission-branch-generated-output-fixture-exercises-invisible-g
 source = "testing.emission-branch-generated-output-fixture-exercises-invisible-gate"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-emit-tests-gate-asserts-round-trip-green-cannot-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-emitted-shape-lint-classes-outside-clippy-all-beyond-test-symbol-haf7edde0b79ace73f9b150c48055de3ca3348b998530b48a7b91250a394d3404"
@@ -22318,7 +22318,7 @@ id = "ref-testing-emitter-drops-overloadable-parameter-building-fresh-config-inv
 source = "testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-exclusion-reasons-informational-interchange-authority"
@@ -22339,7 +22339,7 @@ id = "ref-testing-extend-recombination-member-kind-table-optional-fixed-shape-fi
 source = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-extern-deps-wasm-boundary-surface-packaging-json-gen-test-symbol-hb167df3b741e441b329e40b4e266b72eeb0270c3ff37a9648b2578cb2c2fe932"
@@ -22387,7 +22387,7 @@ id = "ref-testing-fixture-models-obsolete-user-contract-stays-green-real-file-he
 source = "testing.fixture-models-obsolete-user-contract-stays-green-real"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-fixture-s-verdict-accident-cargo-feature-unification-harness-test-symbol-h92e6ce8d56c91219e54fcbeae835cfb71d8d3167d5ec16c6e3ba5ce03e1ea23f"
@@ -22540,7 +22540,7 @@ id = "ref-testing-gate-cache-closure-audit-structurally-blind-gate-authored-file
 source = "testing.gate-cache-closure-audit-structurally-blind-gate-authored"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-gate-cache-costs-file-heading-hd2498b1dbcaca730bce673b3f6bff5a3a73caa75e63e4868b1df30dd358f795c"
@@ -22573,7 +22573,7 @@ id = "ref-testing-generated-local-collision-class-refused-mangled-refusal-s-file
 source = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-generated-local-collision-class-refused-mangled-refusal-s-gate-h2b903aaf6a1fad0f077b632e4203c5e0b49c8bd1ccb14d4444c25f8ec125a1c7"
@@ -22593,14 +22593,14 @@ id = "ref-testing-generated-local-collision-scope-wide-probe-file-heading-h18708
 source = "testing.generated-local-collision.scope-wide-probe"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-generic-raw-bytes-base-refused-generic-extern-base-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.generic-raw-bytes-base-refused-generic-extern-base"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-generic-raw-bytes-base-refused-generic-extern-base-matrix-feature-h46bcbd72e0a2997098ddc4ce0a183fdac58742246edacf5f544944555e975bed"
@@ -22631,7 +22631,7 @@ id = "ref-testing-grammar-fuzzer-escalations-file-heading-h1870867f5d3f2e8d012a5
 source = "testing.grammar-fuzzer-escalations"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-grammar-fuzzer-escalations-gate-hbcc978d64228d9aa31f694c0db8dd8725546f574db1fe2d6bf146fd4552212bd"
@@ -22704,7 +22704,7 @@ id = "ref-testing-grammar-fuzzer-batch-masking-detector-file-heading-h1870867f5d
 source = "testing.grammar-fuzzer.batch-masking-detector"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-hand-enumerated-ban-pattern-list-authority-lives-gitignored-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"
@@ -22724,14 +22724,14 @@ id = "ref-testing-incident-observation-build-registration-class-reference-positi
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-one-proof-roadmap-h3de9048b09ce092e475d6691816189c52c2beadbd980bb250ed2977a5f213ef6"
@@ -22744,14 +22744,14 @@ id = "ref-testing-incident-observation-build-registration-class-reference-positi
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-two-proof-roadmap-h3de9048b09ce092e475d6691816189c52c2beadbd980bb250ed2977a5f213ef6"
@@ -22764,14 +22764,14 @@ id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-one-proof-roadmap-haebfad78df120de969e13b0169c8754aad4ad4047945530b40fecd9afd40b9b4"
@@ -22784,14 +22784,14 @@ id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-two-proof-roadmap-haebfad78df120de969e13b0169c8754aad4ad4047945530b40fecd9afd40b9b4"
@@ -22804,14 +22804,14 @@ id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-one
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-one-proof-roadmap-h1838240ada66525dd1b6a047c12fd480acf9eb4d7ffecadafaa3fd7dc251d94a"
@@ -22824,14 +22824,14 @@ id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-two
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-two-proof-roadmap-h1838240ada66525dd1b6a047c12fd480acf9eb4d7ffecadafaa3fd7dc251d94a"
@@ -22844,14 +22844,14 @@ id = "ref-testing-incident-observation-minted-identifier-spellability-floor-iden
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-one-proof-roadmap-he7e71a780510c173364f6ac7c53e176b29906556230f49338bec3ae2f32a3ba7"
@@ -22864,14 +22864,14 @@ id = "ref-testing-incident-observation-minted-identifier-spellability-floor-iden
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-two-proof-roadmap-he7e71a780510c173364f6ac7c53e176b29906556230f49338bec3ae2f32a3ba7"
@@ -22884,14 +22884,14 @@ id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executa
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-one-proof-roadmap-hb77e87c983491a2898906b45e06411cb6c5670c21100469699b1ee7436661fa2"
@@ -22904,14 +22904,14 @@ id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executa
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-two-proof-roadmap-hb77e87c983491a2898906b45e06411cb6c5670c21100469699b1ee7436661fa2"
@@ -22930,14 +22930,14 @@ id = "ref-testing-logic-tool-emits-source-text-outside-layer-reasons-file-headin
 source = "testing.logic-tool-emits-source-text-outside-layer-reasons"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-make-fixture-comment-s-claimed-wire-bytes-executable-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.make-fixture-comment-s-claimed-wire-bytes-executable"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-making-type-choice-path-reject-duplicated-explicit-name-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
@@ -22957,7 +22957,7 @@ id = "ref-testing-matrix-s-note-names-panic-site-aborts-nothing-file-heading-h18
 source = "testing.matrix-s-note-names-panic-site-aborts-nothing"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-mechanical-layers-two-review-owned-design-rules-tests-test-symbol-h7252c51ca49273b5edf62a95a88ca8f30b01aa234d9593848a5b35cb2465dd52"
@@ -22978,7 +22978,7 @@ id = "ref-testing-message-s-level-classification-review-owned-two-ways-file-head
 source = "testing.message-s-level-classification-review-owned-two-ways"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-migration-handoff-s-complete-list-found-survey-negative-operating"
@@ -23019,7 +23019,7 @@ id = "ref-testing-nothing-asserts-how-many-times-rejection-message-emitted-file-
 source = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-nothing-asserts-two-ir-sites-cannot-mint-same-test-symbol-hcf12fb74615c93111e6709469e4256b6a5177a805e60d22c6e675fe9a586d6ab"
@@ -23086,7 +23086,7 @@ id = "ref-testing-panic-site-un-shadowing-converting-shallow-panic-graceful-file
 source = "testing.panic-site-un-shadowing-converting-shallow-panic-graceful"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-parallel-constructor-fixture-diversity-parser-over-external-input-test-symbol-h0a539c7624cba85a03789079dcbb8396196ccfc603cd7cb8c4fa78a9af03fc2b"
@@ -23144,7 +23144,7 @@ id = "ref-testing-process-boundary-rustfmt-pre-rustc-file-heading-h1870867f5d3f2
 source = "testing.process-boundary.rustfmt-pre-rustc"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-profile-driven-compile-gate-covers-compositions-profiles-specs-gate-h27130094b630c9c61596568004d5fabd3d8420f7fad801b2c98c52c1c412b72c"
@@ -23157,7 +23157,7 @@ id = "ref-testing-proof-directive-effect-round-trip-coherence-sweep-accepted-cus
 source = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-proof-directive-effect-round-trip-coherence-sweep-accepted-custom-roadmap-he5a254293d69634a726bd77c7d1cde49fee2f6fe57c270aa5dbf876d38328506"
@@ -23170,7 +23170,7 @@ id = "ref-testing-proof-pin-toolchain-verify-ts-s-nested-cargo-scratch-file-head
 source = "testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-proof-pin-toolchain-verify-ts-s-nested-cargo-scratch-roadmap-h41c11e8c7262400c23266ecfc4c28e30a1b59b83cb62b8035737fcfac96b55aa"
@@ -23183,7 +23183,7 @@ id = "ref-testing-proof-positional-diversity-fold-preserve-fixture-corpus-author
 source = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-proof-positional-diversity-fold-preserve-fixture-corpus-authoring-gives-roadmap-h8a6dd47dcf615a826f4736b9dee803dae68cf5cddfe34f9ba6d47f3e5d9216c7"
@@ -23196,7 +23196,7 @@ id = "ref-testing-proof-same-named-generated-crates-silently-share-cargo-fingerp
 source = "testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-proof-same-named-generated-crates-silently-share-cargo-fingerprint-roadmap-h19b0d970320ceb3f498f1f90cf31f7068da61668d960ddabc101ed40cc62a3cb"
@@ -23209,7 +23209,7 @@ id = "ref-testing-proof-warm-up-refresh-dep-universe-lock-trust-fresh-file-headi
 source = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-proof-warm-up-refresh-dep-universe-lock-trust-fresh-roadmap-hfaf405b8952df1839f312626a996776d1cc6524cf548ffe70bb4d9130e59005e"
@@ -23270,7 +23270,7 @@ id = "ref-testing-ruling-premise-gate-x-stays-green-must-probed-file-heading-h18
 source = "testing.ruling-premise-gate-x-stays-green-must-probed"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-run-local-values-gate-cache-key-material-proven-gate-h21dded476e33c8fff7c34a5c9b5adedd959977716912b4e5ca82c6189426aa45"
@@ -23283,28 +23283,28 @@ id = "ref-testing-schema-document-s-name-injectivity-enforced-row-side-file-head
 source = "testing.schema-document-s-name-injectivity-enforced-row-side"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-schema-name-collision-loser-no-row-same-id-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.schema-name.collision-loser-no-row-same-id"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-schema-name-cross-crate-same-id-collision-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.schema-name.cross-crate-same-id-collision"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-schema-name-two-rowless-types-collide-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.schema-name.two-rowless-types-collide"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-shared-cargo-target-dir-across-same-named-scratch-operating"
@@ -23318,21 +23318,21 @@ id = "ref-testing-source-observation-add-profile-wrapper-participation-grid-part
 source = "testing.source-observation.add-profile-wrapper-participation-grid-participation-differs-across"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-alloc-imports-nested-inline-modules-hand-carried-design-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.alloc-imports-nested-inline-modules-hand-carried-design"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-armed-idle-harness-arms-empty-head-ledgers-zero-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.armed-idle-harness-arms-empty-head-ledgers-zero"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-assert-hand-authored-json-schema-against-type-s-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23353,7 +23353,7 @@ id = "ref-testing-source-observation-cargo-feature-generated-crate-s-dependency-
 source = "testing.source-observation.cargo-feature-generated-crate-s-dependency-change-what"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-cddl-module-directives-draft-ietf-cbor-cddl-modules-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23367,14 +23367,14 @@ id = "ref-testing-source-observation-citation-resolves-naming-wrong-thing-invisi
 source = "testing.source-observation.citation-resolves-naming-wrong-thing-invisible-citation-lint"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-comment-residue-false-matches-text-scans-over-emitted-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.comment-residue-false-matches-text-scans-over-emitted"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-component-js-probe-reopening-signal-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23402,35 +23402,35 @@ id = "ref-testing-source-observation-container-combinations-reopening-signal-fil
 source = "testing.source-observation.container-combinations-reopening-signal"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-container-construct-conceptual-type-visitor-walks-flat-combinatorial-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-containment-note-s-stated-reason-go-false-any-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.containment-note-s-stated-reason-go-false-any"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-control-bytes-committed-source-files-proven-instance-machinery-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.control-bytes-committed-source-files-proven-instance-machinery"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-corpus-wide-regen-over-prior-output-sweep-reaches-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.corpus-wide-regen-over-prior-output-sweep-reaches"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-crate-generates-json-schema-document-aggregate-package-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23444,14 +23444,14 @@ id = "ref-testing-source-observation-cross-version-preserve-vectors-beyond-std-a
 source = "testing.source-observation.cross-version-preserve-vectors-beyond-std-alloc-rewrite"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-dependency-swap-pass-compile-parity-existing-gate-silently-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.dependency-swap-pass-compile-parity-existing-gate-silently"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-dependency-version-range-resolution-untested-generated-crates-float-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23465,14 +23465,14 @@ id = "ref-testing-source-observation-directive-dependent-emitter-edge-case-trigg
 source = "testing.source-observation.directive-dependent-emitter-edge-case-triggering-shape-hand"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-directive-s-documented-sentence-stay-true-consumer-visible-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.directive-s-documented-sentence-stay-true-consumer-visible"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-docs-vs-behavior-conformance-harness-comment-dsl-mdx-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
@@ -23486,56 +23486,56 @@ id = "ref-testing-source-observation-documented-failure-shape-exercises-prose-cr
 source = "testing.source-observation.documented-failure-shape-exercises-prose-cross-crate-int"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-documented-flag-pairing-broken-fixture-stays-green-because-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.documented-flag-pairing-broken-fixture-stays-green-because"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-doubled-doc-comment-markers-emitted-docs-proven-instance-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.doubled-doc-comment-markers-emitted-docs-proven-instance"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-dsl-position-tests-string-level-design-green-emitted-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.dsl-position-tests-string-level-design-green-emitted"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-duplicates-dedicated-generic-collision-message-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.duplicates-dedicated-generic-collision-message"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-duplicates-member-position-extension-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.duplicates-member-position-extension"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-duplicates-occurrence-aware-generic-identity-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.duplicates-occurrence-aware-generic-identity"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-duplicates-same-shape-set-conversion-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.duplicates-same-shape-set-conversion"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-edn-text-notation-round-trip-edn-edn-draft-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23549,42 +23549,42 @@ id = "ref-testing-source-observation-emission-branch-generated-output-fixture-ex
 source = "testing.source-observation.emission-branch-generated-output-fixture-exercises-invisible-gate"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-emit-tests-gate-asserts-round-trip-green-cannot-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.emit-tests-gate-asserts-round-trip-green-cannot"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-emitted-shape-lint-classes-outside-clippy-all-beyond-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.emitted-shape-lint-classes-outside-clippy-all-beyond"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-emitter-drops-overloadable-parameter-building-fresh-config-invisible-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.emitter-drops-overloadable-parameter-building-fresh-config-invisible"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-extend-recombination-member-kind-table-optional-fixed-shape-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.extend-recombination-member-kind-table-optional-fixed-shape"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-extern-deps-wasm-boundary-surface-packaging-json-gen-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.extern-deps-wasm-boundary-surface-packaging-json-gen"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-extern-interface-export-dialect-v2-candidates-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23598,7 +23598,7 @@ id = "ref-testing-source-observation-extreme-value-boundary-correctness-generati
 source = "testing.source-observation.extreme-value-boundary-correctness-generation-time-encode-paths"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-file-listing-json-schema-root-values-flag-per-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23612,28 +23612,28 @@ id = "ref-testing-source-observation-finding-s-defect-side-attribution-recorded-
 source = "testing.source-observation.finding-s-defect-side-attribution-recorded-narrative-plausibility"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-fixture-models-obsolete-user-contract-stays-green-real-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.fixture-models-obsolete-user-contract-stays-green-real"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-fixture-s-verdict-accident-cargo-feature-unification-harness-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.fixture-s-verdict-accident-cargo-feature-unification-harness"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-fixture-shape-evicted-over-known-defect-stale-guard-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.fixture-shape-evicted-over-known-defect-stale-guard"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-full-n-flag-powerset-pict-pairwise-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
@@ -23654,7 +23654,7 @@ id = "ref-testing-source-observation-gate-cache-closure-audit-structurally-blind
 source = "testing.source-observation.gate-cache-closure-audit-structurally-blind-gate-authored"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-gate-cache-closure-audit-traced-set-extension-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"
@@ -23675,63 +23675,63 @@ id = "ref-testing-source-observation-gate-exists-registry-nowhere-tests-readme-m
 source = "testing.source-observation.gate-exists-registry-nowhere-tests-readme-md-hand"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-gate-script-health-cache-staleness-key-fresh-worktree-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.gate-script-health-cache-staleness-key-fresh-worktree"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-generated-local-collision-general-mangling-remedy-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.generated-local-collision-general-mangling-remedy"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-generated-local-collision-scope-wide-probe-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.generated-local-collision-scope-wide-probe"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-grammar-fuzzer-arbitrary-supported-ast-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.grammar-fuzzer-arbitrary-supported-ast"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-grammar-fuzzer-batch-masking-detector-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.grammar-fuzzer-batch-masking-detector"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-grammar-fuzzer-real-world-corpus-differential-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.grammar-fuzzer-real-world-corpus-differential"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-hand-enumerated-ban-pattern-list-authority-lives-gitignored-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-hand-maintained-source-dependency-mapping-manifest-changeset-silently-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-json2ts-artifact-doc-comments-naming-undefined-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23745,14 +23745,14 @@ id = "ref-testing-source-observation-lint-doc-citations-accepts-docs-heading-dur
 source = "testing.source-observation.lint-doc-citations-accepts-docs-heading-durable-citation"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-logic-tool-emits-source-text-outside-layer-reasons-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.logic-tool-emits-source-text-outside-layer-reasons"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-machine-readable-ownership-co-owned-features-std-list-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23766,14 +23766,14 @@ id = "ref-testing-source-observation-maintainer-ruling-force-convenience-cbor-by
 source = "testing.source-observation.maintainer-ruling-force-convenience-cbor-bytes-door-turns"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-make-fixture-comment-s-claimed-wire-bytes-executable-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.make-fixture-comment-s-claimed-wire-bytes-executable"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-making-type-choice-path-reject-duplicated-explicit-name-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
@@ -23787,21 +23787,21 @@ id = "ref-testing-source-observation-matrix-s-note-names-panic-site-aborts-nothi
 source = "testing.source-observation.matrix-s-note-names-panic-site-aborts-nothing"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-mechanical-layers-two-review-owned-design-rules-tests-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.mechanical-layers-two-review-owned-design-rules-tests"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-message-s-level-classification-review-owned-two-ways-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.message-s-level-classification-review-owned-two-ways"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-msrv-declaration-os-matrix-generated-code-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
@@ -23815,28 +23815,28 @@ id = "ref-testing-source-observation-multifile-reference-position-coverage-two-p
 source = "testing.source-observation.multifile-reference-position-coverage-two-position-keyed-escapes"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-nothing-asserts-how-many-times-rejection-message-emitted-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.nothing-asserts-how-many-times-rejection-message-emitted"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-nothing-asserts-two-ir-sites-cannot-mint-same-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.nothing-asserts-two-ir-sites-cannot-mint-same"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-observed-baseline-comments-beside-gate-floors-rot-silently-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.observed-baseline-comments-beside-gate-floors-rot-silently"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-opt-rfc-faithful-total-cbor-json-rendering-json-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23857,14 +23857,14 @@ id = "ref-testing-source-observation-panic-site-un-shadowing-converting-shallow-
 source = "testing.source-observation.panic-site-un-shadowing-converting-shallow-panic-graceful"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-parallel-constructor-fixture-diversity-parser-over-external-input-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.parallel-constructor-fixture-diversity-parser-over-external-input"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-prettyplease-shelling-rustfmt-file-heading-h527e280bc2bd81c1094c49f706d73fc6341eae61070b511ed7e7c7a2114aac2d"
@@ -23885,28 +23885,28 @@ id = "ref-testing-source-observation-process-boundary-another-profile-escape-fil
 source = "testing.source-observation.process-boundary-another-profile-escape"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-process-boundary-rustc-after-panic-fix-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.process-boundary-rustc-after-panic-fix"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-process-boundary-rustfmt-pre-rustc-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.process-boundary-rustfmt-pre-rustc"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-profile-driven-compile-gate-covers-compositions-profiles-specs-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.profile-driven-compile-gate-covers-compositions-profiles-specs"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-project-json-gen-documents-run-test-fixture-writes-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -23927,21 +23927,21 @@ id = "ref-testing-source-observation-reason-keyed-rejection-evidence-reject-cata
 source = "testing.source-observation.reason-keyed-rejection-evidence-reject-catalogs-proven-near"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-referencing-context-measured-wrapping-deep-honored-base-shape-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.referencing-context-measured-wrapping-deep-honored-base-shape"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-representation-changing-directive-goes-live-new-container-ship-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.representation-changing-directive-goes-live-new-container-ship"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-rule-trailing-directive-classification-file-heading-h527e280bc2bd81c1094c49f706d73fc6341eae61070b511ed7e7c7a2114aac2d"
@@ -23955,42 +23955,42 @@ id = "ref-testing-source-observation-ruling-premise-gate-x-stays-green-must-prob
 source = "testing.source-observation.ruling-premise-gate-x-stays-green-must-probed"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-run-local-values-gate-cache-key-material-proven-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.run-local-values-gate-cache-key-material-proven"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-rustfmt-seam-error-leg-still-witness-needs-subprocess-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.rustfmt-seam-error-leg-still-witness-needs-subprocess"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-schema-name-collision-loser-no-row-same-id-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.schema-name-collision-loser-no-row-same-id"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-schema-name-cross-crate-same-id-collision-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.schema-name-cross-crate-same-id-collision"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-schema-name-two-rowless-types-collide-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.schema-name-two-rowless-types-collide"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-scratch-retention-reopening-signal-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"
@@ -24004,7 +24004,7 @@ id = "ref-testing-source-observation-stale-known-limitation-prose-surviving-fix-
 source = "testing.source-observation.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-std-generated-crates-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -24018,7 +24018,7 @@ id = "ref-testing-source-observation-synthesized-name-referenced-never-minted-e0
 source = "testing.source-observation.synthesized-name-referenced-never-minted-e0425-flavor"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-tag-set-inline-anonymous-choice-boundary-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -24053,42 +24053,42 @@ id = "ref-testing-source-observation-tree-wide-sweeps-over-gitignored-regenerati
 source = "testing.source-observation.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-twin-implementation-comment-ast-change-cadence-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.twin-implementation-comment-ast-change-cadence"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-twin-implementation-read-caught-instance-trigger-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.twin-implementation-read-caught-instance-trigger"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-twin-repo-implementations-semantic-drifting-apart-emission-spellings-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-unused-imports-generated-crates-trait-import-class-name-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.unused-imports-generated-crates-trait-import-class-name"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-value-anchor-rot-field-addition-delivery-grows-existing-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.value-anchor-rot-field-addition-delivery-grows-existing"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-verify-ts-warm-up-cargo-test-exit-attributed-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"
@@ -24102,14 +24102,14 @@ id = "ref-testing-source-observation-wac-composed-component-transpiled-jco-loses
 source = "testing.source-observation.wac-composed-component-transpiled-jco-loses-cross-instance"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-wasm-door-vocabulary-reopening-signal-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.wasm-door-vocabulary-reopening-signal"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-source-observation-wasm32-link-floor-deferred-reject-twin-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
@@ -24184,7 +24184,7 @@ id = "ref-testing-three-defect-classes-process-test-see-sharing-remedy-file-head
 source = "testing.three-defect-classes-process-test-see-sharing-remedy"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-three-defect-classes-process-test-see-sharing-remedy-gate-h2aa524e34e8f48375ee9e9e45104902167fda5d035c9fedb1f623ce234697733"
@@ -24280,7 +24280,7 @@ id = "ref-testing-tree-wide-sweeps-over-gitignored-regeneration-targets-count-fi
 source = "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-twin-implementation-comment-ast-change-cadence-parent"
@@ -24293,7 +24293,7 @@ id = "ref-testing-twin-implementation-own-reviewed-change-rule-file-heading-h187
 source = "testing.twin-implementation.own-reviewed-change-rule"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-twin-repo-implementations-semantic-drifting-apart-emission-spellings-gate-h6a27f79888f19ab92549180ecdcdf05a24145020e97ee6233a1528a47d151786"
@@ -24341,7 +24341,7 @@ id = "ref-testing-value-anchor-rot-field-addition-delivery-grows-existing-file-h
 source = "testing.value-anchor-rot-field-addition-delivery-grows-existing"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
-heading = "Next work items, in priority order"
+heading = "Next work"
 
 [[reference]]
 id = "ref-testing-verify-ts-warm-up-cargo-test-exit-attributed-rule"

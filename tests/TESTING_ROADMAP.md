@@ -145,10 +145,10 @@ At the pinned cddl revision (`ac1b98ec`) a
   revision must be re-carried either way), or a consumer reports hitting the refusal on a
   multi-line spelling their formatting tooling forces.
 
-## Next work items, in priority order
+## Next work
 
 <a id="roadmap-id-testing.grammar-fuzzer-escalations"></a>
-1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
+- **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
    `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) + the
    profile-parameterized layer-2 gates `recombination_crates_execute` /
@@ -222,7 +222,7 @@ At the pinned cddl revision (`ac1b98ec`) a
      synthetic breadth vs real-world depth — recombination does not replace it.
 
 <a id="roadmap-id-testing.duplicates-policy-residuals"></a>
-2. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
+- **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
    `reject` (set/array uniqueness twins) and `preserve` (table pair-map twins), covering rust,
    preserve-encodings, canonical, JSON/schemars, wasm-bindgen, component/WIT, extern-interface
    projection, and the
@@ -293,7 +293,7 @@ At the pinned cddl revision (`ac1b98ec`) a
      `tests/recursive-collection-ref/input.cddl`.)
 
 <a id="roadmap-id-testing.lint-provocation-shapes-generated-code-clippy-clean-partially"></a>
-3. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
+- **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
    on three cases (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
    yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
@@ -327,7 +327,7 @@ At the pinned cddl revision (`ac1b98ec`) a
    is why those two lints are allowed at the generated root rather than chased per-spec.
 
 <a id="roadmap-id-testing.rustfmt-seam-error-leg-still-witness-needs-subprocess"></a>
-4. **One rustfmt-seam error leg still has no witness, and it is the one that needs a
+- **One rustfmt-seam error leg still has no witness, and it is the one that needs a
    subprocess-scoped test harness.** The seam's non-0/3-exit-is-fatal contract — which both the
    width ladder (`integration_tuple_field_width_ladder_never_aborts_rustfmt`) and the
    preserve-fixture rustfmt sweep (`preserve_fixtures_rustfmt_cycle_stability`) cite as their
@@ -348,7 +348,7 @@ At the pinned cddl revision (`ac1b98ec`) a
    rather than the leg worth skipping.
 
 <a id="roadmap-id-testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"></a>
-5. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
+- **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
    gives the rustfmt-cycle sweep discovery power.**
    `preserve_fixtures_rustfmt_cycle_stability` holds the post-rustfmt on-disk fixed point over
    every fixture, but only over fold positions the corpus expresses — its own delivery record is
@@ -372,7 +372,7 @@ At the pinned cddl revision (`ac1b98ec`) a
    those.
 
 <a id="roadmap-id-testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite"></a>
-6. **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
+- **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
    SAME-VERSION suite by construction: every case's `old.rs` and `new.rs` agree on generated code
    bytes except where the fixture deliberately drifts one item, which is the shape a re-run of one
    tool version produces. A tool UPGRADE is the other shape — it adds tokens and rewrites others
@@ -392,7 +392,7 @@ At the pinned cddl revision (`ac1b98ec`) a
    exactly how the no_std one was identified.
 
 <a id="roadmap-id-testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"></a>
-7. **A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile
+- **A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile
     coverage — its placement behaviour rests on one hand cell per construct.** Most of the IR's
     containers are `Map`/`Array` nodes a walk meets as composites; a few are assembled from inner
     types stored separately, so every walk that reasons about containers has to be told about them
@@ -423,7 +423,7 @@ At the pinned cddl revision (`ac1b98ec`) a
       (placement × reference mode × profile) is coverage three constructs are each doing without.
 
 <a id="roadmap-id-testing.generated-local-collision-class-refused-mangled-refusal-s"></a>
-8. **The generated-local collision class is refused, not mangled — and the refusal's shape scope
+- **The generated-local collision class is refused, not mangled — and the refusal's shape scope
     comes from a bounded probe matrix, so a position that matrix never touched can still ship an
     uncompilable crate.** A field whose emitted identifier is one of the fixed locals the generated
     serialization bodies bind now rejects at parse time (`parsing::GENERATED_LOCAL_RESERVED`, seven
@@ -452,7 +452,7 @@ At the pinned cddl revision (`ac1b98ec`) a
       binding, so the report arrives pre-diagnosed and says exactly which row to widen.
 
 <a id="roadmap-id-testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"></a>
-10. **The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust
+- **The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust
     surface it mirrors.** `wasm_door_vocabulary_matches_the_posture_that_owes_it`
     (`src/tests/wasm_parity_tests.rs`) pins the six flag-conditional door members —
     `to_cbor_bytes`, `from_cbor_bytes`, `to_canonical_cbor_bytes`, `to_json`, `to_json_value`,
@@ -477,7 +477,7 @@ At the pinned cddl revision (`ac1b98ec`) a
       along which a hand-listed vocabulary stops being maintainable.
 
 <a id="roadmap-id-testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns"></a>
-11. **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
+- **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
     serialize error into a panic.** A `float16` member's carrier is `f32`, and a carrier value that
     is not f16-exact cannot be written at the one head the type declares — so `Serialize` returns
     `Err` (`InvalidLenPassed`, the declared-width refusal working as designed: rounding to fit
@@ -494,7 +494,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     reports the panic from production data (measurable by the party holding the inexact value).
 
 <a id="roadmap-id-testing.build-registration-class-reference-position-sweep-second-escape"></a>
-12. **Build the registration-class × reference-position sweep — the second escape makes it due.**
+- **Build the registration-class × reference-position sweep — the second escape makes it due.**
     The shipped incident pins and their exact coverage live in `tests/README.md` § “Recursive-type
     boundary — test map”; they are controls, not a substitute for this enumeration. Build a sibling
     to `directive_referencing_context_sweep` whose bases distinguish at least own-ident structs,
@@ -508,7 +508,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     recombination roles (no rule-level alias hop) could enumerate them.
 
 <a id="roadmap-id-testing.fixture-shape-evicted-over-known-defect-stale-guard"></a>
-13. **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
+- **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
     it.** Skip-listed gate rows are ledgered with citations and stale-guards; an eviction — a
     shape REMOVED from a fixture because it trips a known bug — is recorded only in prose, which
     nothing re-probes. Proven cost: `tests/corpus/tag_set_generic.cddl` dropped its bytes
@@ -523,7 +523,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     which is when the ledger row would be written anyway.
 
 <a id="roadmap-id-testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"></a>
-14. **A minted-identifier spellability floor: every identifier the generator emits verbatim must
+- **A minted-identifier spellability floor: every identifier the generator emits verbatim must
     satisfy `is_spellable_variant_name`'s two string properties, asserted at the emission side
     rather than per-minter.** The class this closes: a name-minting path whose output is not a
     spellable Rust identifier ships the bad token to rustfmt, which dies with an error naming its
@@ -560,7 +560,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     registration seam that erased the evidence.
 
 <a id="roadmap-id-testing.rejection-message-s-remedy-string-executable-claim-pin"></a>
-15. **A rejection message's remedy string is an executable claim — pin each one with a
+- **A rejection message's remedy string is an executable claim — pin each one with a
     generates-green vector, and execute a findings entry's operative claims at pickup.** The
     `*_rejects_gracefully` family already pins message TEXT; this extends the convention so the
     remedy half of the contract is executed, not just spelled. Sweep the existing family for
@@ -635,7 +635,7 @@ At the pinned cddl revision (`ac1b98ec`) a
       `fixed_table_value_rejection_advertises_executable_nominal_remedy`.
 
 <a id="roadmap-id-testing.directive-effect-round-trip-coherence-sweep-accepted-custom"></a>
-16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
+- **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
     executes write-then-read as an identity, with inverse stub codecs.** The class this catches is
     invisible to both existing systems: `no_silent_directive` measures whether a directive has an
     EFFECT (a routed single half passes it), and the executed custom-pair e2e fixtures assert
@@ -675,7 +675,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     round trip.
 
 <a id="roadmap-id-testing.warm-up-refresh-dep-universe-lock-trust-fresh"></a>
-17. **The warm-up should REFRESH the dep-universe lock, not trust it: a fresh-resolving scratch
+- **The warm-up should REFRESH the dep-universe lock, not trust it: a fresh-resolving scratch
     crate outruns `tests/warmup/Cargo.lock` at every upstream release.** Proven 2026-08-06 (the
     stale-lock offline tail in § Operational watches, "Registry-fetch transients"): the
     oracle-fingerprint probe resolves a temp crate FRESH against crates.io, so the day
@@ -700,7 +700,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     re-resolve deliberately).
 
 <a id="roadmap-id-testing.check-merged-d-ts-name-collisions-two-halves"></a>
-18. **Check the merged `.d.ts` for name collisions BETWEEN its two halves.** `json-ts-types.js`
+- **Check the merged `.d.ts` for name collisions BETWEEN its two halves.** `json-ts-types.js`
     appends the `<key>JSON` declarations to the wasm-pack bindings under the claim that the suffix
     cannot collide with a wasm class name — an assumption, not a check: `@name` can mint a wasm
     class literally called `FooJSON` (and a contrived rule spelling that camelizes to one can too),
@@ -718,7 +718,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     hand-laid harness.
 
 <a id="roadmap-id-testing.corpus-preserve-pair-map-key-value-self-encoding"></a>
-19. **A corpus cell for the preserve pair-map whose key AND value are self-encoding — the one
+- **A corpus cell for the preserve pair-map whose key AND value are self-encoding — the one
     `@duplicates preserve` emission arm no committed snapshot pins.** The positional
     (non-canonical) pair-map serialize loop binds its `.enumerate()` index `i` when a per-entry
     key/value sidecar lookup reads it and `_i` when neither does, and the committed corpus
@@ -738,7 +738,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     `CORPUS_PARITY_INPUTS` row).
 
 <a id="roadmap-id-testing.same-named-generated-crates-silently-share-cargo-fingerprint"></a>
-20. **Same-named generated crates silently share one cargo fingerprint under a shared
+- **Same-named generated crates silently share one cargo fingerprint under a shared
     `CARGO_TARGET_DIR`, so a concurrent shard can report a non-compiling crate as `Finished`.**
     Every emitted rust crate is `cddl-lib v0.1.0`, and cargo's unit hash for the ROOT package of a
     build does not include the manifest path — N cells under one target dir share ONE
@@ -778,7 +778,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     the hazard live.
 
 <a id="roadmap-id-testing.corpus-c-style-enum-data-type-choice-arm"></a>
-21. **A corpus cell for a c-style enum as a DATA type-choice arm — the one inline-dispatch leg no
+- **A corpus cell for a c-style enum as a DATA type-choice arm — the one inline-dispatch leg no
     corpus cell exercises.** The c-style-enum deserialize arm has two emission forms, and the form
     it picks is a frame decision: the IIFE (self-supplied frame) whenever the caller splices or —
     since the annotate=false delivery — whenever the caller wants a plain value with no annotation
@@ -804,7 +804,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     reaches it.
 
 <a id="roadmap-id-testing.execution-binary-wrappers-true-last-documented-flag-value"></a>
-22. **An execution cell for `--binary-wrappers=true` — the last documented flag value whose only
+- **An execution cell for `--binary-wrappers=true` — the last documented flag value whose only
     coverage is a compile smoke while its emission risk is byte-level.** The annotate=false
     delivery established the pattern for flag-conditioned emission branches whose failure is
     byte-level rather than compile-level: a bespoke scratch spec + hand-derived round-trip vectors
@@ -827,7 +827,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     that delivered the annotate=false floors, not by grep vocabulary alone.
 
 <a id="roadmap-id-testing.synthetic-protocol-controls-component-probe-host-s-defensive"></a>
-23. **Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm
+- **Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm
     no generated component can reach never gets red-proven.** The matrix's generic wasmtime host
     (`cddl-matrix/component-probe-host/`) maps boundary outcomes to verdict tokens
     (`ok`/`err`/`mismatch`/`trap`), and the execution leg's red-first controls proved every arm a
@@ -844,7 +844,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     wrong fails the host's build, not a review. Small — the mapping is one match today.
 
 <a id="roadmap-id-testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror"></a>
-24. **A lockstep drift gate for the rust↔TS kebab-ident mirror — today the pin is one-directional
+- **A lockstep drift gate for the rust↔TS kebab-ident mirror — today the pin is one-directional
     and the rust side can drift silently-soft.** `cddl-matrix/verify.ts::toKebabCase` mirrors
     `src/utils.rs::convert_to_kebab_case` to name the WIT resource the component leg's mint check
     and host look for; the verify startup self-test pins the TS side against a fixture table
@@ -863,7 +863,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     precedent is the model.
 
 <a id="roadmap-id-testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"></a>
-25. **Pin the toolchain of verify.ts's nested cargo — its scratch-cwd spawns resolve the rustup
+- **Pin the toolchain of verify.ts's nested cargo — its scratch-cwd spawns resolve the rustup
     DEFAULT toolchain, and the cache key claims otherwise.** Measured 2026-08-08, both halves:
     a `cargo` child of the repo's `cargo test` resolves the PIN even with a scratch cwd (the
     rustup proxy exports `RUSTUP_TOOLCHAIN` into the process tree — probed with a crate whose
@@ -886,7 +886,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     gates or an explicit `rustup run` (the AGENTS unspelled-default rule's toolchain bullet).
 
 <a id="roadmap-id-testing.verify-ts-refuse-unknown-flag-silently-degrading-plain"></a>
-26. **verify.ts should refuse an unknown flag instead of silently degrading to a plain run.**
+- **verify.ts should refuse an unknown flag instead of silently degrading to a plain run.**
     Every mode flag is tested with a bare `process.argv.includes`, so a mistyped flag matches
     nothing and the run proceeds as an ordinary full verify — same exit 0, same `RESULT: PASS`,
     nothing distinguishing "did what you asked" from "ignored what you asked" except the absence
