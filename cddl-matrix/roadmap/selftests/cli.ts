@@ -1706,7 +1706,8 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
       return pass("positive");
     }
     case "cli_query_each_view": {
-      for (const view of ["summary", "debt", "references", "signals", "output-owners"]) {
+      for (const view of ["summary", "debt", "references", "signals", "actionables", "decisions",
+        "families", "watches", "content", "output-owners"]) {
         expectFailure(
           ["--roadmap", "testing", "--query", view],
           expectedIssue("E-SOURCE-MISSING", "tests/testing-roadmap.toml", "$", "declared source is missing", 1),
@@ -1730,7 +1731,8 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
           decoded.campaign.campaign.testing_authority === "legacy_markdown",
         `campaign query did not expose the decoded lifecycle document: ${text(decodedCampaign.stderr)}`,
       );
-      return pass("positive", ["summary", "debt", "references", "campaign", "signals", "output-owners"]);
+      return pass("positive", ["summary", "debt", "references", "campaign", "signals", "actionables",
+        "decisions", "families", "watches", "content", "output-owners"]);
     }
     case "cli_no_args_rejected": expectFailure([], cliIssue("E-CLI-MODE", 0, "exactly one primary mode is required"), fakePorts(), true); return pass("negative");
     case "cli_unknown_option": expectFailure(["--wat"], cliIssue("E-CLI-UNKNOWN-OPTION", 0, 'unknown option "--wat"'), fakePorts(), true); return pass("negative");
@@ -2325,6 +2327,133 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           assert(!(forbidden in family), `open family fabricated ${forbidden}: ${JSON.stringify(family)}`);
         }
       }
+      const dashboards = new Map<string, Record<string, unknown>>();
+      for (const view of ["signals", "actionables", "decisions", "families", "watches", "content"] as const) {
+        const first = run(["--roadmap", "all", "--query", view, "--json"], bothAuthoritativePorts());
+        const second = run(["--roadmap", "all", "--query", view, "--json"], bothAuthoritativePorts());
+        assert(first.exit_code === 0 && second.exit_code === 0 && first.stderr.byteLength === 0 &&
+          second.stderr.byteLength === 0 && text(first.stdout) === text(second.stdout),
+        `${view} dashboard is not a deterministic successful query`);
+        dashboards.set(view, JSON.parse(text(first.stdout)));
+      }
+      const decisions = dashboards.get("decisions")!.decisions as Record<string, readonly Record<string, unknown>[]>;
+      assert(Object.values(decisions).flat().length > 0 &&
+        (decisions.pending ?? []).every((row) => "question_md" in row && "transition_ids" in row) &&
+        (decisions.held ?? []).every((row) => "rationale_md" in row && "transition_ids" in row) &&
+        (decisions.decided ?? []).every((row) => "rationale_md" in row && "authority_reference_id" in row),
+      "decisions dashboard dropped its state-specific question/rationale/authority fields");
+      const signals = dashboards.get("signals")!.signals as Record<string, readonly Record<string, unknown>[]>;
+      assert(JSON.stringify(Object.keys(signals)) === JSON.stringify(["cadence", "evidence_freshness",
+        "promotion_trigger", "reopening_signal", "retirement_predicate", "unblock_predicate", "watch_escalation"]),
+      "signals dashboard transition grouping changed");
+      for (const [kind, required] of [
+        ["promotion_trigger", ["predicate", "predicate_kind", "current_evidence_ids", "action_on_fire_md"]],
+        ["unblock_predicate", ["event_md", "check_procedure_md", "due_action_md"]],
+        ["watch_escalation", ["capture_procedure_md", "response_md", "escalation_action_md", "retirement_semantics_md"]],
+        ["retirement_predicate", ["external_predicate_md", "verification_md", "due_action_md"]],
+        ["cadence", ["period_or_event_md", "checklist_md", "missed_action_md", "due_on"]],
+        ["evidence_freshness", ["claim_md", "reference_ids", "scope", "valid_through", "unprobed_remainder_md"]],
+      ] as const) {
+        assert(signals[kind]!.length > 0 && required.every((field) => field in signals[kind]![0]!),
+          `${kind} dashboard dropped required operational fields`);
+      }
+      const actionables = dashboards.get("actionables")!;
+      assert(JSON.stringify(Object.keys(actionables)) === JSON.stringify([
+        "armed_recur_first", "blocked_external_delegated", "costs", "evaluation_as_of",
+        "external_closeouts", "pending_review", "ready_by_admission_basis", "ready_by_consequence",
+      ]), "actionables dashboard did not separate admission, consequence, cost, and external closeouts");
+      const readyRows = Object.values(actionables.ready_by_consequence as Record<string, readonly Record<string, unknown>[]>)
+        .flat();
+      const blockedRows = Object.values(actionables.blocked_external_delegated as Record<string, readonly Record<string, unknown>[]>)
+        .flat();
+      assert(readyRows.length > 0 && readyRows.every((row) => row.work_state === "ready") &&
+        blockedRows.some((row) => row.work_state === "blocked" && "blocker_md" in row &&
+          "exact_unblock_predicates" in row) &&
+        blockedRows.some((row) => row.work_state === "waiting_external" &&
+          "external_owner_reference_id" in row && "exact_unblock_predicates" in row),
+      "blocked/external actionable ownership and unblock views are incomplete");
+      const closeouts = actionables.external_closeouts as Record<string, readonly Record<string, unknown>[]>;
+      assert(closeouts.waiting!.length > 0 && closeouts.due!.length > 0 &&
+        [...closeouts.waiting!, ...closeouts.due!].every((row) => "actions" in row && "branches" in row &&
+          "verification_md" in row && "upstream_owner_reference_id" in row),
+      "matrix external closeout dashboard is absent or lossy");
+      const syntheticTesting = liveTestingV2Document();
+      const syntheticRecords: RoadmapDocumentV2["records"] = [
+        ...syntheticTesting.records,
+        {
+          id: "testing.fixture-dashboard-delegated" as RoadmapId,
+          title: "Delegated dashboard fixture",
+          projection_group: syntheticTesting.sections[0]!.section_id,
+          render_authority: "semantic",
+          projection_visibility: "semantic_only",
+          payload: { kind: "work", summary_md: UTF8.encode("Delegated dashboard fixture."),
+            work_state: "delegated", work_intent: "build_capability", work_kind: "feature",
+            risk: "cosmetic", family_classification: "none_reviewed",
+            return_condition_md: UTF8.encode("Return when the delegated owner completes the fixture.") },
+          source_replacements: [],
+        },
+        {
+          id: "testing.fixture-dashboard-cost" as RoadmapId,
+          title: "Cost dashboard fixture",
+          projection_group: syntheticTesting.sections[0]!.section_id,
+          render_authority: "semantic",
+          projection_visibility: "semantic_only",
+          payload: { kind: "testing_cost", summary_md: UTF8.encode("Cost dashboard fixture."),
+            cost_posture: "live_registry", unit: "milliseconds",
+            scope_md: UTF8.encode("One synthetic dashboard operation."),
+            gate_reference_id: syntheticTesting.references.find((reference) => reference.kind === "gate")!.id },
+          source_replacements: [],
+        },
+      ];
+      const syntheticDocument: RoadmapDocumentV2 = { ...syntheticTesting, records: syntheticRecords,
+        relations: [...syntheticTesting.relations, {
+          source: "testing.fixture-dashboard-delegated" as RoadmapId,
+          kind: "delegates_to",
+          target: syntheticTesting.records[0]!.id,
+        }] };
+      const baseDashboardPorts = bothAuthoritativePorts();
+      const syntheticPorts = fakePorts({
+        read(path) {
+          if (path === "tests/testing-roadmap.toml") return composeRoadmapDocument(syntheticDocument);
+          return baseDashboardPorts.read.readDeclared(path);
+        },
+        registry: baseDashboardPorts.read.registryView,
+      });
+      const syntheticResult = run(["--roadmap", "testing", "--query", "actionables", "--json"], syntheticPorts);
+      assert(syntheticResult.exit_code === 0, `synthetic delegated/cost dashboard failed: ${text(syntheticResult.stderr)}`);
+      const syntheticActionables = JSON.parse(text(syntheticResult.stdout));
+      const syntheticRows = Object.values(syntheticActionables.blocked_external_delegated as Record<string, readonly Record<string, unknown>[]>)
+        .flat();
+      assert(syntheticRows.some((row) => row.work_state === "delegated" && "return_condition_md" in row &&
+          Array.isArray(row.delegation_targets) && row.delegation_targets.length === 1) &&
+        syntheticActionables.costs.length === 1 && syntheticActionables.costs[0].cost_posture === "live_registry" &&
+        !("consequence" in syntheticActionables.costs[0]),
+      "delegated ownership or cost/effort separation is absent from the actionable dashboard");
+      const familyDashboard = dashboards.get("families")!.families as readonly Record<string, unknown>[];
+      assert(familyDashboard.length === 7 && familyDashboard.every((family) =>
+        family.denominator_maturity === "observed_only" && typeof family.observed_lower_bound === "number" &&
+        typeof family.explicit_unknown === "number" && family.unmodelled_population === "unknown_open_denominator" &&
+        family.denominator_authority === "observed_only" && Array.isArray(family.observation_reference_ids) &&
+        Array.isArray(family.exclusions) &&
+        !["legal_total", "percentage", "completion", "completion_percentage", "percent_complete",
+          "unknown_or_unmodelled"].some((field) => field in family)),
+      "open-family dashboard fabricated a denominator/percentage or conflated explicit unknowns with unmodelled space");
+      const watches = dashboards.get("watches")!;
+      const liveWatches = watches.live as readonly Record<string, unknown>[];
+      const history = watches.attributed_history as readonly Record<string, unknown>[];
+      assert(liveWatches.length === 4 && history.length === 18 && liveWatches.every((row) =>
+        "payload_kind" in row && "signature_md" in row && ("capture_steps" in row || "evidence_ids" in row)) &&
+        history.some((row) => ["capture_steps", "response_md", "escalation_transition_id",
+          "retirement_semantics_md", "attribution_md", "payload_kind"].every((field) => field in row)) &&
+        history.some((row) => row.payload_kind === "testing_incident" && "evidence_ids" in row) &&
+        history.some((row) => "retirement_reference_id" in row),
+      "attributed watch history dropped capture/response/escalation/retirement fields");
+      const content = dashboards.get("content")!.roadmaps as readonly Record<string, unknown>[];
+      assert(content.length === 2 && content.every((roadmap) => typeof roadmap.audit_markdown === "string" &&
+        (roadmap.audit_markdown as string).startsWith("# Roadmap authored-content audit") &&
+        Array.isArray(roadmap.authored_content) && (roadmap.authored_content as readonly Record<string, unknown>[])
+          .every((entry) => !("markdown" in entry) && "transformation" in entry && "output_sha256" in entry)),
+      "content dashboard does not expose audit-only prose plus metadata-only exact reachability");
       return pass("positive");
     }
     case "live_wp6_projection_pre_anchor_baseline": {
@@ -2545,13 +2674,15 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       );
       assert(result.exit_code === 0, `${id} service query failed: ${text(result.stderr)}`);
       const payload = JSON.parse(text(result.stdout));
+      const signalGroup = kind === "cadence" ? "cadence" : "evidence_freshness";
+      const signals = payload.signals?.[signalGroup];
       const expected = id === "query_as_of_due_date_inclusive"
         ? "due"
         : id === "query_as_of_valid_through_inclusive" ? "as_of" : "stale";
       assert(
         result.exit_code === 0 && result.stderr.byteLength === 0 && payload.evaluation_as_of === date &&
-          payload.signals.length === 1 && payload.signals[0].id === "testing.fixture-mixed-semantic" &&
-          payload.signals[0].evaluation === expected,
+          Array.isArray(signals) && signals.length === 1 && signals[0].id === "testing.fixture-mixed-semantic" &&
+          signals[0].evaluation === expected,
         `${id} did not derive ${expected} from the decoded service document: ${text(result.stdout)} ${text(result.stderr)}`,
       );
       return pass("positive");
@@ -2567,9 +2698,10 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const result = run(["--roadmap", "testing", "--query", "signals", "--json"], ports);
       assert(result.exit_code === 0, `no-as-of service query failed: ${text(result.stderr)}`);
       const payload = JSON.parse(text(result.stdout));
+      const signals = payload.signals?.cadence;
       assert(
-        result.exit_code === 0 && payload.evaluation_as_of === null && payload.signals.length === 1 &&
-          payload.signals[0].evaluation === "unknown_no_as_of",
+        result.exit_code === 0 && payload.evaluation_as_of === null && Array.isArray(signals) &&
+          signals.length === 1 && signals[0].evaluation === "unknown_no_as_of",
         "no-as-of query fabricated time or did not preserve the decoded unknown posture",
       );
       assert(!paths.includes("tests/TESTING_ROADMAP.md" as RepoPath), "query read the committed projection");

@@ -413,7 +413,8 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["fixture_read_permission_exit_two", ["eacces", "eperm"]],
   ["cli_check_each_roadmap", ["matrix", "testing", "all"]],
   ["cli_write_each_single_roadmap", ["matrix", "testing"]],
-  ["cli_query_each_view", ["summary", "debt", "references", "campaign", "signals", "output-owners"]],
+  ["cli_query_each_view", ["summary", "debt", "references", "campaign", "signals", "actionables",
+    "decisions", "families", "watches", "content", "output-owners"]],
   ["dispatch_capability_narrowing", ["check_read_only", "query_read_only", "write_gets_atomic_replace", "format_gets_atomic_replace"]],
 ]);
 

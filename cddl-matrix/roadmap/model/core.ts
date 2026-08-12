@@ -23,6 +23,11 @@ export type QueryView =
   | "references"
   | "campaign"
   | "signals"
+  | "actionables"
+  | "decisions"
+  | "families"
+  | "watches"
+  | "content"
   | "output-owners";
 
 export type CliRequest =
