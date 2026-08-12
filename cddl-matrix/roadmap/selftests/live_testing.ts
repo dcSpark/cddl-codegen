@@ -87,6 +87,17 @@ export function liveTestingShadowV0Document(
   assert(authoritative.document.source_path === TESTING_SOURCE_PATH && authoritative.document.projection_path === TESTING_PROJECTION_PATH, "testing shadow reconstruction requires live paths");
   const projection = liveTestingProjection();
   const spans = new Map(authoritative.spans.map((span) => [span.id, span]));
+  const promotedParts = authoritative.records.filter((owner): owner is Extract<
+    RoadmapDocumentV1["records"][number],
+    { readonly render_authority: "semantic" }
+  > =>
+    owner.render_authority === "semantic" && owner.projection_visibility === "document" &&
+    owner.source_replacements.length === 1 && owner.source_replacements[0]!.span_id.startsWith("span-part-")
+  );
+  const promotedPartIds = new Map(promotedParts.map((owner) => [
+    owner.id,
+    owner.source_replacements[0]!.span_id.slice("span-part-".length),
+  ]));
   const sections: RawSectionV0[] = authoritative.sections.map((owner) => ({
     section_id: owner.section_id, title: owner.title,
     ...(owner.legacy_aliases === undefined ? {} : { legacy_aliases: [...owner.legacy_aliases] }),
@@ -103,7 +114,8 @@ export function liveTestingShadowV0Document(
     ...reconstructedRawFields(owner, "legacy_marker", owner.marker_id, spans, projection),
   }));
   const records: RawRecordV0[] = authoritative.records.filter((owner) =>
-    owner.render_authority !== "semantic" || owner.projection_visibility === "document"
+    (owner.render_authority !== "semantic" || owner.projection_visibility === "document") &&
+    !promotedPartIds.has(owner.id)
   ).map((owner) => ({
     id: owner.id, title: owner.title, projection_group: owner.projection_group,
     ...(owner.legacy_aliases === undefined ? {} : { legacy_aliases: [...owner.legacy_aliases] }),
@@ -115,6 +127,19 @@ export function liveTestingShadowV0Document(
     ...(owner.title === undefined ? {} : { title: owner.title }),
     ...reconstructedRawFields(owner, "part", owner.part_id, spans, projection),
   }));
+  for (const owner of promotedParts) {
+    const partId = promotedPartIds.get(owner.id)!;
+    const parentRelations = authoritative.relations.filter((relation) =>
+      relation.kind === "parent_of" && relation.target === owner.id
+    );
+    assert(parentRelations.length === 1, `promoted testing part ${partId} lacks one parent relation`);
+    parts.push({
+      part_id: partId as RawPartV0["part_id"],
+      parent_record_id: parentRelations[0]!.source,
+      title: owner.title,
+      ...reconstructedRawFields(owner, "record", owner.id, spans, projection),
+    });
+  }
   assert(
     [...fragments, ...parts].every((owner) => !("lifecycle_disposition" in owner)),
     "testing v0 reconstruction leaked a v1 lifecycle disposition",
@@ -125,6 +150,16 @@ export function liveTestingShadowV0Document(
     ...frozenSource
   } =
     authoritative.document;
+  const manifest: RoadmapDocumentV0["manifest"] = [];
+  for (const entry of authoritative.manifest) {
+    if (entry.kind !== "record") {
+      manifest.push(entry);
+      continue;
+    }
+    const partId = promotedPartIds.get(entry.record_id);
+    if (partId !== undefined) manifest.push({ kind: "part", part_id: partId as RawPartV0["part_id"] });
+    else if (records.some((record) => record.id === entry.record_id)) manifest.push(entry);
+  }
   const shadow: RoadmapDocumentV0 = {
     document: {
       ...frozenSource,
@@ -137,12 +172,22 @@ export function liveTestingShadowV0Document(
     records,
     parts,
     generated_slots: authoritative.generated_slots,
-    manifest: authoritative.manifest.filter((entry) =>
-      entry.kind !== "record" || records.some((record) => record.id === entry.record_id)
-    ),
-    spans: authoritative.spans.map((span) => span.source_kind === "generated_slot"
-      ? span
-      : { ...span, owner_field: "source_block_md", migration_status: "raw" }),
+    manifest,
+    spans: authoritative.spans.map((span) => {
+      if (span.source_kind === "generated_slot") return span;
+      const promotedPart = span.source_kind === "record"
+        ? promotedPartIds.get(span.owner_id as RoadmapDocumentV1["records"][number]["id"])
+        : undefined;
+      return promotedPart === undefined
+        ? { ...span, owner_field: "source_block_md" as const, migration_status: "raw" as const }
+        : {
+          ...span,
+          source_kind: "part" as const,
+          owner_id: promotedPart,
+          owner_field: "source_block_md" as const,
+          migration_status: "raw" as const,
+        };
+    }),
   };
   const canonical = composeRoadmapDocument(shadow);
   const roundTrip = decodeRoadmapSource(canonical, TESTING_SOURCE_PATH, "testing");

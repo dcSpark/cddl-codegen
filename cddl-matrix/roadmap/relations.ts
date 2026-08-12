@@ -1,6 +1,7 @@
 import type { RoadmapIssue } from "./errors.ts";
 import type { RoadmapIdProviderFact } from "./indexes.ts";
 import type { RoadmapId } from "./model/core.ts";
+import type { RoadmapName } from "./model/core.ts";
 import type { Relation, RelationKind } from "./model/documents.ts";
 
 const codePointSort = (left: string, right: string): number =>
@@ -106,14 +107,20 @@ export function validateRelations(
   relations: readonly Relation[],
   firstClass: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>,
   source = "<relations>",
+  deferForeignRoadmapJoins?: RoadmapName,
 ): readonly RoadmapIssue[] {
   const issues: RoadmapIssue[] = [];
   const sorted = [...relations].sort(relationSort);
   const exact = new Map<string, number>();
   const symmetric = new Map<string, Relation[]>();
+  const deferredForeign = (id: RoadmapId): boolean => {
+    const namespace = id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
+    return deferForeignRoadmapJoins !== undefined && namespace !== undefined &&
+      namespace !== deferForeignRoadmapJoins && !firstClass.has(id);
+  };
   for (const [index, relation] of sorted.entries()) {
     const path = `relation[${index}]`;
-    if (!firstClass.has(relation.source)) {
+    if (!firstClass.has(relation.source) && !deferredForeign(relation.source)) {
       issues.push(issue(
         "E-RELATION-ENDPOINT",
         source,
@@ -121,7 +128,7 @@ export function validateRelations(
         `relation source ${JSON.stringify(relation.source)} is not an active first-class ID`,
       ));
     }
-    if (!firstClass.has(relation.target)) {
+    if (!firstClass.has(relation.target) && !deferredForeign(relation.target)) {
       issues.push(issue(
         "E-RELATION-ENDPOINT",
         source,

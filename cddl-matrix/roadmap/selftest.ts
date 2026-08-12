@@ -311,6 +311,16 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["debt_part_to_record_promotion_composes", [
     "part_to_record", "record_shadow", "same_kind", "semantic_only", "aggregate_count",
   ]],
+  ["debt_part_adoption_exact", [
+    "curated_id", "replacement_span_join", "parent_relation_join", "stable_semantics_graph", "exact_slot_bytes",
+  ]],
+  ["debt_part_adoption_rejections", [
+    "base_not_semantic_only", "payload_drift", "title_drift", "aliases_drift", "tags_drift",
+    "missing_replacement", "duplicate_replacement", "wrong_replacement_span", "wrong_replacement_field",
+    "ambiguous_part_span", "candidate_part_retained", "missing_parent_relation", "wrong_parent_relation",
+    "relation_graph_drift", "reference_graph_drift", "manifest_missing", "manifest_wrong_index",
+    "span_owner_drift", "frozen_span_retained", "projected_bytes_drift",
+  ]],
   ["render_structural_exact_field_binding_all_kinds", [
     "section", "fragment", "legacy_marker", "record", "part", "semantic_only_zero_segments",
     "progress_coverage",
@@ -327,6 +337,9 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["status_projector_before_after_mode_parity", ["default", "check", "write", "write_and_check_write_wins", "unrelated_arg_default"]],
   ["status_projector_before_after_message_parity", ["write_missing_marker", "check_missing_open", "check_missing_close", "check_stale_inner", "derivation_vacuity"]],
   ["exit_authority_stage_mismatch_one", ["authoritative_without_claim", "shadow_with_claim", "recognized_wrong_stage", "preactivation_recognized_wrong_stage"]],
+  ["cli_authoritative_fresh_projection_reference_provenance", [
+    "fresh_resolves", "drifted_prior_rejects", "missing_rejects",
+  ]],
   ["query_debt_unselected_reservation_guard_tombstone_rejected", ["guard", "tombstone"]],
   ["span_expected_byte_view_cross_chunk", ["zero_length_boundaries", "one_chunk", "adjacent_chunks", "three_plus_chunks", "mid_scalar_rejection", "checked_prefix_overflow"]],
   ["identity_alias_collision", ["alias_alias", "alias_first_class"]],
@@ -344,6 +357,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["retired_unresolved_replacement", ["gate", "test_symbol", "file_heading", "draft", "duplicate", "external", "bare_title"]],
   ["retired_preexisting_keeps_base", ["gate", "test_symbol", "file_heading", "immutable", "reversal"]],
   ["transaction_complete_tombstone", ["complete", "missing_base_debt", "missing_candidate_debt"]],
+  ["transaction_combined_relation_cycle", ["depends_on", "parent_of", "supersedes"]],
   ["transaction_complete_guard_transfer", [
     "four_exact_debt_atoms", "five_exact_child_ids_and_kinds", "all_child_guards", "missing_base_debt", "missing_candidate_debt",
     "same_active_axis", "same_active_axis_value", "same_active_evidence", "same_active_cell", "same_active_exclusion",
@@ -494,6 +508,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["debt_structural_promotion_capability_replay", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
   ["debt_part_to_record_promotion_rejections", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "part_to_record[\"matrix.part\"]" }],
   ["debt_part_to_record_promotion_capability_replay", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
+  ["debt_part_adoption_rejections", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "part_to_record[\"matrix.curated-adoption\"]" }],
   ["render_zero_chunks_rejected", { code: "E-SELFTEST-CASE", logical_path: "render_zero_chunks_rejected" }],
   ["render_semantic_consumption_once", { code: "E-FIELD-CONSUMPTION", logical_path: "record[\"matrix.fixture-work\"]" }],
   ["render_semantic_only_identity_debt", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
@@ -560,6 +575,8 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["cycle_parent", { code: "E-RELATION-CYCLE", logical_path: "relation-cycle.parent_of" }],
   ["cycle_depends", { code: "E-RELATION-CYCLE", logical_path: "relation-cycle.depends_on" }],
   ["cycle_supersedes", { code: "E-RELATION-CYCLE", logical_path: "relation-cycle.supersedes" }],
+  ["transaction_combined_relation_cycle", { code: "E-RELATION-CYCLE", logical_path: "relation-cycle.depends_on" }],
+  ["transaction_combined_relation_inverse_duplicate", { code: "E-RELATION-DUPLICATE", logical_path: "relation-inverse.[\"overlaps\",\"matrix.fixture-lifecycle\",\"testing.fixture-lifecycle\"]" }],
   ["negative_reference_registry_enumeration", { code: "E-REFERENCE-UNRESOLVED", logical_path: "reference-provider.roadmap" }],
   ["citation_inventory_malformed_id_rejected", { code: "E-ID-GRAMMAR", logical_path: "roadmap-citation" }],
   ["citation_inventory_tracked_missing_rejected", { code: "E-SOURCE-MISSING", logical_path: "tracked-text" }],

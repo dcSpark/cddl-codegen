@@ -39,6 +39,7 @@ import type {
   StatusCompatibilityModeFixture,
 } from "../selftest.ts";
 import { resolveManifest } from "../manifest.ts";
+import { buildRoadmapIndexes } from "../indexes.ts";
 import {
   buildExpectedChunks,
   checkedPrefixOffsets,
@@ -111,6 +112,7 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "manifest_record_table_order_irrelevant",
   "manifest_true_sequence_preserved",
   "manifest_duplicate_not_tiebroken",
+  "manifest_semantic_only_is_not_placed",
   "span_gap",
   "span_overlap",
   "span_wrong_digest",
@@ -161,6 +163,8 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "debt_part_to_record_promotion_rejections",
   "debt_part_to_record_promotion_capability_replay",
   "debt_part_to_record_promotion_composes",
+  "debt_part_adoption_exact",
+  "debt_part_adoption_rejections",
   "render_irregular_matrix_exact",
   "render_irregular_testing_exact",
   "render_zero_chunks_rejected",
@@ -648,6 +652,23 @@ function testManifestCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult 
       }
       return pass();
     }
+    case "manifest_semantic_only_is_not_placed": {
+      const semanticOnly = semanticOnlyCompletion();
+      if (semanticOnly.placement.issues.length !== 0 ||
+        semanticOnly.placement.ops.some((op) => op.node.kind === "record" && op.node.id === semanticOnly.record.id)) {
+        fail("semantic-only record did not remain an unplaced first-class semantic owner");
+      }
+      const authored = {
+        ...semanticOnly.document,
+        manifest: [...semanticOnly.document.manifest, { kind: "record" as const, record_id: semanticOnly.record.id }],
+      };
+      const rejected = resolveManifest(authored).issues;
+      if (!rejected.some((entry) => entry.code === "E-MANIFEST-KIND" &&
+        entry.logical_path === `manifest[${semanticOnly.document.manifest.length}]`)) {
+        fail("authored semantic-only manifest placement was not rejected at its exact entry");
+      }
+      return pass();
+    }
     default:
       fail(`${id} is not a manifest case`);
   }
@@ -970,6 +991,8 @@ function testDebtCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     || id === "debt_part_to_record_promotion_rejections"
     || id === "debt_part_to_record_promotion_capability_replay"
     || id === "debt_part_to_record_promotion_composes"
+    || id === "debt_part_adoption_exact"
+    || id === "debt_part_adoption_rejections"
   ) return testRenderCase(id);
   if (id.startsWith("debt_cutover_revealed_")) return testCutoverRevealedDebtCase(id);
   if (
@@ -1062,7 +1085,6 @@ function testDebtCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     const candidate: RoadmapDocumentV1 = {
       ...fixture.candidate,
       records: [...fixture.candidate.records, added],
-      manifest: [...fixture.candidate.manifest, { kind: "record" as const, record_id: addedId }],
     };
     const completed = completeSemantic(candidate, { value: 0 });
     const baseProgress = migrationProgressReport(
@@ -1700,6 +1722,70 @@ function validatePartToRecordPromotion(
   return { base, candidate, baseCompleted, candidateCompleted, baseDebt, candidateDebt, transition };
 }
 
+function partAdoptionFixture(): ReturnType<typeof partToRecordPromotionFixture> {
+  const fixture = partToRecordPromotionFixture();
+  const derivedId = asRoadmapId("matrix.part");
+  const curatedId = asRoadmapId("matrix.curated-adoption");
+  const candidateSource = fixture.candidate.records.find((record) =>
+    record.id === derivedId && "payload" in record
+  );
+  if (candidateSource === undefined || !("payload" in candidateSource)) {
+    fail("part-adoption fixture lacks its converted semantic source");
+  }
+  const candidateRecord = {
+    ...candidateSource,
+    id: curatedId,
+    title: "Curated permanent identity",
+    legacy_aliases: ["CURATED-1"],
+    tags: ["adoption-fixture"],
+  };
+  const baseRecord = {
+    ...candidateRecord,
+    projection_visibility: "semantic_only" as const,
+    source_replacements: [],
+  };
+  const relation = {
+    source: asRoadmapId("matrix.fixture-work"),
+    kind: "parent_of" as const,
+    target: curatedId,
+  };
+  const reference: RoadmapDocumentV1["references"][number] = {
+    id: "curated-adoption-reference" as never,
+    source: curatedId,
+    kind: "external_issue",
+    repository: "example/project",
+    issue: "17",
+  };
+  const base: RoadmapDocumentV1 = {
+    ...fixture.base,
+    records: [...fixture.base.records, baseRecord],
+    relations: [relation],
+    references: [reference],
+  };
+  const candidate: RoadmapDocumentV1 = {
+    ...fixture.candidate,
+    records: fixture.candidate.records.map((record) => record.id === derivedId ? candidateRecord : record),
+    manifest: fixture.candidate.manifest.map((entry) =>
+      entry.kind === "record" && entry.record_id === derivedId
+        ? { ...entry, record_id: curatedId }
+        : entry
+    ),
+    spans: fixture.candidate.spans.map((span) =>
+      span.source_kind === "record" && span.owner_id === derivedId
+        ? { ...span, owner_id: curatedId }
+        : span
+    ),
+    relations: [relation],
+    references: [reference],
+  };
+  return {
+    base,
+    candidate,
+    baseCompleted: completeCanonical(base),
+    candidateCompleted: completeCanonical(candidate),
+  };
+}
+
 function multiplePartToRecordPromotionFixture(): ReturnType<typeof partToRecordPromotionFixture> {
   const fixture = partToRecordPromotionFixture();
   const secondPartId = asPartId("part-two");
@@ -1996,6 +2082,9 @@ function semanticOnlyCompletion(): {
   const document: RoadmapDocumentV1 = {
     ...exact.document,
     records: exact.document.records.map((candidate) => candidate === record ? semanticOnlyRecord : candidate),
+    manifest: exact.document.manifest.filter((entry) =>
+      !(entry.kind === "record" && entry.record_id === semanticOnlyRecord.id)
+    ),
   };
   const placement = resolveManifest(document);
   const completed = buildExpectedChunks(document, placement.ops, {
@@ -2009,6 +2098,120 @@ function testRenderCase(
   id: RequiredProjectionSelfTestCaseId,
   fixtureBundle?: ProjectionFixtureBundle,
 ): SelfTestResult {
+  if (id === "debt_part_adoption_exact") {
+    const fixture = partAdoptionFixture();
+    const result = validatePartToRecordPromotion(fixture);
+    if (!result.transition.ok || result.transition.facts === undefined ||
+      result.transition.facts.restructure_count !== 1) {
+      fail(`exact curated part adoption did not mint one fact: ${result.transition.ok ? "wrong count" : result.transition.issues.map((issue) => issue.message).join(";")}`);
+    }
+    const issues = compareMigrationDebt(result.baseDebt, result.candidateDebt, {
+      base_document: result.base,
+      candidate_document: result.candidate,
+      base_completed: result.baseCompleted,
+      candidate_completed: result.candidateCompleted,
+      transition_facts: result.transition.facts,
+    });
+    if (issues.length !== 0) fail(`exact curated part adoption debt comparison failed: ${issues.map((issue) => issue.message).join(";")}`);
+    if (!fixture.baseCompleted.expected_bytes.bytesEqual(fixture.candidateCompleted.expected_bytes)) {
+      fail("curated part adoption changed projection bytes");
+    }
+    const adoptedId = asRoadmapId("matrix.curated-adoption");
+    if (adoptedId === asRoadmapId(`${fixture.base.document.roadmap}.${fixture.base.parts[0]!.part_id}`) ||
+      !fixture.base.records.some((record) => record.id === adoptedId && "payload" in record &&
+        record.projection_visibility === "semantic_only") ||
+      !fixture.candidate.records.some((record) => record.id === adoptedId && "payload" in record &&
+        record.projection_visibility === "document")) {
+      fail("curated part adoption did not preserve its pre-existing permanent identity");
+    }
+    return pass("positive", ["curated_id", "replacement_span_join", "parent_relation_join", "stable_semantics_graph", "exact_slot_bytes"]);
+  }
+  if (id === "debt_part_adoption_rejections") {
+    type Fixture = ReturnType<typeof partAdoptionFixture>;
+    type Overrides = Parameters<typeof validatePartToRecordPromotion>[1];
+    const adoptedId = asRoadmapId("matrix.curated-adoption");
+    const mutateBaseRecord = (
+      fixture: Fixture,
+      update: (record: Extract<RoadmapDocumentV1["records"][number], { render_authority: "semantic" }>) => RoadmapDocumentV1["records"][number],
+    ): Overrides => {
+      const base = {
+        ...fixture.base,
+        records: fixture.base.records.map((record) =>
+          record.id === adoptedId && "payload" in record ? update(record) : record
+        ),
+      };
+      return { base, baseCompleted: completeCanonical(base) };
+    };
+    const mutateCandidateRecord = (
+      fixture: Fixture,
+      update: (record: Extract<RoadmapDocumentV1["records"][number], { render_authority: "semantic" }>) => RoadmapDocumentV1["records"][number],
+    ): Overrides => {
+      const candidate = {
+        ...fixture.candidate,
+        records: fixture.candidate.records.map((record) =>
+          record.id === adoptedId && "payload" in record ? update(record) : record
+        ),
+      };
+      return { candidate, candidateCompleted: completeCanonical(candidate) };
+    };
+    const variants: readonly { readonly name: string; readonly build: (fixture: Fixture) => Overrides }[] = [
+      { name: "base_not_semantic_only", build: (f) => mutateBaseRecord(f, (record) => ({ ...record, projection_visibility: "document" })) },
+      { name: "payload_drift", build: (f) => mutateCandidateRecord(f, (record) => ({ ...record, payload: { ...record.payload, summary_md: bytes("changed") } })) },
+      { name: "title_drift", build: (f) => mutateCandidateRecord(f, (record) => ({ ...record, title: "changed" })) },
+      { name: "aliases_drift", build: (f) => mutateCandidateRecord(f, (record) => ({ ...record, legacy_aliases: ["changed"] })) },
+      { name: "tags_drift", build: (f) => mutateCandidateRecord(f, (record) => ({ ...record, tags: [] })) },
+      { name: "missing_replacement", build: (f) => mutateCandidateRecord(f, (record) => ({ ...record, source_replacements: [] })) },
+      { name: "duplicate_replacement", build: (f) => mutateCandidateRecord(f, (record) => ({ ...record, source_replacements: [...record.source_replacements, record.source_replacements[0]!] })) },
+      { name: "wrong_replacement_span", build: (f) => mutateCandidateRecord(f, (record) => ({ ...record, source_replacements: record.source_replacements.map((row) => ({ ...row, span_id: asSpanId("span-h") })) })) },
+      { name: "wrong_replacement_field", build: (f) => mutateCandidateRecord(f, (record) => ({ ...record, source_replacements: record.source_replacements.map((row) => ({ ...row, replacement_field: "payload.summary_md" })) })) },
+      { name: "ambiguous_part_span", build: (f) => {
+        const source = f.base.parts[0]!;
+        const base = { ...f.base, parts: [...f.base.parts, { ...source, part_id: asPartId("ambiguous-part") }] };
+        return { base, baseCompleted: completeCanonical(base) };
+      } },
+      { name: "candidate_part_retained", build: (f) => {
+        const candidate = { ...f.candidate, parts: f.base.parts };
+        return { candidate, candidateCompleted: completeCanonical(candidate) };
+      } },
+      { name: "missing_parent_relation", build: (f) => ({ candidate: { ...f.candidate, relations: [] } }) },
+      { name: "wrong_parent_relation", build: (f) => {
+        const relations = f.base.relations.map((row) => ({ ...row, kind: "related" as const }));
+        return { base: { ...f.base, relations }, candidate: { ...f.candidate, relations } };
+      } },
+      { name: "relation_graph_drift", build: (f) => ({ candidate: { ...f.candidate, relations: [...f.candidate.relations, { source: adoptedId, kind: "related", target: asRoadmapId("matrix.fixture-work") }] } }) },
+      { name: "reference_graph_drift", build: (f) => ({ candidate: { ...f.candidate, references: [] } }) },
+      { name: "manifest_missing", build: (f) => {
+        const candidate = { ...f.candidate, manifest: f.candidate.manifest.filter((entry) => !(entry.kind === "record" && entry.record_id === adoptedId)) };
+        return { candidate, candidateCompleted: completeCanonical(candidate) };
+      } },
+      { name: "manifest_wrong_index", build: (f) => {
+        const manifest = [...f.candidate.manifest];
+        const index = manifest.findIndex((entry) => entry.kind === "record" && entry.record_id === adoptedId);
+        [manifest[index - 1], manifest[index]] = [manifest[index]!, manifest[index - 1]!];
+        const candidate = { ...f.candidate, manifest };
+        return { candidate, candidateCompleted: completeCanonical(candidate) };
+      } },
+      { name: "span_owner_drift", build: (f) => {
+        const candidate = { ...f.candidate, spans: f.candidate.spans.map((span) => span.id === asSpanId("span-p") ? { ...span, owner_id: asRoadmapId("matrix.wrong") } : span) };
+        return { candidate, candidateCompleted: completeCanonical(candidate) };
+      } },
+      { name: "frozen_span_retained", build: (f) => ({ candidate: { ...f.candidate, document: { ...f.candidate.document, frozen_legacy_span_ids: [...f.candidate.document.frozen_legacy_span_ids, asSpanId("span-p")].sort() } } }) },
+      { name: "projected_bytes_drift", build: (f) => ({ candidateCompleted: { ...f.candidateCompleted, expected_bytes: createExpectedByteView([{ ...f.candidateCompleted.chunks[0]!, bytes: bytes("changed") }]) } }) },
+    ];
+    const executed: string[] = [];
+    let pinned: readonly RoadmapIssue[] = [];
+    for (const variant of variants) {
+      const fixture = partAdoptionFixture();
+      const result = validatePartToRecordPromotion(fixture, variant.build(fixture));
+      if (result.transition.ok) fail(`${variant.name}: invalid curated part adoption minted facts`);
+      if (variant.name === "payload_drift") pinned = result.transition.issues;
+      executed.push(variant.name);
+    }
+    if (observeMatchingIssue(pinned, "E-DEBT-OWNER-REGRESSION", 'part_to_record["matrix.curated-adoption"]') === undefined) {
+      fail("curated part-adoption rejection matrix did not observe its pinned adoption issue");
+    }
+    return pass("negative", Object.freeze(executed));
+  }
   if (id === "debt_part_to_record_promotion_exact") {
     const result = validatePartToRecordPromotion(partToRecordPromotionFixture());
     if (!result.transition.ok || result.transition.facts === undefined ||
@@ -2284,7 +2487,7 @@ function testRenderCase(
       records: [...recordPromotion.candidate.records, partRecord, semanticOnly],
       manifest: recordPromotion.candidate.manifest.map((entry) => entry.kind === "part" && entry.part_id === part.part_id
         ? { kind: "record" as const, record_id: partRecord.id }
-        : entry).concat({ kind: "record", record_id: semanticOnly.id }),
+        : entry),
       spans: recordPromotion.candidate.spans.map((span) => span.id === asSpanId("span-h") ? {
         ...span, owner_field: "body_md", migration_status: "replaced" as const,
       } : span.id === asSpanId("span-p") ? {
@@ -2534,10 +2737,7 @@ function testRenderCase(
         ...recordPromotion.candidate.records,
         { ...promotedRecord, id: semanticOnlyId, projection_visibility: "semantic_only", source_replacements: [] },
       ],
-      manifest: [
-        ...recordPromotion.candidate.manifest,
-        { kind: "record", record_id: semanticOnlyId },
-      ],
+      manifest: recordPromotion.candidate.manifest,
       spans: recordPromotion.candidate.spans.map((span) => convertedStructuralSpans.has(span.id) ? {
         ...span,
         owner_field: "body_md",
@@ -2652,7 +2852,6 @@ function testRenderCase(
     const base: RoadmapDocumentV1 = {
       ...promotion.base,
       records: [...promotion.base.records, retiring],
-      manifest: [...promotion.base.manifest, { kind: "record" as const, record_id: retiringId }],
     };
     const candidate: RoadmapDocumentV1 = promotion.candidate;
     const baseCompleted = completeSemantic(base, { value: 0 });
@@ -2894,6 +3093,7 @@ function testRenderCase(
       records: fixture.candidate.records.map((record) => "payload" in record
         ? { ...record, projection_visibility: "semantic_only" as const, source_replacements: [] }
         : record),
+      manifest: fixture.candidate.manifest.filter((entry) => entry.kind !== "record"),
     };
     const result = validatePromotion(fixture.base, candidate, fixture.baseCompleted, fixture.candidateCompleted);
     if (result.transition.ok) fail("raw shadow promoted to semantic-only visibility");
@@ -2914,7 +3114,9 @@ function testRenderCase(
     const candidate: RoadmapDocumentV1 = {
       ...fixture.candidate,
       records: [...fixture.candidate.records, addedRecord],
-      manifest: [...fixture.candidate.manifest, { kind: "record" as const, record_id: addedId }],
+      manifest: id === "debt_candidate_only_document_rejected"
+        ? [...fixture.candidate.manifest, { kind: "record" as const, record_id: addedId }]
+        : fixture.candidate.manifest,
     };
     const completed = completeSemantic(candidate, { value: 0 });
     const result = validatePromotion(
@@ -3023,13 +3225,14 @@ function testRenderCase(
     return pass("negative");
   }
   if (id === "render_semantic_only_zero_byte_consumption") {
-    const { document, placement, completed } = semanticOnlyCompletion();
+    const { document, record, placement, completed } = semanticOnlyCompletion();
     const issues = validateCompletedChunks(document, placement.ops, completed);
-    if (issues.length !== 0) fail(`semantic-only zero-byte chunk failed: ${issues.map((issue) => issue.message).join(";")}`);
+    if (issues.length !== 0) fail(`semantic-only non-render ledger failed: ${issues.map((issue) => issue.message).join(";")}`);
     const semanticChunk = completed.chunks.find((chunk) => chunk.owner.kind === "record");
     const ledger = completed.field_consumption.find((entry) => entry.owner_kind === "record");
-    if (semanticChunk?.bytes.byteLength !== 0 || semanticChunk.source_span_ids.length !== 0 || completed.projected_field_segments.length !== 0) {
-      fail("semantic-only manifest record emitted bytes, spans, or projected field segments");
+    if (semanticChunk !== undefined || completed.projected_field_segments.length !== 0 ||
+      placement.ops.some((op) => op.node.kind === "record" && op.node.id === record.id)) {
+      fail("semantic-only record minted a manifest operation, chunk, or projected field segment");
     }
     if (ledger === undefined || ledger.expected_fields.length !== 3 || ledger.consumed_fields.length !== 3) {
       fail("semantic-only record did not explicitly consume every Markdown field");
@@ -3038,8 +3241,9 @@ function testRenderCase(
   }
   if (id === "render_semantic_only_identity_debt") {
     const { document, record, placement, completed } = semanticOnlyCompletion();
-    if (!placement.ops.some((op) => op.node.kind === "record" && op.node.id === record.id)) {
-      fail("semantic-only record lost first-class manifest identity");
+    if (placement.ops.some((op) => op.node.kind === "record" && op.node.id === record.id) ||
+      !buildRoadmapIndexes(document).indexes.first_class.has(record.id)) {
+      fail("semantic-only record did not retain identity outside the manifest");
     }
     const semanticDebt = deriveMigrationDebt(document, completed);
     if ([...semanticDebt.owners.values()].filter(({ key }) => key.owner_kind === "record" && key.owner_id === record.id).length !== 3) {
@@ -3070,6 +3274,7 @@ function testRenderCase(
           ? { ...candidate, projection_visibility: "semantic_only" as const }
           : candidate
       ),
+      manifest: candidateFixture.document.manifest.filter((entry) => entry.kind !== "record"),
     };
     requireIssue(compareMigrationDebt(baseDebt, candidateDebt, {
       base_document: baseFixture.document,

@@ -227,6 +227,8 @@ export const REQUIRED_IDENTITY_SELFTEST_CASE_IDS = [
   "transaction_missing_campaign_removal",
   "transaction_live_citation",
   "transaction_dangling_relation",
+  "transaction_combined_relation_cycle",
+  "transaction_combined_relation_inverse_duplicate",
   "transaction_dangling_reference",
   "transaction_missing_tombstone",
   "transaction_unused_tombstone",
@@ -1904,6 +1906,23 @@ function citationCase(id: JoinSelfTestCaseId): boolean {
         immutable.issues.length === 0 && JSON.stringify(immutable.citations) === JSON.stringify(result.facts),
         "tracked-file and immutable-view citation scans must share one exact tokenizer",
       );
+      const expectedBytes = bytes("# Expected heading\nbody ");
+      const expectedView = createExpectedByteView([
+        expectedBytes.subarray(0, 5),
+        expectedBytes.subarray(5),
+      ].map((chunk, manifest_index): RenderChunk => ({
+        manifest_index,
+        owner: { kind: "fragment", id: `expected-${manifest_index}`, field: "body_md" },
+        bytes: chunk,
+        source_span_ids: [],
+        consumed_fields: ["body_md"],
+      })));
+      const expectedFacts = scanRoadmapMarkdownFacts("README.md" as RepoPath, expectedView);
+      assert(
+        expectedFacts.issues.length === 0 && expectedFacts.headings.length === 1 &&
+          expectedFacts.headings[0]!.heading === "Expected heading",
+        "immutable Markdown scan did not consume a multi-chunk ExpectedByteView directly",
+      );
       const byteOnly = scanRoadmapCitations([
         file("crlf.fixture", `${citationText("matrix.fixture-alpha")}\r\n`),
         file("non-utf8.fixture", new Uint8Array([
@@ -2543,7 +2562,11 @@ function c5V1(
     },
     sections: [], fragments: [], legacy_markers: [], records: [...records], parts: [],
     generated_slots: [],
-    manifest: records.map((record) => ({ kind: "record" as const, record_id: record.id })),
+    manifest: records.flatMap((record) =>
+      "projection_visibility" in record && record.projection_visibility === "semantic_only"
+        ? []
+        : [{ kind: "record" as const, record_id: record.id }]
+    ),
     spans: [], relations: [...relations], references: [...references],
   };
 }
@@ -3643,6 +3666,58 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
     return c5AllTransaction(inputs.base, inputs.candidate);
   };
   switch (id) {
+    case "transaction_combined_relation_cycle": {
+      for (const kind of ["depends_on", "parent_of", "supersedes"] as const) {
+        const matrix = c5V1("matrix", [c5ReadyRecord(C5_ID)], [
+          { source: C5_ID, kind, target: C5_TESTING_ID },
+        ]);
+        const testing = c5V1("testing", [c5ReadyRecord(C5_TESTING_ID)], [
+          { source: C5_TESTING_ID, kind, target: C5_ID },
+        ]);
+        const revision = c5WithDebt({
+          campaign: c5Campaign("authoritative", "authoritative"),
+          retired: c5Retired(),
+          roadmaps: c5Snapshots(
+            { markdown: bytes("matrix\n"), document: matrix },
+            { markdown: bytes("testing\n"), document: testing },
+          ),
+          registry: c5Registry({ kind: "worktree" }),
+        });
+        const cycle = validateLifecycleRevision(revision).issues.find((issue) =>
+          issue.code === "E-RELATION-CYCLE" && issue.logical_path === `relation-cycle.${kind}`
+        );
+        assert(cycle !== undefined,
+          `${kind} cycle distributed across authoritative roadmaps must fail the combined transaction join`);
+        observeSelfTestIssue(cycle);
+      }
+      return true;
+    }
+    case "transaction_combined_relation_inverse_duplicate": {
+      const matrix = c5V1("matrix", [c5ReadyRecord(C5_ID)], [
+        { source: C5_ID, kind: "overlaps", target: C5_TESTING_ID },
+      ]);
+      const testing = c5V1("testing", [c5ReadyRecord(C5_TESTING_ID)], [
+        { source: C5_TESTING_ID, kind: "overlaps", target: C5_ID },
+      ]);
+      const revision = c5WithDebt({
+        campaign: c5Campaign("authoritative", "authoritative"),
+        retired: c5Retired(),
+        roadmaps: c5Snapshots(
+          { markdown: bytes("matrix\n"), document: matrix },
+          { markdown: bytes("testing\n"), document: testing },
+        ),
+        registry: c5Registry({ kind: "worktree" }),
+      });
+      const duplicate = validateLifecycleRevision(revision).issues.find((issue) =>
+        issue.code === "E-RELATION-DUPLICATE" &&
+        issue.logical_path ===
+          'relation-inverse.["overlaps","matrix.fixture-lifecycle","testing.fixture-lifecycle"]'
+      );
+      assert(duplicate !== undefined,
+        "inverse symmetric edges split across authoritative roadmaps must fail the combined transaction join");
+      observeSelfTestIssue(duplicate);
+      return true;
+    }
     case "transaction_complete_tombstone": {
       const result = positiveRetirement();
       assert(result.issues.length === 0 && result.retired_ids[0] === C5_ID, `complete active retirement must pass: ${JSON.stringify(result.issues)}`);
@@ -5603,6 +5678,9 @@ const POSITIVE_C5_CASES = new Set<C5SelfTestCaseId>([
 ]);
 
 function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
+  if (id === "transaction_combined_relation_cycle") {
+    return ["depends_on", "parent_of", "supersedes"];
+  }
   if (id === "identity_reservation_shadow_third_owner_rejected") {
     return ["A-A", "A-R", "A-S", "A-G", "A-T", "R-R", "R-R-cross-namespace", "R-S", "R-S-mismatch", "R-G", "R-T", "S-S", "S-G", "S-T", "G-G", "G-T", "T-T", "R-S-third-A", "R-S-third-R", "R-S-third-S", "R-S-third-G", "R-S-third-T", "alias-A", "alias-R", "alias-S", "alias-G", "alias-T", "reversal"];
   }

@@ -169,10 +169,14 @@ function decodeAt(name: RoadmapName, reader: RevisionReader): { document: Roadma
   return { document, source };
 }
 
-function domainValidation(document: RoadmapDocument, view: RegistryView) {
+function domainValidation(
+  document: RoadmapDocument,
+  view: RegistryView,
+  options: Parameters<typeof validateMatrixRoadmapDocument>[2] = {},
+) {
   return document.document.roadmap === "matrix"
-    ? validateMatrixRoadmapDocument(document, view)
-    : validateTestingRoadmapDocument(document, view);
+    ? validateMatrixRoadmapDocument(document, view, options)
+    : validateTestingRoadmapDocument(document, view, options);
 }
 
 function prepareRoadmapCore(name: RoadmapName, reader: RevisionReader): ValidatedRoadmapCore {
@@ -185,7 +189,6 @@ function prepareDecodedRoadmapCore(
   document: RoadmapDocument,
   registry: RegistryView,
 ): ValidatedRoadmapCore {
-  const domain = domainValidation(document, registry);
   const manifest = resolveManifest(document);
   const adapter = ADAPTER_BY_ROADMAP[name];
   const resolvers = adapter.slotResolvers(registry, document);
@@ -196,6 +199,20 @@ function prepareDecodedRoadmapCore(
     resolveGeneratedSlot(slot) {
       return resolvers.get(slot.slot_id)?.resolve(slot, registry);
     },
+  });
+  // Authoritative v1 references to the roadmap projection resolve against the projection this
+  // decoded source just built. The committed projection is prior output and therefore cannot be
+  // an input to domain validation. Build/slot resolution deliberately precedes this scan because
+  // expected bytes are its authority; neither depends on a successful domain verdict.
+  const validationRegistry = document.document.schema_version === 1 && document.document.authority === "authoritative"
+    ? registryWithRoadmapMarkdownFact(
+      registry,
+      adapter.projection_path,
+      completed.expected_bytes,
+    )
+    : registry;
+  const domain = domainValidation(document, validationRegistry, {
+    defer_foreign_roadmap_joins: true,
   });
   const structuralIssues = [
     ...domain.issues,
@@ -235,7 +252,7 @@ function prepareDecodedRoadmapCore(
   }
   return Object.freeze({
     document,
-    registry,
+    registry: validationRegistry,
     completed,
     debt,
   });
@@ -692,21 +709,28 @@ function readAndValidateShadowMarkdown(
   return authoritativeMarkdown;
 }
 
-function registryWithRoadmapMarkdownFacts(
+function registryWithRoadmapMarkdownFact(
   registry: RegistryView,
-  roadmaps: LifecycleRevisionInput["roadmaps"],
+  path: RepoPath,
+  markdown: Parameters<typeof scanRoadmapMarkdownFacts>[1],
 ): RegistryView {
-  const facts = (["matrix", "testing"] as const).map((name) =>
-    scanRoadmapMarkdownFacts(ADAPTER_BY_ROADMAP[name].projection_path, createImmutableByteView(roadmaps[name].markdown))
-  );
-  const factIssues = facts.flatMap((value) => value.issues);
-  if (factIssues.length > 0) failure(factIssues);
-  const citations = [...registry.roadmap_citations, ...facts.flatMap((value) => value.citations)].sort((left, right) =>
+  const facts = scanRoadmapMarkdownFacts(path, markdown);
+  if (facts.issues.length > 0) failure(facts.issues);
+  // Replace, rather than append, this projection's facts. Besides keeping lifecycle revalidation
+  // idempotent, this fails closed if an injected registry ever contains stale prior-projection
+  // facts: only the selected immutable view can describe the current projection path.
+  const citations = [
+    ...registry.roadmap_citations.filter((value) => value.source !== path),
+    ...facts.citations,
+  ].sort((left, right) =>
     left.source < right.source ? -1 : left.source > right.source ? 1 :
       left.span.start_byte - right.span.start_byte || left.span.end_byte - right.span.end_byte ||
       (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
   );
-  const headings = [...registry.tracked_headings, ...facts.flatMap((value) => value.headings)].sort((left, right) =>
+  const headings = [
+    ...registry.tracked_headings.filter((value) => value.path !== path),
+    ...facts.headings,
+  ].sort((left, right) =>
     left.path < right.path ? -1 : left.path > right.path ? 1 :
       left.span.start_byte - right.span.start_byte || (left.heading < right.heading ? -1 : left.heading > right.heading ? 1 : 0)
   );
@@ -715,6 +739,20 @@ function registryWithRoadmapMarkdownFacts(
     tracked_headings: Object.freeze(headings),
     roadmap_citations: Object.freeze(citations),
   });
+}
+
+function registryWithRoadmapMarkdownFacts(
+  registry: RegistryView,
+  roadmaps: LifecycleRevisionInput["roadmaps"],
+): RegistryView {
+  return (["matrix", "testing"] as const).reduce(
+    (current, name) => registryWithRoadmapMarkdownFact(
+      current,
+      ADAPTER_BY_ROADMAP[name].projection_path,
+      createImmutableByteView(roadmaps[name].markdown),
+    ),
+    registry,
+  );
 }
 
 function assembleLifecycle(

@@ -21,7 +21,6 @@ import type {
 } from "../io.ts";
 import type { FixtureRelativePath, RepoPath, RepositoryRevision, RoadmapId } from "../model/core.ts";
 import type { RoadmapDocumentV0, RoadmapDocumentV1, SemanticPayload } from "../model/documents.ts";
-import { validateRoadmapId } from "../ids.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
 import {
   LEGACY_STATUS_OUTPUT_CLAIMS,
@@ -34,12 +33,14 @@ import {
   liveMatrixAuthoritativeDocument,
   liveMatrixAuthoritativeSource,
   liveMatrixProjection,
+  liveMatrixShadowV0Document,
   liveMatrixShadowV0Source,
 } from "./live_matrix.ts";
 import {
   liveTestingAuthoritativeDocument,
   liveTestingAuthoritativeSource,
   liveTestingProjection,
+  liveTestingShadowV0Document,
   liveTestingShadowV0Source,
 } from "./live_testing.ts";
 
@@ -112,6 +113,7 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_against_all_check_allowed",
   "cli_wp4m_mixed_authority_all",
   "cli_shadow_authoritative_markdown_provenance",
+  "cli_authoritative_fresh_projection_reference_provenance",
   "cli_against_missing_value",
   "cli_against_duplicate_value",
   "cli_against_bad_length_git_format_no_usage",
@@ -217,6 +219,63 @@ function emptyRegistry(revision: RepositoryRevision): RegistryView {
   };
 }
 
+function registryForDocuments(
+  revision: RepositoryRevision,
+  documents: readonly RoadmapDocumentV1[],
+): RegistryView {
+  const references = documents.flatMap((document) => document.references);
+  const unique = <T>(values: readonly T[], key: (value: T) => string): readonly T[] =>
+    [...new Map(values.map((value) => [key(value), value])).values()];
+  return {
+    ...emptyRegistry(revision),
+    gates: unique(references.filter((reference) => reference.kind === "gate").map((reference) => ({
+      id: reference.gate_id,
+      kind: "cargo" as const,
+      stub: false,
+    })), (fact) => fact.id),
+    matrix_features: unique(
+      references.filter((reference) => reference.kind === "matrix_feature").map((reference) => ({ id: reference.feature_id })),
+      (fact) => fact.id,
+    ),
+    matrix_roles: unique(
+      references.filter((reference) => reference.kind === "matrix_role").map((reference) => ({ id: reference.role_id })),
+      (fact) => fact.id,
+    ),
+    matrix_cells: unique(
+      references.filter((reference) => reference.kind === "matrix_cell").map((reference) => ({ id: reference.cell_id })),
+      (fact) => fact.id,
+    ),
+    tracked_headings: unique(
+      references.filter((reference) => reference.kind === "file_heading").map((reference) => ({
+        path: reference.path,
+        heading: reference.heading,
+        span: { start_byte: 0, end_byte: 1 },
+      })),
+      (fact) => JSON.stringify([fact.path, fact.heading]),
+    ),
+    test_symbols: unique(
+      references.filter((reference) => reference.kind === "test_symbol").map((reference) => ({
+        test_id: reference.test_id,
+        symbol: reference.symbol,
+        source: "src/tests/fixture.rs" as RepoPath,
+        span: { start_byte: 0, end_byte: 1 },
+        module_path: reference.symbol.split("::").slice(0, -1),
+      })),
+      (fact) => JSON.stringify([fact.test_id, fact.symbol]),
+    ),
+  };
+}
+
+let cachedLiveRegistry: RegistryView | undefined;
+
+function liveRegistry(revision: RepositoryRevision): RegistryView {
+  cachedLiveRegistry ??= registryForDocuments({ kind: "worktree" }, [
+      liveMatrixAuthoritativeDocument(),
+      liveTestingAuthoritativeDocument(),
+    ]);
+  return { ...cachedLiveRegistry, revision };
+}
+
 interface FakeOptions {
   read?: (path: RepoPath) => Uint8Array;
   readAtCommit?: (path: RepoPath) => Uint8Array;
@@ -314,6 +373,145 @@ function fixture(context: SelfTestContext, path: string): Uint8Array {
   return context.ports.fixtures.readFixtureFile(FIXTURE_ROOT, path as FixtureRelativePath);
 }
 
+function replacementBytes(
+  record: Extract<RoadmapDocumentV1["records"][number], { readonly render_authority: "semantic" }>,
+): Uint8Array {
+  assert(record.source_replacements.length === 1, `fixture record ${record.id} lacks one replacement`);
+  const field = record.source_replacements[0]!.replacement_field;
+  assert(field === "payload.summary_md" || field === "payload.detail_md", `fixture record ${record.id} uses unsupported replacement ${field}`);
+  const value = field === "payload.summary_md" ? record.payload.summary_md : record.payload.detail_md;
+  assert(value !== undefined, `fixture record ${record.id} lacks replacement bytes at ${field}`);
+  return value;
+}
+
+/** Reintroduce only the raw owners needed by transaction tests into the completed live document. */
+function rawPromotionBase(roadmap: "matrix" | "testing"): RoadmapDocumentV1 {
+  const live = roadmap === "matrix" ? liveMatrixAuthoritativeDocument() : liveTestingAuthoritativeDocument();
+  if (live.document.semantic_conversion === "converting") return live;
+  const recordPrefix = roadmap === "matrix" ? "record-" : "span-record-";
+  const partPrefix = roadmap === "matrix" ? "part-" : "span-part-";
+  const record = live.records.find((value) =>
+    value.render_authority === "semantic" && value.projection_visibility === "document" &&
+    value.source_replacements.length === 1 && value.source_replacements[0]!.span_id.startsWith(recordPrefix)
+  );
+  assert(record?.render_authority === "semantic", `${roadmap} fixture lacks a reversible document record`);
+  const recordBytes = replacementBytes(record);
+  const shadow: SemanticPayload = {
+    kind: "work",
+    summary_md: recordBytes,
+    work_state: "ready",
+    work_intent: roadmap === "matrix" ? "build_capability" : "build_system",
+    work_kind: roadmap === "matrix" ? "feature" : "infrastructure",
+    risk: roadmap === "matrix" ? "cosmetic" : "false_pass_or_red",
+    family_classification: "none_reviewed",
+    acceptance_md: UTF8.encode("Reviewed promotion preserves the exact legacy bytes."),
+    priority_rationale_md: UTF8.encode("Fixture promotion is transaction-scoped."),
+  };
+  const rawRecord: RoadmapDocumentV1["records"][number] = {
+    id: record.id,
+    title: record.title,
+    projection_group: record.projection_group,
+    ...(record.legacy_aliases === undefined ? {} : { legacy_aliases: record.legacy_aliases }),
+    ...(record.tags === undefined ? {} : { tags: record.tags }),
+    render_authority: "raw",
+    source_block_md: recordBytes,
+    span_ids: record.source_replacements.map((replacement) => replacement.span_id),
+    semantic_shadow: shadow,
+  };
+
+  const section = live.sections.find((value) => value.render_authority === "semantic" && value.source_replacements.length === 1);
+  const fragment = live.fragments.find((value) => value.render_authority === "semantic" && value.source_replacements.length === 1);
+  const supportingPart = live.parts.find((value) =>
+    value.render_authority === "semantic" && value.lifecycle_disposition === "parent_supporting_prose" &&
+    value.source_replacements.length === 1
+  );
+  assert(section?.render_authority === "semantic", `${roadmap} fixture lacks a reversible section`);
+  assert(fragment?.render_authority === "semantic", `${roadmap} fixture lacks a reversible fragment`);
+  assert(supportingPart?.render_authority === "semantic", `${roadmap} fixture lacks a reversible supporting part`);
+
+  const promotedPart = live.records.find((value) => {
+    if (value.render_authority !== "semantic" || value.projection_visibility !== "document" ||
+      value.source_replacements.length !== 1 || !value.source_replacements[0]!.span_id.startsWith(partPrefix)) return false;
+    const parents = live.relations.filter((relation) => relation.kind === "parent_of" && relation.target === value.id);
+    return parents.length === 1 && live.relations.every((relation) => relation.source !== value.id) &&
+      (roadmap === "matrix" || live.references.every((reference) => reference.source !== value.id));
+  });
+  assert(promotedPart?.render_authority === "semantic", `${roadmap} fixture lacks a reversible promoted part`);
+  const promotedSpanId = promotedPart.source_replacements[0]!.span_id;
+  const promotedPartId = promotedSpanId.slice(partPrefix.length);
+  const parent = live.relations.find((relation) => relation.kind === "parent_of" && relation.target === promotedPart.id)!;
+  const rawPart: RoadmapDocumentV1["parts"][number] = {
+    part_id: promotedPartId as RoadmapDocumentV1["parts"][number]["part_id"],
+    parent_record_id: parent.source,
+    title: promotedPart.title,
+    render_authority: "raw",
+    lifecycle_disposition: "independent_record",
+    source_block_md: replacementBytes(promotedPart),
+    span_ids: [promotedSpanId],
+  };
+
+  const rawSpanIds = new Set([
+    ...rawRecord.span_ids,
+    ...section.source_replacements.map((value) => value.span_id),
+    ...fragment.source_replacements.map((value) => value.span_id),
+    ...supportingPart.source_replacements.map((value) => value.span_id),
+    promotedSpanId,
+  ]);
+  return {
+    ...live,
+    document: {
+      ...live.document,
+      semantic_conversion: "converting",
+      frozen_legacy_span_ids: [...live.document.frozen_legacy_span_ids, ...rawSpanIds].sort(),
+    },
+    sections: live.sections.map((value) => value !== section ? value : {
+      section_id: section.section_id,
+      title: section.title,
+      ...(section.legacy_aliases === undefined ? {} : { legacy_aliases: section.legacy_aliases }),
+      render_authority: "raw",
+      source_block_md: section.body_md,
+      span_ids: section.source_replacements.map((replacement) => replacement.span_id),
+    }),
+    fragments: live.fragments.map((value) => value !== fragment ? value : {
+      fragment_id: fragment.fragment_id,
+      projection_group: fragment.projection_group,
+      ...(fragment.title === undefined ? {} : { title: fragment.title }),
+      ...(fragment.legacy_aliases === undefined ? {} : { legacy_aliases: fragment.legacy_aliases }),
+      render_authority: "raw",
+      lifecycle_disposition: fragment.lifecycle_disposition,
+      source_block_md: fragment.body_md,
+      span_ids: fragment.source_replacements.map((replacement) => replacement.span_id),
+    }),
+    parts: [...live.parts.map((value) => value !== supportingPart ? value : {
+      part_id: supportingPart.part_id,
+      parent_record_id: supportingPart.parent_record_id,
+      ...(supportingPart.title === undefined ? {} : { title: supportingPart.title }),
+      render_authority: "raw" as const,
+      lifecycle_disposition: supportingPart.lifecycle_disposition,
+      source_block_md: supportingPart.body_md,
+      span_ids: supportingPart.source_replacements.map((replacement) => replacement.span_id),
+    }), rawPart],
+    records: live.records.filter((value) => value !== promotedPart).map((value) => value === record ? rawRecord : value),
+    manifest: live.manifest.map((entry) => entry.kind === "record" && entry.record_id === promotedPart.id
+      ? { kind: "part" as const, part_id: rawPart.part_id }
+      : entry),
+    spans: live.spans.map((span) => {
+      if (span.id === promotedSpanId) return {
+        ...span,
+        source_kind: "part" as const,
+        owner_id: rawPart.part_id,
+        owner_field: "source_block_md" as const,
+        migration_status: "raw" as const,
+      };
+      return rawSpanIds.has(span.id)
+        ? { ...span, owner_field: "source_block_md" as const, migration_status: "raw" as const }
+        : span;
+    }),
+    references: live.references.filter((reference) => reference.source !== promotedPart.id),
+    relations: live.relations.filter((relation) => relation.source !== promotedPart.id && relation.target !== promotedPart.id),
+  };
+}
+
 function promotionDocuments(
   _context: SelfTestContext,
   roadmap: "matrix" | "testing",
@@ -325,10 +523,7 @@ function promotionDocuments(
   } = {},
 ): { readonly base: RoadmapDocumentV1; readonly candidate: RoadmapDocumentV1; readonly projection: Uint8Array } {
   const sourcePath = (roadmap === "matrix" ? "cddl-matrix/roadmap.toml" : "tests/testing-roadmap.toml") as RepoPath;
-  const source = roadmap === "matrix" ? liveMatrixAuthoritativeSource() : liveTestingAuthoritativeSource();
-  const decoded = decodeRoadmapSource(source, sourcePath, roadmap, true);
-  if (decoded.document.schema_version !== 1) throw new Error("promotion fixture is not v1");
-  const v1 = decoded as RoadmapDocumentV1;
+  const v1 = rawPromotionBase(roadmap);
   const rawRecord = v1.records.find((record) =>
     "source_block_md" in record && record.span_ids.length === 1 &&
     "semantic_shadow" in record && record.semantic_shadow !== undefined
@@ -450,7 +645,6 @@ function promotionDocuments(
       payload,
       source_replacements: [],
     }];
-    manifest = [...manifest, { kind: "record", record_id: semanticOnlyId }];
   }
   const candidate: RoadmapDocumentV1 = {
     ...base,
@@ -553,7 +747,7 @@ function promotionPorts(
     },
     registry(revision) {
       return {
-        ...emptyRegistry(revision),
+        ...liveRegistry(revision),
         production_output_stage: "both_authoritative",
         output_claims: productionOutputInventory("both_authoritative").claims,
         matrix_status_inputs: liveMatrixStatusInputs(),
@@ -568,6 +762,45 @@ function validTestingPorts(context: SelfTestContext, atomic?: FakeOptions["atomi
     read: generic.read.readDeclared,
     registry: generic.read.registryView,
     atomic,
+  });
+}
+
+const WP5C_TESTING_EXTERN_TARGET =
+  "testing.extern-deps-wasm-boundary-surface-packaging-json-gen" as RoadmapId;
+
+function withWp5cTestingExternTarget(source: Uint8Array): Uint8Array {
+  const document = decodeRoadmapSource(
+    source,
+    "tests/testing-roadmap.toml" as RepoPath,
+    "testing",
+    true,
+  );
+  assert(document.document.schema_version === 1, "WP5C testing target fixture must be v1");
+  const v1 = document as RoadmapDocumentV1;
+  if (v1.records.some((record) => record.id === WP5C_TESTING_EXTERN_TARGET)) return source;
+  const projectionGroup = v1.sections[0]?.section_id;
+  assert(projectionGroup !== undefined, "WP5C testing target fixture lacks a projection group");
+  return composeRoadmapDocument({
+    ...v1,
+    records: [...v1.records, {
+      id: WP5C_TESTING_EXTERN_TARGET,
+      title: "Cross-roadmap extern execution owner",
+      projection_group: projectionGroup,
+      render_authority: "semantic",
+      projection_visibility: "semantic_only",
+      payload: {
+        kind: "work",
+        summary_md: UTF8.encode("Cross-roadmap extern execution owner."),
+        work_state: "ready",
+        work_intent: "build_system",
+        work_kind: "infrastructure",
+        risk: "compile_failure",
+        family_classification: "none_reviewed",
+        acceptance_md: UTF8.encode("The combined WP5C universe resolves this exact target."),
+        priority_rationale_md: UTF8.encode("Fixture-only counterpart for the live matrix delegation."),
+      },
+      source_replacements: [],
+    }],
   });
 }
 
@@ -615,7 +848,7 @@ unprobed_remainder_md = """No timeless claim is made."""
 [record.payload.scope]
 surfaces = ["fixture"]
 `;
-  const source = UTF8.encode(base.replace(
+  const source = withWp5cTestingExternTarget(UTF8.encode(base.replace(
     /\[record\.payload\]\n[\s\S]*?(?=\n\[\[record\.source_replacement\]\])/,
     payload,
   ) + `
@@ -625,7 +858,7 @@ source = "testing.fixture-mixed-semantic"
 kind = "external_commit"
 repository = "fixture/repository"
 commit = "1111111111111111111111111111111111111111"
-`);
+`));
   const projection = fixture(context, "positive/mixed-testing-v1.expected.md");
   const campaign = UTF8.encode(`[campaign]
 schema_version = 1
@@ -647,7 +880,7 @@ schema_version = 1
     },
     registry(revision) {
       return {
-        ...emptyRegistry(revision),
+        ...liveRegistry(revision),
         production_output_stage: "both_authoritative",
         output_claims: productionOutputInventory("both_authoritative").claims,
         matrix_status_inputs: liveMatrixStatusInputs(),
@@ -740,6 +973,45 @@ function validGenericAllPorts(_context: SelfTestContext): RoadmapCliPorts {
   });
 }
 
+function wp4BootstrapSource(roadmap: "matrix" | "testing"): Uint8Array {
+  const shadow = roadmap === "matrix" ? liveMatrixShadowV0Document() : liveTestingShadowV0Document();
+  const completed = roadmap === "matrix" ? liveMatrixAuthoritativeDocument() : liveTestingAuthoritativeDocument();
+  const partPrefix = roadmap === "matrix" ? "part-" : "span-part-";
+  const independentSpanIds = new Set(completed.records.flatMap((record) =>
+    record.render_authority === "semantic" && record.projection_visibility === "document"
+      ? record.source_replacements.filter((replacement) => replacement.span_id.startsWith(partPrefix)).map((replacement) => replacement.span_id)
+      : []
+  ));
+  const document: RoadmapDocumentV1 = {
+    ...shadow,
+    document: {
+      ...shadow.document,
+      schema_version: 1,
+      authority: "authoritative",
+      semantic_conversion: "converting",
+      frozen_legacy_span_ids: shadow.spans.filter((span) => span.migration_status === "raw").map((span) => span.id).sort(),
+    },
+    sections: shadow.sections.map((section) => ({ ...section, render_authority: "raw" })),
+    fragments: shadow.fragments.map((fragment) => ({
+      ...fragment,
+      render_authority: "raw",
+      lifecycle_disposition: "document_prose",
+    })),
+    legacy_markers: shadow.legacy_markers.map((marker) => ({ ...marker, render_authority: "raw" })),
+    records: shadow.records.map((record) => ({ ...record, render_authority: "raw" })),
+    parts: shadow.parts.map((part) => ({
+      ...part,
+      render_authority: "raw",
+      lifecycle_disposition: part.span_ids.some((spanId) => independentSpanIds.has(spanId))
+        ? "independent_record"
+        : "parent_supporting_prose",
+    })),
+    references: [],
+    relations: [],
+  };
+  return composeRoadmapDocument(document);
+}
+
 function bothAuthoritativePorts(atomic?: FakeOptions["atomic"]): RoadmapCliPorts {
   const campaign = UTF8.encode(`[campaign]
 schema_version = 1
@@ -761,13 +1033,73 @@ schema_version = 1
     },
     registry(revision) {
       return {
-        ...emptyRegistry(revision),
+        ...liveRegistry(revision),
         production_output_stage: "both_authoritative",
         output_claims: productionOutputInventory("both_authoritative").claims,
         matrix_status_inputs: liveMatrixStatusInputs(),
       };
     },
     atomic,
+  });
+}
+
+function uniqueProjectionHeading(projection: Uint8Array): string {
+  const headings = [...text(projection).matchAll(/^#{1,6} +(.+?)(?: +#*)?$/gmu)].map((match) => match[1]!);
+  const heading = headings.find((candidate) => headings.filter((value) => value === candidate).length === 1);
+  assert(heading !== undefined, "projection has no unique Markdown heading for the provenance fixture");
+  return heading;
+}
+
+function authoritativeProjectionReferencePorts(
+  context: SelfTestContext,
+  referencedHeading: string,
+  priorHeading: string,
+  projectionReads: { value: number },
+): RoadmapCliPorts {
+  const sourcePath = "tests/testing-roadmap.toml" as RepoPath;
+  const projectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
+  const sourceFixture = text(fixture(context, "positive/mixed-testing-v1.toml"))
+    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.toml", sourcePath)
+    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.expected.md", projectionPath);
+  const sourceBytes = UTF8.encode(
+    `${sourceFixture}\n[[reference]]
+id = "selftest-fresh-projection-heading"
+source = "testing.fixture-mixed-semantic"
+kind = "file_heading"
+path = "${projectionPath}"
+heading = ${JSON.stringify(referencedHeading)}
+`,
+  );
+  const priorProjection = UTF8.encode(`# ${priorHeading}\n`);
+  const priorHeadingBytes = UTF8.encode(priorHeading).byteLength;
+  const campaign = UTF8.encode(`[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`);
+  const retired = UTF8.encode(`[retired_ids]\nschema_version = 1\n`);
+  return fakePorts({
+    read(path) {
+      if (path === sourcePath) return new Uint8Array(sourceBytes);
+      if (path === projectionPath) {
+        projectionReads.value += 1;
+        return new Uint8Array(priorProjection);
+      }
+      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
+      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
+      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
+    },
+    registry(revision) {
+      return {
+        ...emptyRegistry(revision),
+        production_output_stage: "both_authoritative" as const,
+        output_claims: productionOutputInventory("both_authoritative").claims,
+        matrix_status_inputs: liveMatrixStatusInputs(),
+        // Model a mistakenly injected fact from committed prior output. Preparation must replace
+        // every fact for this projection path with the freshly built expected-byte scan.
+        tracked_headings: [{
+          path: projectionPath,
+          heading: priorHeading,
+          span: { start_byte: 2, end_byte: 2 + priorHeadingBytes },
+        }],
+      };
+    },
   });
 }
 
@@ -829,13 +1161,17 @@ function scopedDebtMutationPorts(mutation: ScopedDebtMutation): RoadmapCliPorts 
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     registry(revision) {
+      const registry = liveRegistry(revision);
+      const gates = mutation.gates === undefined
+        ? registry.gates
+        : [...new Map([...registry.gates, ...mutation.gates].map((gate) => [gate.id, gate])).values()];
       return {
-        ...emptyRegistry(revision),
+        ...registry,
         production_output_stage: mutation.stage ?? "both_authoritative",
         output_claims: productionOutputInventory(mutation.stage ?? "both_authoritative").claims,
         matrix_status_inputs: liveMatrixStatusInputs(),
         current_guards: mutation.guards ?? [],
-        gates: mutation.gates ?? [],
+        gates,
       };
     },
   });
@@ -846,7 +1182,7 @@ function wp4mBootstrapProbePorts(
   onBaseRead: (path: RepoPath) => void,
 ): RoadmapCliPorts {
   const preRoots = validGenericAllPorts(context);
-  const candidateMatrix = liveMatrixAuthoritativeSource();
+  const candidateMatrix = wp4BootstrapSource("matrix");
   const baseMatrix = liveMatrixShadowV0Source();
   const matrixProjection = liveMatrixProjection();
   const shadowTesting = liveTestingShadowV0Source();
@@ -902,7 +1238,7 @@ function wp4mMixedAuthorityPorts(
   const testingSourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const testingProjectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
   const baseMatrixSource = liveMatrixShadowV0Source();
-  const candidateMatrixSource = liveMatrixAuthoritativeSource();
+  const candidateMatrixSource = wp4BootstrapSource("matrix");
   const candidateProjection = liveMatrixProjection();
   const testingMarkdown = UTF8.encode("# Testing legacy authority\n");
   const campaign = UTF8.encode(`[campaign]
@@ -936,7 +1272,7 @@ schema_version = 1
     registry(revision) {
       const stage = revision.kind === "worktree" ? "matrix_authoritative" : "pre_cutover";
       return {
-        ...emptyRegistry(revision),
+        ...liveRegistry(revision),
         production_output_stage: stage,
         output_claims: productionOutputInventory(stage).claims,
         matrix_status_inputs: liveMatrixStatusInputs(),
@@ -983,9 +1319,9 @@ function scopedCandidateCollisionProbe(context: SelfTestContext): {
   readonly collision_id: string;
 } {
   const testingSourcePath = "tests/testing-roadmap.toml" as RepoPath;
-  const testingSource = UTF8.encode(text(fixture(context, "positive/mixed-testing-v1.toml"))
+  const testingSource = withWp5cTestingExternTarget(UTF8.encode(text(fixture(context, "positive/mixed-testing-v1.toml"))
     .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.toml", testingSourcePath)
-    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.expected.md", "tests/TESTING_ROADMAP.md"));
+    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.expected.md", "tests/TESTING_ROADMAP.md")));
   const matrixSource = liveMatrixAuthoritativeSource();
   const matrixMarkdown = liveMatrixProjection();
   const collisionId = "matrix.additional-tool-annotations";
@@ -1029,11 +1365,12 @@ claim_md = """The durable gate owns the replacement claim."""
     },
     registry(revision) {
       const stage = "both_authoritative";
+      const registry = liveRegistry(revision);
       return {
-        ...emptyRegistry(revision),
+        ...registry,
         production_output_stage: stage,
         output_claims: productionOutputInventory(stage).claims,
-        gates: [{ id: "durable-gate", kind: "cmd", stub: false }],
+        gates: [...registry.gates, { id: "durable-gate", kind: "cmd", stub: false }],
         matrix_status_inputs: liveMatrixStatusInputs(),
       };
     },
@@ -1251,7 +1588,7 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
           ? new Uint8Array(source)
           : (() => { throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1); })(),
         registry: (revision) => ({
-          ...emptyRegistry(revision),
+          ...liveRegistry(revision),
           production_output_stage: stage,
           output_claims: productionOutputInventory(stage).claims,
           matrix_status_inputs: liveMatrixStatusInputs(),
@@ -1474,8 +1811,8 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         case "query_debt_selected_alias_reservation_rejected": {
           const reservedId = "testing.fixture-reserved";
           const source = UTF8.encode(text(liveMatrixAuthoritativeSource()).replace(
-            `projection_group = "expansion"\nrender_authority = "raw"`,
-            `projection_group = "expansion"\nlegacy_aliases = ["${reservedId}"]\nrender_authority = "raw"`,
+            `id = "matrix.additional-tool-annotations"\ntitle = "More tools:"\nprojection_group = "expansion"\n`,
+            `id = "matrix.additional-tool-annotations"\ntitle = "More tools:"\nprojection_group = "expansion"\nlegacy_aliases = ["${reservedId}"]\n`,
           ));
           assert(text(source).includes(`legacy_aliases = ["${reservedId}"]`), "selected alias fixture mutation missed its target");
           mutation = {
@@ -1636,7 +1973,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
     case "cli_semantic_conversion_current_omission_rejected": {
       const sources = bothAuthoritativePorts();
       const omitted = (bytes: Uint8Array): Uint8Array => UTF8.encode(
-        text(bytes).replace('semantic_conversion = "converting"\n', ""),
+        text(bytes).replace(/^semantic_conversion = "(?:converting|complete)"\n/mu, ""),
       );
       const matrix = omitted(liveMatrixAuthoritativeSource());
       const testing = omitted(liveTestingAuthoritativeSource());
@@ -1693,112 +2030,36 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
     case "live_subordinate_lifecycle_dispositions": {
       const matrix = liveMatrixAuthoritativeDocument();
       const testing = liveTestingAuthoritativeDocument();
-      const matrixIndependent = [
-        "atomic-bounds-handover",
-        "fixed-byte-representation",
-        "multifile-extern-exclusion",
-        "open-table-min-one-hardening",
-      ];
-      const testingIndependent = [
-        "part-all-hit-cost",
-        "part-another-profile-flip-abort-fix-widening-reachable-set",
-        "part-arbitrary-derived-supported-cddl-ast-generation",
-        "part-batch-masking-detector-layer-sweeps",
-        "part-closure-audit-traced-set-extension",
-        "part-collision-loser-row-schema-id-s-match",
-        "part-collision-two-types-both-lack-rows",
-        "part-comment-ast-grammar-change-any-form-just-new",
-        "part-coverage-extensions",
-        "part-cross-crate-collision-schema-id-s-match",
-        "part-dedicated-collision-message-generic-instantiation-naming",
-        "part-embed-site-leg-alias-classifying-roots-two-proven",
-        "part-inline-anonymous-two-arm-choices-recognized",
-        "part-mangling-still-general-fix",
-        "part-member-position-duplicates-extension",
-        "part-non-idiom-choice-bodied-generic-defs-refused-supported",
-        "part-occurrence-aware-generic-instance-identity",
-        "part-own-reviewed-change-never-drive",
-        "part-read-caught-instance-class",
-        "part-real-world-corpus-differential",
-        "part-reopening-signal",
-        "part-reopening-signal-nested",
-        "part-reopening-signal-probe",
-        "part-reopening-signal-wasm",
-        "part-reopening-signal-workspace",
-        "part-rustc-after-panic-ok-flip-panic-fix-lands",
-        "part-rustfmt-code-never-reaches-rustc-all",
-        "part-same-shape-set-instantiations",
-        "part-schema-name-schemars-percent-encodes-ref",
-        "part-scope-wide-probe",
-        "part-spend-measurements",
-      ];
-      for (const [name, document, independent] of [
-        ["matrix", matrix, matrixIndependent],
-        ["testing", testing, testingIndependent],
+      for (const [name, document, expectedFragments, expectedParts] of [
+        ["matrix", matrix, 5, 9],
+        ["testing", testing, 2, 29],
       ] as const) {
-        assert(
-          document.fragments.every((fragment) =>
-            fragment.render_authority === "raw" && fragment.lifecycle_disposition === "document_prose"
-          ),
-          `${name} live fragments are not all explicitly reviewed document prose`,
-        );
-        const actualIndependent = document.parts.filter((part) =>
-          part.render_authority === "raw" && part.lifecycle_disposition === "independent_record"
-        ).map((part) => part.part_id).sort();
-        assert(JSON.stringify(actualIndependent) === JSON.stringify([...independent].sort()), `${name} independent part classification drifted`);
-        assert(
-          document.parts.every((part) =>
-            part.render_authority === "raw" &&
-            (part.lifecycle_disposition === "independent_record" || part.lifecycle_disposition === "parent_supporting_prose")
-          ),
-          `${name} live parts do not all carry an explicit reviewed lifecycle disposition`,
-        );
-
-        const readiness = document.parts.filter((part) =>
+        const complete = document.document.semantic_conversion === "complete";
+        assert(complete
+          ? document.fragments.every((fragment) => fragment.render_authority === "semantic" &&
+            fragment.lifecycle_disposition === "document_prose" && fragment.source_replacements.length > 0)
+          : document.fragments.every((fragment) => fragment.render_authority === "raw" &&
+            fragment.lifecycle_disposition === "document_prose" && fragment.span_ids.length > 0),
+        `${name} fragment lifecycle does not match its declared conversion stage`);
+        const independent = document.parts.filter((part) =>
           part.render_authority === "raw" && part.lifecycle_disposition === "independent_record"
         );
-        const expectedReadiness = name === "matrix" ? 4 : 31;
-        const expectedDelta = name === "matrix" ? -16 : -124;
-        assert(readiness.length === expectedReadiness, `${name} part-to-record readiness denominator drifted`);
-        assert(-readiness.length * 4 === expectedDelta, `${name} part-to-record blocker delta floor drifted`);
-        const mintedIds = readiness.map((part) => `${name}.${part.part_id}`);
-        assert(new Set(mintedIds).size === mintedIds.length, `${name} part-to-record deterministic IDs collide`);
-        const activeIds = new Set(document.records.map((record) => record.id));
-        const systematicIds = new Set<string>();
-        for (const record of document.records) {
-          const payload = "payload" in record ? record.payload
-            : "semantic_shadow" in record ? record.semantic_shadow : undefined;
-          if (payload?.kind !== "family") continue;
-          for (const axis of payload.axes) {
-            systematicIds.add(axis.id);
-            for (const value of axis.values) systematicIds.add(value.id);
-          }
-          for (const value of payload.evidence_requirements) systematicIds.add(value.id);
-          for (const value of payload.cells) systematicIds.add(value.id);
-          for (const value of payload.exclusions) systematicIds.add(value.id);
-        }
-        for (const [index, part] of readiness.entries()) {
-          const recordId = mintedIds[index]! as RoadmapId;
-          assert(validateRoadmapId(recordId, name).ok, `${name} part-to-record ID is not permanent grammar: ${recordId}`);
-          assert(!activeIds.has(recordId) && !systematicIds.has(recordId), `${name} part-to-record ID collides: ${recordId}`);
-          assert(part.title !== undefined && part.title.length > 0, `${name} ready part lacks a record title: ${part.part_id}`);
-          assert("source_block_md" in part, `${name} ready part is not a raw source owner: ${part.part_id}`);
-          if (!("source_block_md" in part)) continue;
-          assert(part.span_ids.length === 1, `${name} ready part lacks a singleton span: ${part.part_id}`);
-          assert(document.spans.filter((span) => span.id === part.span_ids[0] && span.source_kind === "part" &&
-            span.owner_id === part.part_id && span.owner_field === "source_block_md" && span.migration_status === "raw").length === 1,
-          `${name} ready part lacks its exact raw span: ${part.part_id}`);
-          assert(document.manifest.filter((entry) => entry.kind === "part" && entry.part_id === part.part_id).length === 1,
-            `${name} ready part lacks one replaceable manifest slot: ${part.part_id}`);
-          assert(document.records.filter((record) => record.id === part.parent_record_id).length === 1,
-            `${name} ready part lacks one parent record: ${part.part_id}`);
-        }
+        assert(complete
+          ? document.parts.every((part) => part.render_authority === "semantic" &&
+            part.lifecycle_disposition === "parent_supporting_prose" && part.source_replacements.length > 0)
+          : document.parts.every((part) => part.render_authority === "raw" && part.span_ids.length > 0) &&
+            independent.length === (name === "matrix" ? 4 : 31),
+        `${name} part lifecycle does not match its declared conversion stage`);
+        assert(document.fragments.length === expectedFragments &&
+          document.parts.length === (complete ? expectedParts : name === "matrix" ? 13 : 60),
+        `${name} subordinate denominator drifted for its declared conversion stage`);
       }
       const testingNested = testing.parts.find((part) => part.part_id === "part-nested-cargo-test");
-      assert(testingNested?.render_authority === "raw" && testingNested.lifecycle_disposition === "parent_supporting_prose",
+      assert(testingNested !== undefined && testingNested.lifecycle_disposition === "parent_supporting_prose" &&
+        (testing.document.semantic_conversion === "complete"
+          ? testingNested.render_authority === "semantic"
+          : testingNested.render_authority === "raw"),
         "testing nested-cargo source classification exception drifted");
-      assert(matrix.fragments.length === 5 && matrix.parts.length === 13, "matrix subordinate live denominator drifted");
-      assert(testing.fragments.length === 2 && testing.parts.length === 60, "testing subordinate live denominator drifted");
       return pass("positive");
     }
     case "query_debt_live_migration_floors": {
@@ -1814,39 +2075,43 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         const keys = values.map(key);
         return JSON.stringify(keys) === JSON.stringify([...keys].sort((left, right) => left < right ? -1 : left > right ? 1 : 0));
       };
-      assert(independentTotal(matrix) === 18, `matrix independent migration floor drifted: ${independentTotal(matrix)}`);
-      assert(independentTotal(testing) === 33, `testing independent migration floor drifted: ${independentTotal(testing)}`);
+      const complete = matrix.migration_progress.semantic_shadows.count === 0 &&
+        testing.migration_progress.semantic_shadows.count === 0;
+      assert(independentTotal(matrix) === (complete ? 0 : 4), `matrix migration debt drifted: ${independentTotal(matrix)}`);
+      assert(independentTotal(testing) === (complete ? 0 : 31), `testing migration debt drifted: ${independentTotal(testing)}`);
+      const zeroCounts = {
+        inferred_transitions: 0, pending_family_classifications: 0, raw_subordinate_lifecycles: 0,
+        unmodelled_coordinates: 0, unrendered_fields: 0, unresolved_references: 0,
+      };
       assert(JSON.stringify(matrix.independent_counts) === JSON.stringify({
-        inferred_transitions: 7, pending_family_classifications: 7, raw_subordinate_lifecycles: 4,
-        unmodelled_coordinates: 0, unrendered_fields: 0, unresolved_references: 0,
-      }), "matrix independent category vector drifted");
+        ...zeroCounts, raw_subordinate_lifecycles: complete ? 0 : 4,
+      }), "matrix category vector drifted");
       assert(JSON.stringify(testing.independent_counts) === JSON.stringify({
-        inferred_transitions: 1, pending_family_classifications: 1, raw_subordinate_lifecycles: 31,
-        unmodelled_coordinates: 0, unrendered_fields: 0, unresolved_references: 0,
-      }), "testing independent category vector drifted");
+        ...zeroCounts, raw_subordinate_lifecycles: complete ? 0 : 31,
+      }), "testing category vector drifted");
       assert(
-        matrix.migration_progress.raw_content_owners.count === 86 &&
-          matrix.migration_progress.raw_spans.count === 86 &&
-          matrix.migration_progress.frozen_spans.count === 86 &&
-          matrix.migration_progress.semantic_shadows.count === 7 &&
-          matrix.migration_progress.boundary_debt.count === 4 &&
-          matrix.migration_progress.replacement_coverage.denominator === 0 &&
-          matrix.migration_progress.replacement_coverage.numerator === 0 &&
-          matrix.migration_progress.completion_audit.lane_blockers.length === 283 &&
+        matrix.migration_progress.raw_content_owners.count === (complete ? 0 : 86) &&
+          matrix.migration_progress.raw_spans.count === (complete ? 0 : 86) &&
+          matrix.migration_progress.frozen_spans.count === (complete ? 0 : 86) &&
+          matrix.migration_progress.semantic_shadows.count === (complete ? 0 : 59) &&
+          matrix.migration_progress.boundary_debt.count === (complete ? 0 : 4) &&
+          matrix.migration_progress.replacement_coverage.denominator === (complete ? 86 : 0) &&
+          matrix.migration_progress.replacement_coverage.numerator === (complete ? 86 : 0) &&
+          matrix.migration_progress.completion_audit.lane_blockers.length === (complete ? 0 : 321) &&
           matrix.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
-        "matrix exact live migration facts drifted",
+        "matrix exact completed migration facts drifted",
       );
       assert(
-        testing.migration_progress.raw_content_owners.count === 208 &&
-          testing.migration_progress.raw_spans.count === 208 &&
-          testing.migration_progress.frozen_spans.count === 208 &&
-          testing.migration_progress.semantic_shadows.count === 1 &&
-          testing.migration_progress.boundary_debt.count === 31 &&
-          testing.migration_progress.replacement_coverage.denominator === 0 &&
-          testing.migration_progress.replacement_coverage.numerator === 0 &&
-          testing.migration_progress.completion_audit.lane_blockers.length === 658 &&
+        testing.migration_progress.raw_content_owners.count === (complete ? 0 : 208) &&
+          testing.migration_progress.raw_spans.count === (complete ? 0 : 208) &&
+          testing.migration_progress.frozen_spans.count === (complete ? 0 : 208) &&
+          testing.migration_progress.semantic_shadows.count === (complete ? 0 : 137) &&
+          testing.migration_progress.boundary_debt.count === (complete ? 0 : 31) &&
+          testing.migration_progress.replacement_coverage.denominator === (complete ? 208 : 0) &&
+          testing.migration_progress.replacement_coverage.numerator === (complete ? 208 : 0) &&
+          testing.migration_progress.completion_audit.lane_blockers.length === (complete ? 0 : 792) &&
           testing.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
-        "testing exact live migration facts drifted",
+        "testing exact completed migration facts drifted",
       );
       for (const row of [matrix, testing]) {
         const progress = row.migration_progress;
@@ -2013,6 +2278,67 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         `drifted shadow Markdown was not read exactly once: ${JSON.stringify(driftReads)}`,
       );
       return pass("positive");
+    }
+    case "cli_authoritative_fresh_projection_reference_provenance": {
+      const subcases: string[] = [];
+      const projection = fixture(context, "positive/mixed-testing-v1.expected.md");
+      const freshHeading = uniqueProjectionHeading(projection);
+
+      const freshReads = { value: 0 };
+      const fresh = run(
+        ["--roadmap", "testing", "--query", "debt", "--json"],
+        authoritativeProjectionReferencePorts(
+          context,
+          freshHeading,
+          "Prior projection has no current heading",
+          freshReads,
+        ),
+      );
+      assert(
+        fresh.exit_code === 0 && fresh.stderr.byteLength === 0 && freshReads.value === 0,
+        `fresh expected-projection heading did not resolve without reading prior output: reads=${freshReads.value} ${text(fresh.stderr)}`,
+      );
+      subcases.push("fresh_resolves");
+
+      const driftedHeading = `${freshHeading} (prior spelling)`;
+      const driftedReads = { value: 0 };
+      const drifted = run(
+        ["--roadmap", "testing", "--query", "debt", "--json"],
+        authoritativeProjectionReferencePorts(context, driftedHeading, driftedHeading, driftedReads),
+      );
+      assert(
+        drifted.exit_code === 1 && drifted.stdout.byteLength === 0 && driftedReads.value === 0 &&
+          text(drifted.stderr).includes("FAIL [E-REFERENCE-UNRESOLVED]") &&
+          text(drifted.stderr).includes(JSON.stringify(driftedHeading)) &&
+          text(drifted.stderr).includes("is absent"),
+        `drifted prior-only heading influenced current validation: reads=${driftedReads.value} ${text(drifted.stderr)}`,
+      );
+      subcases.push("drifted_prior_rejects");
+
+      const missingHeading = "Selftest heading absent from every projection view";
+      const missingReads = { value: 0 };
+      const missing = run(
+        ["--roadmap", "testing", "--query", "debt", "--json"],
+        authoritativeProjectionReferencePorts(
+          context,
+          missingHeading,
+          "Different prior projection heading",
+          missingReads,
+        ),
+      );
+      assert(
+        missing.exit_code === 1 && missing.stdout.byteLength === 0 && missingReads.value === 0 &&
+          text(missing.stderr).includes("FAIL [E-REFERENCE-UNRESOLVED]") &&
+          text(missing.stderr).includes(JSON.stringify(missingHeading)) &&
+          text(missing.stderr).includes("is absent"),
+        `missing fresh projection heading was not rejected: reads=${missingReads.value} ${text(missing.stderr)}`,
+      );
+      subcases.push("missing_rejects");
+      observeSelfTestIssue({
+        code: "E-REFERENCE-UNRESOLVED",
+        logical_path: `reference["selftest-fresh-projection-heading"]`,
+      });
+      return pass("positive", subcases);
     }
     case "cli_against_matrix_check_allowed":
     case "cli_against_testing_check_allowed":

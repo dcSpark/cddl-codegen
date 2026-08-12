@@ -1,7 +1,7 @@
 import type { IssueCollector, RoadmapIssue } from "../errors.ts";
 import { validateRoadmapId } from "../ids.ts";
 import type { RoadmapIndexes, SemanticPayloadProviderFact } from "../indexes.ts";
-import type { RepoPath, RoadmapId, SlotId } from "../model/core.ts";
+import type { RepoPath, RoadmapId, RoadmapName, SlotId } from "../model/core.ts";
 import type {
   RoadmapDocument,
   RoadmapDocumentV0,
@@ -352,6 +352,11 @@ function requirePayloadKind(
   out: IssueCollector,
 ): void {
   const target = payloadAt(indexes, id);
+  const deferred = (indexes as Indexes & { readonly deferred_foreign_roadmap_joins?: RoadmapName })
+    .deferred_foreign_roadmap_joins;
+  const targetNamespace = id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
+  if (target === undefined && deferred !== undefined && targetNamespace !== undefined &&
+    targetNamespace !== deferred) return;
   if (target === undefined || !predicate(target)) {
     out.add(issue(provider, source, field, `${id} must resolve to ${expected}`));
   }

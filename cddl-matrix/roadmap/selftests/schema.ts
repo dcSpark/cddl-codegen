@@ -81,7 +81,9 @@ function semanticRecordRoadmap(visibility: "document" | "semantic_only"): string
     .replace('owner_field = "source_block_md"\nmigration_status = "raw"\n', 'owner_field = "source_block_md"\nmigration_status = "raw"\n')
     .replace('owner_id = "matrix.fixture-minimal"\nowner_field = "source_block_md"\nmigration_status = "raw"', `owner_id = "matrix.fixture-minimal"\nowner_field = "payload.summary_md"\nmigration_status = "replaced"`);
   return visibility === "semantic_only"
-    ? converted.replace(/\n\n\[\[source_span\]\]\nid = "record"[\s\S]*$/u, "\n")
+    ? converted
+      .replace('\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "matrix.fixture-minimal"', "")
+      .replace(/\n\n\[\[source_span\]\]\nid = "record"[\s\S]*$/u, "\n")
     : converted;
 }
 

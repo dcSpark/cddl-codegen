@@ -46,6 +46,12 @@ import type {
 } from "./model/documents.ts";
 import type { CompletedRenderIr } from "./render_ir.ts";
 import {
+  validateCombinedRoadmapReferences,
+  validateSemanticRoadmapJoins,
+  type SemanticJoinUniverse,
+} from "./references.ts";
+import { validateRelations } from "./relations.ts";
+import {
   semanticConversionState,
   validateSemanticConversionCompletion,
   validateSemanticConversionTransition,
@@ -486,6 +492,42 @@ function activeIdentityDocuments(input: LifecycleRevisionInput) {
   });
 }
 
+function validateCombinedRoadmapJoins(input: LifecycleRevisionInput): readonly RoadmapIssue[] {
+  if (input.campaign === undefined) return [];
+  const documents = (["matrix", "testing"] as const).flatMap((roadmap) => {
+    const document = input.roadmaps[roadmap].document;
+    return document?.document.schema_version === 1 && campaignAuthority(input.campaign!, roadmap) === "authoritative"
+      ? [document]
+      : [];
+  });
+  if (documents.length !== 2) return [];
+  const built = documents.map((document) => buildRoadmapIndexes(document));
+  if (built.some((value) => value.issues.length > 0)) {
+    return sortIssues(built.flatMap((value) => value.issues));
+  }
+  const firstClass = new Map(built.flatMap((value) => [...value.indexes.first_class]));
+  const payloadRecords = new Map(built.flatMap((value) => [...value.indexes.payload_records]));
+  const universe: SemanticJoinUniverse = Object.freeze({
+    first_class: firstClass,
+    payload_records: payloadRecords,
+  });
+  const perRoadmapIssues = built.flatMap(({ indexes }) => [
+    ...validateSemanticRoadmapJoins(indexes, universe, indexes.roadmap === "matrix"
+      ? "cddl-matrix/roadmap.toml"
+      : "tests/testing-roadmap.toml"),
+    ...validateCombinedRoadmapReferences(indexes, universe.first_class, indexes.roadmap === "matrix"
+      ? "cddl-matrix/roadmap.toml"
+      : "tests/testing-roadmap.toml"),
+  ]);
+  // Relation uniqueness and acyclicity are properties of the joined graph. Validating each
+  // roadmap separately would miss an inverse symmetric edge or cycle split across the two files.
+  const combinedRelations = built.flatMap(({ indexes }) => indexes.relations);
+  return sortIssues([
+    ...perRoadmapIssues,
+    ...validateRelations(combinedRelations, universe.first_class, "<combined-roadmaps>"),
+  ]);
+}
+
 /** Assemble one revision from explicit decoded documents and injected same-revision facts. */
 export function validateLifecycleRevision(input: LifecycleRevisionInput): ValidatedLifecycleRevision {
   const issues: RoadmapIssue[] = [];
@@ -526,6 +568,7 @@ export function validateLifecycleRevision(input: LifecycleRevisionInput): Valida
     legacy_title_bindings: input.legacy_title_bindings,
   });
   const retired = input.retired === undefined ? undefined : validateRetiredIds(input.retired, input.registry);
+  issues.push(...validateCombinedRoadmapJoins(input));
   if (retired !== undefined) issues.push(...retired.issues);
   for (const guard of input.registry.current_guards) {
     if (!resolveReplacementPin(guard.replacement_pin, input.registry).resolved) {

@@ -802,6 +802,34 @@ export function buildExpectedChunks(
     }));
   }
 
+  // Semantic-only records are first-class semantic owners, not document render nodes. Validate
+  // their renderer and complete field consumption without minting a zero-byte manifest chunk.
+  for (const record of document.records) {
+    if (!("render_authority" in record) || record.render_authority !== "semantic" ||
+      record.projection_visibility !== "semantic_only") continue;
+    const tracked = createFieldConsumer("record", record.id, record.payload);
+    let rendered: Uint8Array = new Uint8Array();
+    try {
+      rendered = services.renderSemanticRecord(record, tracked.consumer);
+    } catch (error) {
+      buildIssues.push(issue(
+        document,
+        "E-RENDER-AUTHORITY",
+        `record[${JSON.stringify(record.id)}]`,
+        `semantic renderer failed: ${error instanceof Error ? error.message : String(error)}`,
+      ));
+    }
+    fieldConsumption.push(Object.freeze(tracked.finish().ledger));
+    if (rendered.byteLength !== 0) {
+      buildIssues.push(issue(
+        document,
+        "E-RENDER-AUTHORITY",
+        `record[${JSON.stringify(record.id)}].projection_visibility`,
+        "semantic-only record renderer must emit zero bytes",
+      ));
+    }
+  }
+
   let expectedBytes: ExpectedByteView;
   try {
     expectedBytes = createExpectedByteView(chunks);
@@ -855,6 +883,14 @@ function expectedLedgerFields(op: RenderOp): readonly string[] | undefined {
   return undefined;
 }
 
+function semanticOnlyLedgerFields(
+  record: Extract<RoadmapDocument["records"][number], { render_authority: "semantic" }>,
+): readonly string[] {
+  const expected = new Map<string, Uint8Array>();
+  collectMarkdownFields(record.payload, "payload", expected);
+  return Object.freeze([...expected.keys()].sort(codePointSort));
+}
+
 /** Validate only completed chunks/ledgers; declarations alone are never an accepted input seam. */
 export function validateCompletedChunks(
   document: RoadmapDocument,
@@ -880,6 +916,12 @@ export function validateCompletedChunks(
     if (fields !== undefined) expectedFieldLedgers.set(fieldLedgerKey(op.node.kind, op.node.id), fields);
     if (op.node.kind === "generated_slot") {
       expectedSlotLedgers.set(JSON.stringify([op.manifest_index, op.node.id]), op.node.value);
+    }
+  }
+  for (const record of document.records) {
+    if ("render_authority" in record && record.render_authority === "semantic" &&
+      record.projection_visibility === "semantic_only") {
+      expectedFieldLedgers.set(fieldLedgerKey("record", record.id), semanticOnlyLedgerFields(record));
     }
   }
 

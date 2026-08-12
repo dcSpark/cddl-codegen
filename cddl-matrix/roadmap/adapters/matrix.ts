@@ -1,7 +1,7 @@
 import type { IssueCollector, RoadmapIssue } from "../errors.ts";
 import { buildRoadmapIndexes, type RoadmapIndexes } from "../indexes.ts";
 import { deriveMatrixStatusFacts, renderMatrixStatusPayloads } from "../matrix_status_facts.ts";
-import type { RepoPath, RoadmapId, SlotId } from "../model/core.ts";
+import type { RepoPath, RoadmapId, RoadmapName, SlotId } from "../model/core.ts";
 import type {
   Reference,
   RoadmapDocument,
@@ -335,6 +335,11 @@ function requirePayloadKind(
   out: IssueCollector,
 ): void {
   const target = payloadAt(indexes, id);
+  const deferred = (indexes as Indexes & { readonly deferred_foreign_roadmap_joins?: RoadmapName })
+    .deferred_foreign_roadmap_joins;
+  const targetNamespace = id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
+  if (target === undefined && deferred !== undefined && targetNamespace !== undefined &&
+    targetNamespace !== deferred) return;
   if (target === undefined || !predicate(target)) {
     out.add(issue(provider, source, "E-SCHEMA-STATE", field, `${id} must resolve to ${expected}`));
   }
@@ -654,6 +659,7 @@ export interface DecodedRoadmapValidationObserver {
 
 export interface DecodedRoadmapValidationOptions {
   readonly universe?: SemanticJoinUniverse;
+  readonly defer_foreign_roadmap_joins?: boolean;
   readonly unresolved_migration_authority?: UnresolvedMigrationAuthority;
   readonly observer?: DecodedRoadmapValidationObserver;
 }
@@ -699,21 +705,34 @@ export function validateDecodedRoadmapDocument(
   }
   const indexes = built.indexes;
   const universe = options.universe ?? indexes;
+  // One-document adapter validation is the scoped lane. Supplying a combined universe closes the
+  // seam and disables deferral unless a caller explicitly requests it for a focused probe.
+  const deferredNamespace = options.defer_foreign_roadmap_joins === true ||
+      (options.defer_foreign_roadmap_joins === undefined && options.universe === undefined)
+    ? indexes.roadmap
+    : undefined;
+  const domainIndexes = Object.freeze({
+    ...indexes,
+    first_class: universe.first_class,
+    payload_records: universe.payload_records,
+    ...(deferredNamespace === undefined ? {} : { deferred_foreign_roadmap_joins: deferredNamespace }),
+  }) as RoadmapIndexes & { readonly deferred_foreign_roadmap_joins?: RoadmapName };
   const source = document.document.source_path;
   options.observer?.sharedValidationStarted(indexes);
   const issues: RoadmapIssue[] = [];
   const collector: IssueCollector = { issues, add: (value) => issues.push(value) };
   adapter.validateFloors(document, collector);
-  issues.push(...validateSemanticRoadmapJoins(indexes, universe, source));
+  issues.push(...validateSemanticRoadmapJoins(indexes, universe, source, deferredNamespace));
   issues.push(...validateRoadmapReferences(indexes, view, {
     source,
     providers: referenceProviders,
     first_class: universe.first_class,
+    defer_foreign_roadmap_joins: deferredNamespace,
     unresolved_migration_authority: options.unresolved_migration_authority,
   }));
-  issues.push(...validateRelations(indexes.relations, universe.first_class, source));
+  issues.push(...validateRelations(indexes.relations, universe.first_class, source, deferredNamespace));
   for (const provider of indexes.payload_records.values()) {
-    validateDomainPayload(provider, indexes, collector, source);
+    validateDomainPayload(provider, domainIndexes, collector, source);
     options.observer?.domainPayloadValidated(provider);
   }
   return Object.freeze({ indexes, issues: sortIssues(issues) });

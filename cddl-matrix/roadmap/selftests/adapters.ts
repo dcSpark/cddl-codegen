@@ -43,8 +43,12 @@ import {
   collectReferenceProviders,
   createCoreReferenceProviders,
   deriveUnresolvedMigrationAuthority,
+  validateCombinedRoadmapReferences,
   validateRoadmapReferences,
+  validateSemanticRoadmapJoins,
+  type SemanticJoinUniverse,
 } from "../references.ts";
+import { validateRelations } from "../relations.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import {
   liveMatrixAuthoritativeDocument,
@@ -563,6 +567,151 @@ function testProviders(bundle: AdapterFixtureBundle): void {
     assert(!resolve(vector.reference, vector.duplicate).resolved, `${vector.kind} accepted duplicate membership`);
     assert(!resolve(vector.wrong_reference, vector.one).resolved, `${vector.kind} accepted an existing member from another provider universe through wrong-kind dispatch`);
   }
+
+  const controlId = built.indexes.id_providers[0]!.owner_record_id;
+  const cellReference: Reference = {
+    id: "control-test-cell" as ReferenceId,
+    source: controlId,
+    kind: "matrix_cell",
+    cell_id: "control-test-cell-fixture",
+  };
+  const symbolReference: Reference = {
+    id: "control-test-symbol" as ReferenceId,
+    source: controlId,
+    kind: "test_symbol",
+    test_id: "rust-test:cddl-codegen#tests::fixture::control_test",
+    symbol: "tests::fixture::control_test",
+  };
+  const gateReference: Reference = {
+    id: "control-test-gate" as ReferenceId,
+    source: controlId,
+    kind: "gate",
+    gate_id: "control-test-gate-fixture",
+  };
+  const controlPath = `record[${JSON.stringify(controlId)}].semantic_shadow`;
+  const controlProvider: SemanticPayloadProviderFact = {
+    record: built.indexes.record_nodes.get(controlId)!,
+    authority: "semantic_shadow",
+    logical_path: controlPath,
+    payload: {
+      kind: "control",
+      summary_md: new TextEncoder().encode("Mixed direct test control."),
+      control_kind: "test",
+      control_state: "live",
+      reference_ids: [cellReference.id, symbolReference.id],
+      claim_md: new TextEncoder().encode("Exact matrix cells and their direct test are owned together."),
+      boundary_md: new TextEncoder().encode("No unrelated provider kind is admitted."),
+    },
+  };
+  const mixedControl = {
+    ...built.indexes,
+    references: new Map<ReferenceId, Reference>([
+      [cellReference.id, cellReference],
+      [symbolReference.id, symbolReference],
+    ]),
+    reference_id_uses: [cellReference, symbolReference].map((reference) => ({
+      id: reference.id,
+      logical_path: `${controlPath}.reference_ids`,
+    })),
+    payload_records: new Map([...built.indexes.payload_records, [controlId, controlProvider]]),
+  } as RoadmapIndexes;
+  const mixedView: RegistryView = {
+    ...view,
+    matrix_cells: [...view.matrix_cells, { id: cellReference.cell_id }],
+    test_symbols: [...view.test_symbols, {
+      test_id: symbolReference.test_id,
+      symbol: symbolReference.symbol,
+      source: "src/tests/fixture.rs" as RepoPath,
+      span: { start_byte: 0, end_byte: 1 },
+      module_path: ["tests", "fixture"],
+    }],
+    gates: [...view.gates, { id: gateReference.gate_id, kind: "cargo", stub: false }],
+  };
+  assert(validateRoadmapReferences(mixedControl, mixedView, { providers }).length === 0,
+    "control_kind=test rejected its canonical matrix_cell + test_symbol ownership tuple");
+  const unrelated = {
+    ...mixedControl,
+    references: new Map([...mixedControl.references, [gateReference.id, gateReference]]),
+    reference_id_uses: [...mixedControl.reference_id_uses, {
+      id: gateReference.id,
+      logical_path: `${controlPath}.reference_ids`,
+    }],
+  } as RoadmapIndexes;
+  assert(validateRoadmapReferences(unrelated, mixedView, { providers }).some((entry) =>
+    entry.code === "E-REFERENCE-FORBIDDEN" && entry.logical_path === `${controlPath}.reference_ids`
+  ), "control_kind=test admitted an unrelated gate reference");
+}
+
+function testCrossRoadmapJoinSubstrate(bundle: AdapterFixtureBundle): void {
+  const matrix = productionDocument(decoded(bundle, "all-fields/matrix-v1.toml", "matrix") as RoadmapDocumentV1);
+  const testing = productionDocument(decoded(bundle, "all-fields/testing-v1.toml", "testing") as RoadmapDocumentV1);
+  const matrixBuilt = buildRoadmapIndexes(matrix).indexes;
+  const testingBuilt = buildRoadmapIndexes(testing).indexes;
+  const source = [...matrixBuilt.payload_records.values()].find((provider) => provider.payload.kind === "work");
+  const target = [...testingBuilt.payload_records.values()].find((provider) => provider.payload.kind === "evidence");
+  assert(source !== undefined && target !== undefined, "cross-roadmap fixture lacks work/evidence endpoints");
+  const foreignReference: Reference = {
+    id: "wp5c-cross-roadmap" as ReferenceId,
+    source: source.record.id,
+    kind: "roadmap",
+    target_id: target.record.id,
+  };
+  const relation = { source: source.record.id, kind: "delegates_to" as const, target: target.record.id };
+  const sourcePath = `${source.logical_path}.evidence_ids`;
+  const scoped = {
+    ...matrixBuilt,
+    id_uses: [...matrixBuilt.id_uses,
+      { id: target.record.id, logical_path: sourcePath, role: "semantic_target" as const },
+      { id: target.record.id, logical_path: "relation[0].target", role: "relation_target" as const },
+      { id: target.record.id, logical_path: `reference[${JSON.stringify(foreignReference.id)}].target_id`, role: "reference_target" as const },
+    ],
+    relations: [...matrixBuilt.relations, relation],
+    references: new Map([[foreignReference.id, foreignReference]]),
+    reference_id_uses: [],
+  } as RoadmapIndexes;
+  const combined: SemanticJoinUniverse = {
+    first_class: new Map([...matrixBuilt.first_class, ...testingBuilt.first_class]),
+    payload_records: new Map([...matrixBuilt.payload_records, ...testingBuilt.payload_records]),
+  };
+  const scopedSemanticIssues = validateSemanticRoadmapJoins(scoped, scoped, "<scoped>", "matrix");
+  assert(scopedSemanticIssues.length === 0,
+    `scoped lane rejected an explicitly opposite-namespace semantic join: ${JSON.stringify(scopedSemanticIssues)}`);
+  assert(validateRelations(scoped.relations, scoped.first_class, "<scoped>", "matrix").length === 0,
+    "scoped lane rejected an explicitly opposite-namespace relation");
+  assert(validateRoadmapReferences(scoped, registryView(bundle, matrix), {
+    providers: MATRIX_ADAPTER.referenceProviders(registryView(bundle, matrix)),
+    defer_foreign_roadmap_joins: "matrix",
+  }).length === 0, "scoped lane rejected an explicitly opposite-namespace roadmap reference");
+  assert(validateSemanticRoadmapJoins(scoped, combined, "<combined>").length === 0 &&
+    validateRelations(scoped.relations, combined.first_class, "<combined>").length === 0 &&
+    validateCombinedRoadmapReferences(scoped, combined.first_class, "<combined>").length === 0 &&
+    validateRoadmapReferences(scoped, registryView(bundle, matrix), {
+      providers: MATRIX_ADAPTER.referenceProviders(registryView(bundle, matrix)),
+      first_class: combined.first_class,
+    }).length === 0, "combined WP5C universe did not resolve the foreign semantic/relation/reference tuple");
+  const absentCombined: SemanticJoinUniverse = {
+    first_class: matrixBuilt.first_class,
+    payload_records: matrixBuilt.payload_records,
+  };
+  assert(validateSemanticRoadmapJoins(scoped, absentCombined, "<combined-missing>").some((entry) =>
+    entry.code === "E-REFERENCE-UNRESOLVED" && entry.logical_path === sourcePath
+  ), "combined WP5C universe accepted a missing foreign semantic target");
+  assert(validateRelations(scoped.relations, absentCombined.first_class, "<combined-missing>").some((entry) =>
+    entry.code === "E-RELATION-ENDPOINT" && entry.logical_path.endsWith(".target")
+  ), "combined WP5C universe accepted a missing foreign relation target");
+  assert(validateRoadmapReferences(scoped, registryView(bundle, matrix), {
+    providers: MATRIX_ADAPTER.referenceProviders(registryView(bundle, matrix)),
+    first_class: absentCombined.first_class,
+  }).some((entry) => entry.code === "E-REFERENCE-UNRESOLVED"),
+  "combined WP5C universe accepted a missing foreign roadmap reference target");
+  assert(validateCombinedRoadmapReferences(scoped, absentCombined.first_class, "<combined-missing>").some((entry) =>
+    entry.code === "E-REFERENCE-UNRESOLVED"
+  ), "production combined reference seam accepted a missing foreign roadmap target");
+  const sameLaneMissing = "matrix.fixture-same-lane-missing" as RoadmapId;
+  const sameLane = { ...scoped, id_uses: [{ id: sameLaneMissing, logical_path: sourcePath, role: "semantic_target" }] } as RoadmapIndexes;
+  assert(validateSemanticRoadmapJoins(sameLane, sameLane, "<scoped>", "matrix").some((entry) =>
+    entry.code === "E-REFERENCE-UNRESOLVED"
+  ), "scoped deferral admitted a missing same-lane target");
 }
 
 function statusLine(bytes: Uint8Array): Uint8Array {
@@ -885,65 +1034,38 @@ function testSlots(bundle: AdapterFixtureBundle): void {
 
 function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
   const authoritative = liveMatrixAuthoritativeDocument();
-  const rawRecord = authoritative.records.find((record) =>
+  const semanticRecord = authoritative.records.find((record) =>
     record.id === "matrix.additional-tool-annotations"
   );
-  assert(rawRecord?.render_authority === "raw", "packet-1 live semantic conversion owner is not raw");
-  assert(rawRecord.span_ids.length === 1, "packet-1 live semantic conversion owner does not have one frozen span");
-  const relationTarget = authoritative.records.find((record) => record.id !== rawRecord.id);
+  const complete = authoritative.document.semantic_conversion === "complete";
+  assert(semanticRecord !== undefined && (complete
+    ? semanticRecord.render_authority === "semantic" && semanticRecord.projection_visibility === "document" &&
+      semanticRecord.source_replacements.length === 1
+    : semanticRecord.render_authority === "raw" && semanticRecord.semantic_shadow !== undefined),
+  "live semantic conversion owner does not match its declared conversion stage");
+  const relationTarget = authoritative.records.find((record) => record.id !== semanticRecord.id);
   assert(relationTarget !== undefined, "packet-1 live semantic conversion lacks a relation target");
-  const spanId = rawRecord.span_ids[0]!;
   const authorityReferenceId = "packet-one-authority" as ReferenceId;
-  const semanticRecord: SemanticRecord<MatrixSemanticPayload> = {
-    id: rawRecord.id,
-    title: rawRecord.title,
-    projection_group: rawRecord.projection_group,
-    ...(rawRecord.legacy_aliases === undefined ? {} : { legacy_aliases: [...rawRecord.legacy_aliases] }),
-    ...(rawRecord.tags === undefined ? {} : { tags: [...rawRecord.tags] }),
-    render_authority: "semantic",
-    projection_visibility: "document",
-    payload: {
-      kind: "matrix_policy",
-      policy_kind: "boundary",
-      summary_md: new Uint8Array(rawRecord.source_block_md),
-      authority_reference_id: authorityReferenceId,
-      rationale_md: new TextEncoder().encode("Packet 1 retains the reviewed legacy projection bytes."),
-      permanence: "permanent",
-    },
-    source_replacements: [{
-      span_id: spanId,
-      replacement_field: "payload.summary_md",
-      review_note_md: new TextEncoder().encode("Packet-1 in-memory semantic authority conversion."),
-    }],
-  };
   const mixed: RoadmapDocumentV1 = {
     ...authoritative,
-    document: {
-      ...authoritative.document,
-      frozen_legacy_span_ids: authoritative.document.frozen_legacy_span_ids.filter((id) => id !== spanId),
-    },
-    records: authoritative.records.map((record) => record === rawRecord ? semanticRecord : record),
-    spans: authoritative.spans.map((span) => span.id === spanId
-      ? { ...span, owner_field: "payload.summary_md", migration_status: "replaced" }
-      : span),
     relations: [...authoritative.relations, {
-      source: rawRecord.id,
+      source: semanticRecord.id,
       kind: "related",
       target: relationTarget.id,
       note_md: new TextEncoder().encode("Packet-1 relation must not select fixture slot layout."),
     }],
     references: [...authoritative.references, {
       id: authorityReferenceId,
-      source: rawRecord.id,
+      source: semanticRecord.id,
       kind: "spec_passage",
       document: "packet-one-selftest",
       passage: "mixed-v1-inline-slot-authority",
     }],
   };
-  assert(
-    mixed.records.filter((record) => record.render_authority === "semantic").length === 1,
-    "packet-1 vector does not contain exactly one semantic owner",
-  );
+  assert(complete
+    ? mixed.records.every((record) => record.render_authority === "semantic")
+    : mixed.records.some((record) => record.render_authority === "raw" && record.semantic_shadow !== undefined),
+  "live vector record authorities do not match its declared conversion stage");
   assert(
     mixed.relations.length === authoritative.relations.length + 1 &&
       mixed.references.length === authoritative.references.length + 1,
@@ -961,7 +1083,10 @@ function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
 
   const projection = liveMatrixProjection();
   const rendered = renderFixture(mixed, MATRIX_ADAPTER, view);
-  assert(rendered.semantic_calls === 1, "packet-1 semantic owner did not render exactly once");
+  const semanticAuthorities = mixed.records.filter((record) => record.render_authority === "semantic").length;
+  assert(rendered.semantic_calls === semanticAuthorities && (complete ? semanticAuthorities > 1 :
+    mixed.records.some((record) => record.render_authority === "raw" && record.semantic_shadow !== undefined)),
+  "live renderer calls do not match the declared conversion stage");
   assert(
     bytesEqual(rendered.bytes, projection),
     `packet-1 mixed-v1 projection differs at byte ${firstByteDifference(rendered.bytes, projection)} ` +
@@ -1009,6 +1134,51 @@ function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
   );
 }
 
+function withRawDocumentVisibleRecord(document: RoadmapDocumentV1): RoadmapDocumentV1 {
+  const prefix = document.document.roadmap === "matrix" ? "record-" : "span-record-";
+  if (document.records.some((record) => record.render_authority === "raw" &&
+    record.semantic_shadow !== undefined && record.span_ids.length === 1 && record.span_ids[0]!.startsWith(prefix))) {
+    return document;
+  }
+  const semantic = document.records.find((record) =>
+    record.render_authority === "semantic" && record.projection_visibility === "document" &&
+    record.source_replacements.length === 1 && record.source_replacements[0]!.span_id.startsWith(prefix)
+  );
+  assert(semantic?.render_authority === "semantic", "reconstruction fixture lacks a reversible semantic record");
+  const replacement = semantic.source_replacements[0]!;
+  assert(
+    replacement.replacement_field === "payload.summary_md" || replacement.replacement_field === "payload.detail_md",
+    "reconstruction fixture replacement is not a top-level Markdown field",
+  );
+  const sourceBlock = replacement.replacement_field === "payload.summary_md"
+    ? semantic.payload.summary_md
+    : semantic.payload.detail_md;
+  assert(sourceBlock !== undefined, "reconstruction fixture replacement field is absent");
+  const raw = {
+    id: semantic.id,
+    title: semantic.title,
+    projection_group: semantic.projection_group,
+    ...(semantic.legacy_aliases === undefined ? {} : { legacy_aliases: semantic.legacy_aliases }),
+    ...(semantic.tags === undefined ? {} : { tags: semantic.tags }),
+    render_authority: "raw" as const,
+    source_block_md: sourceBlock,
+    span_ids: [replacement.span_id],
+    semantic_shadow: semantic.payload,
+  };
+  return {
+    ...document,
+    document: {
+      ...document.document,
+      semantic_conversion: "converting",
+      frozen_legacy_span_ids: [...document.document.frozen_legacy_span_ids, replacement.span_id].sort(),
+    },
+    records: document.records.map((record) => record === semantic ? raw : record),
+    spans: document.spans.map((span) => span.id === replacement.span_id
+      ? { ...span, owner_field: "source_block_md", migration_status: "raw" }
+      : span),
+  };
+}
+
 function withSemanticOnlyRecord(document: RoadmapDocumentV1, id: RoadmapId): RoadmapDocumentV1 {
   const record = {
     id,
@@ -1032,7 +1202,6 @@ function withSemanticOnlyRecord(document: RoadmapDocumentV1, id: RoadmapId): Roa
   return {
     ...document,
     records: [...document.records, record],
-    manifest: [...document.manifest, { kind: "record", record_id: record.id }],
   };
 }
 
@@ -1082,7 +1251,7 @@ function testMatrixV0ReconstructionVisibilityArms(bundle: AdapterFixtureBundle):
   const rendered = renderFixture(semanticOnly, MATRIX_ADAPTER, registryView(bundle, semanticOnly, liveMatrixStatusInputs()));
   assert(bytesEqual(rendered.bytes, liveMatrixProjection()), "semantic-only matrix record changed live projection bytes");
   assert(bytesEqual(composeRoadmapDocument(liveMatrixShadowV0Document(semanticOnly)), liveMatrixShadowV0Source()), "matrix v0 reconstruction retained semantic-only record or placement");
-  const documentVisible = withDocumentVisibleRecord(authoritative);
+  const documentVisible = withDocumentVisibleRecord(withRawDocumentVisibleRecord(authoritative));
   assert(bytesEqual(composeRoadmapDocument(liveMatrixShadowV0Document(documentVisible)), liveMatrixShadowV0Source()), "matrix v0 reconstruction did not restore a document-visible semantic record");
 }
 
@@ -1090,7 +1259,7 @@ function testTestingV0ReconstructionVisibilityArms(): void {
   const authoritative = liveTestingAuthoritativeDocument();
   const semanticOnly = withSemanticOnlyRecord(authoritative, "testing.fixture-semantic-only" as RoadmapId);
   assert(bytesEqual(composeRoadmapDocument(liveTestingShadowV0Document(semanticOnly)), liveTestingShadowV0Source()), "testing v0 reconstruction retained semantic-only record or placement");
-  const documentVisible = withDocumentVisibleRecord(authoritative);
+  const documentVisible = withDocumentVisibleRecord(withRawDocumentVisibleRecord(authoritative));
   assert(bytesEqual(composeRoadmapDocument(liveTestingShadowV0Document(documentVisible)), liveTestingShadowV0Source()), "testing v0 reconstruction did not restore a document-visible semantic record");
 }
 
@@ -1742,6 +1911,7 @@ function testPipeline(bundle: AdapterFixtureBundle): void {
   }
 
   testDomainMutationTable(bundle);
+  testCrossRoadmapJoinSubstrate(bundle);
 }
 
 function testIndexesFromDecoded(bundle: AdapterFixtureBundle): void {

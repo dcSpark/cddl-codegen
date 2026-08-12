@@ -81,6 +81,11 @@ function nodeKey(kind: ManifestEntry["kind"], id: string): string {
   return JSON.stringify([kind, id]);
 }
 
+function manifestVisible(node: RenderNode): boolean {
+  return !(node.kind === "record" && "projection_visibility" in node.value &&
+    node.value.projection_visibility === "semantic_only");
+}
+
 /** Resolve the authored linear manifest without rendering or reordering any node. */
 export function resolveManifest(document: RoadmapDocument): ManifestResolution {
   const issues: RoadmapIssue[] = [];
@@ -173,11 +178,21 @@ export function resolveManifest(document: RoadmapDocument): ManifestResolution {
       }
       continue;
     }
+    if (!manifestVisible(node)) {
+      issues.push(issue(
+        document,
+        "E-MANIFEST-KIND",
+        logicalPath,
+        `semantic-only record ${JSON.stringify(target.id)} cannot have a manifest placement`,
+      ));
+      continue;
+    }
     placed.add(key);
     ops.push({ manifest_index, entry, node });
   }
 
   for (const node of declared) {
+    if (!manifestVisible(node)) continue;
     const key = nodeKey(node.kind, node.id);
     if (!placed.has(key)) {
       issues.push(issue(

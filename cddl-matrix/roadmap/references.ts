@@ -52,6 +52,8 @@ export interface ReferenceValidationOptions {
   readonly providers?: readonly ReferenceProviderLike[];
   /** Global first-class view; defaults to the selected document for single-roadmap validation. */
   readonly first_class?: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>;
+  /** Scoped lanes defer only well-formed opposite-namespace RoadmapId targets to WP5C. */
+  readonly defer_foreign_roadmap_joins?: "matrix" | "testing";
 }
 
 export interface SemanticJoinUniverse {
@@ -373,7 +375,7 @@ function allowedReferenceKinds(
   if (payload.kind === "control" && logicalPath.endsWith("reference_ids")) {
     switch (payload.control_kind) {
       case "gate": return ["gate"];
-      case "test": return ["test_symbol"];
+      case "test": return ["matrix_cell", "test_symbol"];
       case "fixture": return ["file_heading", "test_symbol"];
       case "review_rule": return ["file_heading"];
       case "consumer_ci": return ["consumer_report", "gate"];
@@ -436,6 +438,19 @@ function allowedReferenceKinds(
 
 function unresolvedReferenceKey(reference: Extract<Reference, { kind: "unresolved_migration" }>): string {
   return JSON.stringify([reference.id, reference.source, reference.local_reference, reference.expires_at]);
+}
+
+function roadmapNamespace(id: RoadmapId): "matrix" | "testing" | undefined {
+  return id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
+}
+
+function deferredForeignTarget(
+  id: RoadmapId,
+  local: "matrix" | "testing" | undefined,
+  firstClass: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>,
+): boolean {
+  const target = roadmapNamespace(id);
+  return local !== undefined && target !== undefined && target !== local && !firstClass.has(id);
 }
 
 /**
@@ -522,6 +537,10 @@ export function validateRoadmapReferences(
     semanticTuples.set(tupleKey, tupleGroup);
     const selectedProvider = providerRegistry.by_kind.get(reference.kind);
     if (selectedProvider !== undefined) {
+      if (
+        reference.kind === "roadmap" &&
+        deferredForeignTarget(reference.target_id, options.defer_foreign_roadmap_joins, firstClass)
+      ) continue;
       const resolution = (selectedProvider as ReferenceProvider).resolve(reference, view);
       if (!resolution.resolved) {
         const code = resolution.reason.startsWith("forbidden:")
@@ -570,6 +589,27 @@ export function validateRoadmapReferences(
           `reference kind ${reference.kind} is invalid for this ${consumer.payload.kind} field; expected ${allowed.join("|") || "no reference"}`,
         ));
       }
+    }
+  }
+  return sortIssues(issues);
+}
+
+/** Close the one reference seam scoped validation may defer: opposite-lane roadmap targets. */
+export function validateCombinedRoadmapReferences(
+  indexes: RoadmapIndexes,
+  firstClass: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>,
+  source = `<roadmap:${indexes.roadmap}>`,
+): readonly RoadmapIssue[] {
+  const issues: RoadmapIssue[] = [];
+  for (const reference of [...indexes.references.values()].sort(compareReferenceTargets)) {
+    if (reference.kind !== "roadmap") continue;
+    if (!firstClass.has(reference.target_id)) {
+      issues.push(issue(
+        "E-REFERENCE-UNRESOLVED",
+        source,
+        `reference[${JSON.stringify(reference.id)}]`,
+        `roadmap target ${JSON.stringify(reference.target_id)} is not active in the combined roadmap universe`,
+      ));
     }
   }
   return sortIssues(issues);
@@ -647,11 +687,13 @@ export function validateSemanticRoadmapJoins(
   indexes: RoadmapIndexes,
   universe: SemanticJoinUniverse = indexes,
   source = `<roadmap:${indexes.roadmap}>`,
+  deferForeignRoadmapJoins?: "matrix" | "testing",
 ): readonly RoadmapIssue[] {
   const issues: RoadmapIssue[] = [];
   for (const use of indexes.id_uses) {
     const target = universe.first_class.get(use.id);
     if (target === undefined) {
+      if (deferredForeignTarget(use.id, deferForeignRoadmapJoins, universe.first_class)) continue;
       issues.push(issue(
         "E-REFERENCE-UNRESOLVED",
         source,
