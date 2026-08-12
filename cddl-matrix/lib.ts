@@ -966,7 +966,7 @@ export function corpusArmExample(target: string, rules: CorpusRule[]): string {
 // operator, GENERATES a random instance of the TARGET type and self-validates it against the controlled
 // type — so its exit code is a Bernoulli trial (a random uint rarely lands in `.and (0..9)`), flipping
 // ruby=ok/fail on IDENTICAL input across runs. Root-caused in
-// draft/ruby-cddl-generate-bernoulli-constraint-controllers.md. verify.ts must therefore NOT derive a
+// cddl-matrix/upstream-reports/ruby-cddl-bernoulli-constraint-controllers.md. verify.ts must therefore NOT derive a
 // verdict from `generate` for these ops; it routes them to a deterministic source (ruby `validate` over
 // the committed spec-valid accept vectors, else a stable `nondet(generate)` evidence token). Classify
 // STATICALLY by controller op-name in the example text — never by SAMPLING (sampling is the same trap).
@@ -976,7 +976,7 @@ export function corpusArmExample(target: string, rules: CorpusRule[]): string {
 // .size (length narrowing). EXCLUDED (generate is deterministic for these): .cbor/.cborseq (payload
 // wrapper — the generator emits a valid payload), .default (an annotation, not a validity constraint),
 // and the parse-gap ops (.abnf/.printf/… — a deterministic exit-65 parse failure, separately documented
-// in draft/ruby-cddl-inline-composite-control-arg-gap.md).
+// in cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md).
 export const RUBY_GENERATE_BERNOULLI_OPS = [
   ".and", ".within", ".eq", ".ne", ".le", ".lt", ".ge", ".gt", ".size",
 ] as const;

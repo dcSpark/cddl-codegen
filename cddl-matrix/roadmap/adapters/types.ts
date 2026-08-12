@@ -53,6 +53,8 @@ export interface FileHeadingFact {
   path: RepoPath;
   heading: string;
   span: { start_byte: number; end_byte: number };
+  /** Exact heading-owned section through the next heading of equal or higher level, when scanned. */
+  section_text?: string;
 }
 
 export interface TestSymbolFact {

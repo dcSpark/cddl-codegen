@@ -12392,7 +12392,7 @@ fn ir_conformance_corpus() {
     //   over-rejection gap per the RFC author's cbor-wg/cddl#32 clarification — was dropped from
     //   the fixture when cddl-codegen made `int .size N` a graceful rejection (the old i{8N}
     //   mapping mis-enforced the clarified uint-window semantics in both directions; scoreboard in
-    //   draft/cddl-size-on-int-divergence.md). If upstream ships the per-value semantics and
+    //   cddl-matrix/upstream-reports/rust-cddl-size-on-int-divergence.md). If upstream ships the per-value semantics and
     //   cddl-codegen supports the construct, its fixture re-grows the member — possibly back onto
     //   this list until the fork fix lands.)
     //   open_table rides the same gap-#11 class, sharpened by the TWO-ROW shape: for
@@ -12524,7 +12524,7 @@ fn ir_conformance_corpus() {
              the same construct via a named ref parses fine; the spec-parse failure poisons EVERY rule \
              in the fixture, so the innocent sibling rule `holder`'s spec-valid `[[0, 0]]` case is \
              rejected without being judged. Repro + upstream steps: \
-             draft/ruby-cddl-inline-composite-control-arg-gap.md",
+             cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md",
         ),
         (
             "cbor_bignint_table",
@@ -12535,7 +12535,7 @@ fn ir_conformance_corpus() {
              spec-valid empty-table case without judging it. (The fixture's RUST oracle half is back \
              on since the fork's bignum-key fix — 4e39d09 — so only the ruby half is blind here.) \
              Repro + upstream steps: \
-             draft/ruby-cddl-inline-composite-control-arg-gap.md",
+             cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md",
         ),
         (
             "cbor_payload_nested",
@@ -12549,7 +12549,7 @@ fn ir_conformance_corpus() {
              (`cbor_payload_nested_payloads` in tests/core/tests.rs decodes a hand-derived oracle; \
              `cbor_nested_payloads` in tests/preserve-encodings carries the preserve round trip). \
              Repro + upstream steps: \
-             draft/ruby-cddl-inline-composite-control-arg-gap.md",
+             cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md",
         ),
         // (homogeneous_array / `float_holder` is a PAST resident, and its retirement is a correction
         //  rather than a fix landing: the entry claimed the gem's `float32`/`float64` matched NO cbor
@@ -12575,7 +12575,7 @@ fn ir_conformance_corpus() {
              controller). It mints standalone cases since the `.cbor` rule-body force-wrap made it a \
              wrapper struct; before that it was a transparent alias with no wire API of its own and \
              the gem's gap was invisible for it. \
-             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+             Repro + upstream steps: cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md",
         ),
         (
             "cbor_bignint_table",
@@ -12583,7 +12583,7 @@ fn ir_conformance_corpus() {
             "same gem PARSER gap as this fixture's `holder` entry — this is the construct-carrying \
              rule itself (`bytes .cbor { * bignint => uint }`, the inline-map controller), minting \
              standalone cases since the `.cbor` rule-body force-wrap. \
-             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+             Repro + upstream steps: cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md",
         ),
         (
             "cbor_nonempty_payload",
@@ -12592,14 +12592,14 @@ fn ir_conformance_corpus() {
              composite controller the gem cannot parse (exit 65). Standalone cases exist since the \
              `.cbor` rule-body force-wrap; the fixture header records why it is isolated from \
              cbor_in_bytes.cddl. \
-             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+             Repro + upstream steps: cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md",
         ),
         (
             "cbor_nonempty_payload",
             "wrapped_nonempty_map",
             "same gem PARSER gap, `{ + … }` flavor (`bytes .cbor { + tstr => uint }`); see this \
              fixture's `wrapped_nonempty` entry. \
-             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+             Repro + upstream steps: cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md",
         ),
         (
             "cbor_int_table",
@@ -12610,7 +12610,7 @@ fn ir_conformance_corpus() {
              siblings `bare_int` and `cbor_int` (`bytes .cbor int` is a form the gem parses fine — \
              its divergence in the pre-split run was collateral, not a construct gap), keeping them \
              ruby-judgeable while the gapped construct keeps its coverage here. \
-             Repro + upstream steps: draft/ruby-cddl-inline-composite-control-arg-gap.md",
+             Repro + upstream steps: cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md",
         ),
     ];
 

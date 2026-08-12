@@ -227,14 +227,15 @@ Rules:
   sub-agent changes the outcome. Working rule for a delegating session: a sub-agent may run gates
   that fit a foreground tool timeout (up to 10 min) and must REPORT the remaining tier back for the
   main session to run — and a partial log carries no tier verdict, so nothing in it may be cited as
-  one (attribution and recovery: `tests/TESTING_ROADMAP.md` § Operational watches).
+  one (attribution and recovery: `tests/README.md` § "Operational incident attribution and evidence
+  capture").
 - **Never kill processes by tool-generic pattern (`pkill -f cddl_verify`, `pkill -f cargo`) —
   another session's live run matches the same substring.** Proven 2026-07-19: after stopping a
   `check.ts full` background task, a session pkilled `/tmp/cddl_verify_*` cargo processes it
   believed were its run's orphans; its run had died BEFORE the verify gate, so the processes were a
   concurrent session's LIVE `verify.ts` warm-up — which failed with an exit -15 the other session
-  flagged as a possible harness flake (attribution:
-  `tests/TESTING_ROADMAP.md` § the verify warm-up -15 entry). Before killing "orphans": derive the
+  flagged as a possible harness flake. The exit was cross-session kill fallout, not a verify flake.
+  Before killing "orphans": derive the
   candidate PIDs from the stopped task's own process tree / scratch paths (the task output names
   them), confirm the parent is dead, and kill by PID — and treat an unexplained exit -15 in any
   log as possible cross-session kill before suspecting the harness. **When agents share one
@@ -278,6 +279,16 @@ Rules:
   `RUSTUP_TOOLCHAIN` down the process tree) — the exposed spawns are those whose env lacks it,
   i.e. anything shell- or bun-launched (verify.ts's nested cargo is the known instance;
   tests/TESTING_ROADMAP.md item "Pin the toolchain of verify.ts's nested cargo").
+- **A scratch-tree `E0463: can't find crate for core` is an environment-red baseline, not product
+  attribution.** Outside the repository, an unqualified cargo command can select the default
+  toolchain, where the repo's declared target is absent. Re-run with the exact repository pin and
+  install the target for that pin before using the result to distinguish a generator defect from a
+  probe-environment failure.
+- **Never share one `CARGO_TARGET_DIR` across scratch crates with the same package name unless every
+  tree is made newer before its build.** Cargo's leaf fingerprint is keyed by package name and
+  version, not manifest path, so a later-written sibling can make an older tree false-green by
+  reusing the wrong artifact. Prefer a per-crate target directory or unique package names; the
+  deliberate shared-target verifier touches each cell tree immediately before every missed build.
 - **Check `free` as well as `df` before launching a tier, and treat PEAK RESOURCE as the thing to
   bound — not gate count.** The quantity a tier must keep under the machine's memory is the product
   `(gates in flight) × (rustc per gate) × (per-rustc resident set)`, and **no factor of it may scale
@@ -294,6 +305,11 @@ Rules:
   cap**, and the preflight above measures only what is free at *its* start — a second tier launched
   into a machine the first has already committed sees a floor that was clear a minute ago. Two
   same-day runs saturating the disk is the ENOSPC ledger entry in `tests/TESTING_ROADMAP.md`.
+- **Serialize publishing gates with live implementation edits.** `verify.ts` rewrites
+  `cddl-matrix/annotations/cddl_codegen.toml`; one run overlapped edits under `src/` and published
+  annotations from a hybrid tree that never existed as a commit. Before a publishing run, coordinate
+  with editors and inspect the dirty marker/status; after it, inspect the annotation diff and rebuild
+  the derived matrix before treating the output as evidence.
 - **Evidence preservation: every multi-minute run leaves its FULL output in a file under
   `draft/logs/`.** `check.ts` does this ITSELF — every run tees its complete output to a
   timestamped `draft/logs/check-<tier>-<stamp>.log` and prints the path at start and end. For
@@ -304,7 +320,8 @@ Rules:
   failed run is unactionable, and a transient failure whose only sighting went through
   `tail`/`grep` is evidence burned — reruns come back green and the flake stays unattributed.
   Proven end to end by the `acquire_scratch_lock_serializes` watch in
-  `tests/TESTING_ROADMAP.md`: four unattributed sightings (three lost to `tail`/`grep`/truncation),
+  `tests/README.md` § "Operational incident attribution and evidence capture": four unattributed
+  sightings (three lost to `tail`/`grep`/truncation),
   then the fifth — full-logged under this rule — attributed and retired the flake in the same
   session.
 - **A log is a working artifact for the session that produced it, never evidence of record.**

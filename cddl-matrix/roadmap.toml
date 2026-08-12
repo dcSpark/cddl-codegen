@@ -4,9 +4,9 @@ authority = "authoritative"
 roadmap = "matrix"
 source_path = "cddl-matrix/roadmap.toml"
 projection_path = "cddl-matrix/ROADMAP.md"
-frozen_source_sha256 = "f010705393ddbd0b5fa25368c7903df5c5f87a6e500bbdb9c99f7f22bf9bd69e"
-frozen_source_byte_length = 84580
-frozen_source_line_count = 996
+frozen_source_sha256 = "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d"
+frozen_source_byte_length = 84591
+frozen_source_line_count = 995
 frozen_source_eof = "lf"
 projection_layout = "curated_v1"
 
@@ -1986,7 +1986,7 @@ summary_md = """When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice m
 detail_md = """- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
   #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
   multi-entry-composite-array-key observations, and prune steps in
-  `draft/rust-cddl-named-key-map-gap.md`, local note; no upstream issue filed yet): re-mint the
+  `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md`, local note; no upstream issue filed yet): re-mint the
   corpus decode rows it blocks
   (`--mint-decode-corpus --only=c_style_enum_map_key.enum_keyed_map,table_enum_key.enum_keyed,table_enum_key.enum_key_holder`
   — the empty-instance-only rows pick up non-empty vectors, and the pinned/active flip-flop the
@@ -2111,9 +2111,8 @@ projection_visibility = "document"
 kind = "matrix_external_closeout"
 summary_md = """When a release ships the `885c61c` non-uint-endpoint range fix
 """
-detail_md = """- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending — PR material
-  in `draft/rust-cddl-float-range-gap.md`): prune the fix-provenance notes (README gap #3, that
-  draft, and the rangeop vectors' `reason` provenance).
+detail_md = """- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending): prune the
+  fix-provenance notes in README gap #3 and the rangeop vectors' `reason` provenance.
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-non-uint-range-upstream-upstream"
@@ -2508,7 +2507,7 @@ detail_md = """- When a release ships the `90f66ff` prelude-`number` float fix (
   the generator mints calendar-INVALID `tdate`s (`0(\"5906-11-31t22:32:49-05:59\")` — November 31
   does not exist) and the validator accepts them, while the local-fixes rust oracle rejects
   (RFC 3339 date validity — arguably the correct reading); repro + impact under \"Adjacent
-  observations\" in `draft/rust-cddl-named-key-map-gap.md` (local note) — the same
+  observations\" in `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md` (local note) — the same
   candidate-upstream-report disposition, not yet filed.
 """
 closeout_state = "waiting"
@@ -2597,12 +2596,12 @@ kind = "matrix_external_closeout"
 summary_md = """When a release ships the `2c7548e` radix-literal lexer fix
 """
 detail_md = """- When a release ships the `2c7548e` radix-literal lexer fix (upstream PR pending — fix +
-  35-test suite on the fork; `draft/rust-cddl-radix-int-literal-gap.md`): prune the fix-provenance
-  notes (README gap #5, that draft). Separately track the WG spec question the fix spawned
+  35-test suite on the fork): prune the fix-provenance notes in README gap #5. Separately track the
+  WG spec question the fix spawned
   (cbor-wg/cddl#33, filed: radix-mantissa floats the unordered ABNF technically derives). Future
   radix-POSITION rows (occurrence bounds `0x2*0x4`, tag heads `#6.0x20`, …) additionally wait on a
   ruby oracle fix — ruby corroborates radix in value position only
-  (`draft/radix-oracle-deviations-verdict.md`).
+  (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-radix-literal-upstream-upstream"
@@ -3159,13 +3158,13 @@ summary_md = """When a ruby `cddl` gem release parses inline/composite type2 con
 """
 detail_md = """- When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
   — gem 0.12.14 exit-65s at parse, so the whole containing spec becomes unjudgeable; repro +
-  upstream steps in `draft/ruby-cddl-inline-composite-control-arg-gap.md`): remove the
+  upstream steps in `cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md`): remove the
   `ir_conformance_corpus` gate's `RUBY_EXPECTED_FAIL` entries for `cbor_wrapped_group_array` and
   `cbor_bignint_table` (their stale-ledger guards flip red by themselves once the divergence
   disappears) and prune that draft.
   Until then, rows/fixtures needing ruby corroboration for a control-arg construct must name the
   controller type — same caveat class as the ruby radix-position deviations
-  (`draft/radix-oracle-deviations-verdict.md`).
+  (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
 """
 closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-ruby-inline-controller-upstream-upstream"
@@ -3203,7 +3202,7 @@ detail_md = """- `.size` on a signed `int` — semantics CLARIFIED by the RFC au
   REJECTS the construct gracefully (the old `i{8N}` mapping mis-enforced the clarified window in
   both directions, and the rust oracle hard-errors on it, so an aligned implementation would be
   uncertifiable — pinned by `size_on_signed_int_rejects_gracefully`; scoreboard + detail in
-  `draft/cddl-size-on-int-divergence.md`). Remaining upstream waits: (1) the rust CLI's hard error
+  `cddl-matrix/upstream-reports/rust-cddl-size-on-int-divergence.md`). Remaining upstream waits: (1) the rust CLI's hard error
   is a citable OVER-rejection bug — candidate `local-fixes` fork fix + upstream PR; once fixed,
   supporting `int .size N` as the uint window becomes certifiable (a `ctl.size.int` row becomes
   mintable) and the rejection can be revisited. (2) When the clarification lands as erratum/spec
@@ -4045,7 +4044,7 @@ detail_md = """### When a rust `cddl` fix ships TAG-typed map-key validation (RE
 
 This remains OPEN at the pinned `ac1b98e` rev; the differential repro, suspected
 `src/validator/cbor.rs` site, and prune steps are recorded in
-`draft/rust-cddl-tag-map-key-gap.md`, and no upstream issue has been filed yet. When a fix ships,
+`cddl-matrix/upstream-reports/rust-cddl-tag-map-key.md`, and no upstream issue has been filed yet. When a fix ships,
 re-mint the row it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its
 `pinned_reason` disappears once candidates survive the two-oracle gate), re-run the full `verify.ts`
 in the same change so the row's evidence picks up the corroboration clause, and prune README gap #8
@@ -4820,7 +4819,7 @@ kind = "matrix_external_closeout"
 summary_md = """When a rust `cddl` release ships the uint-target control-op fix
 """
 detail_md = """- When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
-  README gap #1 and `draft/rust-cddl-uint-control-op-gap.md`.
+  README gap #1's fix-provenance notes.
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-uint-control-operator-upstream-upstream"
@@ -6066,8 +6065,8 @@ migration_status = "replaced"
 [[source_span]]
 id = "record-prelude-number-float-upstream"
 start_byte = 55573
-end_byte = 56545
-sha256 = "d34dc932bb31ddb9bbf1888949232498bff37fea2316a98b647a1caeb8a5690f"
+end_byte = 56564
+sha256 = "2648c798c0459a0c0a8845d1bce0eaea8974af6fc755b746175c46053ee636ab"
 source_kind = "record"
 owner_id = "matrix.prelude-number-float-upstream"
 owner_field = "payload.detail_md"
@@ -6075,8 +6074,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-float-key-null-upstream"
-start_byte = 56545
-end_byte = 56768
+start_byte = 56564
+end_byte = 56787
 sha256 = "cf7192f403a91fac090b7131eab761654be08f26685cf2ee649d90573f8484f9"
 source_kind = "record"
 owner_id = "matrix.float-key-null-upstream"
@@ -6085,9 +6084,9 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-uint-control-operator-upstream"
-start_byte = 56768
-end_byte = 56927
-sha256 = "5cdd25fc4e16d49ac79e01c15c5865a1839ec8927325f74e25b997240aecf1f4"
+start_byte = 56787
+end_byte = 56924
+sha256 = "a5f0bf87f9b1f0479b74e15fecd4e44fc12bf78d528d5dc47e26afec912fbb51"
 source_kind = "record"
 owner_id = "matrix.uint-control-operator-upstream"
 owner_field = "payload.detail_md"
@@ -6095,8 +6094,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-array-sequence-upstream"
-start_byte = 56927
-end_byte = 57144
+start_byte = 56924
+end_byte = 57141
 sha256 = "023f6a2eea1c0a172f6c2b3aa6f36ceffc2dee8cbb158feec850ddb857699d2a"
 source_kind = "record"
 owner_id = "matrix.array-sequence-upstream"
@@ -6105,9 +6104,9 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-non-uint-range-upstream"
-start_byte = 57144
-end_byte = 57398
-sha256 = "93db17a767b5fb08318a99b0b2aab5ac095f47d5b13873e3e9581954ee69968c"
+start_byte = 57141
+end_byte = 57325
+sha256 = "d1fd66ad5e87a59e1580f9d72e339df064e0eaab29322093fa7d7d0e5f15efe7"
 source_kind = "record"
 owner_id = "matrix.non-uint-range-upstream"
 owner_field = "payload.detail_md"
@@ -6115,9 +6114,9 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-radix-literal-upstream"
-start_byte = 57398
-end_byte = 57995
-sha256 = "10a7b244875f64b9d7b6c5aaf2e1e8f5e6ed4b1dacd4b91d373d9fa0155cf606"
+start_byte = 57325
+end_byte = 57894
+sha256 = "93d455448e7e7c9b9b5f67a243694ef4048c4e99d2c3df96406fe4ae4a517b79"
 source_kind = "record"
 owner_id = "matrix.radix-literal-upstream"
 owner_field = "payload.detail_md"
@@ -6125,9 +6124,9 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-signed-int-size-upstream"
-start_byte = 57995
-end_byte = 59015
-sha256 = "cd3caa7a97531cedcd569b4401a0473f1e3b736e7446c7ed7d5ea29635c66360"
+start_byte = 57894
+end_byte = 58942
+sha256 = "9b2fcea408e02de9d15f8f28a3a6043b9d767fa72c57615c8dca5b451360b0d3"
 source_kind = "record"
 owner_id = "matrix.signed-int-size-upstream"
 owner_field = "payload.detail_md"
@@ -6135,9 +6134,9 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-ruby-inline-controller-upstream"
-start_byte = 59015
-end_byte = 59745
-sha256 = "b710ed2c92da7afeac1da119535a154ed7794cb4b8ba250ab69ade3b9f207ba1"
+start_byte = 58942
+end_byte = 59718
+sha256 = "977e8f4e8466fdb6c5ba95a473d19ad57d3beddb6d4fe4809b1093dbbf1f0c7e"
 source_kind = "record"
 owner_id = "matrix.ruby-inline-controller-upstream"
 owner_field = "payload.detail_md"
@@ -6145,8 +6144,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-bignum-key-tag-upstream"
-start_byte = 59745
-end_byte = 60042
+start_byte = 59718
+end_byte = 60015
 sha256 = "ec2fc4abadc2f3932d5ebb23974f5e96be3871f9cedef9c44f9dbede708238c0"
 source_kind = "record"
 owner_id = "matrix.bignum-key-tag-upstream"
@@ -6155,8 +6154,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-undefined-validator-upstream"
-start_byte = 60042
-end_byte = 60927
+start_byte = 60015
+end_byte = 60900
 sha256 = "9d77556ae2e249dfa9a93c870b785ae685f5a113298d8652f620f61db5c775e6"
 source_kind = "record"
 owner_id = "matrix.undefined-validator-upstream"
@@ -6165,8 +6164,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-undefined-ciborium-upstream"
-start_byte = 60927
-end_byte = 61569
+start_byte = 60900
+end_byte = 61542
 sha256 = "781ea9bdb73a63be314c1611520272f21473c1f252060c6a372c4aa7cf985bf7"
 source_kind = "record"
 owner_id = "matrix.undefined-ciborium-upstream"
@@ -6175,8 +6174,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-bytes-lowercase-base64-parser"
-start_byte = 61569
-end_byte = 62327
+start_byte = 61542
+end_byte = 62300
 sha256 = "983a9b7d7a6036a47e839daf2351724aab45a58d29b8ff8bc5c711b176bc18d9"
 source_kind = "record"
 owner_id = "matrix.fixed-bytes.lowercase-base64-parser"
@@ -6185,8 +6184,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-fixed-bytes-validator-corroboration"
-start_byte = 62327
-end_byte = 63450
+start_byte = 62300
+end_byte = 63423
 sha256 = "34cd01a9540a8d3c9e6b59ad95d6d1e1044a4098de48dc70b5b294cf82289cc4"
 source_kind = "record"
 owner_id = "matrix.fixed-bytes.validator-corroboration"
@@ -6195,9 +6194,9 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-tag-map-key-upstream"
-start_byte = 63450
-end_byte = 64080
-sha256 = "67ba9f6028cbe86e418afdd061437bc70fdc0feee9466d4673dbd841aa1e7901"
+start_byte = 63423
+end_byte = 64072
+sha256 = "1f7d7077e777ce789f2a430cbbf5b7afd44d5888cbd384facaf0c30d7da0bdf0"
 source_kind = "record"
 owner_id = "matrix.tag-map-key-upstream"
 owner_field = "payload.detail_md"
@@ -6205,9 +6204,9 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-named-rule-map-key-upstream"
-start_byte = 64080
-end_byte = 64950
-sha256 = "3eed8d5fc0594c8ec824c0c0485a713094eabe2161df5238111273a21df31405"
+start_byte = 64072
+end_byte = 64961
+sha256 = "0e854fad5c253e7768b8592fe856dd8d858da6cee65818bd47b9ce5a3966131e"
 source_kind = "record"
 owner_id = "matrix.named-rule-map-key-upstream"
 owner_field = "payload.detail_md"
@@ -6215,8 +6214,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-optional-closed-map-upstream"
-start_byte = 64950
-end_byte = 65542
+start_byte = 64961
+end_byte = 65553
 sha256 = "774f00f6f28ceef03c58d863f828e7f2a60505048677fbd69c1e4598fc47057e"
 source_kind = "record"
 owner_id = "matrix.optional-closed-map-upstream"
@@ -6225,8 +6224,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-float-prelude-name-upstream"
-start_byte = 65542
-end_byte = 66824
+start_byte = 65553
+end_byte = 66835
 sha256 = "52433e7bc8de265d86e47d033d4533fd32922fd870818ea0b2593046905a5ede"
 source_kind = "record"
 owner_id = "matrix.float-prelude-name-upstream"
@@ -6235,8 +6234,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-typed-tag-report-upstream"
-start_byte = 66824
-end_byte = 67689
+start_byte = 66835
+end_byte = 67700
 sha256 = "693aaf5c56252b287f0b599028606796dc2066fa06f4b502deae1b5a97f7332e"
 source_kind = "record"
 owner_id = "matrix.typed-tag-report-upstream"
@@ -6245,8 +6244,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-wasm-abi-multifile"
-start_byte = 67689
-end_byte = 68468
+start_byte = 67700
+end_byte = 68479
 sha256 = "e234b9652a695f4265ae7a6e9756f7450b663efcc484c898ec1dcb4cba3f9dcc"
 source_kind = "section"
 owner_id = "wasm-abi-multifile"
@@ -6255,8 +6254,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-root-reference-placement"
-start_byte = 68468
-end_byte = 69737
+start_byte = 68479
+end_byte = 69748
 sha256 = "d0161c7e317dc323c540730bd5b2f29896fafbd0864bfc36382f3c740d75d3be"
 source_kind = "record"
 owner_id = "matrix.root-reference-placement"
@@ -6265,8 +6264,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-periodic-coverage-honesty"
-start_byte = 69737
-end_byte = 70751
+start_byte = 69748
+end_byte = 70762
 sha256 = "138ac2836c12a785482f238049f46e2e396bca7aa8b8a4659e6c2c8a0ac8f849"
 source_kind = "record"
 owner_id = "matrix.periodic-coverage-honesty"
@@ -6275,8 +6274,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-fix-review-reach"
-start_byte = 70751
-end_byte = 70935
+start_byte = 70762
+end_byte = 70946
 sha256 = "d6ca52ff836551a22afc7c9304737a32597c0cf8fdac8b3e23f0ae42e16d231b"
 source_kind = "part"
 owner_id = "fix-review-reach"
@@ -6285,8 +6284,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-test-steering-comment"
-start_byte = 70935
-end_byte = 71170
+start_byte = 70946
+end_byte = 71181
 sha256 = "a8b99ca84d22dbbc4fd9088f783605bc8d6e53de7e5158de9783dfc58b4119ca"
 source_kind = "part"
 owner_id = "test-steering-comment"
@@ -6295,8 +6294,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-consumer-hand-patch"
-start_byte = 71170
-end_byte = 71567
+start_byte = 71181
+end_byte = 71578
 sha256 = "95ec09f3d651cddb7697f092fc16ca8cec5339609a99f3f339d49c54d564825a"
 source_kind = "part"
 owner_id = "consumer-hand-patch"
@@ -6305,8 +6304,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-exclusion-comment-audit"
-start_byte = 71567
-end_byte = 73010
+start_byte = 71578
+end_byte = 73021
 sha256 = "a3ee430bc280c71d08351e6a452b213369f0772a36e7359b0061399599716750"
 source_kind = "part"
 owner_id = "exclusion-comment-audit"
@@ -6315,8 +6314,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-emission-input-mode-honesty"
-start_byte = 73010
-end_byte = 74072
+start_byte = 73021
+end_byte = 74083
 sha256 = "26b8fe7e6c790963bfd48e0d3d6fe7a07ac92e0134dfb0d7ea1befdef4b798fa"
 source_kind = "record"
 owner_id = "matrix.emission-input-mode-honesty"
@@ -6325,8 +6324,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-emitted-conformance-directory"
-start_byte = 74072
-end_byte = 74353
+start_byte = 74083
+end_byte = 74364
 sha256 = "45c2e46e73b900fa8e0a262db593e3a9381e6644aa174fe881906d8613cdafdd"
 source_kind = "part"
 owner_id = "emitted-conformance-directory"
@@ -6335,8 +6334,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-wasm-macro-directory"
-start_byte = 74353
-end_byte = 74775
+start_byte = 74364
+end_byte = 74786
 sha256 = "2dd55afebade3f0a7852990fb89ed6ddfb9fa45115c43d7c953f8bfc56d89b4b"
 source_kind = "part"
 owner_id = "wasm-macro-directory"
@@ -6345,8 +6344,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "part-json-gen-cross-module-execution"
-start_byte = 74775
-end_byte = 76815
+start_byte = 74786
+end_byte = 76826
 sha256 = "454cabc136e4c9cda31d901b95264d5385b235733412bc8c79c14b2ea9ba846d"
 source_kind = "part"
 owner_id = "json-gen-cross-module-execution"
@@ -6355,8 +6354,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-explicit-boundaries"
-start_byte = 76815
-end_byte = 76975
+start_byte = 76826
+end_byte = 76986
 sha256 = "5ba4ba0b045f674d93f19fd741acfedb04eb73cfd91d83506ebe3fb7a2f79e81"
 source_kind = "section"
 owner_id = "explicit-boundaries"
@@ -6365,8 +6364,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-matching-semantics-boundary"
-start_byte = 76975
-end_byte = 77141
+start_byte = 76986
+end_byte = 77152
 sha256 = "dd117ac22e03c2a79bdda2b1b8a20c130ea7f3c238a1311be5347adab8b0ca9a"
 source_kind = "record"
 owner_id = "matrix.matching-semantics-boundary"
@@ -6375,8 +6374,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-interaction-tuples-boundary"
-start_byte = 77141
-end_byte = 77268
+start_byte = 77152
+end_byte = 77279
 sha256 = "1776d75742a9c36621eee90bc2b1ba27a2ea8d4bb4276f449e7c9f4e4e2e91df"
 source_kind = "record"
 owner_id = "matrix.interaction-tuples-boundary"
@@ -6385,8 +6384,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-over-acceptance-ast-notes"
-start_byte = 77268
-end_byte = 77368
+start_byte = 77279
+end_byte = 77379
 sha256 = "69003851ce48007d2add6662f37d9a9e522b2322f97da8080f20a7c1d7178c26"
 source_kind = "record"
 owner_id = "matrix.over-acceptance-ast-notes"
@@ -6395,8 +6394,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-wasm-macro-behavior-boundary"
-start_byte = 77368
-end_byte = 77897
+start_byte = 77379
+end_byte = 77908
 sha256 = "21563af1427e1d35a824d0f860e4624e2d5843e1bd23b115019be681e624baaf"
 source_kind = "record"
 owner_id = "matrix.wasm-macro-behavior-boundary"
@@ -6405,8 +6404,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-extern-emitted-test-boundary"
-start_byte = 77897
-end_byte = 79538
+start_byte = 77908
+end_byte = 79549
 sha256 = "b475e495a1c959ae26455d41357cd881194a1d28488f73a13de9a0f9137f6e5c"
 source_kind = "record"
 owner_id = "matrix.extern-emitted-test-boundary"
@@ -6415,8 +6414,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-extern-interface-sentinel-boundary"
-start_byte = 79538
-end_byte = 80258
+start_byte = 79549
+end_byte = 80269
 sha256 = "dfc0393b6482fd64b93dcb4f7bd637cfd562040bd557bfc18b01faeadcbe6cc4"
 source_kind = "record"
 owner_id = "matrix.extern-interface-sentinel-boundary"
@@ -6425,8 +6424,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-inline-cbor-containment-boundary"
-start_byte = 80258
-end_byte = 81231
+start_byte = 80269
+end_byte = 81242
 sha256 = "21c83d82f7ca7a96c275ff76dff41fc45dbe17c9f49951d255f3108d5585913a"
 source_kind = "record"
 owner_id = "matrix.inline-cbor-containment-boundary"
@@ -6435,8 +6434,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-pending-decisions"
-start_byte = 81231
-end_byte = 81273
+start_byte = 81242
+end_byte = 81284
 sha256 = "b5c093a1cebbb54aea951d3f29506b193181718c327dbf530096398b86519c1c"
 source_kind = "section"
 owner_id = "pending-decisions"
@@ -6445,8 +6444,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "record-over-acceptance-denominator"
-start_byte = 81273
-end_byte = 82004
+start_byte = 81284
+end_byte = 82015
 sha256 = "32ca7852921c4ea6589f34afc9bf94b22ebdc6cbef672ee197994cc090972dc5"
 source_kind = "record"
 owner_id = "matrix.over-acceptance-denominator"
@@ -6455,8 +6454,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-maintenance"
-start_byte = 82004
-end_byte = 84379
+start_byte = 82015
+end_byte = 84390
 sha256 = "09ea997b7e555cb5f88ba625f44d02bc6c1ae6d9fc90169d534e5c1de347f5ce"
 source_kind = "section"
 owner_id = "maintenance"
@@ -6465,8 +6464,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "section-related"
-start_byte = 84379
-end_byte = 84580
+start_byte = 84390
+end_byte = 84591
 sha256 = "dfd87477a732da1720c66a34a55a37dd209c9f303d70604a0bdcab17a3a5540d"
 source_kind = "section"
 owner_id = "related"

@@ -664,10 +664,12 @@ function executeFixtureCase(id: RequiredFixtureSelfTestCaseId, context: SelfTest
         path: "docs/guide.mdx",
         heading: "MDX durable heading",
         span: { start_byte: 2, end_byte: 21 },
+        section_text: "# MDX durable heading\n",
       }, {
         path: "notes.txt",
         heading: "Durable text heading",
         span: { start_byte: 3, end_byte: 23 },
+        section_text: "## Durable text heading\n",
       }];
       for (const view of [ports.registryView({ kind: "worktree" }), commitView]) {
         const durableHeadings = view.tracked_headings.filter((fact) =>

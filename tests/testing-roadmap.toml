@@ -4,9 +4,9 @@ authority = "authoritative"
 roadmap = "testing"
 source_path = "tests/testing-roadmap.toml"
 projection_path = "tests/TESTING_ROADMAP.md"
-frozen_source_sha256 = "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b4120d70e"
-frozen_source_byte_length = 323398
-frozen_source_line_count = 3597
+frozen_source_sha256 = "6e90f1fb06011cefa546d861da0a6525ff1af6fc81bbe51c9ed5f035578b53af"
+frozen_source_byte_length = 306388
+frozen_source_line_count = 3412
 frozen_source_eof = "lf"
 projection_layout = "curated_v1"
 
@@ -60,45 +60,18 @@ body_md = """## North star — automated feature coverage
 
 The direction all of this points toward: **an automatic flow that ensures every CDDL construct worth
 supporting works properly through the generated library — verified by execution, not by hand.**
-Concretely: enumerate the feature space (`cddl-matrix/` already does this), then for each construct
-*generate → compile → execute* (round-trip real values, reject invalid ones), and treat every
-failure as one of two things — a construct we deliberately don't support (documented, not a gap) or a
-bug to fix — closing the loop until coverage is complete and self-checking. \"Worth supporting\" is
-load-bearing: some constructs (`#`/`cbor-any`, `float16`, socket plugs, …) are design decisions to
-*exclude*, not holes to grind toward 100% — and the exclude list is revisable: `any` (the prelude
-name) moved OFF it 2026-07-23 (maintainer-ruled feature), and the loose-CBOR family that followed
-it is shipped CURRENT STATE, not roadmap — first-class `any` on every surface, open struct-maps
-(trailing `* K => V` rest rows, capture and `@ignore` tolerate-and-drop flavors), and open arrays
-(final-position loose `* t` and non-empty `+ t` / `1* t` rest tails; `@ignore` applies only to the
-loose flavor). Per-layer test maps: `tests/README.md` § \"Open
-struct-maps (rest rows)\", § \"Open struct-maps — the `@ignore` (tolerate-and-drop) flavor\", and
-§ \"Open arrays (rest tails)\"; user-facing contracts: `docs/docs/current_capacities.mdx` /
-`output_format.mdx` / `comment_dsl.mdx` / `wasm_differences.mdx`. The family's v1 boundaries
-(non-final/multiple/plain-group rest rows, bounded occurrences, and the two key domains a row
-cannot key on — float-containing, which has no total order, and `null`-admitting, which the row's
-key dispatch cannot tell from an indefinite map's break) are graceful rejections whose
-candidate-feature entries live in `cddl-matrix/ROADMAP.md` § findings, not here. The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
-control operators on `any`, and non-last bare `any` choice arms (forced-backtracking catch-all unions
-put the catch-all last, so an earlier one is unreachable dead code) — see the `any` type-choice entry
-in `cddl-matrix/ROADMAP.md`. One deferred coverage item remains: the wasm emit-tests minter has no
-`any` ctor path (`src/emit_tests_wasm.rs`, `Any => None`), so a minted `any` value gets no wasm-side
-round-trip differential (the rust leg's mint covers it); lifting it follows demand, since the wasm
-`AnyCbor` wrapper is byte-oriented and exposes no value-destructuring constructor.
+The future loop is *enumerate → generate → compile → execute*: round-trip real values, reject invalid
+ones, and classify every failure as either an explicitly unsupported construct or a bug to fix.
+\"Worth supporting\" remains load-bearing. Some constructs are deliberate product exclusions rather
+than holes to grind toward 100%, and the durable exclusion list is revisable as the product boundary
+moves. This roadmap owns only the work still needed to close that loop; delivered test maps,
+user-facing contracts, and current oracle behavior live in their durable documentation.
 
-The value is in removing the human from that loop without losing trust: the gates must be strict
-enough that \"the matrix says this feature is supported\" *means* it generates, compiles (rust **and**
-wasm), and round-trips. The historical verdict meant only \"rust generates and rust-`cargo check`s,\"
-which is why real bugs (inverted `nint` bound, wasm `get`/`add` type mismatch, JSON-schema turbofish)
-shipped green. That oracle now exists as a set of live systems — execution-gated support verdicts at
-matrix/corpus/suite breadth, per-non-default-profile probes and foreign spec-derived decode vectors,
-identity-carrying decode evidence (reason-asserted rejections, spec-equal re-encoding replays,
-header mutants asserting an error location that names the decoding type), and an armed
-over-acceptance promotion flow whose both branches have fired. All of that is *current state*,
-documented in `tests/README.md` (suite-side; § \"Decode-direction conformance\" for the evidence
-contract and its validation layers) and `cddl-matrix/README.md` (probe-side; § \"Directional support
-evidence\"). The json/wasm decode surfaces carry the same obligation now (the json/wasm surface legs
-on both replay gates — `tests/README.md` § \"json/wasm surface legs\"). What remains on this axis lives
-in the sections below (the fuzzer escalations, the recur-first residuals), not here.
+One deferred coverage item remains: the wasm emit-tests minter has no `any` constructor path
+(`src/emit_tests_wasm.rs`, `Any => None`), so a minted `any` value gets no wasm-side round-trip
+differential while the rust leg does. Lifting that boundary follows demand because the wasm
+`AnyCbor` wrapper is byte-oriented and exposes no value-destructuring constructor. The other
+remaining work on this axis is carried by the future items below.
 
 """
 
@@ -641,52 +614,6 @@ transition_ids = ["testing.trigger.assert-hand-authored-json-schema-against-type
 
 [[record.source_replacement]]
 span_id = "span-record-assert-hand-authored-json-schema-against-type-s"
-replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
-"""
-
-[[record]]
-id = "testing.backgrounded-check-ts-full-launched-sub-agent-s"
-title = "A backgrounded `check.ts full` launched from a SUB-AGENT's turn dies before it can finish — ATTRIBUTED to the launching topology, not a wall-clock ceiling. Do not watch for it; the standing rule is in `AGENTS.md`."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "document"
-
-[record.payload]
-kind = "testing_incident"
-summary_md = """A backgrounded `check.ts full` launched from a SUB-AGENT's turn dies before it can finish — ATTRIBUTED to the launching topology, not a wall-clock ceiling. Do not watch for it; the standing rule is in `AGENTS.md`.
-"""
-detail_md = """- **A backgrounded `check.ts full` launched from a SUB-AGENT's turn dies before it can finish —
-  ATTRIBUTED to the launching topology, not a wall-clock ceiling. Do not watch for it; the standing
-  rule is in `AGENTS.md`.** Four 2026-07-24/25 sightings, all from orchestrating sub-agents, all the
-  same signature (task \"killed\", entire process tree gone, self-log stops mid-gate with no
-  tier-level `RESULT` line and no error): ~53 min and ~60–65 min inside `gate_cache_closure_audit`
-  (two runs, 2026-07-24), then 60 min and ~68 min inside `verify` (two runs, 2026-07-25). What
-  settles it: the SAME tier on the same machine, launched from the MAIN session, ran 74 min to a
-  clean `RESULT: PASS — all in-tier gates green`, and a shorter (~35 min) sub-agent background
-  run completed fine — so the constraint is the sub-agent turn's lifetime, not a resource or
-  wall-clock limit on the run itself. Consequence: a ~75-min full tier can NEVER complete from a
-  sub-agent's turn, and delegating one is a guaranteed loss of a multi-minute run. Signature to
-  distinguish from a hang: process tree GONE + log mtime stale (a hang keeps live processes).
-  Distinguish from cross-session pkill (the entry above): no kill activity in any concurrent
-  session, and exit is a task-kill, not `-15` in the run's own log. Recovery when one has already
-  died: enumerate completed gates from the self-log (`grep '^--- '`), run the remainder isolated
-  (the audit gate alone ≈16 min: `bun run audit_gate_cache_closure.ts` in `cddl-matrix/`;
-  `corpus_detect.ts` and the fuzz `cargo check` are seconds), and claim the tier green only by
-  COMPLETE gate enumeration — never from the partial log.
-
-"""
-incident_posture = "historical"
-signature_md = """Four sub-agent-launched full tiers lost their complete process tree at roughly 53–68 minutes with no tier verdict, while the same tier from the main session completed in 74 minutes.
-"""
-evidence_ids = ["testing.source-observation.backgrounded-check-ts-full-launched-sub-agent-s"]
-attribution_md = """Sub-agent turn lifetime topology, not a gate defect or general wall-clock ceiling.
-"""
-operating_rule_reference_id = "ref-testing-backgrounded-check-ts-full-launched-sub-agent-s-rule"
-retirement_reference_id = "ref-testing-backgrounded-check-ts-full-launched-sub-agent-s-rule"
-
-[[record.source_replacement]]
-span_id = "span-record-backgrounded-check-ts-full-launched-sub-agent-s"
 replacement_field = "payload.detail_md"
 review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
@@ -2278,65 +2205,6 @@ review_note_md = """WP5T source-owner review: the whole legacy block remains byt
 """
 
 [[record]]
-id = "testing.e0463-t-find-crate-core-scratch-tree-std"
-title = "An `E0463: can't find crate for core` from a SCRATCH-TREE no-std-check run is a toolchain artifact until proven otherwise — and \"fails identically on the baseline binary\" is not that proof, because an environmental failure is binary-independent by construction."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "document"
-
-[record.payload]
-kind = "testing_operational_watch"
-summary_md = """An `E0463: can't find crate for core` from a SCRATCH-TREE no-std-check run is a toolchain artifact until proven otherwise — and \"fails identically on the baseline binary\" is not that proof, because an environmental failure is binary-independent by construction.
-"""
-detail_md = """- **An `E0463: can't find crate for core` from a SCRATCH-TREE no-std-check run is a toolchain
-  artifact until proven otherwise — and \"fails identically on the baseline binary\" is not that
-  proof, because an environmental failure is binary-independent by construction.** Proven
-  2026-08-06 (the tagged-preserve-table delivery): an implementation agent's scratch e2e pass ran a generated
-  `no-std-check/` shim outside the repo directory, where `rust-toolchain.toml` does not govern, so
-  cargo used the DEFAULT toolchain — which lacks the `thumbv7m-none-eabi` target — and the run
-  died E0463 on `core`. The agent controlled for its own change by re-running on the baseline
-  binary (also red, necessarily) and reported a \"pre-existing no-std-check defect under
-  `--json-serde-derives --json-schema-export`\"; the claim propagated into cycle bookkeeping before
-  a disambiguating re-run under the PINNED toolchain (`rustup run <pinned> cargo check --target
-  thumbv7m-none-eabi`) compiled the same shim clean and retired it. The per-toolchain-target trap
-  was already documented for the GATE (AGENTS.md § fresh-worktree setup); what this watch adds is
-  the attribution rule for AD-HOC shim runs: before ledgering any scratch no-std E0463, re-run
-  under the pinned toolchain (or from inside the repo directory, where the pin governs) — a
-  baseline differential distinguishes regression from pre-existing, never product from
-  environment. (The clean pinned-toolchain run also showed 2 `unused_imports` warnings in the
-  generated crate under the json flags — the class the \"unused_imports on generated crates\" work
-  item above already owns; noted here so the sighting is not re-derived as new.)
-
-"""
-watch_state = "attributed"
-signature_md = """Scratch no-std `E0463: can't find crate for core` outside the repository pin.
-"""
-attribution_md = """The proven sighting was default-toolchain target absence, not generated-code behavior.
-"""
-operating_rule_reference_id = "ref-testing-e0463-t-find-crate-core-scratch-tree-std-operating"
-response_md = """Rerun under the repository pin before product attribution.
-"""
-escalation_transition_id = "testing.trigger.e0463-t-find-crate-core-scratch-tree-std"
-retirement_semantics_md = """Retire when every ad-hoc scratch recipe spells the pin and a durable procedure enforces it.
-"""
-
-[[record.payload.capture_step]]
-step_id = "signature"
-capture_md = """Capture cwd, exact cargo/rustc/toolchain/target, target-installed status, baseline differential, and pinned-toolchain rerun.
-"""
-
-[[record.payload.capture_step]]
-step_id = "scope"
-capture_md = """Record the full untruncated log or consumer report, command, full commit, date, environment, relevant versions, and the explicitly unprobed remainder; never cite a disposable draft log as durable evidence.
-"""
-
-[[record.source_replacement]]
-span_id = "span-record-e0463-t-find-crate-core-scratch-tree-std"
-replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
-"""
-
-[[record]]
 id = "testing.edn-text-notation-round-trip-edn-edn-draft"
 title = "EDN text-notation round-trip (`to_edn` / `from_edn`, draft-ietf-cbor-edn-literals)."
 projection_group = "deferred-features"
@@ -3269,67 +3137,6 @@ transition_ids = ["testing.trigger.full-n-flag-powerset-pict-pairwise"]
 
 [[record.source_replacement]]
 span_id = "span-record-full-n-flag-powerset-pict-pairwise"
-replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
-"""
-
-[[record]]
-id = "testing.full-suite-flake-attributed-hardened-acquire-scratch-lock"
-title = "Full-suite flake, attributed and hardened: `acquire_scratch_lock_serializes` — watch only for a recurrence that outlives the retry deadline."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "document"
-
-[record.payload]
-kind = "testing_operational_watch"
-summary_md = """Full-suite flake, attributed and hardened: `acquire_scratch_lock_serializes` — watch only for a recurrence that outlives the retry deadline.
-"""
-detail_md = """- **Full-suite flake, attributed and hardened: `acquire_scratch_lock_serializes` — watch only for
-  a recurrence that outlives the retry deadline.** Five sightings (2026-07-06 through 2026-07-17),
-  every one in the `test` gate under parallel nested-cargo load, none reproducible isolated (60
-  isolated runs at the second sighting). The FIFTH sighting was the first fully-attributed capture
-  (the pipe-to-file discipline finally paying for itself — the third and fourth sightings were
-  burned through `tail`/`grep` and carried zero evidence), and it landed on the `match` split's
-  **`WouldBlock` arm**, not a syscall errno: the release-assert saw the lock still held
-  immediately after dropping the holder. That attributes the class: `flock` locks are per
-  open-file-description, and a concurrent `Command` spawn on another test thread forks a child
-  that inherits a DUPLICATE of the holder's descriptor until its exec closes the CLOEXEC fds —
-  during that fork-to-exec window the duplicate keeps the lock alive, so an INSTANTANEOUS
-  post-drop `try_lock` can transiently observe `WouldBlock` exactly and only under the suite's
-  constant-subprocess-spawn load profile. The gates' real acquisition path is the BLOCKING
-  `lock()`, which waits out that window by construction, so production serialization was never at
-  risk — only the test's instantaneous assert raced it. Hardening shipped with the attribution:
-  the release assert retries `WouldBlock` on a bounded 5 s deadline (a transient fork-to-exec
-  hold clears as soon as the concurrent child execs; a hold that outlives the deadline still
-  panics as a genuine release-on-drop semantics break), and the syscall-`Error` arm still reports
-  the raw errno for the never-yet-seen ENOLCK-class transient. Standing discipline unchanged and
-  proven load-bearing: pipe every `check.ts` run to a FILE from the FIRST invocation — a
-  deadline-outliving recurrence is a real kernel/std finding and needs its full log.
-"""
-watch_state = "attributed"
-signature_md = """`acquire_scratch_lock_serializes` still sees `WouldBlock` after the bounded five-second retry deadline, or the raw syscall-error arm fires.
-"""
-attribution_md = """The five sightings were the fork-to-exec duplicate-descriptor window; production blocking acquisition was safe.
-"""
-operating_rule_reference_id = "ref-testing-full-suite-flake-attributed-hardened-acquire-scratch-lock-operating"
-response_md = """Retain the retry, diagnose descriptor inheritance and lock release, and rerun the complete tier.
-"""
-escalation_transition_id = "testing.trigger.full-suite-flake-attributed-hardened-acquire-scratch-lock"
-retirement_semantics_md = """Retire only when a constructional test proves release independent of fork-to-exec inheritance.
-"""
-
-[[record.payload.capture_step]]
-step_id = "signature"
-capture_md = """Capture full test output, exact arm, elapsed retries, concurrent child-spawn load, errno if any, and isolated reruns.
-"""
-
-[[record.payload.capture_step]]
-step_id = "scope"
-capture_md = """Record the full untruncated log or consumer report, command, full commit, date, environment, relevant versions, and the explicitly unprobed remainder; never cite a disposable draft log as durable evidence.
-"""
-
-[[record.source_replacement]]
-span_id = "span-record-full-suite-flake-attributed-hardened-acquire-scratch-lock"
 replacement_field = "payload.detail_md"
 review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
@@ -6635,63 +6442,6 @@ review_note_md = """WP5T source-owner review: the whole legacy block remains byt
 """
 
 [[record]]
-id = "testing.migration-handoff-s-complete-list-found-survey-negative"
-title = "A migration handoff's \"complete list found by survey\" is a NEGATIVE premise, and the first consumer falsified one twice."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "document"
-
-[record.payload]
-kind = "testing_operational_watch"
-summary_md = """A migration handoff's \"complete list found by survey\" is a NEGATIVE premise, and the first consumer falsified one twice.
-"""
-detail_md = """- **A migration handoff's \"complete list found by survey\" is a NEGATIVE premise, and the first
-  consumer falsified one twice.** The no_std handoff's hand-action survey ended \"Nothing else,\"
-  and CML's executed migration found two more required classes (public struct fields typed
-  `LinkedHashMap<…>`; `Entry::or_default()` call sites) plus a three-manifests-wider stale-dep
-  sweep. Both misses are instances of standing AGENTS.md rules, recorded here because they
-  happened in a SURVEY DOC rather than in code: the field-annotation half was surveyed with a
-  grep truncated through `| head -8` and presented as complete (the evidence-lost-to-tail class —
-  the pipe ate the `witness_builder.rs` hits), and `or_default` was simply not in the grep
-  vocabulary, so absence-of-hits read as absence-of-thing (the vocabulary-bounded-negative
-  class — a survey's completeness is established by enumerating the CATEGORY registry, not by
-  the searches one thought of). The systematic fix is committed where the next consumer will
-  meet it: the four-category migration-search recipe in `docs/docs/output_format.mdx`
-  § \"Upgrading a crate generated before the `no_std` output\" (including resolve-`.entry(`-by-type,
-  since the inherent method shadows `Deref` and no text search settles the receiver). Watch, not
-  work item: the next handoff doc's survey section should cite that recipe as its method — a
-  survey that instead presents its own grep list as complete is this entry recurring.
-
-"""
-watch_state = "attributed"
-signature_md = """A handoff presents a hand-written grep list as a complete negative survey instead of deriving categories through the migration recipe.
-"""
-attribution_md = """The no_std handoff omitted public LinkedHashMap fields and Entry::or_default() sites.
-"""
-operating_rule_reference_id = "ref-testing-migration-handoff-s-complete-list-found-survey-negative-operating"
-response_md = """Re-run all four recipe categories and correct the handoff.
-"""
-escalation_transition_id = "testing.trigger.migration-handoff-s-complete-list-found-survey-negative"
-retirement_semantics_md = """Retire only when handoffs cannot assert completeness without naming the durable category authority.
-"""
-
-[[record.payload.capture_step]]
-step_id = "signature"
-capture_md = """Capture the handoff claim, full untruncated searches, omitted category and consumer finding, recipe version, and affected files.
-"""
-
-[[record.payload.capture_step]]
-step_id = "scope"
-capture_md = """Record the full untruncated log or consumer report, command, full commit, date, environment, relevant versions, and the explicitly unprobed remainder; never cite a disposable draft log as durable evidence.
-"""
-
-[[record.source_replacement]]
-span_id = "span-record-migration-handoff-s-complete-list-found-survey-negative"
-replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
-"""
-
-[[record]]
 id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
 title = "A minted-identifier spellability floor: every identifier the generator emits verbatim must satisfy `is_spellable_variant_name`'s two string properties, asserted at the emission side rather than per-minter."
 projection_group = "next-priority"
@@ -8909,60 +8659,6 @@ review_note_md = """WP5T source-owner review: the whole legacy block remains byt
 """
 
 [[record]]
-id = "testing.shared-cargo-target-dir-across-same-named-scratch"
-title = "A shared `CARGO_TARGET_DIR` across same-named scratch crates masks compile failures as cached passes."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "document"
-
-[record.payload]
-kind = "testing_operational_watch"
-summary_md = """A shared `CARGO_TARGET_DIR` across same-named scratch crates masks compile failures as cached passes.
-"""
-detail_md = """- **A shared `CARGO_TARGET_DIR` across same-named scratch crates masks compile failures as
-  cached passes.** Proven 2026-08-01 (the same-chain `.cbor` refusal delivery): two scratch
-  probes generated crates with the same package name into different directories and
-  `cargo check`ed them under one shared target dir; the second check reused the first's
-  fingerprint and reported clean for a crate that does not compile — the probe's verdict was
-  the CACHE's, not the crate's. The gate-cache machinery is not implicated (it keys on
-  generated-crate content hashes); this is raw cargo fingerprint reuse, and it can flip a
-  red-first probe green. Working rule: compile probes of scratch crates use a per-crate target
-  dir (or distinct package names); a probe that must share a target dir for warm-cache speed
-  asserts something the cache cannot fake (`cargo clean -p <name>` first, or check the error
-  output of a build it forced). Watch, not work item: the next false-green scratch probe traced
-  to fingerprint reuse is the second instance; if one appears inside a REGISTERED gate rather
-  than an ad-hoc probe, that gate's cell keying is the defect and it graduates to a work item.
-
-"""
-watch_state = "attributed"
-signature_md = """A same-named scratch crate reports false-green because another crate's fingerprint was reused in a shared target dir.
-"""
-attribution_md = """The 2026-08-01 probe reused the first same-named crate's fingerprint.
-"""
-operating_rule_reference_id = "ref-testing-shared-cargo-target-dir-across-same-named-scratch-operating"
-response_md = """Give each crate a target dir or unique package name and rerun.
-"""
-escalation_transition_id = "testing.trigger.shared-cargo-target-dir-across-same-named-scratch"
-retirement_semantics_md = """Retire when scratch probe helpers enforce content-distinct fingerprints.
-"""
-
-[[record.payload.capture_step]]
-step_id = "signature"
-capture_md = """Capture both crate trees/package names, target dir, forced-clean comparison, verbose cargo freshness output, and compile error from an isolated target.
-"""
-
-[[record.payload.capture_step]]
-step_id = "scope"
-capture_md = """Record the full untruncated log or consumer report, command, full commit, date, environment, relevant versions, and the explicitly unprobed remainder; never cite a disposable draft log as durable evidence.
-"""
-
-[[record.source_replacement]]
-span_id = "span-record-shared-cargo-target-dir-across-same-named-scratch"
-replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
-"""
-
-[[record]]
 id = "testing.source-observation.add-profile-wrapper-participation-grid-participation-differs-across"
 title = "Source-owner review for testing.add-profile-wrapper-participation-grid-participation-differs-across."
 projection_group = "standing-system"
@@ -9061,31 +8757,6 @@ unprobed_remainder_md = """No consumer, issue, release, repository, timing, or i
 
 [record.payload.scope]
 surfaces = ["testing-roadmap-owner:deferred-features", "testing-roadmap-source"]
-
-[[record]]
-id = "testing.source-observation.backgrounded-check-ts-full-launched-sub-agent-s"
-title = "Source-owner review for testing.backgrounded-check-ts-full-launched-sub-agent-s."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "evidence"
-summary_md = """Source-owner review for testing.backgrounded-check-ts-full-launched-sub-agent-s.
-"""
-evidence_kind = "source_read"
-claim_md = """The frozen owner detail was reviewed to classify its lifecycle and preserve its authored trigger and exclusions; this review does not establish whether an external or unenumerated event occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-testing-source-observation-backgrounded-check-ts-full-launched-sub-agent-s-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, timing, or incident universe was exhaustively queried; transition evaluation remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["testing-roadmap-owner:operational-watches", "testing-roadmap-source"]
 
 [[record]]
 id = "testing.source-observation.cargo-feature-generated-crate-s-dependency-change-what"
@@ -11571,31 +11242,6 @@ unprobed_remainder_md = """No consumer, issue, release, repository, timing, or i
 surfaces = ["testing-roadmap-owner:operational-watches", "testing-roadmap-source"]
 
 [[record]]
-id = "testing.source-observation.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-title = "Source-owner review for testing.tier-s-peak-memory-bounded-arithmetic-over-assumed."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "evidence"
-summary_md = """Source-owner review for testing.tier-s-peak-memory-bounded-arithmetic-over-assumed.
-"""
-evidence_kind = "source_read"
-claim_md = """The frozen owner detail was reviewed to classify its lifecycle and preserve its authored trigger and exclusions; this review does not establish whether an external or unenumerated event occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-testing-source-observation-tier-s-peak-memory-bounded-arithmetic-over-assumed-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, timing, or incident universe was exhaustively queried; transition evaluation remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["testing-roadmap-owner:operational-watches", "testing-roadmap-source"]
-
-[[record]]
 id = "testing.source-observation.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 title = "Source-owner review for testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count."
 projection_group = "standing-system"
@@ -11745,31 +11391,6 @@ unprobed_remainder_md = """No consumer, issue, release, repository, timing, or i
 
 [record.payload.scope]
 surfaces = ["testing-roadmap-owner:standing-system", "testing-roadmap-source"]
-
-[[record]]
-id = "testing.source-observation.verify-ts-warm-up-cargo-test-exit-attributed"
-title = "Source-owner review for testing.verify-ts-warm-up-cargo-test-exit-attributed."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "evidence"
-summary_md = """Source-owner review for testing.verify-ts-warm-up-cargo-test-exit-attributed.
-"""
-evidence_kind = "source_read"
-claim_md = """The frozen owner detail was reviewed to classify its lifecycle and preserve its authored trigger and exclusions; this review does not establish whether an external or unenumerated event occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-testing-source-observation-verify-ts-warm-up-cargo-test-exit-attributed-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, timing, or incident universe was exhaustively queried; transition evaluation remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["testing-roadmap-owner:operational-watches", "testing-roadmap-source"]
 
 [[record]]
 id = "testing.source-observation.wac-composed-component-transpiled-jco-loses-cross-instance"
@@ -12321,11 +11942,11 @@ projection_visibility = "document"
 kind = "work"
 summary_md = """Spend the measurements.
 """
-detail_md = """  - **Spend the measurements.** The 4 GiB slot constant and the one-permit nested bound are
-    deliberately pessimistic prices for unmeasured quantities, and the pessimism costs real wall
-    time (nested children serialize per gate). Once accumulated `memory-peaks.jsonl` rows from
-    real tiers bound a slot's true peak, re-derive both constants from the measurement and record
-    the basis where the constants live.
+detail_md = """- **Spend the measurements.** The 4 GiB slot constant and the one-permit nested bound are
+  deliberately pessimistic prices for unmeasured quantities, and the pessimism costs real wall
+  time (nested children serialize per gate). Once accumulated `memory-peaks.jsonl` rows from
+  real tiers bound a slot's true peak, re-derive both constants from the measurement and record
+  the basis where the constants live.
 """
 work_state = "blocked"
 work_intent = "build_system"
@@ -12337,7 +11958,7 @@ blocker_md = """No committed, environment-scoped per-slot peak authority exists 
 transition_ids = ["testing.predicate.tier-memory-durable-measurements"]
 
 [[record.source_replacement]]
-span_id = "span-part-part-spend-measurements"
+span_id = "span-record-tier-memory-spend-measurements"
 replacement_field = "payload.detail_md"
 review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
@@ -12393,58 +12014,6 @@ transition_ids = ["testing.trigger.tier-s-disk-bandwidth-unmeasured-anything-scr
 
 [[record.source_replacement]]
 span_id = "span-record-tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
-replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
-"""
-
-[[record]]
-id = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-title = "A tier's PEAK MEMORY is bounded by arithmetic over ASSUMED constants — the sampler now measures the real peak, and replacing the assumptions with its measurements is the open work."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "document"
-
-[record.payload]
-kind = "testing_incident"
-summary_md = """A tier's PEAK MEMORY is bounded by arithmetic over ASSUMED constants — the sampler now measures the real peak, and replacing the assumptions with its measurements is the open work.
-"""
-detail_md = """- **A tier's PEAK MEMORY is bounded by arithmetic over ASSUMED constants — the sampler now
-  measures the real peak, and replacing the assumptions with its measurements is the open work.**
-  The sibling of the disk entry above, and the proven class: a full disk fails a gate, an
-  overcommitted memory cap takes the whole machine — three times now (a ~10-minute freeze that
-  produced the first bound, then two ~1–1.5 h freezes at 100 % memory and swap, 2026-08-04, that
-  went through every check the first fix installed). The second incident's root-cause (`d5d43bba`)
-  closed three budget holes the arithmetic had: the basis was MemTotal where the question is
-  MemAvailable (now re-measured per batch), the sequential gate path set no bound at all (so
-  `CHECK_JOBS=1` — the cautious setting — routed everything through the unbounded path), and bare
-  `cargo test`/`build` invocations outside the runner had no bound anywhere (now floored at
-  `[build] jobs = 4` by the repo `.cargo/config.toml`). Two further holes closed since, both
-  found by asking what still multiplies concurrency after those fixes: the slot COUNT model was
-  wrong, not just the slot-size constant — `CARGO_BUILD_JOBS` divides one nested cargo's
-  compilers while the number of nested cargos a `cargo test` gate holds open is the libtest
-  thread count (`nproc`), a `threads × jobs` product no arithmetic modeled — bounded now by
-  `tool_cmd`'s counting semaphore (`CDDL_NESTED_TOOL_PERMITS`, runner-exported per gate, safe
-  default for bare runs); and the `.cargo/config.toml` floor never reached a bare invocation's
-  NESTED cargos (config discovery walks up from the scratch CWD and finds nothing; cargo does not
-  export its jobs to test children), so `tool_cmd` also defaults `CARGO_BUILD_JOBS` to the same
-  floor when the environment has neither. The measurement system this entry used to name as
-  missing exists now: every run samples its own descendant tree and reports peak Σ RSS
-  (test processes included), peak concurrent `rustc`, the largest single process and the
-  MemAvailable floor — printed per run and appended to `draft/memory-peaks.jsonl`, reported and
-  never asserted (peaks are nondeterministic; a gate that fails on a number would be flaky by
-  construction). What remains, in order of leverage:
-"""
-incident_posture = "historical"
-signature_md = """Three machine freezes under memory/swap saturation, including two 2026-08-04 incidents, exposed `MemTotal`, unbounded sequential/bare `cargo`, and nested `threads × jobs` holes.
-"""
-evidence_ids = ["testing.source-observation.tier-s-peak-memory-bounded-arithmetic-over-assumed"]
-attribution_md = """Incomplete concurrency arithmetic; delivered bounds contain the incident, while measurement spending is separate blocked work.
-"""
-operating_rule_reference_id = "ref-testing-tier-s-peak-memory-bounded-arithmetic-over-assumed-rule"
-retirement_reference_id = "ref-testing-tier-s-peak-memory-bounded-arithmetic-over-assumed-retirement"
-
-[[record.source_replacement]]
-span_id = "span-record-tier-s-peak-memory-bounded-arithmetic-over-assumed"
 replacement_field = "payload.detail_md"
 review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
@@ -13394,30 +12963,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 evidence_ids = ["testing.source-observation.duplicates-same-shape-set-conversion"]
 
 [[record]]
-id = "testing.trigger.e0463-t-find-crate-core-scratch-tree-std"
-title = "Watch escalation for testing.e0463-t-find-crate-core-scratch-tree-std."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "signal"
-summary_md = """Watch escalation for testing.e0463-t-find-crate-core-scratch-tree-std.
-"""
-transition_kind = "watch_escalation"
-failure_signature_md = """Scratch no-std `E0463: can't find crate for core` outside the repository pin.
-"""
-capture_procedure_md = """Capture cwd, exact cargo/rustc/toolchain/target, target-installed status, baseline differential, and pinned-toolchain rerun.
-"""
-response_md = """Rerun under the repository pin before product attribution.
-"""
-escalation_action_md = """Escalate only if the same shim fails E0463 with the target installed under the exact repository pin.
-"""
-retirement_semantics_md = """Retire when every ad-hoc scratch recipe spells the pin and a durable procedure enforces it.
-"""
-evaluation = "unknown"
-
-[[record]]
 id = "testing.trigger.edn-text-notation-round-trip-edn-edn-draft"
 title = "Lifecycle review for testing.edn-text-notation-round-trip-edn-edn-draft."
 projection_group = "deferred-features"
@@ -13821,30 +13366,6 @@ predicate_kind = "manual"
 review_procedure_md = """Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.full-n-flag-powerset-pict-pairwise's payload.detail_md. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 """
 evidence_ids = ["testing.source-observation.full-n-flag-powerset-pict-pairwise"]
-
-[[record]]
-id = "testing.trigger.full-suite-flake-attributed-hardened-acquire-scratch-lock"
-title = "Watch escalation for testing.full-suite-flake-attributed-hardened-acquire-scratch-lock."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "signal"
-summary_md = """Watch escalation for testing.full-suite-flake-attributed-hardened-acquire-scratch-lock.
-"""
-transition_kind = "watch_escalation"
-failure_signature_md = """`acquire_scratch_lock_serializes` still sees `WouldBlock` after the bounded five-second retry deadline, or the raw syscall-error arm fires.
-"""
-capture_procedure_md = """Capture full test output, exact arm, elapsed retries, concurrent child-spawn load, errno if any, and isolated reruns.
-"""
-response_md = """Retain the retry, diagnose descriptor inheritance and lock release, and rerun the complete tier.
-"""
-escalation_action_md = """Escalate a deadline-surviving recurrence to a lock-semantics defect.
-"""
-retirement_semantics_md = """Retire only when a constructional test proves release independent of fork-to-exec inheritance.
-"""
-evaluation = "unknown"
 
 [[record]]
 id = "testing.trigger.gate-cache-all-hit-cost"
@@ -14439,30 +13960,6 @@ predicate_kind = "manual"
 review_procedure_md = """Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.message-s-level-classification-review-owned-two-ways's payload.detail_md. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 """
 evidence_ids = ["testing.source-observation.message-s-level-classification-review-owned-two-ways"]
-
-[[record]]
-id = "testing.trigger.migration-handoff-s-complete-list-found-survey-negative"
-title = "Watch escalation for testing.migration-handoff-s-complete-list-found-survey-negative."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "signal"
-summary_md = """Watch escalation for testing.migration-handoff-s-complete-list-found-survey-negative.
-"""
-transition_kind = "watch_escalation"
-failure_signature_md = """A handoff presents a hand-written grep list as a complete negative survey instead of deriving categories through the migration recipe.
-"""
-capture_procedure_md = """Capture the handoff claim, full untruncated searches, omitted category and consumer finding, recipe version, and affected files.
-"""
-response_md = """Re-run all four recipe categories and correct the handoff.
-"""
-escalation_action_md = """Escalate the next recurrence to a mechanically enforced handoff-template/checklist owner.
-"""
-retirement_semantics_md = """Retire only when handoffs cannot assert completeness without naming the durable category authority.
-"""
-evaluation = "unknown"
 
 [[record]]
 id = "testing.trigger.msrv-declaration-os-matrix-generated-code"
@@ -15164,30 +14661,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 evidence_ids = ["testing.source-observation.schema-name-two-rowless-types-collide"]
 
 [[record]]
-id = "testing.trigger.shared-cargo-target-dir-across-same-named-scratch"
-title = "Watch escalation for testing.shared-cargo-target-dir-across-same-named-scratch."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "signal"
-summary_md = """Watch escalation for testing.shared-cargo-target-dir-across-same-named-scratch.
-"""
-transition_kind = "watch_escalation"
-failure_signature_md = """A same-named scratch crate reports false-green because another crate's fingerprint was reused in a shared target dir.
-"""
-capture_procedure_md = """Capture both crate trees/package names, target dir, forced-clean comparison, verbose cargo freshness output, and compile error from an isolated target.
-"""
-response_md = """Give each crate a target dir or unique package name and rerun.
-"""
-escalation_action_md = """Escalate the second ad-hoc instance to probe tooling; escalate any registered-gate instance immediately as that gate's defect.
-"""
-retirement_semantics_md = """Retire when scratch probe helpers enforce content-distinct fingerprints.
-"""
-evaluation = "unknown"
-
-[[record]]
 id = "testing.trigger.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 title = "Lifecycle review for testing.stale-known-limitation-prose-surviving-fix-finding-ledgered."
 projection_group = "standing-system"
@@ -15531,30 +15004,6 @@ predicate_kind = "manual"
 review_procedure_md = """Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.wasm32-link-floor-deferred-reject-twin's payload.detail_md. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 """
 evidence_ids = ["testing.source-observation.wasm32-link-floor-deferred-reject-twin"]
-
-[[record]]
-id = "testing.trigger.working-tree-gate-run-concurrent-live-implementation-agent"
-title = "Watch escalation for testing.working-tree-gate-run-concurrent-live-implementation-agent."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "signal"
-summary_md = """Watch escalation for testing.working-tree-gate-run-concurrent-live-implementation-agent.
-"""
-transition_kind = "watch_escalation"
-failure_signature_md = """A publishing gate reads half-edited `src/`/`static/` files and rewrites committed outputs from a dirty hybrid tree.
-"""
-capture_procedure_md = """Capture dirty-status before/after, editing process/session, gate banner, rewritten diff, commit comparison, and quiet-tree rerun.
-"""
-response_md = """Discard only the gate-owned hybrid rewrite after attribution, serialize the editor and gate, and rerun quiet.
-"""
-escalation_action_md = """On a second instance, make publishing verify refuse rewrites when relevant source is dirty.
-"""
-retirement_semantics_md = """Retire when publication is constructionally tied to one commit or explicit reviewed override.
-"""
-evaluation = "unknown"
 
 [[record]]
 id = "testing.trigger.workspace-mode-wasm32-wasip2-build-gate-both-faces"
@@ -16081,44 +15530,6 @@ review_note_md = """WP5T source-owner review: the whole legacy block remains byt
 """
 
 [[record]]
-id = "testing.verify-ts-warm-up-cargo-test-exit-attributed"
-title = "`verify.ts` warm-up `cargo test exit -15` (2026-07-19): ATTRIBUTED on the first sighting — not a flake, do not watch for it."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "document"
-
-[record.payload]
-kind = "testing_incident"
-summary_md = """`verify.ts` warm-up `cargo test exit -15` (2026-07-19): ATTRIBUTED on the first sighting — not a flake, do not watch for it.
-"""
-detail_md = """- **`verify.ts` warm-up `cargo test exit -15` (2026-07-19): ATTRIBUTED on the first sighting — not
-  a flake, do not watch for it.** One session's `verify.ts` run (json warm-up; logged signature
-  \"generate exit 0, cargo test exit -15, minted=true\") died because a CONCURRENT session ran
-  `pkill -f cddl_verify` to clean up what it believed were its own killed run's orphans — but its
-  killed `check.ts full` had died in `corpus_decode_replay`, BEFORE its verify gate ever ran, so
-  the `/tmp/cddl_verify_*` nested-cargo processes it pattern-matched belonged to the other
-  session's LIVE run (exit -15 = pkill's default SIGTERM; window and scratch naming match). A
-  recurrence of this signature under multi-session load should FIRST be checked against
-  process-kill activity in the other session before any harness attribution. The standing
-  discipline it feeds is in `AGENTS.md` (never pattern-kill by tool-generic substring on a shared
-  machine).
-"""
-incident_posture = "historical"
-signature_md = """The 2026-07-19 verify warm-up exited -15 after another session pattern-killed `cddl_verify` processes.
-"""
-evidence_ids = ["testing.source-observation.verify-ts-warm-up-cargo-test-exit-attributed"]
-attribution_md = """Cross-session SIGTERM, not a verify flake.
-"""
-operating_rule_reference_id = "ref-testing-verify-ts-warm-up-cargo-test-exit-attributed-rule"
-retirement_reference_id = "ref-testing-verify-ts-warm-up-cargo-test-exit-attributed-rule"
-
-[[record.source_replacement]]
-span_id = "span-record-verify-ts-warm-up-cargo-test-exit-attributed"
-replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
-"""
-
-[[record]]
 id = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 title = "A `wac`-composed component transpiled by jco loses cross-instance resource identity, and the worse half of that is SILENT."
 projection_group = "standing-system"
@@ -16328,62 +15739,6 @@ transition_ids = ["testing.trigger.wasm32-link-floor-deferred-reject-twin"]
 
 [[record.source_replacement]]
 span_id = "span-record-wasm32-link-floor-deferred-reject-twin"
-replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
-"""
-
-[[record]]
-id = "testing.working-tree-gate-run-concurrent-live-implementation-agent"
-title = "A working-tree gate run concurrent with a live implementation agent measures a hybrid tree that exists in no commit — and a gate that REWRITES committed files on pass launders that hybrid into plausible-looking state."
-projection_group = "operational-watches"
-render_authority = "semantic"
-projection_visibility = "document"
-
-[record.payload]
-kind = "testing_operational_watch"
-summary_md = """A working-tree gate run concurrent with a live implementation agent measures a hybrid tree that exists in no commit — and a gate that REWRITES committed files on pass launders that hybrid into plausible-looking state.
-"""
-detail_md = """- **A working-tree gate run concurrent with a live implementation agent measures a hybrid tree that
-  exists in no commit — and a gate that REWRITES committed files on pass launders that hybrid into
-  plausible-looking state.** Proven 2026-08-06: an orchestrator launched `check.ts --only verify`
-  while an implementation sub-agent was mid-edit in `src/generation/deserialize.rs`; verify built
-  the generator from the working tree, probed dozens of fixed-value cells through the half-edited
-  binary (every one exit-101), PASSED its own gate contract, and rewrote
-  `cddl-matrix/annotations/cddl_codegen.toml` with the garbage verdicts. Nothing failed loudly: the
-  banner's `-dirty` marker was the only trace, and the damage was caught by reading the diff, not
-  by any guard. Working rule: gates that read `src/` are serialized against anything editing
-  `src/` — an orchestrator running implementation agents runs NO gates until the agent commits and
-  reports (the same session later ran the identical gate on the quiet tree: PASS with a
-  byte-identical annotation rewrite, which is what validation looks like). Mechanical layer on a
-  second instance: `verify.ts` refusing to REWRITE annotations when the tree is dirty under
-  `src/` or `static/` (probing dirty is fine; publishing verdicts from a tree no commit names is
-  the hazard — the `-dirty` marker it already prints is the predicate).
-
-"""
-watch_state = "attributed"
-signature_md = """A publishing gate reads half-edited `src/`/`static/` files and rewrites committed outputs from a dirty hybrid tree.
-"""
-attribution_md = """The 2026-08-06 verify run published exit-101 hybrid annotations and a quiet rerun repaired them.
-"""
-operating_rule_reference_id = "ref-testing-working-tree-gate-run-concurrent-live-implementation-agent-operating"
-response_md = """Discard only the gate-owned hybrid rewrite after attribution, serialize the editor and gate, and rerun quiet.
-"""
-escalation_transition_id = "testing.trigger.working-tree-gate-run-concurrent-live-implementation-agent"
-retirement_semantics_md = """Retire when publication is constructionally tied to one commit or explicit reviewed override.
-"""
-
-[[record.payload.capture_step]]
-step_id = "signature"
-capture_md = """Capture dirty-status before/after, editing process/session, gate banner, rewritten diff, commit comparison, and quiet-tree rerun.
-"""
-
-[[record.payload.capture_step]]
-step_id = "scope"
-capture_md = """Record the full untruncated log or consumer report, command, full commit, date, environment, relevant versions, and the explicitly unprobed remainder; never cite a disposable draft log as durable evidence.
-"""
-
-[[record.source_replacement]]
-span_id = "span-record-working-tree-gate-run-concurrent-live-implementation-agent"
 replacement_field = "payload.detail_md"
 review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
@@ -16734,32 +16089,6 @@ review_note_md = """WP5T source-owner review: exact supporting-part bytes remain
 """
 
 [[part]]
-part_id = "part-freezes-livelock-repo-arithmetic-make-them-impossible-containment"
-parent_record_id = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-title = "Freezes are a LIVELOCK, and no in-repo arithmetic can make them impossible — containment is an operator measure."
-render_authority = "semantic"
-lifecycle_disposition = "parent_supporting_prose"
-body_md = """  - **Freezes are a LIVELOCK, and no in-repo arithmetic can make them impossible — containment is
-    an operator measure.** The incident signature (hours at 100 % memory and swap, and the kernel
-    log carrying NO oom-kill for the window) is the near-OOM state where reclaim keeps barely
-    succeeding on file-backed pages, so the OOM killer never fires and the machine thrashes
-    indefinitely. This narrows an earlier claim of this entry's family: a saturated machine is
-    unobservable *by passive gates*, but kernel-enforced containment — an early-OOM daemon, or a
-    cgroup memory cap with `memory.oom.group` around the tier — converts the freeze into a killed
-    process inside a gate: attributable, loud, and over in seconds. It also covers the class the
-    arithmetic structurally cannot: MemAvailable per batch is a snapshot, not a reservation, so
-    concurrent sessions (and co-tenants like editors and language servers) can jointly overcommit
-    a box whose every individual budget was correct. Machine-level, so it is an operator action
-    recorded here rather than a gate to build.
-"""
-
-[[part.source_replacement]]
-span_id = "span-part-part-freezes-livelock-repo-arithmetic-make-them-impossible-containment"
-replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
-"""
-
-[[part]]
 part_id = "part-generics-repeat-refusal-s-first-drafted-remedy-advertised"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "The generics-repeat refusal's first drafted remedy advertised `a<t> = <arm1> / <arm2>` — a"
@@ -16821,24 +16150,6 @@ body_md = """   - (The per-role wasm-ABI/multifile grid rows for both flavors ar
 
 [[part.source_replacement]]
 span_id = "span-part-part-md-mdmap"
-replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
-"""
-
-[[part]]
-part_id = "part-negative-premise-stands"
-parent_record_id = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-title = "The negative premise stands watch."
-render_authority = "semantic"
-lifecycle_disposition = "parent_supporting_prose"
-body_md = """  - **The negative premise stands watch.** A future spawn path outside `tool_cmd`, the runner's
-    env exports and cargo config discovery would regress the bounds silently; the sampler's
-    per-run peaks are what would show it (a peak far above the budget's arithmetic is the tell),
-    which is another reason the reports must keep being produced even while nobody is debugging.
-"""
-
-[[part.source_replacement]]
-span_id = "span-part-part-negative-premise-stands"
 replacement_field = "body_md"
 review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
 """
@@ -17775,23 +17086,7 @@ record_id = "testing.failing-snapshot-test-surfaces-mismatch-per-test-run"
 
 [[manifest.entry]]
 kind = "record"
-record_id = "testing.e0463-t-find-crate-core-scratch-tree-std"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.working-tree-gate-run-concurrent-live-implementation-agent"
-
-[[manifest.entry]]
-kind = "record"
 record_id = "testing.stale-pin-guard-cannot-distinguish-gap-closed-vector"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.migration-handoff-s-complete-list-found-survey-negative"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.shared-cargo-target-dir-across-same-named-scratch"
 
 [[manifest.entry]]
 kind = "record"
@@ -17815,19 +17110,7 @@ record_id = "testing.scratch-retention.reopening-signal"
 
 [[manifest.entry]]
 kind = "record"
-record_id = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-
-[[manifest.entry]]
-kind = "record"
 record_id = "testing.tier-memory.spend-measurements"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-freezes-livelock-repo-arithmetic-make-them-impossible-containment"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-negative-premise-stands"
 
 [[manifest.entry]]
 kind = "record"
@@ -17872,18 +17155,6 @@ part_id = "part-sighting-offline-gate-run-new-class"
 [[manifest.entry]]
 kind = "record"
 record_id = "testing.verify-cache-transparency-b-split-emission-profile-embed"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.full-suite-flake-attributed-hardened-acquire-scratch-lock"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.verify-ts-warm-up-cargo-test-exit-attributed"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.backgrounded-check-ts-full-launched-sub-agent-s"
 
 [[manifest.entry]]
 kind = "section"
@@ -17958,8 +17229,8 @@ migration_status = "replaced"
 [[source_span]]
 id = "span-section-north-star"
 start_byte = 1437
-end_byte = 5432
-sha256 = "02bab865d87ff0b330c6008ef45033389eb40146e7545eeb436879276f5b10e7"
+end_byte = 2708
+sha256 = "f0df3017f123502eae26f6976219b6dfdd71e549ba257f73df481b6649627af0"
 source_kind = "section"
 owner_id = "north-star"
 owner_field = "body_md"
@@ -17967,8 +17238,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-section-pending-maintainer"
-start_byte = 5432
-end_byte = 5462
+start_byte = 2708
+end_byte = 2738
 sha256 = "bc57a21c68138cd2c7c868d5720fc66d93a287f08e89e44485084ab06116e2c1"
 source_kind = "section"
 owner_id = "pending-maintainer"
@@ -17977,8 +17248,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-prettyplease-shelling-rustfmt"
-start_byte = 5462
-end_byte = 8737
+start_byte = 2738
+end_byte = 6013
 sha256 = "8b27d25cc4fed32e03619bec55782b262e44c9b1feeb5c095c556cca864b8346"
 source_kind = "record"
 owner_id = "testing.prettyplease-shelling-rustfmt"
@@ -17987,8 +17258,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-rule-trailing-directive-classification"
-start_byte = 8737
-end_byte = 11601
+start_byte = 6013
+end_byte = 8877
 sha256 = "c5a5b506dba80f59781f9024767bd7b6bd14d191981f1923553d12ad65b8d338"
 source_kind = "record"
 owner_id = "testing.rule-trailing.directive-classification"
@@ -17997,8 +17268,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-section-next-priority"
-start_byte = 11601
-end_byte = 11640
+start_byte = 8877
+end_byte = 8916
 sha256 = "bfc0333406c6bea0f6c671cc35320581b8e8a924de72b6d0b857c67a8bf680e9"
 source_kind = "section"
 owner_id = "next-priority"
@@ -18007,8 +17278,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-grammar-fuzzer-escalations"
-start_byte = 11640
-end_byte = 12293
+start_byte = 8916
+end_byte = 9569
 sha256 = "288cc737cf71f535702a8a2e956520cf4b8f599d5e5c9314eb902d985316102c"
 source_kind = "record"
 owner_id = "testing.grammar-fuzzer-escalations"
@@ -18017,8 +17288,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-embed-site-leg-alias-classifying-roots-two-proven"
-start_byte = 12293
-end_byte = 15849
+start_byte = 9569
+end_byte = 13125
 sha256 = "923e7273f55227211dd2cfb5039076588599ff1e2e6707b8d30c55c61ad5619d"
 source_kind = "record"
 owner_id = "testing.grammar-fuzzer.embed-site-alias-roots"
@@ -18027,8 +17298,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-arbitrary-derived-supported-cddl-ast-generation"
-start_byte = 15849
-end_byte = 16133
+start_byte = 13125
+end_byte = 13409
 sha256 = "d92a00bf426ea4519651147408b04be090766376dc81cf76869e99fbf1c07a1e"
 source_kind = "record"
 owner_id = "testing.grammar-fuzzer.arbitrary-supported-ast"
@@ -18037,8 +17308,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-batch-masking-detector-layer-sweeps"
-start_byte = 16133
-end_byte = 17708
+start_byte = 13409
+end_byte = 14984
 sha256 = "7e8b960ff9e2d9fb0ac2c9fa8ae81115b2db601332851b7dcb426e94910d82df"
 source_kind = "record"
 owner_id = "testing.grammar-fuzzer.batch-masking-detector"
@@ -18047,8 +17318,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-real-world-corpus-differential"
-start_byte = 17708
-end_byte = 17889
+start_byte = 14984
+end_byte = 15165
 sha256 = "e441a49c2014db21e0f80c866e5f2aa7da5854bd4863f07763abc61914424765"
 source_kind = "record"
 owner_id = "testing.grammar-fuzzer.real-world-corpus-differential"
@@ -18057,8 +17328,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-duplicates-policy-residuals"
-start_byte = 17889
-end_byte = 18533
+start_byte = 15165
+end_byte = 15809
 sha256 = "d7d28f11acdab64faf6d3056569e6a718a0152d4af9a2bd0517013e15bce3515"
 source_kind = "record"
 owner_id = "testing.duplicates-policy-residuals"
@@ -18067,8 +17338,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516"
-start_byte = 18533
-end_byte = 18838
+start_byte = 15809
+end_byte = 16114
 sha256 = "3bb55b7ca34fb7cca1ddba51df75c78ee5be4d4d4cf23cf93106c21c83559aeb"
 source_kind = "part"
 owner_id = "part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516"
@@ -18077,8 +17348,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-same-shape-set-instantiations"
-start_byte = 18838
-end_byte = 19767
+start_byte = 16114
+end_byte = 17043
 sha256 = "540748bab9ec59a3e6698a9a707df0760aa631a5b0c516a9d11d72d2ea5505c1"
 source_kind = "record"
 owner_id = "testing.duplicates.same-shape-set-conversion"
@@ -18087,8 +17358,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-occurrence-aware-generic-instance-identity"
-start_byte = 19767
-end_byte = 20665
+start_byte = 17043
+end_byte = 17941
 sha256 = "e89c124f0598abfe8b6333d200de3e56f2bc99caed815e5b5b43ef0e8f3c5dfb"
 source_kind = "record"
 owner_id = "testing.duplicates.occurrence-aware-generic-identity"
@@ -18097,8 +17368,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-dedicated-collision-message-generic-instantiation-naming"
-start_byte = 20665
-end_byte = 21425
+start_byte = 17941
+end_byte = 18701
 sha256 = "1b7dfb391f60ecdca17d732e49c2ea4910b0990b9a481f0345a0e5e157f36913"
 source_kind = "record"
 owner_id = "testing.duplicates.dedicated-generic-collision-message"
@@ -18107,8 +17378,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-member-position-duplicates-extension"
-start_byte = 21425
-end_byte = 22490
+start_byte = 18701
+end_byte = 19766
 sha256 = "efee82a3d83a4da7ff9a17d515ee47e3f508d6b6e799d76b218d61173adc2e5a"
 source_kind = "record"
 owner_id = "testing.duplicates.member-position-extension"
@@ -18117,8 +17388,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-md-mdmap"
-start_byte = 22490
-end_byte = 23580
+start_byte = 19766
+end_byte = 20856
 sha256 = "700838f12c5630132393e7eb2e590f782edddf5795df8c56675e381ab54eb33a"
 source_kind = "part"
 owner_id = "part-md-mdmap"
@@ -18127,8 +17398,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-lint-provocation-shapes-generated-code-clippy-clean-partially"
-start_byte = 23580
-end_byte = 26583
+start_byte = 20856
+end_byte = 23859
 sha256 = "fd823b14610bdffd121aa00048236c1e98b70d8a458871af4023943f38ac8655"
 source_kind = "record"
 owner_id = "testing.lint-provocation-shapes-generated-code-clippy-clean-partially"
@@ -18137,8 +17408,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-rustfmt-seam-error-leg-still-witness-needs-subprocess"
-start_byte = 26583
-end_byte = 28363
+start_byte = 23859
+end_byte = 25639
 sha256 = "b0339fdea4c7be113faad1714cca07a9913e831b9632fa2393daa38980e5cda2"
 source_kind = "record"
 owner_id = "testing.rustfmt-seam-error-leg-still-witness-needs-subprocess"
@@ -18147,8 +17418,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-start_byte = 28363
-end_byte = 30313
+start_byte = 25639
+end_byte = 27589
 sha256 = "a15ea13a7ae2576ec3f2de054a0bc45dc8a79a5bd876b2185ab166f0c0dafc43"
 source_kind = "record"
 owner_id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
@@ -18157,8 +17428,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-cross-version-preserve-vectors-beyond-std-alloc-rewrite"
-start_byte = 30313
-end_byte = 31951
+start_byte = 27589
+end_byte = 29227
 sha256 = "5331d49593a4f55b3b4632e807893d08df97437ad87476e67a456b8d1637d306"
 source_kind = "record"
 owner_id = "testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite"
@@ -18167,8 +17438,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-container-construct-conceptual-type-visitor-walks-flat-combinatorial"
-start_byte = 31951
-end_byte = 32923
+start_byte = 29227
+end_byte = 30199
 sha256 = "087255c9d5207a6142c02f17b87913ecd5cf882e2e9032806a55b220f19fbdb8"
 source_kind = "record"
 owner_id = "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
@@ -18177,8 +17448,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-what-hand-per-construct-buy-established-escape-produced"
-start_byte = 32923
-end_byte = 33569
+start_byte = 30199
+end_byte = 30845
 sha256 = "90b003dd251df37aa95fcd57704c5da83bb74877a8da86a74e3f793790956616"
 source_kind = "part"
 owner_id = "part-what-hand-per-construct-buy-established-escape-produced"
@@ -18187,8 +17458,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-cheap-system-matrix-shape-pairs-compiled-wasm-side"
-start_byte = 33569
-end_byte = 34086
+start_byte = 30845
+end_byte = 31362
 sha256 = "a1cf3adc6947ad78b9e678072ad1b6a449bf72c438d000b5e465a9180357ad71"
 source_kind = "part"
 owner_id = "part-cheap-system-matrix-shape-pairs-compiled-wasm-side"
@@ -18197,8 +17468,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-reopening-signal"
-start_byte = 34086
-end_byte = 34578
+start_byte = 31362
+end_byte = 31854
 sha256 = "3ffbfc6d4f3d77fcd2653c2921ccd442bc91352f62986cebe9a70b5a4bc5c02e"
 source_kind = "record"
 owner_id = "testing.container-combinations.reopening-signal"
@@ -18207,8 +17478,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-generated-local-collision-class-refused-mangled-refusal-s"
-start_byte = 34578
-end_byte = 35534
+start_byte = 31854
+end_byte = 32810
 sha256 = "d9f4f4602e52cf3df5a1d2420f16d94f42149663792dc063a183559e0508b34d"
 source_kind = "record"
 owner_id = "testing.generated-local-collision-class-refused-mangled-refusal-s"
@@ -18217,8 +17488,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-mangling-still-general-fix"
-start_byte = 35534
-end_byte = 36135
+start_byte = 32810
+end_byte = 33411
 sha256 = "41afd130fc0a9464cc056defa3df104a93db7529f3b4e9fd2a8fc1744659ba80"
 source_kind = "record"
 owner_id = "testing.generated-local-collision.general-mangling-remedy"
@@ -18227,8 +17498,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-scope-wide-probe"
-start_byte = 36135
-end_byte = 36972
+start_byte = 33411
+end_byte = 34248
 sha256 = "5a720ac40b096296e34298ef4a3bdd3eb3df6870fe31fa295183c23958850137"
 source_kind = "record"
 owner_id = "testing.generated-local-collision.scope-wide-probe"
@@ -18237,8 +17508,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-wasm-face-s-door-vocabulary-hand-listed-mechanism"
-start_byte = 36972
-end_byte = 37573
+start_byte = 34248
+end_byte = 34849
 sha256 = "702b3cd7440bb71fc40566e391f31f356d6ab8e264613da864e8e38d658d7ab8"
 source_kind = "record"
 owner_id = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
@@ -18247,8 +17518,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-why-parity-gate-cannot-host-generalization"
-start_byte = 37573
-end_byte = 38618
+start_byte = 34849
+end_byte = 35894
 sha256 = "7f6861fb53d65155fe2bd71399a80fe56f801ef1730aec04d4506a5e67cf55d7"
 source_kind = "part"
 owner_id = "part-why-parity-gate-cannot-host-generalization"
@@ -18257,8 +17528,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-reopening-signal-wasm"
-start_byte = 38618
-end_byte = 38982
+start_byte = 35894
+end_byte = 36258
 sha256 = "cc8de3d6eccba9b86a19ad2aeca8f7aab2c661d3bbdf964bb1cd38d42e9be6ea"
 source_kind = "record"
 owner_id = "testing.wasm-door-vocabulary.reopening-signal"
@@ -18267,8 +17538,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-maintainer-ruling-force-convenience-cbor-bytes-door-turns"
-start_byte = 38982
-end_byte = 40424
+start_byte = 36258
+end_byte = 37700
 sha256 = "baf556983d62bd1e58eb7eef4fd739f31029e2a44f55cc0f91b24edabbf8dc85"
 source_kind = "record"
 owner_id = "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns"
@@ -18277,8 +17548,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-build-registration-class-reference-position-sweep-second-escape"
-start_byte = 40424
-end_byte = 41586
+start_byte = 37700
+end_byte = 38862
 sha256 = "b05baa432f9b0b5c05c9c146e4cd1b6a15e71b49583b336b1d93df79c6e03500"
 source_kind = "record"
 owner_id = "testing.build-registration-class-reference-position-sweep-second-escape"
@@ -18287,8 +17558,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-fixture-shape-evicted-over-known-defect-stale-guard"
-start_byte = 41586
-end_byte = 42781
+start_byte = 38862
+end_byte = 40057
 sha256 = "4e6af38c609683d73aa052091271cda45b09368732c3a5dcf274eff19065eee2"
 source_kind = "record"
 owner_id = "testing.fixture-shape-evicted-over-known-defect-stale-guard"
@@ -18297,8 +17568,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-start_byte = 42781
-end_byte = 46119
+start_byte = 40057
+end_byte = 43395
 sha256 = "1321fde85d70c141bc9bab3ce8fc547d6a48e2ecbd3dc8c0d3fafc45b6d2b165"
 source_kind = "record"
 owner_id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
@@ -18307,8 +17578,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-rejection-message-s-remedy-string-executable-claim-pin"
-start_byte = 46119
-end_byte = 47091
+start_byte = 43395
+end_byte = 44367
 sha256 = "046ecbb7dc5fa6c1cbffd41225e65e37a8052bf380804123431d5f223ae0c6f7"
 source_kind = "record"
 owner_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
@@ -18317,8 +17588,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-remedy-string-executable-wherever-lives-emitted-message-gets"
-start_byte = 47091
-end_byte = 47256
+start_byte = 44367
+end_byte = 44532
 sha256 = "b4ed1a695e1272ffca395f705c45f590abb7df4660ea85ce9a37db0da701f2c1"
 source_kind = "part"
 owner_id = "part-remedy-string-executable-wherever-lives-emitted-message-gets"
@@ -18327,8 +17598,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-advice-shaped-spelling-message-prints-remedy-string-strings"
-start_byte = 47256
-end_byte = 47464
+start_byte = 44532
+end_byte = 44740
 sha256 = "173d553f198ba9900269cb9ecbb9b6665500c74d8c1eca40e84c69cb8ea7b557"
 source_kind = "part"
 owner_id = "part-advice-shaped-spelling-message-prints-remedy-string-strings"
@@ -18337,8 +17608,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-remedy-pin-per-message-per-triggering-construct-class"
-start_byte = 47464
-end_byte = 47798
+start_byte = 44740
+end_byte = 45074
 sha256 = "7568c321fb9433b5d68912b4c300f64f0a45bb37ac7fa26519b4d3c8989015f0"
 source_kind = "part"
 owner_id = "part-remedy-pin-per-message-per-triggering-construct-class"
@@ -18347,8 +17618,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-findings-couples-carriers-least-carrier-executes-s-headline"
-start_byte = 47798
-end_byte = 48261
+start_byte = 45074
+end_byte = 45537
 sha256 = "5dea5062b1c41848b872d1acd5530242fcefdcfa3757dd1b5114840db0dbb8f2"
 source_kind = "part"
 owner_id = "part-findings-couples-carriers-least-carrier-executes-s-headline"
@@ -18357,8 +17628,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-refusal-s-first-predicate-refused-exact-remedy-own"
-start_byte = 48261
-end_byte = 48459
+start_byte = 45537
+end_byte = 45735
 sha256 = "e72b4085a5f7b666755401f92558abc32acdedaf30b4ee67051186ac9766968e"
 source_kind = "part"
 owner_id = "part-refusal-s-first-predicate-refused-exact-remedy-own"
@@ -18367,8 +17638,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-tagged-remedy-spelling-was-imprecise-coords-faithful-coords"
-start_byte = 48459
-end_byte = 48614
+start_byte = 45735
+end_byte = 45890
 sha256 = "63dd558da0030f42e3bb10c67a859ae16f7e36c07cd86db83a82a7480b072c74"
 source_kind = "part"
 owner_id = "part-tagged-remedy-spelling-was-imprecise-coords-faithful-coords"
@@ -18377,8 +17648,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-findings-s-recommended-remedy-c-kv-keyed-plain"
-start_byte = 48614
-end_byte = 48876
+start_byte = 45890
+end_byte = 46152
 sha256 = "7e86d70b42adad4d4aeeccd68dc3e47214ab9a1c56cdf1cd2a4cceb076dbc4cb"
 source_kind = "part"
 owner_id = "part-findings-s-recommended-remedy-c-kv-keyed-plain"
@@ -18387,8 +17658,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-findings-s-description-claimed-shape-s-standalone-codec"
-start_byte = 48876
-end_byte = 49259
+start_byte = 46152
+end_byte = 46535
 sha256 = "0e14bc3f72907988038a4a4112547589b9157827752908f89e0ec250cb08dfc2"
 source_kind = "part"
 owner_id = "part-findings-s-description-claimed-shape-s-standalone-codec"
@@ -18397,8 +17668,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-both-ignore-rejections-printed-k-v-ignore-valid"
-start_byte = 49259
-end_byte = 49625
+start_byte = 46535
+end_byte = 46901
 sha256 = "3a9b05c8674ccc84fde48a2c47987bc398f1450fa5250a8207fe3eb996b748c8"
 source_kind = "part"
 owner_id = "part-both-ignore-rejections-printed-k-v-ignore-valid"
@@ -18407,8 +17678,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-inline-group-choice-rejection-s-remedy-g-b"
-start_byte = 49625
-end_byte = 49894
+start_byte = 46901
+end_byte = 47170
 sha256 = "c026b70a25bc8474c26bb9cd0dd00f72c04a7eeecb88692488755d59512caa3d"
 source_kind = "part"
 owner_id = "part-inline-group-choice-rejection-s-remedy-g-b"
@@ -18417,8 +17688,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-anonymous-group-rejection-s-give-name-using-name"
-start_byte = 49894
-end_byte = 50499
+start_byte = 47170
+end_byte = 47775
 sha256 = "7ab7259676efad49a11d80255a69f28784142c3cab32fada474dc7166c778493"
 source_kind = "part"
 owner_id = "part-anonymous-group-rejection-s-give-name-using-name"
@@ -18427,8 +17698,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-default-head-refusal-s-remedy-list-offered-bare"
-start_byte = 50499
-end_byte = 51128
+start_byte = 47775
+end_byte = 48404
 sha256 = "f8f5ac258c19f202ba265f544f98dd62877abf115a1e94211d19eb5432395a56"
 source_kind = "part"
 owner_id = "part-default-head-refusal-s-remedy-list-offered-bare"
@@ -18437,8 +17708,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-generics-repeat-refusal-s-first-drafted-remedy-advertised"
-start_byte = 51128
-end_byte = 51832
+start_byte = 48404
+end_byte = 49108
 sha256 = "daf85d493ded8151472515c090e6a42a2c27e3cba0e53f7314f3ff1f29460f75"
 source_kind = "part"
 owner_id = "part-generics-repeat-refusal-s-first-drafted-remedy-advertised"
@@ -18447,8 +17718,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-bare-fixed-table-value-refusal-continued-say-named"
-start_byte = 51832
-end_byte = 52187
+start_byte = 49108
+end_byte = 49463
 sha256 = "e676c2988f2eadcde8c1b9c100814b4755d82dbac2cc8d5a9ced7352956c080a"
 source_kind = "part"
 owner_id = "part-bare-fixed-table-value-refusal-continued-say-named"
@@ -18457,8 +17728,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-directive-effect-round-trip-coherence-sweep-accepted-custom"
-start_byte = 52187
-end_byte = 55491
+start_byte = 49463
+end_byte = 52767
 sha256 = "20707462852d8689ad8b15d279ce71d1e953b7af787e7aca388b0c4d4f53e20b"
 source_kind = "record"
 owner_id = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
@@ -18467,8 +17738,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-warm-up-refresh-dep-universe-lock-trust-fresh"
-start_byte = 55491
-end_byte = 57584
+start_byte = 52767
+end_byte = 54860
 sha256 = "bd8d02a256a194e5590479f7dbd67407600613fd348ccf5bd901d146bcbab001"
 source_kind = "record"
 owner_id = "testing.warm-up-refresh-dep-universe-lock-trust-fresh"
@@ -18477,8 +17748,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-check-merged-d-ts-name-collisions-two-halves"
-start_byte = 57584
-end_byte = 59062
+start_byte = 54860
+end_byte = 56338
 sha256 = "aa2ad404d39b10c04c06f2471c9f15ec51d969c9fbb18de118b4e017e2d5d87e"
 source_kind = "record"
 owner_id = "testing.check-merged-d-ts-name-collisions-two-halves"
@@ -18487,8 +17758,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-corpus-preserve-pair-map-key-value-self-encoding"
-start_byte = 59062
-end_byte = 60630
+start_byte = 56338
+end_byte = 57906
 sha256 = "f10349d97be02e467183f4d75e99051f28520d3d56467926501289002e406f69"
 source_kind = "record"
 owner_id = "testing.corpus-preserve-pair-map-key-value-self-encoding"
@@ -18497,8 +17768,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-same-named-generated-crates-silently-share-cargo-fingerprint"
-start_byte = 60630
-end_byte = 64166
+start_byte = 57906
+end_byte = 61442
 sha256 = "93af4b06f52c5e7bd688a7c26380131ee114067322851fe339b56c285e04857a"
 source_kind = "record"
 owner_id = "testing.same-named-generated-crates-silently-share-cargo-fingerprint"
@@ -18507,8 +17778,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-corpus-c-style-enum-data-type-choice-arm"
-start_byte = 64166
-end_byte = 66402
+start_byte = 61442
+end_byte = 63678
 sha256 = "2adc0455d2335ca4a8a8782fda756d6384d44e28c2d66d0a861fb11de9cd7e4c"
 source_kind = "record"
 owner_id = "testing.corpus-c-style-enum-data-type-choice-arm"
@@ -18517,8 +17788,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-execution-binary-wrappers-true-last-documented-flag-value"
-start_byte = 66402
-end_byte = 66785
+start_byte = 63678
+end_byte = 64061
 sha256 = "be7763ede1423e3db4595fda52542c42d53e90b0745947bd7c4697bf89c1d6ec"
 source_kind = "record"
 owner_id = "testing.execution-binary-wrappers-true-last-documented-flag-value"
@@ -18527,8 +17798,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-nested-cargo-test"
-start_byte = 66785
-end_byte = 68281
+start_byte = 64061
+end_byte = 65557
 sha256 = "f8aaf1484f09f26b5695be5ffee8a098d7944add293db66f121bcf1c9541d025"
 source_kind = "part"
 owner_id = "part-nested-cargo-test"
@@ -18537,8 +17808,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-synthetic-protocol-controls-component-probe-host-s-defensive"
-start_byte = 68281
-end_byte = 69673
+start_byte = 65557
+end_byte = 66949
 sha256 = "50cd23689d69d56c55d2a8688fae9f3b7167535a9a2f2608228304c07d70a539"
 source_kind = "record"
 owner_id = "testing.synthetic-protocol-controls-component-probe-host-s-defensive"
@@ -18547,8 +17818,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-lockstep-drift-gate-rust-ts-kebab-ident-mirror"
-start_byte = 69673
-end_byte = 71222
+start_byte = 66949
+end_byte = 68498
 sha256 = "8a55d50f0a5461dbac89c6cdadac6f655b93f1915261ce078283a2a7200025dd"
 source_kind = "record"
 owner_id = "testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror"
@@ -18557,8 +17828,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-pin-toolchain-verify-ts-s-nested-cargo-scratch"
-start_byte = 71222
-end_byte = 73168
+start_byte = 68498
+end_byte = 70444
 sha256 = "1fce38b9d3676babd531da86918c6d77af88820fcf68af344fbdabf014fbac3a"
 source_kind = "record"
 owner_id = "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"
@@ -18567,8 +17838,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-verify-ts-refuse-unknown-flag-silently-degrading-plain"
-start_byte = 73168
-end_byte = 74237
+start_byte = 70444
+end_byte = 71513
 sha256 = "550a5095030e15ea742382b6952114d0b07259cdf6bda021550d6b30117a39fa"
 source_kind = "record"
 owner_id = "testing.verify-ts-refuse-unknown-flag-silently-degrading-plain"
@@ -18577,8 +17848,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-section-standing-system"
-start_byte = 74237
-end_byte = 76888
+start_byte = 71513
+end_byte = 74164
 sha256 = "4f99e0bd59a03c65ece1f4d084aee4fbee16f711020a71f73621abbc744fba5b"
 source_kind = "section"
 owner_id = "standing-system"
@@ -18587,8 +17858,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-gate-exists-registry-nowhere-tests-readme-md-hand"
-start_byte = 76888
-end_byte = 78751
+start_byte = 74164
+end_byte = 76027
 sha256 = "6a62b78b937c4876032565e2f7550dadd98f55b6348a5e656cb51bce9e67f6a3"
 source_kind = "record"
 owner_id = "testing.gate-exists-registry-nowhere-tests-readme-md-hand"
@@ -18597,8 +17868,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-lint-doc-citations-accepts-docs-heading-durable-citation"
-start_byte = 78751
-end_byte = 80254
+start_byte = 76027
+end_byte = 77530
 sha256 = "98f322ff8524153c8bd21d03b7fccf53ec6d4958f79a1b643a3ebb8f426e76b1"
 source_kind = "record"
 owner_id = "testing.lint-doc-citations-accepts-docs-heading-durable-citation"
@@ -18607,8 +17878,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-representation-changing-directive-goes-live-new-container-ship"
-start_byte = 80254
-end_byte = 84708
+start_byte = 77530
+end_byte = 81984
 sha256 = "8112333e2500cecbb93daca03ebda3ac48f90f5dd27bb1dca7168eed617ef484"
 source_kind = "record"
 owner_id = "testing.representation-changing-directive-goes-live-new-container-ship"
@@ -18617,8 +17888,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-emission-branch-generated-output-fixture-exercises-invisible-gate"
-start_byte = 84708
-end_byte = 86513
+start_byte = 81984
+end_byte = 83789
 sha256 = "95a18b721368de231c5d10dbda48e620bcdbd8a209850278509f7db436cd5b29"
 source_kind = "record"
 owner_id = "testing.emission-branch-generated-output-fixture-exercises-invisible-gate"
@@ -18627,8 +17898,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-logic-tool-emits-source-text-outside-layer-reasons"
-start_byte = 86513
-end_byte = 88626
+start_byte = 83789
+end_byte = 85902
 sha256 = "6a822c15a014f20ee0945d1dff1465950a7683b4763fcd70d600a8f7509a1fc5"
 source_kind = "record"
 owner_id = "testing.logic-tool-emits-source-text-outside-layer-reasons"
@@ -18637,8 +17908,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-value-anchor-rot-field-addition-delivery-grows-existing"
-start_byte = 88626
-end_byte = 90365
+start_byte = 85902
+end_byte = 87641
 sha256 = "9c5a9a0a10265ce7fc97199618affca108cde23252306a98ae44bdcb797f8dde"
 source_kind = "record"
 owner_id = "testing.value-anchor-rot-field-addition-delivery-grows-existing"
@@ -18647,8 +17918,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-corpus-wide-regen-over-prior-output-sweep-reaches"
-start_byte = 90365
-end_byte = 91596
+start_byte = 87641
+end_byte = 88872
 sha256 = "aebd70ceee31b0c1ffe3b03a99843238832f35155e3fabf829333b8c9b96061f"
 source_kind = "record"
 owner_id = "testing.corpus-wide-regen-over-prior-output-sweep-reaches"
@@ -18657,8 +17928,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-stale-known-limitation-prose-surviving-fix-finding-ledgered"
-start_byte = 91596
-end_byte = 98391
+start_byte = 88872
+end_byte = 95667
 sha256 = "e70ffc32ef354c170e24174e73c0efc1fa12e2c5a74098389da184dabed42ae4"
 source_kind = "record"
 owner_id = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
@@ -18667,8 +17938,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-finding-s-defect-side-attribution-recorded-narrative-plausibility"
-start_byte = 98391
-end_byte = 100991
+start_byte = 95667
+end_byte = 98267
 sha256 = "edcdce21c5e032b8afbc4244a5c73f2f75291a3c52b571254850f8baf228679d"
 source_kind = "record"
 owner_id = "testing.finding-s-defect-side-attribution-recorded-narrative-plausibility"
@@ -18677,8 +17948,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-gate-demands-premise-probed-against-gate-evidence-about"
-start_byte = 100991
-end_byte = 106684
+start_byte = 98267
+end_byte = 103960
 sha256 = "d50bcd7cac64b63ad8f68b0d9100abf07e4229e98b393575ee928328a97ef61d"
 source_kind = "record"
 owner_id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
@@ -18687,8 +17958,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-ruling-premise-gate-x-stays-green-must-probed"
-start_byte = 106684
-end_byte = 108585
+start_byte = 103960
+end_byte = 105861
 sha256 = "bb2fb9376fd64782b076fdf8531c3caf19a66502d997d18f70180015f7e3e01e"
 source_kind = "record"
 owner_id = "testing.ruling-premise-gate-x-stays-green-must-probed"
@@ -18697,8 +17968,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-observed-baseline-comments-beside-gate-floors-rot-silently"
-start_byte = 108585
-end_byte = 109903
+start_byte = 105861
+end_byte = 107179
 sha256 = "bb278c371c60b4ebeb3d8b65260dea97e20b291e76c065e496713f7fec87cafc"
 source_kind = "record"
 owner_id = "testing.observed-baseline-comments-beside-gate-floors-rot-silently"
@@ -18707,8 +17978,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-extreme-value-boundary-correctness-generation-time-encode-paths"
-start_byte = 109903
-end_byte = 111820
+start_byte = 107179
+end_byte = 109096
 sha256 = "4438ccd1b5d6dbd08dc5fd19fb5b19a4d7ef8bb8c6519f59e60e0036ce215586"
 source_kind = "record"
 owner_id = "testing.extreme-value-boundary-correctness-generation-time-encode-paths"
@@ -18717,8 +17988,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-fixture-models-obsolete-user-contract-stays-green-real"
-start_byte = 111820
-end_byte = 115406
+start_byte = 109096
+end_byte = 112682
 sha256 = "7ff6ab6706acfee47a10ebf476340df61c66d73043680774c65b533e49d91e56"
 source_kind = "record"
 owner_id = "testing.fixture-models-obsolete-user-contract-stays-green-real"
@@ -18727,8 +17998,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-panic-site-un-shadowing-converting-shallow-panic-graceful"
-start_byte = 115406
-end_byte = 116819
+start_byte = 112682
+end_byte = 114095
 sha256 = "9251ab70159fc2fa57f69cc329c530a056f37331ccfaaf3f5181df5fa12d3234"
 source_kind = "record"
 owner_id = "testing.panic-site-un-shadowing-converting-shallow-panic-graceful"
@@ -18737,8 +18008,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-three-defect-classes-process-test-see-sharing-remedy"
-start_byte = 116819
-end_byte = 119213
+start_byte = 114095
+end_byte = 116489
 sha256 = "22f3191ac9cdb15ee19ead6b0f8c237bafc6f8e0df3e523e8d8518e0465f8034"
 source_kind = "record"
 owner_id = "testing.three-defect-classes-process-test-see-sharing-remedy"
@@ -18747,8 +18018,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-rustc-after-panic-ok-flip-panic-fix-lands"
-start_byte = 119213
-end_byte = 120913
+start_byte = 116489
+end_byte = 118189
 sha256 = "dc5a03a0a183e4eeb6934290aa4c37e0bb727a425039898fd4d7ac61acc8df1f"
 source_kind = "record"
 owner_id = "testing.process-boundary.rustc-after-panic-fix"
@@ -18757,8 +18028,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-rustfmt-code-never-reaches-rustc-all"
-start_byte = 120913
-end_byte = 123135
+start_byte = 118189
+end_byte = 120411
 sha256 = "17a2b3e92eec5d0d1b521ac5cf852fb98a432268019a344f9f7473af307fa792"
 source_kind = "record"
 owner_id = "testing.process-boundary.rustfmt-pre-rustc"
@@ -18767,8 +18038,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-another-profile-flip-abort-fix-widening-reachable-set"
-start_byte = 123135
-end_byte = 125348
+start_byte = 120411
+end_byte = 122624
 sha256 = "dcfdc3674658b809616687aed1d354daed8957dd2582b01a82dc576d23941bab"
 source_kind = "record"
 owner_id = "testing.process-boundary.another-profile-escape"
@@ -18777,8 +18048,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-parallel-constructor-fixture-diversity-parser-over-external-input"
-start_byte = 125348
-end_byte = 127883
+start_byte = 122624
+end_byte = 125159
 sha256 = "41651aff847599b3a2463bb94d002a5e9cf2a359fe34d2e63d74112e4d48a01a"
 source_kind = "record"
 owner_id = "testing.parallel-constructor-fixture-diversity-parser-over-external-input"
@@ -18787,8 +18058,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-synthesized-name-referenced-never-minted-e0425-flavor"
-start_byte = 127883
-end_byte = 129560
+start_byte = 125159
+end_byte = 126836
 sha256 = "60643bd0b2b0f98efdddd3e2d1a4dec451371b2edf0ce256a919f201afd6fb53"
 source_kind = "record"
 owner_id = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
@@ -18797,8 +18068,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-multifile-reference-position-coverage-two-position-keyed-escapes"
-start_byte = 129560
-end_byte = 132834
+start_byte = 126836
+end_byte = 130110
 sha256 = "3f468c1ee5e94d499f4014b542b8c9347b5c495f2a13ba7a50313038843fd78c"
 source_kind = "record"
 owner_id = "testing.multifile-reference-position-coverage-two-position-keyed-escapes"
@@ -18807,8 +18078,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-reason-keyed-rejection-evidence-reject-catalogs-proven-near"
-start_byte = 132834
-end_byte = 137263
+start_byte = 130110
+end_byte = 134539
 sha256 = "379df39691a934fe4459213dc6ac01f0fe38c35e54d50d9884b7749c25d70580"
 source_kind = "record"
 owner_id = "testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near"
@@ -18817,8 +18088,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-armed-idle-harness-arms-empty-head-ledgers-zero"
-start_byte = 137263
-end_byte = 142744
+start_byte = 134539
+end_byte = 140020
 sha256 = "584596b6b19e7b20fdef39f3f730b263252aaebba538df35435d7f3d31485be3"
 source_kind = "record"
 owner_id = "testing.armed-idle-harness-arms-empty-head-ledgers-zero"
@@ -18827,8 +18098,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-doubled-doc-comment-markers-emitted-docs-proven-instance"
-start_byte = 142744
-end_byte = 144055
+start_byte = 140020
+end_byte = 141331
 sha256 = "91a71a674e5cca65e145b303afebfe5d8e169fe028537a93db9f945877b05f47"
 source_kind = "record"
 owner_id = "testing.doubled-doc-comment-markers-emitted-docs-proven-instance"
@@ -18837,8 +18108,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-emitted-shape-lint-classes-outside-clippy-all-beyond"
-start_byte = 144055
-end_byte = 145570
+start_byte = 141331
+end_byte = 142846
 sha256 = "1a719f5f8d1a254cda6f5a45c5df4aeafef53e8e32096837326c21bcd98dd32f"
 source_kind = "record"
 owner_id = "testing.emitted-shape-lint-classes-outside-clippy-all-beyond"
@@ -18847,8 +18118,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-unused-imports-generated-crates-trait-import-class-name"
-start_byte = 145570
-end_byte = 156048
+start_byte = 142846
+end_byte = 153324
 sha256 = "50eed48bac79853d3111beb25ac010de3355b580c152d919877c2a05a2873e14"
 source_kind = "record"
 owner_id = "testing.unused-imports-generated-crates-trait-import-class-name"
@@ -18857,8 +18128,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-mechanical-layers-two-review-owned-design-rules-tests"
-start_byte = 156048
-end_byte = 158761
+start_byte = 153324
+end_byte = 156037
 sha256 = "c2606db415df306435315c21451c6aa03607e6ace369a91c0e5677ab698c1f79"
 source_kind = "record"
 owner_id = "testing.mechanical-layers-two-review-owned-design-rules-tests"
@@ -18867,8 +18138,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-add-profile-wrapper-participation-grid-participation-differs-across"
-start_byte = 158761
-end_byte = 159686
+start_byte = 156037
+end_byte = 156962
 sha256 = "372b057cd5b9755a725f66c7fe3bcde2d8a55abd1c3ef3156a5847ce93715b1f"
 source_kind = "record"
 owner_id = "testing.add-profile-wrapper-participation-grid-participation-differs-across"
@@ -18877,8 +18148,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-extern-deps-wasm-boundary-surface-packaging-json-gen"
-start_byte = 159686
-end_byte = 161945
+start_byte = 156962
+end_byte = 159221
 sha256 = "cbbdf84df482bb6c1a53432ebaf74255d5ac9590a7df8ce3e1807c44f1ba3606"
 source_kind = "record"
 owner_id = "testing.extern-deps-wasm-boundary-surface-packaging-json-gen"
@@ -18887,8 +18158,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-generic-raw-bytes-base-refused-generic-extern-base"
-start_byte = 161945
-end_byte = 163576
+start_byte = 159221
+end_byte = 160852
 sha256 = "62cac3d3fd0f8679e90ef7b22d4ee7a5c1b147a38a744fb2815047d4f75cf131"
 source_kind = "record"
 owner_id = "testing.generic-raw-bytes-base-refused-generic-extern-base"
@@ -18897,8 +18168,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-start_byte = 163576
-end_byte = 167289
+start_byte = 160852
+end_byte = 164565
 sha256 = "636571bccbf774336a631f7cb6adc50a6590a0f75418dcefd7202b48ff6fec99"
 source_kind = "record"
 owner_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
@@ -18907,8 +18178,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-read-caught-instance-class"
-start_byte = 167289
-end_byte = 167858
+start_byte = 164565
+end_byte = 165134
 sha256 = "508fc71a1f358fb1d91dad08955f5d7290fb44d41d3904e06233b286b7b2ed0a"
 source_kind = "record"
 owner_id = "testing.twin-implementation.read-caught-instance-trigger"
@@ -18917,8 +18188,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-comment-ast-grammar-change-any-form-just-new"
-start_byte = 167858
-end_byte = 168763
+start_byte = 165134
+end_byte = 166039
 sha256 = "2bb5878470297973ea887421dee115a49d5cf8436fdbeb228a9036d9e9f73dc8"
 source_kind = "record"
 owner_id = "testing.twin-implementation.comment-ast-change-cadence"
@@ -18927,8 +18198,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-own-reviewed-change-never-drive"
-start_byte = 168763
-end_byte = 169320
+start_byte = 166039
+end_byte = 166596
 sha256 = "a7de9229a9312c226d451ea98db3f9b50c38769007c9f0cdb07ff1ff6b3b6f45"
 source_kind = "record"
 owner_id = "testing.twin-implementation.own-reviewed-change-rule"
@@ -18937,8 +18208,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-non-recorded-isn-t-re-litigated-coverage-gap"
-start_byte = 169320
-end_byte = 169659
+start_byte = 166596
+end_byte = 166935
 sha256 = "9fa4b54aa72252fb7899d89365646f5a349957103654dd68be7c09d8d78537f4"
 source_kind = "part"
 owner_id = "part-non-recorded-isn-t-re-litigated-coverage-gap"
@@ -18947,8 +18218,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-tree-wide-sweeps-over-gitignored-regeneration-targets-count"
-start_byte = 169659
-end_byte = 171244
+start_byte = 166935
+end_byte = 168520
 sha256 = "79114f1a350586755df85fe5c7865268a5f4316fc6a5da538ea4084a6ee33219"
 source_kind = "record"
 owner_id = "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
@@ -18957,8 +18228,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-run-local-values-gate-cache-key-material-proven"
-start_byte = 171244
-end_byte = 172527
+start_byte = 168520
+end_byte = 169803
 sha256 = "595c20172c0fe1c34e2f9ac884dfc4ba382d877bf8835fb93802a739b081c61f"
 source_kind = "record"
 owner_id = "testing.run-local-values-gate-cache-key-material-proven"
@@ -18967,8 +18238,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-control-bytes-committed-source-files-proven-instance-machinery"
-start_byte = 172527
-end_byte = 173350
+start_byte = 169803
+end_byte = 170626
 sha256 = "f9842a5d4686cbe4d5f16e5b82d65c2acd5f60f0b9dc022b1ee947986241e785"
 source_kind = "record"
 owner_id = "testing.control-bytes-committed-source-files-proven-instance-machinery"
@@ -18977,8 +18248,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-gate-script-health-cache-staleness-key-fresh-worktree"
-start_byte = 173350
-end_byte = 175008
+start_byte = 170626
+end_byte = 172284
 sha256 = "0461e84254db73a854739806d7c789ca92dd59be6c41ad8f65682fabe0afd296"
 source_kind = "record"
 owner_id = "testing.gate-script-health-cache-staleness-key-fresh-worktree"
@@ -18987,8 +18258,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-hand-maintained-source-dependency-mapping-manifest-changeset-silently"
-start_byte = 175008
-end_byte = 177052
+start_byte = 172284
+end_byte = 174328
 sha256 = "aae6e1440011859eebf38756419f09c195c9c977c3ecd14d1bbabfa14119fbdc"
 source_kind = "record"
 owner_id = "testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
@@ -18997,8 +18268,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-dependency-swap-pass-compile-parity-existing-gate-silently"
-start_byte = 177052
-end_byte = 180151
+start_byte = 174328
+end_byte = 177427
 sha256 = "66299b54b0e166e5e769f6df58cf1da77ec10b60aa6ec4e33c589a482ce3d657"
 source_kind = "record"
 owner_id = "testing.dependency-swap-pass-compile-parity-existing-gate-silently"
@@ -19007,8 +18278,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-fixture-s-verdict-accident-cargo-feature-unification-harness"
-start_byte = 180151
-end_byte = 183225
+start_byte = 177427
+end_byte = 180501
 sha256 = "700a78cdc8da54b10601a92b933b175f76e046d2a98a50043c941d695c632b92"
 source_kind = "record"
 owner_id = "testing.fixture-s-verdict-accident-cargo-feature-unification-harness"
@@ -19017,8 +18288,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-profile-driven-compile-gate-covers-compositions-profiles-specs"
-start_byte = 183225
-end_byte = 185187
+start_byte = 180501
+end_byte = 182463
 sha256 = "040ab06be86d9537b59b6b1f8a5645bd533880757a049915573e9bf6b94d8698"
 source_kind = "record"
 owner_id = "testing.profile-driven-compile-gate-covers-compositions-profiles-specs"
@@ -19027,8 +18298,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-alloc-imports-nested-inline-modules-hand-carried-design"
-start_byte = 185187
-end_byte = 187354
+start_byte = 182463
+end_byte = 184630
 sha256 = "56d5342f0ccd9d007f45a5aece33826ea7523855c36b7bccca45d3229eb20a32"
 source_kind = "record"
 owner_id = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
@@ -19037,8 +18308,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-gate-cache-closure-audit-structurally-blind-gate-authored"
-start_byte = 187354
-end_byte = 189334
+start_byte = 184630
+end_byte = 186610
 sha256 = "6b3375e2d5cdfc6d9567e7ad9a43bd9a3d04c252ca7802acd7000efc281d5b90"
 source_kind = "record"
 owner_id = "testing.gate-cache-closure-audit-structurally-blind-gate-authored"
@@ -19047,8 +18318,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-comment-residue-false-matches-text-scans-over-emitted"
-start_byte = 189334
-end_byte = 191270
+start_byte = 186610
+end_byte = 188546
 sha256 = "265a766d45ffd42975fbae65e89cf944df015c8e6688a2d34b5c9bd96c6a14e0"
 source_kind = "record"
 owner_id = "testing.comment-residue-false-matches-text-scans-over-emitted"
@@ -19057,8 +18328,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-directive-dependent-emitter-edge-case-triggering-shape-hand"
-start_byte = 191270
-end_byte = 192994
+start_byte = 188546
+end_byte = 190270
 sha256 = "71f8edc065af0bbe49dd4c2942f6d8ab68a91017b37462dcd58b384eaaa01de1"
 source_kind = "record"
 owner_id = "testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
@@ -19067,8 +18338,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-hand-enumerated-ban-pattern-list-authority-lives-gitignored"
-start_byte = 192994
-end_byte = 194645
+start_byte = 190270
+end_byte = 191921
 sha256 = "f57cda44b9f3118b6525df99f8da96e87e207f8b559973750efcae9f9896ae96"
 source_kind = "record"
 owner_id = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
@@ -19077,8 +18348,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-extend-recombination-member-kind-table-optional-fixed-shape"
-start_byte = 194645
-end_byte = 196091
+start_byte = 191921
+end_byte = 193367
 sha256 = "4a71868d7cd6b0d3193bfcaec6ae5ef2b57c828ceb1457d74ba576c35938f940"
 source_kind = "record"
 owner_id = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
@@ -19087,8 +18358,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-referencing-context-measured-wrapping-deep-honored-base-shape"
-start_byte = 196091
-end_byte = 197680
+start_byte = 193367
+end_byte = 194956
 sha256 = "187a1958dc57c700d4bc8b9fe2c9ed2196e553b144115bf1d0b8f99c05feabee"
 source_kind = "record"
 owner_id = "testing.referencing-context-measured-wrapping-deep-honored-base-shape"
@@ -19097,8 +18368,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-arm-position-s-classifier-compile-time-forcing-function"
-start_byte = 197680
-end_byte = 199360
+start_byte = 194956
+end_byte = 196636
 sha256 = "ebe8ffc9ff73daedb2cb491c1a3f7c04634fce283da04d9e9ade466176abd777"
 source_kind = "record"
 owner_id = "testing.arm-position-s-classifier-compile-time-forcing-function"
@@ -19107,8 +18378,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-schema-document-s-name-injectivity-enforced-row-side"
-start_byte = 199360
-end_byte = 199969
+start_byte = 196636
+end_byte = 197245
 sha256 = "5a6764c2f59db73158a46ed723e4ad5412ece478b771ea425a7a0b4a0e2a5f72"
 source_kind = "record"
 owner_id = "testing.schema-document-s-name-injectivity-enforced-row-side"
@@ -19117,8 +18388,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-emitted-name-guard-mint-records-unminted-extra"
-start_byte = 199969
-end_byte = 200261
+start_byte = 197245
+end_byte = 197537
 sha256 = "8deb71df910f631772136647ab084d8411e5a2e7b9e6691382deb235f8d573ff"
 source_kind = "part"
 owner_id = "part-emitted-name-guard-mint-records-unminted-extra"
@@ -19127,8 +18398,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-collision-loser-row-schema-id-s-match"
-start_byte = 200261
-end_byte = 200962
+start_byte = 197537
+end_byte = 198238
 sha256 = "dbf77990d13e0a34b637861328ad8066142c6a62eddba1c56afdf20d4b2356c3"
 source_kind = "record"
 owner_id = "testing.schema-name.collision-loser-no-row-same-id"
@@ -19137,8 +18408,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-cross-crate-collision-schema-id-s-match"
-start_byte = 200962
-end_byte = 202242
+start_byte = 198238
+end_byte = 199518
 sha256 = "147eb980bcd390f719f1f27869b597147d0ccc03d35158bb83a56881d8d83311"
 source_kind = "record"
 owner_id = "testing.schema-name.cross-crate-same-id-collision"
@@ -19147,8 +18418,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-schema-name-schemars-percent-encodes-ref"
-start_byte = 202242
-end_byte = 203513
+start_byte = 199518
+end_byte = 200789
 sha256 = "a74e165599a8263cfab534e90d89a09213c6f5edec2cc5895a37e7429c9e8f2a"
 source_kind = "record"
 owner_id = "testing.schema-name.percent-encoded-ref"
@@ -19157,8 +18428,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-collision-two-types-both-lack-rows"
-start_byte = 203513
-end_byte = 208090
+start_byte = 200789
+end_byte = 205366
 sha256 = "5a2293a0c7cb67b10b37e490fd19f7e362a0c42da3e0b5c7394022da4d185993"
 source_kind = "record"
 owner_id = "testing.schema-name.two-rowless-types-collide"
@@ -19167,8 +18438,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-emitted-name-guard-neither-closes-holes-above-two"
-start_byte = 208090
-end_byte = 209175
+start_byte = 205366
+end_byte = 206451
 sha256 = "f5528a9ca03489535cb33b967356362ce4d77bd3c5879a13aab611850901afc0"
 source_kind = "part"
 owner_id = "part-emitted-name-guard-neither-closes-holes-above-two"
@@ -19177,8 +18448,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-directive-s-documented-sentence-stay-true-consumer-visible"
-start_byte = 209175
-end_byte = 212567
+start_byte = 206451
+end_byte = 209843
 sha256 = "eafa910d6fb87d6abc3e1cc50447e74ea54ba5536a36126e72d3f748e2dae79c"
 source_kind = "record"
 owner_id = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
@@ -19187,8 +18458,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-citation-resolves-naming-wrong-thing-invisible-citation-lint"
-start_byte = 212567
-end_byte = 214715
+start_byte = 209843
+end_byte = 211991
 sha256 = "f7be6359156888ab0130104d961c1aeb9d5f827a71e7cff57fff42c92a74dde5"
 source_kind = "record"
 owner_id = "testing.citation-resolves-naming-wrong-thing-invisible-citation-lint"
@@ -19197,8 +18468,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-matrix-s-note-names-panic-site-aborts-nothing"
-start_byte = 214715
-end_byte = 216035
+start_byte = 211991
+end_byte = 213311
 sha256 = "fa9db69e8bd98f7779f5d0c1dd493e978426ba833fb9cf8761f8bd240e57d3f1"
 source_kind = "record"
 owner_id = "testing.matrix-s-note-names-panic-site-aborts-nothing"
@@ -19207,8 +18478,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-nothing-asserts-how-many-times-rejection-message-emitted"
-start_byte = 216035
-end_byte = 217085
+start_byte = 213311
+end_byte = 214361
 sha256 = "099c5c72fff6b31e9d3a5e598a3b48835f8c2f25d812233abdb272e750136baf"
 source_kind = "record"
 owner_id = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
@@ -19217,8 +18488,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-containment-note-s-stated-reason-go-false-any"
-start_byte = 217085
-end_byte = 219020
+start_byte = 214361
+end_byte = 216296
 sha256 = "fe539e6dfa55c4983bbffcc328470eb8a1f83352ed5533d005cffb6b2424cf9c"
 source_kind = "record"
 owner_id = "testing.containment-note-s-stated-reason-go-false-any"
@@ -19227,8 +18498,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-emit-tests-gate-asserts-round-trip-green-cannot"
-start_byte = 219020
-end_byte = 220955
+start_byte = 216296
+end_byte = 218231
 sha256 = "29939e99940deb9b4f4df1986cdcab5c1fc42ba48d1ed0c0135a300d687d009a"
 source_kind = "record"
 owner_id = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
@@ -19237,8 +18508,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-emitter-drops-overloadable-parameter-building-fresh-config-invisible"
-start_byte = 220955
-end_byte = 223506
+start_byte = 218231
+end_byte = 220782
 sha256 = "12cdf4da975489b643bd78750b6605934c7606db77f7ec3084dc10eec178be5c"
 source_kind = "record"
 owner_id = "testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible"
@@ -19247,8 +18518,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-cargo-feature-generated-crate-s-dependency-change-what"
-start_byte = 223506
-end_byte = 226834
+start_byte = 220782
+end_byte = 224110
 sha256 = "94fdc516b957748ec678717f05e51aedd76ea25390f56b633df1dc5d552edd8b"
 source_kind = "record"
 owner_id = "testing.cargo-feature-generated-crate-s-dependency-change-what"
@@ -19257,8 +18528,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-documented-flag-pairing-broken-fixture-stays-green-because"
-start_byte = 226834
-end_byte = 228319
+start_byte = 224110
+end_byte = 225595
 sha256 = "861ae783e050e6a676eca60b7115c5833e36a2fa4cf568f9bbffff438a36124e"
 source_kind = "record"
 owner_id = "testing.documented-flag-pairing-broken-fixture-stays-green-because"
@@ -19267,8 +18538,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-documented-failure-shape-exercises-prose-cross-crate-int"
-start_byte = 228319
-end_byte = 230101
+start_byte = 225595
+end_byte = 227377
 sha256 = "082f4d599a40c492cc52e78872dbc3ab3a94adfe2712f59e2b6a42729f7c1634"
 source_kind = "record"
 owner_id = "testing.documented-failure-shape-exercises-prose-cross-crate-int"
@@ -19277,8 +18548,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-dsl-position-tests-string-level-design-green-emitted"
-start_byte = 230101
-end_byte = 231168
+start_byte = 227377
+end_byte = 228444
 sha256 = "994a599cf9c834387718e9b588b017d140504e573c10302d58e8d98707a6ab84"
 source_kind = "record"
 owner_id = "testing.dsl-position-tests-string-level-design-green-emitted"
@@ -19287,8 +18558,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-nothing-asserts-two-ir-sites-cannot-mint-same"
-start_byte = 231168
-end_byte = 233829
+start_byte = 228444
+end_byte = 231105
 sha256 = "06143d65c96981db81936d8bc52f12deff10687dd58df3cd3325b76f58e11eaf"
 source_kind = "record"
 owner_id = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
@@ -19297,8 +18568,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-message-s-level-classification-review-owned-two-ways"
-start_byte = 233829
-end_byte = 236147
+start_byte = 231105
+end_byte = 233423
 sha256 = "fd2fc1bd18efc07d474b8efc2893e327caa51291f6217e006ae8f863b752e39b"
 source_kind = "record"
 owner_id = "testing.message-s-level-classification-review-owned-two-ways"
@@ -19307,8 +18578,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-wac-composed-component-transpiled-jco-loses-cross-instance"
-start_byte = 236147
-end_byte = 238262
+start_byte = 233423
+end_byte = 235538
 sha256 = "6b107f59767f9663245b2b7356c7b93d5e23776b64826de816d2e24e879bf461"
 source_kind = "record"
 owner_id = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
@@ -19317,8 +18588,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-make-fixture-comment-s-claimed-wire-bytes-executable"
-start_byte = 238262
-end_byte = 239789
+start_byte = 235538
+end_byte = 237065
 sha256 = "d8a0c47931251776e9db0aac0107e03ab2af6f169f78096fad4593d0eac6190e"
 source_kind = "record"
 owner_id = "testing.make-fixture-comment-s-claimed-wire-bytes-executable"
@@ -19327,8 +18598,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-section-deferred-features"
-start_byte = 239789
-end_byte = 239851
+start_byte = 237065
+end_byte = 237127
 sha256 = "2dd5da89bae092a95d9b7e3189ca234b8df25156788aa690bdf721a0d600035b"
 source_kind = "section"
 owner_id = "deferred-features"
@@ -19337,8 +18608,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-workspace-mode-wasm32-wasip2-build-gate-both-faces"
-start_byte = 239851
-end_byte = 241352
+start_byte = 237127
+end_byte = 238628
 sha256 = "7e37ff740fefee532206ea2a6291ce7fca230cf4325cb3004afcfad6e0caacdb"
 source_kind = "record"
 owner_id = "testing.workspace-mode-wasm32-wasip2-build-gate-both-faces"
@@ -19347,8 +18618,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-reopening-signal-workspace"
-start_byte = 241352
-end_byte = 241805
+start_byte = 238628
+end_byte = 239081
 sha256 = "93c3fcec93d547a73093f3340485fbdb0c1c13b9453b22e04a68bbe8186a95a6"
 source_kind = "record"
 owner_id = "testing.workspace-wasip2.reopening-signal"
@@ -19357,8 +18628,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-probe-component-face-s-js-surface-axes-js"
-start_byte = 241805
-end_byte = 242979
+start_byte = 239081
+end_byte = 240255
 sha256 = "de875f14e7710b532dee14d66f04d64c555d0da7ce3f7e428d541b5d77d1b453"
 source_kind = "record"
 owner_id = "testing.probe-component-face-s-js-surface-axes-js"
@@ -19367,8 +18638,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-reopening-signal-probe"
-start_byte = 242979
-end_byte = 243484
+start_byte = 240255
+end_byte = 240760
 sha256 = "321ead11fff1d5c8d6e08f132a52da701e9976d4265a05821dfc54a53147c342"
 source_kind = "record"
 owner_id = "testing.component-js-probe.reopening-signal"
@@ -19377,8 +18648,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-crate-generates-json-schema-document-aggregate-package"
-start_byte = 243484
-end_byte = 245770
+start_byte = 240760
+end_byte = 243046
 sha256 = "dc089b4e14ef0dbfc3d0935ffba2bb92c284229015f65d0970bf9442dfe3580e"
 source_kind = "record"
 owner_id = "testing.crate-generates-json-schema-document-aggregate-package"
@@ -19387,8 +18658,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-wasm32-link-floor-deferred-reject-twin"
-start_byte = 245770
-end_byte = 246745
+start_byte = 243046
+end_byte = 244021
 sha256 = "03a7a46c89c798ae97b8a353555da4007cba7258aa3810cab23b0327cb395018"
 source_kind = "record"
 owner_id = "testing.wasm32-link-floor-deferred-reject-twin"
@@ -19397,8 +18668,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-extern-interface-export-dialect-v2-candidates"
-start_byte = 246745
-end_byte = 248689
+start_byte = 244021
+end_byte = 245965
 sha256 = "8d0055e772f759c4d73ffc77954ce3ecf2f4fe160022ea7f29728db0ea648449"
 source_kind = "record"
 owner_id = "testing.extern-interface-export-dialect-v2-candidates"
@@ -19407,8 +18678,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-cddl-module-directives-draft-ietf-cbor-cddl-modules"
-start_byte = 248689
-end_byte = 249627
+start_byte = 245965
+end_byte = 246903
 sha256 = "e17084b604e9b5189574353fefe2e84ed1b0cd5f111ec91edd70d2de885557c8"
 source_kind = "record"
 owner_id = "testing.cddl-module-directives-draft-ietf-cbor-cddl-modules"
@@ -19417,8 +18688,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-std-generated-crates"
-start_byte = 249627
-end_byte = 249983
+start_byte = 246903
+end_byte = 247259
 sha256 = "bd1b9bd0fd6d31f77ba22a1c2ef90f3de4cd08d35601429d0e677d07b5bc8b29"
 source_kind = "record"
 owner_id = "testing.std-generated-crates"
@@ -19427,8 +18698,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-dependency-version-range-resolution-untested-generated-crates-float"
-start_byte = 249983
-end_byte = 251074
+start_byte = 247259
+end_byte = 248350
 sha256 = "616524de40965232635f410ae52162f0bcf68eb1c42f41d66ca35ccef2baf67d"
 source_kind = "record"
 owner_id = "testing.dependency-version-range-resolution-untested-generated-crates-float"
@@ -19437,8 +18708,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-transparent-tag-set-idiom-recognized-shape-boundary-request"
-start_byte = 251074
-end_byte = 251723
+start_byte = 248350
+end_byte = 248999
 sha256 = "3cf07aaaae812a492b40658f98add60104dd5f12712a81423ea723d60e7c82c6"
 source_kind = "record"
 owner_id = "testing.transparent-tag-set-idiom-recognized-shape-boundary-request"
@@ -19447,8 +18718,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-non-idiom-choice-bodied-generic-defs-refused-supported"
-start_byte = 251723
-end_byte = 252480
+start_byte = 248999
+end_byte = 249756
 sha256 = "f90d5dbe0c6166a23001505eb367c163a31d39106de689301c5ab0c105921a22"
 source_kind = "record"
 owner_id = "testing.tag-set.non-idiom-generic-boundary"
@@ -19457,8 +18728,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-inline-anonymous-two-arm-choices-recognized"
-start_byte = 252480
-end_byte = 252752
+start_byte = 249756
+end_byte = 250028
 sha256 = "32b12882c58d0d91bbcb930e2e2cfe208a83dab88f053cea911058b8b7c362c6"
 source_kind = "record"
 owner_id = "testing.tag-set.inline-anonymous-choice-boundary"
@@ -19467,8 +18738,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-opt-rfc-faithful-total-cbor-json-rendering-json"
-start_byte = 252752
-end_byte = 254374
+start_byte = 250028
+end_byte = 251650
 sha256 = "80a1207ae71069e46ea9d1008be71380286f3ff5c671d02592eec7f204f660f8"
 source_kind = "record"
 owner_id = "testing.opt-rfc-faithful-total-cbor-json-rendering-json"
@@ -19477,8 +18748,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-edn-text-notation-round-trip-edn-edn-draft"
-start_byte = 254374
-end_byte = 255386
+start_byte = 251650
+end_byte = 252662
 sha256 = "681d821e94895b0ad1a045e0b38b46be54c0bae17e9f3ca1fb27e504f258fc96"
 source_kind = "record"
 owner_id = "testing.edn-text-notation-round-trip-edn-edn-draft"
@@ -19487,8 +18758,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-project-json-gen-documents-run-test-fixture-writes"
-start_byte = 255386
-end_byte = 256926
+start_byte = 252662
+end_byte = 254202
 sha256 = "c2fe1c977338a7c808d9dc8f67f6211782977b7bbd7f25573576320e2321e267"
 source_kind = "record"
 owner_id = "testing.project-json-gen-documents-run-test-fixture-writes"
@@ -19497,8 +18768,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-propagating-deliberately-unpublished-type-s-intent-json-ts"
-start_byte = 256926
-end_byte = 258470
+start_byte = 254202
+end_byte = 255746
 sha256 = "62253c79762c4c0d609d259e36112965f6e8893d405d1f53d27d51d554b90126"
 source_kind = "record"
 owner_id = "testing.propagating-deliberately-unpublished-type-s-intent-json-ts"
@@ -19507,8 +18778,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-json2ts-artifact-doc-comments-naming-undefined"
-start_byte = 258470
-end_byte = 259693
+start_byte = 255746
+end_byte = 256969
 sha256 = "ccf9722e449c303380ca3e0e8fa20f536fb4bed8d6bbc19e60a9f9f9c75738f1"
 source_kind = "record"
 owner_id = "testing.json2ts-artifact-doc-comments-naming-undefined"
@@ -19517,8 +18788,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-file-listing-json-schema-root-values-flag-per"
-start_byte = 259693
-end_byte = 260367
+start_byte = 256969
+end_byte = 257643
 sha256 = "62a48da4f600a1b5445e10607420f0c1f235252da023b776d6a8ff08cc7b37fb"
 source_kind = "record"
 owner_id = "testing.file-listing-json-schema-root-values-flag-per"
@@ -19527,8 +18798,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-assert-hand-authored-json-schema-against-type-s"
-start_byte = 260367
-end_byte = 261998
+start_byte = 257643
+end_byte = 259274
 sha256 = "c00607bad3e17c520c0c09b92a27b67dc3904ba50f47241e1885179be3a40472"
 source_kind = "record"
 owner_id = "testing.assert-hand-authored-json-schema-against-type-s"
@@ -19537,8 +18808,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-composing-registration-rows-across-generation-passes-share-output"
-start_byte = 261998
-end_byte = 262861
+start_byte = 259274
+end_byte = 260137
 sha256 = "77c0da5d8c24dd9bb568c371cca2ee6052bb15fc1e2970c61325ef63288aabd9"
 source_kind = "record"
 owner_id = "testing.composing-registration-rows-across-generation-passes-share-output"
@@ -19547,8 +18818,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-machine-readable-ownership-co-owned-features-std-list"
-start_byte = 262861
-end_byte = 263861
+start_byte = 260137
+end_byte = 261137
 sha256 = "d6371c4e925609609c30e6fc7a445a2292d133beaabf95c9560d76c966641aa6"
 source_kind = "record"
 owner_id = "testing.machine-readable-ownership-co-owned-features-std-list"
@@ -19557,8 +18828,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-section-operational-watches"
-start_byte = 263861
-end_byte = 263885
+start_byte = 261137
+end_byte = 261161
 sha256 = "d0806d2a287653911b25b1507812bb5306b0912bc58032113e48c8be29fda70c"
 source_kind = "section"
 owner_id = "operational-watches"
@@ -19567,8 +18838,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-gate-s-own-stdout-print-column-result-pass"
-start_byte = 263885
-end_byte = 264957
+start_byte = 261161
+end_byte = 262233
 sha256 = "eaf222cd544071584303141324572db8bce4ea044cb76f7d9838ee22bb9992aa"
 source_kind = "record"
 owner_id = "testing.gate-s-own-stdout-print-column-result-pass"
@@ -19577,8 +18848,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-flag-cddl-codegen-invocation-wasm-run-wasm-flag"
-start_byte = 264957
-end_byte = 266255
+start_byte = 262233
+end_byte = 263531
 sha256 = "c96e83e4ff9c4f19ccf5e168698f6b9784508f836b02f70108a848aa42906432"
 source_kind = "record"
 owner_id = "testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag"
@@ -19587,8 +18858,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-failing-snapshot-test-surfaces-mismatch-per-test-run"
-start_byte = 266255
-end_byte = 267380
+start_byte = 263531
+end_byte = 264656
 sha256 = "4060228b2079cf244515920c796240417bc94bab2b77b9fadf9cbef0c97e9197"
 source_kind = "record"
 owner_id = "testing.failing-snapshot-test-surfaces-mismatch-per-test-run"
@@ -19596,29 +18867,9 @@ owner_field = "payload.detail_md"
 migration_status = "replaced"
 
 [[source_span]]
-id = "span-record-e0463-t-find-crate-core-scratch-tree-std"
-start_byte = 267380
-end_byte = 269094
-sha256 = "d76e925c70bb9a64f9da3850a25134b07c6624d23d391ce12ea40fafdc25e6e9"
-source_kind = "record"
-owner_id = "testing.e0463-t-find-crate-core-scratch-tree-std"
-owner_field = "payload.detail_md"
-migration_status = "replaced"
-
-[[source_span]]
-id = "span-record-working-tree-gate-run-concurrent-live-implementation-agent"
-start_byte = 269094
-end_byte = 270503
-sha256 = "c015839fd3bd959c6f763a64b2451628e468d84c4081aadf935a1d4df98d4a78"
-source_kind = "record"
-owner_id = "testing.working-tree-gate-run-concurrent-live-implementation-agent"
-owner_field = "payload.detail_md"
-migration_status = "replaced"
-
-[[source_span]]
 id = "span-record-stale-pin-guard-cannot-distinguish-gap-closed-vector"
-start_byte = 270503
-end_byte = 272662
+start_byte = 264656
+end_byte = 266815
 sha256 = "1256c341156b9a18dc03c7377dec56f5e826c7ef8ebfee4d97e5c4195522a5c8"
 source_kind = "record"
 owner_id = "testing.stale-pin-guard-cannot-distinguish-gap-closed-vector"
@@ -19626,29 +18877,9 @@ owner_field = "payload.detail_md"
 migration_status = "replaced"
 
 [[source_span]]
-id = "span-record-migration-handoff-s-complete-list-found-survey-negative"
-start_byte = 272662
-end_byte = 274162
-sha256 = "7321cb4ac4dca070563c669fb8b59a5176daaaa9432f7b22c0f0bfeb13c74be3"
-source_kind = "record"
-owner_id = "testing.migration-handoff-s-complete-list-found-survey-negative"
-owner_field = "payload.detail_md"
-migration_status = "replaced"
-
-[[source_span]]
-id = "span-record-shared-cargo-target-dir-across-same-named-scratch"
-start_byte = 274162
-end_byte = 275356
-sha256 = "6422032547f1b6e5de7c4bb6e6c3e842eb3845c9dd6f48ece9801a4d86cd45ee"
-source_kind = "record"
-owner_id = "testing.shared-cargo-target-dir-across-same-named-scratch"
-owner_field = "payload.detail_md"
-migration_status = "replaced"
-
-[[source_span]]
 id = "span-record-config-run-s-convergence-warning-name-crate-already"
-start_byte = 275356
-end_byte = 277045
+start_byte = 266815
+end_byte = 268504
 sha256 = "b7770b7e134e736f463b6f5d5c33daa893d84a832f0334049d1811e42bd6b134"
 source_kind = "record"
 owner_id = "testing.config-run-s-convergence-warning-name-crate-already"
@@ -19657,8 +18888,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-extern-interface-export-public-interchange-format"
-start_byte = 277045
-end_byte = 277933
+start_byte = 268504
+end_byte = 269392
 sha256 = "64ba0b190be86ed6f6885283437c0e0a9f0830cbe7300cf7389d329137988fbc"
 source_kind = "record"
 owner_id = "testing.extern-interface-export-public-interchange-format"
@@ -19667,8 +18898,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-exclusion-reasons-informational-interchange"
-start_byte = 277933
-end_byte = 278200
+start_byte = 269392
+end_byte = 269659
 sha256 = "6fcca8b0b8dfb7d44a18c085baa2a32962b61071ee17b9e472867123591282f0"
 source_kind = "record"
 owner_id = "testing.exclusion-reasons-informational-interchange"
@@ -19677,8 +18908,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-nested-cargo-scratch-retention-tmp-cddl-leaks-until"
-start_byte = 278200
-end_byte = 280088
+start_byte = 269659
+end_byte = 271547
 sha256 = "148a295fd27fa0f524f12c3e460d11f8202e6dd4fd13d54a7798d1f02f9a4db2"
 source_kind = "record"
 owner_id = "testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until"
@@ -19687,8 +18918,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-reopening-signal-nested"
-start_byte = 280088
-end_byte = 281044
+start_byte = 271547
+end_byte = 272503
 sha256 = "e8f67bfa77c0336bd2262cb921dce4dc82f0dd577457caf5d79822f1d11b21c7"
 source_kind = "record"
 owner_id = "testing.scratch-retention.reopening-signal"
@@ -19696,49 +18927,19 @@ owner_field = "payload.detail_md"
 migration_status = "replaced"
 
 [[source_span]]
-id = "span-record-tier-s-peak-memory-bounded-arithmetic-over-assumed"
-start_byte = 281044
-end_byte = 283364
-sha256 = "c467667ad16b1fd50b66f5b292e0fd84fad71f380d93d881fa792d07fbf24601"
-source_kind = "record"
-owner_id = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-owner_field = "payload.detail_md"
-migration_status = "replaced"
-
-[[source_span]]
-id = "span-part-part-spend-measurements"
-start_byte = 283364
-end_byte = 283786
-sha256 = "055d1a32d9b90c601cee1d0fdbc511faef7b48baab3ea1a91d04ab6aae4770ce"
+id = "span-record-tier-memory-spend-measurements"
+start_byte = 272503
+end_byte = 272915
+sha256 = "6a1976f693f43c14d92ac19dbdef4ef7893728eae9bd1579ee8ac712f315fe89"
 source_kind = "record"
 owner_id = "testing.tier-memory.spend-measurements"
 owner_field = "payload.detail_md"
 migration_status = "replaced"
 
 [[source_span]]
-id = "span-part-part-freezes-livelock-repo-arithmetic-make-them-impossible-containment"
-start_byte = 283786
-end_byte = 284898
-sha256 = "df32a50052e3c87fa439f177cb70e0538730049a9c9293583960b10db3cbc11b"
-source_kind = "part"
-owner_id = "part-freezes-livelock-repo-arithmetic-make-them-impossible-containment"
-owner_field = "body_md"
-migration_status = "replaced"
-
-[[source_span]]
-id = "span-part-part-negative-premise-stands"
-start_byte = 284898
-end_byte = 285280
-sha256 = "78a9f27a5c8507147a78992f40d15eb1216c2b4e9039bee9a35fdd74dc312f50"
-source_kind = "part"
-owner_id = "part-negative-premise-stands"
-owner_field = "body_md"
-migration_status = "replaced"
-
-[[source_span]]
 id = "span-record-tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
-start_byte = 285280
-end_byte = 287902
+start_byte = 272915
+end_byte = 275537
 sha256 = "b0c8982b04c7e58ea7fbef66e90175ed16c795b3972d795069e3f7a6813bca01"
 source_kind = "record"
 owner_id = "testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
@@ -19747,8 +18948,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-gate-cache-costs"
-start_byte = 287902
-end_byte = 288222
+start_byte = 275537
+end_byte = 275857
 sha256 = "edb49a168fccc0ea4496eb895e9bc47157bbdf3bcca8635f1a842d2f061ad3c2"
 source_kind = "record"
 owner_id = "testing.gate-cache-costs"
@@ -19757,8 +18958,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-all-hit-cost"
-start_byte = 288222
-end_byte = 288490
+start_byte = 275857
+end_byte = 276125
 sha256 = "ef80f589dc4a9f6a34ce0ed1506d49326fce9a94d1307647fc8171bacdcf8dc5"
 source_kind = "record"
 owner_id = "testing.gate-cache.all-hit-cost"
@@ -19767,8 +18968,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-coverage-extensions"
-start_byte = 288490
-end_byte = 288977
+start_byte = 276125
+end_byte = 276612
 sha256 = "8da4cf5118393f8b173a62281daeda22ddb984f2cf884f500ce65539a296fde9"
 source_kind = "record"
 owner_id = "testing.gate-cache.coverage-extensions"
@@ -19777,8 +18978,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-closure-audit-traced-set-extension"
-start_byte = 288977
-end_byte = 289776
+start_byte = 276612
+end_byte = 277411
 sha256 = "394f9f77b82d72d0561c32777e2b9f3203580ecfaaecabd926bfb099f31f507c"
 source_kind = "record"
 owner_id = "testing.gate-cache.closure-audit-traced-set-extension"
@@ -19787,8 +18988,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-pre-cache-remedies-stay-valid-if-uncached-path"
-start_byte = 289776
-end_byte = 290064
+start_byte = 277411
+end_byte = 277699
 sha256 = "f58d071bf22c0b429eca987933640aaeba9281eb4de5fd6ea14ca6c49d093f2a"
 source_kind = "part"
 owner_id = "part-pre-cache-remedies-stay-valid-if-uncached-path"
@@ -19797,8 +18998,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-registry-fetch-transients-nested-cargo-cells"
-start_byte = 290064
-end_byte = 290899
+start_byte = 277699
+end_byte = 278534
 sha256 = "dcf0a2c0481eb9c465d01e5b5c9f65e2a531e5716028397d2cab961ea92f10f9"
 source_kind = "record"
 owner_id = "testing.registry-fetch-transients-nested-cargo-cells"
@@ -19807,8 +19008,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-surfaces-still-online"
-start_byte = 290899
-end_byte = 291527
+start_byte = 278534
+end_byte = 279162
 sha256 = "33fd5da4d3ad04e26200d1faf784452e0f7cf2589d09c772f41457354d7216cd"
 source_kind = "part"
 owner_id = "part-surfaces-still-online"
@@ -19817,8 +19018,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-verify-ts-evidence-absorber-stays"
-start_byte = 291527
-end_byte = 291912
+start_byte = 279162
+end_byte = 279547
 sha256 = "98b43e87c8dd33f221f3a6b3f936e755c9fce06242e2b2f0cef58a2fa795528c"
 source_kind = "part"
 owner_id = "part-verify-ts-evidence-absorber-stays"
@@ -19827,8 +19028,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-part-part-sighting-offline-gate-run-new-class"
-start_byte = 291912
-end_byte = 293507
+start_byte = 279547
+end_byte = 281142
 sha256 = "c38bac582889425ca4ecb4680d532ffc35cf74ff4502f19dcbee51668ea3adc6"
 source_kind = "part"
 owner_id = "part-sighting-offline-gate-run-new-class"
@@ -19837,8 +19038,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-verify-cache-transparency-b-split-emission-profile-embed"
-start_byte = 293507
-end_byte = 295112
+start_byte = 281142
+end_byte = 282747
 sha256 = "ba5faa632850c5b01c71b269849edcd0281192c07599aa19500a2fa9302a21e4"
 source_kind = "record"
 owner_id = "testing.verify-cache-transparency-b-split-emission-profile-embed"
@@ -19846,39 +19047,9 @@ owner_field = "payload.detail_md"
 migration_status = "replaced"
 
 [[source_span]]
-id = "span-record-full-suite-flake-attributed-hardened-acquire-scratch-lock"
-start_byte = 295112
-end_byte = 297099
-sha256 = "833a87a8793ef4e5522355bb39394b0a1a5aa6686da58d540fe186c254099979"
-source_kind = "record"
-owner_id = "testing.full-suite-flake-attributed-hardened-acquire-scratch-lock"
-owner_field = "payload.detail_md"
-migration_status = "replaced"
-
-[[source_span]]
-id = "span-record-verify-ts-warm-up-cargo-test-exit-attributed"
-start_byte = 297099
-end_byte = 298059
-sha256 = "8b591aea248f86bced1bc35a005612f7632833f46a95867d65f6c5629ab5b4eb"
-source_kind = "record"
-owner_id = "testing.verify-ts-warm-up-cargo-test-exit-attributed"
-owner_field = "payload.detail_md"
-migration_status = "replaced"
-
-[[source_span]]
-id = "span-record-backgrounded-check-ts-full-launched-sub-agent-s"
-start_byte = 298059
-end_byte = 299757
-sha256 = "4026d74baeb03b1ddda46fdba00e0da63b6d13fe44fe55054141dc429ec25f5d"
-source_kind = "record"
-owner_id = "testing.backgrounded-check-ts-full-launched-sub-agent-s"
-owner_field = "payload.detail_md"
-migration_status = "replaced"
-
-[[source_span]]
 id = "span-section-declined-boundaries"
-start_byte = 299757
-end_byte = 299833
+start_byte = 282747
+end_byte = 282823
 sha256 = "9164294b3ed22e517c59641572603f0d7897c0409b0c7c39b15db441e6108dae"
 source_kind = "section"
 owner_id = "declined-boundaries"
@@ -19887,8 +19058,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-complete-cargo-mutants-sweep-will-never-run"
-start_byte = 299833
-end_byte = 300426
+start_byte = 282823
+end_byte = 283416
 sha256 = "5de23b32af4cb10fd73a101a3afd413583661510196907b6d932b748fe875d30"
 source_kind = "record"
 owner_id = "testing.complete-cargo-mutants-sweep-will-never-run"
@@ -19897,8 +19068,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-making-type-choice-path-reject-duplicated-explicit-name"
-start_byte = 300426
-end_byte = 302067
+start_byte = 283416
+end_byte = 285057
 sha256 = "8b20e13bf366198497f4c771c7470be2f652dec8a2dbf6ed70d1f45399d17e78"
 source_kind = "record"
 owner_id = "testing.making-type-choice-path-reject-duplicated-explicit-name"
@@ -19907,8 +19078,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-msrv-declaration-os-matrix-generated-code"
-start_byte = 302067
-end_byte = 302446
+start_byte = 285057
+end_byte = 285436
 sha256 = "dfbf886683fd7c8af280b0fdba5bdf9b0be32478f8fb23ff4782b6568f8f9ea4"
 source_kind = "record"
 owner_id = "testing.msrv-declaration-os-matrix-generated-code"
@@ -19917,8 +19088,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-docs-vs-behavior-conformance-harness-comment-dsl-mdx"
-start_byte = 302446
-end_byte = 308868
+start_byte = 285436
+end_byte = 291858
 sha256 = "d039650d6ea7d055c8b470c75a179c1b06e980ffed33637f8da297ec1b4164d3"
 source_kind = "record"
 owner_id = "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
@@ -19927,8 +19098,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-full-n-flag-powerset-pict-pairwise"
-start_byte = 308868
-end_byte = 315478
+start_byte = 291858
+end_byte = 298468
 sha256 = "13d4335dbf54e3d4636c6726735872367b0067b14fded5521bd2523056d0320c"
 source_kind = "record"
 owner_id = "testing.full-n-flag-powerset-pict-pairwise"
@@ -19937,8 +19108,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus"
-start_byte = 315478
-end_byte = 315732
+start_byte = 298468
+end_byte = 298722
 sha256 = "fdc962bae38c253e1c1439920e8044945959ac2d430b460f9df9113636401d36"
 source_kind = "record"
 owner_id = "testing.quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus"
@@ -19947,8 +19118,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-orphan-fixture-directory-meta-test"
-start_byte = 315732
-end_byte = 316007
+start_byte = 298722
+end_byte = 298997
 sha256 = "6ca577e74cc4fd8a7a4335cafc7f01596660568069f64869a854a6c915ec7213"
 source_kind = "record"
 owner_id = "testing.orphan-fixture-directory-meta-test"
@@ -19957,8 +19128,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-restructuring-features-std-tool-owned-sub-feature-cddl"
-start_byte = 316007
-end_byte = 317844
+start_byte = 298997
+end_byte = 300834
 sha256 = "6968f8c72e45427bf8c9988468880153e17f0a5ca7a1e566105c4e1d6b6abb3d"
 source_kind = "record"
 owner_id = "testing.restructuring-features-std-tool-owned-sub-feature-cddl"
@@ -19967,8 +19138,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-ownership-journal-making-dropped-std-forward-dep-converge"
-start_byte = 317844
-end_byte = 318839
+start_byte = 300834
+end_byte = 301829
 sha256 = "90dd0e035f234c70e9409d022099b82680b3391ef326ab5f98165885e2a00b2f"
 source_kind = "record"
 owner_id = "testing.ownership-journal-making-dropped-std-forward-dep-converge"
@@ -19977,8 +19148,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-wrapper-name-user-set-name-synthesized-collection-wrapper"
-start_byte = 318839
-end_byte = 321107
+start_byte = 301829
+end_byte = 304097
 sha256 = "83d653ec6446e1b66babf54d2c03123bf07a64c5eb15400211128c44190edddb"
 source_kind = "record"
 owner_id = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
@@ -19987,8 +19158,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-record-checking-runtime-flavor-s-safety-condition-rather-stating"
-start_byte = 321107
-end_byte = 323209
+start_byte = 304097
+end_byte = 306199
 sha256 = "42b78061de298d44cf32cbb78c34d6d308f453fe6d2f18a5b6023633aa25ecb9"
 source_kind = "record"
 owner_id = "testing.checking-runtime-flavor-s-safety-condition-rather-stating"
@@ -19997,8 +19168,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-section-sources"
-start_byte = 323209
-end_byte = 323220
+start_byte = 306199
+end_byte = 306210
 sha256 = "8a23b2f7befd3e34e37db86c490ee38b226bd1b0a95bf35097ad88cde8dcfec7"
 source_kind = "section"
 owner_id = "sources"
@@ -20007,8 +19178,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-fragment-sources-exhaustive-menu"
-start_byte = 323220
-end_byte = 323327
+start_byte = 306210
+end_byte = 306317
 sha256 = "1a4976cd268645a9c093de41b4ae6b2c59d73b3a45c5ab1fb71e7732362184ee"
 source_kind = "fragment"
 owner_id = "sources-exhaustive-menu"
@@ -20017,8 +19188,8 @@ migration_status = "replaced"
 
 [[source_span]]
 id = "span-fragment-sources-expert-writeups"
-start_byte = 323327
-end_byte = 323398
+start_byte = 306317
+end_byte = 306388
 sha256 = "6a6538e08cd6f2c2d26df1d60be9d49295bf3947003b96bddeb845fd0f638ce9"
 source_kind = "fragment"
 owner_id = "sources-expert-writeups"
@@ -20079,11 +19250,6 @@ target = "testing.source-observation.assert-hand-authored-json-schema-against-ty
 source = "testing.assert-hand-authored-json-schema-against-type-s"
 kind = "parent_of"
 target = "testing.trigger.assert-hand-authored-json-schema-against-type-s"
-
-[[relation]]
-source = "testing.backgrounded-check-ts-full-launched-sub-agent-s"
-kind = "parent_of"
-target = "testing.source-observation.backgrounded-check-ts-full-launched-sub-agent-s"
 
 [[relation]]
 source = "testing.build-registration-class-reference-position-sweep-second-escape"
@@ -20496,11 +19662,6 @@ kind = "parent_of"
 target = "testing.trigger.duplicates-same-shape-set-conversion"
 
 [[relation]]
-source = "testing.e0463-t-find-crate-core-scratch-tree-std"
-kind = "parent_of"
-target = "testing.trigger.e0463-t-find-crate-core-scratch-tree-std"
-
-[[relation]]
 source = "testing.edn-text-notation-round-trip-edn-edn-draft"
 kind = "parent_of"
 target = "testing.source-observation.edn-text-notation-round-trip-edn-edn-draft"
@@ -20709,11 +19870,6 @@ target = "testing.source-observation.full-n-flag-powerset-pict-pairwise"
 source = "testing.full-n-flag-powerset-pict-pairwise"
 kind = "parent_of"
 target = "testing.trigger.full-n-flag-powerset-pict-pairwise"
-
-[[relation]]
-source = "testing.full-suite-flake-attributed-hardened-acquire-scratch-lock"
-kind = "parent_of"
-target = "testing.trigger.full-suite-flake-attributed-hardened-acquire-scratch-lock"
 
 [[relation]]
 source = "testing.gate-cache-closure-audit-structurally-blind-gate-authored"
@@ -21164,11 +20320,6 @@ target = "testing.source-observation.message-s-level-classification-review-owned
 source = "testing.message-s-level-classification-review-owned-two-ways"
 kind = "parent_of"
 target = "testing.trigger.message-s-level-classification-review-owned-two-ways"
-
-[[relation]]
-source = "testing.migration-handoff-s-complete-list-found-survey-negative"
-kind = "parent_of"
-target = "testing.trigger.migration-handoff-s-complete-list-found-survey-negative"
 
 [[relation]]
 source = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
@@ -21701,11 +20852,6 @@ kind = "parent_of"
 target = "testing.source-observation.scratch-retention-reopening-signal"
 
 [[relation]]
-source = "testing.shared-cargo-target-dir-across-same-named-scratch"
-kind = "parent_of"
-target = "testing.trigger.shared-cargo-target-dir-across-same-named-scratch"
-
-[[relation]]
 source = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 kind = "parent_of"
 target = "testing.guard.stale-known-limitation-prose-surviving-fix-finding-ledgered"
@@ -21804,16 +20950,6 @@ target = "testing.source-observation.tier-s-disk-bandwidth-unmeasured-anything-s
 source = "testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
 kind = "parent_of"
 target = "testing.trigger.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
-
-[[relation]]
-source = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-kind = "parent_of"
-target = "testing.source-observation.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-
-[[relation]]
-source = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-kind = "parent_of"
-target = "testing.tier-memory.spend-measurements"
 
 [[relation]]
 source = "testing.transparent-tag-set-idiom-recognized-shape-boundary-request"
@@ -21956,11 +21092,6 @@ kind = "parent_of"
 target = "testing.proof-gap.verify-ts-refuse-unknown-flag-silently-degrading-plain"
 
 [[relation]]
-source = "testing.verify-ts-warm-up-cargo-test-exit-attributed"
-kind = "parent_of"
-target = "testing.source-observation.verify-ts-warm-up-cargo-test-exit-attributed"
-
-[[relation]]
 source = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 kind = "parent_of"
 target = "testing.guard.wac-composed-component-transpiled-jco-loses-cross-instance"
@@ -22004,11 +21135,6 @@ target = "testing.source-observation.wasm32-link-floor-deferred-reject-twin"
 source = "testing.wasm32-link-floor-deferred-reject-twin"
 kind = "parent_of"
 target = "testing.trigger.wasm32-link-floor-deferred-reject-twin"
-
-[[relation]]
-source = "testing.working-tree-gate-run-concurrent-live-implementation-agent"
-kind = "parent_of"
-target = "testing.trigger.working-tree-gate-run-concurrent-live-implementation-agent"
 
 [[relation]]
 source = "testing.workspace-mode-wasm32-wasip2-build-gate-both-faces"
@@ -22083,13 +21209,6 @@ id = "ref-testing-armed-idle-harness-arms-empty-head-ledgers-zero-gate-h3e599ca3
 source = "testing.armed-idle-harness-arms-empty-head-ledgers-zero"
 kind = "gate"
 gate_id = "lint_doc_citations"
-
-[[reference]]
-id = "ref-testing-backgrounded-check-ts-full-launched-sub-agent-s-rule"
-source = "testing.backgrounded-check-ts-full-launched-sub-agent-s"
-kind = "file_heading"
-path = "AGENTS.md"
-heading = "Build & verify"
 
 [[reference]]
 id = "ref-testing-cargo-feature-generated-crate-s-dependency-change-what-test-symbol-ha4c9663bd6e6a90fce72f489a54d11a70788c1b746766d7e0d016ba6b004788d"
@@ -22284,13 +21403,6 @@ source = "testing.duplicates.dedicated-generic-collision-message"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::robustness_tests::inline_258_nominal_name_collision_is_rejected"
 symbol = "tests::robustness_tests::inline_258_nominal_name_collision_is_rejected"
-
-[[reference]]
-id = "ref-testing-e0463-t-find-crate-core-scratch-tree-std-operating"
-source = "testing.e0463-t-find-crate-core-scratch-tree-std"
-kind = "file_heading"
-path = "AGENTS.md"
-heading = "Build & verify"
 
 [[reference]]
 id = "ref-testing-emission-branch-generated-output-fixture-exercises-invisible-gate-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
@@ -22527,13 +21639,6 @@ source = "testing.full-n-flag-powerset-pict-pairwise"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::snapshot_tests::deserialize_converts_error_at_most_once"
 symbol = "tests::snapshot_tests::deserialize_converts_error_at_most_once"
-
-[[reference]]
-id = "ref-testing-full-suite-flake-attributed-hardened-acquire-scratch-lock-operating"
-source = "testing.full-suite-flake-attributed-hardened-acquire-scratch-lock"
-kind = "file_heading"
-path = "tests/README.md"
-heading = "Running everything"
 
 [[reference]]
 id = "ref-testing-gate-cache-closure-audit-structurally-blind-gate-authored-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
@@ -22981,13 +22086,6 @@ path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-migration-handoff-s-complete-list-found-survey-negative-operating"
-source = "testing.migration-handoff-s-complete-list-found-survey-negative"
-kind = "file_heading"
-path = "docs/docs/output_format.mdx"
-heading = "Upgrading a crate generated before the `no_std` output"
-
-[[reference]]
 id = "ref-testing-msrv-declaration-os-matrix-generated-code-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
 source = "testing.msrv-declaration-os-matrix-generated-code"
 kind = "file_heading"
@@ -23307,13 +22405,6 @@ path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-shared-cargo-target-dir-across-same-named-scratch-operating"
-source = "testing.shared-cargo-target-dir-across-same-named-scratch"
-kind = "file_heading"
-path = "AGENTS.md"
-heading = "Build & verify"
-
-[[reference]]
 id = "ref-testing-source-observation-add-profile-wrapper-participation-grid-participation-differs-across-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.add-profile-wrapper-participation-grid-participation-differs-across"
 kind = "file_heading"
@@ -23340,13 +22431,6 @@ source = "testing.source-observation.assert-hand-authored-json-schema-against-ty
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Deferred features (build when a real consumer needs them)"
-
-[[reference]]
-id = "ref-testing-source-observation-backgrounded-check-ts-full-launched-sub-agent-s-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"
-source = "testing.source-observation.backgrounded-check-ts-full-launched-sub-agent-s"
-kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
-heading = "Operational watches"
 
 [[reference]]
 id = "ref-testing-source-observation-cargo-feature-generated-crate-s-dependency-change-what-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
@@ -24042,13 +23126,6 @@ path = "tests/TESTING_ROADMAP.md"
 heading = "Operational watches"
 
 [[reference]]
-id = "ref-testing-source-observation-tier-s-peak-memory-bounded-arithmetic-over-assumed-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"
-source = "testing.source-observation.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
-heading = "Operational watches"
-
-[[reference]]
 id = "ref-testing-source-observation-tree-wide-sweeps-over-gitignored-regeneration-targets-count-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
 source = "testing.source-observation.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 kind = "file_heading"
@@ -24089,13 +23166,6 @@ source = "testing.source-observation.value-anchor-rot-field-addition-delivery-gr
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
-
-[[reference]]
-id = "ref-testing-source-observation-verify-ts-warm-up-cargo-test-exit-attributed-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"
-source = "testing.source-observation.verify-ts-warm-up-cargo-test-exit-attributed"
-kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
-heading = "Operational watches"
 
 [[reference]]
 id = "ref-testing-source-observation-wac-composed-component-transpiled-jco-loses-cross-instance-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
@@ -24220,20 +23290,6 @@ path = "tests/TESTING_ROADMAP.md"
 heading = "Operational watches"
 
 [[reference]]
-id = "ref-testing-tier-s-peak-memory-bounded-arithmetic-over-assumed-rule"
-source = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-kind = "file_heading"
-path = "AGENTS.md"
-heading = "Build & verify"
-
-[[reference]]
-id = "ref-testing-tier-s-peak-memory-bounded-arithmetic-over-assumed-retirement"
-source = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
-kind = "file_heading"
-path = "tests/README.md"
-heading = "Gate-level concurrency (registry-declared, opt-in)"
-
-[[reference]]
 id = "ref-testing-tooling-generated-coverage-instrumentation-declined-heading"
 source = "testing.tooling.generated-coverage-instrumentation"
 kind = "file_heading"
@@ -24344,13 +23400,6 @@ path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-verify-ts-warm-up-cargo-test-exit-attributed-rule"
-source = "testing.verify-ts-warm-up-cargo-test-exit-attributed"
-kind = "file_heading"
-path = "AGENTS.md"
-heading = "Build & verify"
-
-[[reference]]
 id = "ref-testing-wac-composed-component-transpiled-jco-loses-cross-instance-gate-hf2e5bf53c50997692623794ce66965b548397ac6f3cfba48d34d3000ed57b7b4"
 source = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 kind = "gate"
@@ -24361,13 +23410,6 @@ id = "ref-testing-wac-composed-component-transpiled-jco-loses-cross-instance-gat
 source = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 kind = "gate"
 gate_id = "component_jco"
-
-[[reference]]
-id = "ref-testing-working-tree-gate-run-concurrent-live-implementation-agent-operating"
-source = "testing.working-tree-gate-run-concurrent-live-implementation-agent"
-kind = "file_heading"
-path = "AGENTS.md"
-heading = "Build & verify"
 
 [[reference]]
 id = "ref-testing-wrapper-name-user-set-name-synthesized-collection-wrapper-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"

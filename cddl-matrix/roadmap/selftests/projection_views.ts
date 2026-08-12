@@ -160,11 +160,12 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
         !liveText.includes("## Next work items, in priority order"), "Next heading rewrite is absent or non-exact");
       assert((liveText.match(/^## Standing-system residuals$/gmu) ?? []).length === 1,
         "Standing-system heading was not materialized exactly once");
-      for (const heading of ["Operational systems, controls, and resource work", "Live operational watches",
-        "Attributed and historical operating guidance"]) {
+      for (const heading of ["Operational systems, controls, and resource work", "Live operational watches"]) {
         assert((liveText.match(new RegExp(`^### ${heading}$`, "gmu")) ?? []).length === 1,
           `operational heading ${heading} is absent or duplicated`);
       }
+      assert(!liveText.includes("### Attributed and historical operating guidance"),
+        "empty relocated history bucket still rendered a heading");
       const operationalRecords = live.document.records.filter((record) => record.projection_group === "operational-watches");
       const operationalBuckets = {
         systems: operationalRecords.filter((record) => record.payload.kind !== "testing_operational_watch" &&
@@ -176,16 +177,20 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
           record.payload.kind === "testing_operational_watch" && record.payload.watch_state !== "watching" ||
           record.payload.kind === "testing_incident" && record.payload.incident_posture !== "live"),
       };
-      assert(operationalBuckets.systems.length === 40 && operationalBuckets.live.length === 4 &&
-        operationalBuckets.history.length === 8, "live operational classification counts changed");
+      assert(operationalBuckets.systems.length === 32 && operationalBuckets.live.length === 4 &&
+        operationalBuckets.history.length === 0, "live operational classification counts changed");
       const systemsStart = liveText.indexOf("### Operational systems, controls, and resource work");
       const liveStart = liveText.indexOf("### Live operational watches");
-      const historyStart = liveText.indexOf("### Attributed and historical operating guidance");
-      const nextSection = liveText.indexOf("\n## ", historyStart);
+      const nextSection = liveText.indexOf("\n## ", liveStart);
+      const retainedMemory = '<a id="roadmap-id-testing.tier-memory.spend-measurements"></a>\n' +
+        "- **Spend the measurements.**";
+      assert(liveText.includes(retainedMemory),
+        "retained tier-memory work is absent or still nested under an unrelated operational record");
+      assert(liveText.indexOf(retainedMemory) > systemsStart && liveText.indexOf(retainedMemory) < liveStart,
+        "retained tier-memory work escaped the operational systems/resource bucket");
       for (const [kind, records, start, end] of [
         ["systems", operationalBuckets.systems, systemsStart, liveStart],
-        ["live", operationalBuckets.live, liveStart, historyStart],
-        ["history", operationalBuckets.history, historyStart, nextSection],
+        ["live", operationalBuckets.live, liveStart, nextSection],
       ] as const) {
         const bucketText = liveText.slice(start, end);
         assert(records.filter((record) => record.projection_visibility === "document")

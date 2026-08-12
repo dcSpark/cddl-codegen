@@ -92,6 +92,18 @@ every in-tier gate first). Every run also tees its FULL output to a timestamped
 the tool's job, so never pipe a run through `tail`/`grep` as its only capture; cite the printed
 path.
 
+### Operational incident attribution and evidence capture
+
+An intermittent gate failure is not a durable finding until the first failing run's full output is
+captured and the competing explanations are separated. The `acquire_scratch_lock_serializes`
+incident took five sightings to attribute because three early sightings survived only through
+`tail`/`grep` and one had incomplete output. The fifth full log exposed the exact transient
+`WouldBlock` signature: a fork-to-exec child briefly inherited the scratch-lock descriptor while
+the blocking production lock remained safe. The regression helper now retries that nonblocking
+probe only up to a five-second deadline. Keep the full command, commit, date, environment, versions,
+signature, scope, and explicitly unprobed remainder in the durable conclusion; a disposable
+`draft/logs/**` path is working evidence for its producing session, never the conclusion itself.
+
 ### Running a SUBSET: `--only <gate>[,<gate>]`
 
 `bun run check.ts full --only verify,corpus_detect` runs exactly those gates, in registry order,
@@ -264,6 +276,12 @@ something no passive report can prevent: a machine at 100 % memory and swap thra
 crossing the OOM killer's threshold, so containment on a shared dev box is an OPERATOR measure —
 an early-OOM daemon or a cgroup memory cap around the tier — not a gate.
 
+The sampler also guards the negative premise behind the arithmetic: every nested cargo spawn must
+remain covered by `tool_cmd`, the runner's environment exports, or Cargo config discovery. A future
+spawn path outside all three can silently escape the bounds; a sampled peak far above the budget's
+product arithmetic is the tell. That is why the report keeps being produced even when no memory
+incident is under investigation.
+
 **What stays unmeasured: disk bandwidth.** The preflight below floors free scratch, which is a
 capacity check, not a rate one — `CHECK_JOBS` gates writing in parallel to their own target dirs
 still share one device, and the device's sustained-write ceiling is an environment property the
@@ -273,32 +291,6 @@ bounds were memory (swap thrashing), with disk saturation as their symptom — b
 bandwidth-driven stall would share their signature: whole-machine, observable by no gate. The
 watch entry, with candidate mitigations and what would make it buildable, is in
 `tests/TESTING_ROADMAP.md` § Operational watches.
-
-**Run-start scratch sweep (every tier).** Nested-cargo gates and the in-process suites mint per-run
-scratch under the system temp dir and rely on end-of-run cleanup that a killed or crashed run never
-reaches, so debris accumulates across sessions until a disk fills — measured once at 3316 leaked
-entries / 43 GB / 0 bytes free, which killed a full tier mid-gate and broke harness plumbing for every
-concurrent session. So every run sweeps first, under three bounds and no fourth:
-
-- **An explicit prefix registry** (`SCRATCH_PREFIXES` in `check.ts`), never a `cddl*` glob. The temp
-  dir is shared with the whole machine, so a glob matching one unrelated directory would be a
-  data-loss bug reported as a test-runner bug. The registry is an enumeration of the repo's
-  `temp_dir()`/`tmpdir()` join sites, and it stays one: `the_scratch_prefix_registry_covers_every_temp_dir_mint_site`
-  (in the `timings_digest_check` gate) re-derives the sites on every run and fails on a mint site no
-  prefix covers, or on one it cannot resolve. A new mint site outside the registry LEAKS rather than
-  deleting a stranger's directory — the failure direction is deliberate.
-- **Age**, at 24 h — more than 40× the longest measured tier, so no live run's scratch can reach it.
-  Age is the newest mtime among an entry and its immediate children, because a long-lived
-  `CARGO_TARGET_DIR` root keeps its own mtime while cargo rewrites the files inside it.
-- **A live-process guard**: an entry named in any process's `cmdline`, `environ` or `cwd` survives
-  (a scratch root reaches its gate through `CARGO_TARGET_DIR` at least as often as through argv). The
-  guard fails **closed** — an unreadable `/proc` skips the sweep rather than deleting unguarded — and
-  it is consulted only once deletion is on the table, so a machine with nothing stale stays silent.
-
-`.lock` files are never swept: they are `acquire_scratch_lock`'s sibling flocks, they hold no bytes,
-and unlinking one a live run holds would let a third run acquire a fresh inode. The sweep runs before
-the preflight below, so space it recovers counts toward the disk floor, and prints one line naming
-entries removed and bytes freed — nothing at all when nothing qualified.
 
 **Resource preflight (`local`/`full` only).** A tier commits to its peak in its first seconds and
 cannot discover a memory cap mid-run; the failure mode is not a red gate but a machine that stops
@@ -362,6 +354,34 @@ be wired to a tier, and `build.yml` must invoke `bun run check.ts fast` with no 
 CI can neither drift away from the fast tier nor grow work that bypasses the registry). This is the
 systematic catch for the disease the runner cures — a gate that exists but is in nobody's habit — so
 a new manual gate or IOU stub is a conscious registry edit, not a silent omission.
+
+### Run-start scratch sweep and retained-scratch incidents
+
+Nested-cargo gates and the in-process suites mint per-run scratch under the system temp dir and rely
+on end-of-run cleanup that a killed or crashed run never reaches, so debris accumulates across
+sessions until a disk fills — measured once at 3316 leaked entries / 43 GB / 0 bytes free, which
+killed a full tier mid-gate and broke harness plumbing for every concurrent session. Every run
+therefore sweeps first, under three bounds and no fourth:
+
+- **An explicit prefix registry** (`SCRATCH_PREFIXES` in `check.ts`), never a `cddl*` glob. The temp
+  dir is shared with the whole machine, so a glob matching one unrelated directory would be a
+  data-loss bug reported as a test-runner bug. The registry is an enumeration of the repo's
+  `temp_dir()`/`tmpdir()` join sites, and it stays one: `the_scratch_prefix_registry_covers_every_temp_dir_mint_site`
+  (in the `timings_digest_check` gate) re-derives the sites on every run and fails on a mint site no
+  prefix covers, or on one it cannot resolve. A new mint site outside the registry LEAKS rather than
+  deleting a stranger's directory — the failure direction is deliberate.
+- **Age**, at 24 h — more than 40× the longest measured tier, so no live run's scratch can reach it.
+  Age is the newest mtime among an entry and its immediate children, because a long-lived
+  `CARGO_TARGET_DIR` root keeps its own mtime while cargo rewrites the files inside it.
+- **A live-process guard**: an entry named in any process's `cmdline`, `environ` or `cwd` survives
+  (a scratch root reaches its gate through `CARGO_TARGET_DIR` at least as often as through argv). The
+  guard fails **closed** — an unreadable `/proc` skips the sweep rather than deleting unguarded — and
+  it is consulted only once deletion is on the table, so a machine with nothing stale stays silent.
+
+`.lock` files are never swept: they are `acquire_scratch_lock`'s sibling flocks, they hold no bytes,
+and unlinking one a live run holds would let a third run acquire a fresh inode. The sweep runs before
+the resource preflight, so space it recovers counts toward the disk floor, and prints one line naming
+entries removed and bytes freed — nothing at all when nothing qualified.
 
 ### Measured gate durations (`tests/timings.json`)
 
@@ -2331,11 +2351,10 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     `enforce = yes (bounded-reject)` evidence (`query_q4_directional.ts` counts `class="constraint"`
     only). NOTE: the numeric range/eq rows carry these vectors only because their probe examples
     target `int` with literal, non-vacuous bounds — the rust corroborating oracle (`cddl` 0.10.x)
-    does not enforce these ops over a `uint` target (upstream gap,
-    `draft/rust-cddl-uint-control-op-gap.md`), so a `uint`-targeted form can't pass the both-reject
+    does not enforce these ops over a `uint` target, so a `uint`-targeted form can't pass the both-reject
     gate; `query_q4_directional.ts --check` pins the exact green set against such a decay. The
-    `rangeop` rows with non-uint endpoints (`.int`/`.nint`/`.float`) sat on a SECOND rust-oracle gap
-    (`draft/rust-cddl-float-range-gap.md`: released 0.10.x `validate` blanket-rejects every instance
+    `rangeop` rows with non-uint endpoints (`.int`/`.nint`/`.float`) sat on a SECOND rust-oracle gap:
+    released 0.10.x `validate` blanket-rejects every instance
     of a float or negative-int range); the fork's `885c61c` fix closed it, so those rows carry real
     accept vectors and discriminating rust reject corroboration (the float vectors' `reason` records
     the provenance).
@@ -2598,11 +2617,11 @@ whole-fixture spec — quarantines one un-mintable rule from poisoning its fixtu
 
 Rows that can't be minted mechanically carry a `pinned_reason` instead of vectors, in stable classes:
 the ruby generator's **inline-composite `.cbor`-controller parse gap** (gem 0.12.14 exit 65 —
-`draft/ruby-cddl-inline-composite-control-arg-gap.md`, re-mint when the gem fix ships), **generic
+`cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md`, re-mint when the gem fix ships), **generic
 rules** (a `<…>` head can't be holder-wrapped bare — instantiations are covered via referencing
 rules), and **`dsl_custom`** (references user-supplied (de)serialize code — can't compile standalone).
 A distinct, decoder-clean class is the **named-rule / parenthesized-choice map-KEY over-rejection** in
-the rust oracle (`draft/rust-cddl-named-key-map-gap.md`): its affected table rows (`table_enum_key.*`,
+the rust oracle (`cddl-matrix/upstream-reports/rust-cddl-named-key-map.md`): its affected table rows (`table_enum_key.*`,
 `c_style_enum_map_key.enum_keyed_map`, and the adjacent-signature siblings on `composite_map_key.*`
 and `wasm_nested_alias.passthru_tags_map`) keep only
 their empty-instance accept vectors, because the rust reference contests every non-empty instance
@@ -3490,7 +3509,7 @@ cache is preserved. The fixture loop uses curated ledgers, each empirically just
   rejection (per the RFC author's clarified semantics — cbor-wg/cddl#32 — the construct means the
   `uint .size` window, which the old `i{8N}` mapping mis-enforced; the rust validator's hard error
   on it remains an upstream over-rejection gap, scoreboard in
-  `draft/cddl-size-on-int-divergence.md`).
+  `cddl-matrix/upstream-reports/rust-cddl-size-on-int-divergence.md`).
 
 Outside `EXPECTED_FAIL`, every generated-suite failure turns the gate RED with the minted bytes +
 rule named. `GEN_SKIP` fixtures do not run; fixture-level `RUST_ORACLE_SKIP` disables only the rust
@@ -3523,7 +3542,7 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   non-bug reason (a gem construct gap the fork legitimately supports). Three at HEAD —
   `(cbor_wrapped_group_array, holder)` and `(cbor_bignint_table, holder)`, both the gem's
   inline-composite `.cbor`-controller parse gap (exit 65 poisons the whole spec;
-  `draft/ruby-cddl-inline-composite-control-arg-gap.md`), and `(assignt_extend_ext_first,
+  `cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md`), and `(assignt_extend_ext_first,
   ext_first)`, the gem's extension-first `/=` chain crash ("Duplicate rule definition", a parse
   RuntimeError that equally poisons the whole spec — the committed paste-ready report is
   `cddl-matrix/upstream-reports/ruby-cddl-ext-first-incremental-chain-crash.md`, and the entry's

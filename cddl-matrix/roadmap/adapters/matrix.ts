@@ -39,9 +39,9 @@ import {
 const MATRIX_SOURCE_PATH = "cddl-matrix/roadmap.toml" as RepoPath;
 const MATRIX_PROJECTION_PATH = "cddl-matrix/ROADMAP.md" as RepoPath;
 const MATRIX_PICKUP = Object.freeze({
-  sha256: "f010705393ddbd0b5fa25368c7903df5c5f87a6e500bbdb9c99f7f22bf9bd69e",
-  byte_length: 84_580,
-  line_count: 996,
+  sha256: "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d",
+  byte_length: 84_591,
+  line_count: 995,
   eof: "lf" as const,
 });
 

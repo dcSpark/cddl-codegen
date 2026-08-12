@@ -106,8 +106,8 @@ export function liveTestingLegacyProjection(): Uint8Array {
   assert(issues.length === 0, `live testing legacy projection failed rendering: ${JSON.stringify(issues)}`);
   const projection = renderValidatedChunks(completed.chunks, issues, completed.expected_bytes);
   assert(
-    projection.byteLength === 323_398 &&
-      sha256(projection) === "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b4120d70e",
+    projection.byteLength === 306_388 &&
+      sha256(projection) === "6e90f1fb06011cefa546d861da0a6525ff1af6fc81bbe51c9ed5f035578b53af",
     "rendered testing legacy projection escaped its frozen length/digest",
   );
   return projection;

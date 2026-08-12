@@ -1,7 +1,7 @@
 ; The table-VALUE leg of int_alias.cddl's descent: `Int` nested as a table value under a `.cbor`
 ; bytes wrapper (`Map(_, Rust(Int))`). Split out of int_alias.cddl so THAT fixture stays
 ; ruby-judgeable: the ruby `cddl` gem (0.12.14) cannot PARSE an inline composite type2 controller
-; (`bytes .cbor { … }` — exit 65, the gap in draft/ruby-cddl-inline-composite-control-arg-gap.md),
+; (`bytes .cbor { … }` — exit 65, the gap in cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md),
 ; and a spec-parse failure poisons every rule in its fixture for the `ir_conformance_corpus` ruby
 ; sweep. Isolated here, the poison reaches only this fixture's own rule, which rides
 ; RUBY_EXPECTED_FAIL with that justification; int_alias's `bare_int` and `cbor_int` are judged.

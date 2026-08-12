@@ -313,6 +313,12 @@ a homogeneous array element (`[* any]`), a table domain and/or range (`{ * any =
 value-vs-representational flavors, and self-carried encodings. Because `AnyCbor` has a total order by
 construction, `any` is a legal map-key/table domain in both preserve and non-preserve modes.
 
+The loose value is deliberately not a back door for type-level directives or control constraints.
+`@newtype` on a bare `any` alias is unsupported: `AnyCbor` is already the nominal runtime value and
+another wrapper would not narrow its accepted CBOR domain. Control operators on bare `any` are also
+unsupported because the operator must constrain a known value class; name a supported typed rule
+and apply the operator there. These are permanent product boundaries, not missing coverage cells.
+
 `any` generates under **every flag combination** — the Rust surface, the
 [wasm `AnyCbor` wrapper](wasm_differences#the-any-type-anycbor), and the JSON/schema surfaces under
 `--json-serde-derives` / `--json-schema-export`. **JSON is the deliberately lossy side**: `any`

@@ -844,18 +844,27 @@ function headingFacts(inputs: readonly TrackedTextInput[]): HeadingFactResult {
       ));
       continue;
     }
+    const lines = body.split("\n");
+    const rows: Array<{ fact: RegistryView["tracked_headings"][number]; level: number; line: number }> = [];
     let byteOffset = 0;
-    for (const line of body.split("\n")) {
-      const match = /^#{1,6} +(.+?)(?: +#*)?$/u.exec(line);
+    for (const [lineIndex, line] of lines.entries()) {
+      const match = /^(#{1,6}) +(.+?)(?: +#*)?$/u.exec(line);
       if (match !== null) {
-        const start = byteOffset + encoder.encode(line.slice(0, line.indexOf(match[1]!))).byteLength;
-        facts.push({
+        const start = byteOffset + encoder.encode(line.slice(0, line.indexOf(match[2]!))).byteLength;
+        rows.push({ fact: {
           path: input.source,
-          heading: match[1]!,
-          span: { start_byte: start, end_byte: start + encoder.encode(match[1]!).byteLength },
-        });
+          heading: match[2]!,
+          span: { start_byte: start, end_byte: start + encoder.encode(match[2]!).byteLength },
+        }, level: match[1]!.length, line: lineIndex });
       }
       byteOffset += encoder.encode(line).byteLength + 1;
+    }
+    for (const [index, row] of rows.entries()) {
+      const next = rows.slice(index + 1).find((candidate) => candidate.level <= row.level);
+      facts.push({
+        ...row.fact,
+        section_text: lines.slice(row.line, next?.line ?? lines.length).join("\n"),
+      });
     }
   }
   return {

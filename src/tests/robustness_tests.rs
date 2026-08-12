@@ -10096,7 +10096,7 @@ fn sign_partition_map_rep_generates_and_checks() {
 /// aligning because the rust `cddl` oracle (parser dep + conformance validator) hard-errors on the
 /// construct, so an aligned implementation would be uncertifiable; revisit when upstream ships the
 /// per-value semantics (ledgered in `cddl-matrix/ROADMAP.md`; scoreboard in
-/// `draft/cddl-size-on-int-divergence.md`). Pins the message (actionable: names the rule and both
+/// `cddl-matrix/upstream-reports/rust-cddl-size-on-int-divergence.md`). Pins the message (actionable: names the rule and both
 /// conformant spellings) and the boundary: `uint .size N` must KEEP generating.
 #[test]
 fn size_on_signed_int_rejects_gracefully() {

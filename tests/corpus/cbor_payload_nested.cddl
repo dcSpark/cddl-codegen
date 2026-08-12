@@ -14,7 +14,7 @@
 ;
 ; Kept OUT of cbor_in_bytes.cddl deliberately, on the precedent cbor_nonempty_payload.cddl
 ; documents: the ruby `cddl` gem (0.12.14) cannot PARSE an inline composite type2 controller
-; (`bytes .cbor [* ...]` — exit 65, draft/ruby-cddl-inline-composite-control-arg-gap.md), and a
+; (`bytes .cbor [* ...]` — exit 65, cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md), and a
 ; spec-parse failure poisons every rule in its fixture for the `ir_conformance_corpus` ruby sweep.
 ; Isolating the shape here keeps the ruby-judgeable fixtures judgeable; this one is
 ; compile/snapshot-gated only.

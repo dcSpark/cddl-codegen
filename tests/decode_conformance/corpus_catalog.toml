@@ -1596,7 +1596,7 @@ axis = "corpus"
 example = "x = bytes .cbor { * bignint => uint }\nholder = [payload: x]"
 fixture = "cbor_bignint_table"
 rule = "holder"
-pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; re-mint when the gem fix ships)"
 
 [[row]]
 id = "cbor_bignint_table.x"
@@ -1604,7 +1604,7 @@ axis = "corpus"
 example = "x = bytes .cbor { * bignint => uint }"
 fixture = "cbor_bignint_table"
 rule = "x"
-pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; re-mint when the gem fix ships)"
 
 [[row]]
 id = "cbor_enum_payload.cbor_enum_holder"
@@ -1802,7 +1802,7 @@ axis = "corpus"
 example = "cbor_int_table = bytes .cbor { * tstr => int }"
 fixture = "cbor_int_table"
 rule = "cbor_int_table"
-pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; re-mint when the gem fix ships)"
 
 [[row]]
 id = "cbor_nonempty_payload.wrapped_nonempty"
@@ -1810,7 +1810,7 @@ axis = "corpus"
 example = "wrapped_nonempty = bytes .cbor [+ uint]"
 fixture = "cbor_nonempty_payload"
 rule = "wrapped_nonempty"
-pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; re-mint when the gem fix ships)"
 
 [[row]]
 id = "cbor_nonempty_payload.wrapped_nonempty_map"
@@ -1818,7 +1818,7 @@ axis = "corpus"
 example = "wrapped_nonempty_map = bytes .cbor { + tstr => uint }"
 fixture = "cbor_nonempty_payload"
 rule = "wrapped_nonempty_map"
-pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; re-mint when the gem fix ships)"
 
 [[row]]
 id = "cbor_payload_inline_nested.cbor_inline_nested"
@@ -1946,7 +1946,7 @@ axis = "corpus"
 example = "cbor_payload_nested = [\n  elem_payloads: bytes .cbor [* bytes .cbor uint],\n  value_payloads: bytes .cbor {* uint => bytes .cbor uint},\n  after_payload: bytes .cbor uint,\n  tail: text,\n]"
 fixture = "cbor_payload_nested"
 rule = "cbor_payload_nested"
-pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; re-mint when the gem fix ships)"
 
 [[row]]
 id = "cbor_wrapped_group_array.coords"
@@ -2074,7 +2074,7 @@ axis = "corpus"
 example = "coords = (uint, uint)\n; A `.cbor` payload wrapping an anonymous array-of-plain-group (`bytes .cbor [coords]`): the plain\n; group `coords` must be promoted to an Array-rep Record struct and emitted, not dangled on a bare,\n; never-emitted `Coords`.\nwrapped = bytes .cbor [coords]\n; The same array-of-plain-group directly in member position (`[coords]` as a field type) exercises\n; the identical promotion path (formerly it too dangled)."
 fixture = "cbor_wrapped_group_array"
 rule = "wrapped"
-pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; re-mint when the gem fix ships)"
 
 [[row]]
 id = "comparison_controls.comparison_controls"

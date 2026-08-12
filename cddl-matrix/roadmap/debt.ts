@@ -92,6 +92,20 @@ export interface DebtRestructureRequest {
   readonly added: readonly DebtOwnerKey[];
 }
 
+/**
+ * A semantic owner may leave the roadmap because its current-state fact moved to a durable tracked
+ * document rather than to another roadmap owner. The exact base/candidate snapshots and the
+ * destination provider are part of the witness; callers cannot authorize a removal with counts.
+ */
+export interface DebtExternalRelocationRequest {
+  readonly removed: DebtOwnerKey;
+  readonly added: readonly DebtOwnerKey[];
+  readonly base_source: DebtDocumentSourceFingerprint;
+  readonly candidate_source: DebtDocumentSourceFingerprint;
+  readonly replacement_pin: Extract<ReplacementPin, { kind: "file_heading" }>;
+  readonly candidate_replacement_facts: readonly DebtReplacementResolutionFact[];
+}
+
 export interface ValidatedDebtTransitionFacts {
   readonly restructure_count: number;
   readonly retirement_count: number;
@@ -1614,6 +1628,96 @@ export function validateDebtTransitionFacts(
     }
     for (const removedIndex of requestRemoved) removed.add(removedIndex);
     for (const addedIndex of requestAdded) added.add(addedIndex);
+  }
+  if (issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
+  const facts: ValidatedDebtTransitionFacts = Object.freeze({
+    restructure_count: requests.length,
+    retirement_count: 0,
+  });
+  validatedDebtTransitions.set(facts, {
+    base,
+    candidate,
+    base_document: options.base_document,
+    candidate_document: options.candidate_document,
+    base_signature: debtSignature(base),
+    candidate_signature: debtSignature(candidate),
+    base_document_signature: documentTransitionSignature(options.base_document),
+    candidate_document_signature: documentTransitionSignature(options.candidate_document),
+    removed,
+    added,
+  });
+  return Object.freeze({ ok: true, facts, issues: Object.freeze([]) as readonly [] });
+}
+
+/**
+ * Validate an external current-state relocation. The removed owner must be one exact base-only
+ * semantic owner, every named successor must be one exact candidate-only semantic owner, and the
+ * durable file-heading destination must resolve exactly once in the candidate registry.
+ */
+export function validateDebtExternalRelocationFacts(
+  base: MigrationDebt,
+  candidate: MigrationDebt,
+  options: Pick<DebtComparisonOptions, "base_document" | "candidate_document">,
+  requests: readonly DebtExternalRelocationRequest[],
+): DebtTransitionFactResult {
+  const comparisonOptions: DebtComparisonOptions = options;
+  const issues: RoadmapIssue[] = [];
+  const removed = new Set<string>();
+  const added = new Set<string>();
+  if (requests.length === 0) {
+    issues.push(issue(comparisonOptions, "E-DEBT-OWNER-REGRESSION", "external_relocation",
+      "external relocation transition fact set is empty"));
+  }
+  for (const [requestIndex, request] of requests.entries()) {
+    const logicalPath = `external_relocation[${requestIndex}]`;
+    const removedIndex = debtOwnerIndex(request.removed);
+    const removedOwner = base.owners.get(removedIndex);
+    const sourceJoined = fingerprintMatches(request.base_source, options.base_document) &&
+      fingerprintMatches(request.candidate_source, options.candidate_document);
+    const destinationJoined = replacementResolvesExactlyOnce(
+      request.replacement_pin,
+      request.candidate_replacement_facts,
+    );
+    const removedJoined = removedOwner?.state === "semantic" && !candidate.owners.has(removedIndex) &&
+      documentHasOwner(options.base_document, request.removed) &&
+      !documentHasOwner(options.candidate_document, request.removed) && !removed.has(removedIndex);
+    const requestRemoved = new Set<string>([removedIndex]);
+    if (removedJoined && request.removed.owner_kind !== "source_span") {
+      for (const spanId of ownerSpans(options.base_document, request.removed)) {
+        const spanIndex = debtOwnerIndex({
+          roadmap: request.removed.roadmap,
+          owner_kind: "source_span",
+          owner_id: spanId,
+          owner_field: "coverage",
+        });
+        if (base.owners.has(spanIndex) && !candidate.owners.has(spanIndex)) requestRemoved.add(spanIndex);
+      }
+    }
+    const requestAdded = new Set<string>();
+    let additionsJoined = true;
+    for (const addedKey of request.added) {
+      const addedIndex = debtOwnerIndex(addedKey);
+      if (requestAdded.has(addedIndex) || added.has(addedIndex) || base.owners.has(addedIndex) ||
+        candidate.owners.get(addedIndex)?.state !== "semantic" ||
+        !documentHasOwner(options.candidate_document, addedKey) ||
+        documentHasOwner(options.base_document, addedKey) || addedKey.roadmap !== request.removed.roadmap) {
+        additionsJoined = false;
+        break;
+      }
+      requestAdded.add(addedIndex);
+    }
+    if (!sourceJoined || !destinationJoined || !removedJoined || !additionsJoined ||
+      [...requestRemoved].some((index) => removed.has(index))) {
+      issues.push(issue(
+        comparisonOptions,
+        "E-DEBT-OWNER-REGRESSION",
+        logicalPath,
+        "external relocation lacks exact source, semantic owner, successor, or durable destination joins",
+      ));
+      continue;
+    }
+    for (const index of requestRemoved) removed.add(index);
+    for (const index of requestAdded) added.add(index);
   }
   if (issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
   const facts: ValidatedDebtTransitionFacts = Object.freeze({

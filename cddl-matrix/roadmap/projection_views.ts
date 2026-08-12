@@ -304,6 +304,11 @@ function anchorPiece(piece: Piece): Piece {
 }
 
 type OperationalClass = "systems" | "live" | "history";
+const OPERATIONAL_BUCKET_FLOORS: Readonly<Record<OperationalClass, number>> = Object.freeze({
+  systems: 1,
+  live: 1,
+  history: 0,
+});
 function operationalClass(document: RoadmapDocument, ownerId: string): OperationalClass {
   const record = document.records.find((candidate) => String(candidate.id) === ownerId);
   if (record === undefined || !("render_authority" in record) || record.render_authority !== "semantic") return "systems";
@@ -365,9 +370,11 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
         if (piece.owner.kind === "record") current = operationalClass(document, piece.owner.id);
         buckets[current].push(piece);
       }
-      for (const kind of ["systems", "live", "history"] as const) if (buckets[kind].length === 0) {
+      for (const kind of ["systems", "live", "history"] as const) if (
+        buckets[kind].length < OPERATIONAL_BUCKET_FLOORS[kind]
+      ) {
         issues.push(issue(document, `projection.layout.operational-watches.${kind}`,
-          `curated testing operational bucket ${kind} is empty`));
+          `curated testing operational bucket ${kind} has ${buckets[kind].length} pieces below floor ${OPERATIONAL_BUCKET_FLOORS[kind]}`));
       }
       const headings: Readonly<Record<OperationalClass, Uint8Array>> = {
         systems: UTF8.encode("\n### Operational systems, controls, and resource work\n\n"),
@@ -377,6 +384,7 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
       const replacement = (["systems", "live", "history"] as const).flatMap((kind) =>
         buckets[kind].length === 0 ? [] : [generatedPiece(`wp7-operational-${kind}`, headings[kind]), ...buckets[kind]]
       );
+      replacement.push(generatedPiece("wp7-operational-tail", UTF8.encode("\n")));
       pieces.splice(start + 1, end - start - 1, ...replacement);
     }
   }

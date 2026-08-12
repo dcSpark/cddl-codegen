@@ -697,7 +697,7 @@ remains is deleting the notes that explain why we do not have it yet.
   the generator mints calendar-INVALID `tdate`s (`0("5906-11-31t22:32:49-05:59")` — November 31
   does not exist) and the validator accepts them, while the local-fixes rust oracle rejects
   (RFC 3339 date validity — arguably the correct reading); repro + impact under "Adjacent
-  observations" in `draft/rust-cddl-named-key-map-gap.md` (local note) — the same
+  observations" in `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md` (local note) — the same
   candidate-upstream-report disposition, not yet filed.
 <a id="roadmap-id-matrix.float-key-null-upstream"></a>
 - When a release ships the `707c038` float-key/null member-key fix (README gap #10): prune the
@@ -705,23 +705,22 @@ remains is deleting the notes that explain why we do not have it yet.
   probes' provenance wording).
 <a id="roadmap-id-matrix.uint-control-operator-upstream"></a>
 - When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
-  README gap #1 and `draft/rust-cddl-uint-control-op-gap.md`.
+  README gap #1's fix-provenance notes.
 <a id="roadmap-id-matrix.array-sequence-upstream"></a>
 - When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
   crates.io: prune the fix-provenance notes (README gaps #2/#4, the draft repro table, the vector
   `reason` provenance).
 <a id="roadmap-id-matrix.non-uint-range-upstream"></a>
-- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending — PR material
-  in `draft/rust-cddl-float-range-gap.md`): prune the fix-provenance notes (README gap #3, that
-  draft, and the rangeop vectors' `reason` provenance).
+- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending): prune the
+  fix-provenance notes in README gap #3 and the rangeop vectors' `reason` provenance.
 <a id="roadmap-id-matrix.radix-literal-upstream"></a>
 - When a release ships the `2c7548e` radix-literal lexer fix (upstream PR pending — fix +
-  35-test suite on the fork; `draft/rust-cddl-radix-int-literal-gap.md`): prune the fix-provenance
-  notes (README gap #5, that draft). Separately track the WG spec question the fix spawned
+  35-test suite on the fork): prune the fix-provenance notes in README gap #5. Separately track the
+  WG spec question the fix spawned
   (cbor-wg/cddl#33, filed: radix-mantissa floats the unordered ABNF technically derives). Future
   radix-POSITION rows (occurrence bounds `0x2*0x4`, tag heads `#6.0x20`, …) additionally wait on a
   ruby oracle fix — ruby corroborates radix in value position only
-  (`draft/radix-oracle-deviations-verdict.md`).
+  (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
 <a id="roadmap-id-matrix.signed-int-size-upstream"></a>
 - `.size` on a signed `int` — semantics CLARIFIED by the RFC author (cbor-wg/cddl#32): a control
   distributes over `int = uint / nint`, and an undefined application (`.size` on `nint`) is a
@@ -729,7 +728,7 @@ remains is deleting the notes that explain why we do not have it yet.
   REJECTS the construct gracefully (the old `i{8N}` mapping mis-enforced the clarified window in
   both directions, and the rust oracle hard-errors on it, so an aligned implementation would be
   uncertifiable — pinned by `size_on_signed_int_rejects_gracefully`; scoreboard + detail in
-  `draft/cddl-size-on-int-divergence.md`). Remaining upstream waits: (1) the rust CLI's hard error
+  `cddl-matrix/upstream-reports/rust-cddl-size-on-int-divergence.md`). Remaining upstream waits: (1) the rust CLI's hard error
   is a citable OVER-rejection bug — candidate `local-fixes` fork fix + upstream PR; once fixed,
   supporting `int .size N` as the uint window becomes certifiable (a `ctl.size.int` row becomes
   mintable) and the rejection can be revisited. (2) When the clarification lands as erratum/spec
@@ -737,13 +736,13 @@ remains is deleting the notes that explain why we do not have it yet.
 <a id="roadmap-id-matrix.ruby-inline-controller-upstream"></a>
 - When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
   — gem 0.12.14 exit-65s at parse, so the whole containing spec becomes unjudgeable; repro +
-  upstream steps in `draft/ruby-cddl-inline-composite-control-arg-gap.md`): remove the
+  upstream steps in `cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md`): remove the
   `ir_conformance_corpus` gate's `RUBY_EXPECTED_FAIL` entries for `cbor_wrapped_group_array` and
   `cbor_bignint_table` (their stale-ledger guards flip red by themselves once the divergence
   disappears) and prune that draft.
   Until then, rows/fixtures needing ruby corroboration for a control-arg construct must name the
   controller type — same caveat class as the ruby radix-position deviations
-  (`draft/radix-oracle-deviations-verdict.md`).
+  (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
 <a id="roadmap-id-matrix.bignum-key-tag-upstream"></a>
 - When a release ships the `c2ebf9f` bignum map-key/value-tag fix (upstream PR pending — fix +
   30-test suite on the fork; README gap #6): prune the fix-provenance notes (README gap #6, the
@@ -805,7 +804,7 @@ First confirm that
 
 This remains OPEN at the pinned `ac1b98e` rev; the differential repro, suspected
 `src/validator/cbor.rs` site, and prune steps are recorded in
-`draft/rust-cddl-tag-map-key-gap.md`, and no upstream issue has been filed yet. When a fix ships,
+`cddl-matrix/upstream-reports/rust-cddl-tag-map-key.md`, and no upstream issue has been filed yet. When a fix ships,
 re-mint the row it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its
 `pinned_reason` disappears once candidates survive the two-oracle gate), re-run the full `verify.ts`
 in the same change so the row's evidence picks up the corroboration clause, and prune README gap #8
@@ -814,7 +813,7 @@ plus that draft.
 - When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
   #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
   multi-entry-composite-array-key observations, and prune steps in
-  `draft/rust-cddl-named-key-map-gap.md`, local note; no upstream issue filed yet): re-mint the
+  `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md`, local note; no upstream issue filed yet): re-mint the
   corpus decode rows it blocks
   (`--mint-decode-corpus --only=c_style_enum_map_key.enum_keyed_map,table_enum_key.enum_keyed,table_enum_key.enum_key_holder`
   — the empty-instance-only rows pick up non-empty vectors, and the pinned/active flip-flop the

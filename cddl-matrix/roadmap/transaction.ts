@@ -19,17 +19,20 @@ import { validateCampaignAuthorityTuple } from "./campaign_authority.ts";
 import {
   compareMigrationDebt,
   debtOwnerIndex,
+  validateDebtExternalRelocationFacts,
   validateDebtGuardTransferFacts,
   validateDebtRetirementFacts,
   validateSemanticConversionFacts,
   type DebtReplacementResolutionFact,
+  type DebtExternalRelocationRequest,
+  type DebtOwnerKey,
   type MigrationDebt,
   type ValidatedDebtTransitionFacts,
 } from "./debt.ts";
 import type { RoadmapIssue } from "./errors.ts";
 import { validateGlobalIdentity, type GlobalIdentityResult, type GlobalOwnerClaim } from "./identity.ts";
 import { buildRoadmapIndexes } from "./indexes.ts";
-import type { FullCommitId, RoadmapId, RoadmapName } from "./model/core.ts";
+import type { FullCommitId, PartId, RepoPath, RoadmapId, RoadmapName, SpanId } from "./model/core.ts";
 import type {
   CampaignDocumentV1,
   CurrentGuard,
@@ -68,6 +71,14 @@ import {
   type RetiredValidationResult,
   type TombstoneOriginFact,
 } from "./retired.ts";
+import {
+  validateNorthStarStructuralRelocations,
+  validateWp8TestingRelocation,
+  WP8_RETAINED_MEMORY_RELOCATION_GUARD,
+  WP8_RETIRED_RELOCATION_GUARDS,
+  WP8_RETIRED_STRUCTURAL_PART_IDS,
+  WP8_RETIRED_STRUCTURAL_PART_RELOCATION_GUARDS,
+} from "./relocation.ts";
 
 const codePointSort = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -647,6 +658,13 @@ export function validateLifecycleRevision(input: LifecycleRevisionInput): Valida
   const retired = input.retired === undefined ? undefined : validateRetiredIds(input.retired, input.registry);
   issues.push(...validateCombinedRoadmapJoins(input));
   if (retired !== undefined) issues.push(...retired.issues);
+  if (input.retired !== undefined && input.roadmaps.testing.document !== undefined) {
+    issues.push(...validateWp8TestingRelocation(input.roadmaps.testing.document, input.retired));
+    const wp8Ids = new Set(input.retired.entries.map((entry) => String(entry.id)));
+    if (wp8Ids.has("testing.backgrounded-check-ts-full-launched-sub-agent-s")) {
+      issues.push(...validateNorthStarStructuralRelocations(input.registry));
+    }
+  }
   for (const guard of input.registry.current_guards) {
     if (!resolveReplacementPin(guard.replacement_pin, input.registry).resolved) {
       issues.push(issue("E-TRANSACTION-GUARD", `guard[${JSON.stringify(guard.id)}]`, "current guard replacement pin must resolve exactly once in this revision"));
@@ -1291,6 +1309,63 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
     else if (conversion.facts !== undefined) {
       factsSupplied = true;
       facts.push(conversion.facts);
+    }
+    const wp8RelocationBatch = roadmap === "testing" &&
+      WP8_RETIRED_RELOCATION_GUARDS.every((guard) =>
+        candidate.retired?.entries.has(guard.id as RoadmapId) === true &&
+        base.retired?.entries.has(guard.id as RoadmapId) !== true
+      );
+    if (wp8RelocationBatch) {
+      factsSupplied = true;
+      const candidateReplacementFacts = replacementFacts(candidate.registry);
+      const baseSource = sourceFingerprint(baseDocument);
+      const candidateSource = sourceFingerprint(candidateDocument);
+      const request = (
+        removed: DebtOwnerKey,
+        added: readonly DebtOwnerKey[],
+        guard: { readonly path: string; readonly heading: string },
+      ): DebtExternalRelocationRequest => ({
+        removed,
+        added,
+        base_source: baseSource,
+        candidate_source: candidateSource,
+        replacement_pin: {
+          kind: "file_heading",
+          path: guard.path as RepoPath,
+          heading: guard.heading,
+          claim_md: new TextEncoder().encode("Current-state fact relocated to this durable section.\n"),
+        },
+        candidate_replacement_facts: candidateReplacementFacts,
+      });
+      const relocationRequests: DebtExternalRelocationRequest[] =
+        WP8_RETIRED_STRUCTURAL_PART_IDS.map((partId) => {
+          const guard = WP8_RETIRED_STRUCTURAL_PART_RELOCATION_GUARDS.find((value) => value.id === partId)!;
+          return request({
+            roadmap: "testing",
+            owner_kind: "part",
+            owner_id: partId as PartId,
+            owner_field: "body_md",
+          }, [], guard);
+        });
+      relocationRequests.push(request({
+        roadmap: "testing",
+        owner_kind: "source_span",
+        owner_id: "span-part-part-spend-measurements" as SpanId,
+        owner_field: "coverage",
+      }, [{
+        roadmap: "testing",
+        owner_kind: "source_span",
+        owner_id: "span-record-tier-memory-spend-measurements" as SpanId,
+        owner_field: "coverage",
+      }], WP8_RETAINED_MEMORY_RELOCATION_GUARD));
+      const relocated = validateDebtExternalRelocationFacts(
+        baseDebt,
+        candidateDebt,
+        { base_document: baseDocument, candidate_document: candidateDocument },
+        relocationRequests,
+      );
+      if (relocated.ok) facts.push(relocated.facts);
+      else issues.push(...relocated.issues);
     }
     if (lifecycleReady) {
       const retirementRequests = (activeRetirements.get(roadmap) ?? []).flatMap((id) => {

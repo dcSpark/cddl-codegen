@@ -436,12 +436,12 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       (`.le/.lt/.gt/.eq/.ne/.ge`) whose probe examples target `int` with literal, non-vacuous
   //       bounds — over `int` BOTH oracles enforce them, so each row carries an in-type boundary
   //       violation. That `int` targeting is load-bearing: the rust oracle (cddl 0.10.x) does not
-  //       enforce these ops over a `uint` target (draft/rust-cddl-uint-control-op-gap.md).
+  //       enforce these ops over a `uint` target.
   //   (b) The range rows. `rangeop.{inclusive,exclusive}` (uint-headed base, `0..10`/`0...10`) and their
   //       head-type × sign variation rows `.int` / `.nint` / `.float`. Each carries a boundary-violation
   //       reject vector (out-of-window / excluded endpoint / NaN). BOTH oracles reject the violations:
-  //       the released rust 0.10.x CLI blanket-rejected EVERY instance of a non-uint-endpoint range
-  //       (draft/rust-cddl-float-range-gap.md), leaving the `.int`/`.nint`/`.float` rows accept-less
+  //       the released rust 0.10.x CLI blanket-rejected EVERY instance of a non-uint-endpoint range,
+  //       leaving the `.int`/`.nint`/`.float` rows accept-less
   //       with ruby-only reject certification, but the fork's `885c61c` fix made rust discriminating —
   //       those rows now carry minted accepts too; the enforcement oracle that matters remains
   //       cddl-codegen's own generated decoder

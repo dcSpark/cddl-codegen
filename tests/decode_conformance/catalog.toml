@@ -10314,7 +10314,7 @@ hex = "8100"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "the value 0 is not the fixed value 0b1010 = 10 — violates `m = [v: 0b1010]`; hand-pinned as the silent-zero trap (a radix-conversion regression that reads `0b1010` as 0 flips exactly this vector; cf. the unwrap_or(0) conversion class in draft/rust-cddl-radix-int-literal-gap.md § post-implementation findings)"
+reason = "the value 0 is not the fixed value 0b1010 = 10 — violates `m = [v: 0b1010]`; hand-pinned as the silent-zero trap (a radix-conversion regression that reads `0b1010` as 0 flips exactly this vector)"
 expect_err = "Expected fixed value 10 found 0"
 
 [[row.vector]]
@@ -10343,7 +10343,7 @@ hex = "8100"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "the value 0 is not the fixed value 0x10 = 16 — violates `m = [v: 0x10]`; hand-pinned as the silent-zero trap (a radix-conversion regression that reads `0x10` as 0 flips exactly this vector; cf. the unwrap_or(0) conversion class in draft/rust-cddl-radix-int-literal-gap.md § post-implementation findings)"
+reason = "the value 0 is not the fixed value 0x10 = 16 — violates `m = [v: 0x10]`; hand-pinned as the silent-zero trap (a radix-conversion regression that reads `0x10` as 0 flips exactly this vector)"
 expect_err = "Expected fixed value 16 found 0"
 
 [[row.vector]]

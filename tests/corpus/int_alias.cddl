@@ -11,7 +11,7 @@
 ; must still descend through). The table-VALUE leg (`Map(_, Rust(Int))` under `.cbor`) lives in
 ; cbor_int_table.cddl — split out because its inline-map controller
 ; (`bytes .cbor { * tstr => int }`) is a PARSE error for the ruby `cddl` gem (0.12.14; the gap in
-; draft/ruby-cddl-inline-composite-control-arg-gap.md), and a spec-parse failure poisons every
+; cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md), and a spec-parse failure poisons every
 ; rule in its fixture for the `ir_conformance_corpus` ruby sweep. Kept apart, `bare_int` and
 ; `cbor_int` stay ruby-judgeable. Both rules are UNCONSTRAINED — a control (e.g. `int .ne 1`)
 ; instead makes a RangeCheck wrapper STRUCT that the rust-struct walk already covered, so the

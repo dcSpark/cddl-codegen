@@ -2318,7 +2318,7 @@ function validateBoth(spec: string, hex: string): { ruby: number; rust: number }
 
 // --- Change A: deterministic ruby verdict for the annotation `ruby=` clause -------------------------
 // For a value-narrowing controller (rubyGenerateIsBernoulli), the ruby `generate` exit is a Bernoulli
-// trial and must NOT be trusted (draft/ruby-cddl-generate-bernoulli-constraint-controllers.md). rubyClause
+// trial and must NOT be trusted (cddl-matrix/upstream-reports/ruby-cddl-bernoulli-constraint-controllers.md). rubyClause
 // replaces the raw generate exit wherever it fed evidence/status, with a deterministic source. Token
 // grammar (the `; ruby=` delimiter downstream splitters key on is preserved; the parenthesized provenance
 // is new):
@@ -2521,7 +2521,7 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   //     BOTH oracles still REJECT it (nonzero exit); a constraint vector that has BECOME spec-valid is
   //     upstream spec drift and is dropped/flagged. NOTE: the rust oracle (cddl 0.10.x) does NOT
   //     enforce the numeric range/eq control ops (`.le/.lt/.gt/.eq/.ne/.ge`) over a `uint` target
-  //     (int-target controls ARE enforced — draft/rust-cddl-uint-control-op-gap.md) — it accepts
+  //     (int-target controls ARE enforced) — it accepts
   //     in-type boundary violations — so a boundary-violating vector on those rows cannot pass this
   //     both-reject gate; those rows stay `enforce = unverified` by design (README.md § "Upstream
 //     oracle gaps"). A
@@ -2764,10 +2764,10 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   // holds an over-acceptance pin would silently discard a pin that must survive re-mints VERBATIM.
   if (candidates.length === 0 && handVecs.length === 0 && rejectPins.length === 0 && overAcceptPins.length === 0) {
     // The dominant pin cause here is the ruby 0.12.14 inline-composite `.cbor`-controller parse gap
-    // (exit 65 — draft/ruby-cddl-inline-composite-control-arg-gap.md; the ir_conformance_corpus
+    // (exit 65 — cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; the ir_conformance_corpus
     // RUBY_EXPECTED_FAIL prune condition in cddl-matrix/ROADMAP.md re-mints these when the gem fix ships).
     const gap = lastRubyExit === 65
-      ? " — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+      ? " — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; re-mint when the gem fix ships)"
       : "";
     return pin(`ruby generator cannot mint this construct (last exit ${lastRubyExit})${gap}`);
   }

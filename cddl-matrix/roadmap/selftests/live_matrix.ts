@@ -82,8 +82,8 @@ export function liveMatrixLegacyProjection(): Uint8Array {
     .replace(/^ *<a id="roadmap-id-[^"]+"><\/a>\n\n(?= *#)/gmu, "")
     .replace(/^ *<a id="roadmap-id-[^"]+"><\/a>\n/gmu, ""));
   assert(
-    projection.byteLength === 84_580 &&
-      sha256(projection) === "f010705393ddbd0b5fa25368c7903df5c5f87a6e500bbdb9c99f7f22bf9bd69e",
+    projection.byteLength === 84_591 &&
+      sha256(projection) === "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d",
     "reconstructed matrix legacy projection escaped its frozen length/digest",
   );
   return projection;

@@ -20,9 +20,9 @@ import {
 const TESTING_SOURCE_PATH = "tests/testing-roadmap.toml" as RepoPath;
 const TESTING_PROJECTION_PATH = "tests/TESTING_ROADMAP.md" as RepoPath;
 const TESTING_PICKUP = Object.freeze({
-  sha256: "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b4120d70e",
-  byte_length: 323_398,
-  line_count: 3_597,
+  sha256: "6e90f1fb06011cefa546d861da0a6525ff1af6fc81bbe51c9ed5f035578b53af",
+  byte_length: 306_388,
+  line_count: 3_412,
   eof: "lf" as const,
 });
 
@@ -30,11 +30,11 @@ const TESTING_V0_COUNTS = Object.freeze({
   sections: 9,
   fragments: 2,
   legacy_markers: 0,
-  records: 137,
-  parts: 60,
+  records: 130,
+  parts: 57,
   generated_slots: 0,
-  manifest: 208,
-  spans: 208,
+  manifest: 198,
+  spans: 198,
 });
 
 const TESTING_V0_GROUP_COUNTS: Readonly<Record<string, number>> = Object.freeze({
@@ -42,7 +42,7 @@ const TESTING_V0_GROUP_COUNTS: Readonly<Record<string, number>> = Object.freeze(
   "next-priority": 25,
   "standing-system": 61,
   "deferred-features": 18,
-  "operational-watches": 20,
+  "operational-watches": 13,
   "declined-boundaries": 11,
 });
 
@@ -72,27 +72,27 @@ const RULE_TRAILING = Object.freeze({
   projection_group: "pending-maintainer",
   aliases: Object.freeze(["B3-002", "B3-005", "T1-09"]),
   span_id: "span-record-rule-trailing-directive-classification",
-  start_byte: 8_737,
-  end_byte: 11_601,
+  start_byte: 6_013,
+  end_byte: 8_877,
   sha256: "c5a5b506dba80f59781f9024767bd7b6bd14d191981f1923553d12ad65b8d338",
 });
 
 const TESTING_V0_STRUCTURE_SHA256 =
-  "1c2f123fbfa4489d520e44f425a871c92a9ec3a4129967d76b547e91f5b312eb";
+  "162d134c14916246d85f47c3b21998c4d01c81f8bd5af4570ffa62a552fc44d1";
 
 const TESTING_V0_PHYSICAL_INVENTORY: Readonly<Record<string, number>> = Object.freeze({
   h1: 1,
   h2: 7,
   h3: 1,
-  column_zero_list_nodes: 138,
-  nested_list_nodes: 60,
-  nested_bold_nodes: 31,
+  column_zero_list_nodes: 131,
+  nested_list_nodes: 57,
+  nested_bold_nodes: 28,
   table_lines: 4,
   table_blocks: 1,
   html_comment_starts: 1,
   fenced_code_blocks: 0,
-  inline_code_delimiters: 4_242,
-  inline_code_lines: 1_490,
+  inline_code_delimiters: 4_004,
+  inline_code_lines: 1_404,
 });
 
 function floorIssue(

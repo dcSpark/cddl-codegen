@@ -199,8 +199,7 @@ rows `.int`/`.nint`/`.float`), the three occurrence-bound rows `occur.bounded{,.
 `BoundedOrderedSet` for reject sets), and the three fixed-value lexeme
 rows `value.number.{hexfloat,hex,bin}` (wrong-value instances against the fixed 3.0 / 16 / 10,
 rejected as FixedValueMismatch — hex/bin carry hand pins including `[0]`, the silent-zero
-radix-conversion trap from `draft/rust-cddl-radix-int-literal-gap.md` § post-implementation
-findings), the fixed-selector MEMBER-equality family
+radix-conversion trap), the fixed-selector MEMBER-equality family
 (`contain.{array-element,map-value,occurrence-target}.…` — literal `prelude.{true,false,null}` and
 `type2.value`/`value.*` members, including nint and present-wrong optional forms, plus explicit
 `type2.tag.fixed_{bool,null}` array/map members). Each preserves the outer container, tag where
@@ -226,7 +225,7 @@ set, as well as the empty over-acceptance set, so
 a decay fails loudly rather than
 silently dropping enforcement evidence): the numeric ops' probe examples target `int` with literal,
 non-vacuous bounds (`x = int .le 10`, `.ge 5`, …) because the rust oracle does not enforce these ops
-over a `uint` target (`draft/rust-cddl-uint-control-op-gap.md`), so `uint`-targeted or
+over a `uint` target, so `uint`-targeted or
 vacuously-bounded forms cannot pass the both-oracles-reject gate; the non-uint-endpoint range
 rows (`.int`/`.nint`/`.float`) carry rust corroboration only against the local-fixes oracle @
 `885c61c` — the released 0.10.x CLI blanket-rejects EVERY instance of a float or negative-int
@@ -291,7 +290,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    control operators over a `uint` target — it accepts a boundary violation like `0x0b` (11) against
    `x = uint .le 10`. Scope: the numeric range/eq ops (`.le`/`.lt`/`.gt`/`.eq`/`.ne`/`.ge`) AND
    `.size`/`.bits` over uint targets; the gap is target-type-specific — the identical controls over
-   `int` ARE enforced. Upstream PR submitted; full repro in `draft/rust-cddl-uint-control-op-gap.md`.
+   `int` ARE enforced. Upstream PR submitted.
    This is why the six ops' probe examples (`control_examples.toml`) target `int` with literal,
    non-vacuous bounds (§ Q4), and why `ctl.size.uint`'s rust corroboration leans on the local-fixes
    build.
@@ -303,7 +302,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    the two catalog rows that sat on it honestly
    (`contain.occurrence-target.grpent.inline_group.exactly_once_array` and
    `contain.occurrence-target.grpent.groupname`) are re-minted with real accept vectors against that
-   build. Full repro table: `draft/rust-cddl-group-occurrence-array-count-gap.md`.
+   build.
 3. **non-uint-endpoint range blanket rejection** (released 0.10.x — a 0.10.0 regression): every
    instance validated against a range whose endpoints are not uint is rejected, valid or invalid
    (`invalid cddl range. upper and lower values must be uint types`) — float ranges (`0.5..10.5`)
@@ -313,8 +312,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    floats only, via a NaN-safe accept-form check); the six
    `rangeop.{inclusive,exclusive}.{int,nint,float}` variation rows that sat on it with NO accept
    vector are re-minted with real accept vectors against that build, and their `class="constraint"`
-   rejects are now corroborated discriminatingly by rust instead of leaning on ruby alone. Repro +
-   fix provenance: `draft/rust-cddl-float-range-gap.md`.
+   rejects are now corroborated discriminatingly by rust instead of leaning on ruby alone.
 4. **control-op-carrying rule as array entry misvalidated** (released 0.10.x): the WHOLE array is
    checked against the rule (`h = [x]`, `x = uint .size 2`, instance `[4786]` rejects; an
    uncontrolled `x = uint` in the same position validates fine). Subsumed by the same `773b723`
@@ -331,8 +329,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    accept vectors + hand wrong-fixed-value constraint pins). **Ruby oracle caveat:**
    ruby corroborates radix literals in VALUE position only — its own radix handling in other
    positions (occurrence bounds, tag heads, simple values) is broken
-   (`draft/radix-oracle-deviations-verdict.md`), so future radix-position rows can't lean on ruby.
-   Repro + fix provenance: `draft/rust-cddl-radix-int-literal-gap.md`.
+   (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`), so future radix-position rows can't lean on ruby.
 6. **bignum-typed map keys rejected wholesale + bignum VALUE tags unchecked** (released 0.10.x): the
    member-key walk had no predicate for the prelude bignum types (`biguint`/`bignint`/`bigint`), so
    `validate` rejected EVERY map whose KEY domain is one of them ("expected object value of type
@@ -376,7 +373,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    two-oracle gate — so decode-foreign corroboration for tagged map keys is structurally
    unavailable; the row's support verdict is unaffected (execution-gated green). No upstream
    issue filed yet. Differential repro + suspected `src/validator/cbor.rs` site + close-out steps:
-   `draft/rust-cddl-tag-map-key-gap.md` (local note).
+   `cddl-matrix/upstream-reports/rust-cddl-tag-map-key.md` (local note).
 9. **optional-entry empty-map over-rejection + closed-map check skipped when nothing consumed**
    (released 0.10.x): `validate` rejected the spec-VALID EMPTY map against a map whose sole entry
    carries a `?` occurrence (`m = { ? tstr => uint }`, instance `{}`) — `?` permits absence, so
@@ -454,7 +451,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    all three rules' minted values). No
    upstream issue filed yet. Differential grid, two adjacent same-neighborhood observations
    (nested-map VALUES in a `*` table; multi-entry composite-array-key tables), and close-out
-   steps: `draft/rust-cddl-named-key-map-gap.md` (local note).
+   steps: `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md` (local note).
 12. **float prelude names not distinguished at all** (OPEN at `ac1b98e`, NOT fork-fixed):
     `validate` collapses all six float prelude names into a single "is this a float" test — every
     major-7 float instance validates against `float16`, `float32`, `float64`, `float16-32`,
@@ -482,7 +479,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     (ruby accepts throughout; RFC 8610 §3.2 makes `*` zero-or-more). Disjoint differential grid
     from gap #11 — no named rule, no choice, no tag in the trigger — though plausibly the same
     member-key matching site; full grid and upstream-report sketch in
-    `draft/rust-cddl-string-key-mixed-map-rest-occurrence-gap.md`. Catalog cost today: the matrix
+    `cddl-matrix/upstream-reports/rust-cddl-string-key-mixed-map-rest-occurrence.md`. Catalog cost today: the matrix
     row `contain.occurrence-target.memberkey.type1.open_struct_bytes_key` minted only
     rest-entry-bearing accept vectors (its two zero-rest-entry candidates died `ruby=0 rust=1` on
     the two-oracle gate), and it inherits gap #11's lossy-re-mint hazard: a re-mint drawing only
@@ -553,7 +550,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     panics on `h'CAFE'`. Generator diagnostics therefore use a lazy byte-safe renderer instead of
     the upstream `Display` path. Re-check both defects when updating the pinned parser/oracle.
     Repro and exact commands:
-    `draft/b3-024c-rust-cddl-fixed-bytes-validator.md` (local note).
+    `cddl-matrix/upstream-reports/rust-cddl-fixed-bytes-validator.md` (local note).
 
 ## Gotchas (read before touching the support seam or probe examples)
 
@@ -791,7 +788,7 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `.within`/`.size`), the ruby `cddl generate` mode draws a RANDOM instance of the target type and
   self-validates it — a Bernoulli trial whose exit flips `ok`/`fail` on identical input across runs
   (a random uint rarely lands in `.and (0..9)`; root cause in
-  `draft/ruby-cddl-generate-bernoulli-constraint-controllers.md`). `verify.ts` therefore never derives
+  `cddl-matrix/upstream-reports/ruby-cddl-bernoulli-constraint-controllers.md`). `verify.ts` therefore never derives
   a verdict from `generate` for those ops (classified statically by controller op-name —
   `lib.ts` `rubyGenerateIsBernoulli`, self-tested at startup, gated by `verify_selftest`;
   `bun run verify.ts --selftest` runs that check, its wasm-evidence sibling, and the policy-mint

@@ -1095,8 +1095,8 @@ function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
       `live ${projection.byteLength}/${sha256(projection)})`,
   );
   assert(
-    rendered.bytes.byteLength === 84_580 &&
-      sha256(rendered.bytes) === "f010705393ddbd0b5fa25368c7903df5c5f87a6e500bbdb9c99f7f22bf9bd69e",
+    rendered.bytes.byteLength === 84_591 &&
+      sha256(rendered.bytes) === "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d",
     "packet-1 mixed-v1 projection escaped the frozen live length/digest floor",
   );
 
@@ -1332,11 +1332,11 @@ function liveTestingFloorProbe(): RoadmapDocumentV0 {
   addRecords("next-priority", 25, [1, 2, 3, 4, 5, 6, 7, 8, ...Array.from({ length: 17 }, (_, index) => index + 10)]);
   addRecords("standing-system", 61);
   addRecords("deferred-features", 18);
-  addRecords("operational-watches", 20);
+  addRecords("operational-watches", 13);
   addRecords("declined-boundaries", 11);
-  assert(records.length === 137, "testing live-floor probe record count drifted");
+  assert(records.length === 130, "testing live-floor probe record count drifted");
 
-  const parts: RoadmapDocumentV0["parts"] = Array.from({ length: 60 }, (_, index) => ({
+  const parts: RoadmapDocumentV0["parts"] = Array.from({ length: 57 }, (_, index) => ({
     part_id: `fixture-part-a${index}` as RoadmapDocumentV0["parts"][number]["part_id"],
     parent_record_id: records[index]!.id,
     title: `Fixture part ${index}`,
@@ -1345,15 +1345,15 @@ function liveTestingFloorProbe(): RoadmapDocumentV0 {
   }));
   const spans: RoadmapDocumentV0["spans"] = [{
     id: "span-record-rule-trailing-directive-classification" as RoadmapDocumentV0["spans"][number]["id"],
-    start_byte: 8_737,
-    end_byte: 11_601,
+    start_byte: 6_013,
+    end_byte: 8_877,
     sha256: "c5a5b506dba80f59781f9024767bd7b6bd14d191981f1923553d12ad65b8d338",
     source_kind: "record",
     owner_id: "testing.rule-trailing.directive-classification",
     owner_field: "source_block_md",
     migration_status: "raw",
   }];
-  while (spans.length < 208) {
+  while (spans.length < 198) {
     const index = spans.length;
     spans.push({
       id: `fixture-ledger-span-a${index}` as RoadmapDocumentV0["spans"][number]["id"],
@@ -1373,9 +1373,9 @@ function liveTestingFloorProbe(): RoadmapDocumentV0 {
       roadmap: "testing",
       source_path: "tests/testing-roadmap.toml" as RepoPath,
       projection_path: "tests/TESTING_ROADMAP.md" as RepoPath,
-      frozen_source_sha256: "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b4120d70e",
-      frozen_source_byte_length: 323_398,
-      frozen_source_line_count: 3_597,
+      frozen_source_sha256: "6e90f1fb06011cefa546d861da0a6525ff1af6fc81bbe51c9ed5f035578b53af",
+      frozen_source_byte_length: 306_388,
+      frozen_source_line_count: 3_412,
       frozen_source_eof: "lf",
     },
     sections,
@@ -1384,7 +1384,7 @@ function liveTestingFloorProbe(): RoadmapDocumentV0 {
     records,
     parts,
     generated_slots: [],
-    manifest: Array.from({ length: 208 }, () => ({
+    manifest: Array.from({ length: 198 }, () => ({
       kind: "section" as const,
       section_id: sections[0]!.section_id,
     })),

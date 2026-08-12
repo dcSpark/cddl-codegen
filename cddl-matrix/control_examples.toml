@@ -12,7 +12,7 @@
 # it postdates, valid or not — verify.ts surfaces those ids as an uncorroborated-REVIEW list).
 # The ruby `generate` exit is a Bernoulli trial for a value-space-NARROWING op (ruby draws a RANDOM
 # instance and self-validates it, so it flips ruby=ok/fail across runs on identical input — observed:
-# ctl.and, `uint .and (0..9)`; root cause in draft/ruby-cddl-generate-bernoulli-constraint-controllers.md).
+# ctl.and, `uint .and (0..9)`; root cause in cddl-matrix/upstream-reports/ruby-cddl-bernoulli-constraint-controllers.md).
 # verify.ts NEVER derives a verdict from `generate` for those ops (classified statically by controller
 # op-name, lib.ts `rubyGenerateIsBernoulli`): the `ruby=` clause becomes `ruby=ok(validate)`/
 # `fail(validate)` — ruby `validate` over the row's committed spec-valid decode vectors — where the
@@ -33,8 +33,8 @@ id = "ctl.default"
 example = "m = { a: uint, ? b: uint .default 0 }"   # .default is a map-member default; 2 fields dodge the single-field-map bug
 
 # The six numeric range/eq ops target `int` (not `uint`): the rust cddl CLI (0.10.5) does not
-# enforce these ops over a `uint` target during validate (target-type-specific gap; repro +
-# upstream report in draft/rust-cddl-uint-control-op-gap.md), which blocked class="constraint"
+# enforce these ops over a `uint` target during validate (a target-type-specific gap), which blocked
+# class="constraint"
 # reject vectors — the decode-conformance catalog certifies spec-INVALID only when BOTH oracles
 # reject. Over `int` both oracles enforce (verified: each boundary violation below exits 1 in
 # both). Bounds are literal and non-vacuous over the base type (.ge 5, not .ge 0) so an in-type

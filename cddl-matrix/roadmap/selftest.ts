@@ -16,6 +16,7 @@ import {
 } from "./selftests/semantic_conversion.ts";
 import { DENOMINATOR_SELFTEST_CASES, REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS } from "./selftests/denominator.ts";
 import { PROJECTION_VIEW_SELFTEST_CASES, REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_IDS } from "./selftests/projection_views.ts";
+import { RELOCATION_SELFTEST_CASES, REQUIRED_RELOCATION_SELFTEST_CASE_IDS } from "./selftests/relocation.ts";
 
 export interface SingleFileFixtureCaseRow {
   kind: "single_file";
@@ -265,6 +266,16 @@ const REFERENCE_KIND_SUBCASES = [
 
 /** Frozen named reviewer vectors. A case absent from this map must report no subcases. */
 export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
+  ["wp8_relocation_mutation_matrix", [
+    "exact", "missing_tombstone", "wrong_last_active", "wrong_destination", "active_record",
+    "retired_part", "manifest", "span", "relation", "reference", "retained_triad", "retained_placement",
+    "retained_manifest", "retained_span", "destination_heading", "destination_claim", "part_destination_claim",
+  ]],
+  ["debt_external_relocation_mutation_matrix", [
+    "positive", "empty", "source_fingerprint", "destination_missing", "destination_duplicate",
+    "removed_owner_survives", "successor_state", "successor_document", "successor_roadmap",
+    "duplicate_overlap", "capability_binding",
+  ]],
   ["projection_views_layout_and_provenance", ["banner", "anchor", "layout_stages", "full_audit_separation", "span_provenance", "span_missing", "span_duplicate", "fragment_scan", "fragment_duplicate", "fragment_malformed"]],
   ["projection_views_content_exactly_once", ["exact", "missing", "duplicate", "mismatched_bytes"]],
   ["debt_semantic_promotion_rejection_matrix", [
@@ -762,6 +773,7 @@ export function createCompleteSelfTestRegistry(): SelfTestRegistry {
     },
     { required: REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS, cases: DENOMINATOR_SELFTEST_CASES },
     { required: REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_IDS, cases: PROJECTION_VIEW_SELFTEST_CASES },
+    { required: REQUIRED_RELOCATION_SELFTEST_CASE_IDS, cases: RELOCATION_SELFTEST_CASES },
   ] as const;
   const cases: SelfTestCase[] = [];
   const joinIssues: RoadmapIssue[] = [];

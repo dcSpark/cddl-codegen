@@ -10,7 +10,7 @@
 ;
 ; Kept OUT of cbor_in_bytes.cddl deliberately: the ruby `cddl` gem (0.12.14) cannot PARSE an
 ; inline composite type2 controller (`bytes .cbor [+ uint]` — exit 65, the gap in
-; draft/ruby-cddl-inline-composite-control-arg-gap.md), and a spec-parse failure poisons every
+; cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md), and a spec-parse failure poisons every
 ; rule in its fixture for the `ir_conformance_corpus` ruby sweep — isolating them here keeps
 ; cbor_in_bytes' rules ruby-judgeable. Since the force-wrap these rules DO mint standalone
 ; conformance cases (each has a wire API of its own now), which the gem then cannot judge, so

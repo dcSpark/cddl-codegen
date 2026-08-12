@@ -27,13 +27,12 @@ cbor_event = "3.3.0"
 # dcSpark fork pinned to fixes not yet in a crates.io release. Parser (feeds our AST): upstream
 # discards all comments (breaking our @name/@newtype/@doc DSL), mis-parses a colon member key `b:`
 # as an arrow/type key when a `=>` appears anywhere in the entry, and mis-lexes the RFC 8610 radix
-# integer literals (`0x10` dies as "Invalid hexfloat", `0b1010` splits into `0` + identifier;
-# draft/rust-cddl-radix-int-literal-gap.md — the fix also tightens adjacent lexing: leading-zero
+# integer literals (`0x10` dies as "Invalid hexfloat", `0b1010` splits into `0` + identifier; the
+# fix also tightens adjacent lexing: leading-zero
 # decimals like `042` are now parse errors, `1e5` floats now parse). Validator (feeds the
 # generated-crate conformance oracle, CDDL_ORACLE_DEP): control ops over a uint target were
-# unenforced, a multi-entry group in an array only validated as the sole entry with no occurrence
-# (draft/rust-cddl-group-occurrence-array-count-gap.md), and ranges with non-uint endpoints
-# (`-10..10`, `0.5..10.5`) blanket-rejected every instance (draft/rust-cddl-float-range-gap.md),
+# unenforced, a multi-entry group in an array only validated as the sole entry with no occurrence,
+# and ranges with non-uint endpoints (`-10..10`, `0.5..10.5`) blanket-rejected every instance,
 # bignum-typed (`biguint`/`bignint`/`bigint`) map keys rejected every map wholesale while
 # bignum VALUES accepted any tag unchecked (fixed together in c2ebf9f), and `?`-marked
 # type-domain map entries rejected the legal empty map while unmatched (alien) map entries

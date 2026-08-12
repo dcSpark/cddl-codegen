@@ -2441,13 +2441,11 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const watches = dashboards.get("watches")!;
       const liveWatches = watches.live as readonly Record<string, unknown>[];
       const history = watches.attributed_history as readonly Record<string, unknown>[];
-      assert(liveWatches.length === 4 && history.length === 18 && liveWatches.every((row) =>
+      assert(liveWatches.length === 4 && history.length === 10 && liveWatches.every((row) =>
         "payload_kind" in row && "signature_md" in row && ("capture_steps" in row || "evidence_ids" in row)) &&
-        history.some((row) => ["capture_steps", "response_md", "escalation_transition_id",
-          "retirement_semantics_md", "attribution_md", "payload_kind"].every((field) => field in row)) &&
-        history.some((row) => row.payload_kind === "testing_incident" && "evidence_ids" in row) &&
-        history.some((row) => "retirement_reference_id" in row),
-      "attributed watch history dropped capture/response/escalation/retirement fields");
+        history.every((row) => row.payload_kind === "testing_incident" && "signature_md" in row &&
+          "attribution_md" in row && "evidence_ids" in row && "operating_rule_reference_id" in row),
+      "live watches or retained attributed-incident evidence lost lifecycle fields");
       const content = dashboards.get("content")!.roadmaps as readonly Record<string, unknown>[];
       assert(content.length === 2 && content.every((roadmap) => typeof roadmap.audit_markdown === "string" &&
         (roadmap.audit_markdown as string).startsWith("# Roadmap authored-content audit") &&
@@ -2533,7 +2531,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const testing = liveTestingAuthoritativeDocument();
       for (const [name, document, expectedFragments, expectedParts] of [
         ["matrix", matrix, 5, 9],
-        ["testing", testing, 2, 29],
+        ["testing", testing, 2, 27],
       ] as const) {
         const complete = document.document.semantic_conversion === "complete";
         assert(complete
@@ -2552,7 +2550,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
             independent.length === (name === "matrix" ? 4 : 31),
         `${name} part lifecycle does not match its declared conversion stage`);
         assert(document.fragments.length === expectedFragments &&
-          document.parts.length === (complete ? expectedParts : name === "matrix" ? 13 : 60),
+          document.parts.length === (complete ? expectedParts : name === "matrix" ? 13 : 57),
         `${name} subordinate denominator drifted for its declared conversion stage`);
       }
       const testingNested = testing.parts.find((part) => part.part_id === "part-nested-cargo-test");
@@ -2608,8 +2606,8 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           testing.migration_progress.frozen_spans.count === (complete ? 0 : 208) &&
           testing.migration_progress.semantic_shadows.count === (complete ? 0 : 137) &&
           testing.migration_progress.boundary_debt.count === (complete ? 0 : 31) &&
-          testing.migration_progress.replacement_coverage.denominator === (complete ? 208 : 0) &&
-          testing.migration_progress.replacement_coverage.numerator === (complete ? 208 : 0) &&
+          testing.migration_progress.replacement_coverage.denominator === (complete ? 198 : 0) &&
+          testing.migration_progress.replacement_coverage.numerator === (complete ? 198 : 0) &&
           testing.migration_progress.completion_audit.lane_blockers.length === (complete ? 0 : 792) &&
           testing.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
         "testing exact completed migration facts drifted",
