@@ -537,7 +537,10 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
   writer.integer("frozen_source_byte_length", meta.frozen_source_byte_length);
   writer.integer("frozen_source_line_count", meta.frozen_source_line_count);
   writer.string("frozen_source_eof", meta.frozen_source_eof);
-  if (meta.schema_version === 1) writer.strings("frozen_legacy_span_ids", meta.frozen_legacy_span_ids, true);
+  if (meta.schema_version === 1) {
+    optionalString(writer, "semantic_conversion", meta.semantic_conversion);
+    writer.strings("frozen_legacy_span_ids", meta.frozen_legacy_span_ids, true);
+  }
 
   const sections: readonly Section[] = document.sections;
   for (const section of sorted(sections, (value) => value.section_id)) {
@@ -568,9 +571,11 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
       writeRawFields(writer, fragment);
     } else if (fragment.render_authority === "raw") {
       writer.string("render_authority", fragment.render_authority);
+      optionalString(writer, "lifecycle_disposition", fragment.lifecycle_disposition);
       writeRawFields(writer, fragment);
     } else {
       writer.string("render_authority", fragment.render_authority);
+      writer.string("lifecycle_disposition", fragment.lifecycle_disposition);
       writer.markdown("body_md", fragment.body_md);
       writeReplacements(writer, "fragment", fragment.source_replacements);
     }
@@ -630,9 +635,11 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
       writeRawFields(writer, part);
     } else if (part.render_authority === "raw") {
       writer.string("render_authority", part.render_authority);
+      optionalString(writer, "lifecycle_disposition", part.lifecycle_disposition);
       writeRawFields(writer, part);
     } else {
       writer.string("render_authority", part.render_authority);
+      writer.string("lifecycle_disposition", part.lifecycle_disposition);
       writer.markdown("body_md", part.body_md);
       writeReplacements(writer, "part", part.source_replacements);
     }

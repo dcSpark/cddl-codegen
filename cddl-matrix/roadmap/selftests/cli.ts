@@ -30,11 +30,13 @@ import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCa
 import { validateSelectedLifecycleContext } from "../transaction.ts";
 import { observeSelfTestIssue } from "./observations.ts";
 import {
+  liveMatrixAuthoritativeDocument,
   liveMatrixAuthoritativeSource,
   liveMatrixProjection,
   liveMatrixShadowV0Source,
 } from "./live_matrix.ts";
 import {
+  liveTestingAuthoritativeDocument,
   liveTestingAuthoritativeSource,
   liveTestingProjection,
   liveTestingShadowV0Source,
@@ -77,6 +79,7 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "exit_authority_stage_mismatch_one",
   "parse_error_stable_prefix",
   "query_stdout_payload_only",
+  "live_subordinate_lifecycle_dispositions",
   "query_debt_live_migration_floors",
   "query_debt_scoped_does_not_load_other_roadmap",
   "query_debt_all_reports_both",
@@ -132,6 +135,7 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_against_semantic_promotion_scoped_testing",
   "cli_against_semantic_promotion_all_simultaneous",
   "cli_against_semantic_promotion_other_base_not_loaded",
+  "cli_semantic_conversion_current_omission_rejected",
 ] as const;
 
 export type RequiredCliSelfTestCaseId = (typeof REQUIRED_CLI_SELFTEST_CASE_IDS)[number];
@@ -377,9 +381,13 @@ function promotionPorts(
     ["roadmap-campaign.toml" as RepoPath, campaign],
     ["roadmap-retired-ids.toml" as RepoPath, retired],
   ]);
+  const historical = (document: RoadmapDocumentV1): RoadmapDocumentV1 => ({
+    ...document,
+    document: { ...document.document, semantic_conversion: undefined },
+  });
   const base = new Map<RepoPath, Uint8Array>([
-    ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(matrix.base)],
-    ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(testing.base)],
+    ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(historical(matrix.base))],
+    ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(historical(testing.base))],
     ["cddl-matrix/ROADMAP.md" as RepoPath, matrix.projection],
     ["tests/TESTING_ROADMAP.md" as RepoPath, testing.projection],
     ["roadmap-campaign.toml" as RepoPath, campaign],
@@ -1427,6 +1435,39 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       }
       return pass("positive");
     }
+    case "cli_semantic_conversion_current_omission_rejected": {
+      const sources = bothAuthoritativePorts();
+      const omitted = (bytes: Uint8Array): Uint8Array => UTF8.encode(
+        text(bytes).replace('semantic_conversion = "converting"\n', ""),
+      );
+      const matrix = omitted(liveMatrixAuthoritativeSource());
+      const testing = omitted(liveTestingAuthoritativeSource());
+      const ports = fakePorts({
+        read(path) {
+          if (path === "cddl-matrix/roadmap.toml") return matrix;
+          if (path === "tests/testing-roadmap.toml") return testing;
+          return sources.read.readDeclared(path);
+        },
+        registry: sources.read.registryView,
+      });
+      const commands = [
+        ["--check", "--roadmap", "matrix"],
+        ["--check", "--roadmap", "testing"],
+        ["--check", "--roadmap", "all"],
+        ["--roadmap", "matrix", "--query", "debt", "--json"],
+        ["--roadmap", "testing", "--write"],
+        ["--format-source", "cddl-matrix/roadmap.toml"],
+      ] as const;
+      for (const argv of commands) {
+        const result = run(argv, ports);
+        assert(
+          result.exit_code === 1 && result.stdout.byteLength === 0 &&
+            text(result.stderr).includes("current roadmap schema v1 requires semantic_conversion"),
+          `current command accepted omitted semantic conversion declaration: ${JSON.stringify(argv)} ${text(result.stderr)}`,
+        );
+      }
+      return pass("positive");
+    }
     case "cli_format_declared_source":
     {
       let writes = 0;
@@ -1451,6 +1492,75 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       assert(!text(result.stdout).includes("CHECK OK") && JSON.parse(text(result.stdout)).evaluation_as_of === null, "query stdout contains a receipt or unstable envelope");
       return pass("positive");
     }
+    case "live_subordinate_lifecycle_dispositions": {
+      const matrix = liveMatrixAuthoritativeDocument();
+      const testing = liveTestingAuthoritativeDocument();
+      const matrixIndependent = [
+        "atomic-bounds-handover",
+        "fixed-byte-representation",
+        "multifile-extern-exclusion",
+        "open-table-min-one-hardening",
+      ];
+      const testingIndependent = [
+        "part-all-hit-cost",
+        "part-another-profile-flip-abort-fix-widening-reachable-set",
+        "part-arbitrary-derived-supported-cddl-ast-generation",
+        "part-batch-masking-detector-layer-sweeps",
+        "part-closure-audit-traced-set-extension",
+        "part-collision-loser-row-schema-id-s-match",
+        "part-collision-two-types-both-lack-rows",
+        "part-comment-ast-grammar-change-any-form-just-new",
+        "part-coverage-extensions",
+        "part-cross-crate-collision-schema-id-s-match",
+        "part-dedicated-collision-message-generic-instantiation-naming",
+        "part-embed-site-leg-alias-classifying-roots-two-proven",
+        "part-inline-anonymous-two-arm-choices-recognized",
+        "part-mangling-still-general-fix",
+        "part-member-position-duplicates-extension",
+        "part-nested-cargo-test",
+        "part-non-idiom-choice-bodied-generic-defs-refused-supported",
+        "part-occurrence-aware-generic-instance-identity",
+        "part-own-reviewed-change-never-drive",
+        "part-read-caught-instance-class",
+        "part-real-world-corpus-differential",
+        "part-reopening-signal",
+        "part-reopening-signal-nested",
+        "part-reopening-signal-probe",
+        "part-reopening-signal-wasm",
+        "part-reopening-signal-workspace",
+        "part-rustc-after-panic-ok-flip-panic-fix-lands",
+        "part-rustfmt-code-never-reaches-rustc-all",
+        "part-same-shape-set-instantiations",
+        "part-schema-name-schemars-percent-encodes-ref",
+        "part-scope-wide-probe",
+        "part-spend-measurements",
+      ];
+      for (const [name, document, independent] of [
+        ["matrix", matrix, matrixIndependent],
+        ["testing", testing, testingIndependent],
+      ] as const) {
+        assert(
+          document.fragments.every((fragment) =>
+            fragment.render_authority === "raw" && fragment.lifecycle_disposition === "document_prose"
+          ),
+          `${name} live fragments are not all explicitly reviewed document prose`,
+        );
+        const actualIndependent = document.parts.filter((part) =>
+          part.render_authority === "raw" && part.lifecycle_disposition === "independent_record"
+        ).map((part) => part.part_id).sort();
+        assert(JSON.stringify(actualIndependent) === JSON.stringify([...independent].sort()), `${name} independent part classification drifted`);
+        assert(
+          document.parts.every((part) =>
+            part.render_authority === "raw" &&
+            (part.lifecycle_disposition === "independent_record" || part.lifecycle_disposition === "parent_supporting_prose")
+          ),
+          `${name} live parts do not all carry an explicit reviewed lifecycle disposition`,
+        );
+      }
+      assert(matrix.fragments.length === 5 && matrix.parts.length === 13, "matrix subordinate live denominator drifted");
+      assert(testing.fragments.length === 2 && testing.parts.length === 60, "testing subordinate live denominator drifted");
+      return pass("positive");
+    }
     case "query_debt_live_migration_floors": {
       const result = run(["--roadmap", "all", "--query", "debt", "--json"], bothAuthoritativePorts());
       assert(result.exit_code === 0 && result.stderr.byteLength === 0, `live debt query failed: ${text(result.stderr)}`);
@@ -1464,14 +1574,14 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         const keys = values.map(key);
         return JSON.stringify(keys) === JSON.stringify([...keys].sort((left, right) => left < right ? -1 : left > right ? 1 : 0));
       };
-      assert(independentTotal(matrix) === 32, `matrix independent migration floor drifted: ${independentTotal(matrix)}`);
-      assert(independentTotal(testing) === 64, `testing independent migration floor drifted: ${independentTotal(testing)}`);
+      assert(independentTotal(matrix) === 18, `matrix independent migration floor drifted: ${independentTotal(matrix)}`);
+      assert(independentTotal(testing) === 34, `testing independent migration floor drifted: ${independentTotal(testing)}`);
       assert(JSON.stringify(matrix.independent_counts) === JSON.stringify({
-        inferred_transitions: 7, pending_family_classifications: 7, raw_subordinate_lifecycles: 18,
+        inferred_transitions: 7, pending_family_classifications: 7, raw_subordinate_lifecycles: 4,
         unmodelled_coordinates: 0, unrendered_fields: 0, unresolved_references: 0,
       }), "matrix independent category vector drifted");
       assert(JSON.stringify(testing.independent_counts) === JSON.stringify({
-        inferred_transitions: 1, pending_family_classifications: 1, raw_subordinate_lifecycles: 62,
+        inferred_transitions: 1, pending_family_classifications: 1, raw_subordinate_lifecycles: 32,
         unmodelled_coordinates: 0, unrendered_fields: 0, unresolved_references: 0,
       }), "testing independent category vector drifted");
       assert(
@@ -1479,10 +1589,10 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           matrix.migration_progress.raw_spans.count === 86 &&
           matrix.migration_progress.frozen_spans.count === 86 &&
           matrix.migration_progress.semantic_shadows.count === 7 &&
-          matrix.migration_progress.boundary_debt.count === 18 &&
+          matrix.migration_progress.boundary_debt.count === 4 &&
           matrix.migration_progress.replacement_coverage.denominator === 0 &&
           matrix.migration_progress.replacement_coverage.numerator === 0 &&
-          matrix.migration_progress.completion_audit.lane_blockers.length === 297 &&
+          matrix.migration_progress.completion_audit.lane_blockers.length === 283 &&
           matrix.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
         "matrix exact live migration facts drifted",
       );
@@ -1491,10 +1601,10 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           testing.migration_progress.raw_spans.count === 208 &&
           testing.migration_progress.frozen_spans.count === 208 &&
           testing.migration_progress.semantic_shadows.count === 1 &&
-          testing.migration_progress.boundary_debt.count === 62 &&
+          testing.migration_progress.boundary_debt.count === 32 &&
           testing.migration_progress.replacement_coverage.denominator === 0 &&
           testing.migration_progress.replacement_coverage.numerator === 0 &&
-          testing.migration_progress.completion_audit.lane_blockers.length === 689 &&
+          testing.migration_progress.completion_audit.lane_blockers.length === 659 &&
           testing.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
         "testing exact live migration facts drifted",
       );

@@ -45,6 +45,11 @@ import type {
   TombstoneEligibleBaseOwner,
 } from "./model/documents.ts";
 import type { CompletedRenderIr } from "./render_ir.ts";
+import {
+  semanticConversionState,
+  validateSemanticConversionCompletion,
+  validateSemanticConversionTransition,
+} from "./semantic_conversion.ts";
 import { shadowRecordSourceTitle } from "./shadow_title.ts";
 import {
   resolveReplacementPin,
@@ -816,6 +821,25 @@ function validateScoped(inputs: ScopedRoadmapTransactionInputs): TransactionVali
   ) {
     issues.push(issue("E-TRANSACTION-BASE", inputs.scope, "single-roadmap comparison requires matching authoritative-v1 selected documents"));
   } else {
+    issues.push(...validateSemanticConversionTransition(
+      base.document,
+      inputs.candidate_document,
+    ));
+    if (semanticConversionState(inputs.candidate_document).effective === "complete") {
+      if (inputs.candidate_completed === undefined) {
+        issues.push(issue(
+          "E-TRANSACTION-BASE",
+          `${inputs.scope}.completed_render_ir`,
+          "semantic_conversion = complete requires a complete candidate render IR audit",
+        ));
+      } else {
+        issues.push(...validateSemanticConversionCompletion(
+          inputs.candidate_document,
+          inputs.candidate_debt,
+          inputs.candidate_completed,
+        ));
+      }
+    }
     const transition = validateSemanticConversionFacts(base.debt, inputs.candidate_debt, {
       base_document: base.document,
       candidate_document: inputs.candidate_document,
@@ -1048,6 +1072,23 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
         `relevant ${roadmap} base/candidate documents require both complete migration-debt views`,
       ));
       continue;
+    }
+    issues.push(...validateSemanticConversionTransition(baseDocument, candidateDocument));
+    if (semanticConversionState(candidateDocument).effective === "complete") {
+      const candidateCompleted = candidate.completed[roadmap];
+      if (candidateCompleted === undefined) {
+        issues.push(issue(
+          "E-TRANSACTION-BASE",
+          `${roadmap}.completed_render_ir`,
+          "semantic_conversion = complete requires a complete candidate render IR audit",
+        ));
+      } else {
+        issues.push(...validateSemanticConversionCompletion(
+          candidateDocument,
+          candidateDebt,
+          candidateCompleted,
+        ));
+      }
     }
     const facts: ValidatedDebtTransitionFacts[] = [];
     let factsSupplied = false;

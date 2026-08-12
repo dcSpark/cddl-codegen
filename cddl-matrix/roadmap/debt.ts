@@ -377,6 +377,12 @@ function documentTransitionSignature(document: RoadmapDocument): string {
       document.document.source_path,
       document.document.projection_path,
       document.document.schema_version,
+      document.document.schema_version === 1
+        ? [
+          document.document.semantic_conversion ?? "omitted",
+          document.document.semantic_conversion ?? "converting",
+        ]
+        : ["omitted", "not_applicable"],
     ],
     owners: ownerRows,
     spans: spanRows,
@@ -545,7 +551,7 @@ export function deriveMigrationDebt(
       owner_field: raw ? "source_block_md" : "body_md",
     };
     addOwner(owners, key, raw ? "raw_unclassified" : "semantic");
-    if (raw) addIndependent(independent, {
+    if (raw && (!("render_authority" in fragment) || fragment.lifecycle_disposition !== "document_prose")) addIndependent(independent, {
       roadmap,
       category: "raw_subordinate_lifecycles",
       owner: key,
@@ -577,7 +583,7 @@ export function deriveMigrationDebt(
       owner_field: raw ? "source_block_md" : "body_md",
     };
     addOwner(owners, key, raw ? "raw_unclassified" : "semantic");
-    if (raw) addIndependent(independent, {
+    if (raw && (!("render_authority" in part) || part.lifecycle_disposition !== "parent_supporting_prose")) addIndependent(independent, {
       roadmap,
       category: "raw_subordinate_lifecycles",
       owner: key,

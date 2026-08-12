@@ -10,6 +10,10 @@ import { IDENTITY_SELFTEST_CASES, REQUIRED_IDENTITY_SELFTEST_CASE_IDS } from "./
 import { ADAPTER_SELFTEST_CASES, REQUIRED_ADAPTER_SELFTEST_CASE_IDS } from "./selftests/adapters.ts";
 import { FIXTURE_SELFTEST_CASES, REQUIRED_FIXTURE_SELFTEST_CASE_IDS } from "./selftests/fixtures.ts";
 import { CLI_SELFTEST_CASES, REQUIRED_CLI_SELFTEST_CASE_IDS } from "./selftests/cli.ts";
+import {
+  REQUIRED_SEMANTIC_CONVERSION_SELFTEST_CASE_IDS,
+  SEMANTIC_CONVERSION_SELFTEST_CASES,
+} from "./selftests/semantic_conversion.ts";
 
 export interface SingleFileFixtureCaseRow {
   kind: "single_file";
@@ -298,6 +302,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
     "attached_source_span", "unrelated_source_span", "unrelated_owner_regression", "independent_growth", "category_hide", "frozen_growth",
     "lifecycle_guard_retirement", "guard_retirement_forward", "guard_retirement_reverse", "guard_restructure_forward", "guard_restructure_reverse",
     "guard_semantic_conversion_forward", "guard_semantic_conversion_reverse",
+    "all_semantic_conversion_reverse", "scoped_semantic_conversion_reverse",
   ]],
   ["transaction_partial_guard", ["missing", "wrong_id", "unresolved_pin", "simultaneous_tombstone", "leftover_family", "missing_child_guard", "unused_guard", "future_reuse"]],
   ["transaction_full_hash_git_integration", ["scratch_lifecycle", "argv", "unsigned", "sha1", "sha256", "durable_corpus_facts", "crlf_byte_citation", "revision_isolation", "retirement_closure", "heading_text_precondition", "wrong_base_revision", "candidate_commit_rejected", "abbreviated"]],
@@ -369,6 +374,9 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["v1_raw_requires_frozen_span", { code: "E-SCHEMA-STATE", logical_path: "document.frozen_legacy_span_ids" }],
   ["v1_new_raw_rejected", { code: "E-SCHEMA-STATE", logical_path: "document.frozen_legacy_span_ids" }],
   ["v1_semantic_forbids_raw", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "record[0].source_block_md" }],
+  ["schema_lifecycle_semantic_requires_reviewed", { code: "E-SCHEMA-MISSING-KEY", logical_path: "fragment[0].lifecycle_disposition" }],
+  ["schema_lifecycle_cross_kind_rejected", { code: "E-SCHEMA-ENUM", logical_path: "fragment[0].lifecycle_disposition" }],
+  ["schema_lifecycle_v0_forbidden", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "fragment[0].lifecycle_disposition" }],
   ["schema_projection_visibility_document_arm", { code: "E-SCHEMA-MISSING-KEY", logical_path: "record[0].projection_visibility" }],
   ["schema_projection_visibility_semantic_only_arm", { code: "E-SCHEMA-STATE", logical_path: "record[0].source_replacement" }],
   ["schema_projection_visibility_forbidden_nonsemantic_arms", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "record[0].projection_visibility" }],
@@ -646,6 +654,10 @@ export function createCompleteSelfTestRegistry(): SelfTestRegistry {
     { required: REQUIRED_ADAPTER_SELFTEST_CASE_IDS, cases: ADAPTER_SELFTEST_CASES },
     { required: REQUIRED_FIXTURE_SELFTEST_CASE_IDS, cases: FIXTURE_SELFTEST_CASES },
     { required: REQUIRED_CLI_SELFTEST_CASE_IDS, cases: CLI_SELFTEST_CASES },
+    {
+      required: REQUIRED_SEMANTIC_CONVERSION_SELFTEST_CASE_IDS,
+      cases: SEMANTIC_CONVERSION_SELFTEST_CASES,
+    },
   ] as const;
   const cases: SelfTestCase[] = [];
   const joinIssues: RoadmapIssue[] = [];

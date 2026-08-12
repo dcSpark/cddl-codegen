@@ -8,6 +8,7 @@ frozen_source_sha256 = "b935c24a6cd55577ea18742f9a10a5b3ceaf64eebb0d884d28f5a1f8
 frozen_source_byte_length = 93
 frozen_source_line_count = 6
 frozen_source_eof = "lf"
+semantic_conversion = "converting"
 frozen_legacy_span_ids = ["raw-record", "section", "semantic-detail", "semantic-summary"]
 
 [[section]]

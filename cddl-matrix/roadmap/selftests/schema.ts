@@ -34,7 +34,7 @@ const text = (value: string): Uint8Array => UTF8.encode(value);
 const ZERO_HASH = "0".repeat(64);
 
 export const REQUIRED_SCHEMA_SELFTEST_CASE_IDS = [
-  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_campaign", "strict_unknown_retired", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "v0_missing_manifest", "v0_empty_records_floor", "truncated_span_read", "campaign_missing_root", "campaign_empty_valid", "campaign_impossible_authority_tuple_rejected", "retired_missing_root", "retired_empty_valid", "v0_all_fields_identity", "v1_all_fields_identity", "campaign_all_fields_identity", "retired_all_fields_identity", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "v0_rejects_semantics", "v0_rejects_authoritative", "v1_raw_requires_frozen_span", "v1_new_raw_rejected", "v1_raw_shadow_nonrendering", "v1_semantic_forbids_raw", "schema_projection_visibility_document_arm", "schema_projection_visibility_semantic_only_arm", "schema_projection_visibility_forbidden_nonsemantic_arms", "v1_unsupported_v2", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "domain_closed_denominator_rejected", "schema_v0_exact_keys_every_table", "schema_v1_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_campaign_retired_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "schema_campaign_authority_keys", "schema_campaign_reservation_exact_keys", "schema_campaign_selection_binding_keys_forbidden", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "campaign_inline_legacy_binding_rejected", "schema_priority_band_closed_enum", "schema_campaign_slug_grammars", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
+  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_campaign", "strict_unknown_retired", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "v0_missing_manifest", "v0_empty_records_floor", "truncated_span_read", "campaign_missing_root", "campaign_empty_valid", "campaign_impossible_authority_tuple_rejected", "retired_missing_root", "retired_empty_valid", "v0_all_fields_identity", "v1_all_fields_identity", "campaign_all_fields_identity", "retired_all_fields_identity", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "v0_rejects_semantics", "v0_rejects_authoritative", "v1_raw_requires_frozen_span", "v1_new_raw_rejected", "v1_raw_shadow_nonrendering", "v1_semantic_forbids_raw", "schema_lifecycle_raw_omission_historical", "schema_lifecycle_raw_review_arms", "schema_lifecycle_semantic_requires_reviewed", "schema_lifecycle_cross_kind_rejected", "schema_lifecycle_v0_forbidden", "schema_projection_visibility_document_arm", "schema_projection_visibility_semantic_only_arm", "schema_projection_visibility_forbidden_nonsemantic_arms", "v1_unsupported_v2", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "domain_closed_denominator_rejected", "schema_v0_exact_keys_every_table", "schema_v1_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_campaign_retired_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "schema_campaign_authority_keys", "schema_campaign_reservation_exact_keys", "schema_campaign_selection_binding_keys_forbidden", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "campaign_inline_legacy_binding_rejected", "schema_priority_band_closed_enum", "schema_campaign_slug_grammars", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
 ] as const;
 
 export type RequiredSchemaSelfTestCaseId = (typeof REQUIRED_SCHEMA_SELFTEST_CASE_IDS)[number];
@@ -83,6 +83,40 @@ function semanticRecordRoadmap(visibility: "document" | "semantic_only"): string
   return visibility === "semantic_only"
     ? converted.replace(/\n\n\[\[source_span\]\]\nid = "record"[\s\S]*$/u, "\n")
     : converted;
+}
+
+function subordinateRoadmap(
+  version: 0 | 1,
+  fragment: "raw_omitted" | "raw_pending" | "raw_reviewed" | "raw_independent" | "semantic_reviewed",
+  part: "raw_omitted" | "raw_pending" | "raw_reviewed" | "raw_independent" | "semantic_reviewed",
+): string {
+  const authority = version === 0 ? "shadow" : "authoritative";
+  const rawFragment = fragment !== "semantic_reviewed";
+  const rawPart = part !== "semantic_reviewed";
+  const disposition = (kind: "fragment" | "part", arm: typeof fragment | typeof part): string => {
+    if (version === 0 || arm === "raw_omitted") return "";
+    if (arm === "raw_pending") return 'lifecycle_disposition = "pending_review"\n';
+    if (arm === "raw_independent") return 'lifecycle_disposition = "independent_record"\n';
+    return `lifecycle_disposition = "${kind === "fragment" ? "document_prose" : "parent_supporting_prose"}"\n`;
+  };
+  const frozen = version === 1
+    ? `frozen_legacy_span_ids = [${[
+      rawFragment ? '"fragment"' : undefined,
+      rawPart ? '"part"' : undefined,
+      '"record"',
+      '"section"',
+    ].filter((value) => value !== undefined).join(", ")}]\n`
+    : "";
+  const render = (semantic: boolean): string => version === 1
+    ? `render_authority = "${semantic ? "semantic" : "raw"}"\n`
+    : "";
+  const fragmentBody = rawFragment
+    ? `source_block_md = """F\n"""\nspan_ids = ["fragment"]`
+    : `body_md = """F\n"""\n\n[[fragment.source_replacement]]\nspan_id = "fragment"\nreplacement_field = "body_md"\nreview_note_md = """Reviewed fragment.\n"""`;
+  const partBody = rawPart
+    ? `source_block_md = """P\n"""\nspan_ids = ["part"]`
+    : `body_md = """P\n"""\n\n[[part.source_replacement]]\nspan_id = "part"\nreplacement_field = "body_md"\nreview_note_md = """Reviewed part.\n"""`;
+  return `[document]\nschema_version = ${version}\nauthority = "${authority}"\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\nfrozen_source_sha256 = "${ZERO_HASH}"\nfrozen_source_byte_length = 4\nfrozen_source_line_count = 1\nfrozen_source_eof = "none"\n${frozen}\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\n${render(false)}source_block_md = """S\n"""\nspan_ids = ["section"]\n\n[[fragment]]\nfragment_id = "fragment"\nprojection_group = "fixture"\n${render(!rawFragment)}${disposition("fragment", fragment)}${fragmentBody}\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\nprojection_group = "fixture"\n${render(false)}source_block_md = """R\n"""\nspan_ids = ["record"]\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\n${render(!rawPart)}${disposition("part", part)}${partBody}\n\n[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n\n[[manifest.entry]]\nkind = "fragment"\nfragment_id = "fragment"\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "matrix.fixture-record"\n\n[[manifest.entry]]\nkind = "part"\npart_id = "part"\n\n[[source_span]]\nid = "section"\nstart_byte = 0\nend_byte = 1\nsha256 = "${ZERO_HASH}"\nsource_kind = "section"\nowner_id = "fixture"\nowner_field = "source_block_md"\nmigration_status = "raw"\n\n[[source_span]]\nid = "fragment"\nstart_byte = 1\nend_byte = 2\nsha256 = "${ZERO_HASH}"\nsource_kind = "fragment"\nowner_id = "fragment"\nowner_field = "${rawFragment ? "source_block_md" : "body_md"}"\nmigration_status = "${rawFragment ? "raw" : "replaced"}"\n\n[[source_span]]\nid = "record"\nstart_byte = 2\nend_byte = 3\nsha256 = "${ZERO_HASH}"\nsource_kind = "record"\nowner_id = "matrix.fixture-record"\nowner_field = "source_block_md"\nmigration_status = "raw"\n\n[[source_span]]\nid = "part"\nstart_byte = 3\nend_byte = 4\nsha256 = "${ZERO_HASH}"\nsource_kind = "part"\nowner_id = "part"\nowner_field = "${rawPart ? "source_block_md" : "body_md"}"\nmigration_status = "${rawPart ? "raw" : "replaced"}\"\n`;
 }
 
 function emptyCampaign(): Uint8Array {
@@ -276,6 +310,8 @@ const ENUM_FIELD_GROUPS: readonly { readonly name: EnumGroupName; readonly field
 const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
   [["roadmap", "authority_v0"].join(":")]: "authority",
   [["roadmap", "authority_v1"].join(":")]: "authority",
+  [["roadmap", "fragment_lifecycle_disposition"].join(":")]: "lifecycle_disposition",
+  [["roadmap", "part_lifecycle_disposition"].join(":")]: "lifecycle_disposition",
   [["roadmap", "manifest_kind"].join(":")]: "kind",
   [["roadmap", "relation_kind"].join(":")]: "kind",
   [["roadmap", "reference_kind"].join(":")]: "kind",
@@ -338,6 +374,7 @@ body_md = """Injected semantic section.
 fragment_id = "fixture-semantic-fragment"
 projection_group = "fixture"
 render_authority = "semantic"
+lifecycle_disposition = "document_prose"
 body_md = """Injected semantic fragment.
 """
 
@@ -352,6 +389,7 @@ marker_md = """Injected semantic marker.
 part_id = "fixture-semantic-part"
 parent_record_id = "matrix.fixture-raw-owner"
 render_authority = "semantic"
+lifecycle_disposition = "parent_supporting_prose"
 body_md = """Injected semantic part.
 """
 `;
@@ -855,6 +893,63 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(1)).replace('render_authority = "raw"\nsource_block_md = """R', 'render_authority = "semantic"\nsource_block_md = """R')), "<semantic-raw>", "matrix"), ["E-SCHEMA-FORBIDDEN-KEY", "E-SCHEMA-UNKNOWN-KEY"]);
       return;
     }
+    case "schema_lifecycle_raw_omission_historical": {
+      const source = subordinateRoadmap(1, "raw_omitted", "raw_omitted");
+      const decoded = decodeRoadmapSource(text(source), "<historical-lifecycle-omission>", "matrix");
+      assert(
+        decoded.document.schema_version === 1 &&
+          decoded.fragments[0] !== undefined && "render_authority" in decoded.fragments[0] &&
+          decoded.fragments[0].render_authority === "raw" && decoded.fragments[0].lifecycle_disposition === undefined &&
+          decoded.parts[0] !== undefined && "render_authority" in decoded.parts[0] &&
+          decoded.parts[0].render_authority === "raw" && decoded.parts[0].lifecycle_disposition === undefined,
+        "historical v1 lifecycle omission did not remain loadable and explicit in the model",
+      );
+      return;
+    }
+    case "schema_lifecycle_raw_review_arms": {
+      for (const [fragment, part] of [
+        ["raw_pending", "raw_pending"],
+        ["raw_reviewed", "raw_reviewed"],
+        ["raw_independent", "raw_independent"],
+      ] as const) {
+        const source = subordinateRoadmap(1, fragment, part);
+        const decoded = decodeRoadmapSource(text(source), `<raw-lifecycle-${fragment}>`, "matrix");
+        assert(bytesEqual(composeRoadmapDocument(decoded), text(source)), `${fragment} raw lifecycle arm lost canonical identity`);
+      }
+      return;
+    }
+    case "schema_lifecycle_semantic_requires_reviewed": {
+      const fragment = subordinateRoadmap(1, "semantic_reviewed", "raw_reviewed");
+      const part = subordinateRoadmap(1, "raw_reviewed", "semantic_reviewed");
+      decodeRoadmapSource(text(fragment), "<semantic-fragment-reviewed>", "matrix");
+      decodeRoadmapSource(text(part), "<semantic-part-reviewed>", "matrix");
+      for (const disposition of [undefined, "pending_review", "independent_record"] as const) {
+        const mutated = disposition === undefined
+          ? fragment.replace('lifecycle_disposition = "document_prose"\n', "")
+          : fragment.replace('lifecycle_disposition = "document_prose"', `lifecycle_disposition = "${disposition}"`);
+        expectFailure(
+          () => decodeRoadmapSource(text(mutated), `<semantic-fragment-${disposition ?? "missing"}>`, "matrix"),
+          disposition === undefined ? ["E-SCHEMA-MISSING-KEY"] : ["E-SCHEMA-ENUM"],
+          "fragment[0].lifecycle_disposition",
+        );
+      }
+      return;
+    }
+    case "schema_lifecycle_cross_kind_rejected": {
+      const fragment = subordinateRoadmap(1, "raw_reviewed", "raw_reviewed")
+        .replace('lifecycle_disposition = "document_prose"', 'lifecycle_disposition = "parent_supporting_prose"');
+      expectFailure(() => decodeRoadmapSource(text(fragment), "<fragment-part-disposition>", "matrix"), ["E-SCHEMA-ENUM"], "fragment[0].lifecycle_disposition");
+      const part = subordinateRoadmap(1, "raw_reviewed", "raw_reviewed")
+        .replace('lifecycle_disposition = "parent_supporting_prose"', 'lifecycle_disposition = "document_prose"');
+      expectFailure(() => decodeRoadmapSource(text(part), "<part-fragment-disposition>", "matrix"), ["E-SCHEMA-ENUM"], "part[0].lifecycle_disposition");
+      return;
+    }
+    case "schema_lifecycle_v0_forbidden": {
+      const v0 = subordinateRoadmap(0, "raw_omitted", "raw_omitted")
+        .replace('fragment_id = "fragment"\n', 'fragment_id = "fragment"\nlifecycle_disposition = "document_prose"\n');
+      expectFailure(() => decodeRoadmapSource(text(v0), "<v0-lifecycle>", "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"], "fragment[0].lifecycle_disposition");
+      return;
+    }
     case "schema_projection_visibility_document_arm": {
       const document = semanticRecordRoadmap("document");
       decodeRoadmapSource(text(document), "<semantic-document>", "matrix");
@@ -1094,6 +1189,8 @@ const POSITIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "retired_all_fields_identity",
   "toml_terminal_newline",
   "v1_raw_shadow_nonrendering",
+  "schema_lifecycle_raw_omission_historical",
+  "schema_lifecycle_raw_review_arms",
   "domain_matrix_all_tags",
   "domain_testing_all_tags",
   "domain_transition_each_kind",
@@ -1141,6 +1238,9 @@ const NEGATIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "v1_raw_requires_frozen_span",
   "v1_new_raw_rejected",
   "v1_semantic_forbids_raw",
+  "schema_lifecycle_semantic_requires_reviewed",
+  "schema_lifecycle_cross_kind_rejected",
+  "schema_lifecycle_v0_forbidden",
   "schema_projection_visibility_document_arm",
   "schema_projection_visibility_semantic_only_arm",
   "schema_projection_visibility_forbidden_nonsemantic_arms",

@@ -131,6 +131,10 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "debt_new_key_rejected",
   "debt_swap_same_count_rejected",
   "debt_resolution_subset",
+  "debt_subordinate_lifecycle_omitted_retained",
+  "debt_subordinate_lifecycle_pending_retained",
+  "debt_subordinate_lifecycle_reviewed_clears_boundary_only",
+  "debt_subordinate_lifecycle_independent_retained",
   "debt_independent_set_growth_rejected",
   "debt_category_hiding_rejected",
   "debt_frozen_set_growth_rejected",
@@ -1145,6 +1149,51 @@ function testDebtCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       item.category === "unmodelled_coordinates" && item.subject === "visible"
     )) {
       fail("completion audit category policy hid or misclassified independent state");
+    }
+    return pass();
+  }
+  if (id.startsWith("debt_subordinate_lifecycle_")) {
+    const source = authoritativeFixture().document;
+    const fragmentDisposition = id.includes("reviewed")
+      ? "document_prose" as const
+      : id.includes("pending") ? "pending_review" as const
+      : id.includes("independent") ? "independent_record" as const : undefined;
+    const partDisposition = id.includes("reviewed")
+      ? "parent_supporting_prose" as const
+      : id.includes("pending") ? "pending_review" as const
+      : id.includes("independent") ? "independent_record" as const : undefined;
+    const document: RoadmapDocumentV1 = {
+      ...source,
+      fragments: source.fragments.map((fragment) => fragment.render_authority === "raw" ? {
+        ...fragment,
+        ...(fragmentDisposition === undefined ? {} : { lifecycle_disposition: fragmentDisposition }),
+      } : fragment),
+      parts: source.parts.map((part) => part.render_authority === "raw" ? {
+        ...part,
+        ...(partDisposition === undefined ? {} : { lifecycle_disposition: partDisposition }),
+      } : part),
+    };
+    const derived = deriveMigrationDebt(document, complete(document).completed);
+    const boundary = [...derived.independent.values()].filter((item) =>
+      item.category === "raw_subordinate_lifecycles"
+    );
+    const expected = id.includes("reviewed") ? 1 : 3;
+    if (boundary.length !== expected) {
+      fail(`${id}: expected ${expected} subordinate lifecycle tuple(s), got ${boundary.length}`);
+    }
+    if (id.includes("reviewed")) {
+      if (boundary[0]?.subject !== "raw-marker-lifecycle") {
+        fail("reviewed fragment/part dispositions cleared or moved the unrelated marker lifecycle tuple");
+      }
+      const rawOwners = [...derived.owners.values()].filter(({ key, state }) =>
+        (key.owner_kind === "fragment" || key.owner_kind === "part") && state === "raw_unclassified"
+      );
+      if (rawOwners.length !== 2 || derived.frozen_legacy_spans.size !== source.document.frozen_legacy_span_ids.length) {
+        fail("reviewed subordinate prose disposition cleared raw owner/span debt instead of only boundary debt");
+      }
+    } else if (!boundary.some((item) => item.subject === "raw-fragment-lifecycle") ||
+      !boundary.some((item) => item.subject === "raw-part-lifecycle")) {
+      fail(`${id}: fragment/part lifecycle subjects moved categories or names`);
     }
     return pass();
   }

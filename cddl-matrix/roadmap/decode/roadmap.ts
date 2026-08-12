@@ -78,7 +78,10 @@ export const ROADMAP_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "authority_v1", values: ["authoritative"] },
   { name: "roadmap", values: ["matrix", "testing"] },
   { name: "frozen_source_eof", values: ["lf", "none"] },
+  { name: "semantic_conversion", values: ["converting", "complete"] },
   { name: "render_authority", values: ["raw", "semantic"] },
+  { name: "fragment_lifecycle_disposition", values: ["pending_review", "document_prose", "independent_record"] },
+  { name: "part_lifecycle_disposition", values: ["pending_review", "parent_supporting_prose", "independent_record"] },
   { name: "projection_visibility", values: ["document", "semantic_only"] },
   { name: "manifest_kind", values: STRUCTURAL_KINDS },
   { name: "source_kind", values: STRUCTURAL_KINDS },
@@ -93,14 +96,14 @@ const REPLACEMENT_CHILD = ["source_replacement"] as const;
 export const ROADMAP_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
   { name: "roadmap v0 root", required: ["document", "section", "record", "manifest", "source_span"], optional: ["fragment", "legacy_marker", "part", "generated_slot"], forbidden: ["relation", "reference"] },
   { name: "roadmap v1 root", required: ["document", "section", "record", "manifest", "source_span"], optional: ["fragment", "legacy_marker", "part", "generated_slot", "relation", "reference"] },
-  { name: "roadmap v0 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof"], forbidden: ["frozen_legacy_span_ids"] },
-  { name: "roadmap v1 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof", "frozen_legacy_span_ids"] },
+  { name: "roadmap v0 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof"], forbidden: ["semantic_conversion", "frozen_legacy_span_ids"] },
+  { name: "roadmap v1 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof", "frozen_legacy_span_ids"], optional: ["semantic_conversion"] },
   { name: "v0 section", required: ["section_id", "title", ...RAW_KEYS], optional: ["legacy_aliases"], forbidden: ["render_authority", "body_md", "source_replacement"] },
   { name: "v1 raw section", required: ["section_id", "title", "render_authority", ...RAW_KEYS], optional: ["legacy_aliases"], forbidden: ["body_md", "source_replacement"] },
   { name: "v1 semantic section", required: ["section_id", "title", "render_authority", "body_md"], optional: ["legacy_aliases", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids"] },
-  { name: "v0 fragment", required: ["fragment_id", "projection_group", ...RAW_KEYS], optional: ["title", "legacy_aliases"], forbidden: ["render_authority", "body_md", "source_replacement"] },
-  { name: "v1 raw fragment", required: ["fragment_id", "projection_group", "render_authority", ...RAW_KEYS], optional: ["title", "legacy_aliases"], forbidden: ["body_md", "source_replacement"] },
-  { name: "v1 semantic fragment", required: ["fragment_id", "projection_group", "render_authority", "body_md"], optional: ["title", "legacy_aliases", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids"] },
+  { name: "v0 fragment", required: ["fragment_id", "projection_group", ...RAW_KEYS], optional: ["title", "legacy_aliases"], forbidden: ["render_authority", "lifecycle_disposition", "body_md", "source_replacement"] },
+  { name: "v1 raw fragment", required: ["fragment_id", "projection_group", "render_authority", ...RAW_KEYS], optional: ["title", "legacy_aliases", "lifecycle_disposition"], forbidden: ["body_md", "source_replacement"] },
+  { name: "v1 semantic fragment", required: ["fragment_id", "projection_group", "render_authority", "lifecycle_disposition", "body_md"], optional: ["title", "legacy_aliases", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids"] },
   { name: "v0 legacy marker", required: ["marker_id", "legacy_aliases", ...RAW_KEYS], forbidden: ["render_authority", "marker_md", "source_replacement"] },
   { name: "v1 raw legacy marker", required: ["marker_id", "legacy_aliases", "render_authority", ...RAW_KEYS], forbidden: ["marker_md", "source_replacement"] },
   { name: "v1 semantic legacy marker", required: ["marker_id", "legacy_aliases", "render_authority", "marker_md"], optional: REPLACEMENT_CHILD, forbidden: ["source_block_md", "span_ids"] },
@@ -108,9 +111,9 @@ export const ROADMAP_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
   { name: "v1 raw record", required: ["id", "title", "projection_group", "render_authority", ...RAW_KEYS], optional: ["legacy_aliases", "tags", "semantic_shadow"], forbidden: ["projection_visibility", "payload", "source_replacement"] },
   { name: "v1 semantic record", required: ["id", "title", "projection_group", "render_authority", "projection_visibility", "payload"], optional: ["legacy_aliases", "tags", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids", "semantic_shadow"] },
   { name: "source replacement", required: ["span_id", "replacement_field", "review_note_md"] },
-  { name: "v0 part", required: ["part_id", "parent_record_id", ...RAW_KEYS], optional: ["title"], forbidden: ["render_authority", "body_md", "source_replacement"] },
-  { name: "v1 raw part", required: ["part_id", "parent_record_id", "render_authority", ...RAW_KEYS], optional: ["title"], forbidden: ["body_md", "source_replacement"] },
-  { name: "v1 semantic part", required: ["part_id", "parent_record_id", "render_authority", "body_md"], optional: ["title", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids"] },
+  { name: "v0 part", required: ["part_id", "parent_record_id", ...RAW_KEYS], optional: ["title"], forbidden: ["render_authority", "lifecycle_disposition", "body_md", "source_replacement"] },
+  { name: "v1 raw part", required: ["part_id", "parent_record_id", "render_authority", ...RAW_KEYS], optional: ["title", "lifecycle_disposition"], forbidden: ["body_md", "source_replacement"] },
+  { name: "v1 semantic part", required: ["part_id", "parent_record_id", "render_authority", "lifecycle_disposition", "body_md"], optional: ["title", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids"] },
   { name: "generated slot", required: ["slot_id", "binding", "span_ids"] },
   { name: "manifest table", required: ["entry"] },
   { name: "manifest entry", required: ["kind"], optional: ["section_id", "fragment_id", "marker_id", "record_id", "part_id", "slot_id"] },
@@ -255,7 +258,7 @@ function decodeDocumentMeta(ctx: DecodeContext, raw: unknown): DocumentMetaV0 | 
   const pre = expectExactTable(ctx, raw, "document", {
     name: "document discriminator",
     required: ["schema_version"],
-    optional: ["authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof", "frozen_legacy_span_ids"],
+    optional: ["authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof", "semantic_conversion", "frozen_legacy_span_ids"],
   });
   const versionRaw = requiredValue(pre, "schema_version");
   if (typeof versionRaw !== "number" || !Number.isSafeInteger(versionRaw)) {
@@ -282,6 +285,9 @@ function decodeDocumentMeta(ctx: DecodeContext, raw: unknown): DocumentMetaV0 | 
     authority: expectEnum(ctx, requiredValue(table, "authority"), ["authoritative"] as const, "document.authority"),
     roadmap,
     ...common,
+    ...(hasOwn(table, "semantic_conversion")
+      ? { semantic_conversion: expectEnum(ctx, optionalValue(table, "semantic_conversion"), ["converting", "complete"] as const, "document.semantic_conversion") }
+      : {}),
     frozen_legacy_span_ids: canonicalSet(
       ctx,
       expectArrayOf(ctx, requiredValue(table, "frozen_legacy_span_ids"), "document.frozen_legacy_span_ids", (entry, entryPath) => expectSubordinateId(ctx, entry, entryPath) as SpanId),
@@ -309,11 +315,27 @@ function decodeV0Fragment(ctx: DecodeContext, raw: unknown, path: string): RawFr
 }
 
 function decodeV1Fragment(ctx: DecodeContext, raw: unknown, path: string): RawFragmentV1 | SemanticFragmentV1 {
-  const pre = expectExactTable(ctx, raw, path, { name: "v1 fragment discriminator", required: ["fragment_id", "projection_group", "render_authority"], optional: ["title", "legacy_aliases", "source_block_md", "span_ids", "body_md", "source_replacement"] });
+  const pre = expectExactTable(ctx, raw, path, { name: "v1 fragment discriminator", required: ["fragment_id", "projection_group", "render_authority"], optional: ["title", "legacy_aliases", "lifecycle_disposition", "source_block_md", "span_ids", "body_md", "source_replacement"] });
   const authority = expectEnum(ctx, requiredValue(pre, "render_authority"), ["raw", "semantic"] as const, p(path, "render_authority"));
   const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[authority === "raw" ? 8 : 9]);
   const base = { fragment_id: expectSubordinateId(ctx, requiredValue(table, "fragment_id"), p(path, "fragment_id")) as FragmentId, projection_group: expectSubordinateId(ctx, requiredValue(table, "projection_group"), p(path, "projection_group")) as SectionId, ...title(ctx, table, path), ...aliases(ctx, table, path), render_authority: authority };
-  return authority === "raw" ? { ...base, render_authority: authority, ...rawBytes(ctx, table, path) } : { ...base, render_authority: authority, body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")), source_replacements: replacements(ctx, table, path) };
+  if (authority === "raw") {
+    return {
+      ...base,
+      render_authority: authority,
+      ...(hasOwn(table, "lifecycle_disposition")
+        ? { lifecycle_disposition: expectEnum(ctx, optionalValue(table, "lifecycle_disposition"), ["pending_review", "document_prose", "independent_record"] as const, p(path, "lifecycle_disposition")) }
+        : {}),
+      ...rawBytes(ctx, table, path),
+    };
+  }
+  return {
+    ...base,
+    render_authority: authority,
+    lifecycle_disposition: expectEnum(ctx, requiredValue(table, "lifecycle_disposition"), ["document_prose"] as const, p(path, "lifecycle_disposition")),
+    body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")),
+    source_replacements: replacements(ctx, table, path),
+  };
 }
 
 function decodeV0Marker(ctx: DecodeContext, raw: unknown, path: string): RawLegacyMarkerV0 {
@@ -385,11 +407,27 @@ function decodeV0Part(ctx: DecodeContext, raw: unknown, path: string, roadmap: R
 }
 
 function decodeV1Part(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): RawPartV1 | SemanticPartV1 {
-  const pre = expectExactTable(ctx, raw, path, { name: "v1 part discriminator", required: ["part_id", "parent_record_id", "render_authority"], optional: ["title", "source_block_md", "span_ids", "body_md", "source_replacement"] });
+  const pre = expectExactTable(ctx, raw, path, { name: "v1 part discriminator", required: ["part_id", "parent_record_id", "render_authority"], optional: ["title", "lifecycle_disposition", "source_block_md", "span_ids", "body_md", "source_replacement"] });
   const authority = expectEnum(ctx, requiredValue(pre, "render_authority"), ["raw", "semantic"] as const, p(path, "render_authority"));
   const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[authority === "raw" ? 18 : 19]);
   const base = { part_id: expectSubordinateId(ctx, requiredValue(table, "part_id"), p(path, "part_id")) as PartId, parent_record_id: expectRoadmapId(ctx, requiredValue(table, "parent_record_id"), p(path, "parent_record_id"), roadmap), ...title(ctx, table, path), render_authority: authority };
-  return authority === "raw" ? { ...base, render_authority: authority, ...rawBytes(ctx, table, path) } : { ...base, render_authority: authority, body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")), source_replacements: replacements(ctx, table, path) };
+  if (authority === "raw") {
+    return {
+      ...base,
+      render_authority: authority,
+      ...(hasOwn(table, "lifecycle_disposition")
+        ? { lifecycle_disposition: expectEnum(ctx, optionalValue(table, "lifecycle_disposition"), ["pending_review", "parent_supporting_prose", "independent_record"] as const, p(path, "lifecycle_disposition")) }
+        : {}),
+      ...rawBytes(ctx, table, path),
+    };
+  }
+  return {
+    ...base,
+    render_authority: authority,
+    lifecycle_disposition: expectEnum(ctx, requiredValue(table, "lifecycle_disposition"), ["parent_supporting_prose"] as const, p(path, "lifecycle_disposition")),
+    body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")),
+    source_replacements: replacements(ctx, table, path),
+  };
 }
 
 function decodeSlot(ctx: DecodeContext, raw: unknown, path: string): GeneratedSlot {

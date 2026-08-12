@@ -115,7 +115,15 @@ export function liveTestingShadowV0Document(
     ...(owner.title === undefined ? {} : { title: owner.title }),
     ...reconstructedRawFields(owner, "part", owner.part_id, spans, projection),
   }));
-  const { frozen_legacy_span_ids: _frozenLegacySpanIds, ...frozenSource } =
+  assert(
+    [...fragments, ...parts].every((owner) => !("lifecycle_disposition" in owner)),
+    "testing v0 reconstruction leaked a v1 lifecycle disposition",
+  );
+  const {
+    frozen_legacy_span_ids: _frozenLegacySpanIds,
+    semantic_conversion: _semanticConversion,
+    ...frozenSource
+  } =
     authoritative.document;
   const shadow: RoadmapDocumentV0 = {
     document: {

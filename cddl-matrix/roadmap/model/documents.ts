@@ -42,6 +42,8 @@ export interface DocumentMetaV1 extends FrozenSourceMeta {
   schema_version: 1;
   authority: "authoritative";
   roadmap: RoadmapName;
+  /** Historical v1 commit sources may omit; current worktree sources must declare it. */
+  semantic_conversion?: "converting" | "complete";
   frozen_legacy_span_ids: SpanId[];
 }
 
@@ -78,6 +80,7 @@ export interface RawFragmentV0 extends RawOwner {
 
 export interface RawFragmentV1 extends RawFragmentV0 {
   render_authority: "raw";
+  lifecycle_disposition?: "pending_review" | "document_prose" | "independent_record";
 }
 
 export interface SemanticFragmentV1 {
@@ -86,6 +89,7 @@ export interface SemanticFragmentV1 {
   title?: string;
   legacy_aliases?: string[];
   render_authority: "semantic";
+  lifecycle_disposition: "document_prose";
   body_md: Uint8Array;
   source_replacements: SourceReplacement[];
 }
@@ -144,6 +148,7 @@ export interface RawPartV0 extends RawOwner {
 
 export interface RawPartV1 extends RawPartV0 {
   render_authority: "raw";
+  lifecycle_disposition?: "pending_review" | "parent_supporting_prose" | "independent_record";
 }
 
 export interface SemanticPartV1 {
@@ -151,6 +156,7 @@ export interface SemanticPartV1 {
   parent_record_id: RoadmapId;
   title?: string;
   render_authority: "semantic";
+  lifecycle_disposition: "parent_supporting_prose";
   body_md: Uint8Array;
   source_replacements: SourceReplacement[];
 }

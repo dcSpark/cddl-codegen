@@ -8,6 +8,7 @@ frozen_source_sha256 = "f010705393ddbd0b5fa25368c7903df5c5f87a6e500bbdb9c99f7f22
 frozen_source_byte_length = 84580
 frozen_source_line_count = 996
 frozen_source_eof = "lf"
+semantic_conversion = "converting"
 frozen_legacy_span_ids = ["fragment-document-constraint-prefix", "fragment-document-counts-prefix", "fragment-document-emission-prefix", "fragment-document-ops-prefix", "fragment-document-tail", "part-atomic-bounds-handover", "part-consumer-hand-patch", "part-emitted-conformance-directory", "part-exclusion-comment-audit", "part-extern-execution", "part-fix-review-reach", "part-fixed-byte-representation", "part-json-gen-cross-module-execution", "part-multifile-extern-exclusion", "part-open-table-min-one-hardening", "part-shared-carrier-delivery-requirements", "part-test-steering-comment", "part-wasm-macro-directory", "record-additional-tool-annotations", "record-anonymous-nested-map", "record-array-sequence-upstream", "record-bignum-key-tag-upstream", "record-cbor-any-boundary", "record-control-host-placement-space", "record-derived-variant-naming", "record-duplicate-rejection-diagnostics", "record-emission-input-mode-honesty", "record-emission-narrowing-fixture-floor", "record-extern-emitted-test-boundary", "record-extern-execution-multifile", "record-extern-interface-sentinel-boundary", "record-fixed-array-static-representation", "record-fixed-bytes-lowercase-base64-parser", "record-fixed-bytes-validator-corroboration", "record-fixed-map-key-kinds", "record-fixed-value-choice-member", "record-float-key-null-upstream", "record-float-prelude-name-upstream", "record-float-table-key-domain", "record-grammar-derived-legality", "record-heterogeneous-array-occurrence-bounds", "record-incremental-group-choice-extension", "record-inline-cbor-containment-boundary", "record-inline-group-choice-arm", "record-inline-group-occurrence-carrier", "record-interaction-tuples-boundary", "record-intra-alternative-variations", "record-keyed-struct-map-zero-permitting-fields", "record-matching-semantics-boundary", "record-multi-choice-group-rule", "record-named-group-reference-grid", "record-named-rule-map-key-upstream", "record-nint-capability", "record-nominal-custom-pair-wrapper", "record-non-uint-range-upstream", "record-open-array-optional-adjacency", "record-open-table-bounded-rest-rows", "record-optional-closed-map-upstream", "record-over-acceptance-ast-notes", "record-over-acceptance-denominator", "record-per-value-encoding-reachability", "record-periodic-coverage-honesty", "record-prelude-number-float-upstream", "record-profile-version-scope", "record-radix-literal-upstream", "record-refusal-spelling-space", "record-root-reference-placement", "record-ruby-inline-controller-upstream", "record-signed-int-size-upstream", "record-tag-map-key-upstream", "record-tag-registry-boundary", "record-typed-tag-report-upstream", "record-uint-control-operator-upstream", "record-undefined-ciborium-upstream", "record-undefined-validator-upstream", "record-wasm-extern-wrapper-demand", "record-wasm-macro-behavior-boundary", "section-expansion", "section-explicit-boundaries", "section-findings-open", "section-maintenance", "section-matrix-side-work", "section-pending-decisions", "section-related", "section-upstream-closeouts", "section-wasm-abi-multifile"]
 
 [[section]]
@@ -169,6 +170,7 @@ fragment_id = "document-constraint-prefix"
 projection_group = "matrix-side-work"
 title = "Document preamble before constraint"
 render_authority = "raw"
+lifecycle_disposition = "document_prose"
 source_block_md = """<!-- /gen:sh:roadmap-emission --> —
 see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->"""
 span_ids = ["fragment-document-constraint-prefix"]
@@ -178,6 +180,7 @@ fragment_id = "document-counts-prefix"
 projection_group = "matrix-side-work"
 title = "Document preamble before counts"
 render_authority = "raw"
+lifecycle_disposition = "document_prose"
 source_block_md = """# CDDL master matrix — roadmap (remaining work + findings)
 
 Read `README.md` first (the model + current state, including the durable gotchas and the
@@ -206,6 +209,7 @@ fragment_id = "document-emission-prefix"
 projection_group = "matrix-side-work"
 title = "Document preamble before emission"
 render_authority = "raw"
+lifecycle_disposition = "document_prose"
 source_block_md = """<!-- /gen:sh:roadmap-ops -->):
 \"supported\" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -218,6 +222,7 @@ fragment_id = "document-ops-prefix"
 projection_group = "matrix-side-work"
 title = "Document preamble before ops"
 render_authority = "raw"
+lifecycle_disposition = "document_prose"
 source_block_md = """<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->"""
 span_ids = ["fragment-document-ops-prefix"]
@@ -227,6 +232,7 @@ fragment_id = "document-tail"
 projection_group = "matrix-side-work"
 title = "Document preamble after generated facts"
 render_authority = "raw"
+lifecycle_disposition = "document_prose"
 source_block_md = """<!-- /gen:sh:roadmap-constraint --> — the enforcement
 axis carries three temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
 every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
@@ -1567,6 +1573,7 @@ part_id = "atomic-bounds-handover"
 parent_record_id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Atomically hand over bounded scalar and byte/text values to private-field newtypes"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """### Atomically hand over bounded scalar and byte/text values to private-field newtypes
 
 Value windows (`uint .le N`, `.size` ranges on bytes/text) need private-field newtypes whose
@@ -1581,6 +1588,7 @@ part_id = "consumer-hand-patch"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "Hand-patched generated output in a consumer"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - **Hand-patched generated output in a consumer** — hand-added `use` lines, visibility flips, or
     `#[rustfmt::skip]` blocks living in a consumer's committed `src/generated/**`. Every regen
     deletes them, so each one is a workaround for a generator hole nobody filed; read the consumer's
@@ -1593,6 +1601,7 @@ part_id = "emitted-conformance-directory"
 parent_record_id = "matrix.emission-input-mode-honesty"
 title = "`--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` — a"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - `--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` — a
     multifile placement cell's non-root-module rule judged against the concatenated source spec, the
     spec-on-disk contract `docs/docs/command_line_flags.mdx` states for the flag.
@@ -1604,6 +1613,7 @@ part_id = "exclusion-comment-audit"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "The EXCLUSION comments, not just the missing rows"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - **The EXCLUSION comments, not just the missing rows** — a shape excluded because the compile
     floor cannot build it standalone (`extern` / `rawbytes`) bounds the GATE, not the generator, and
     a consumer regen has already broken inside exactly such an exclusion. An exclusion justified by
@@ -1628,6 +1638,7 @@ part_id = "extern-execution"
 parent_record_id = "matrix.extern-execution-multifile"
 title = "EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —
     is `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry. A seeded codec round-trips
     because the seed says so, which is why `feature_corpus_roundtrips_nondefault_profiles` skips
@@ -1640,6 +1651,7 @@ part_id = "fix-review-reach"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "Fix-review reach analysis"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - **Fix-review reach analysis** — after a fix, ask which OTHER rule families the changed code path
     can reach. The shapes it reaches and the grid does not are the missing rows.
 """
@@ -1650,6 +1662,7 @@ part_id = "fixed-byte-representation"
 parent_record_id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Fixed-byte representation optimization"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """### Fixed-byte representation optimization
 
 `bytes .size 32` can map to `[u8; 32]`: the representation itself carries the constraint. The
@@ -1664,6 +1677,7 @@ part_id = "json-gen-cross-module-execution"
 parent_record_id = "matrix.emission-input-mode-honesty"
 title = "EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module types is covered"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module types is covered
     by `multifile_json_preserve`, whose `run_test` leg runs the json-gen binary over the
     four-submodule `tests/multifile/inputs` tree and asserts the emitted document.
@@ -1699,6 +1713,7 @@ part_id = "multifile-extern-exclusion"
 parent_record_id = "matrix.extern-execution-multifile"
 title = "The multifile matrix never enumerates extern/rawbytes shapes at all"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - The multifile matrix never enumerates extern/rawbytes shapes at all
     (`project_multifile_matrix.ts`'s `SHAPES`), so its exclusion is structural rather than a skip
     list. Extern PLACEMENT across scopes is covered by `tests/extern-generic-scoped` and
@@ -1717,6 +1732,7 @@ part_id = "open-table-min-one-hardening"
 parent_record_id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Harden an open table's min-1 typed row when an invalid value is observed"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """### Harden an open table's min-1 typed row when an invalid value is observed
 
 An open table's min-1 typed row (`t = { + K_t => V_t, * K_r => V_r }`) is the one min-1 shape
@@ -1738,6 +1754,7 @@ part_id = "shared-carrier-delivery-requirements"
 parent_record_id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Shared delivery requirements for occurrence and bounds carrier classes"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """### Shared delivery requirements for occurrence and bounds carrier classes
 
 Each class above lands tests-first when picked up; the `+` case's fixture surface (the `nev_*` rules
@@ -1753,6 +1770,7 @@ part_id = "test-steering-comment"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "A steering comment in a test"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - **A steering comment in a test** — a test that deliberately picks the easy variant (\"uses an
     exposable key so no wrapper is minted\") is a coverage hole wearing a disguise. Grepping for such
     steering is a cheap sweep arm.
@@ -1764,6 +1782,7 @@ part_id = "wasm-macro-directory"
 parent_record_id = "matrix.emission-input-mode-honesty"
 title = "The `--wasm-*-macro` modes × directory input are compile-gated by"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - The `--wasm-*-macro` modes × directory input are compile-gated by
     `wasm_macros_multifile_compiles` (per-module macro imports, invocations minted inside the
     submodule's own file, and the scoped rust path each invocation carries), which puts the

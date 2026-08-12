@@ -3742,6 +3742,30 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
         [request],
       );
       assert(capability.ok, `exact guard-transfer debt capability must mint: ${JSON.stringify(capability.issues)}`);
+      const candidateConversionForward = {
+        ...candidateDocument,
+        document: { ...candidateDocument.document, semantic_conversion: "complete" as const },
+      };
+      const forwardDeclarationMutation = compareMigrationDebt(baseDebt, candidateDebt, {
+        base_document: familyBase,
+        candidate_document: candidateConversionForward,
+        transition_facts: capability.facts,
+      });
+      assert(forwardDeclarationMutation.some((issue) =>
+        issue.code === "E-DEBT-BASE-MISMATCH" && issue.logical_path === "transition_facts"
+      ), `guard capability must bind a forward semantic-conversion declaration change at transition_facts: ${JSON.stringify(forwardDeclarationMutation)}`);
+      const baseConversionReverse = {
+        ...familyBase,
+        document: { ...familyBase.document, semantic_conversion: "complete" as const },
+      };
+      const reverseDeclarationMutation = compareMigrationDebt(baseDebt, candidateDebt, {
+        base_document: baseConversionReverse,
+        candidate_document: candidateDocument,
+        transition_facts: capability.facts,
+      });
+      assert(reverseDeclarationMutation.some((issue) =>
+        issue.code === "E-DEBT-BASE-MISMATCH" && issue.logical_path === "transition_facts"
+      ), `guard capability must bind a reverse semantic-conversion declaration change at transition_facts: ${JSON.stringify(reverseDeclarationMutation)}`);
       const replacementFamilyId = "matrix.fixture-replacement-family" as RoadmapId;
       const activeChildrenCandidate = c5V1("matrix", [
         c5FamilyRecordUsingChildIds(replacementFamilyId, c5FamilyChildIds(C5_ID)),
@@ -4343,6 +4367,44 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
           transition_facts: facts,
         }).length === 0, "disjoint guard+semantic-conversion capabilities must compose in both orders");
       }
+
+      const irreversibleBase = c5V1("matrix", [c5ReadyRecord(workId)]);
+      irreversibleBase.document.semantic_conversion = "complete";
+      const irreversibleCandidate = c5V1("matrix", [c5ReadyRecord(workId)]);
+      irreversibleCandidate.document.semantic_conversion = "converting";
+      const allIrreversible = c5AllTransaction(
+        c5ActiveRevision(irreversibleBase),
+        c5ActiveRevision(irreversibleCandidate),
+      );
+      assert(allIrreversible.issues.some((issue) =>
+        issue.code === "E-TRANSACTION-BASE" &&
+        issue.logical_path === "matrix.document.semantic_conversion"
+      ), `all-roadmap transaction must reject complete -> converting: ${JSON.stringify(allIrreversible.issues)}`);
+
+      const baseIdentity = validateGlobalIdentity({
+        documents: [buildRoadmapIndexes(irreversibleBase).indexes.identity_inputs],
+      });
+      const candidateIdentity = validateGlobalIdentity({
+        documents: [buildRoadmapIndexes(irreversibleCandidate).indexes.identity_inputs],
+      });
+      const scopedIrreversible = validateTransaction({
+        scope: "matrix",
+        against: C5_BASE,
+        load_base: () => ({
+          document: irreversibleBase,
+          debt: c5Debt(irreversibleBase),
+          identity: baseIdentity,
+          registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+        }),
+        candidate_document: irreversibleCandidate,
+        candidate_debt: c5Debt(irreversibleCandidate),
+        candidate_registry: c5Registry({ kind: "worktree" }),
+        candidate_global_identity: candidateIdentity,
+      });
+      assert(scopedIrreversible.issues.some((issue) =>
+        issue.code === "E-TRANSACTION-BASE" &&
+        issue.logical_path === "matrix.document.semantic_conversion"
+      ), `scoped transaction must reject complete -> converting: ${JSON.stringify(scopedIrreversible.issues)}`);
       return true;
     }
     case "transaction_missing_campaign_removal": {
@@ -5589,6 +5651,7 @@ function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
       "category_hide", "frozen_growth", "lifecycle_guard_retirement", "guard_retirement_forward",
       "guard_retirement_reverse", "guard_restructure_forward", "guard_restructure_reverse",
       "guard_semantic_conversion_forward", "guard_semantic_conversion_reverse",
+      "all_semantic_conversion_reverse", "scoped_semantic_conversion_reverse",
     ];
   }
   if (id === "transaction_complete_tombstone") return ["complete", "missing_base_debt", "missing_candidate_debt"];

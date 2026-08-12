@@ -60,6 +60,12 @@ import {
 } from "./render.ts";
 import { buildExpectedChunks, validateCompletedChunks, type CompletedRenderIr } from "./render_ir.ts";
 import { scanRoadmapMarkdownFacts } from "./references.ts";
+import {
+  semanticConversionCompletionAudit,
+  semanticConversionState,
+  validateSemanticConversionCompletion,
+  validateSemanticConversionDeclaration,
+} from "./semantic_conversion.ts";
 import { runSelfTests } from "./selftest.ts";
 import { validateSourceSpans } from "./spans.ts";
 import {
@@ -154,7 +160,13 @@ function decodeAt(name: RoadmapName, reader: RevisionReader): { document: Roadma
   const path = SOURCE_BY_ROADMAP[name];
   const source = new Uint8Array(reader.read(path));
   strictSource(source, path);
-  return { document: decodeRoadmapSource(source, path, name, true), source };
+  const document = decodeRoadmapSource(source, path, name, true);
+  const declarationIssues = validateSemanticConversionDeclaration(
+    document,
+    reader.revision.kind === "commit",
+  );
+  if (declarationIssues.length > 0) failure(declarationIssues);
+  return { document, source };
 }
 
 function domainValidation(document: RoadmapDocument, view: RegistryView) {
@@ -195,6 +207,8 @@ function prepareDecodedRoadmapCore(
   const spanIssues = validateSourceSpans({ document, completed });
   if (spanIssues.length > 0) failure(spanIssues);
   const debt = deriveMigrationDebt(document, completed);
+  const completionIssues = validateSemanticConversionCompletion(document, debt, completed);
+  if (completionIssues.length > 0) failure(completionIssues);
   const productionOutput = validateProductionOutputRegistry(
     registry.output_claims,
     registry.production_output_stage,
@@ -296,7 +310,12 @@ function roadmapReceipt(prepared: FinalizedRoadmap): string {
   const projectionOwner = prepared.registry.output_claims.find((claim) =>
     claim.kind === "whole_file" && claim.path === prepared.document.document.projection_path
   )?.producer ?? "unclaimed";
-  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} authority=${prepared.document.document.authority} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} manifest=${prepared.document.manifest.length} spans=${prepared.document.spans.length} debt_owners=${owners} debt_independent=${independent} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
+  const completion = semanticConversionCompletionAudit(
+    prepared.document,
+    prepared.debt,
+    prepared.completed,
+  );
+  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} authority=${prepared.document.document.authority} semantic_conversion_declared=${completion.declared} semantic_conversion_effective=${completion.effective} completion_blockers=${completion.blockers.length} wp5c_join_blockers=${completion.wp5c_join_blockers.length} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} manifest=${prepared.document.manifest.length} spans=${prepared.document.spans.length} debt_owners=${owners} debt_independent=${independent} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
 }
 
 function success(stdout: string | Uint8Array): RoadmapCliResult {
@@ -418,6 +437,7 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
           roadmap: item.document.document.roadmap,
           schema_version: item.document.document.schema_version,
           authority: item.document.document.authority,
+          semantic_conversion: semanticConversionState(item.document),
           record_count: item.document.records.length,
           projection_byte_length: item.projection.byteLength,
           projection_sha256: sha256(item.projection),
@@ -426,6 +446,7 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
     case "debt":
       return { evaluation_as_of, roadmaps: prepared.map((item) => ({
         roadmap: item.document.document.roadmap,
+        semantic_conversion: semanticConversionCompletionAudit(item.document, item.debt, item.completed),
         ...migrationDebtReport(item.debt),
         migration_progress: migrationProgressReport(item.document, item.debt, item.completed),
       })) };
@@ -803,6 +824,8 @@ function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResul
   let document: RoadmapDocument | CampaignDocumentV1 | RetiredIdsDocumentV1;
   if (path === MATRIX_SOURCE) {
     document = decodeRoadmapSource(source, path, "matrix", false);
+    const declarationIssues = validateSemanticConversionDeclaration(document, false);
+    if (declarationIssues.length > 0) failure(declarationIssues);
     const core = prepareDecodedRoadmapCore("matrix", document, ports.registryView({ kind: "worktree" }));
     const lifecycle = loadActivatedLifecycle(worktreeReader(ports), { matrix: core });
     if (lifecycle !== undefined) {
@@ -813,6 +836,8 @@ function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResul
     }
   } else if (path === TESTING_SOURCE) {
     document = decodeRoadmapSource(source, path, "testing", false);
+    const declarationIssues = validateSemanticConversionDeclaration(document, false);
+    if (declarationIssues.length > 0) failure(declarationIssues);
     const core = prepareDecodedRoadmapCore("testing", document, ports.registryView({ kind: "worktree" }));
     const lifecycle = loadActivatedLifecycle(worktreeReader(ports), { testing: core });
     if (lifecycle !== undefined) {

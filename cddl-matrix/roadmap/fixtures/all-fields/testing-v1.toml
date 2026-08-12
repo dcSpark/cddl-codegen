@@ -8,6 +8,7 @@ frozen_source_sha256 = "d3018104605ecdfd007ed99f9d157e7faa9dda00b952a6f5213078b7
 frozen_source_byte_length = 697
 frozen_source_line_count = 21
 frozen_source_eof = "lf"
+semantic_conversion = "converting"
 frozen_legacy_span_ids = ["section", "semantic-detail", "semantic-summary", "span-admission-bounded", "span-admission-independent", "span-admission-silent", "span-all-fields-raw", "span-control-review", "span-cost-historical", "span-evidence-gate", "span-incident-attributed", "span-incident-historical", "span-incident-live", "span-operational-attributed", "span-operational-retire-pending", "span-operational-watching", "span-signal-escalation", "span-systematic-observed", "span-task-ready"]
 
 [[section]]

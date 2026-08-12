@@ -8,6 +8,7 @@ frozen_source_sha256 = "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b
 frozen_source_byte_length = 323398
 frozen_source_line_count = 3597
 frozen_source_eof = "lf"
+semantic_conversion = "converting"
 frozen_legacy_span_ids = ["span-fragment-sources-exhaustive-menu", "span-fragment-sources-expert-writeups", "span-part-part-advice-shaped-spelling-message-prints-remedy-string-strings", "span-part-part-all-hit-cost", "span-part-part-anonymous-group-rejection-s-give-name-using-name", "span-part-part-another-profile-flip-abort-fix-widening-reachable-set", "span-part-part-arbitrary-derived-supported-cddl-ast-generation", "span-part-part-bare-fixed-table-value-refusal-continued-say-named", "span-part-part-batch-masking-detector-layer-sweeps", "span-part-part-both-ignore-rejections-printed-k-v-ignore-valid", "span-part-part-cheap-system-matrix-shape-pairs-compiled-wasm-side", "span-part-part-closure-audit-traced-set-extension", "span-part-part-collision-loser-row-schema-id-s-match", "span-part-part-collision-two-types-both-lack-rows", "span-part-part-comment-ast-grammar-change-any-form-just-new", "span-part-part-coverage-extensions", "span-part-part-cross-crate-collision-schema-id-s-match", "span-part-part-dedicated-collision-message-generic-instantiation-naming", "span-part-part-default-head-refusal-s-remedy-list-offered-bare", "span-part-part-embed-site-leg-alias-classifying-roots-two-proven", "span-part-part-emitted-name-guard-mint-records-unminted-extra", "span-part-part-emitted-name-guard-neither-closes-holes-above-two", "span-part-part-findings-couples-carriers-least-carrier-executes-s-headline", "span-part-part-findings-s-description-claimed-shape-s-standalone-codec", "span-part-part-findings-s-recommended-remedy-c-kv-keyed-plain", "span-part-part-freezes-livelock-repo-arithmetic-make-them-impossible-containment", "span-part-part-generics-repeat-refusal-s-first-drafted-remedy-advertised", "span-part-part-inline-anonymous-two-arm-choices-recognized", "span-part-part-inline-group-choice-rejection-s-remedy-g-b", "span-part-part-mangling-still-general-fix", "span-part-part-md-mdmap", "span-part-part-member-position-duplicates-extension", "span-part-part-negative-premise-stands", "span-part-part-nested-cargo-test", "span-part-part-non-idiom-choice-bodied-generic-defs-refused-supported", "span-part-part-non-recorded-isn-t-re-litigated-coverage-gap", "span-part-part-occurrence-aware-generic-instance-identity", "span-part-part-own-reviewed-change-never-drive", "span-part-part-pre-cache-remedies-stay-valid-if-uncached-path", "span-part-part-read-caught-instance-class", "span-part-part-real-world-corpus-differential", "span-part-part-refusal-s-first-predicate-refused-exact-remedy-own", "span-part-part-remedy-pin-per-message-per-triggering-construct-class", "span-part-part-remedy-string-executable-wherever-lives-emitted-message-gets", "span-part-part-reopening-signal", "span-part-part-reopening-signal-nested", "span-part-part-reopening-signal-probe", "span-part-part-reopening-signal-wasm", "span-part-part-reopening-signal-workspace", "span-part-part-rustc-after-panic-ok-flip-panic-fix-lands", "span-part-part-rustfmt-code-never-reaches-rustc-all", "span-part-part-same-shape-set-instantiations", "span-part-part-schema-name-schemars-percent-encodes-ref", "span-part-part-scope-wide-probe", "span-part-part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516", "span-part-part-sighting-offline-gate-run-new-class", "span-part-part-spend-measurements", "span-part-part-surfaces-still-online", "span-part-part-tagged-remedy-spelling-was-imprecise-coords-faithful-coords", "span-part-part-verify-ts-evidence-absorber-stays", "span-part-part-what-hand-per-construct-buy-established-escape-produced", "span-part-part-why-parity-gate-cannot-host-generalization", "span-record-add-profile-wrapper-participation-grid-participation-differs-across", "span-record-alloc-imports-nested-inline-modules-hand-carried-design", "span-record-arm-position-s-classifier-compile-time-forcing-function", "span-record-armed-idle-harness-arms-empty-head-ledgers-zero", "span-record-assert-hand-authored-json-schema-against-type-s", "span-record-backgrounded-check-ts-full-launched-sub-agent-s", "span-record-build-registration-class-reference-position-sweep-second-escape", "span-record-cargo-feature-generated-crate-s-dependency-change-what", "span-record-cddl-module-directives-draft-ietf-cbor-cddl-modules", "span-record-check-merged-d-ts-name-collisions-two-halves", "span-record-checking-runtime-flavor-s-safety-condition-rather-stating", "span-record-citation-resolves-naming-wrong-thing-invisible-citation-lint", "span-record-comment-residue-false-matches-text-scans-over-emitted", "span-record-complete-cargo-mutants-sweep-will-never-run", "span-record-composing-registration-rows-across-generation-passes-share-output", "span-record-config-run-s-convergence-warning-name-crate-already", "span-record-container-construct-conceptual-type-visitor-walks-flat-combinatorial", "span-record-containment-note-s-stated-reason-go-false-any", "span-record-control-bytes-committed-source-files-proven-instance-machinery", "span-record-corpus-c-style-enum-data-type-choice-arm", "span-record-corpus-preserve-pair-map-key-value-self-encoding", "span-record-corpus-wide-regen-over-prior-output-sweep-reaches", "span-record-crate-generates-json-schema-document-aggregate-package", "span-record-cross-version-preserve-vectors-beyond-std-alloc-rewrite", "span-record-dependency-swap-pass-compile-parity-existing-gate-silently", "span-record-dependency-version-range-resolution-untested-generated-crates-float", "span-record-directive-dependent-emitter-edge-case-triggering-shape-hand", "span-record-directive-effect-round-trip-coherence-sweep-accepted-custom", "span-record-directive-s-documented-sentence-stay-true-consumer-visible", "span-record-docs-vs-behavior-conformance-harness-comment-dsl-mdx", "span-record-documented-failure-shape-exercises-prose-cross-crate-int", "span-record-documented-flag-pairing-broken-fixture-stays-green-because", "span-record-doubled-doc-comment-markers-emitted-docs-proven-instance", "span-record-dsl-position-tests-string-level-design-green-emitted", "span-record-duplicates-policy-residuals", "span-record-e0463-t-find-crate-core-scratch-tree-std", "span-record-edn-text-notation-round-trip-edn-edn-draft", "span-record-emission-branch-generated-output-fixture-exercises-invisible-gate", "span-record-emit-tests-gate-asserts-round-trip-green-cannot", "span-record-emitted-shape-lint-classes-outside-clippy-all-beyond", "span-record-emitter-drops-overloadable-parameter-building-fresh-config-invisible", "span-record-exclusion-reasons-informational-interchange", "span-record-execution-binary-wrappers-true-last-documented-flag-value", "span-record-extend-recombination-member-kind-table-optional-fixed-shape", "span-record-extern-deps-wasm-boundary-surface-packaging-json-gen", "span-record-extern-interface-export-dialect-v2-candidates", "span-record-extern-interface-export-public-interchange-format", "span-record-extreme-value-boundary-correctness-generation-time-encode-paths", "span-record-failing-snapshot-test-surfaces-mismatch-per-test-run", "span-record-file-listing-json-schema-root-values-flag-per", "span-record-finding-s-defect-side-attribution-recorded-narrative-plausibility", "span-record-fixture-models-obsolete-user-contract-stays-green-real", "span-record-fixture-s-verdict-accident-cargo-feature-unification-harness", "span-record-fixture-shape-evicted-over-known-defect-stale-guard", "span-record-flag-cddl-codegen-invocation-wasm-run-wasm-flag", "span-record-full-n-flag-powerset-pict-pairwise", "span-record-full-suite-flake-attributed-hardened-acquire-scratch-lock", "span-record-gate-cache-closure-audit-structurally-blind-gate-authored", "span-record-gate-cache-costs", "span-record-gate-demands-premise-probed-against-gate-evidence-about", "span-record-gate-exists-registry-nowhere-tests-readme-md-hand", "span-record-gate-s-own-stdout-print-column-result-pass", "span-record-gate-script-health-cache-staleness-key-fresh-worktree", "span-record-generated-local-collision-class-refused-mangled-refusal-s", "span-record-generic-raw-bytes-base-refused-generic-extern-base", "span-record-grammar-fuzzer-escalations", "span-record-hand-enumerated-ban-pattern-list-authority-lives-gitignored", "span-record-hand-maintained-source-dependency-mapping-manifest-changeset-silently", "span-record-json2ts-artifact-doc-comments-naming-undefined", "span-record-lint-doc-citations-accepts-docs-heading-durable-citation", "span-record-lint-provocation-shapes-generated-code-clippy-clean-partially", "span-record-lockstep-drift-gate-rust-ts-kebab-ident-mirror", "span-record-logic-tool-emits-source-text-outside-layer-reasons", "span-record-machine-readable-ownership-co-owned-features-std-list", "span-record-maintainer-ruling-force-convenience-cbor-bytes-door-turns", "span-record-make-fixture-comment-s-claimed-wire-bytes-executable", "span-record-making-type-choice-path-reject-duplicated-explicit-name", "span-record-matrix-s-note-names-panic-site-aborts-nothing", "span-record-mechanical-layers-two-review-owned-design-rules-tests", "span-record-message-s-level-classification-review-owned-two-ways", "span-record-migration-handoff-s-complete-list-found-survey-negative", "span-record-minted-identifier-spellability-floor-identifier-generator-emits-verbatim", "span-record-msrv-declaration-os-matrix-generated-code", "span-record-multifile-reference-position-coverage-two-position-keyed-escapes", "span-record-nested-cargo-scratch-retention-tmp-cddl-leaks-until", "span-record-nothing-asserts-how-many-times-rejection-message-emitted", "span-record-nothing-asserts-two-ir-sites-cannot-mint-same", "span-record-observed-baseline-comments-beside-gate-floors-rot-silently", "span-record-opt-rfc-faithful-total-cbor-json-rendering-json", "span-record-orphan-fixture-directory-meta-test", "span-record-ownership-journal-making-dropped-std-forward-dep-converge", "span-record-panic-site-un-shadowing-converting-shallow-panic-graceful", "span-record-parallel-constructor-fixture-diversity-parser-over-external-input", "span-record-pin-toolchain-verify-ts-s-nested-cargo-scratch", "span-record-positional-diversity-fold-preserve-fixture-corpus-authoring-gives", "span-record-prettyplease-shelling-rustfmt", "span-record-probe-component-face-s-js-surface-axes-js", "span-record-profile-driven-compile-gate-covers-compositions-profiles-specs", "span-record-project-json-gen-documents-run-test-fixture-writes", "span-record-propagating-deliberately-unpublished-type-s-intent-json-ts", "span-record-quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus", "span-record-reason-keyed-rejection-evidence-reject-catalogs-proven-near", "span-record-referencing-context-measured-wrapping-deep-honored-base-shape", "span-record-registry-fetch-transients-nested-cargo-cells", "span-record-rejection-message-s-remedy-string-executable-claim-pin", "span-record-representation-changing-directive-goes-live-new-container-ship", "span-record-restructuring-features-std-tool-owned-sub-feature-cddl", "span-record-rule-trailing-directive-classification", "span-record-ruling-premise-gate-x-stays-green-must-probed", "span-record-run-local-values-gate-cache-key-material-proven", "span-record-rustfmt-seam-error-leg-still-witness-needs-subprocess", "span-record-same-named-generated-crates-silently-share-cargo-fingerprint", "span-record-schema-document-s-name-injectivity-enforced-row-side", "span-record-shared-cargo-target-dir-across-same-named-scratch", "span-record-stale-known-limitation-prose-surviving-fix-finding-ledgered", "span-record-stale-pin-guard-cannot-distinguish-gap-closed-vector", "span-record-std-generated-crates", "span-record-synthesized-name-referenced-never-minted-e0425-flavor", "span-record-synthetic-protocol-controls-component-probe-host-s-defensive", "span-record-three-defect-classes-process-test-see-sharing-remedy", "span-record-tier-s-disk-bandwidth-unmeasured-anything-scratch-floor", "span-record-tier-s-peak-memory-bounded-arithmetic-over-assumed", "span-record-transparent-tag-set-idiom-recognized-shape-boundary-request", "span-record-tree-wide-sweeps-over-gitignored-regeneration-targets-count", "span-record-twin-repo-implementations-semantic-drifting-apart-emission-spellings", "span-record-unused-imports-generated-crates-trait-import-class-name", "span-record-value-anchor-rot-field-addition-delivery-grows-existing", "span-record-verify-cache-transparency-b-split-emission-profile-embed", "span-record-verify-ts-refuse-unknown-flag-silently-degrading-plain", "span-record-verify-ts-warm-up-cargo-test-exit-attributed", "span-record-wac-composed-component-transpiled-jco-loses-cross-instance", "span-record-warm-up-refresh-dep-universe-lock-trust-fresh", "span-record-wasm-face-s-door-vocabulary-hand-listed-mechanism", "span-record-wasm32-link-floor-deferred-reject-twin", "span-record-working-tree-gate-run-concurrent-live-implementation-agent", "span-record-workspace-mode-wasm32-wasip2-build-gate-both-faces", "span-record-wrapper-name-user-set-name-synthesized-collection-wrapper", "span-section-declined-boundaries", "span-section-deferred-features", "span-section-next-priority", "span-section-north-star", "span-section-operational-watches", "span-section-pending-maintainer", "span-section-preamble", "span-section-sources", "span-section-standing-system"]
 
 [[section]]
@@ -185,6 +186,7 @@ fragment_id = "sources-exhaustive-menu"
 projection_group = "sources"
 title = "Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`"
 render_authority = "raw"
+lifecycle_disposition = "document_prose"
 source_block_md = """- Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
 """
 span_ids = ["span-fragment-sources-exhaustive-menu"]
@@ -194,6 +196,7 @@ fragment_id = "sources-expert-writeups"
 projection_group = "sources"
 title = "Per-dimension expert write-ups: `draft/testing-recommendations/*.md`"
 render_authority = "raw"
+lifecycle_disposition = "document_prose"
 source_block_md = """- Per-dimension expert write-ups: `draft/testing-recommendations/*.md`
 """
 span_ids = ["span-fragment-sources-expert-writeups"]
@@ -4275,6 +4278,7 @@ part_id = "part-advice-shaped-spelling-message-prints-remedy-string-strings"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "EVERY advice-shaped spelling a message prints is a remedy string, not only the strings"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - EVERY advice-shaped spelling a message prints is a remedy string, not only the strings
       introduced by \"instead\" or \"remedy\": an advertised VALID PLACEMENT is advice a reader copies
       verbatim.
@@ -4286,6 +4290,7 @@ part_id = "part-all-hit-cost"
 parent_record_id = "testing.gate-cache-costs"
 title = "Residual all-hit cost"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **Residual all-hit cost** — an all-hit `feature_corpus_compiles` still measures ~2.5 min of
     always-run work (177× generation + 177× `cargo generate-lockfile`); dedupe lockfile resolution
     per identical generated `Cargo.toml` within a run if that bites.
@@ -4297,6 +4302,7 @@ part_id = "part-anonymous-group-rejection-s-give-name-using-name"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "The anonymous-group rejection's \"give it a name using the `@name` notation\" was true for the"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - The anonymous-group rejection's \"give it a name using the `@name` notation\" was true for the
       bare inline array and dead advice for the tag-wrapped trigger (`f: #6.42([x: uint]) ; @name Foo`),
       because the name reader's parent-chain walk stopped at the interposed `TaggedData` node — one
@@ -4312,6 +4318,7 @@ part_id = "part-another-profile-flip-abort-fix-widening-reachable-set"
 parent_record_id = "testing.three-defect-classes-process-test-see-sharing-remedy"
 title = "*another profile, with no flip, no abort and no fix widening a reachable set — the shape always generated."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - ***another profile, with no flip, no abort and no fix widening a reachable set — the shape always
     generated.*** A fixture certifies only the PROFILES it is generated under, so a shape added to a
     default-profile fixture is unexamined everywhere else. Proven instance (since fixed and given
@@ -4344,6 +4351,7 @@ part_id = "part-arbitrary-derived-supported-cddl-ast-generation"
 parent_record_id = "testing.grammar-fuzzer-escalations"
 title = "`arbitrary`-derived \"supported-CDDL\" AST generation"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """   - **`arbitrary`-derived \"supported-CDDL\" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).
@@ -4355,6 +4363,7 @@ part_id = "part-bare-fixed-table-value-refusal-continued-say-named"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "The bare fixed-table-VALUE refusal continued to say a named fixed rule was rejected after"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - The bare fixed-table-VALUE refusal continued to say a named fixed rule was rejected after
       B3-024A made it a nominal singleton. Reading found the stale sentence; its corrected
       `five = 5` / `{ * uint => five }` advice is now executed under default and preserve by
@@ -4368,6 +4377,7 @@ part_id = "part-batch-masking-detector-layer-sweeps"
 parent_record_id = "testing.grammar-fuzzer-escalations"
 title = "Batch-masking detector for the layer-2 sweeps."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """   - **Batch-masking detector for the layer-2 sweeps.** The ~40-rule batching means a green batch
      is not a per-composition guarantee for failure classes whose symptom is a missing CRATE-GLOBAL
      definition: `Int` is a crate-global extern emitted iff any rule registers a reference, so a
@@ -4393,6 +4403,7 @@ part_id = "part-both-ignore-rejections-printed-k-v-ignore-valid"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "Both `@ignore` rejections printed \"`{ 1: a, * k => v } ; @ignore`\" as the one valid placement,"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - Both `@ignore` rejections printed \"`{ 1: a, * k => v } ; @ignore`\" as the one valid placement,
       and that exact spelling itself refuses (a type rule's after-brace comment binds to the RULE
       slot, where `@ignore` is rejected) — the working entry-line spelling was documented correctly
@@ -4405,6 +4416,7 @@ part_id = "part-cheap-system-matrix-shape-pairs-compiled-wasm-side"
 parent_record_id = "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
 title = "The cheap system is a matrix of shape PAIRS compiled wasm-side"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - **The cheap system is a matrix of shape PAIRS compiled wasm-side** — generated once per pair,
       `cargo check`ed, no vectors. `tests/matrix_multifile` (shape × reference-mode, wasm-checked per
       cell) is the nearest existing machinery, but its SHAPES axis enumerates self-contained RULE
@@ -4419,6 +4431,7 @@ part_id = "part-closure-audit-traced-set-extension"
 parent_record_id = "testing.gate-cache-costs"
 title = "Closure-audit traced-set extension"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **Closure-audit traced-set extension** — the input-closure audit gate
     (`gate_cache_closure_audit`; `tests/README.md` § \"The gate cache\" / \"Soundness gates\") traces
     ONE representative cached gate per run (`multifile_matrix_compiles` by default, the
@@ -4436,6 +4449,7 @@ part_id = "part-collision-loser-row-schema-id-s-match"
 parent_record_id = "testing.schema-document-s-name-injectivity-enforced-row-side"
 title = "A collision whose LOSER has no row and whose `schema_id`s match"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
     see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
     the kept-its-own-name check reads clean. Reaching it needs a way to enumerate what a row pulls in
@@ -4451,6 +4465,7 @@ part_id = "part-collision-two-types-both-lack-rows"
 parent_record_id = "testing.schema-document-s-name-injectivity-enforced-row-side"
 title = "A collision between two types that BOTH lack rows"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **A collision between two types that BOTH lack rows** — each reached only transitively from some
     row'd type — is seen by neither check: the ledger holds rows, and \"kept its own name\" is asked
     only of a registered type. With distinct `schema_id`s both are emitted and one takes `<name>2`
@@ -4511,6 +4526,7 @@ part_id = "part-comment-ast-grammar-change-any-form-just-new"
 parent_record_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 title = "On the next `comment_ast` grammar change of ANY form (not just a new directive):"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - *On the next `comment_ast` grammar change of ANY form (not just a new directive):* do the AST
     floor instead of hand-extending `DSL_TAGS` again — parse the comments with the real
     `comment_ast` via a small `examples/` binary, as the role floor already does with
@@ -4529,6 +4545,7 @@ part_id = "part-coverage-extensions"
 parent_record_id = "testing.gate-cache-costs"
 title = "Coverage extensions"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **Coverage extensions** — the `run_test` fixture suites (uncached: reused export dirs already
     replay warm-incrementally through cargo, and their external path-dep closure is larger) and
     classified deterministic FAILs (expected-red skip-listed cells and unsupported `verify.ts`
@@ -4542,6 +4559,7 @@ part_id = "part-cross-crate-collision-schema-id-s-match"
 parent_record_id = "testing.schema-document-s-name-injectivity-enforced-row-side"
 title = "A cross-crate collision whose `schema_id`s MATCH"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **A cross-crate collision whose `schema_id`s MATCH** — two crates' `add_schemas` threaded into
     one `SchemaGenerator` — escapes the ledger, which belongs to the registrar one crate's
     `add_schemas` opens. The
@@ -4566,6 +4584,7 @@ part_id = "part-dedicated-collision-message-generic-instantiation-naming"
 parent_record_id = "testing.duplicates-policy-residuals"
 title = "Dedicated collision message for the generic-instantiation naming family."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """     - *Dedicated collision message for the generic-instantiation naming family.* An inline
        shape-derived nominal name colliding with a user rule or a structurally-different generic
        instantiation is refused with a set-specific message
@@ -4583,6 +4602,7 @@ part_id = "part-default-head-refusal-s-remedy-list-offered-bare"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "The `.default` head-refusal's remedy list offered bare `int` — a head that very check"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - The `.default` head-refusal's remedy list offered bare `int` — a head that very check
       refuses (`int` resolves to the bignum `Int` extern struct, not a rust primitive), so the
       advice was dead for the exact value kind (signed) most likely to send a reader to it. Caught
@@ -4598,6 +4618,7 @@ part_id = "part-embed-site-leg-alias-classifying-roots-two-proven"
 parent_record_id = "testing.grammar-fuzzer-escalations"
 title = "Embed-site leg for alias-classifying roots — two proven escapes."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """   - **Embed-site leg for alias-classifying roots — two proven escapes.** A composition whose ROOT
      rule classifies as a plain alias (`rcN = bytes .cbor {…}`, `bytes .cbor (int .ne N)`) emits its
      wrapper (de)serialize code only at an embed/USE site — a bare alias rule emits none — so the
@@ -4644,6 +4665,7 @@ part_id = "part-emitted-name-guard-mint-records-unminted-extra"
 parent_record_id = "testing.schema-document-s-name-injectivity-enforced-row-side"
 title = "the emitted name guard)\". Mint the one cell that section records as unminted — an extra"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  + the emitted name guard)\". Mint the one cell that section records as unminted — an extra
   `--json-schema-root` root on the LOSING side of a collision — if a consumer reports a collision they
   introduced through that flag. What remains — four holes, each needing its own mechanism:
@@ -4655,6 +4677,7 @@ part_id = "part-emitted-name-guard-neither-closes-holes-above-two"
 parent_record_id = "testing.schema-document-s-name-injectivity-enforced-row-side"
 title = "the emitted name guard)\" — and neither closes the holes above. Two bounds worth keeping in view."
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  + the emitted name guard)\" — and neither closes the holes above. Two bounds worth keeping in view.
   The emitted check resolves the definitions map through the generator's
   `definitions_path` setting and SKIPS if that resolves to nothing, so a schemars default whose
@@ -4676,6 +4699,7 @@ part_id = "part-findings-couples-carriers-least-carrier-executes-s-headline"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "When a findings entry couples to carriers, at least one carrier executes the entry's HEADLINE"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - When a findings entry couples to carriers, at least one carrier executes the entry's HEADLINE
       claim — for a claims-the-API-does-X sentence that means calling X (a compile-fail probe is an
       execution too) — so the entry cannot drift from the code while its carriers stay green.
@@ -4690,6 +4714,7 @@ part_id = "part-findings-s-description-claimed-shape-s-standalone-codec"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "A findings entry's DESCRIPTION claimed the shape's standalone codec \"writes/accepts a bare"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - A findings entry's DESCRIPTION claimed the shape's standalone codec \"writes/accepts a bare
       map\" when no standalone codec existed at all (`to_cbor_bytes` failed E0599 for the `PairMap`
       instantiation; `from_cbor_bytes` was absent), while both of the entry's coupled test carriers
@@ -4702,6 +4727,7 @@ part_id = "part-findings-s-recommended-remedy-c-kv-keyed-plain"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "A findings entry's recommended remedy (`{ c: [kv] }` for the keyed plain-group map member) was"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - A findings entry's recommended remedy (`{ c: [kv] }` for the keyed plain-group map member) was
       itself refused — as a conflicting representation, a different wall — caught by the pickup
       re-probe before the refusal message shipped naming it.
@@ -4713,6 +4739,7 @@ part_id = "part-freezes-livelock-repo-arithmetic-make-them-impossible-containmen
 parent_record_id = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
 title = "Freezes are a LIVELOCK, and no in-repo arithmetic can make them impossible — containment is an operator measure."
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - **Freezes are a LIVELOCK, and no in-repo arithmetic can make them impossible — containment is
     an operator measure.** The incident signature (hours at 100 % memory and swap, and the kernel
     log carrying NO oom-kill for the window) is the near-OOM state where reclaim keeps barely
@@ -4733,6 +4760,7 @@ part_id = "part-generics-repeat-refusal-s-first-drafted-remedy-advertised"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "The generics-repeat refusal's first drafted remedy advertised `a<t> = <arm1> / <arm2>` — a"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - The generics-repeat refusal's first drafted remedy advertised `a<t> = <arm1> / <arm2>` — a
       choice-bodied generic definition, which is itself refused — and was caught BEFORE shipping
       by the day-one adoption of this item's pattern: the new refusal's test asserted every
@@ -4749,6 +4777,7 @@ part_id = "part-inline-anonymous-two-arm-choices-recognized"
 parent_record_id = "testing.transparent-tag-set-idiom-recognized-shape-boundary-request"
 title = "Inline/anonymous two-arm choices are not recognized."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - *Inline/anonymous two-arm choices are not recognized.* Recognition lives at the
     `parse_type_choices` named-rule seam, so an inline `[x: #6.258([* uint]) / [* uint]]` stays a
     two-variant enum. Remedy when it bites: run the recognition on anonymous choices too.
@@ -4760,6 +4789,7 @@ part_id = "part-inline-group-choice-rejection-s-remedy-g-b"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "The inline group-choice rejection's remedy (\"`g = (a // b)`, then reference `g`\") named a"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - The inline group-choice rejection's remedy (\"`g = (a // b)`, then reference `g`\") named a
       spelling that PANICKED the pre-registration assert (now a refusal). That instance and the
       `@ignore` pair were fixed with the messages' pins in the same commits.
@@ -4771,6 +4801,7 @@ part_id = "part-mangling-still-general-fix"
 parent_record_id = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 title = "Residual: mangling is still the general fix."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """    - **Residual: mangling is still the general fix.** The shipped behavior takes the name away from
       the spec author instead of renaming the generator's own local, so a spec that genuinely wants
       a field called `raw` must carry a `; @name` comment. **Reopening signal, measurable by a party
@@ -4785,6 +4816,7 @@ part_id = "part-md-mdmap"
 parent_record_id = "testing.duplicates-policy-residuals"
 title = "md] / …`, `mdmap = {"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """   - (The per-role wasm-ABI/multifile grid rows for both flavors are delivered — the
      `rset`/`nerset`/`rseta`/`nerseta` and `pmap`/`nepmap`/`pmapa`/`nepmapa` `SHAPES` entries;
      inventory in `tests/README.md` § \"Per-rule duplicates policy (`@duplicates`) — test map\".
@@ -4806,6 +4838,7 @@ part_id = "part-member-position-duplicates-extension"
 parent_record_id = "testing.duplicates-policy-residuals"
 title = "Member-position `@duplicates` extension."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """     - *Member-position `@duplicates` extension.* The inline opt-out is hoist-to-named-rule (no new
        DSL surface); a member-position `; @duplicates` directive on an inline set was DEFERRED until
        a real spec demands it. It looks one-line (the member-position rejection seam in `parsing.rs`
@@ -4826,6 +4859,7 @@ part_id = "part-negative-premise-stands"
 parent_record_id = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
 title = "The negative premise stands watch."
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - **The negative premise stands watch.** A future spawn path outside `tool_cmd`, the runner's
     env exports and cargo config discovery would regress the bounds silently; the sampler's
     per-run peaks are what would show it (a peak far above the budget's arithmetic is the tell),
@@ -4838,6 +4872,7 @@ part_id = "part-nested-cargo-test"
 parent_record_id = "testing.execution-binary-wrappers-true-last-documented-flag-value"
 title = "nested `cargo test`"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """    + nested `cargo test`
     (`no_annotate_reframed_emissions_round_trip_non_canonical_wire_byte_exactly`), added because a
     compile floor structurally cannot tell \"compiles\" from \"compiles and re-encodes the same
@@ -4864,6 +4899,7 @@ part_id = "part-non-idiom-choice-bodied-generic-defs-refused-supported"
 parent_record_id = "testing.transparent-tag-set-idiom-recognized-shape-boundary-request"
 title = "Non-idiom choice-BODIED generic defs are refused, not supported."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - *Non-idiom choice-BODIED generic defs are refused, not supported.* The idiom is the ONLY
     choice-bodied generic def the generator can monomorphize — the collapse fires at parse time,
     before the generic machinery, and produces one struct to substitute into. Arms that do not
@@ -4880,6 +4916,7 @@ part_id = "part-non-recorded-isn-t-re-litigated-coverage-gap"
 parent_record_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 title = "Non-item, recorded so it isn't re-litigated as a coverage gap:"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - *Non-item, recorded so it isn't re-litigated as a coverage gap:*
     `bounds_check_expr_non_negative`'s Array/Map leg and the member-side zero-min elision are
     defensive-only — every zero lower bound is dropped upstream by the owners above before
@@ -4892,6 +4929,7 @@ part_id = "part-occurrence-aware-generic-instance-identity"
 parent_record_id = "testing.duplicates-policy-residuals"
 title = "Occurrence-aware generic-instance identity."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """     - *Occurrence-aware generic-instance identity.* The canonical instance ident still derives
        each argument from bounds-blind `for_variant()`: two uses of the SAME generic definition,
        `set<([* uint])>` and `set<([*5 uint])>`, both become `SetArrU64`, so the later registration
@@ -4910,6 +4948,7 @@ part_id = "part-own-reviewed-change-never-drive"
 parent_record_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 title = "Its own reviewed change, never a drive-by:"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - *Its own reviewed change, never a drive-by:* unify the zero-min RangeCheck payload — the same
     authored zero-min bound reports `min: Some(0)` in wrapper payloads vs `min: None` at member
     sites because the drop-the-redundant-zero decision itself has multiple owners
@@ -4924,6 +4963,7 @@ part_id = "part-pre-cache-remedies-stay-valid-if-uncached-path"
 parent_record_id = "testing.gate-cache-costs"
 title = "The pre-cache remedies stay valid if the UNCACHED path ever bites (a touch-everything change"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - The pre-cache remedies stay valid if the UNCACHED path ever bites (a touch-everything change
     pays full price): batch cells into fewer crates, or adopt `cargo-nextest` as the suite runner
     (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 144 at HEAD).
@@ -4935,6 +4975,7 @@ part_id = "part-read-caught-instance-class"
 parent_record_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 title = "On the next read-caught instance of the class:"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - *On the next read-caught instance of the class:* build the mechanical layer — a
     same-construct differential sweep (emit one bounded/flagged construct per site class — member
     ctor/setter, wrapper `new()`/deserialize, primitive-deserialize `.and_then`, collection len
@@ -4949,6 +4990,7 @@ part_id = "part-real-world-corpus-differential"
 parent_record_id = "testing.grammar-fuzzer-escalations"
 title = "Real-world corpus differential"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """   - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
@@ -4960,6 +5002,7 @@ part_id = "part-refusal-s-first-predicate-refused-exact-remedy-own"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "A refusal's first predicate refused the exact remedy its own message named"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - A refusal's first predicate refused the exact remedy its own message named
       (`{ * uint => [coords] }` — the registry keeps materialized plain groups, so the lookup
       over-matched).
@@ -4971,6 +5014,7 @@ part_id = "part-remedy-pin-per-message-per-triggering-construct-class"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "A remedy pin is per message PER TRIGGERING CONSTRUCT CLASS, or the message must name the"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - A remedy pin is per message PER TRIGGERING CONSTRUCT CLASS, or the message must name the
       boundary itself. This is the half a generates-green vector alone cannot deliver: one message
       reachable from two construct classes can be sound for the class whose vector someone
@@ -4983,6 +5027,7 @@ part_id = "part-remedy-string-executable-wherever-lives-emitted-message-gets"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "A remedy string is executable wherever it lives — in an emitted message it gets a pinned"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - A remedy string is executable wherever it lives — in an emitted message it gets a pinned
       generate leg, in a findings entry it gets executed at pickup.
 """
@@ -4993,6 +5038,7 @@ part_id = "part-reopening-signal"
 parent_record_id = "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
 title = "Reopening signal:"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """    - **Reopening signal:** a THIRD construct joins the flat-walked set — countable in-tree as the
       explicit container mints in `generation/mod.rs` that exist because the conceptual visitor
       cannot see the composite (two today, both listed above). At three, per-construct hand cells
@@ -5007,6 +5053,7 @@ part_id = "part-reopening-signal-nested"
 parent_record_id = "testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until"
 title = "Reopening signal"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **Reopening signal** (for a bounded named scratch root the tiers reuse and truncate, which
     retires debris by construction rather than by age): a disk-floor refusal or an ENOSPC gate death
     on a machine whose SAME run's sweep line reported nothing removed. Both halves are in the one
@@ -5026,6 +5073,7 @@ part_id = "part-reopening-signal-probe"
 parent_record_id = "testing.probe-component-face-s-js-surface-axes-js"
 title = "Reopening signal:"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **Reopening signal:** a consumer reporting a JS-side failure on one of those axes — the party
     running the browser build, the preserve posture or a newer jco is the only one who can see it
     first, and the report names which axis to probe. The gate's exact pins are what make such a
@@ -5041,6 +5089,7 @@ part_id = "part-reopening-signal-wasm"
 parent_record_id = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
 title = "Reopening signal:"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """    - **Reopening signal:** a consumer reporting a wasm member absent that the rust crate has. That
       reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose rust
       counterpart they can point at), and the count of silently-missing members is the dimension
@@ -5054,6 +5103,7 @@ part_id = "part-reopening-signal-workspace"
 parent_record_id = "testing.workspace-mode-wasm32-wasip2-build-gate-both-faces"
 title = "Reopening signal:"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **Reopening signal:** an upstream LLD fix reaching the pinned toolchain (re-measure BOTH
     matrix cells before believing it — a single green cell is what the 2026-08-08 correction was
     shipped on), or a consumer reporting the linker SIGSEGV from their own both-faces workspace's
@@ -5068,6 +5118,7 @@ part_id = "part-rustc-after-panic-ok-flip-panic-fix-lands"
 parent_record_id = "testing.three-defect-classes-process-test-see-sharing-remedy"
 title = "*rustc, after a PANIC→`ok` flip: a panic fix lands on the FIRST site that dispatches on a shape, not the last — the sites behind it ask the same question and each answers it in its own code."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - ***rustc, after a PANIC→`ok` flip: a panic fix lands on the FIRST site that dispatches on a
     shape, not the last — the sites behind it ask the same question and each answers it in its own
     code.*** Proven instance: the `cbor_types` `_ => panic!()` over a nominal reference to a
@@ -5094,6 +5145,7 @@ part_id = "part-rustfmt-code-never-reaches-rustc-all"
 parent_record_id = "testing.three-defect-classes-process-test-see-sharing-remedy"
 title = "*rustfmt, so the code never reaches rustc at all."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - ***rustfmt, so the code never reaches rustc at all.*** Not a duplicate of the class above: there
     the emitted crate reached rustc and was rejected, so any compile leg would catch it; here
     generation itself fails at the rustfmt merge step, so no compile leg can even receive a crate.
@@ -5126,6 +5178,7 @@ part_id = "part-same-shape-set-instantiations"
 parent_record_id = "testing.duplicates-policy-residuals"
 title = "`From` between same-shape set instantiations."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """     - *`From` between same-shape set instantiations.* `set<xs_int>` and `set<[* uint]>` (where
        `xs_int = [* uint]`) mint DISTINCT nominals over the same wire shape by the
        spelling-is-identity rule; a member-wise-encoding `From` between two such structurally
@@ -5144,6 +5197,7 @@ part_id = "part-schema-name-schemars-percent-encodes-ref"
 parent_record_id = "testing.schema-document-s-name-injectivity-enforced-row-side"
 title = "A `schema_name()` that `schemars` percent-encodes into its `$ref`"
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **A `schema_name()` that `schemars` percent-encodes into its `$ref`** (anything outside
     `[A-Za-z0-9_]`, e.g. the static runtime's `OrderedHashMap<K, V>`) skips the kept-its-own-name
     check entirely: `schemars`' `encode_ref_name` lives in a private module (`mod encoding` in
@@ -5165,6 +5219,7 @@ part_id = "part-scope-wide-probe"
 parent_record_id = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 title = "Residual: the scope is only as wide as the probe."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """    - **Residual: the scope is only as wide as the probe.** Membership and per-name
       `ReservedScope` were measured over five shapes (array-rep / map-rep / tagged record /
       embedded plain group / group-choice arm) × three profiles × two field types, plus a
@@ -5183,6 +5238,7 @@ part_id = "part-set-nominalization-residuals-delivery-set-architecture-rethink-d
 parent_record_id = "testing.duplicates-policy-residuals"
 title = "Set-nominalization residuals (Delivery 2 of the set-architecture rethink — `d177516`/`816969f`/`13b63a2`/`7daca67`)."
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """   - **Set-nominalization residuals (Delivery 2 of the set-architecture rethink —
      `d177516`/`816969f`/`13b63a2`/`7daca67`).** Named, generic-instance, and inline `#6.258` sets
      are now nominal wrapper types owning their `{tag, len, elem}` encodings. Three follow-ups
@@ -5195,6 +5251,7 @@ part_id = "part-sighting-offline-gate-run-new-class"
 parent_record_id = "testing.registry-fetch-transients-nested-cargo-cells"
 title = "A sighting under an offline gate run is a NEW class"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - **A sighting under an offline gate run is a NEW class**, not this one — an offline cell
     cannot hit the registry; investigate it, don't re-ledger it here. Two manual tails are now
     known, distinguished by the error text: (1) `no matching package named <dep>` — a tests/
@@ -5221,6 +5278,7 @@ part_id = "part-spend-measurements"
 parent_record_id = "testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"
 title = "Spend the measurements."
 render_authority = "raw"
+lifecycle_disposition = "independent_record"
 source_block_md = """  - **Spend the measurements.** The 4 GiB slot constant and the one-permit nested bound are
     deliberately pessimistic prices for unmeasured quantities, and the pessimism costs real wall
     time (nested children serialize per gate). Once accumulated `memory-peaks.jsonl` rows from
@@ -5234,6 +5292,7 @@ part_id = "part-surfaces-still-online"
 parent_record_id = "testing.registry-fetch-transients-nested-cargo-cells"
 title = "Surfaces still online"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - **Surfaces still online**: standalone script/gate runs outside check.ts (a bare
     `bun run verify.ts`, an isolated `cargo test --bin cddl-codegen <gate>` confirm) — prefix
     `CARGO_NET_OFFLINE=true` there after any warm run; the warm-up fetch itself (retried,
@@ -5249,6 +5308,7 @@ part_id = "part-tagged-remedy-spelling-was-imprecise-coords-faithful-coords"
 parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "A tagged remedy spelling was imprecise (`[#6.5(coords)]` for the faithful `#6.5([coords])`)"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - A tagged remedy spelling was imprecise (`[#6.5(coords)]` for the faithful `#6.5([coords])`)
       until a pin asserted the printed remedy generates.
 """
@@ -5259,6 +5319,7 @@ part_id = "part-verify-ts-evidence-absorber-stays"
 parent_record_id = "testing.registry-fetch-transients-nested-cargo-cells"
 title = "verify.ts evidence absorber stays"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """  - **verify.ts evidence absorber stays**: a transient null replay would flip a row's
     decode-foreign clause to \"FAILED\", which `verify_cache_transparency` reads as an A/B
     divergence — absorbed by decodeForeignProbe's regenerate-retry-once (the same retry the mint
@@ -5272,6 +5333,7 @@ part_id = "part-what-hand-per-construct-buy-established-escape-produced"
 parent_record_id = "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
 title = "What one hand cell per construct does not buy, established by the escape that produced this entry."
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - **What one hand cell per construct does not buy, established by the escape that produced this
       entry.** A rest row whose inner types lived in another file scope emitted two unresolved-name
       classes at once: the module's rest accessor returned a wrapper class minted at the crate ROOT
@@ -5287,6 +5349,7 @@ part_id = "part-why-parity-gate-cannot-host-generalization"
 parent_record_id = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
 title = "Why the parity gate cannot host the generalization."
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    - **Why the parity gate cannot host the generalization.** `wasm_api_parity` exists to report
       \"a rust member with no wasm counterpart\", but its rust-side walk reads INHERENT impls only
       (`syn::Item::Impl(im) if im.trait_.is_none()`) and documents the exclusion of trait impls as a

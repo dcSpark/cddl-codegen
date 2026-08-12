@@ -8,6 +8,7 @@ frozen_source_sha256 = "b2765963f11f64eef353816becee357c2c53ff4b8912798e063b73ce
 frozen_source_byte_length = 3051
 frozen_source_line_count = 66
 frozen_source_eof = "lf"
+semantic_conversion = "converting"
 frozen_legacy_span_ids = ["fragment", "legacy-marker", "part", "record-fixture-closeout-a", "record-fixture-closeout-b", "record-fixture-closeout-c", "record-fixture-control-a", "record-fixture-control-b", "record-fixture-control-c", "record-fixture-control-d", "record-fixture-control-e", "record-fixture-control-f", "record-fixture-control-g", "record-fixture-decision-a", "record-fixture-decision-b", "record-fixture-decision-c", "record-fixture-decision-d", "record-fixture-evidence-a", "record-fixture-evidence-b", "record-fixture-evidence-c", "record-fixture-evidence-d", "record-fixture-evidence-e", "record-fixture-evidence-f", "record-fixture-evidence-g", "record-fixture-evidence-h", "record-fixture-evidence-i", "record-fixture-evidence-j", "record-fixture-evidence-k", "record-fixture-evidence-l", "record-fixture-evidence-m", "record-fixture-family-a", "record-fixture-family-b", "record-fixture-family-c", "record-fixture-family-d", "record-fixture-policy-a", "record-fixture-policy-b", "record-fixture-policy-c", "record-fixture-raw-owner", "record-fixture-signal-a", "record-fixture-signal-b", "record-fixture-signal-c", "record-fixture-signal-d", "record-fixture-signal-e", "record-fixture-signal-f", "record-fixture-signal-g", "record-fixture-signal-h", "record-fixture-signal-i", "record-fixture-signal-j", "record-fixture-signal-k", "record-fixture-work-a", "record-fixture-work-b", "record-fixture-work-c", "record-fixture-work-d", "record-fixture-work-e", "record-fixture-work-f", "record-fixture-work-g", "record-fixture-work-h", "record-fixture-work-i", "record-fixture-work-j", "section", "semantic-detail", "semantic-summary"]
 
 [[section]]
@@ -23,6 +24,7 @@ fragment_id = "fixture-fragment"
 projection_group = "fixture"
 title = "Raw fragment placement"
 render_authority = "raw"
+lifecycle_disposition = "document_prose"
 source_block_md = """RAW FRAGMENT PLACEMENT
 """
 span_ids = ["fragment"]
@@ -1772,6 +1774,7 @@ part_id = "fixture-part"
 parent_record_id = "matrix.fixture-semantic-owner"
 title = "Raw part placement"
 render_authority = "raw"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """RAW PART PLACEMENT
 """
 span_ids = ["part"]
