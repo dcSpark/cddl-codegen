@@ -4,6 +4,7 @@ import {
   MATRIX_GENERATED_SLOT_BINDINGS,
   validateMatrixRoadmapDocument,
 } from "../adapters/matrix.ts";
+import { composeRoadmapDocument } from "../compose.ts";
 import {
   TESTING_ADAPTER,
   validateTestingRoadmapDocument,
@@ -35,7 +36,7 @@ import type {
   SemanticPayload,
   SemanticRecord,
 } from "../model/documents.ts";
-import type { MatrixStatusInputs } from "../model/matrix.ts";
+import type { MatrixSemanticPayload, MatrixStatusInputs } from "../model/matrix.ts";
 import { renderValidatedChunks } from "../render.ts";
 import { buildExpectedChunks, validateCompletedChunks } from "../render_ir.ts";
 import {
@@ -45,13 +46,19 @@ import {
   validateRoadmapReferences,
 } from "../references.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
-import { liveMatrixShadowV0Document } from "./live_matrix.ts";
+import {
+  liveMatrixAuthoritativeDocument,
+  liveMatrixProjection,
+  liveMatrixShadowV0Document,
+  liveMatrixShadowV0Source,
+} from "./live_matrix.ts";
 
 export const REQUIRED_ADAPTER_SELFTEST_CASE_IDS = [
   "decoder_domain_dispatch_once",
   "adapter_surface_has_no_decode_hook",
   "pipeline_indexes_before_adapter_validation",
   "indexes_created_from_decoded_document",
+  "matrix_mixed_v1_preserves_inline_slots",
 ] as const;
 
 export type RequiredAdapterSelfTestCaseId =
@@ -91,6 +98,16 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   if (left.byteLength !== right.byteLength) return false;
   for (let index = 0; index < left.byteLength; index++) if (left[index] !== right[index]) return false;
   return true;
+}
+
+function sha256(value: Uint8Array): string {
+  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
+}
+
+function firstByteDifference(left: Uint8Array, right: Uint8Array): number {
+  const shared = Math.min(left.byteLength, right.byteLength);
+  for (let index = 0; index < shared; index++) if (left[index] !== right[index]) return index;
+  return left.byteLength === right.byteLength ? -1 : shared;
 }
 
 function combineBytes(values: readonly Uint8Array[]): Uint8Array {
@@ -278,6 +295,44 @@ function allFieldsStatusInputs(): MatrixStatusInputs {
       vectors: Array.from({ length: index === 19 ? 1 : 5 }, () => ({ expect: "reject", class: "constraint" })),
     })) },
     registry: { gates: [{ id: "gate", kind: "cargo", ignored_test: "manual" }] },
+    timings: { tiers: [
+      { tier: "fast", wall_ms: 1000 },
+      { tier: "local", wall_ms: 2000 },
+      { tier: "full", wall_ms: 3000 },
+    ] },
+  };
+}
+
+function liveMatrixStatusInputs(): MatrixStatusInputs {
+  const features = [
+    ...Array.from({ length: 95 }, (_, index) => ({ id: `r-${index}`, profile: "RFC8610" })),
+    { id: "rfc9682", profile: "RFC9682" },
+    ...Array.from({ length: 27 }, (_, index) => ({ id: `c-${index}`, profile: "CDDL_CODEGEN" })),
+  ];
+  const annotations = Array.from({ length: 293 }, (_, index) => ({
+    id: index < 89 ? `row-${index}` : `annotation-${index}`,
+    status: "supported",
+    ...(index === 0 ? { emission: { preserve: { status: "unsupported" } } } : {}),
+  }));
+  return {
+    matrix: {
+      annotations,
+      features,
+      containment_ids: Array.from({ length: 136 }, (_, index) => `containment-${index}`),
+      control_operator_ids: Array.from({ length: 37 }, (_, index) => `control-${index}`),
+    },
+    catalog: { rows: Array.from({ length: 89 }, (_, index) => ({
+      id: `row-${index}`,
+      vectors: Array.from({ length: index < 22 ? 2 : 1 }, () => ({
+        expect: "reject",
+        class: "constraint",
+      })),
+    })) },
+    registry: { gates: Array.from({ length: 20 }, (_, index) => ({
+      id: `gate-${index}`,
+      kind: "cargo",
+      ignored_test: `manual-${index}`,
+    })) },
     timings: { tiers: [
       { tier: "fast", wall_ms: 1000 },
       { tier: "local", wall_ms: 2000 },
@@ -818,6 +873,131 @@ function testSlots(bundle: AdapterFixtureBundle): void {
       entry.logical_path === `record[${JSON.stringify(selectedId)}]`
     ) && renamedSelectedIssues.issues.some((entry) => entry.logical_path === "testing_v0.structure"),
     "testing RuleTrailing rename/alias deletion escaped exact production floors",
+  );
+}
+
+function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
+  const authoritative = liveMatrixAuthoritativeDocument();
+  const rawRecord = authoritative.records.find((record) =>
+    record.id === "matrix.additional-tool-annotations"
+  );
+  assert(rawRecord?.render_authority === "raw", "packet-1 live semantic conversion owner is not raw");
+  assert(rawRecord.span_ids.length === 1, "packet-1 live semantic conversion owner does not have one frozen span");
+  const relationTarget = authoritative.records.find((record) => record.id !== rawRecord.id);
+  assert(relationTarget !== undefined, "packet-1 live semantic conversion lacks a relation target");
+  const spanId = rawRecord.span_ids[0]!;
+  const authorityReferenceId = "packet-one-authority" as ReferenceId;
+  const semanticRecord: SemanticRecord<MatrixSemanticPayload> = {
+    id: rawRecord.id,
+    title: rawRecord.title,
+    projection_group: rawRecord.projection_group,
+    ...(rawRecord.legacy_aliases === undefined ? {} : { legacy_aliases: [...rawRecord.legacy_aliases] }),
+    ...(rawRecord.tags === undefined ? {} : { tags: [...rawRecord.tags] }),
+    render_authority: "semantic",
+    payload: {
+      kind: "matrix_policy",
+      policy_kind: "boundary",
+      summary_md: new Uint8Array(rawRecord.source_block_md),
+      authority_reference_id: authorityReferenceId,
+      rationale_md: new TextEncoder().encode("Packet 1 retains the reviewed legacy projection bytes."),
+      permanence: "permanent",
+    },
+    source_replacements: [{
+      span_id: spanId,
+      replacement_field: "payload.summary_md",
+      review_note_md: new TextEncoder().encode("Packet-1 in-memory semantic authority conversion."),
+    }],
+  };
+  const mixed: RoadmapDocumentV1 = {
+    ...authoritative,
+    document: {
+      ...authoritative.document,
+      frozen_legacy_span_ids: authoritative.document.frozen_legacy_span_ids.filter((id) => id !== spanId),
+    },
+    records: authoritative.records.map((record) => record === rawRecord ? semanticRecord : record),
+    spans: authoritative.spans.map((span) => span.id === spanId
+      ? { ...span, owner_field: "payload.summary_md", migration_status: "replaced" }
+      : span),
+    relations: [...authoritative.relations, {
+      source: rawRecord.id,
+      kind: "related",
+      target: relationTarget.id,
+      note_md: new TextEncoder().encode("Packet-1 relation must not select fixture slot layout."),
+    }],
+    references: [...authoritative.references, {
+      id: authorityReferenceId,
+      source: rawRecord.id,
+      kind: "spec_passage",
+      document: "packet-one-selftest",
+      passage: "mixed-v1-inline-slot-authority",
+    }],
+  };
+  assert(
+    mixed.records.filter((record) => record.render_authority === "semantic").length === 1,
+    "packet-1 vector does not contain exactly one semantic owner",
+  );
+  assert(
+    mixed.relations.length === authoritative.relations.length + 1 &&
+      mixed.references.length === authoritative.references.length + 1,
+    "packet-1 vector did not add both a relation and a reference",
+  );
+
+  const view = registryView(bundle, mixed, liveMatrixStatusInputs());
+  const validation = validateMatrixRoadmapDocument(mixed, view);
+  assert(validation.issues.length === 0, `packet-1 mixed live document failed validation: ${JSON.stringify(validation.issues)}`);
+  const resolvers = MATRIX_ADAPTER.slotResolvers(view, mixed);
+  for (const slot of mixed.generated_slots) {
+    const resolved = resolvers.get(slot.slot_id)?.resolve(slot, view);
+    assert(resolved !== undefined && resolved.bytes.at(-1) !== 0x0a, `mixed-v1 inline slot ${slot.slot_id} retained fixture-only LF ownership`);
+  }
+
+  const projection = liveMatrixProjection();
+  const rendered = renderFixture(mixed, MATRIX_ADAPTER, view);
+  assert(rendered.semantic_calls === 1, "packet-1 semantic owner did not render exactly once");
+  assert(
+    bytesEqual(rendered.bytes, projection),
+    `packet-1 mixed-v1 projection differs at byte ${firstByteDifference(rendered.bytes, projection)} ` +
+      `(rendered length/digest ${rendered.bytes.byteLength}/${sha256(rendered.bytes)}, ` +
+      `live ${projection.byteLength}/${sha256(projection)})`,
+  );
+  assert(
+    rendered.bytes.byteLength === 84_580 &&
+      sha256(rendered.bytes) === "f010705393ddbd0b5fa25368c7903df5c5f87a6e500bbdb9c99f7f22bf9bd69e",
+    "packet-1 mixed-v1 projection escaped the frozen live length/digest floor",
+  );
+
+  const mixedShadow = liveMatrixShadowV0Document(mixed);
+  const shadowIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(mixedShadow, shadowIssues);
+  assert(shadowIssues.issues.length === 0, `packet-1 reconstructed v0 shadow failed frozen floors: ${JSON.stringify(shadowIssues.issues)}`);
+  assert(
+    bytesEqual(composeRoadmapDocument(mixedShadow), liveMatrixShadowV0Source()),
+    "packet-1 mixed authority did not reconstruct the exact frozen v0 source",
+  );
+
+  const badCoordinates: RoadmapDocumentV1 = {
+    ...mixed,
+    spans: mixed.spans.map((span) => span.id === "slot-constraint"
+      ? { ...span, start_byte: span.start_byte + 1 }
+      : span),
+  };
+  const coordinateResolvers = MATRIX_ADAPTER.slotResolvers(view, badCoordinates);
+  for (const slot of badCoordinates.generated_slots) {
+    const resolved = coordinateResolvers.get(slot.slot_id)?.resolve(slot, view);
+    assert(resolved?.bytes.at(-1) === 0x0a, `malformed production slot coordinates still selected inline mode for ${slot.slot_id}`);
+  }
+
+  const badBinding: RoadmapDocumentV1 = {
+    ...mixed,
+    generated_slots: mixed.generated_slots.map((slot) => slot.slot_id === "constraint"
+      ? { ...slot, binding: "status_header_markers:roadmap-counts" }
+      : slot),
+  };
+  const bindingIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(badBinding, bindingIssues);
+  assert(
+    bindingIssues.issues.some((entry) => entry.logical_path === "generated_slot[\"constraint\"].binding"),
+    "malformed production slot binding escaped the declared matrix slot floor",
   );
 }
 
@@ -1520,6 +1700,9 @@ function execute(id: RequiredAdapterSelfTestCaseId, bundle: AdapterFixtureBundle
     case "indexes_created_from_decoded_document":
       testIndexesFromDecoded(bundle);
       return;
+    case "matrix_mixed_v1_preserves_inline_slots":
+      testMixedLiveMatrixInlineSlots(bundle);
+      return;
   }
 }
 
@@ -1556,7 +1739,7 @@ export const ADAPTER_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
 
 export function runAdapterDirectSelfTests(
   bundle: AdapterFixtureBundle,
-): { readonly executed: 4; readonly subcases: readonly ["matrix", "testing"] } {
+): { readonly executed: 5; readonly subcases: readonly ["matrix", "testing"] } {
   for (const id of REQUIRED_ADAPTER_SELFTEST_CASE_IDS) execute(id, bundle);
-  return { executed: 4, subcases: ADAPTER_SELFTEST_SUBCASES };
+  return { executed: 5, subcases: ADAPTER_SELFTEST_SUBCASES };
 }
