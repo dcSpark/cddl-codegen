@@ -12,6 +12,7 @@ import type {
   FamilyAxis,
   FamilyCell,
   FamilyCoordinate,
+  FamilyEvidenceBinding,
   FamilyEvidenceRequirement,
   FamilyExclusion,
   FamilyPayload,
@@ -58,6 +59,7 @@ const EVIDENCE_VERDICTS = ["proposed", "confirmed", "falsified", "unknown", "ina
 const FRESHNESS = ["live", "as_of", "historical", "stale"] as const;
 const CONTROL_KINDS = ["gate", "test", "fixture", "review_rule", "consumer_ci", "upstream_issue", "operator_procedure"] as const;
 const EVIDENCE_STAGES = ["generated", "compiled", "executed", "round_tripped", "independently_decoded", "constraint_enforced", "over_accepted"] as const;
+const codePointSort = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
 
 export const SEMANTIC_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "shared_semantic_kind", values: ["work", "decision", "signal", "evidence", "control", "family"] },
@@ -79,7 +81,7 @@ export const SEMANTIC_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "control_kind", values: CONTROL_KINDS },
   { name: "control_state", values: ["live", "proposed", "stale"] },
   { name: "evidence_stage", values: EVIDENCE_STAGES },
-  { name: "family_maturity", values: ["observed_only", "under_design"] },
+  { name: "family_maturity", values: ["observed_only", "under_design", "closed_denominator"] },
   { name: "family_campaign_state", values: ["designing", "enumerating", "closing"] },
   { name: "family_authority_kind", values: ["grammar", "registry", "reviewed_relation"] },
   { name: "family_cell_spec_legality", values: ["legal"] },
@@ -112,16 +114,22 @@ export const SHARED_SEMANTIC_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
   { name: "event predicate", required: ["predicate_kind", "event_md", "evidence_ids"] },
   { name: "manual predicate", required: ["predicate_kind", "review_procedure_md", "evidence_ids"] },
   { name: "evidence", required: ["kind", "summary_md", "evidence_kind", "claim_md", "evidence_verdict", "freshness", "reference_ids", "unprobed_remainder_md", "scope"], optional: ["detail_md", "command_md", "result_md", "at_commit", "observed_at", "valid_through", "environment_md", "refresh_reference_id", "enumerated_registry"] },
-  { name: "evidence scope", required: [], optional: ["surfaces", "profiles", "flags", "input_modes", "toolchains", "executors", "tiers", "cell_ids"] },
+  { name: "evidence scope", required: [], optional: ["surfaces", "faces", "profiles", "flags", "input_modes", "toolchains", "executors", "tiers", "cell_ids"] },
   { name: "control", required: ["kind", "summary_md", "control_kind", "control_state", "reference_ids", "claim_md", "boundary_md"], optional: DETAIL },
   { name: "observed-only family", required: ["kind", "summary_md", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "observation_reference_ids", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id"], optional: ["detail_md", "axis", "evidence_requirement", "cell", "exclusion"], forbidden: ["authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "denominator_unknowns_md"] },
   { name: "under-design family", required: ["kind", "summary_md", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id"], optional: ["detail_md", "denominator_unknowns_md", "axis", "evidence_requirement", "cell", "exclusion"] },
   { name: "family axis", required: ["id", "label", "authority_reference_id"], optional: ["value"] },
   { name: "family axis value", required: ["id", "label", "source_reference_id"] },
   { name: "family evidence requirement", required: ["id", "profiles", "faces", "stages"] },
-  { name: "family cell", required: ["id", "spec_legality", "cell_disposition", "affected_profiles", "affected_faces", "coordinate"], optional: ["evidence_ids", "work_id"] },
+  { name: "open family cell", required: ["id", "spec_legality", "cell_disposition", "affected_profiles", "affected_faces", "coordinate"], optional: ["evidence_ids", "work_id"], forbidden: ["evidence_binding"] },
   { name: "family exclusion", required: ["id", "spec_legality", "reason_md", "owner_reference_id", "source_reference_id", "liveness_reference_id", "coordinate"] },
   { name: "family coordinate", required: ["axis_id", "value_id"] },
+] as const;
+
+export const SEMANTIC_V2_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
+  { name: "closed-denominator family", required: ["kind", "summary_md", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "drift_check_reference_id", "mutation_test_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id", "axis", "evidence_requirement", "cell"], optional: ["detail_md", "exclusion"], forbidden: ["observation_reference_ids", "denominator_unknowns_md"] },
+  { name: "family evidence binding", required: ["requirement_id", "profile", "face", "stage", "evidence_id"] },
+  { name: "closed family cell", required: ["id", "spec_legality", "cell_disposition", "affected_profiles", "affected_faces", "coordinate", "evidence_binding"], optional: ["work_id"], forbidden: ["evidence_ids"] },
 ] as const;
 
 function common(ctx: DecodeContext, table: object, path: string): { summary_md: Uint8Array; detail_md?: Uint8Array } {
@@ -304,6 +312,7 @@ function decodeEvidenceScope(ctx: DecodeContext, raw: unknown, path: string): Ev
   if (Object.keys(table).length === 0) schemaFail(ctx, "E-SCHEMA-FLOOR", path, "evidence scope requires at least one coordinate set");
   return {
     ...optionalStringSet(ctx, table, path, "surfaces"),
+    ...optionalStringSet(ctx, table, path, "faces"),
     ...optionalStringSet(ctx, table, path, "profiles"),
     ...optionalStringSet(ctx, table, path, "flags"),
     ...optionalStringSet(ctx, table, path, "input_modes"),
@@ -386,10 +395,32 @@ function decodeRequirement(ctx: DecodeContext, raw: unknown, path: string): Fami
   return { id: expectRoadmapId(ctx, requiredValue(table, "id"), p(path, "id")), profiles: expectStringSet(ctx, requiredValue(table, "profiles"), p(path, "profiles"), true), faces: expectStringSet(ctx, requiredValue(table, "faces"), p(path, "faces"), true), stages: canonicalSet(ctx, expectArrayOf(ctx, requiredValue(table, "stages"), p(path, "stages"), (entry, entryPath) => expectEnum(ctx, entry, EVIDENCE_STAGES, entryPath)), p(path, "stages"), true) };
 }
 
-function decodeCell(ctx: DecodeContext, raw: unknown, path: string): FamilyCell {
-  const table = expectExactTable(ctx, raw, path, SHARED_SEMANTIC_SCHEMA_ROWS[27]);
+function decodeCell(ctx: DecodeContext, raw: unknown, path: string, closed: boolean): FamilyCell {
+  const table = expectExactTable(ctx, raw, path, closed ? SEMANTIC_V2_SCHEMA_ROWS[2] : SHARED_SEMANTIC_SCHEMA_ROWS[27]);
   const legality = expectEnum(ctx, requiredValue(table, "spec_legality"), ["legal"] as const, p(path, "spec_legality"));
-  return { id: expectRoadmapId(ctx, requiredValue(table, "id"), p(path, "id")), spec_legality: legality, cell_disposition: expectEnum(ctx, requiredValue(table, "cell_disposition"), ["supported", "safely_refused", "deliberately_unsupported", "unknown"] as const, p(path, "cell_disposition")), affected_profiles: expectStringSet(ctx, requiredValue(table, "affected_profiles"), p(path, "affected_profiles"), true), affected_faces: expectStringSet(ctx, requiredValue(table, "affected_faces"), p(path, "affected_faces"), true), ...optionalRoadmapSet(ctx, table, path, "evidence_ids"), ...(hasOwn(table, "work_id") ? { work_id: expectRoadmapId(ctx, optionalValue(table, "work_id"), p(path, "work_id")) } : {}), coordinates: expectNonemptyArray(ctx, expectArrayOf(ctx, requiredValue(table, "coordinate"), p(path, "coordinate"), (entry, entryPath) => decodeCoordinate(ctx, entry, entryPath)), p(path, "coordinate")) };
+  const bindings = optionalDecoded(table, "evidence_binding", path, (value, fieldPath) =>
+    expectArrayOf(ctx, value, fieldPath, (entry, entryPath): FamilyEvidenceBinding => {
+      const binding = expectExactTable(ctx, entry, entryPath, SEMANTIC_V2_SCHEMA_ROWS[1]);
+      return {
+        requirement_id: expectRoadmapId(ctx, requiredValue(binding, "requirement_id"), p(entryPath, "requirement_id")),
+        profile: expectString(ctx, requiredValue(binding, "profile"), p(entryPath, "profile")),
+        face: expectString(ctx, requiredValue(binding, "face"), p(entryPath, "face")),
+        stage: expectEnum(ctx, requiredValue(binding, "stage"), EVIDENCE_STAGES, p(entryPath, "stage")),
+        evidence_id: expectRoadmapId(ctx, requiredValue(binding, "evidence_id"), p(entryPath, "evidence_id")),
+      };
+    })) ?? [];
+  bindings.sort((left, right) => codePointSort(JSON.stringify(left), JSON.stringify(right)));
+  const base = { id: expectRoadmapId(ctx, requiredValue(table, "id"), p(path, "id")), spec_legality: legality, affected_profiles: expectStringSet(ctx, requiredValue(table, "affected_profiles"), p(path, "affected_profiles"), true), affected_faces: expectStringSet(ctx, requiredValue(table, "affected_faces"), p(path, "affected_faces"), true), ...(hasOwn(table, "work_id") ? { work_id: expectRoadmapId(ctx, optionalValue(table, "work_id"), p(path, "work_id")) } : {}), coordinates: expectNonemptyArray(ctx, expectArrayOf(ctx, requiredValue(table, "coordinate"), p(path, "coordinate"), (entry, entryPath) => decodeCoordinate(ctx, entry, entryPath)), p(path, "coordinate")) };
+  if (closed) return {
+    ...base,
+    cell_disposition: expectEnum(ctx, requiredValue(table, "cell_disposition"), ["supported", "safely_refused", "deliberately_unsupported"] as const, p(path, "cell_disposition")),
+    evidence_bindings: expectNonemptyArray(ctx, bindings, p(path, "evidence_binding")),
+  };
+  return {
+    ...base,
+    cell_disposition: expectEnum(ctx, requiredValue(table, "cell_disposition"), ["supported", "safely_refused", "deliberately_unsupported", "unknown"] as const, p(path, "cell_disposition")),
+    ...optionalRoadmapSet(ctx, table, path, "evidence_ids"),
+  };
 }
 
 function decodeExclusion(ctx: DecodeContext, raw: unknown, path: string): FamilyExclusion {
@@ -398,18 +429,22 @@ function decodeExclusion(ctx: DecodeContext, raw: unknown, path: string): Family
   return { id: expectRoadmapId(ctx, requiredValue(table, "id"), p(path, "id")), spec_legality: legality, reason_md: expectMarkdown(ctx, requiredValue(table, "reason_md"), p(path, "reason_md")), owner_reference_id: expectReferenceId(ctx, requiredValue(table, "owner_reference_id"), p(path, "owner_reference_id")), source_reference_id: expectReferenceId(ctx, requiredValue(table, "source_reference_id"), p(path, "source_reference_id")), liveness_reference_id: expectReferenceId(ctx, requiredValue(table, "liveness_reference_id"), p(path, "liveness_reference_id")), coordinates: expectNonemptyArray(ctx, expectArrayOf(ctx, requiredValue(table, "coordinate"), p(path, "coordinate"), (entry, entryPath) => decodeCoordinate(ctx, entry, entryPath)), p(path, "coordinate")) };
 }
 
-function decodeFamily(ctx: DecodeContext, raw: unknown, path: string): FamilyPayload {
-  const pre = expectExactTable(ctx, raw, path, { name: "family discriminator", required: ["kind", "summary_md", "family_maturity"], optional: ["detail_md", "campaign_state", "goal_md", "boundary_md", "work_ids", "observation_reference_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id", "denominator_unknowns_md", "axis", "evidence_requirement", "cell", "exclusion"] });
-  const maturity = expectEnum(ctx, requiredValue(pre, "family_maturity"), ["observed_only", "under_design"] as const, p(path, "family_maturity"));
-  const table = expectExactTable(ctx, raw, path, SHARED_SEMANTIC_SCHEMA_ROWS[maturity === "observed_only" ? 22 : 23]);
+function decodeFamily(ctx: DecodeContext, raw: unknown, path: string, schemaVersion: 1 | 2): FamilyPayload {
+  const pre = expectExactTable(ctx, raw, path, { name: "family discriminator", required: ["kind", "summary_md", "family_maturity"], optional: ["detail_md", "campaign_state", "goal_md", "boundary_md", "work_ids", "observation_reference_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "drift_check_reference_id", "mutation_test_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id", "denominator_unknowns_md", "axis", "evidence_requirement", "cell", "exclusion"] });
+  const maturity = schemaVersion === 1
+    ? expectEnum(ctx, requiredValue(pre, "family_maturity"), ["observed_only", "under_design"] as const, p(path, "family_maturity"))
+    : expectEnum(ctx, requiredValue(pre, "family_maturity"), ["observed_only", "under_design", "closed_denominator"] as const, p(path, "family_maturity"));
+  const table = expectExactTable(ctx, raw, path, maturity === "closed_denominator" ? SEMANTIC_V2_SCHEMA_ROWS[0] : SHARED_SEMANTIC_SCHEMA_ROWS[maturity === "observed_only" ? 22 : 23]);
   const axes = optionalDecoded(table, "axis", path, (value, fieldPath) => expectArrayOf(ctx, value, fieldPath, (entry, entryPath) => decodeAxis(ctx, entry, entryPath))) ?? [];
   const requirements = optionalDecoded(table, "evidence_requirement", path, (value, fieldPath) => expectArrayOf(ctx, value, fieldPath, (entry, entryPath) => decodeRequirement(ctx, entry, entryPath))) ?? [];
-  const cells = optionalDecoded(table, "cell", path, (value, fieldPath) => expectArrayOf(ctx, value, fieldPath, (entry, entryPath) => decodeCell(ctx, entry, entryPath))) ?? [];
+  const cells = optionalDecoded(table, "cell", path, (value, fieldPath) => expectArrayOf(ctx, value, fieldPath, (entry, entryPath) => decodeCell(ctx, entry, entryPath, maturity === "closed_denominator"))) ?? [];
   const exclusions = optionalDecoded(table, "exclusion", path, (value, fieldPath) => expectArrayOf(ctx, value, fieldPath, (entry, entryPath) => decodeExclusion(ctx, entry, entryPath))) ?? [];
   const byId = <T extends { id: string }>(items: T[]): T[] => items.sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
   const base = { kind: "family" as const, ...common(ctx, table, path), family_maturity: maturity, campaign_state: expectEnum(ctx, requiredValue(table, "campaign_state"), ["designing", "enumerating", "closing"] as const, p(path, "campaign_state")), goal_md: expectMarkdown(ctx, requiredValue(table, "goal_md"), p(path, "goal_md")), boundary_md: expectMarkdown(ctx, requiredValue(table, "boundary_md"), p(path, "boundary_md")), work_ids: expectRoadmapIdSet(ctx, requiredValue(table, "work_ids"), p(path, "work_ids")), affected_profiles: expectStringSet(ctx, requiredValue(table, "affected_profiles"), p(path, "affected_profiles"), true), affected_faces: expectStringSet(ctx, requiredValue(table, "affected_faces"), p(path, "affected_faces"), true), control_ids: expectRoadmapIdSet(ctx, requiredValue(table, "control_ids"), p(path, "control_ids")), completion_owner_reference_id: expectReferenceId(ctx, requiredValue(table, "completion_owner_reference_id"), p(path, "completion_owner_reference_id")), retirement_owner_reference_id: expectReferenceId(ctx, requiredValue(table, "retirement_owner_reference_id"), p(path, "retirement_owner_reference_id")), axes: byId(axes), evidence_requirements: byId(requirements), cells: byId(cells), exclusions: byId(exclusions) };
   if (maturity === "observed_only") return { ...base, family_maturity: maturity, observation_reference_ids: expectReferenceIdSet(ctx, requiredValue(table, "observation_reference_ids"), p(path, "observation_reference_ids"), true) };
-  return { ...base, family_maturity: maturity, authority_kind: expectEnum(ctx, requiredValue(table, "authority_kind"), ["grammar", "registry", "reviewed_relation"] as const, p(path, "authority_kind")), authority_reference_id: expectReferenceId(ctx, requiredValue(table, "authority_reference_id"), p(path, "authority_reference_id")), derivation_md: expectMarkdown(ctx, requiredValue(table, "derivation_md"), p(path, "derivation_md")), legality_rule_md: expectMarkdown(ctx, requiredValue(table, "legality_rule_md"), p(path, "legality_rule_md")), legality_owner_reference_id: expectReferenceId(ctx, requiredValue(table, "legality_owner_reference_id"), p(path, "legality_owner_reference_id")), ...optionalMarkdown(ctx, table, path, "denominator_unknowns_md") };
+  const authority = { ...base, family_maturity: maturity, authority_kind: expectEnum(ctx, requiredValue(table, "authority_kind"), ["grammar", "registry", "reviewed_relation"] as const, p(path, "authority_kind")), authority_reference_id: expectReferenceId(ctx, requiredValue(table, "authority_reference_id"), p(path, "authority_reference_id")), derivation_md: expectMarkdown(ctx, requiredValue(table, "derivation_md"), p(path, "derivation_md")), legality_rule_md: expectMarkdown(ctx, requiredValue(table, "legality_rule_md"), p(path, "legality_rule_md")), legality_owner_reference_id: expectReferenceId(ctx, requiredValue(table, "legality_owner_reference_id"), p(path, "legality_owner_reference_id")) };
+  if (maturity === "under_design") return { ...authority, family_maturity: maturity, ...optionalMarkdown(ctx, table, path, "denominator_unknowns_md") };
+  return { ...authority, family_maturity: maturity, drift_check_reference_id: expectReferenceId(ctx, requiredValue(table, "drift_check_reference_id"), p(path, "drift_check_reference_id")), mutation_test_reference_id: expectReferenceId(ctx, requiredValue(table, "mutation_test_reference_id"), p(path, "mutation_test_reference_id")) };
 }
 
 export function decodeSharedSemanticPayload(
@@ -417,6 +452,7 @@ export function decodeSharedSemanticPayload(
   raw: unknown,
   path: string,
   position: SemanticDecodePosition,
+  schemaVersion: 1 | 2 = 1,
 ): SharedSemanticPayload | FamilyPayload | undefined {
   const pre = expectExactTable(ctx, raw, path, { name: "semantic payload discriminator", required: ["kind"], optional: Object.keys(raw === null || typeof raw !== "object" || Array.isArray(raw) ? {} : raw).filter((key) => key !== "kind") });
   const kind = expectString(ctx, requiredValue(pre, "kind"), p(path, "kind"));
@@ -426,7 +462,7 @@ export function decodeSharedSemanticPayload(
     case "signal": return decodeSignal(ctx, raw, path);
     case "evidence": return decodeEvidence(ctx, raw, path);
     case "control": return decodeControl(ctx, raw, path);
-    case "family": return decodeFamily(ctx, raw, path);
+    case "family": return decodeFamily(ctx, raw, path, schemaVersion);
     default: return undefined;
   }
 }

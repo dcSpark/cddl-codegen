@@ -4,7 +4,7 @@ import type {
   SemanticPayloadBase,
 } from "./core.ts";
 
-export type FamilyMaturity = "observed_only" | "under_design";
+export type FamilyMaturity = "observed_only" | "under_design" | "closed_denominator";
 export type CampaignState = "designing" | "enumerating" | "closing";
 export type EvidenceStage =
   | "generated"
@@ -35,21 +35,42 @@ export interface FamilyEvidenceRequirement {
   stages: EvidenceStage[];
 }
 
+/** One explicit proof for one required profile/face/stage coordinate of one legal cell. */
+export interface FamilyEvidenceBinding {
+  requirement_id: RoadmapId;
+  profile: string;
+  face: string;
+  stage: EvidenceStage;
+  evidence_id: RoadmapId;
+}
+
 export interface FamilyCoordinate {
   axis_id: RoadmapId;
   value_id: RoadmapId;
 }
 
-export interface FamilyCell {
+interface FamilyCellBase {
   id: RoadmapId;
   spec_legality: "legal";
-  cell_disposition: "supported" | "safely_refused" | "deliberately_unsupported" | "unknown";
   affected_profiles: string[];
   affected_faces: string[];
-  evidence_ids?: RoadmapId[];
   work_id?: RoadmapId;
   coordinates: FamilyCoordinate[];
 }
+
+export interface OpenFamilyCell extends FamilyCellBase {
+  cell_disposition: "supported" | "safely_refused" | "deliberately_unsupported" | "unknown";
+  evidence_ids?: RoadmapId[];
+  evidence_bindings?: never;
+}
+
+export interface ClosedFamilyCell extends FamilyCellBase {
+  cell_disposition: "supported" | "safely_refused" | "deliberately_unsupported";
+  evidence_ids?: never;
+  evidence_bindings: FamilyEvidenceBinding[];
+}
+
+export type FamilyCell = OpenFamilyCell | ClosedFamilyCell;
 
 export interface FamilyExclusion {
   id: RoadmapId;
@@ -94,4 +115,15 @@ export interface UnderDesignFamily extends FamilyBase {
   denominator_unknowns_md?: Uint8Array;
 }
 
-export type FamilyPayload = ObservedOnlyFamily | UnderDesignFamily;
+export interface ClosedDenominatorFamily extends FamilyBase {
+  family_maturity: "closed_denominator";
+  authority_kind: "grammar" | "registry" | "reviewed_relation";
+  authority_reference_id: ReferenceId;
+  derivation_md: Uint8Array;
+  legality_rule_md: Uint8Array;
+  legality_owner_reference_id: ReferenceId;
+  drift_check_reference_id: ReferenceId;
+  mutation_test_reference_id: ReferenceId;
+}
+
+export type FamilyPayload = ObservedOnlyFamily | UnderDesignFamily | ClosedDenominatorFamily;

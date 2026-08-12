@@ -1,5 +1,5 @@
 [document]
-schema_version = 1
+schema_version = 2
 authority = "authoritative"
 roadmap = "testing"
 source_path = "tests/testing-roadmap.toml"
@@ -8,8 +8,6 @@ frozen_source_sha256 = "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b
 frozen_source_byte_length = 323398
 frozen_source_line_count = 3597
 frozen_source_eof = "lf"
-semantic_conversion = "complete"
-frozen_legacy_span_ids = []
 
 [[section]]
 section_id = "declined-boundaries"

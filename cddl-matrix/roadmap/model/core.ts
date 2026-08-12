@@ -297,6 +297,7 @@ export type Freshness = "live" | "as_of" | "historical" | "stale";
 
 export interface EvidenceScope {
   surfaces?: string[];
+  faces?: string[];
   profiles?: string[];
   flags?: string[];
   input_modes?: string[];

@@ -342,6 +342,10 @@ function collectPayloadUses(
       } else {
         reference(payload.authority_reference_id, "authority_reference_id");
         reference(payload.legality_owner_reference_id, "legality_owner_reference_id");
+        if (payload.family_maturity === "closed_denominator") {
+          reference(payload.drift_check_reference_id, "drift_check_reference_id");
+          reference(payload.mutation_test_reference_id, "mutation_test_reference_id");
+        }
       }
       for (const axis of payload.axes) {
         reference(axis.authority_reference_id, `axis[${quoted(axis.id)}].authority_reference_id`);
@@ -351,6 +355,10 @@ function collectPayloadUses(
       }
       for (const cell of payload.cells) {
         roadmaps(cell.evidence_ids, `cell[${quoted(cell.id)}].evidence_ids`);
+        for (const binding of cell.evidence_bindings ?? []) {
+          roadmap(binding.requirement_id, `cell[${quoted(cell.id)}].evidence_binding.requirement_id`);
+          roadmap(binding.evidence_id, `cell[${quoted(cell.id)}].evidence_binding.evidence_id`);
+        }
         roadmap(cell.work_id, `cell[${quoted(cell.id)}].work_id`);
         for (const coordinate of cell.coordinates) {
           roadmap(coordinate.axis_id, `cell[${quoted(cell.id)}].coordinate.axis_id`);

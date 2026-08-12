@@ -8,7 +8,7 @@ import type { RoadmapDocument } from "./model/documents.ts";
 import type { CompletedRenderIr } from "./render_ir.ts";
 
 export type SemanticConversionState = "converting" | "complete";
-export type DeclaredSemanticConversionState = SemanticConversionState | "omitted";
+export type DeclaredSemanticConversionState = SemanticConversionState | "omitted" | "intrinsic";
 
 interface DocumentWithSemanticConversion {
   readonly semantic_conversion?: SemanticConversionState;
@@ -25,6 +25,9 @@ export function semanticConversionState(document: RoadmapDocument): Readonly<{
 }> {
   if (document.document.schema_version === 0) {
     return Object.freeze({ declared: "omitted", effective: "not_applicable" });
+  }
+  if (document.document.schema_version === 2) {
+    return Object.freeze({ declared: "intrinsic", effective: "complete" });
   }
   const declared = authoredValue(document);
   return Object.freeze({
@@ -61,6 +64,15 @@ export function validateSemanticConversionDeclaration(
         document,
         "document.semantic_conversion",
         "roadmap schema v0 forbids a semantic-conversion declaration",
+      )]);
+  }
+  if (document.document.schema_version === 2) {
+    return declared === undefined
+      ? Object.freeze([])
+      : Object.freeze([schemaIssue(
+        document,
+        "document.semantic_conversion",
+        "roadmap schema v2 has intrinsic completion and forbids migration declarations",
       )]);
   }
   if (declared === undefined && !allowHistoricalV1Omission) {

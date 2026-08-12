@@ -23,13 +23,16 @@ import type {
   RoadmapDocument,
   RoadmapDocumentV0,
   RoadmapDocumentV1,
+  RoadmapDocumentV2,
   SemanticAuthorityRecordV1,
 } from "../model/documents.ts";
 import type { RegistryView } from "../adapters/types.ts";
 import { RoadmapFailure, type RoadmapIssue } from "../errors.ts";
 import { observeMatchingIssue, observeSelfTestIssue } from "./observations.ts";
 import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
+import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
+import { resolveManifest } from "../manifest.ts";
 import {
   ROADMAP_ID_POLICY_V1,
   validateReferenceId,
@@ -96,6 +99,8 @@ import {
 import {
   createImmutableByteView,
   createExpectedByteView,
+  buildExpectedChunks,
+  validateCompletedChunks,
   type ExpectedByteViewObserver,
   type CompletedRenderIr,
   type RenderChunk,
@@ -224,6 +229,7 @@ export const REQUIRED_IDENTITY_SELFTEST_CASE_IDS = [
   "retired_wrong_against",
   "transaction_complete_tombstone",
   "transaction_complete_guard_transfer",
+  "transaction_v2_atomic_completed_guard",
   "transaction_missing_campaign_removal",
   "transaction_live_citation",
   "transaction_dangling_relation",
@@ -2448,9 +2454,21 @@ function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticA
   };
 }
 
+function c5FamilyWorkRecord(id: RoadmapId, familyId: RoadmapId): SemanticAuthorityRecordV1 {
+  const record = c5ReadyRecord(id);
+  assert(record.payload.kind === "work", "family work fixture must remain work");
+  const { family_classification: _classification, ...payload } = record.payload;
+  return { ...record, payload: { ...payload, family_id: familyId } };
+}
+
 function c5FamilyRecord(id: RoadmapId, workIds: readonly RoadmapId[] = []): SemanticAuthorityRecordV1 {
   const axisId = `${id}.fixture-dimension` as RoadmapId;
   const valueId = `${id}.fixture-choice` as RoadmapId;
+  const excludedValueId = `${id}.fixture-excluded-choice` as RoadmapId;
+  const requirementId = `${id}.fixture-proof` as RoadmapId;
+  const cellId = `${id}.fixture-point` as RoadmapId;
+  const reference = (suffix: string): ReferenceId =>
+    `ref-${id.replaceAll(".", "-")}-${suffix}` as ReferenceId;
   return {
     id,
     title: "Family",
@@ -2460,45 +2478,137 @@ function c5FamilyRecord(id: RoadmapId, workIds: readonly RoadmapId[] = []): Sema
     payload: {
       kind: "family",
       summary_md: bytes("family"),
-      family_maturity: "observed_only",
-      campaign_state: "designing",
+      family_maturity: "closed_denominator",
+      campaign_state: "closing",
       goal_md: bytes("goal"),
       boundary_md: bytes("boundary"),
       work_ids: [...workIds],
-      observation_reference_ids: [],
-      affected_profiles: [],
-      affected_faces: [],
-      control_ids: [],
-      completion_owner_reference_id: "completion" as ReferenceId,
-      retirement_owner_reference_id: "retirement" as ReferenceId,
+      authority_kind: "registry",
+      authority_reference_id: reference("authority"),
+      derivation_md: bytes("derive the exact fixture denominator"),
+      legality_rule_md: bytes("the first value is legal and the second is excluded"),
+      legality_owner_reference_id: reference("legality-owner"),
+      drift_check_reference_id: reference("denominator-drift"),
+      mutation_test_reference_id: reference("denominator-mutation"),
+      affected_profiles: ["default"],
+      affected_faces: ["rust"],
+      control_ids: [`${id}.fixture-control` as RoadmapId],
+      completion_owner_reference_id: reference("completion"),
+      retirement_owner_reference_id: reference("retirement"),
       axes: [{
-        id: axisId, label: "Axis", authority_reference_id: "axis-authority" as ReferenceId,
-        values: [{ id: valueId, label: "Value", source_reference_id: "axis-source" as ReferenceId }],
+        id: axisId, label: "Axis", authority_reference_id: reference("axis-authority"),
+        values: [
+          { id: valueId, label: "Value", source_reference_id: reference("axis-source") },
+          { id: excludedValueId, label: "Excluded", source_reference_id: reference("excluded-axis-source") },
+        ],
       }],
       evidence_requirements: [{
-        id: `${id}.fixture-proof` as RoadmapId,
+        id: requirementId,
         profiles: ["default"], faces: ["rust"], stages: ["compiled"],
       }],
       cells: [{
-        id: `${id}.fixture-point` as RoadmapId,
-        spec_legality: "legal", cell_disposition: "unknown", affected_profiles: ["default"],
+        id: cellId,
+        spec_legality: "legal", cell_disposition: "supported", affected_profiles: ["default"],
         affected_faces: ["rust"], coordinates: [{ axis_id: axisId, value_id: valueId }],
+        evidence_bindings: [{
+          requirement_id: requirementId,
+          profile: "default",
+          face: "rust",
+          stage: "compiled",
+          evidence_id: `${id}.fixture-evidence` as RoadmapId,
+        }],
       }],
       exclusions: [{
         id: `${id}.fixture-excluded` as RoadmapId,
-        spec_legality: "illegal", reason_md: bytes("illegal"), owner_reference_id: "owner" as ReferenceId,
-        source_reference_id: "source" as ReferenceId, liveness_reference_id: "liveness" as ReferenceId,
-        coordinates: [{ axis_id: axisId, value_id: valueId }],
+        spec_legality: "illegal", reason_md: bytes("illegal"), owner_reference_id: reference("owner"),
+        source_reference_id: reference("source"), liveness_reference_id: reference("liveness"),
+        coordinates: [{ axis_id: axisId, value_id: excludedValueId }],
       }],
     },
     source_replacements: [],
   };
 }
 
+function c5OpenFamilyRecord(
+  id: RoadmapId,
+  maturity: "observed_only" | "under_design",
+  workIds: readonly RoadmapId[] = [],
+): SemanticAuthorityRecordV1 {
+  const closed = c5FamilyRecord(id, workIds);
+  assert(closed.payload.kind === "family" && closed.payload.family_maturity === "closed_denominator", "closed family fixture");
+  const openCells = closed.payload.cells.map(({ evidence_bindings: _bindings, ...cell }) => ({
+    ...cell,
+    cell_disposition: "unknown" as const,
+  }));
+  const common = {
+    kind: "family" as const,
+    summary_md: closed.payload.summary_md,
+    campaign_state: maturity === "observed_only" ? "enumerating" as const : "designing" as const,
+    goal_md: closed.payload.goal_md,
+    boundary_md: closed.payload.boundary_md,
+    work_ids: [...closed.payload.work_ids],
+    affected_profiles: [...closed.payload.affected_profiles],
+    affected_faces: [...closed.payload.affected_faces],
+    control_ids: [],
+    completion_owner_reference_id: closed.payload.completion_owner_reference_id,
+    retirement_owner_reference_id: closed.payload.retirement_owner_reference_id,
+    axes: closed.payload.axes,
+    evidence_requirements: closed.payload.evidence_requirements,
+    cells: openCells,
+    exclusions: closed.payload.exclusions,
+  };
+  return {
+    ...closed,
+    payload: maturity === "observed_only"
+      ? { ...common, family_maturity: maturity, observation_reference_ids: ["family-observation" as ReferenceId] }
+      : {
+        ...common,
+        family_maturity: maturity,
+        authority_kind: closed.payload.authority_kind,
+        authority_reference_id: closed.payload.authority_reference_id,
+        derivation_md: closed.payload.derivation_md,
+        legality_rule_md: closed.payload.legality_rule_md,
+        legality_owner_reference_id: closed.payload.legality_owner_reference_id,
+        denominator_unknowns_md: bytes("fixture denominator remains open"),
+      },
+  };
+}
+
+function c5FamilySupportRecords(id: RoadmapId): readonly SemanticAuthorityRecordV1[] {
+  const evidenceId = `${id}.fixture-evidence` as RoadmapId;
+  const controlId = `${id}.fixture-control` as RoadmapId;
+  return [
+    {
+      id: evidenceId, title: "Family evidence", projection_group: "fixture" as never,
+      render_authority: "semantic", projection_visibility: "semantic_only",
+      payload: {
+        kind: "evidence", summary_md: bytes("family evidence"), evidence_kind: "gate",
+        claim_md: bytes("the fixture cell compiles"), evidence_verdict: "confirmed", freshness: "live",
+        reference_ids: [`ref-${id.replaceAll(".", "-")}-evidence-gate` as ReferenceId],
+        refresh_reference_id: `ref-${id.replaceAll(".", "-")}-evidence-gate` as ReferenceId,
+        unprobed_remainder_md: bytes("none"),
+        scope: { cell_ids: [`${id}.fixture-point` as RoadmapId], profiles: ["default"], faces: ["rust"] },
+      },
+      source_replacements: [],
+    },
+    {
+      id: controlId, title: "Family control", projection_group: "fixture" as never,
+      render_authority: "semantic", projection_visibility: "semantic_only",
+      payload: {
+        kind: "control", summary_md: bytes("family control"), control_kind: "gate", control_state: "live",
+        reference_ids: [`ref-${id.replaceAll(".", "-")}-control-gate` as ReferenceId], claim_md: bytes("guards the fixture denominator"),
+        boundary_md: bytes("synthetic fixture only"),
+      },
+      source_replacements: [],
+    },
+  ];
+}
+
 function c5FamilyChildIds(id: RoadmapId): readonly RoadmapId[] {
   return Object.freeze([
     `${id}.fixture-dimension` as RoadmapId,
     `${id}.fixture-choice` as RoadmapId,
+    `${id}.fixture-excluded-choice` as RoadmapId,
     `${id}.fixture-proof` as RoadmapId,
     `${id}.fixture-point` as RoadmapId,
     `${id}.fixture-excluded` as RoadmapId,
@@ -2517,14 +2627,20 @@ function c5FamilyRecordUsingChildIds(
   id: RoadmapId,
   childIds: readonly RoadmapId[],
 ): SemanticAuthorityRecordV1 {
-  assert(childIds.length === 5, "family provider fixture requires five exact child IDs");
+  assert(childIds.length === 6, "family provider fixture requires six exact child IDs");
   const record = c5FamilyRecord(id);
-  assert(record.payload.kind === "family", "family provider fixture must retain family payload");
+  assert(record.payload.kind === "family" && record.payload.family_maturity === "closed_denominator", "family provider fixture must retain closed family payload");
   record.payload.axes[0]!.id = childIds[0]!;
   record.payload.axes[0]!.values[0]!.id = childIds[1]!;
-  record.payload.evidence_requirements[0]!.id = childIds[2]!;
-  record.payload.cells[0]!.id = childIds[3]!;
-  record.payload.exclusions[0]!.id = childIds[4]!;
+  record.payload.axes[0]!.values[1]!.id = childIds[2]!;
+  record.payload.evidence_requirements[0]!.id = childIds[3]!;
+  record.payload.cells[0]!.id = childIds[4]!;
+  record.payload.exclusions[0]!.id = childIds[5]!;
+  record.payload.cells[0]!.coordinates = [{ axis_id: childIds[0]!, value_id: childIds[1]! }];
+  const binding = record.payload.cells[0]!.evidence_bindings?.[0];
+  assert(binding !== undefined, "closed family provider fixture must retain its evidence binding");
+  binding.requirement_id = childIds[3]!;
+  record.payload.exclusions[0]!.coordinates = [{ axis_id: childIds[0]!, value_id: childIds[2]! }];
   return record;
 }
 
@@ -2569,6 +2685,121 @@ function c5V1(
     ),
     spans: [], relations: [...relations], references: [...references],
   };
+}
+
+function c5ClosedFamilyReferences(id: RoadmapId, includeFamily: boolean): Reference[] {
+  const evidenceId = `${id}.fixture-evidence` as RoadmapId;
+  const controlId = `${id}.fixture-control` as RoadmapId;
+  const reference = (suffix: string): string => `ref-${id.replaceAll(".", "-")}-${suffix}`;
+  const gate = (referenceId: string, source: RoadmapId, gateId = referenceId): Reference =>
+    ({ id: referenceId as ReferenceId, source, kind: "gate", gate_id: gateId });
+  const heading = (referenceId: string, source: RoadmapId): Reference => ({
+    id: referenceId as ReferenceId, source, kind: "file_heading",
+    path: "cddl-matrix/README.md" as RepoPath, heading: referenceId,
+  });
+  const passage = (referenceId: string): Reference => ({
+    id: referenceId as ReferenceId, source: id, kind: "spec_passage",
+    document: "fixture-spec", passage: referenceId,
+  });
+  const support = [
+    gate(reference("evidence-gate"), evidenceId),
+    gate(reference("control-gate"), controlId),
+  ];
+  if (!includeFamily) return support;
+  return [
+    ...support,
+    gate(reference("authority"), id),
+    heading(reference("legality-owner"), id),
+    gate(reference("denominator-drift"), id),
+    gate(reference("denominator-mutation"), id),
+    gate(reference("completion"), id),
+    gate(reference("retirement"), id),
+    passage(reference("axis-authority")),
+    passage(reference("axis-source")),
+    passage(reference("excluded-axis-source")),
+    heading(reference("owner"), id),
+    passage(reference("source")),
+    gate(reference("liveness"), id),
+  ];
+}
+
+function c5CanonicalV2(
+  records: readonly SemanticAuthorityRecordV1[],
+  relations: readonly Relation[] = [],
+  references: readonly Reference[] = [],
+): RoadmapDocumentV2 {
+  const markdown = bytes("matrix\n");
+  const spanId = "fixture-section-span" as never;
+  const document: RoadmapDocumentV2 = {
+    document: {
+      schema_version: 2,
+      authority: "authoritative",
+      roadmap: "matrix",
+      source_path: c5SourcePath("matrix"),
+      projection_path: c5Path("matrix"),
+      frozen_source_sha256: c5Sha(markdown),
+      frozen_source_byte_length: markdown.byteLength,
+      frozen_source_line_count: 1,
+      frozen_source_eof: "lf",
+    },
+    sections: [{
+      section_id: "fixture" as never,
+      title: "Fixture",
+      render_authority: "semantic",
+      body_md: markdown,
+      source_replacements: [{
+        span_id: spanId,
+        replacement_field: "body_md",
+        review_note_md: bytes("reviewed fixture section"),
+      }],
+    }],
+    fragments: [],
+    legacy_markers: [],
+    records: [...records],
+    parts: [],
+    generated_slots: [],
+    manifest: [{ kind: "section", section_id: "fixture" as never }],
+    spans: [{
+      id: spanId,
+      start_byte: 0,
+      end_byte: markdown.byteLength,
+      sha256: c5Sha(markdown),
+      source_kind: "section",
+      owner_id: "fixture",
+      owner_field: "body_md",
+      migration_status: "replaced",
+    }],
+    relations: [...relations],
+    references: [...references] as RoadmapDocumentV2["references"],
+  };
+  const decoded = decodeRoadmapSource(
+    composeRoadmapDocument(document),
+    "<c5-canonical-v2>",
+    "matrix",
+  );
+  assert(decoded.document.schema_version === 2, "canonical c5 v2 fixture did not decode as v2");
+  return decoded as RoadmapDocumentV2;
+}
+
+function c5CompletedV2(document: RoadmapDocumentV2): {
+  readonly completed: CompletedRenderIr;
+  readonly registry: RegistryView;
+} {
+  const registry = registryViewForReferences(document.references);
+  const indexes = buildRoadmapIndexes(document);
+  assert(indexes.issues.length === 0, `canonical c5 v2 indexes failed: ${JSON.stringify(indexes.issues)}`);
+  const referenceIssues = validateRoadmapReferences(indexes.indexes, registry, {
+    providers: MATRIX_ADAPTER.referenceProviders(registry),
+  });
+  assert(referenceIssues.length === 0, `canonical c5 v2 references failed: ${JSON.stringify(referenceIssues)}`);
+  const placement = resolveManifest(document);
+  const completed = buildExpectedChunks(document, placement.ops, {
+    renderSemanticRecord: (record, fields) => MATRIX_ADAPTER.renderSemantic(record, fields),
+    resolveGeneratedSlot: () => undefined,
+  });
+  const completedIssues = [...placement.issues, ...validateCompletedChunks(document, placement.ops, completed)];
+  assert(completedIssues.length === 0, `canonical c5 v2 completed render failed: ${JSON.stringify(completedIssues)}`);
+  return { completed, registry };
 }
 
 function c5PromoteV0(
@@ -2751,7 +2982,7 @@ function c5Debt(document: RoadmapDocument): MigrationDebt {
       : "semantic");
     const frozenIds = document.document.schema_version === 0
       ? document.spans.filter((value) => value.migration_status === "raw").map((value) => value.id)
-      : document.document.frozen_legacy_span_ids;
+      : document.document.schema_version === 1 ? document.document.frozen_legacy_span_ids : [];
     if (frozenIds.includes(span.id)) frozen.set(debtOwnerIndex(key), key);
   }
   return { owners, independent: new Map(), frozen_legacy_spans: frozen };
@@ -2775,22 +3006,54 @@ function c5WithDebt<T extends {
 }
 
 function c5ActiveRevision(
-  document: RoadmapDocumentV1,
+  document: RoadmapDocumentV1 | RoadmapDocumentV2,
   selections: readonly CampaignDocumentV1["selections"][number][] = [],
   options: {
     readonly retired?: readonly RetiredIdV1[];
     readonly guards?: readonly CurrentGuard[];
     readonly citations?: RegistryView["roadmap_citations"];
+    readonly completed?: CompletedRenderIr;
+    readonly reference_registry?: RegistryView;
   } = {},
 ) {
+  const completed = options.completed !== undefined
+    ? { matrix: options.completed }
+    : document.document.schema_version === 2
+    ? {
+      matrix: {
+        chunks: [],
+        expected_bytes: createExpectedByteView([]),
+        field_consumption: document.records.flatMap((record) => record.render_authority === "semantic"
+          ? [{
+            owner_kind: "record" as const,
+            owner_id: record.id,
+            expected_fields: [], consumed_fields: [], duplicate_fields: [], unknown_fields: [], mismatched_fields: [],
+          }]
+          : []),
+        projected_field_segments: [], slot_resolutions: [], build_issues: [],
+      },
+    }
+    : {};
   return c5WithDebt({
     campaign: c5Campaign("authoritative", "legacy_markdown", [], selections),
     retired: c5Retired(options.retired),
     roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document }),
     registry: c5Registry({ kind: "worktree" }, {
+      ...(options.reference_registry === undefined ? {} : {
+        gates: uniqueBy(
+          [gateFact("roadmap_projection_check"), ...options.reference_registry.gates],
+          (fact) => fact.id,
+        ),
+        matrix_features: options.reference_registry.matrix_features,
+        matrix_roles: options.reference_registry.matrix_roles,
+        matrix_cells: options.reference_registry.matrix_cells,
+        tracked_headings: options.reference_registry.tracked_headings,
+        test_symbols: options.reference_registry.test_symbols,
+      }),
       current_guards: options.guards ?? [],
       roadmap_citations: options.citations ?? [],
     }),
+    completed,
   });
 }
 
@@ -3718,6 +3981,91 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
       observeSelfTestIssue(duplicate);
       return true;
     }
+    case "transaction_v2_atomic_completed_guard": {
+      const completeV1 = (roadmap: RoadmapName): RoadmapDocumentV1 => {
+        const document = c5V1(roadmap);
+        document.document.semantic_conversion = "complete";
+        return document;
+      };
+      const promote = (document: RoadmapDocumentV1): RoadmapDocumentV2 => {
+        const { semantic_conversion: _conversion, frozen_legacy_span_ids: _frozen, ...common } = document.document;
+        return {
+          ...document,
+          document: { ...common, schema_version: 2, authority: "authoritative" },
+        } as RoadmapDocumentV2;
+      };
+      const completed = (roadmap: RoadmapName, projected: Uint8Array): CompletedRenderIr => {
+        const chunks: RenderChunk[] = [{
+          manifest_index: 0,
+          owner: { kind: "record", id: `${roadmap}.fixture-completed`, field: "payload.summary_md" },
+          bytes: projected,
+          source_span_ids: [],
+          consumed_fields: [],
+        }];
+        return {
+          chunks,
+          expected_bytes: createExpectedByteView(chunks),
+          field_consumption: [],
+          projected_field_segments: [],
+          slot_resolutions: [],
+          build_issues: [],
+        };
+      };
+      const matrixV1 = completeV1("matrix");
+      const testingV1 = completeV1("testing");
+      const matrixV2 = promote(matrixV1);
+      const testingV2 = promote(testingV1);
+      const revision = (
+        matrix: RoadmapDocumentV1 | RoadmapDocumentV2,
+        testing: RoadmapDocumentV1 | RoadmapDocumentV2,
+        matrixBytes: Uint8Array,
+        revision: import("../model/core.ts").RepositoryRevision,
+      ) => c5WithDebt({
+        campaign: c5Campaign("authoritative", "authoritative"),
+        retired: c5Retired(),
+        roadmaps: c5Snapshots(
+          { markdown: bytes("matrix\n"), document: matrix },
+          { markdown: bytes("testing\n"), document: testing },
+        ),
+        registry: c5Registry(revision),
+        completed: {
+          matrix: completed("matrix", matrixBytes),
+          testing: completed("testing", bytes("testing\n")),
+        },
+      });
+      const base = revision(matrixV1, testingV1, bytes("matrix\n"), { kind: "commit", commit: C5_BASE });
+      const projectedDrift = validateTransaction({
+        scope: "all",
+        against: C5_BASE,
+        base,
+        candidate: revision(matrixV2, testingV2, bytes("matrix registry drift\n"), { kind: "worktree" }),
+      });
+      assert(
+        projectedDrift.issues.some((issue) =>
+          issue.code === "E-TRANSACTION-BASE" && issue.logical_path === "matrix.completed_render_ir"
+        ),
+        `v2 promotion accepted registry/generated-slot projection drift: ${JSON.stringify(projectedDrift.issues)}`,
+      );
+      const metadataDrift = validateTransaction({
+        scope: "all",
+        against: C5_BASE,
+        base,
+        candidate: revision({
+          ...matrixV2,
+          document: {
+            ...matrixV2.document,
+            frozen_source_line_count: matrixV2.document.frozen_source_line_count + 1,
+          },
+        }, testingV2, bytes("matrix\n"), { kind: "worktree" }),
+      });
+      assert(
+        metadataDrift.issues.some((issue) =>
+          issue.code === "E-TRANSACTION-BASE" && issue.logical_path === "matrix.document.schema_version"
+        ),
+        `v2 promotion accepted document metadata drift: ${JSON.stringify(metadataDrift.issues)}`,
+      );
+      return true;
+    }
     case "transaction_complete_tombstone": {
       const result = positiveRetirement();
       assert(result.issues.length === 0 && result.retired_ids[0] === C5_ID, `complete active retirement must pass: ${JSON.stringify(result.issues)}`);
@@ -3736,20 +4084,56 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
       return true;
     }
     case "transaction_complete_guard_transfer": {
-      const workId = "matrix.fixture-linked-work" as RoadmapId;
-      const familyBase = c5V1(
-        "matrix",
-        [c5FamilyRecord(C5_ID, [workId]), c5ReadyRecord(workId)],
+      const workId = "matrix.fixture-linked-delivery" as RoadmapId;
+      const v2 = (document: RoadmapDocumentV1): RoadmapDocumentV2 => {
+        const { semantic_conversion: _conversion, frozen_legacy_span_ids: _frozen, ...common } = document.document;
+        return { ...document, document: { ...common, schema_version: 2, authority: "authoritative" } } as RoadmapDocumentV2;
+      };
+      const closedFamilyFixture = c5FamilyRecord(C5_ID, [workId]);
+      for (const maturity of ["observed_only", "under_design"] as const) {
+        const openFamily = c5OpenFamilyRecord(C5_ID, maturity, [workId]);
+        const openBase = v2(c5V1(
+          "matrix",
+          [openFamily, c5ReadyRecord(workId)],
+          [{ source: C5_ID, kind: "parent_of", target: workId }],
+          [{ id: "family-work" as ReferenceId, source: C5_ID, kind: "roadmap", target_id: workId }],
+        ));
+        const openResult = c5AllTransaction(
+          c5ActiveRevision(openBase, [], { citations: [{
+            id: C5_ID, source: "README.md" as RepoPath,
+            span: { start_byte: 0, end_byte: 28 }, raw: `roadmap:${C5_ID}`,
+          }] }),
+          c5ActiveRevision(v2(c5V1("matrix", [c5ReadyRecord(workId)])), [], { guards: c5FamilyGuards(C5_ID) }),
+        );
+        const rejected = openResult.issues.find((issue) =>
+          issue.code === "E-TRANSACTION-GUARD" && issue.logical_path === `guard[${JSON.stringify(C5_ID)}]`
+        );
+        assert(rejected !== undefined, `${maturity} family transferred into current guards`);
+      }
+      const familyWork = c5FamilyWorkRecord(workId, C5_ID);
+      const familyReference = { id: "family-work" as ReferenceId, source: C5_ID, kind: "roadmap" as const, target_id: workId };
+      const familyBase = c5CanonicalV2(
+        [closedFamilyFixture, ...c5FamilySupportRecords(C5_ID), familyWork],
         [{ source: C5_ID, kind: "parent_of", target: workId }],
-        [{ id: "family-work" as ReferenceId, source: C5_ID, kind: "roadmap", target_id: workId }],
+        [...c5ClosedFamilyReferences(C5_ID, true), familyReference],
       );
-      const candidateDocument = c5V1("matrix", [c5ReadyRecord(workId)]);
+      const candidateDocument = c5CanonicalV2(
+        [...c5FamilySupportRecords(C5_ID), c5ReadyRecord(workId)],
+        [],
+        c5ClosedFamilyReferences(C5_ID, false),
+      );
+      const baseRender = c5CompletedV2(familyBase);
+      const candidateRender = c5CompletedV2(candidateDocument);
       const guards = c5FamilyGuards(C5_ID);
       const familyBaseRevision = c5ActiveRevision(familyBase, [], { citations: [{
           id: C5_ID, source: "README.md" as RepoPath,
           span: { start_byte: 0, end_byte: 28 }, raw: `roadmap:${C5_ID}`,
-        }] });
-      const familyCandidateRevision = c5ActiveRevision(candidateDocument, [], { guards });
+        }], completed: baseRender.completed, reference_registry: baseRender.registry });
+      const familyCandidateRevision = c5ActiveRevision(candidateDocument, [], {
+        guards,
+        completed: candidateRender.completed,
+        reference_registry: candidateRender.registry,
+      });
       const result = c5AllTransaction(familyBaseRevision, familyCandidateRevision);
       assert(result.issues.length === 0 && result.guard_transfers[0] === C5_ID, `complete family guard transfer with surviving linked work must pass: ${JSON.stringify(result.issues)}`);
       for (const missing of ["base", "candidate"] as const) {
@@ -3763,7 +4147,7 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
             : familyCandidateRevision,
         });
         assert(transaction.issues.some((issue) => issue.code === "E-TRANSACTION-BASE" &&
-          issue.logical_path === "debt.matrix"), `${missing} debt is mandatory for family guard transfer`);
+          issue.logical_path === "debt.matrix"), `${missing} debt is mandatory for family guard transfer: ${JSON.stringify(transaction.issues)}`);
       }
       const debt = c5Debt(familyBase);
       const rootAtoms = [...debt.owners.values()].filter(({ key }) =>
@@ -3771,12 +4155,14 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
       );
       assertExactStrings(rootAtoms.map(({ key }) => key.owner_field), [
         "payload.boundary_md",
+        "payload.derivation_md",
         "payload.exclusions[0].reason_md",
         "payload.goal_md",
+        "payload.legality_rule_md",
         "payload.summary_md",
       ], "family guard fixture exact removable record atoms");
       assertExactStrings(c5FamilyChildIds(C5_ID), [
-        `${C5_ID}.fixture-dimension`, `${C5_ID}.fixture-choice`, `${C5_ID}.fixture-proof`,
+        `${C5_ID}.fixture-dimension`, `${C5_ID}.fixture-choice`, `${C5_ID}.fixture-excluded-choice`, `${C5_ID}.fixture-proof`,
         `${C5_ID}.fixture-point`, `${C5_ID}.fixture-excluded`,
       ], "family guard fixture systematic child denominator");
       const baseProviders = buildRoadmapIndexes(familyBase).indexes.identity_inputs.id_providers.filter((provider) =>
@@ -3785,6 +4171,7 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
       assertExactStrings(baseProviders.map((provider) => `${provider.id}:${provider.kind}`), [
         `${C5_ID}.fixture-dimension:family_axis`,
         `${C5_ID}.fixture-choice:family_axis_value`,
+        `${C5_ID}.fixture-excluded-choice:family_axis_value`,
         `${C5_ID}.fixture-proof:family_evidence_requirement`,
         `${C5_ID}.fixture-point:family_cell`,
         `${C5_ID}.fixture-excluded:family_exclusion`,
@@ -3841,10 +4228,15 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
       assert(reverseDeclarationMutation.some((issue) =>
         issue.code === "E-DEBT-BASE-MISMATCH" && issue.logical_path === "transition_facts"
       ), `guard capability must bind a reverse semantic-conversion declaration change at transition_facts: ${JSON.stringify(reverseDeclarationMutation)}`);
-      const replacementFamilyId = "matrix.fixture-replacement-family" as RoadmapId;
-      const activeChildrenCandidate = c5V1("matrix", [
+      const replacementFamilyId = "matrix.fixture-replacement-denominator" as RoadmapId;
+      const activeChildrenCandidate = c5CanonicalV2([
         c5FamilyRecordUsingChildIds(replacementFamilyId, c5FamilyChildIds(C5_ID)),
+        ...c5FamilySupportRecords(C5_ID),
+        ...c5FamilySupportRecords(replacementFamilyId),
         c5ReadyRecord(workId),
+      ], [], [
+        ...c5ClosedFamilyReferences(C5_ID, false),
+        ...c5ClosedFamilyReferences(replacementFamilyId, true),
       ]);
       const rootOnlyGuard = c5Guard(C5_ID);
       const activeChildrenRegistry = c5Registry({ kind: "worktree" }, { current_guards: [rootOnlyGuard] });
@@ -3869,18 +4261,25 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
         base_document: familyBase,
         candidate_document: activeChildrenCandidate,
         transition_facts: activeChildrenCapability.facts,
-      }).length === 0, "sameActiveKind must preserve every one of the five systematic provider kinds without child guards");
+      }).length === 0, "sameActiveKind must preserve every systematic provider kind without child guards");
       const activeLifecycle = c5AllTransaction(
-        c5ActiveRevision(familyBase),
-        c5ActiveRevision(activeChildrenCandidate, [], { guards: [rootOnlyGuard] }),
+        c5ActiveRevision(familyBase, [], { completed: baseRender.completed, reference_registry: baseRender.registry }),
+        c5ActiveRevision(activeChildrenCandidate, [], {
+          guards: [rootOnlyGuard],
+          ...(() => {
+            const rendered = c5CompletedV2(activeChildrenCandidate);
+            return { completed: rendered.completed, reference_registry: rendered.registry };
+          })(),
+        }),
       );
       assert(activeLifecycle.issues.length === 0, `sameActiveKind lifecycle arm must pass: ${JSON.stringify(activeLifecycle.issues)}`);
       const swappedKinds = [...c5FamilyChildIds(C5_ID)];
       [swappedKinds[0], swappedKinds[3]] = [swappedKinds[3]!, swappedKinds[0]!];
-      const wrongKindCandidate = c5V1("matrix", [
+      const wrongKindCandidate = c5CanonicalV2([
         c5FamilyRecordUsingChildIds(replacementFamilyId, swappedKinds),
+        ...c5FamilySupportRecords(replacementFamilyId),
         c5ReadyRecord(workId),
-      ]);
+      ], [], c5ClosedFamilyReferences(replacementFamilyId, true));
       const wrongKind = validateDebtGuardTransferFacts(
         baseDebt,
         c5Debt(wrongKindCandidate),
@@ -4031,10 +4430,12 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
         transition_facts: unrelated.facts,
       }), "E-DEBT-BASE-MISMATCH", "capability from another debt/document identity must fail");
 
-      const attachedBase = c5V1(
-        "matrix",
-        [c5FamilyRecord(C5_ID, [workId]), c5ReadyRecord(workId)],
-      );
+      const attachedBase: RoadmapDocumentV2 = {
+        ...familyBase,
+        sections: [...familyBase.sections], records: [...familyBase.records],
+        manifest: [...familyBase.manifest], spans: [...familyBase.spans],
+        relations: [...familyBase.relations], references: [...familyBase.references],
+      };
       const attachedBytes = bytes("matrix");
       attachedBase.spans.push({
         id: "family-summary-span" as RoadmapDocumentV1["spans"][number]["id"],
@@ -4149,13 +4550,25 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
         "guard transfer must not hide frozen legacy-span growth");
 
       const retiringId = "matrix.fixture-retiring" as RoadmapId;
+      const composedBaseDocument = c5CanonicalV2([
+        c5FamilyRecord(C5_ID, [workId]), ...c5FamilySupportRecords(C5_ID),
+        c5FamilyWorkRecord(workId, C5_ID), c5ReadyRecord(retiringId),
+      ], [], c5ClosedFamilyReferences(C5_ID, true));
+      const composedCandidateDocument = c5CanonicalV2([
+        ...c5FamilySupportRecords(C5_ID), c5ReadyRecord(workId),
+      ], [], c5ClosedFamilyReferences(C5_ID, false));
+      const composedBaseRender = c5CompletedV2(composedBaseDocument);
+      const composedCandidateRender = c5CompletedV2(composedCandidateDocument);
       const composed = c5AllTransaction(
-        c5ActiveRevision(c5V1("matrix", [
-          c5FamilyRecord(C5_ID, [workId]), c5ReadyRecord(workId), c5ReadyRecord(retiringId),
-        ])),
-        c5ActiveRevision(c5V1("matrix", [c5ReadyRecord(workId)]), [], {
+        c5ActiveRevision(composedBaseDocument, [], {
+          completed: composedBaseRender.completed,
+          reference_registry: composedBaseRender.registry,
+        }),
+        c5ActiveRevision(composedCandidateDocument, [], {
           guards,
           retired: [c5Tombstone(retiringId)],
+          completed: composedCandidateRender.completed,
+          reference_registry: composedCandidateRender.registry,
         }),
       );
       assert(composed.issues.length === 0 && composed.guard_transfers.includes(C5_ID) &&
@@ -4571,10 +4984,14 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
         assert(result.issues.length > 0, "missing/wrong/unresolved/tombstoned/leftover family guard transfer must fail");
       }
       const unrelatedGuard = c5Guard("matrix.fixture-unused-guard" as RoadmapId);
-      assertIssue(c5AllTransaction(
+      const unrelatedIssues = c5AllTransaction(
         c5ActiveRevision(familyBase),
         c5ActiveRevision(survivor, [], { guards: [...validGuards, unrelatedGuard] }),
-      ).issues, "E-TRANSACTION-GUARD", "candidate-only unused guard must fail with no base owner");
+      ).issues;
+      const unrelatedIssue = unrelatedIssues.find((issue) => issue.code === "E-TRANSACTION-GUARD" &&
+        issue.logical_path === 'guard["matrix.fixture-unused-guard"]');
+      assert(unrelatedIssue !== undefined, `candidate-only unused guard must fail with no base owner: ${JSON.stringify(unrelatedIssues)}`);
+      observeSelfTestIssue(unrelatedIssue);
       const childId = c5FamilyChildIds(C5_ID)[0]!;
       const retainedBase = withBaseRevision(c5ActiveRevision(c5V1("matrix"), [], { guards: validGuards }));
       const reactivated = c5ActiveRevision(c5V1("matrix", [c5ReadyRecord(childId)]), [], {
@@ -5664,7 +6081,7 @@ const POSITIVE_C5_CASES = new Set<C5SelfTestCaseId>([
   "campaign_state_transition", "campaign_deselect_active_allowed",
   "campaign_allowlist_exhaustive", "campaign_reservation_owns_id_without_selection",
   "campaign_deselect_keeps_reservation", "retired_new_last_active_matches_against",
-  "transaction_complete_tombstone", "transaction_complete_guard_transfer",
+  "transaction_complete_tombstone", "transaction_complete_guard_transfer", "transaction_v2_atomic_completed_guard",
   "transaction_deselect_active_allowed", "transaction_legacy_cutover_transfer_selected",
   "transaction_legacy_cutover_transfer_unselected", "transaction_legacy_delivery_without_shadow",
   "transaction_legacy_delivery_with_shadow", "identity_shadow_record_reserves_id",
@@ -5718,7 +6135,8 @@ function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
   if (id === "transaction_legacy_delivery_live_repo_citation") return ["repository_citation", "relation_endpoint", "typed_reference"];
   if (id === "transaction_complete_guard_transfer") {
     return [
-      "four_exact_debt_atoms", "five_exact_child_ids_and_kinds", "all_child_guards",
+      "observed_only_rejected", "under_design_rejected",
+      "six_exact_debt_atoms", "six_exact_child_ids_and_kinds", "all_child_guards",
       "missing_base_debt", "missing_candidate_debt",
       "same_active_axis", "same_active_axis_value", "same_active_evidence", "same_active_cell",
       "same_active_exclusion", "wrong_provider_kind", "gate_pin", "test_symbol_pin",
@@ -5732,6 +6150,7 @@ function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
       "all_semantic_conversion_reverse", "scoped_semantic_conversion_reverse",
     ];
   }
+  if (id === "transaction_v2_atomic_completed_guard") return ["projected_bytes", "document_metadata"];
   if (id === "transaction_complete_tombstone") return ["complete", "missing_base_debt", "missing_candidate_debt"];
   if (id === "transaction_partial_guard") {
     return ["missing", "wrong_id", "unresolved_pin", "simultaneous_tombstone", "leftover_family", "missing_child_guard", "unused_guard", "future_reuse"];

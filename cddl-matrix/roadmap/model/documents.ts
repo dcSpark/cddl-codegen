@@ -47,6 +47,13 @@ export interface DocumentMetaV1 extends FrozenSourceMeta {
   frozen_legacy_span_ids: SpanId[];
 }
 
+/** Stable semantic wire format. Migration state is intrinsic and has no authored escape hatch. */
+export interface DocumentMetaV2 extends FrozenSourceMeta {
+  schema_version: 2;
+  authority: "authoritative";
+  roadmap: RoadmapName;
+}
+
 interface RawOwner {
   source_block_md: Uint8Array;
   span_ids: SpanId[];
@@ -248,6 +255,9 @@ export type Reference =
       expires_at: string;
     });
 
+/** References permitted after migration state becomes intrinsic in schema v2. */
+export type StableReference = Exclude<Reference, { kind: "unresolved_migration" }>;
+
 export interface RoadmapDocumentV0 {
   document: DocumentMetaV0;
   sections: RawSectionV0[];
@@ -274,7 +284,22 @@ export interface RoadmapDocumentV1 {
   references: Reference[];
 }
 
-export type RoadmapDocument = RoadmapDocumentV0 | RoadmapDocumentV1;
+export interface RoadmapDocumentV2 {
+  document: DocumentMetaV2;
+  sections: SemanticSectionV1[];
+  fragments: SemanticFragmentV1[];
+  legacy_markers: SemanticLegacyMarkerV1[];
+  records: SemanticAuthorityRecordV1[];
+  parts: SemanticPartV1[];
+  generated_slots: GeneratedSlot[];
+  manifest: ManifestEntry[];
+  spans: SourceSpan[];
+  relations: Relation[];
+  references: StableReference[];
+}
+
+export type AuthoritativeRoadmapDocument = RoadmapDocumentV1 | RoadmapDocumentV2;
+export type RoadmapDocument = RoadmapDocumentV0 | AuthoritativeRoadmapDocument;
 export type RoadmapAuthorityState = "legacy_markdown" | "shadow" | "authoritative";
 
 export interface CampaignDocumentV1 {

@@ -1,4 +1,5 @@
 import type { IssueCollector, RoadmapIssue } from "../errors.ts";
+import { EMPTY_DENOMINATOR_AUTHORITIES, validateSystematicFamilies, type DenominatorAuthorityRegistry } from "../denominator.ts";
 import { buildRoadmapIndexes, type RoadmapIndexes } from "../indexes.ts";
 import { deriveMatrixStatusFacts, renderMatrixStatusPayloads } from "../matrix_status_facts.ts";
 import type { RepoPath, RoadmapId, RoadmapName, SlotId } from "../model/core.ts";
@@ -295,8 +296,8 @@ function isExactLiveMatrixV0Shape(doc: RoadmapDocument): boolean {
 }
 
 function usesLiveMatrixInlineSlots(doc: RoadmapDocument): boolean {
-  if (doc.document.schema_version !== 1) return false;
-  const authorityDoc = doc as RoadmapDocumentV1;
+  if (doc.document.schema_version === 0) return false;
+  const authorityDoc = doc;
   if (
     authorityDoc.document.source_path !== MATRIX_SOURCE_PATH ||
     authorityDoc.document.projection_path !== MATRIX_PROJECTION_PATH ||
@@ -412,9 +413,11 @@ export function canonicalSemanticMarkdownFields(
     case "family":
       add("goal_md", value.goal_md);
       add("boundary_md", value.boundary_md);
-      if (value.family_maturity === "under_design") {
+      if (value.family_maturity !== "observed_only") {
         add("derivation_md", value.derivation_md);
         add("legality_rule_md", value.legality_rule_md);
+      }
+      if (value.family_maturity === "under_design") {
         add("denominator_unknowns_md", value.denominator_unknowns_md);
       }
       value.exclusions.forEach((entry, index) => add(`exclusions[${index}].reason_md`, entry.reason_md));
@@ -662,6 +665,7 @@ export interface DecodedRoadmapValidationOptions {
   readonly defer_foreign_roadmap_joins?: boolean;
   readonly unresolved_migration_authority?: UnresolvedMigrationAuthority;
   readonly observer?: DecodedRoadmapValidationObserver;
+  readonly denominator_authorities?: DenominatorAuthorityRegistry;
 }
 
 export interface DecodedRoadmapValidationResult {
@@ -731,6 +735,14 @@ export function validateDecodedRoadmapDocument(
     unresolved_migration_authority: options.unresolved_migration_authority,
   }));
   issues.push(...validateRelations(indexes.relations, universe.first_class, source, deferredNamespace));
+  if (document.document.schema_version === 2) {
+    issues.push(...validateSystematicFamilies(
+      indexes,
+      view,
+      options.denominator_authorities ?? EMPTY_DENOMINATOR_AUTHORITIES,
+      source,
+    ));
+  }
   for (const provider of indexes.payload_records.values()) {
     validateDomainPayload(provider, domainIndexes, collector, source);
     options.observer?.domainPayloadValidated(provider);

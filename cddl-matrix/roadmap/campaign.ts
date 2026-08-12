@@ -220,7 +220,7 @@ export function workKindOfRecord(
   document: RoadmapDocument | undefined,
   id: RoadmapId,
 ): WorkKind | undefined {
-  if (document === undefined || document.document.schema_version !== 1) return undefined;
+  if (document === undefined || document.document.schema_version === 0) return undefined;
   const record = document.records.find((value) => value.id === id);
   if (record === undefined) return undefined;
   const payload = payloadOfRecord(record);
@@ -302,9 +302,11 @@ function validateAuthorityState(
     issues.push(issue("E-SOURCE-MISSING", path, `${roadmap} ${state} authority requires its roadmap TOML document`));
     return;
   }
-  const expectedVersion = state === "shadow" ? 0 : 1;
-  if (document.document.schema_version !== expectedVersion) {
-    issues.push(issue("E-SCHEMA-STATE", path, `${roadmap} ${state} authority requires schema version ${expectedVersion}`));
+  const versionValid = state === "shadow"
+    ? document.document.schema_version === 0
+    : document.document.schema_version === 1 || document.document.schema_version === 2;
+  if (!versionValid) {
+    issues.push(issue("E-SCHEMA-STATE", path, `${roadmap} ${state} authority requires an applicable authoritative roadmap schema`));
   }
   if (state === "shadow" && document.document.schema_version === 0 &&
     (document.document.authority !== "shadow" ||
@@ -369,7 +371,7 @@ function activeWorkIds(inputs: CampaignValidationInputs): ReadonlyMap<RoadmapId,
   for (const roadmap of ["matrix", "testing"] as const) {
     if (campaignAuthority(inputs.campaign, roadmap) !== "authoritative") continue;
     const document = inputs.roadmaps[roadmap].document;
-    if (document?.document.schema_version !== 1) continue;
+    if (document?.document.schema_version === 0 || document === undefined) continue;
     for (const record of document.records) {
       const kind = workKindOfRecord(document, record.id);
       if (kind !== undefined) result.set(record.id, kind);
@@ -382,7 +384,7 @@ function firedPromotionIds(inputs: CampaignValidationInputs): readonly RoadmapId
   const fired = new Set<RoadmapId>();
   for (const roadmap of ["matrix", "testing"] as const) {
     const document = inputs.roadmaps[roadmap].document;
-    if (document?.document.schema_version !== 1) continue;
+    if (document?.document.schema_version === 0 || document === undefined) continue;
     const firedSignals = new Set(document.records.filter((record) => {
       const payload = payloadOfRecord(record);
       return payload?.kind === "signal" && payload.transition_kind === "promotion_trigger" &&

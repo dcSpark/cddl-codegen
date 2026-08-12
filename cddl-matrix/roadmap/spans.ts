@@ -90,7 +90,7 @@ interface SemanticSpanOwner {
 }
 
 function semanticSpanOwners(document: RoadmapDocument): readonly SemanticSpanOwner[] {
-  if (document.document.schema_version !== 1) return [];
+  if (document.document.schema_version === 0) return [];
   const result: SemanticSpanOwner[] = [];
   for (const value of document.sections) {
     if ("render_authority" in value && value.render_authority === "semantic") result.push({

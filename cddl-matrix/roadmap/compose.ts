@@ -204,6 +204,7 @@ function writeEvidence(writer: CanonicalTomlWriter, payload: EvidencePayload, pr
   optionalString(writer, "enumerated_registry", payload.enumerated_registry);
   writer.table(`${prefix}.scope`);
   optionalStrings(writer, "surfaces", payload.scope.surfaces);
+  optionalStrings(writer, "faces", payload.scope.faces);
   optionalStrings(writer, "profiles", payload.scope.profiles);
   optionalStrings(writer, "flags", payload.scope.flags);
   optionalStrings(writer, "input_modes", payload.scope.input_modes);
@@ -244,6 +245,10 @@ function writeFamily(writer: CanonicalTomlWriter, payload: FamilyPayload, prefix
   writer.string("completion_owner_reference_id", payload.completion_owner_reference_id);
   writer.string("retirement_owner_reference_id", payload.retirement_owner_reference_id);
   if (payload.family_maturity === "under_design") optionalMarkdown(writer, "denominator_unknowns_md", payload.denominator_unknowns_md);
+  if (payload.family_maturity === "closed_denominator") {
+    writer.string("drift_check_reference_id", payload.drift_check_reference_id);
+    writer.string("mutation_test_reference_id", payload.mutation_test_reference_id);
+  }
   for (const axis of sorted(payload.axes, (value) => value.id)) {
     writer.arrayTable(`${prefix}.axis`);
     writer.string("id", axis.id);
@@ -272,6 +277,16 @@ function writeFamily(writer: CanonicalTomlWriter, payload: FamilyPayload, prefix
     writer.strings("affected_faces", cell.affected_faces, true);
     optionalStrings(writer, "evidence_ids", cell.evidence_ids);
     optionalString(writer, "work_id", cell.work_id);
+    for (const binding of sorted(cell.evidence_bindings ?? [], (value) =>
+      `${value.requirement_id}\0${value.profile}\0${value.face}\0${value.stage}\0${value.evidence_id}`
+    )) {
+      writer.arrayTable(`${prefix}.cell.evidence_binding`);
+      writer.string("requirement_id", binding.requirement_id);
+      writer.string("profile", binding.profile);
+      writer.string("face", binding.face);
+      writer.string("stage", binding.stage);
+      writer.string("evidence_id", binding.evidence_id);
+    }
     for (const coordinate of sorted(cell.coordinates, (value) => value.axis_id)) {
       writer.arrayTable(`${prefix}.cell.coordinate`);
       writer.string("axis_id", coordinate.axis_id);

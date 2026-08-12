@@ -204,7 +204,7 @@ function prepareDecodedRoadmapCore(
   // decoded source just built. The committed projection is prior output and therefore cannot be
   // an input to domain validation. Build/slot resolution deliberately precedes this scan because
   // expected bytes are its authority; neither depends on a successful domain verdict.
-  const validationRegistry = document.document.schema_version === 1 && document.document.authority === "authoritative"
+  const validationRegistry = document.document.schema_version !== 0 && document.document.authority === "authoritative"
     ? registryWithRoadmapMarkdownFact(
       registry,
       adapter.projection_path,
@@ -456,6 +456,17 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
           authority: item.document.document.authority,
           semantic_conversion: semanticConversionState(item.document),
           record_count: item.document.records.length,
+          families: item.document.records.flatMap((record) => {
+            const payload = "payload" in record ? record.payload : "semantic_shadow" in record ? record.semantic_shadow : undefined;
+            if (payload?.kind !== "family") return [];
+            return [{
+              id: record.id,
+              denominator_maturity: payload.family_maturity,
+              ...(payload.family_maturity === "closed_denominator"
+                ? { legal_total: payload.cells.length }
+                : { observed_lower_bound: payload.cells.length }),
+            }];
+          }),
           projection_byte_length: item.projection.byteLength,
           projection_sha256: sha256(item.projection),
         })),

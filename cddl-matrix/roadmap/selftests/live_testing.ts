@@ -12,6 +12,7 @@ import type {
   RawSectionV0,
   RoadmapDocumentV0,
   RoadmapDocumentV1,
+  RoadmapDocumentV2,
   SourceReplacement,
   SourceSpan,
 } from "../model/documents.ts";
@@ -24,26 +25,40 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-export function liveTestingAuthoritativeDocument(): RoadmapDocumentV1 {
+export function liveTestingV2Document(): RoadmapDocumentV2 {
   const decoded = decodeRoadmapSource(
     UTF8.encode(liveTestingSourceText),
     TESTING_SOURCE_PATH,
     "testing",
   );
   assert(
-    decoded.document.schema_version === 1 && decoded.document.authority === "authoritative",
-    "committed testing self-test source is not authoritative schema v1",
+    decoded.document.schema_version === 2 && decoded.document.authority === "authoritative",
+    "committed testing self-test source is not authoritative schema v2",
   );
   assert(
     decoded.document.source_path === TESTING_SOURCE_PATH &&
       decoded.document.projection_path === TESTING_PROJECTION_PATH,
     "committed testing self-test source does not declare the live production paths",
   );
-  return decoded as RoadmapDocumentV1;
+  return decoded as RoadmapDocumentV2;
+}
+
+/** Historical complete-v1 view retained for WP4/WP5 transition fixtures after the live WP6 cutover. */
+export function liveTestingAuthoritativeDocument(): RoadmapDocumentV1 {
+  const decoded = liveTestingV2Document();
+  return {
+    ...decoded,
+    document: {
+      ...decoded.document,
+      schema_version: 1,
+      semantic_conversion: "complete",
+      frozen_legacy_span_ids: [],
+    },
+  };
 }
 
 export function liveTestingAuthoritativeSource(): Uint8Array {
-  liveTestingAuthoritativeDocument();
+  liveTestingV2Document();
   return UTF8.encode(liveTestingSourceText);
 }
 

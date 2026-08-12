@@ -14,6 +14,7 @@ import {
   REQUIRED_SEMANTIC_CONVERSION_SELFTEST_CASE_IDS,
   SEMANTIC_CONVERSION_SELFTEST_CASES,
 } from "./selftests/semantic_conversion.ts";
+import { DENOMINATOR_SELFTEST_CASES, REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS } from "./selftests/denominator.ts";
 
 export interface SingleFileFixtureCaseRow {
   kind: "single_file";
@@ -133,7 +134,8 @@ export type SelfTestCategory =
   | "io-harness"
   | "repository-facts"
   | "status-compat"
-  | "adapter-pipeline";
+  | "adapter-pipeline"
+  | "denominator";
 
 export const SELFTEST_CATEGORIES = Object.freeze([
   "codec",
@@ -155,6 +157,7 @@ export const SELFTEST_CATEGORIES = Object.freeze([
   "repository-facts",
   "status-compat",
   "adapter-pipeline",
+  "denominator",
 ] as const satisfies readonly SelfTestCategory[]);
 
 export interface ExpectedSelfTestIssue {
@@ -268,6 +271,17 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
     "wrong_status", "incomplete_consumption", "rendered_byte_drift", "retained_frozen", "base_unfrozen",
     "candidate_only_raw", "existing_visibility_change",
   ]],
+  ["denominator_v2_synthetic_authority", [
+    "valid", "production_empty_registry", "full_pipeline_injected", "full_pipeline_empty_registry", "real_completed_render", "missing_axis_value", "derived_extra_axis_value",
+    "derived_extra_legal_cell", "authored_extra_cell", "legality_flip", "duplicate_coordinate",
+    "unknown_disposition", "loose_evidence", "missing_binding", "duplicate_binding",
+    "wrong_evidence_scope", "uncovered_applicability", "as_of_evidence", "stale_evidence", "zero_floor", "nan_floor",
+    "fractional_floor", "stale_control", "missing_exclusion_liveness",
+  ]],
+  ["v2_migration_escape_hatches_rejected", [
+    "semantic_conversion", "frozen_legacy_span_ids", "raw_section", "raw_fragment",
+    "raw_legacy_marker", "raw_record", "raw_part", "semantic_owner_raw_fields", "raw_span",
+  ]],
   ["debt_semantic_promotion_capability_mutation_rejected", [
     "payload_after_mint", "completed_content_after_mint", "completed_clone_after_mint", "expected_bytes_after_mint",
   ]],
@@ -359,7 +373,8 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["transaction_complete_tombstone", ["complete", "missing_base_debt", "missing_candidate_debt"]],
   ["transaction_combined_relation_cycle", ["depends_on", "parent_of", "supersedes"]],
   ["transaction_complete_guard_transfer", [
-    "four_exact_debt_atoms", "five_exact_child_ids_and_kinds", "all_child_guards", "missing_base_debt", "missing_candidate_debt",
+    "observed_only_rejected", "under_design_rejected",
+    "six_exact_debt_atoms", "six_exact_child_ids_and_kinds", "all_child_guards", "missing_base_debt", "missing_candidate_debt",
     "same_active_axis", "same_active_axis_value", "same_active_evidence", "same_active_cell", "same_active_exclusion",
     "wrong_provider_kind", "gate_pin", "test_symbol_pin", "file_heading_pin", "empty_claim", "draft_heading", "duplicate_provider", "stub_gate",
     "valid_input_reversal", "forged", "empty", "wrong_family_object", "wrong_guard_object", "direction_reversal", "overlap", "unrelated_capability",
@@ -368,6 +383,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
     "guard_semantic_conversion_forward", "guard_semantic_conversion_reverse",
     "all_semantic_conversion_reverse", "scoped_semantic_conversion_reverse",
   ]],
+  ["transaction_v2_atomic_completed_guard", ["projected_bytes", "document_metadata"]],
   ["transaction_partial_guard", ["missing", "wrong_id", "unresolved_pin", "simultaneous_tombstone", "leftover_family", "missing_child_guard", "unused_guard", "future_reuse"]],
   ["transaction_full_hash_git_integration", ["scratch_lifecycle", "argv", "unsigned", "sha1", "sha256", "durable_corpus_facts", "crlf_byte_citation", "revision_isolation", "retirement_closure", "heading_text_precondition", "wrong_base_revision", "candidate_commit_rejected", "abbreviated"]],
   ["campaign_selection_target_kind_matches_owner", ["active_owner_tag", "valid_owner_invalid_selection", "no_capability", "structural_substitute", "undefined_substitute", "valid_capability"]],
@@ -404,6 +420,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
  */
 export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, ExpectedSelfTestIssue> =
   new Map<string, ExpectedSelfTestIssue>([
+  ["denominator_v2_production_empty_registry_rejected", { code: "E-SCHEMA-STATE", logical_path: "record[\"matrix.fixture-denominator\"].payload.family_maturity" }],
   ["codec_placeholder_path_mismatch", { code: "E-CODEC-PLACEHOLDER", logical_path: "row[1].value" }],
   ["codec_invalid_utf8", { code: "E-CODEC-UTF8", logical_path: "$" }],
   ["codec_crlf_rejected", { code: "E-CODEC-LINE-END", logical_path: "$" }],
@@ -444,7 +461,8 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["schema_projection_visibility_document_arm", { code: "E-SCHEMA-MISSING-KEY", logical_path: "record[0].projection_visibility" }],
   ["schema_projection_visibility_semantic_only_arm", { code: "E-SCHEMA-STATE", logical_path: "record[0].source_replacement" }],
   ["schema_projection_visibility_forbidden_nonsemantic_arms", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "record[0].projection_visibility" }],
-  ["v1_unsupported_v2", { code: "E-SCHEMA-VERSION", logical_path: "document.schema_version" }],
+  ["v2_unresolved_migration_reference_rejected", { code: "E-SCHEMA-STATE", logical_path: "reference[0].kind" }],
+  ["v3_unsupported", { code: "E-SCHEMA-VERSION", logical_path: "document.schema_version" }],
   ["domain_state_required_forbidden", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "p.blocker_md" }],
   ["domain_defect_regression_required", { code: "E-SCHEMA-STATE", logical_path: "p" }],
   ["domain_missing_system_admission_required", { code: "E-SCHEMA-STATE", logical_path: "p" }],
@@ -708,6 +726,14 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["cli_against_nonhex_git_format_no_usage", { code: "E-GIT-BASE-FORMAT", logical_path: "against" }],
   ["cli_against_unresolved_git_lookup_no_usage", { code: "E-GIT-BASE-LOOKUP", logical_path: "against" }],
   ["cli_against_incompatible_precedes_bad_format", { code: "E-CLI-AGAINST", logical_path: "argv[3]" }],
+  ["cli_against_v2_mixed_promotion_rejected", { code: "E-TRANSACTION-BASE", logical_path: "document.schema_version" }],
+  ["cli_against_v2_scoped_promotion_rejected", { code: "E-TRANSACTION-BASE", logical_path: "matrix" }],
+  ["cli_against_v2_semantic_drift_rejected", { code: "E-TRANSACTION-BASE", logical_path: "matrix.document.schema_version" }],
+  ["cli_against_v2_incomplete_base_rejected", { code: "E-TRANSACTION-BASE", logical_path: "matrix.document.schema_version" }],
+  ["cli_against_v2_downgrade_rejected", { code: "E-TRANSACTION-BASE", logical_path: "matrix.document.schema_version" }],
+  ["cli_against_v2_preexisting_mixed_rejected", { code: "E-TRANSACTION-BASE", logical_path: "base.document.schema_version" }],
+  ["cli_against_v2_campaign_drift_rejected", { code: "E-TRANSACTION-BASE", logical_path: "campaign" }],
+  ["cli_against_v2_retired_drift_rejected", { code: "E-TRANSACTION-BASE", logical_path: "retired_ids" }],
   ["cli_as_of_invalid_leap_day", { code: "E-CLI-AS-OF", logical_path: "argv[4]" }],
   ["cli_as_of_year_zero_rejected", { code: "E-CLI-AS-OF", logical_path: "argv[4]" }],
   ["cli_as_of_short_component_rejected", { code: "E-CLI-AS-OF", logical_path: "argv[4]" }],
@@ -730,6 +756,7 @@ export function createCompleteSelfTestRegistry(): SelfTestRegistry {
       required: REQUIRED_SEMANTIC_CONVERSION_SELFTEST_CASE_IDS,
       cases: SEMANTIC_CONVERSION_SELFTEST_CASES,
     },
+    { required: REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS, cases: DENOMINATOR_SELFTEST_CASES },
   ] as const;
   const cases: SelfTestCase[] = [];
   const joinIssues: RoadmapIssue[] = [];

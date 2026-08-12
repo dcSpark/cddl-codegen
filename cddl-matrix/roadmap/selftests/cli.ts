@@ -20,7 +20,7 @@ import type {
   ScratchGitHarnessPorts,
 } from "../io.ts";
 import type { FixtureRelativePath, RepoPath, RepositoryRevision, RoadmapId } from "../model/core.ts";
-import type { RoadmapDocumentV0, RoadmapDocumentV1, SemanticPayload } from "../model/documents.ts";
+import type { RoadmapDocumentV0, RoadmapDocumentV1, RoadmapDocumentV2, SemanticPayload } from "../model/documents.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
 import {
   LEGACY_STATUS_OUTPUT_CLAIMS,
@@ -35,6 +35,7 @@ import {
   liveMatrixProjection,
   liveMatrixShadowV0Document,
   liveMatrixShadowV0Source,
+  liveMatrixV2Document,
 } from "./live_matrix.ts";
 import {
   liveTestingAuthoritativeDocument,
@@ -42,6 +43,7 @@ import {
   liveTestingProjection,
   liveTestingShadowV0Document,
   liveTestingShadowV0Source,
+  liveTestingV2Document,
 } from "./live_testing.ts";
 
 export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
@@ -149,6 +151,17 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_against_part_to_record_all_simultaneous",
   "cli_against_part_to_record_other_base_not_loaded",
   "cli_semantic_conversion_current_omission_rejected",
+  "cli_against_v2_atomic_promotion",
+  "cli_against_v2_mixed_promotion_rejected",
+  "cli_against_v2_scoped_promotion_rejected",
+  "cli_against_v2_semantic_drift_rejected",
+  "cli_against_v2_incomplete_base_rejected",
+  "cli_against_v2_downgrade_rejected",
+  "cli_against_v2_preexisting_mixed_rejected",
+  "cli_against_v2_campaign_drift_rejected",
+  "cli_against_v2_retired_drift_rejected",
+  "cli_summary_open_family_lower_bound_only",
+  "live_wp6_projection_pre_anchor_baseline",
 ] as const;
 
 export type RequiredCliSelfTestCaseId = (typeof REQUIRED_CLI_SELFTEST_CASE_IDS)[number];
@@ -754,6 +767,109 @@ function promotionPorts(
       };
     },
   });
+}
+
+type V2PromotionMutation =
+  | "exact"
+  | "mixed"
+  | "semantic_drift"
+  | "incomplete_base"
+  | "downgrade"
+  | "preexisting_mixed"
+  | "campaign_drift"
+  | "retired_drift";
+
+function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
+  let baseMatrix: RoadmapDocumentV1 | RoadmapDocumentV2 = liveMatrixAuthoritativeDocument();
+  let baseTesting: RoadmapDocumentV1 | RoadmapDocumentV2 = liveTestingAuthoritativeDocument();
+  let candidateMatrix: RoadmapDocumentV1 | RoadmapDocumentV2 = liveMatrixV2Document();
+  let candidateTesting: RoadmapDocumentV1 | RoadmapDocumentV2 = liveTestingV2Document();
+  if (mutation === "mixed") candidateTesting = liveTestingAuthoritativeDocument();
+  if (mutation === "semantic_drift") {
+    candidateMatrix = {
+      ...candidateMatrix,
+      records: candidateMatrix.records.map((record, index) =>
+        index === 0 ? { ...record, title: `${record.title} drift` } : record
+      ),
+    };
+  }
+  if (mutation === "incomplete_base") {
+    baseMatrix = {
+      ...baseMatrix,
+      document: { ...baseMatrix.document, semantic_conversion: "converting" },
+    };
+    baseTesting = {
+      ...baseTesting,
+      document: { ...baseTesting.document, semantic_conversion: "converting" },
+    };
+  }
+  if (mutation === "downgrade") {
+    baseMatrix = liveMatrixV2Document();
+    baseTesting = liveTestingV2Document();
+    candidateMatrix = liveMatrixAuthoritativeDocument();
+    candidateTesting = liveTestingAuthoritativeDocument();
+  }
+  if (mutation === "preexisting_mixed") {
+    baseMatrix = liveMatrixV2Document();
+    candidateMatrix = liveMatrixV2Document();
+    baseTesting = liveTestingAuthoritativeDocument();
+    candidateTesting = liveTestingAuthoritativeDocument();
+  }
+  const campaign = UTF8.encode(`[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`);
+  const retired = UTF8.encode(`[retired_ids]\nschema_version = 1\n`);
+  const candidateCampaign = mutation === "campaign_drift"
+    ? UTF8.encode(`${text(campaign)}\n[[selection]]\nitem_id = "matrix.additional-tool-annotations"\ntarget_kind = "active_id"\nselected_state = "selected"\npriority_class = "normal"\nselection_reason_md = """Drift.\n"""\ncycle = "wp6"\nremaining_scope_md = """Drift.\n"""\n`)
+    : campaign;
+  const candidateRetired = mutation === "retired_drift"
+    ? UTF8.encode(`[retired_ids]\nschema_version = 1\n\n[[retired_ids.entry]]\nid = "matrix.fixture-retired-drift"\nlast_active_at = "${HASH}"\n\n[retired_ids.entry.replacement]\nkind = "gate"\ngate_id = "gate-0"\nclaim_md = """Replacement.\n"""\n`)
+    : retired;
+  const candidate = new Map<RepoPath, Uint8Array>([
+    ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(candidateMatrix)],
+    ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(candidateTesting)],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixProjection()],
+    ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingProjection()],
+    ["roadmap-campaign.toml" as RepoPath, candidateCampaign],
+    ["roadmap-retired-ids.toml" as RepoPath, candidateRetired],
+  ]);
+  const base = new Map<RepoPath, Uint8Array>([
+    ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(baseMatrix)],
+    ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(baseTesting)],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixProjection()],
+    ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingProjection()],
+    ["roadmap-campaign.toml" as RepoPath, campaign],
+    ["roadmap-retired-ids.toml" as RepoPath, retired],
+  ]);
+  const readMap = (values: ReadonlyMap<RepoPath, Uint8Array>, path: RepoPath): Uint8Array => {
+    const value = values.get(path);
+    if (value === undefined) throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
+    return new Uint8Array(value);
+  };
+  return fakePorts({
+    read: (path) => readMap(candidate, path),
+    readAtCommit: (path) => readMap(base, path),
+    registry(revision) {
+      return {
+        ...liveRegistry(revision),
+        production_output_stage: "both_authoritative",
+        output_claims: productionOutputInventory("both_authoritative").claims,
+        matrix_status_inputs: liveMatrixStatusInputs(),
+      };
+    },
+  });
+}
+
+function assertV2TransactionRejection(
+  result: RoadmapCliResult,
+  logicalPath: string,
+  label: string,
+): SelfTestResult {
+  const prefix = `FAIL [E-TRANSACTION-BASE] <transaction>#${logicalPath}:`;
+  assert(
+    result.exit_code === 1 && result.stdout.byteLength === 0 && text(result.stderr).includes(prefix),
+    `${label} did not reject at ${prefix}: ${text(result.stderr)}`,
+  );
+  observeSelfTestIssue({ code: "E-TRANSACTION-BASE", logical_path: logicalPath });
+  return pass("negative");
 }
 
 function validTestingPorts(context: SelfTestContext, atomic?: FakeOptions["atomic"]): RoadmapCliPorts {
@@ -1970,13 +2086,99 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       }
       return pass("positive");
     }
+    case "cli_against_v2_atomic_promotion": {
+      const result = run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("exact"));
+      assert(
+        result.exit_code === 0 && result.stderr.byteLength === 0 && text(result.stdout).includes("CHECK OK\n"),
+        `exact atomic v1-complete to v2 promotion failed: ${text(result.stderr)}`,
+      );
+      return pass("positive");
+    }
+    case "cli_against_v2_mixed_promotion_rejected":
+      return assertV2TransactionRejection(
+        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("mixed")),
+        "document.schema_version",
+        "mixed v1/v2 promotion",
+      );
+    case "cli_against_v2_scoped_promotion_rejected":
+      return assertV2TransactionRejection(
+        run(["--check", "--roadmap", "matrix", "--against", HASH], v2PromotionPorts("exact")),
+        "matrix",
+        "scoped v2 promotion",
+      );
+    case "cli_against_v2_semantic_drift_rejected":
+      return assertV2TransactionRejection(
+        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("semantic_drift")),
+        "matrix.document.schema_version",
+        "v2 promotion with semantic drift",
+      );
+    case "cli_against_v2_incomplete_base_rejected":
+      return assertV2TransactionRejection(
+        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("incomplete_base")),
+        "matrix.document.schema_version",
+        "v2 promotion from an incomplete base",
+      );
+    case "cli_against_v2_downgrade_rejected":
+      return assertV2TransactionRejection(
+        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("downgrade")),
+        "matrix.document.schema_version",
+        "v2 to v1 downgrade",
+      );
+    case "cli_against_v2_preexisting_mixed_rejected":
+      return assertV2TransactionRejection(
+        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("preexisting_mixed")),
+        "base.document.schema_version",
+        "preexisting mixed v1/v2 pair",
+      );
+    case "cli_against_v2_campaign_drift_rejected":
+      return assertV2TransactionRejection(
+        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("campaign_drift")),
+        "campaign",
+        "campaign drift during v2 promotion",
+      );
+    case "cli_against_v2_retired_drift_rejected":
+      return assertV2TransactionRejection(
+        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("retired_drift")),
+        "retired_ids",
+        "retired-ID drift during v2 promotion",
+      );
+    case "cli_summary_open_family_lower_bound_only": {
+      const result = run(["--roadmap", "matrix", "--query", "summary", "--json"], bothAuthoritativePorts());
+      assert(result.exit_code === 0 && result.stderr.byteLength === 0, `live matrix summary failed: ${text(result.stderr)}`);
+      const payload = JSON.parse(text(result.stdout));
+      const families = payload.roadmaps?.find((row: { roadmap: string }) => row.roadmap === "matrix")?.families;
+      assert(Array.isArray(families) && families.length === 7, `live summary did not expose exactly 7 matrix families: ${JSON.stringify(payload)}`);
+      for (const family of families as readonly Record<string, unknown>[]) {
+        assert(family.denominator_maturity === "observed_only", `live family is unexpectedly closable: ${JSON.stringify(family)}`);
+        assert(typeof family.observed_lower_bound === "number", `open family omitted observed_lower_bound: ${JSON.stringify(family)}`);
+        for (const forbidden of ["legal_total", "percentage", "completion", "completion_percentage", "percent_complete"]) {
+          assert(!(forbidden in family), `open family fabricated ${forbidden}: ${JSON.stringify(family)}`);
+        }
+      }
+      return pass("positive");
+    }
+    case "live_wp6_projection_pre_anchor_baseline": {
+      for (const [name, projection] of [
+        ["matrix", liveMatrixProjection()],
+        ["testing", liveTestingProjection()],
+      ] as const) {
+        const source = text(projection);
+        assert(!source.includes('id="roadmap-'), `${name} WP6 projection already renders stable-ID anchors`);
+        assert(
+          !/this document is generated|generated from .*roadmap\.toml|edit .*roadmap\.toml/iu.test(source),
+          `${name} WP6 projection already renders a WP7 ownership banner`,
+        );
+      }
+      return pass("positive");
+    }
     case "cli_semantic_conversion_current_omission_rejected": {
       const sources = bothAuthoritativePorts();
-      const omitted = (bytes: Uint8Array): Uint8Array => UTF8.encode(
-        text(bytes).replace(/^semantic_conversion = "(?:converting|complete)"\n/mu, ""),
-      );
-      const matrix = omitted(liveMatrixAuthoritativeSource());
-      const testing = omitted(liveTestingAuthoritativeSource());
+      const historical = (document: RoadmapDocumentV1): Uint8Array => composeRoadmapDocument({
+        ...document,
+        document: { ...document.document, semantic_conversion: undefined },
+      });
+      const matrix = historical(liveMatrixAuthoritativeDocument());
+      const testing = historical(liveTestingAuthoritativeDocument());
       const ports = fakePorts({
         read(path) {
           if (path === "cddl-matrix/roadmap.toml") return matrix;

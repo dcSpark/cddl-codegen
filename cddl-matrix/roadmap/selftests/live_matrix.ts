@@ -12,6 +12,7 @@ import type {
   RawSectionV0,
   RoadmapDocumentV0,
   RoadmapDocumentV1,
+  RoadmapDocumentV2,
   SourceReplacement,
   SourceSpan,
 } from "../model/documents.ts";
@@ -24,26 +25,40 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-export function liveMatrixAuthoritativeDocument(): RoadmapDocumentV1 {
+export function liveMatrixV2Document(): RoadmapDocumentV2 {
   const decoded = decodeRoadmapSource(
     UTF8.encode(liveMatrixSourceText),
     MATRIX_SOURCE_PATH,
     "matrix",
   );
   assert(
-    decoded.document.schema_version === 1 && decoded.document.authority === "authoritative",
-    "committed matrix self-test source is not authoritative schema v1",
+    decoded.document.schema_version === 2 && decoded.document.authority === "authoritative",
+    "committed matrix self-test source is not authoritative schema v2",
   );
   assert(
     decoded.document.source_path === MATRIX_SOURCE_PATH &&
       decoded.document.projection_path === MATRIX_PROJECTION_PATH,
     "committed matrix self-test source does not declare the live production paths",
   );
-  return decoded as RoadmapDocumentV1;
+  return decoded as RoadmapDocumentV2;
+}
+
+/** Historical complete-v1 view retained for WP4/WP5 transition fixtures after the live WP6 cutover. */
+export function liveMatrixAuthoritativeDocument(): RoadmapDocumentV1 {
+  const decoded = liveMatrixV2Document();
+  return {
+    ...decoded,
+    document: {
+      ...decoded.document,
+      schema_version: 1,
+      semantic_conversion: "complete",
+      frozen_legacy_span_ids: [],
+    },
+  };
 }
 
 export function liveMatrixAuthoritativeSource(): Uint8Array {
-  liveMatrixAuthoritativeDocument();
+  liveMatrixV2Document();
   return UTF8.encode(liveMatrixSourceText);
 }
 

@@ -597,7 +597,10 @@ export function deriveMigrationDebt(
   }
 
   if ("references" in document) {
-    for (const spanId of document.document.frozen_legacy_span_ids) {
+    const frozenIds = document.document.schema_version === 1
+      ? document.document.frozen_legacy_span_ids
+      : [];
+    for (const spanId of frozenIds) {
       const key: DebtOwnerKey = {
         roadmap,
         owner_kind: "source_span",

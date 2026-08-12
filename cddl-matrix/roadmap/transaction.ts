@@ -1,4 +1,5 @@
 import type { RegistryView } from "./adapters/types.ts";
+import { composeCampaignDocument, composeRetiredIdsDocument, composeRoadmapDocument } from "./compose.ts";
 import {
   campaignIdentityOwners,
   campaignAuthority,
@@ -149,6 +150,35 @@ function issue(
     message,
     exit: 1,
   };
+}
+
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
+}
+
+function exactV2Promotion(base: RoadmapDocument, candidate: RoadmapDocument): boolean {
+  if (base.document.schema_version !== 1 || candidate.document.schema_version !== 2 ||
+    semanticConversionState(base).effective !== "complete") return false;
+  const promoted = {
+    ...base,
+    document: {
+      schema_version: 2,
+      authority: "authoritative",
+      roadmap: base.document.roadmap,
+      source_path: base.document.source_path,
+      projection_path: base.document.projection_path,
+      frozen_source_sha256: base.document.frozen_source_sha256,
+      frozen_source_byte_length: base.document.frozen_source_byte_length,
+      frozen_source_line_count: base.document.frozen_source_line_count,
+      frozen_source_eof: base.document.frozen_source_eof,
+    },
+  } as RoadmapDocument;
+  return bytesEqual(composeRoadmapDocument(promoted), composeRoadmapDocument(candidate));
+}
+
+function completedBytesEqual(base: CompletedRenderIr | undefined, candidate: CompletedRenderIr | undefined): boolean {
+  return base !== undefined && candidate !== undefined &&
+    base.expected_bytes.bytesEqual(candidate.expected_bytes);
 }
 
 function selectedContextIssue(
@@ -328,7 +358,7 @@ export function validateSelectedLifecycleContext(
   const indexes = buildRoadmapIndexes(inputs.document);
   issues.push(...indexes.issues);
   const selectedIsAuthoritative = declaredAuthority === "authoritative" &&
-    inputs.document.document.schema_version === 1;
+    inputs.document.document.schema_version !== 0;
   const identity = validateGlobalIdentity({
     documents: indexes.issues.length === 0 && selectedIsAuthoritative
       ? [indexes.indexes.identity_inputs]
@@ -452,6 +482,14 @@ function firstClassOrigin(
   return payload?.kind === "family" ? "active_family" : "active_record";
 }
 
+function isClosedFamily(revision: ValidatedLifecycleRevision, id: RoadmapId): boolean {
+  const document = revision.roadmaps[namespaceOf(id)].document;
+  if (document?.document.schema_version !== 2) return false;
+  const record = document.records.find((candidate) => candidate.id === id);
+  const payload = record === undefined ? undefined : payloadOfRecord(record);
+  return payload?.kind === "family" && payload.family_maturity === "closed_denominator";
+}
+
 function componentOwnerRecordId(claim: GlobalOwnerClaim): RoadmapId | undefined {
   if (claim.owner_kind !== "first_class" || claim.value === null || typeof claim.value !== "object" ||
     !("owner_record_id" in claim.value) || !("kind" in claim.value) || claim.value.kind === "record") {
@@ -486,7 +524,7 @@ function activeIdentityDocuments(input: LifecycleRevisionInput) {
   return (["matrix", "testing"] as const).flatMap((roadmap) => {
     const document = input.roadmaps[roadmap].document;
     // V0 records reserve shadow IDs. They are never active first-class providers.
-    if (document?.document.schema_version !== 1 || input.campaign === undefined ||
+    if (document === undefined || document.document.schema_version === 0 || input.campaign === undefined ||
       campaignAuthority(input.campaign, roadmap) !== "authoritative") return [];
     return [buildRoadmapIndexes(document).indexes.identity_inputs];
   });
@@ -496,7 +534,7 @@ function validateCombinedRoadmapJoins(input: LifecycleRevisionInput): readonly R
   if (input.campaign === undefined) return [];
   const documents = (["matrix", "testing"] as const).flatMap((roadmap) => {
     const document = input.roadmaps[roadmap].document;
-    return document?.document.schema_version === 1 && campaignAuthority(input.campaign!, roadmap) === "authoritative"
+    return document !== undefined && document.document.schema_version !== 0 && campaignAuthority(input.campaign!, roadmap) === "authoritative"
       ? [document]
       : [];
   });
@@ -623,7 +661,7 @@ function guardFor(revision: ValidatedLifecycleRevision, id: RoadmapId): CurrentG
 function candidateEdgesContain(revision: ValidatedLifecycleRevision, id: RoadmapId): boolean {
   for (const roadmap of ["matrix", "testing"] as const) {
     const document = revision.roadmaps[roadmap].document;
-    if (document?.document.schema_version !== 1) continue;
+    if (document === undefined || document.document.schema_version === 0) continue;
     if (!("relations" in document)) continue;
     if (document.relations.some((edge) => edge.source === id || edge.target === id)) return true;
     if (document.references.some((reference) =>
@@ -857,12 +895,13 @@ function validateScoped(inputs: ScopedRoadmapTransactionInputs): TransactionVali
     issues.push(issue("E-TRANSACTION-BASE", "candidate.registry.revision", "candidate registry facts must come from the worktree revision"));
   }
   if (
-    base.document?.document.schema_version !== 1 ||
-    inputs.candidate_document?.document.schema_version !== 1 ||
+    base.document === undefined || inputs.candidate_document === undefined ||
+    base.document.document.schema_version === 0 || inputs.candidate_document.document.schema_version === 0 ||
+    base.document.document.schema_version !== inputs.candidate_document.document.schema_version ||
     base.document.document.roadmap !== inputs.scope ||
     inputs.candidate_document.document.roadmap !== inputs.scope
   ) {
-    issues.push(issue("E-TRANSACTION-BASE", inputs.scope, "single-roadmap comparison requires matching authoritative-v1 selected documents"));
+    issues.push(issue("E-TRANSACTION-BASE", inputs.scope, "single-roadmap comparison requires matching authoritative schema versions; v2 promotion is global"));
   } else {
     issues.push(...validateSemanticConversionTransition(
       base.document,
@@ -997,11 +1036,56 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
     candidate.issues.length === 0 && candidate.identity.issues.length === 0 &&
     validCommit(inputs.against) && base.registry.revision.kind === "commit" &&
     base.registry.revision.commit === inputs.against && candidate.registry.revision.kind === "worktree";
+  const versionChanges = (["matrix", "testing"] as const).filter((roadmap) =>
+    base.roadmaps[roadmap].document?.document.schema_version !==
+      candidate.roadmaps[roadmap].document?.document.schema_version
+  );
+  for (const [label, revision] of [["base", base], ["candidate", candidate]] as const) {
+    const matrixVersion = revision.roadmaps.matrix.document?.document.schema_version;
+    const testingVersion = revision.roadmaps.testing.document?.document.schema_version;
+    const bothAuthoritative = revision.campaign_document !== undefined &&
+      campaignAuthority(revision.campaign_document, "matrix") === "authoritative" &&
+      campaignAuthority(revision.campaign_document, "testing") === "authoritative";
+    if (bothAuthoritative && matrixVersion !== undefined && matrixVersion !== 0 &&
+      testingVersion !== undefined && testingVersion !== 0 && matrixVersion !== testingVersion) {
+      issues.push(issue("E-TRANSACTION-BASE", `${label}.document.schema_version`, "authoritative matrix and testing roadmaps must use one schema version"));
+    }
+  }
+  const v2Transition = versionChanges.some((roadmap) =>
+    base.roadmaps[roadmap].document?.document.schema_version === 2 ||
+    candidate.roadmaps[roadmap].document?.document.schema_version === 2
+  );
+  if (v2Transition) {
+    if (versionChanges.length !== 2) {
+      issues.push(issue("E-TRANSACTION-BASE", "document.schema_version", "roadmap schema v2 promotion must update matrix and testing atomically"));
+    }
+    for (const roadmap of ["matrix", "testing"] as const) {
+      const baseDocument = base.roadmaps[roadmap].document;
+      const candidateDocument = candidate.roadmaps[roadmap].document;
+      if (baseDocument === undefined || candidateDocument === undefined || !exactV2Promotion(baseDocument, candidateDocument)) {
+        issues.push(issue("E-TRANSACTION-BASE", `${roadmap}.document.schema_version`, "v1-complete to v2 promotion permits only the intrinsic schema metadata change"));
+      }
+      if (!completedBytesEqual(base.completed[roadmap], candidate.completed[roadmap])) {
+        issues.push(issue("E-TRANSACTION-BASE", `${roadmap}.completed_render_ir`, "v2 promotion requires byte-identical completed projections"));
+      }
+    }
+    if (base.campaign_document === undefined || candidate.campaign_document === undefined ||
+      !bytesEqual(composeCampaignDocument(base.campaign_document), composeCampaignDocument(candidate.campaign_document))) {
+      issues.push(issue("E-TRANSACTION-BASE", "campaign", "v2 promotion must not change the campaign document"));
+    }
+    if (base.retired_document === undefined || candidate.retired_document === undefined ||
+      !bytesEqual(composeRetiredIdsDocument(base.retired_document), composeRetiredIdsDocument(candidate.retired_document))) {
+      issues.push(issue("E-TRANSACTION-BASE", "retired_ids", "v2 promotion must not change the retired-ID document"));
+    }
+  }
   const familyGuardTransfers = new Set<RoadmapId>();
   if (lifecycleReady) {
     for (const [id, baseClaim] of base.identity.owners) {
       if (firstClassOrigin(base, baseClaim) === "active_family" &&
-        candidate.identity.owners.get(id)?.owner_kind === "current_guard") familyGuardTransfers.add(id);
+        candidate.identity.owners.get(id)?.owner_kind === "current_guard") {
+        if (isClosedFamily(base, id)) familyGuardTransfers.add(id);
+        else issues.push(issue("E-TRANSACTION-GUARD", `guard[${JSON.stringify(id)}]`, "only a closed-denominator family may transfer to a current guard"));
+      }
     }
     for (const guard of candidate.registry.current_guards) {
       const baseClaim = base.identity.owners.get(guard.id);
@@ -1050,6 +1134,7 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
         continue;
       }
       if (origin === "active_family" && candidateClaim?.owner_kind === "current_guard") {
+        if (!isClosedFamily(base, id)) continue;
         const guard = guardFor(candidate, id);
         if (guard === undefined || !resolveReplacementPin(guard.replacement_pin, candidate.registry).resolved ||
           candidate.retired?.entries.has(id)) {
@@ -1106,7 +1191,7 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
     const baseDebt = base.debt[roadmap];
     const candidateDebt = candidate.debt[roadmap];
     const relevant = baseDocument !== undefined && candidateDocument !== undefined &&
-      (baseDocument.document.schema_version === 1 || candidateDocument.document.schema_version === 1);
+      (baseDocument.document.schema_version !== 0 || candidateDocument.document.schema_version !== 0);
     if (!relevant) continue;
     if (baseDebt === undefined || candidateDebt === undefined) {
       issues.push(issue(

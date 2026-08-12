@@ -396,7 +396,7 @@ function allowedReferenceKinds(
     if (logicalPath.includes(".exclusion[") && logicalPath.endsWith("source_reference_id")) return ["spec_passage"];
     if (logicalPath.includes(".exclusion[") && logicalPath.endsWith("liveness_reference_id")) return ["gate"];
     if (logicalPath.endsWith("authority_reference_id")) {
-      if (payload.family_maturity !== "under_design") return [];
+      if (payload.family_maturity === "observed_only") return [];
       return payload.authority_kind === "grammar"
         ? ["spec_passage"]
         : payload.authority_kind === "registry"
@@ -404,6 +404,9 @@ function allowedReferenceKinds(
         : ["roadmap"];
     }
     if (logicalPath.endsWith("legality_owner_reference_id")) return ["file_heading", "spec_passage"];
+    if (logicalPath.endsWith("drift_check_reference_id") || logicalPath.endsWith("mutation_test_reference_id")) {
+      return ["file_heading", "gate", "test_symbol"];
+    }
     if (logicalPath.endsWith("observation_reference_ids")) return durableOwnerKinds;
     if (logicalPath.endsWith("completion_owner_reference_id") || logicalPath.endsWith("retirement_owner_reference_id")) {
       return durableOwnerKinds;
@@ -679,6 +682,8 @@ function semanticTargetExpectation(
   if (logicalPath.endsWith("evidence_ids") || logicalPath.endsWith("current_evidence_ids") || logicalPath.endsWith("regression_evidence_ids")) {
     return { payload_kind: "evidence" };
   }
+  if (logicalPath.endsWith("evidence_binding.evidence_id")) return { payload_kind: "evidence" };
+  if (logicalPath.endsWith("evidence_binding.requirement_id")) return { provider_kind: "family_evidence_requirement" };
   return undefined;
 }
 
