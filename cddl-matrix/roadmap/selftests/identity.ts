@@ -4846,6 +4846,30 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
           documents: [], additional_owners: validBootstrapCapability,
         }).owners.get(C5_ID)?.owner_kind === "shadow_record_reservation",
       "issue-free bootstrap result must retain its valid opaque capability path");
+
+      const bulletBytes = bytes("- **Lifecycle** — reviewed matrix bullet owner.\n");
+      const bulletDocument = c5V0("matrix", bulletBytes, C5_ID);
+      const bulletBootstrap = validateBootstrapShadowOwners(
+        c5Snapshots({ markdown: bulletBytes, document: bulletDocument }),
+      );
+      const bulletCapability = campaignIdentityOwners(bulletBootstrap);
+      assert(bulletBootstrap.issues.length === 0 && bulletCapability !== undefined &&
+        validateGlobalIdentity({ documents: [], additional_owners: bulletCapability })
+          .owners.get(C5_ID)?.owner_kind === "shadow_record_reservation",
+      "strict reviewed matrix bullet owner must mint the bootstrap shadow capability");
+      assert(
+        validateLegacyTitleBinding(c5Reservation(C5_ID, bulletBytes), bulletBytes) === undefined,
+        "matrix shadow bullet compatibility weakened the heading-only legacy reservation contract",
+      );
+      const malformedBullet = bytes("- Lifecycle — unreviewed plain bullet owner.\n");
+      const malformedBootstrap = validateBootstrapShadowOwners(c5Snapshots({
+        markdown: malformedBullet,
+        document: c5V0("matrix", malformedBullet, C5_ID),
+      }));
+      assert(malformedBootstrap.issues.some((issue) => issue.code === "E-CAMPAIGN-TARGET" &&
+        issue.logical_path === `bootstrap.matrix.record["${C5_ID}"]`),
+      "unreviewed matrix bullet syntax must fail the bootstrap shadow title binding");
+
       const testingBytes = c5LegacySource();
       const invalidTestingDocument = c5V0("testing", testingBytes);
       invalidTestingDocument.document.frozen_source_sha256 = "0".repeat(64);

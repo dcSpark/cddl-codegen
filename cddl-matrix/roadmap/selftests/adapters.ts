@@ -1,3 +1,4 @@
+import matrixShadowSourceText from "../../roadmap.toml" with { type: "text" };
 import {
   canonicalSemanticMarkdownFields,
   MATRIX_ADAPTER,
@@ -30,6 +31,7 @@ import type {
   GeneratedSlot,
   Reference,
   RoadmapDocument,
+  RoadmapDocumentV0,
   RoadmapDocumentV1,
   SemanticPayload,
   SemanticRecord,
@@ -531,6 +533,8 @@ function replaceMarkerInterior(source: string, markerId: string, interior: strin
 
 function testSlots(bundle: AdapterFixtureBundle): void {
   const view = registryView(bundle);
+  const matrixDocument = decoded(bundle, "all-fields/matrix-v1.toml", "matrix");
+  const testingDocument = decoded(bundle, "all-fields/testing-v1.toml", "testing");
   const beforeBytes = fixtureBytes(bundle, "status-compat/roadmap.before.md");
   const afterBytes = fixtureBytes(bundle, "status-compat/roadmap.after.md");
   const expected = new Map(MATRIX_GENERATED_SLOT_BINDINGS.map(([slotId, binding]) => [
@@ -540,7 +544,7 @@ function testSlots(bundle: AdapterFixtureBundle): void {
   for (const [slotId] of MATRIX_GENERATED_SLOT_BINDINGS) {
     assert(!bytesEqual(markerInterior(beforeBytes, `roadmap-${slotId}`), markerInterior(afterBytes, `roadmap-${slotId}`)), `status before/after oracle does not independently change ${slotId}`);
   }
-  const resolvers = MATRIX_ADAPTER.slotResolvers(view);
+  const resolvers = MATRIX_ADAPTER.slotResolvers(view, matrixDocument);
   assert([...resolvers.keys()].join("|") === MATRIX_GENERATED_SLOT_BINDINGS.map(([id]) => id).join("|"), "matrix adapter does not expose the four exact deterministic slot resolvers");
   let projected = new TextDecoder("utf-8", { fatal: true }).decode(beforeBytes);
   for (const [index, [slotId, binding]] of MATRIX_GENERATED_SLOT_BINDINGS.entries()) {
@@ -566,14 +570,385 @@ function testSlots(bundle: AdapterFixtureBundle): void {
     expectThrows(() => resolver.resolve({ ...slot, binding: `readme_payload:${slotId}` }, view), `resolver ${slotId} accepted a wrong binding kind`);
   }
   assert(projected === new TextDecoder("utf-8", { fatal: true }).decode(afterBytes), "the four resolver marker interiors do not transform committed status-compat before bytes into exact after bytes");
-  assert(TESTING_ADAPTER.slotResolvers(view).size === 0, "testing generated-slot registry must be declared empty in WP1");
+  assert(TESTING_ADAPTER.slotResolvers(view, testingDocument).size === 0, "testing generated-slot registry must be declared empty in WP1");
   const emptyStatus: MatrixStatusInputs = {
     matrix: { annotations: [], features: [], containment_ids: [], control_operator_ids: [] },
     catalog: { rows: [] },
     registry: { gates: [] },
     timings: { tiers: [] },
   };
-  expectThrows(() => MATRIX_ADAPTER.slotResolvers({ ...view, matrix_status_inputs: emptyStatus }), "matrix slot resolvers accepted vacuous status inputs");
+  expectThrows(() => MATRIX_ADAPTER.slotResolvers({ ...view, matrix_status_inputs: emptyStatus }, matrixDocument), "matrix slot resolvers accepted vacuous status inputs");
+
+  const live = liveMatrixFloorProbe();
+  const liveIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(live, liveIssues);
+  assert(liveIssues.issues.length === 0, `exact live matrix floor probe failed: ${JSON.stringify(liveIssues.issues)}`);
+  const liveResolvers = MATRIX_ADAPTER.slotResolvers(view, live);
+  for (const slot of live.generated_slots) {
+    const resolved = liveResolvers.get(slot.slot_id)?.resolve(slot, view);
+    assert(resolved !== undefined && resolved.bytes.at(-1) !== 0x0a, `live inline slot ${slot.slot_id} retained fixture-only LF ownership`);
+  }
+
+  const recordProjectionChanged: RoadmapDocumentV0 = {
+    ...live,
+    records: live.records.map((record, index) => index === 0
+      ? { ...record, projection_group: live.sections.at(-1)!.section_id }
+      : record),
+  };
+  const recordProjectionIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(recordProjectionChanged, recordProjectionIssues);
+  assert(
+    recordProjectionIssues.issues.some((entry) => entry.logical_path === "matrix_v0.structure"),
+    "matrix record projection-group-only mutation escaped the complete structure floor",
+  );
+
+  const sectionMetadataChanged: RoadmapDocumentV0 = {
+    ...live,
+    sections: live.sections.map((section, index) => index === 0
+      ? { ...section, title: `${section.title} changed` }
+      : section),
+  };
+  const sectionMetadataIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(sectionMetadataChanged, sectionMetadataIssues);
+  assert(
+    sectionMetadataIssues.issues.some((entry) => entry.logical_path === "matrix_v0.structure"),
+    "matrix section-title-only mutation escaped the complete structure floor",
+  );
+
+  const fragmentMetadataChanged: RoadmapDocumentV0 = {
+    ...live,
+    fragments: live.fragments.map((fragment, index) => index === 0
+      ? {
+        ...fragment,
+        title: `${fragment.title ?? "untitled"} changed`,
+        projection_group: live.sections.at(-1)!.section_id,
+      }
+      : fragment),
+  };
+  const fragmentMetadataIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(fragmentMetadataChanged, fragmentMetadataIssues);
+  assert(
+    fragmentMetadataIssues.issues.some((entry) => entry.logical_path === "matrix_v0.structure"),
+    "matrix fragment-title/group-only mutation escaped the complete structure floor",
+  );
+
+  const aliasChanged: RoadmapDocumentV0 = {
+    ...live,
+    records: live.records.map((record, index) => index === 0
+      ? { ...record, legacy_aliases: [...(record.legacy_aliases ?? []), "fixture-alias"] }
+      : record),
+  };
+  const aliasIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(aliasChanged, aliasIssues);
+  assert(
+    aliasIssues.issues.some((entry) => entry.logical_path === "matrix_v0.structure"),
+    "matrix alias-only mutation escaped the complete structure floor",
+  );
+
+  const manifestChanged: RoadmapDocumentV0 = {
+    ...live,
+    manifest: [live.manifest[1]!, live.manifest[0]!, ...live.manifest.slice(2)],
+  };
+  const manifestIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(manifestChanged, manifestIssues);
+  assert(
+    manifestIssues.issues.some((entry) => entry.logical_path === "matrix_v0.structure"),
+    "matrix manifest-sequence mutation escaped the complete structure floor",
+  );
+
+  const [leftRecord, rightRecord] = live.records;
+  assert(leftRecord !== undefined && rightRecord !== undefined, "live record floor probe lacks swap controls");
+  const wrongIds: RoadmapDocumentV0 = {
+    ...live,
+    records: live.records.map((record) =>
+      record === leftRecord ? { ...record, id: rightRecord.id } :
+        record === rightRecord ? { ...record, id: leftRecord.id } : record
+    ),
+  };
+  const wrongIdIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(wrongIds, wrongIdIssues);
+  assert(wrongIdIssues.issues.some((entry) => entry.code === "E-SCHEMA-FLOOR" && entry.logical_path.startsWith("record[")), "swapped live record IDs escaped exact production floors");
+  for (const slot of wrongIds.generated_slots) {
+    const resolved = MATRIX_ADAPTER.slotResolvers(view, wrongIds).get(slot.slot_id)?.resolve(slot, view);
+    assert(resolved?.bytes.at(-1) === 0x0a, `wrong-shape live document still selected bare slot mode for ${slot.slot_id}`);
+  }
+
+  const [leftPart, rightPart] = live.parts;
+  assert(leftPart !== undefined && rightPart !== undefined, "live part floor probe lacks boundary controls");
+  const wrongBoundaries: RoadmapDocumentV0 = {
+    ...live,
+    parts: live.parts.map((part) =>
+      part === leftPart ? { ...part, span_ids: [...rightPart.span_ids] } :
+        part === rightPart ? { ...part, span_ids: [...leftPart.span_ids] } : part
+    ),
+  };
+  const wrongBoundaryIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(wrongBoundaries, wrongBoundaryIssues);
+  assert(wrongBoundaryIssues.issues.some((entry) => entry.code === "E-SCHEMA-FLOOR" && entry.logical_path.startsWith("part[")), "swapped live part boundaries escaped exact production floors");
+
+  const coordinatedBypass: RoadmapDocumentV0 = {
+    ...live,
+    document: {
+      ...live.document,
+      frozen_source_sha256: "0".repeat(64),
+      frozen_source_byte_length: live.document.frozen_source_byte_length + 1,
+      frozen_source_line_count: live.document.frozen_source_line_count + 1,
+    },
+    sections: live.sections.map((section) => section.section_id === "matrix-side-work"
+      ? {
+        ...section,
+        section_id: "fixture-matrix-side-work-renamed" as RoadmapDocumentV0["sections"][number]["section_id"],
+      }
+      : section),
+    fragments: live.fragments.map((fragment) => fragment.fragment_id === "document-tail"
+      ? {
+        ...fragment,
+        fragment_id: "fixture-document-tail-renamed" as RoadmapDocumentV0["fragments"][number]["fragment_id"],
+      }
+      : fragment),
+    records: live.records.map((record, index) => ({
+      ...record,
+      id: `matrix.fixture-bypass-${index}` as RoadmapId,
+    })),
+  };
+  const coordinatedBypassIssues = new Collector();
+  MATRIX_ADAPTER.validateFloors(coordinatedBypass, coordinatedBypassIssues);
+  assert(
+    coordinatedBypassIssues.issues.some((entry) =>
+      entry.code === "E-SCHEMA-FLOOR" && entry.logical_path === "document.frozen_source_sha256"
+    ) && coordinatedBypassIssues.issues.some((entry) =>
+      entry.code === "E-SCHEMA-FLOOR" && entry.logical_path.startsWith("record[")
+    ),
+    "coordinated matrix fingerprint/anchor mutation bypassed production floors",
+  );
+  for (const slot of coordinatedBypass.generated_slots) {
+    const resolved = MATRIX_ADAPTER.slotResolvers(view, coordinatedBypass).get(slot.slot_id)?.resolve(slot, view);
+    assert(
+      resolved?.bytes.at(-1) === 0x0a,
+      `coordinated matrix fingerprint/anchor mutation still selected bare slot mode for ${slot.slot_id}`,
+    );
+  }
+
+  const liveTesting = liveTestingFloorProbe();
+  const liveTestingIssues = new Collector();
+  TESTING_ADAPTER.validateFloors(liveTesting, liveTestingIssues);
+  assert(
+    liveTestingIssues.issues.every((entry) =>
+      entry.logical_path === "testing_v0.structure" ||
+      entry.logical_path.startsWith("testing_v0.physical_inventory.")
+    ),
+    `testing live-floor probe failed an explicit pickup floor: ${JSON.stringify(liveTestingIssues.issues)}`,
+  );
+
+  const coordinatedTestingBypass: RoadmapDocumentV0 = {
+    ...liveTesting,
+    document: {
+      ...liveTesting.document,
+      frozen_source_sha256: "0".repeat(64),
+      frozen_source_byte_length: liveTesting.document.frozen_source_byte_length + 1,
+      frozen_source_line_count: liveTesting.document.frozen_source_line_count + 1,
+    },
+    sections: liveTesting.sections.map((section) => section.section_id === "standing-system"
+      ? {
+        ...section,
+        section_id: "fixture-standing-system-renamed" as RoadmapDocumentV0["sections"][number]["section_id"],
+      }
+      : section),
+    fragments: liveTesting.fragments.map((fragment) => fragment.fragment_id === "sources-exhaustive-menu"
+      ? {
+        ...fragment,
+        fragment_id: "fixture-sources-menu-renamed" as RoadmapDocumentV0["fragments"][number]["fragment_id"],
+      }
+      : fragment),
+    records: liveTesting.records.map((record) =>
+      record.id === "testing.rule-trailing.directive-classification"
+        ? { ...record, id: "testing.rule-trailing.coordinated-bypass" as RoadmapId }
+        : record
+    ),
+  };
+  const coordinatedTestingBypassIssues = new Collector();
+  TESTING_ADAPTER.validateFloors(coordinatedTestingBypass, coordinatedTestingBypassIssues);
+  assert(
+    coordinatedTestingBypassIssues.issues.some((entry) =>
+      entry.code === "E-SCHEMA-FLOOR" && entry.logical_path === "document.frozen_source_sha256"
+    ) && coordinatedTestingBypassIssues.issues.some((entry) =>
+      entry.code === "E-SCHEMA-FLOOR" && entry.logical_path === "testing_v0.structure"
+    ),
+    "coordinated testing fingerprint/anchor mutation bypassed production floors",
+  );
+
+  const reclassifiedPart = liveTesting.parts[0];
+  assert(reclassifiedPart !== undefined, "testing live-floor probe lacks a part reclassification control");
+  const reclassified: RoadmapDocumentV0 = {
+    ...liveTesting,
+    parts: liveTesting.parts.slice(1),
+    fragments: [...liveTesting.fragments, {
+      fragment_id: "fixture-reclassified-part" as RoadmapDocumentV0["fragments"][number]["fragment_id"],
+      projection_group: "standing-system" as RoadmapDocumentV0["sections"][number]["section_id"],
+      title: reclassifiedPart.title,
+      source_block_md: reclassifiedPart.source_block_md,
+      span_ids: [...reclassifiedPart.span_ids],
+    }],
+  };
+  const reclassifiedIssues = new Collector();
+  TESTING_ADAPTER.validateFloors(reclassified, reclassifiedIssues);
+  assert(
+    reclassifiedIssues.issues.some((entry) => entry.logical_path === "part") &&
+      reclassifiedIssues.issues.some((entry) => entry.logical_path === "fragment") &&
+      reclassifiedIssues.issues.some((entry) => entry.logical_path === "testing_v0.structure"),
+    "testing nested-part-to-fragment reclassification escaped exact production floors",
+  );
+
+  const selectedId = "testing.rule-trailing.directive-classification";
+  const renamedSelected: RoadmapDocumentV0 = {
+    ...liveTesting,
+    records: liveTesting.records.map((record) => record.id === selectedId
+      ? {
+        ...record,
+        id: "testing.rule-trailing.directive-renamed" as RoadmapId,
+        legacy_aliases: undefined,
+      }
+      : record),
+  };
+  const renamedSelectedIssues = new Collector();
+  TESTING_ADAPTER.validateFloors(renamedSelected, renamedSelectedIssues);
+  assert(
+    renamedSelectedIssues.issues.some((entry) =>
+      entry.logical_path === `record[${JSON.stringify(selectedId)}]`
+    ) && renamedSelectedIssues.issues.some((entry) => entry.logical_path === "testing_v0.structure"),
+    "testing RuleTrailing rename/alias deletion escaped exact production floors",
+  );
+}
+
+function liveMatrixFloorProbe(): RoadmapDocumentV0 {
+  const decoded = decodeRoadmapSource(
+    new TextEncoder().encode(matrixShadowSourceText),
+    "cddl-matrix/roadmap.toml" as RepoPath,
+    "matrix",
+  );
+  assert(decoded.document.schema_version === 0, "committed matrix floor probe is not schema v0");
+  return decoded as RoadmapDocumentV0;
+}
+
+function liveTestingFloorProbe(): RoadmapDocumentV0 {
+  const empty = new Uint8Array();
+  const sections: RoadmapDocumentV0["sections"] = [
+    ["declined-boundaries", "Declined (decided, with a reopening signal unless explicitly permanent)"],
+    ["deferred-features", "Deferred features (build when a real consumer needs them)"],
+    ["next-priority", "Next work items, in priority order"],
+    ["north-star", "North star — automated feature coverage"],
+    ["operational-watches", "Operational watches"],
+    ["pending-maintainer", "Pending maintainer action"],
+    ["preamble", "Testing roadmap preamble"],
+    ["sources", "Sources"],
+    ["standing-system", "Standing-system residuals"],
+  ].map(([section_id, title], index) => ({
+    section_id: section_id as RoadmapDocumentV0["sections"][number]["section_id"],
+    title,
+    ...(section_id === "standing-system" ? { legacy_aliases: ["Standing-system residuals"] } : {}),
+    source_block_md: empty,
+    span_ids: [`fixture-section-span-a${index}` as RoadmapDocumentV0["spans"][number]["id"]],
+  }));
+  const fragments: RoadmapDocumentV0["fragments"] = [
+    [
+      "sources-exhaustive-menu",
+      "Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`",
+    ],
+    ["sources-expert-writeups", "Per-dimension expert write-ups: `draft/testing-recommendations/*.md`"],
+  ].map(([fragment_id, title], index) => ({
+    fragment_id: fragment_id as RoadmapDocumentV0["fragments"][number]["fragment_id"],
+    projection_group: "sources" as RoadmapDocumentV0["sections"][number]["section_id"],
+    title,
+    source_block_md: empty,
+    span_ids: [`fixture-fragment-span-a${index}` as RoadmapDocumentV0["spans"][number]["id"]],
+  }));
+
+  const records: RoadmapDocumentV0["records"] = [];
+  let recordIndex = 0;
+  const addRecords = (group: string, count: number, ordinals: readonly number[] = []): void => {
+    for (let index = 0; index < count; index++) {
+      const ordinal = ordinals[index];
+      records.push({
+        id: `testing.fixture-a${recordIndex}` as RoadmapId,
+        title: `Fixture record ${recordIndex}`,
+        projection_group: group as RoadmapDocumentV0["sections"][number]["section_id"],
+        ...(ordinal === undefined ? {} : { legacy_aliases: [`Next work ${ordinal}`] }),
+        source_block_md: empty,
+        span_ids: [`fixture-record-span-a${recordIndex}` as RoadmapDocumentV0["spans"][number]["id"]],
+      });
+      recordIndex++;
+    }
+  };
+  records.push({
+    id: "testing.rule-trailing.directive-classification" as RoadmapId,
+    title: "Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery — blocked on publishing the reviewed fork revision.",
+    projection_group: "pending-maintainer" as RoadmapDocumentV0["sections"][number]["section_id"],
+    legacy_aliases: ["B3-002", "B3-005", "T1-09"],
+    source_block_md: empty,
+    span_ids: ["span-record-rule-trailing-directive-classification" as RoadmapDocumentV0["spans"][number]["id"]],
+  });
+  addRecords("pending-maintainer", 1);
+  addRecords("next-priority", 25, [1, 2, 3, 4, 5, 6, 7, 8, ...Array.from({ length: 17 }, (_, index) => index + 10)]);
+  addRecords("standing-system", 61);
+  addRecords("deferred-features", 18);
+  addRecords("operational-watches", 20);
+  addRecords("declined-boundaries", 11);
+  assert(records.length === 137, "testing live-floor probe record count drifted");
+
+  const parts: RoadmapDocumentV0["parts"] = Array.from({ length: 60 }, (_, index) => ({
+    part_id: `fixture-part-a${index}` as RoadmapDocumentV0["parts"][number]["part_id"],
+    parent_record_id: records[index]!.id,
+    title: `Fixture part ${index}`,
+    source_block_md: empty,
+    span_ids: [`fixture-part-span-a${index}` as RoadmapDocumentV0["spans"][number]["id"]],
+  }));
+  const spans: RoadmapDocumentV0["spans"] = [{
+    id: "span-record-rule-trailing-directive-classification" as RoadmapDocumentV0["spans"][number]["id"],
+    start_byte: 8_737,
+    end_byte: 11_601,
+    sha256: "c5a5b506dba80f59781f9024767bd7b6bd14d191981f1923553d12ad65b8d338",
+    source_kind: "record",
+    owner_id: "testing.rule-trailing.directive-classification",
+    owner_field: "source_block_md",
+    migration_status: "raw",
+  }];
+  while (spans.length < 208) {
+    const index = spans.length;
+    spans.push({
+      id: `fixture-ledger-span-a${index}` as RoadmapDocumentV0["spans"][number]["id"],
+      start_byte: 20_000 + index,
+      end_byte: 20_001 + index,
+      sha256: "0".repeat(64),
+      source_kind: "section",
+      owner_id: sections[0]!.section_id,
+      owner_field: "source_block_md",
+      migration_status: "raw",
+    });
+  }
+  return {
+    document: {
+      schema_version: 0,
+      authority: "shadow",
+      roadmap: "testing",
+      source_path: "tests/testing-roadmap.toml" as RepoPath,
+      projection_path: "tests/TESTING_ROADMAP.md" as RepoPath,
+      frozen_source_sha256: "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b4120d70e",
+      frozen_source_byte_length: 323_398,
+      frozen_source_line_count: 3_597,
+      frozen_source_eof: "lf",
+    },
+    sections,
+    fragments,
+    legacy_markers: [],
+    records,
+    parts,
+    generated_slots: [],
+    manifest: Array.from({ length: 208 }, () => ({
+      kind: "section" as const,
+      section_id: sections[0]!.section_id,
+    })),
+    spans,
+  };
 }
 
 function markdownSnapshots(value: unknown): readonly { readonly original: Uint8Array; readonly copy: Uint8Array }[] {
@@ -736,7 +1111,7 @@ function renderFixture(
   view: RegistryView,
 ): { readonly bytes: Uint8Array; readonly semantic_calls: number } {
   const placement = resolveManifest(document);
-  const resolvers = adapter.slotResolvers(view);
+  const resolvers = adapter.slotResolvers(view, document);
   let semanticCalls = 0;
   const completed = buildExpectedChunks(document, placement.ops, {
     renderSemanticRecord(record, fields) {

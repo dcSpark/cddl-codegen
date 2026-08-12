@@ -130,7 +130,7 @@ export interface RoadmapAdapter<P extends SemanticPayload> {
   validateExtension(record: SemanticRecord<P>, indexes: Indexes, out: IssueCollector): void;
   renderSemantic(record: SemanticRecord<P>, fields: FieldConsumer): Uint8Array;
   referenceProviders(view: RegistryView): ReferenceProvider[];
-  slotResolvers(view: RegistryView): ReadonlyMap<SlotId, GeneratedSlotResolver>;
+  slotResolvers(view: RegistryView, document: RoadmapDocument): ReadonlyMap<SlotId, GeneratedSlotResolver>;
   validateFloors(doc: RoadmapDocument, out: IssueCollector): void;
 }
 

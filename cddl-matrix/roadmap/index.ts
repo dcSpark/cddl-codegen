@@ -172,7 +172,7 @@ function prepareDecodedRoadmapCore(
   const domain = domainValidation(document, registry);
   const manifest = resolveManifest(document);
   const adapter = ADAPTER_BY_ROADMAP[name];
-  const resolvers = adapter.slotResolvers(registry);
+  const resolvers = adapter.slotResolvers(registry, document);
   const completed = buildExpectedChunks(document, manifest.ops, {
     renderSemanticRecord(record, fields) {
       return adapter.renderSemantic(record, fields);

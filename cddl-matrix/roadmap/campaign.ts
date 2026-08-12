@@ -23,6 +23,7 @@ import {
   type ImmutableByteView,
   type ImmutableByteViewInput,
 } from "./render_ir.ts";
+import { markdownHeadingTitle, shadowRecordSourceTitle } from "./shadow_title.ts";
 
 export { createImmutableByteView };
 export type ByteView = ImmutableByteView;
@@ -165,18 +166,6 @@ function titleBindingSignature(binding: LegacyTitleBindingFact): string {
   ]);
 }
 
-function markdownHeadingTitle(source: Uint8Array): string | undefined {
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(source);
-  } catch {
-    return undefined;
-  }
-  const firstLine = text.slice(0, text.indexOf("\n") < 0 ? text.length : text.indexOf("\n"));
-  const match = /^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/.exec(firstLine);
-  return match?.[2];
-}
-
 /**
  * Mint a reviewed-title capability only from the reservation's exact immutable Markdown binding.
  * A structurally equal caller-created object is intentionally inert.
@@ -282,7 +271,7 @@ function exactShadowClaim(
     allOwnerSpans.length !== claimedSpans.length ||
     allOwnerSpans.some((spanId, index) => claimedSpans[index] !== spanId) ||
     !bytesEqual(record.source_block_md, markdown.sliceBytes(start, end)) ||
-    markdownHeadingTitle(record.source_block_md) !== record.title ||
+    shadowRecordSourceTitle(record.source_block_md, namespace) !== record.title ||
     (reservation !== undefined && (
       sha256(record.source_block_md) !== reservation.source_sha256 ||
       record.title !== reservation.source_title

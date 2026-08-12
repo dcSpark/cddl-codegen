@@ -15,6 +15,7 @@ import {
   isImmutableByteView,
   type ImmutableByteViewInput,
 } from "./render_ir.ts";
+import { markdownHeadingTitle, shadowRecordSourceTitle } from "./shadow_title.ts";
 
 const codePointSort = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -184,18 +185,6 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   return true;
 }
 
-function markdownHeadingTitle(source: Uint8Array): string | undefined {
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(source);
-  } catch {
-    return undefined;
-  }
-  const newline = text.indexOf("\n");
-  const firstLine = text.slice(0, newline < 0 ? text.length : newline);
-  return /^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/.exec(firstLine)?.[2];
-}
-
 function ownerSignature(owners: readonly CampaignAdditionalOwnerFact[]): string {
   return stableValueKey(owners);
 }
@@ -241,7 +230,7 @@ function exactShadowClaim(
     allOwnerSpans.length !== claimedSpans.length ||
     allOwnerSpans.some((spanId, index) => claimedSpans[index] !== spanId) ||
     !bytesEqual(record.source_block_md, markdown.sliceBytes(start, end)) ||
-    markdownHeadingTitle(record.source_block_md) !== record.title ||
+    shadowRecordSourceTitle(record.source_block_md, namespace) !== record.title ||
     (reservation !== undefined && (
       reservation.id !== id || reservation.roadmap_path !== LEGACY_ROADMAP_PATH[namespace] ||
       reservation.source_title !== record.title || reservation.source_sha256 !== sha256(record.source_block_md)
