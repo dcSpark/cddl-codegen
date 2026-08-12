@@ -52,6 +52,7 @@ import { validateRelations } from "../relations.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import {
   liveMatrixAuthoritativeDocument,
+  liveMatrixLegacyProjection,
   liveMatrixProjection,
   liveMatrixShadowV0Document,
   liveMatrixShadowV0Source,
@@ -1081,7 +1082,7 @@ function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
     assert(resolved !== undefined && resolved.bytes.at(-1) !== 0x0a, `mixed-v1 inline slot ${slot.slot_id} retained fixture-only LF ownership`);
   }
 
-  const projection = liveMatrixProjection();
+  const projection = liveMatrixLegacyProjection();
   const rendered = renderFixture(mixed, MATRIX_ADAPTER, view);
   const semanticAuthorities = mixed.records.filter((record) => record.render_authority === "semantic").length;
   assert(rendered.semantic_calls === semanticAuthorities && (complete ? semanticAuthorities > 1 :
@@ -1249,7 +1250,10 @@ function testMatrixV0ReconstructionVisibilityArms(bundle: AdapterFixtureBundle):
   const authoritative = liveMatrixAuthoritativeDocument();
   const semanticOnly = withSemanticOnlyRecord(authoritative, "matrix.fixture-semantic-only" as RoadmapId);
   const rendered = renderFixture(semanticOnly, MATRIX_ADAPTER, registryView(bundle, semanticOnly, liveMatrixStatusInputs()));
-  assert(bytesEqual(rendered.bytes, liveMatrixProjection()), "semantic-only matrix record changed live projection bytes");
+  assert(
+    bytesEqual(rendered.bytes, liveMatrixLegacyProjection()),
+    "semantic-only matrix record changed the historical matrix projection bytes",
+  );
   assert(bytesEqual(composeRoadmapDocument(liveMatrixShadowV0Document(semanticOnly)), liveMatrixShadowV0Source()), "matrix v0 reconstruction retained semantic-only record or placement");
   const documentVisible = withDocumentVisibleRecord(withRawDocumentVisibleRecord(authoritative));
   assert(bytesEqual(composeRoadmapDocument(liveMatrixShadowV0Document(documentVisible)), liveMatrixShadowV0Source()), "matrix v0 reconstruction did not restore a document-visible semantic record");

@@ -52,6 +52,8 @@ export interface DocumentMetaV2 extends FrozenSourceMeta {
   schema_version: 2;
   authority: "authoritative";
   roadmap: RoadmapName;
+  /** Historical WP6 v2 sources omit this and retain the byte-identical legacy projection. */
+  projection_layout?: "legacy_v1" | "anchors_v1" | "standing_v1" | "unnumbered_v1" | "curated_v1";
 }
 
 interface RawOwner {

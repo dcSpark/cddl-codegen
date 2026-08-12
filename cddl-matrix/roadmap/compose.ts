@@ -555,6 +555,8 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
   if (meta.schema_version === 1) {
     optionalString(writer, "semantic_conversion", meta.semantic_conversion);
     writer.strings("frozen_legacy_span_ids", meta.frozen_legacy_span_ids, true);
+  } else if (meta.schema_version === 2) {
+    optionalString(writer, "projection_layout", meta.projection_layout);
   }
 
   const sections: readonly Section[] = document.sections;

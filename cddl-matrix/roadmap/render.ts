@@ -66,6 +66,25 @@ export interface ProjectionCheckResult {
   readonly issues: readonly RoadmapIssue[];
 }
 
+/** Check an already validated redesigned projection without reusing frozen legacy chunk provenance. */
+export function checkCommittedProjectionBytes(
+  expected: Uint8Array,
+  projectionPath: RepoPath,
+  readCommitted: () => Uint8Array,
+): ProjectionCheckResult {
+  const actual = new Uint8Array(readCommitted());
+  const difference = firstDifference(expected, actual);
+  if (difference === -1) return Object.freeze({ expected: new Uint8Array(expected), issues: Object.freeze([]) });
+  const drift: RoadmapIssue = {
+    code: "E-PROJECTION-DRIFT",
+    source: projectionPath,
+    logical_path: "projection",
+    message: `projection drift: expected sha256=${sha256(expected)} length=${expected.byteLength}, actual sha256=${sha256(actual)} length=${actual.byteLength}, first differing byte=${difference}, expected context=${localByteContext(expected, difference)}, actual context=${localByteContext(actual, difference)}`,
+    exit: 1,
+  };
+  return Object.freeze({ expected: new Uint8Array(expected), issues: Object.freeze([drift]) });
+}
+
 function sha256(bytes: Uint8Array): string {
   return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 }

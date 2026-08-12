@@ -43,13 +43,19 @@ export function liveMatrixV2Document(): RoadmapDocumentV2 {
   return decoded as RoadmapDocumentV2;
 }
 
+export function liveMatrixLegacyV2Document(): RoadmapDocumentV2 {
+  const decoded = liveMatrixV2Document();
+  return { ...decoded, document: { ...decoded.document, projection_layout: "legacy_v1" } };
+}
+
 /** Historical complete-v1 view retained for WP4/WP5 transition fixtures after the live WP6 cutover. */
 export function liveMatrixAuthoritativeDocument(): RoadmapDocumentV1 {
   const decoded = liveMatrixV2Document();
+  const { projection_layout: _projectionLayout, ...document } = decoded.document;
   return {
     ...decoded,
     document: {
-      ...decoded.document,
+      ...document,
       schema_version: 1,
       semantic_conversion: "complete",
       frozen_legacy_span_ids: [],
@@ -66,20 +72,25 @@ export function liveMatrixProjection(): Uint8Array {
   return UTF8.encode(liveMatrixProjectionText);
 }
 
-function sha256(value: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
+/** Frozen pre-WP7 projection used only by historical v0/v1 transition fixtures. */
+export function liveMatrixLegacyProjection(): Uint8Array {
+  const projection = UTF8.encode(liveMatrixProjectionText
+    .replace(
+      /^<!-- GENERATED FILE: owned by cddl-matrix\/roadmap\.toml; edit that TOML source and run project_roadmaps\.ts --write\. -->\n\n/u,
+      "",
+    )
+    .replace(/^ *<a id="roadmap-id-[^"]+"><\/a>\n\n(?= *#)/gmu, "")
+    .replace(/^ *<a id="roadmap-id-[^"]+"><\/a>\n/gmu, ""));
+  assert(
+    projection.byteLength === 84_580 &&
+      sha256(projection) === "f010705393ddbd0b5fa25368c7903df5c5f87a6e500bbdb9c99f7f22bf9bd69e",
+    "reconstructed matrix legacy projection escaped its frozen length/digest",
+  );
+  return projection;
 }
 
-function frozenProjectionSlice(projection: Uint8Array, span: SourceSpan): Uint8Array {
-  assert(
-    Number.isSafeInteger(span.start_byte) && Number.isSafeInteger(span.end_byte) &&
-      span.start_byte >= 0 && span.start_byte <= span.end_byte &&
-      span.end_byte <= projection.byteLength,
-    `live matrix span ${span.id} has invalid frozen projection range [${span.start_byte},${span.end_byte})`,
-  );
-  const bytes = projection.slice(span.start_byte, span.end_byte);
-  assert(sha256(bytes) === span.sha256, `live matrix span ${span.id} differs from its frozen projection digest`);
-  return bytes;
+function sha256(value: Uint8Array): string {
+  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
 }
 
 function replacementSpanIds(value: {
@@ -91,6 +102,22 @@ function replacementSpanIds(value: {
   return value.source_replacements.map((replacement) => replacement.span_id);
 }
 
+function frozenOwnerField(value: object, spanId: SpanId): Uint8Array {
+  if ("source_block_md" in value && value.source_block_md instanceof Uint8Array) return value.source_block_md;
+  assert("source_replacements" in value && Array.isArray(value.source_replacements),
+    `live matrix semantic owner lacks replacement for ${spanId}`);
+  const replacement = (value.source_replacements as SourceReplacement[]).find((entry) => entry.span_id === spanId);
+  assert(replacement !== undefined, `live matrix semantic owner lacks replacement row for ${spanId}`);
+  if (replacement.replacement_field === "body_md" && "body_md" in value && value.body_md instanceof Uint8Array) return value.body_md;
+  if (replacement.replacement_field === "marker_md" && "marker_md" in value && value.marker_md instanceof Uint8Array) return value.marker_md;
+  if (replacement.replacement_field.startsWith("payload.") && "payload" in value) {
+    const field = replacement.replacement_field.slice("payload.".length);
+    const bytes = (value.payload as Record<string, unknown>)[field];
+    if (bytes instanceof Uint8Array) return bytes;
+  }
+  throw new Error(`live matrix replacement ${replacement.replacement_field} has no authored bytes`);
+}
+
 function reconstructedRawFields(
   value: {
     readonly span_ids?: readonly SpanId[];
@@ -99,7 +126,6 @@ function reconstructedRawFields(
   sourceKind: SourceSpan["source_kind"],
   ownerId: string,
   spans: ReadonlyMap<SpanId, SourceSpan>,
-  projection: Uint8Array,
 ): { readonly source_block_md: Uint8Array; readonly span_ids: SpanId[] } {
   const selected = replacementSpanIds(value).map((spanId) => {
     const span = spans.get(spanId);
@@ -117,7 +143,12 @@ function reconstructedRawFields(
       `live matrix owner ${ownerId} has non-contiguous legacy spans`,
     );
   }
-  const chunks = selected.map((span) => frozenProjectionSlice(projection, span));
+  const chunks = selected.map((span) => {
+    const bytes = frozenOwnerField(value, span.id);
+    assert(bytes.byteLength === span.end_byte - span.start_byte && sha256(bytes) === span.sha256,
+      `live matrix authored field for ${span.id} differs from frozen legacy provenance`);
+    return bytes;
+  });
   const sourceBlock = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
   let offset = 0;
   for (const chunk of chunks) {
@@ -135,7 +166,6 @@ export function liveMatrixShadowV0Document(
       authoritative.document.projection_path === MATRIX_PROJECTION_PATH,
     "matrix shadow reconstruction requires the live production paths",
   );
-  const projection = liveMatrixProjection();
   const spansById = new Map(authoritative.spans.map((span) => [span.id, span]));
   const promotedParts = authoritative.records.filter((owner): owner is Extract<
     RoadmapDocumentV1["records"][number],
@@ -152,19 +182,19 @@ export function liveMatrixShadowV0Document(
     section_id: owner.section_id,
     title: owner.title,
     ...(owner.legacy_aliases === undefined ? {} : { legacy_aliases: [...owner.legacy_aliases] }),
-    ...reconstructedRawFields(owner, "section", owner.section_id, spansById, projection),
+    ...reconstructedRawFields(owner, "section", owner.section_id, spansById),
   }));
   const fragments: RawFragmentV0[] = authoritative.fragments.map((owner) => ({
     fragment_id: owner.fragment_id,
     projection_group: owner.projection_group,
     ...(owner.title === undefined ? {} : { title: owner.title }),
     ...(owner.legacy_aliases === undefined ? {} : { legacy_aliases: [...owner.legacy_aliases] }),
-    ...reconstructedRawFields(owner, "fragment", owner.fragment_id, spansById, projection),
+    ...reconstructedRawFields(owner, "fragment", owner.fragment_id, spansById),
   }));
   const legacyMarkers: RawLegacyMarkerV0[] = authoritative.legacy_markers.map((owner) => ({
     marker_id: owner.marker_id,
     legacy_aliases: [...owner.legacy_aliases],
-    ...reconstructedRawFields(owner, "legacy_marker", owner.marker_id, spansById, projection),
+    ...reconstructedRawFields(owner, "legacy_marker", owner.marker_id, spansById),
   }));
   const records: RawRecordV0[] = authoritative.records.filter((owner) =>
     (owner.render_authority !== "semantic" || owner.projection_visibility === "document") &&
@@ -177,14 +207,14 @@ export function liveMatrixShadowV0Document(
       projection_group: owner.projection_group,
       ...(legacyAliases === undefined || legacyAliases.length === 0 ? {} : { legacy_aliases: legacyAliases }),
       ...(owner.tags === undefined ? {} : { tags: [...owner.tags] }),
-      ...reconstructedRawFields(owner, "record", owner.id, spansById, projection),
+      ...reconstructedRawFields(owner, "record", owner.id, spansById),
     };
   });
   const parts: RawPartV0[] = authoritative.parts.map((owner) => ({
     part_id: owner.part_id,
     parent_record_id: owner.parent_record_id,
     ...(owner.title === undefined ? {} : { title: owner.title }),
-    ...reconstructedRawFields(owner, "part", owner.part_id, spansById, projection),
+    ...reconstructedRawFields(owner, "part", owner.part_id, spansById),
   }));
   for (const owner of promotedParts) {
     const partId = promotedPartIds.get(owner.id)!;
@@ -196,7 +226,7 @@ export function liveMatrixShadowV0Document(
       part_id: partId as RawPartV0["part_id"],
       parent_record_id: parentRelations[0]!.source,
       title: owner.title,
-      ...reconstructedRawFields(owner, "record", owner.id, spansById, projection),
+      ...reconstructedRawFields(owner, "record", owner.id, spansById),
     });
   }
   assert(

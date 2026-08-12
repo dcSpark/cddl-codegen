@@ -1,4 +1,6 @@
 import type { RegistryView } from "../adapters/types.ts";
+import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
+import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import { ROADMAP_CLI_USAGE } from "../cli.ts";
 import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
@@ -22,16 +24,26 @@ import type {
 import type { FixtureRelativePath, RepoPath, RepositoryRevision, RoadmapId } from "../model/core.ts";
 import type { RoadmapDocumentV0, RoadmapDocumentV1, RoadmapDocumentV2, SemanticPayload } from "../model/documents.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
+import { resolveManifest } from "../manifest.ts";
 import {
   LEGACY_STATUS_OUTPUT_CLAIMS,
   productionOutputInventory,
 } from "../output_registry.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
+import { buildProjectionViews } from "../projection_views.ts";
+import {
+  projectionLayoutRank,
+  validateProjectionLayoutTransition,
+  type ProjectionLayout,
+} from "../projection_layout.ts";
+import { buildExpectedChunks, validateCompletedChunks } from "../render_ir.ts";
 import { validateSelectedLifecycleContext } from "../transaction.ts";
 import { observeSelfTestIssue } from "./observations.ts";
 import {
   liveMatrixAuthoritativeDocument,
   liveMatrixAuthoritativeSource,
+  liveMatrixLegacyProjection,
+  liveMatrixLegacyV2Document,
   liveMatrixProjection,
   liveMatrixShadowV0Document,
   liveMatrixShadowV0Source,
@@ -40,6 +52,8 @@ import {
 import {
   liveTestingAuthoritativeDocument,
   liveTestingAuthoritativeSource,
+  liveTestingLegacyProjection,
+  liveTestingLegacyV2Document,
   liveTestingProjection,
   liveTestingShadowV0Document,
   liveTestingShadowV0Source,
@@ -713,7 +727,7 @@ function promotionDocuments(
   return {
     base,
     candidate,
-    projection: roadmap === "matrix" ? liveMatrixProjection() : liveTestingProjection(),
+    projection: roadmap === "matrix" ? liveMatrixLegacyProjection() : liveTestingLegacyProjection(),
   };
 }
 
@@ -782,8 +796,8 @@ type V2PromotionMutation =
 function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
   let baseMatrix: RoadmapDocumentV1 | RoadmapDocumentV2 = liveMatrixAuthoritativeDocument();
   let baseTesting: RoadmapDocumentV1 | RoadmapDocumentV2 = liveTestingAuthoritativeDocument();
-  let candidateMatrix: RoadmapDocumentV1 | RoadmapDocumentV2 = liveMatrixV2Document();
-  let candidateTesting: RoadmapDocumentV1 | RoadmapDocumentV2 = liveTestingV2Document();
+  let candidateMatrix: RoadmapDocumentV1 | RoadmapDocumentV2 = liveMatrixLegacyV2Document();
+  let candidateTesting: RoadmapDocumentV1 | RoadmapDocumentV2 = liveTestingLegacyV2Document();
   if (mutation === "mixed") candidateTesting = liveTestingAuthoritativeDocument();
   if (mutation === "semantic_drift") {
     candidateMatrix = {
@@ -804,14 +818,14 @@ function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
     };
   }
   if (mutation === "downgrade") {
-    baseMatrix = liveMatrixV2Document();
-    baseTesting = liveTestingV2Document();
+    baseMatrix = liveMatrixLegacyV2Document();
+    baseTesting = liveTestingLegacyV2Document();
     candidateMatrix = liveMatrixAuthoritativeDocument();
     candidateTesting = liveTestingAuthoritativeDocument();
   }
   if (mutation === "preexisting_mixed") {
-    baseMatrix = liveMatrixV2Document();
-    candidateMatrix = liveMatrixV2Document();
+    baseMatrix = liveMatrixLegacyV2Document();
+    candidateMatrix = liveMatrixLegacyV2Document();
     baseTesting = liveTestingAuthoritativeDocument();
     candidateTesting = liveTestingAuthoritativeDocument();
   }
@@ -826,16 +840,16 @@ function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
   const candidate = new Map<RepoPath, Uint8Array>([
     ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(candidateMatrix)],
     ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(candidateTesting)],
-    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixProjection()],
-    ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingProjection()],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixLegacyProjection()],
+    ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingLegacyProjection()],
     ["roadmap-campaign.toml" as RepoPath, candidateCampaign],
     ["roadmap-retired-ids.toml" as RepoPath, candidateRetired],
   ]);
   const base = new Map<RepoPath, Uint8Array>([
     ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(baseMatrix)],
     ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(baseTesting)],
-    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixProjection()],
-    ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingProjection()],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixLegacyProjection()],
+    ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingLegacyProjection()],
     ["roadmap-campaign.toml" as RepoPath, campaign],
     ["roadmap-retired-ids.toml" as RepoPath, retired],
   ]);
@@ -854,6 +868,127 @@ function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
         output_claims: productionOutputInventory("both_authoritative").claims,
         matrix_status_inputs: liveMatrixStatusInputs(),
       };
+    },
+  });
+}
+
+type Wp7LayoutMutation = "exact" | "content_drift" | "reference_drift";
+
+function withLayout(document: RoadmapDocumentV2, layout: ProjectionLayout): RoadmapDocumentV2 {
+  const nextHeading = projectionLayoutRank(layout) >= projectionLayoutRank("unnumbered_v1")
+    ? "Next work"
+    : "Next work items, in priority order";
+  return {
+    ...document,
+    document: { ...document.document, projection_layout: layout },
+    references: document.references.map((reference) => reference.kind === "file_heading" &&
+        reference.path === "tests/TESTING_ROADMAP.md" &&
+        (reference.heading === "Next work" || reference.heading === "Next work items, in priority order")
+      ? { ...reference, heading: nextHeading }
+      : reference),
+  };
+}
+
+function projectionForLayout(document: RoadmapDocumentV2, registry: RegistryView): Uint8Array {
+  const adapter = document.document.roadmap === "matrix" ? MATRIX_ADAPTER : TESTING_ADAPTER;
+  const manifest = resolveManifest(document);
+  const resolvers = adapter.slotResolvers(registry, document);
+  const completed = buildExpectedChunks(document, manifest.ops, {
+    renderSemanticRecord: (record, fields) => adapter.renderSemantic(record, fields),
+    resolveGeneratedSlot: (slot) => resolvers.get(slot.slot_id)?.resolve(slot, registry),
+  });
+  const renderIssues = [...manifest.issues, ...validateCompletedChunks(document, manifest.ops, completed)];
+  assert(renderIssues.length === 0, `WP7 stage projection failed render validation: ${JSON.stringify(renderIssues)}`);
+  const legacy = document.document.roadmap === "matrix" ? liveMatrixLegacyProjection() : liveTestingLegacyProjection();
+  const views = buildProjectionViews(document, completed, legacy);
+  assert(views.issues.length === 0, `WP7 stage projection failed view validation: ${JSON.stringify(views.issues)}`);
+  return views.full;
+}
+
+const wp7StageProjectionCache = new Map<string, Uint8Array>();
+
+function liveProjectionForLayout(
+  roadmap: "matrix" | "testing",
+  layout: ProjectionLayout,
+  registry: RegistryView,
+): Uint8Array {
+  const key = `${roadmap}:${layout}`;
+  const cached = wp7StageProjectionCache.get(key);
+  if (cached !== undefined) return new Uint8Array(cached);
+  const document = withLayout(roadmap === "matrix" ? liveMatrixV2Document() : liveTestingV2Document(), layout);
+  const projection = projectionForLayout(document, registry);
+  wp7StageProjectionCache.set(key, projection);
+  return new Uint8Array(projection);
+}
+
+function wp7LayoutPorts(
+  baseLayout: ProjectionLayout,
+  candidateLayout: ProjectionLayout,
+  mutation: Wp7LayoutMutation = "exact",
+  v1Base = false,
+): RoadmapCliPorts {
+  let baseMatrix: RoadmapDocumentV1 | RoadmapDocumentV2 = v1Base
+    ? liveMatrixAuthoritativeDocument()
+    : withLayout(liveMatrixV2Document(), baseLayout);
+  let baseTesting: RoadmapDocumentV1 | RoadmapDocumentV2 = v1Base
+    ? liveTestingAuthoritativeDocument()
+    : withLayout(liveTestingV2Document(), baseLayout);
+  let candidateMatrix = withLayout(liveMatrixV2Document(), candidateLayout);
+  let candidateTesting = withLayout(liveTestingV2Document(), candidateLayout);
+  if (mutation === "content_drift") candidateMatrix = {
+    ...candidateMatrix,
+    records: candidateMatrix.records.map((record, index) => index === 0
+      ? { ...record, title: `${record.title} illicit layout-rider` }
+      : record),
+  };
+  if (mutation === "reference_drift") candidateTesting = {
+    ...candidateTesting,
+    references: candidateTesting.references.map((reference, index) => index === 0
+      ? { ...reference, source: candidateTesting.records[1]!.id }
+      : reference),
+  };
+  const campaign = UTF8.encode(`[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`);
+  const retired = UTF8.encode(`[retired_ids]\nschema_version = 1\n`);
+  const registry = {
+    ...liveRegistry({ kind: "worktree" }),
+    production_output_stage: "both_authoritative" as const,
+    output_claims: productionOutputInventory("both_authoritative").claims,
+    matrix_status_inputs: liveMatrixStatusInputs(),
+  };
+  const candidateMatrixProjection = liveProjectionForLayout("matrix", candidateLayout, registry);
+  const candidateTestingProjection = liveProjectionForLayout("testing", candidateLayout, registry);
+  const baseMatrixProjection = baseMatrix.document.schema_version === 1
+    ? liveMatrixLegacyProjection()
+    : liveProjectionForLayout("matrix", baseLayout, registry);
+  const baseTestingProjection = baseTesting.document.schema_version === 1
+    ? liveTestingLegacyProjection()
+    : liveProjectionForLayout("testing", baseLayout, registry);
+  const candidate = new Map<RepoPath, Uint8Array>([
+    ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(candidateMatrix)],
+    ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(candidateTesting)],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, candidateMatrixProjection],
+    ["tests/TESTING_ROADMAP.md" as RepoPath, candidateTestingProjection],
+    ["roadmap-campaign.toml" as RepoPath, campaign],
+    ["roadmap-retired-ids.toml" as RepoPath, retired],
+  ]);
+  const base = new Map<RepoPath, Uint8Array>([
+    ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(baseMatrix)],
+    ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(baseTesting)],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, baseMatrixProjection],
+    ["tests/TESTING_ROADMAP.md" as RepoPath, baseTestingProjection],
+    ["roadmap-campaign.toml" as RepoPath, campaign],
+    ["roadmap-retired-ids.toml" as RepoPath, retired],
+  ]);
+  const readMap = (values: ReadonlyMap<RepoPath, Uint8Array>, path: RepoPath): Uint8Array => {
+    const value = values.get(path);
+    if (value === undefined) throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
+    return new Uint8Array(value);
+  };
+  return fakePorts({
+    read: (path) => readMap(candidate, path),
+    readAtCommit: (path) => readMap(base, path),
+    registry(revision) {
+      return { ...registry, revision };
     },
   });
 }
@@ -1069,9 +1204,9 @@ function validGenericAllPorts(_context: SelfTestContext): RoadmapCliPorts {
   const testingSourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const testingProjectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
   const matrixSource = liveMatrixShadowV0Source();
-  const matrixProjection = liveMatrixProjection();
+  const matrixProjection = liveMatrixLegacyProjection();
   const testingSource = liveTestingShadowV0Source();
-  const testingProjection = liveTestingProjection();
+  const testingProjection = liveTestingLegacyProjection();
   return fakePorts({
     read(path) {
       if (path === matrixSourcePath) return new Uint8Array(matrixSource);
@@ -1300,9 +1435,9 @@ function wp4mBootstrapProbePorts(
   const preRoots = validGenericAllPorts(context);
   const candidateMatrix = wp4BootstrapSource("matrix");
   const baseMatrix = liveMatrixShadowV0Source();
-  const matrixProjection = liveMatrixProjection();
+  const matrixProjection = liveMatrixLegacyProjection();
   const shadowTesting = liveTestingShadowV0Source();
-  const testingProjection = liveTestingProjection();
+  const testingProjection = liveTestingLegacyProjection();
   const campaign = UTF8.encode(`[campaign]
 schema_version = 1
 matrix_authority = "authoritative"
@@ -1355,7 +1490,7 @@ function wp4mMixedAuthorityPorts(
   const testingProjectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
   const baseMatrixSource = liveMatrixShadowV0Source();
   const candidateMatrixSource = wp4BootstrapSource("matrix");
-  const candidateProjection = liveMatrixProjection();
+  const candidateProjection = liveMatrixLegacyProjection();
   const testingMarkdown = UTF8.encode("# Testing legacy authority\n");
   const campaign = UTF8.encode(`[campaign]
 schema_version = 1
@@ -2092,6 +2227,41 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         result.exit_code === 0 && result.stderr.byteLength === 0 && text(result.stdout).includes("CHECK OK\n"),
         `exact atomic v1-complete to v2 promotion failed: ${text(result.stderr)}`,
       );
+      const layouts = ["legacy_v1", "anchors_v1", "standing_v1", "unnumbered_v1", "curated_v1"] as const;
+      for (let index = 0; index < layouts.length - 1; index++) {
+        const baseLayout = layouts[index]!;
+        const candidateLayout = layouts[index + 1]!;
+        const layout = run(["--check", "--roadmap", "all", "--against", HASH],
+          wp7LayoutPorts(baseLayout, candidateLayout));
+        assert(layout.exit_code === 0 && layout.stderr.byteLength === 0 && text(layout.stdout).includes("CHECK OK\n"),
+          `exact adjacent ${baseLayout} to ${candidateLayout} projection-only promotion failed: ${text(layout.stderr)}`);
+      }
+      for (const [baseLayout, candidateLayout, mutation, path, label, v1Base] of [
+        ["legacy_v1", "anchors_v1", "content_drift", "matrix.document.projection_layout", "content drift", false],
+        ["standing_v1", "unnumbered_v1", "reference_drift", "testing.document.projection_layout", "unrelated reference drift", false],
+        ["legacy_v1", "standing_v1", "exact", "matrix.document.projection_layout", "skipped layout stage", false],
+        ["legacy_v1", "curated_v1", "exact", "matrix.document.projection_layout", "direct legacy-to-curated layout", false],
+        ["legacy_v1", "curated_v1", "exact", "matrix.document.schema_version", "direct v1-to-curated layout", true],
+      ] as const) {
+        const rejected = run(["--check", "--roadmap", "all", "--against", HASH],
+          wp7LayoutPorts(baseLayout, candidateLayout, mutation, v1Base));
+        assert(rejected.exit_code === 1 && rejected.stdout.byteLength === 0 &&
+          text(rejected.stderr).includes(`#${path}:`),
+        `${label} did not reject at its exact projection-layout boundary: ${text(rejected.stderr)}`);
+      }
+      for (let baseIndex = 1; baseIndex < layouts.length; baseIndex++) {
+        for (let candidateIndex = 0; candidateIndex < baseIndex; candidateIndex++) {
+          const baseLayout = layouts[baseIndex]!;
+          const candidateLayout = layouts[candidateIndex]!;
+          const issues = validateProjectionLayoutTransition(
+            withLayout(liveMatrixV2Document(), baseLayout),
+            withLayout(liveMatrixV2Document(), candidateLayout),
+          );
+          assert(issues.length === 1 && issues[0]!.code === "E-TRANSACTION-BASE" &&
+            issues[0]!.logical_path === "matrix.document.projection_layout",
+          `${baseLayout} to ${candidateLayout} reversal did not reject exactly`);
+        }
+      }
       return pass("positive");
     }
     case "cli_against_v2_mixed_promotion_rejected":
@@ -2159,8 +2329,8 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
     }
     case "live_wp6_projection_pre_anchor_baseline": {
       for (const [name, projection] of [
-        ["matrix", liveMatrixProjection()],
-        ["testing", liveTestingProjection()],
+        ["matrix", liveMatrixLegacyProjection()],
+        ["testing", liveTestingLegacyProjection()],
       ] as const) {
         const source = text(projection);
         assert(!source.includes('id="roadmap-'), `${name} WP6 projection already renders stable-ID anchors`);
@@ -2451,7 +2621,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       return pass("positive");
     }
     case "cli_shadow_authoritative_markdown_provenance": {
-      const validProjection = liveMatrixProjection();
+      const validProjection = liveMatrixLegacyProjection();
       const validReads: RepoPath[] = [];
       const valid = run(
         ["--roadmap", "all", "--query", "summary", "--json"],

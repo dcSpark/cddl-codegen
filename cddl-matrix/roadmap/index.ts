@@ -54,11 +54,14 @@ import {
   validateProductionOutputRegistry,
 } from "./output_registry.ts";
 import {
+  checkCommittedProjectionBytes,
   renderThenCheckCommittedProjection,
   renderValidatedChunks,
   RenderValidationError,
 } from "./render.ts";
 import { buildExpectedChunks, validateCompletedChunks, type CompletedRenderIr } from "./render_ir.ts";
+import { buildProjectionViews, type ProjectionViews } from "./projection_views.ts";
+import { projectionLayout, projectionLayoutRank, validateProjectionLayoutDeclaration } from "./projection_layout.ts";
 import { scanRoadmapMarkdownFacts } from "./references.ts";
 import {
   semanticConversionCompletionAudit,
@@ -103,6 +106,7 @@ interface ValidatedRoadmapCore {
   readonly registry: RegistryView;
   readonly completed: CompletedRenderIr;
   readonly debt: MigrationDebt;
+  readonly projection_views: ProjectionViews;
 }
 
 interface FinalizedRoadmap extends ValidatedRoadmapCore {
@@ -165,7 +169,11 @@ function decodeAt(name: RoadmapName, reader: RevisionReader): { document: Roadma
     document,
     reader.revision.kind === "commit",
   );
-  if (declarationIssues.length > 0) failure(declarationIssues);
+  const layoutIssues = validateProjectionLayoutDeclaration(
+    document,
+    reader.revision.kind === "commit",
+  );
+  if (declarationIssues.length > 0 || layoutIssues.length > 0) failure([...declarationIssues, ...layoutIssues]);
   return { document, source };
 }
 
@@ -200,6 +208,18 @@ function prepareDecodedRoadmapCore(
       return resolvers.get(slot.slot_id)?.resolve(slot, registry);
     },
   });
+  const renderIssues = [
+    ...manifest.issues,
+    ...validateCompletedChunks(document, manifest.ops, completed),
+  ];
+  if (renderIssues.length > 0) failure(renderIssues);
+  const projectionViews = buildProjectionViews(
+    document,
+    completed,
+    renderValidatedChunks(completed.chunks, [], completed.expected_bytes),
+  );
+  if (projectionViews.issues.length > 0) failure(projectionViews.issues);
+  validateProjectionAnchors(document, projectionViews.full);
   // Authoritative v1 references to the roadmap projection resolve against the projection this
   // decoded source just built. The committed projection is prior output and therefore cannot be
   // an input to domain validation. Build/slot resolution deliberately precedes this scan because
@@ -208,17 +228,13 @@ function prepareDecodedRoadmapCore(
     ? registryWithRoadmapMarkdownFact(
       registry,
       adapter.projection_path,
-      completed.expected_bytes,
+      createImmutableByteView(projectionViews.full),
     )
     : registry;
   const domain = domainValidation(document, validationRegistry, {
     defer_foreign_roadmap_joins: true,
   });
-  const structuralIssues = [
-    ...domain.issues,
-    ...manifest.issues,
-    ...validateCompletedChunks(document, manifest.ops, completed),
-  ];
+  const structuralIssues = [...domain.issues];
   if (structuralIssues.length > 0) failure(structuralIssues);
 
   const spanIssues = validateSourceSpans({ document, completed });
@@ -255,6 +271,7 @@ function prepareDecodedRoadmapCore(
     registry: validationRegistry,
     completed,
     debt,
+    projection_views: projectionViews,
   });
 }
 
@@ -312,7 +329,7 @@ function validateScopedDebtQueryContext(
 function finalizeRoadmap(core: ValidatedRoadmapCore): FinalizedRoadmap {
   return Object.freeze({
     ...core,
-    projection: renderValidatedChunks(core.completed.chunks, [], core.completed.expected_bytes),
+    projection: new Uint8Array(core.projection_views.full),
   });
 }
 
@@ -392,10 +409,8 @@ function checkCommittedProjection(
 ): FinalizedRoadmap {
   let checked: ReturnType<typeof renderThenCheckCommittedProjection>;
   try {
-    checked = renderThenCheckCommittedProjection(
-      core.completed.chunks,
-      [],
-      core.completed.expected_bytes,
+    checked = checkCommittedProjectionBytes(
+      core.projection_views.full,
       core.document.document.projection_path,
       () => ports.readDeclared(core.document.document.projection_path),
     );
@@ -752,6 +767,21 @@ function registryWithRoadmapMarkdownFact(
   });
 }
 
+function validateProjectionAnchors(document: RoadmapDocument, projection: Uint8Array): void {
+  if (projectionLayoutRank(projectionLayout(document)) < 1) return;
+  const facts = scanRoadmapMarkdownFacts(document.document.projection_path, createImmutableByteView(projection));
+  if (facts.issues.length > 0) failure(facts.issues);
+  const expected = document.records.flatMap((record) =>
+    "projection_visibility" in record && record.projection_visibility === "document" ? [record.id] : []
+  ).sort();
+  if (JSON.stringify(facts.stable_anchor_ids) !== JSON.stringify(expected)) failure([issue(
+    "E-ID-DUPLICATE",
+    document.document.projection_path,
+    "roadmap-anchor",
+    `stable anchor inventory must exactly equal document-visible record IDs (expected=${expected.length}, actual=${facts.stable_anchor_ids.length})`,
+  )]);
+}
+
 function registryWithRoadmapMarkdownFacts(
   registry: RegistryView,
   roadmaps: LifecycleRevisionInput["roadmaps"],
@@ -787,7 +817,7 @@ function assembleLifecycle(
   const testing = roadmap("testing");
   const markdown = (name: RoadmapName, value: ValidatedRoadmapCore | undefined) => {
     const authority = name === "matrix" ? campaign.campaign.matrix_authority : campaign.campaign.testing_authority;
-    if (authority === "authoritative") return value!.completed.expected_bytes;
+    if (authority === "authoritative") return createImmutableByteView(value!.projection_views.full);
     return authority === "shadow"
       ? readAndValidateShadowMarkdown(reader, name, value!)
       : readLegacyMarkdown(reader, name);
@@ -873,7 +903,10 @@ function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResul
   let document: RoadmapDocument | CampaignDocumentV1 | RetiredIdsDocumentV1;
   if (path === MATRIX_SOURCE) {
     document = decodeRoadmapSource(source, path, "matrix", false);
-    const declarationIssues = validateSemanticConversionDeclaration(document, false);
+    const declarationIssues = [
+      ...validateSemanticConversionDeclaration(document, false),
+      ...validateProjectionLayoutDeclaration(document, false),
+    ];
     if (declarationIssues.length > 0) failure(declarationIssues);
     const core = prepareDecodedRoadmapCore("matrix", document, ports.registryView({ kind: "worktree" }));
     const lifecycle = loadActivatedLifecycle(worktreeReader(ports), { matrix: core });
@@ -885,7 +918,10 @@ function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResul
     }
   } else if (path === TESTING_SOURCE) {
     document = decodeRoadmapSource(source, path, "testing", false);
-    const declarationIssues = validateSemanticConversionDeclaration(document, false);
+    const declarationIssues = [
+      ...validateSemanticConversionDeclaration(document, false),
+      ...validateProjectionLayoutDeclaration(document, false),
+    ];
     if (declarationIssues.length > 0) failure(declarationIssues);
     const core = prepareDecodedRoadmapCore("testing", document, ports.registryView({ kind: "worktree" }));
     const lifecycle = loadActivatedLifecycle(worktreeReader(ports), { testing: core });

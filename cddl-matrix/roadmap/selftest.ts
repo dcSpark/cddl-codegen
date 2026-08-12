@@ -15,6 +15,7 @@ import {
   SEMANTIC_CONVERSION_SELFTEST_CASES,
 } from "./selftests/semantic_conversion.ts";
 import { DENOMINATOR_SELFTEST_CASES, REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS } from "./selftests/denominator.ts";
+import { PROJECTION_VIEW_SELFTEST_CASES, REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_IDS } from "./selftests/projection_views.ts";
 
 export interface SingleFileFixtureCaseRow {
   kind: "single_file";
@@ -264,6 +265,8 @@ const REFERENCE_KIND_SUBCASES = [
 
 /** Frozen named reviewer vectors. A case absent from this map must report no subcases. */
 export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
+  ["projection_views_layout_and_provenance", ["banner", "anchor", "layout_stages", "full_audit_separation", "span_provenance", "span_missing", "span_duplicate", "fragment_scan", "fragment_duplicate", "fragment_malformed"]],
+  ["projection_views_content_exactly_once", ["exact", "missing", "duplicate", "mismatched_bytes"]],
   ["debt_semantic_promotion_rejection_matrix", [
     "raw_unclassified", "payload_markdown_bytes", "payload_array_order", "missing_replacement",
     "duplicate_replacement", "fresh_replacement_span", "missing_span", "duplicate_span", "extra_span",
@@ -757,6 +760,7 @@ export function createCompleteSelfTestRegistry(): SelfTestRegistry {
       cases: SEMANTIC_CONVERSION_SELFTEST_CASES,
     },
     { required: REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS, cases: DENOMINATOR_SELFTEST_CASES },
+    { required: REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_IDS, cases: PROJECTION_VIEW_SELFTEST_CASES },
   ] as const;
   const cases: SelfTestCase[] = [];
   const joinIssues: RoadmapIssue[] = [];

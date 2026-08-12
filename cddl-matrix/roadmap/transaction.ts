@@ -37,8 +37,10 @@ import type {
   CurrentGuardOwnerFact,
   IdentityOwnerFact,
   ReplacementPin,
+  Reference,
   RetiredIdsDocumentV1,
   RoadmapDocument,
+  RoadmapDocumentV2,
   SemanticPayload,
   RecordNode,
   RoadmapDocumentV0,
@@ -57,6 +59,7 @@ import {
   validateSemanticConversionCompletion,
   validateSemanticConversionTransition,
 } from "./semantic_conversion.ts";
+import { projectionLayout, projectionLayoutRank, validateProjectionLayoutTransition } from "./projection_layout.ts";
 import { shadowRecordSourceTitle } from "./shadow_title.ts";
 import {
   resolveReplacementPin,
@@ -171,9 +174,45 @@ function exactV2Promotion(base: RoadmapDocument, candidate: RoadmapDocument): bo
       frozen_source_byte_length: base.document.frozen_source_byte_length,
       frozen_source_line_count: base.document.frozen_source_line_count,
       frozen_source_eof: base.document.frozen_source_eof,
+      projection_layout: "legacy_v1",
     },
   } as RoadmapDocument;
   return bytesEqual(composeRoadmapDocument(promoted), composeRoadmapDocument(candidate));
+}
+
+function allowedProjectionHeadingRetarget(base: Reference, candidate: Reference): boolean {
+  return base.kind === "file_heading" && candidate.kind === "file_heading" &&
+    base.id === candidate.id && base.source === candidate.source && base.path === candidate.path &&
+    base.heading === "Next work items, in priority order" && candidate.heading === "Next work";
+}
+
+/** The WP7 layout flip is projection-only, except for the exact heading citations it invalidates. */
+function exactProjectionLayoutPromotion(base: RoadmapDocument, candidate: RoadmapDocument): boolean {
+  if (base.document.schema_version !== 2 || candidate.document.schema_version !== 2 ||
+    projectionLayoutRank(projectionLayout(candidate)) !== projectionLayoutRank(projectionLayout(base)) + 1 ||
+    (base as RoadmapDocumentV2).references.length !== (candidate as RoadmapDocumentV2).references.length) return false;
+  const baseV2 = base as RoadmapDocumentV2;
+  const candidateV2 = candidate as RoadmapDocumentV2;
+  const baseReferences = new Map(baseV2.references.map((reference) => [reference.id, reference]));
+  const normalizedReferences: Reference[] = [];
+  for (const reference of candidateV2.references) {
+    const prior = baseReferences.get(reference.id);
+    if (prior === undefined) return false;
+    const retarget = allowedProjectionHeadingRetarget(prior, reference);
+    if (retarget && !(projectionLayout(base) === "standing_v1" &&
+      projectionLayout(candidate) === "unnumbered_v1")) return false;
+    normalizedReferences.push(retarget ? prior : reference);
+  }
+  const { projection_layout: _candidateLayout, ...candidateMeta } = candidate.document;
+  const normalized: RoadmapDocument = {
+    ...candidate,
+    document: {
+      ...candidateMeta,
+      projection_layout: projectionLayout(base),
+    },
+    references: normalizedReferences,
+  } as RoadmapDocument;
+  return bytesEqual(composeRoadmapDocument(base), composeRoadmapDocument(normalized));
 }
 
 function completedBytesEqual(base: CompletedRenderIr | undefined, candidate: CompletedRenderIr | undefined): boolean {
@@ -907,6 +946,17 @@ function validateScoped(inputs: ScopedRoadmapTransactionInputs): TransactionVali
       base.document,
       inputs.candidate_document,
     ));
+    issues.push(...validateProjectionLayoutTransition(base.document, inputs.candidate_document));
+    if (projectionLayoutRank(projectionLayout(inputs.candidate_document)) >
+      projectionLayoutRank(projectionLayout(base.document)) &&
+      (!exactProjectionLayoutPromotion(base.document, inputs.candidate_document) ||
+        !completedBytesEqual(base.completed, inputs.candidate_completed))) {
+      issues.push(issue(
+        "E-TRANSACTION-BASE",
+        `${inputs.scope}.document.projection_layout`,
+        "projection-layout promotion must be one adjacent projection-only stage; only standing_v1 to unnumbered_v1 permits exact Next-heading reference retargets over byte-identical render IR",
+      ));
+    }
     if (semanticConversionState(inputs.candidate_document).effective === "complete") {
       if (inputs.candidate_completed === undefined) {
         issues.push(issue(
@@ -1202,6 +1252,17 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
       continue;
     }
     issues.push(...validateSemanticConversionTransition(baseDocument, candidateDocument));
+    issues.push(...validateProjectionLayoutTransition(baseDocument, candidateDocument));
+    if (projectionLayoutRank(projectionLayout(candidateDocument)) >
+      projectionLayoutRank(projectionLayout(baseDocument)) &&
+      (!exactProjectionLayoutPromotion(baseDocument, candidateDocument) ||
+        !completedBytesEqual(base.completed[roadmap], candidate.completed[roadmap]))) {
+      issues.push(issue(
+        "E-TRANSACTION-BASE",
+        `${roadmap}.document.projection_layout`,
+        "projection-layout promotion must be one adjacent projection-only stage; only standing_v1 to unnumbered_v1 permits exact Next-heading reference retargets over byte-identical render IR",
+      ));
+    }
     if (semanticConversionState(candidateDocument).effective === "complete") {
       const candidateCompleted = candidate.completed[roadmap];
       if (candidateCompleted === undefined) {

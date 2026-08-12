@@ -81,6 +81,7 @@ export const ROADMAP_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "roadmap", values: ["matrix", "testing"] },
   { name: "frozen_source_eof", values: ["lf", "none"] },
   { name: "semantic_conversion", values: ["converting", "complete"] },
+  { name: "projection_layout", values: ["legacy_v1", "anchors_v1", "standing_v1", "unnumbered_v1", "curated_v1"] },
   { name: "render_authority", values: ["raw", "semantic"] },
   { name: "fragment_lifecycle_disposition", values: ["pending_review", "document_prose", "independent_record"] },
   { name: "part_lifecycle_disposition", values: ["pending_review", "parent_supporting_prose", "independent_record"] },
@@ -126,7 +127,7 @@ export const ROADMAP_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
 
 export const ROADMAP_V2_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
   { name: "roadmap v2 root", required: ["document", "section", "record", "manifest", "source_span"], optional: ["fragment", "legacy_marker", "part", "generated_slot", "relation", "reference"] },
-  { name: "roadmap v2 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof"], forbidden: ["semantic_conversion", "frozen_legacy_span_ids"] },
+  { name: "roadmap v2 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof"], optional: ["projection_layout"], forbidden: ["semantic_conversion", "frozen_legacy_span_ids"] },
 ] as const;
 
 const REFERENCE_REMAINING: Readonly<Record<Reference["kind"], readonly string[]>> = {
@@ -266,7 +267,7 @@ function decodeDocumentMeta(ctx: DecodeContext, raw: unknown): DocumentMetaV0 | 
   const pre = expectExactTable(ctx, raw, "document", {
     name: "document discriminator",
     required: ["schema_version"],
-    optional: ["authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof", "semantic_conversion", "frozen_legacy_span_ids"],
+    optional: ["authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof", "semantic_conversion", "frozen_legacy_span_ids", "projection_layout"],
   });
   const versionRaw = requiredValue(pre, "schema_version");
   if (typeof versionRaw !== "number" || !Number.isSafeInteger(versionRaw)) {
@@ -294,6 +295,11 @@ function decodeDocumentMeta(ctx: DecodeContext, raw: unknown): DocumentMetaV0 | 
       authority: expectEnum(ctx, requiredValue(table, "authority"), ["authoritative"] as const, "document.authority"),
       roadmap,
       ...common,
+      ...(hasOwn(table, "projection_layout")
+        ? { projection_layout: expectEnum(ctx, optionalValue(table, "projection_layout"),
+          ["legacy_v1", "anchors_v1", "standing_v1", "unnumbered_v1", "curated_v1"] as const,
+          "document.projection_layout") }
+        : {}),
     };
   }
   return {

@@ -96,6 +96,7 @@ frozen_source_sha256 = "${ZERO_HASH}"
 frozen_source_byte_length = 2
 frozen_source_line_count = 1
 frozen_source_eof = "lf"
+projection_layout = "legacy_v1"
 
 [[section]]
 section_id = "fixture"

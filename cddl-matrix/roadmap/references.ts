@@ -43,6 +43,7 @@ export interface RoadmapMarkdownByteView {
 export interface RoadmapMarkdownRepositoryFacts {
   readonly citations: readonly RoadmapCitationFact[];
   readonly headings: readonly FileHeadingFact[];
+  readonly stable_anchor_ids: readonly RoadmapId[];
   readonly issues: readonly RoadmapIssue[];
 }
 
@@ -1018,10 +1019,12 @@ export function scanRoadmapMarkdownFacts(
 ): RoadmapMarkdownRepositoryFacts {
   const citations: RoadmapCitationFact[] = [];
   const headings: FileHeadingFact[] = [];
+  const stableAnchorIds: RoadmapId[] = [];
   const issues: RoadmapIssue[] = [];
   const readByte = byteReader(view);
   if (!validateMarkdownViewText(source, view, readByte, issues)) {
-    return { citations: Object.freeze([]), headings: Object.freeze([]), issues: sortIssues(issues) };
+    return { citations: Object.freeze([]), headings: Object.freeze([]),
+      stable_anchor_ids: Object.freeze([]), issues: sortIssues(issues) };
   }
 
   for (let cursor = 0; cursor + ROADMAP_CITATION_PREFIX.byteLength <= view.byte_length;) {
@@ -1059,8 +1062,8 @@ export function scanRoadmapMarkdownFacts(
     while (lineEnd < view.byte_length && readByte(lineEnd) !== 0x0a) lineEnd += 1;
     let hashes = 0;
     while (hashes < 6 && lineStart + hashes < lineEnd && readByte(lineStart + hashes) === 0x23) hashes += 1;
+    const line = textDecoder.decode(view.sliceBytes(lineStart, lineEnd));
     if (hashes > 0 && lineStart + hashes < lineEnd && readByte(lineStart + hashes) === 0x20) {
-      const line = textDecoder.decode(view.sliceBytes(lineStart, lineEnd));
       const match = /^#{1,6} +(.+?)(?: +#*)?$/u.exec(line);
       if (match !== null) {
         const heading = match[1]!;
@@ -1073,6 +1076,13 @@ export function scanRoadmapMarkdownFacts(
         });
       }
     }
+    const anchor = /^\s*<a id="roadmap-id-([^"]+)"><\/a>\s*$/u.exec(line);
+    if (anchor !== null) {
+      const validation = validateRoadmapId(anchor[1]!);
+      if (!validation.ok) issues.push(issue(validation.code, source, "roadmap-anchor", validation.message,
+        { start_byte: lineStart, end_byte: lineEnd }));
+      else stableAnchorIds.push(validation.id);
+    }
     lineStart = lineEnd + 1;
   }
 
@@ -1084,9 +1094,17 @@ export function scanRoadmapMarkdownFacts(
     codePointSort(left.path, right.path) || left.span.start_byte - right.span.start_byte ||
     codePointSort(left.heading, right.heading)
   );
+  stableAnchorIds.sort(codePointSort);
+  for (let index = 1; index < stableAnchorIds.length; index++) {
+    if (stableAnchorIds[index] === stableAnchorIds[index - 1]) issues.push(issue(
+      "E-ID-DUPLICATE", source, "roadmap-anchor",
+      `stable roadmap anchor ${JSON.stringify(stableAnchorIds[index])} occurs more than once`,
+    ));
+  }
   return {
     citations: Object.freeze(citations),
     headings: Object.freeze(headings),
+    stable_anchor_ids: Object.freeze(stableAnchorIds),
     issues: sortIssues(issues),
   };
 }

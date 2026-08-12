@@ -1,8 +1,10 @@
 // @ts-expect-error Bun's text loader supports the live Markdown pickup; TypeScript has no .md declaration.
 import liveTestingProjectionText from "../../../tests/TESTING_ROADMAP.md" with { type: "text" };
 import liveTestingSourceText from "../../../tests/testing-roadmap.toml" with { type: "text" };
+import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
+import { resolveManifest } from "../manifest.ts";
 import type { RepoPath, SpanId } from "../model/core.ts";
 import type {
   RawFragmentV0,
@@ -16,6 +18,8 @@ import type {
   SourceReplacement,
   SourceSpan,
 } from "../model/documents.ts";
+import { renderValidatedChunks } from "../render.ts";
+import { buildExpectedChunks, validateCompletedChunks } from "../render_ir.ts";
 
 const UTF8 = new TextEncoder();
 const TESTING_SOURCE_PATH = "tests/testing-roadmap.toml" as RepoPath;
@@ -43,17 +47,34 @@ export function liveTestingV2Document(): RoadmapDocumentV2 {
   return decoded as RoadmapDocumentV2;
 }
 
-/** Historical complete-v1 view retained for WP4/WP5 transition fixtures after the live WP6 cutover. */
-export function liveTestingAuthoritativeDocument(): RoadmapDocumentV1 {
+export function liveTestingLegacyV2Document(): RoadmapDocumentV2 {
   const decoded = liveTestingV2Document();
   return {
     ...decoded,
+    document: { ...decoded.document, projection_layout: "legacy_v1" },
+    references: decoded.references.map((reference) => reference.kind === "file_heading" &&
+        reference.path === TESTING_PROJECTION_PATH && reference.heading === "Next work"
+      ? { ...reference, heading: "Next work items, in priority order" }
+      : reference),
+  };
+}
+
+/** Historical complete-v1 view retained for WP4/WP5 transition fixtures after the live WP6 cutover. */
+export function liveTestingAuthoritativeDocument(): RoadmapDocumentV1 {
+  const decoded = liveTestingV2Document();
+  const { projection_layout: _projectionLayout, ...document } = decoded.document;
+  return {
+    ...decoded,
     document: {
-      ...decoded.document,
+      ...document,
       schema_version: 1,
       semantic_conversion: "complete",
       frozen_legacy_span_ids: [],
     },
+    references: decoded.references.map((reference) => reference.kind === "file_heading" &&
+        reference.path === TESTING_PROJECTION_PATH && reference.heading === "Next work"
+      ? { ...reference, heading: "Next work items, in priority order" }
+      : reference),
   };
 }
 
@@ -66,8 +87,65 @@ export function liveTestingProjection(): Uint8Array {
   return UTF8.encode(liveTestingProjectionText);
 }
 
+/** Frozen pre-WP7 projection used only by historical v0/v1 transition fixtures. */
+export function liveTestingLegacyProjection(): Uint8Array {
+  const document = liveTestingV2Document();
+  const placement = resolveManifest(document);
+  const completed = buildExpectedChunks(document, placement.ops, {
+    renderSemanticRecord(record, fields) {
+      return TESTING_ADAPTER.renderSemantic(record, fields);
+    },
+    resolveGeneratedSlot() {
+      return undefined;
+    },
+  });
+  const issues = [
+    ...placement.issues,
+    ...validateCompletedChunks(document, placement.ops, completed),
+  ];
+  assert(issues.length === 0, `live testing legacy projection failed rendering: ${JSON.stringify(issues)}`);
+  const projection = renderValidatedChunks(completed.chunks, issues, completed.expected_bytes);
+  assert(
+    projection.byteLength === 323_398 &&
+      sha256(projection) === "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b4120d70e",
+    "rendered testing legacy projection escaped its frozen length/digest",
+  );
+  return projection;
+}
+
 function sha256(value: Uint8Array): string {
   return new Bun.CryptoHasher("sha256").update(value).digest("hex");
+}
+
+function replacementSpanIds(value: {
+  readonly span_ids?: readonly SpanId[];
+  readonly source_replacements?: readonly SourceReplacement[];
+}): readonly SpanId[] {
+  if (value.span_ids !== undefined) return value.span_ids;
+  assert(value.source_replacements !== undefined, "live testing owner has neither raw spans nor semantic replacements");
+  return value.source_replacements.map((replacement) => replacement.span_id);
+}
+
+function frozenOwnerField(value: object, spanId: SpanId): Uint8Array {
+  if ("source_block_md" in value && value.source_block_md instanceof Uint8Array) return value.source_block_md;
+  assert(
+    "source_replacements" in value && Array.isArray(value.source_replacements),
+    `live testing semantic owner lacks replacement for ${spanId}`,
+  );
+  const replacement = (value.source_replacements as SourceReplacement[]).find((entry) => entry.span_id === spanId);
+  assert(replacement !== undefined, `live testing semantic owner lacks replacement row for ${spanId}`);
+  if (replacement.replacement_field === "body_md" && "body_md" in value && value.body_md instanceof Uint8Array) {
+    return value.body_md;
+  }
+  if (replacement.replacement_field === "marker_md" && "marker_md" in value && value.marker_md instanceof Uint8Array) {
+    return value.marker_md;
+  }
+  if (replacement.replacement_field.startsWith("payload.") && "payload" in value) {
+    const field = replacement.replacement_field.slice("payload.".length);
+    const bytes = (value.payload as Record<string, unknown>)[field];
+    if (bytes instanceof Uint8Array) return bytes;
+  }
+  throw new Error(`live testing replacement ${replacement.replacement_field} has no authored bytes`);
 }
 
 function reconstructedRawFields(
@@ -75,32 +153,41 @@ function reconstructedRawFields(
   sourceKind: SourceSpan["source_kind"],
   ownerId: string,
   spans: ReadonlyMap<SpanId, SourceSpan>,
-  projection: Uint8Array,
 ): { readonly source_block_md: Uint8Array; readonly span_ids: SpanId[] } {
-  const spanIds = value.span_ids ?? value.source_replacements?.map((replacement) => replacement.span_id);
-  assert(spanIds !== undefined && spanIds.length > 0, `live testing owner ${ownerId} has no reconstructable legacy span`);
-  const selected = spanIds.map((spanId) => {
+  const selected = replacementSpanIds(value).map((spanId) => {
     const span = spans.get(spanId);
     assert(span !== undefined, `live testing owner ${ownerId} refers to missing span ${spanId}`);
     assert(span.source_kind === sourceKind && span.owner_id === ownerId, `live testing span ${span.id} has the wrong owner`);
-    const bytes = projection.slice(span.start_byte, span.end_byte);
-    assert(sha256(bytes) === span.sha256, `live testing span ${span.id} differs from frozen projection bytes`);
-    return { span, bytes };
-  }).sort((left, right) => left.span.start_byte - right.span.start_byte);
-  const sourceBlock = new Uint8Array(selected.reduce((total, item) => total + item.bytes.byteLength, 0));
-  let offset = 0;
-  for (const item of selected) {
-    sourceBlock.set(item.bytes, offset);
-    offset += item.bytes.byteLength;
+    return span;
+  }).sort((left, right) => left.start_byte - right.start_byte);
+  assert(selected.length > 0, `live testing owner ${ownerId} has no reconstructable legacy span`);
+  for (let index = 1; index < selected.length; index++) {
+    assert(
+      selected[index - 1]!.end_byte === selected[index]!.start_byte,
+      `live testing owner ${ownerId} has non-contiguous legacy spans`,
+    );
   }
-  return { source_block_md: sourceBlock, span_ids: selected.map((item) => item.span.id) };
+  const chunks = selected.map((span) => {
+    const bytes = frozenOwnerField(value, span.id);
+    assert(
+      bytes.byteLength === span.end_byte - span.start_byte && sha256(bytes) === span.sha256,
+      `live testing authored field for ${span.id} differs from frozen legacy provenance`,
+    );
+    return bytes;
+  });
+  const sourceBlock = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    sourceBlock.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { source_block_md: sourceBlock, span_ids: selected.map((span) => span.id) };
 }
 
 export function liveTestingShadowV0Document(
   authoritative: RoadmapDocumentV1 = liveTestingAuthoritativeDocument(),
 ): RoadmapDocumentV0 {
   assert(authoritative.document.source_path === TESTING_SOURCE_PATH && authoritative.document.projection_path === TESTING_PROJECTION_PATH, "testing shadow reconstruction requires live paths");
-  const projection = liveTestingProjection();
   const spans = new Map(authoritative.spans.map((span) => [span.id, span]));
   const promotedParts = authoritative.records.filter((owner): owner is Extract<
     RoadmapDocumentV1["records"][number],
@@ -116,17 +203,17 @@ export function liveTestingShadowV0Document(
   const sections: RawSectionV0[] = authoritative.sections.map((owner) => ({
     section_id: owner.section_id, title: owner.title,
     ...(owner.legacy_aliases === undefined ? {} : { legacy_aliases: [...owner.legacy_aliases] }),
-    ...reconstructedRawFields(owner, "section", owner.section_id, spans, projection),
+    ...reconstructedRawFields(owner, "section", owner.section_id, spans),
   }));
   const fragments: RawFragmentV0[] = authoritative.fragments.map((owner) => ({
     fragment_id: owner.fragment_id, projection_group: owner.projection_group,
     ...(owner.title === undefined ? {} : { title: owner.title }),
     ...(owner.legacy_aliases === undefined ? {} : { legacy_aliases: [...owner.legacy_aliases] }),
-    ...reconstructedRawFields(owner, "fragment", owner.fragment_id, spans, projection),
+    ...reconstructedRawFields(owner, "fragment", owner.fragment_id, spans),
   }));
   const legacyMarkers: RawLegacyMarkerV0[] = authoritative.legacy_markers.map((owner) => ({
     marker_id: owner.marker_id, legacy_aliases: [...owner.legacy_aliases],
-    ...reconstructedRawFields(owner, "legacy_marker", owner.marker_id, spans, projection),
+    ...reconstructedRawFields(owner, "legacy_marker", owner.marker_id, spans),
   }));
   const records: RawRecordV0[] = authoritative.records.filter((owner) =>
     (owner.render_authority !== "semantic" || owner.projection_visibility === "document") &&
@@ -135,12 +222,12 @@ export function liveTestingShadowV0Document(
     id: owner.id, title: owner.title, projection_group: owner.projection_group,
     ...(owner.legacy_aliases === undefined ? {} : { legacy_aliases: [...owner.legacy_aliases] }),
     ...(owner.tags === undefined ? {} : { tags: [...owner.tags] }),
-    ...reconstructedRawFields(owner, "record", owner.id, spans, projection),
+    ...reconstructedRawFields(owner, "record", owner.id, spans),
   }));
   const parts: RawPartV0[] = authoritative.parts.map((owner) => ({
     part_id: owner.part_id, parent_record_id: owner.parent_record_id,
     ...(owner.title === undefined ? {} : { title: owner.title }),
-    ...reconstructedRawFields(owner, "part", owner.part_id, spans, projection),
+    ...reconstructedRawFields(owner, "part", owner.part_id, spans),
   }));
   for (const owner of promotedParts) {
     const partId = promotedPartIds.get(owner.id)!;
@@ -152,7 +239,7 @@ export function liveTestingShadowV0Document(
       part_id: partId as RawPartV0["part_id"],
       parent_record_id: parentRelations[0]!.source,
       title: owner.title,
-      ...reconstructedRawFields(owner, "record", owner.id, spans, projection),
+      ...reconstructedRawFields(owner, "record", owner.id, spans),
     });
   }
   assert(
