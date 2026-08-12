@@ -4872,7 +4872,7 @@ part_id = "part-nested-cargo-test"
 parent_record_id = "testing.execution-binary-wrappers-true-last-documented-flag-value"
 title = "nested `cargo test`"
 render_authority = "raw"
-lifecycle_disposition = "independent_record"
+lifecycle_disposition = "parent_supporting_prose"
 source_block_md = """    + nested `cargo test`
     (`no_annotate_reframed_emissions_round_trip_non_canonical_wire_byte_exactly`), added because a
     compile floor structurally cannot tell \"compiles\" from \"compiles and re-encodes the same

@@ -19,8 +19,9 @@ import type {
   RoadmapWritePorts,
   ScratchGitHarnessPorts,
 } from "../io.ts";
-import type { FixtureRelativePath, RepoPath, RepositoryRevision } from "../model/core.ts";
+import type { FixtureRelativePath, RepoPath, RepositoryRevision, RoadmapId } from "../model/core.ts";
 import type { RoadmapDocumentV0, RoadmapDocumentV1, SemanticPayload } from "../model/documents.ts";
+import { validateRoadmapId } from "../ids.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
 import {
   LEGACY_STATUS_OUTPUT_CLAIMS,
@@ -141,6 +142,10 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_against_structural_promotion_other_base_not_loaded",
   "cli_against_structural_record_composition",
   "cli_against_structural_semantic_only_composition",
+  "cli_against_part_to_record_scoped_matrix",
+  "cli_against_part_to_record_scoped_testing",
+  "cli_against_part_to_record_all_simultaneous",
+  "cli_against_part_to_record_other_base_not_loaded",
   "cli_semantic_conversion_current_omission_rejected",
 ] as const;
 
@@ -316,6 +321,7 @@ function promotionDocuments(
     readonly record?: boolean;
     readonly structural?: boolean;
     readonly semantic_only?: boolean;
+    readonly part_to_record?: boolean;
   } = {},
 ): { readonly base: RoadmapDocumentV1; readonly candidate: RoadmapDocumentV1; readonly projection: Uint8Array } {
   const sourcePath = (roadmap === "matrix" ? "cddl-matrix/roadmap.toml" : "tests/testing-roadmap.toml") as RepoPath;
@@ -341,6 +347,7 @@ function promotionDocuments(
   };
   const includeRecord = options.record ?? true;
   const includeStructural = options.structural ?? false;
+  const includePartToRecord = options.part_to_record ?? false;
   const base: RoadmapDocumentV1 = {
     ...v1,
     records: includeRecord
@@ -394,6 +401,44 @@ function promotionDocuments(
     } : record)
     : base.records;
   let manifest = base.manifest;
+  let parts = base.parts;
+  let relations = base.relations;
+  let partToRecordSpanId: RoadmapDocumentV1["spans"][number]["id"] | undefined;
+  if (includePartToRecord) {
+    const independentPart = base.parts.find((value) =>
+      "source_block_md" in value && value.span_ids.length === 1 && value.title !== undefined &&
+      value.lifecycle_disposition === "independent_record"
+    );
+    if (independentPart === undefined || !("source_block_md" in independentPart)) {
+      throw new Error(`${roadmap} part-to-record fixture lacks a reviewed independent singleton owner`);
+    }
+    const parent = base.records.find((record) => record.id === independentPart.parent_record_id);
+    if (parent === undefined) throw new Error(`${roadmap} part-to-record fixture lacks its parent`);
+    const id = `${roadmap}.${independentPart.part_id}` as (typeof rawRecord)["id"];
+    partToRecordSpanId = independentPart.span_ids[0]!;
+    records = [...records, {
+      id,
+      title: independentPart.title!,
+      projection_group: parent.projection_group,
+      render_authority: "semantic",
+      projection_visibility: "document",
+      payload: {
+        ...payload,
+        summary_md: UTF8.encode("Typed part metadata."),
+        detail_md: independentPart.source_block_md,
+      },
+      source_replacements: [{
+        span_id: partToRecordSpanId,
+        replacement_field: "payload.detail_md",
+        review_note_md: UTF8.encode("Reviewed exact independent part conversion."),
+      }],
+    }];
+    parts = base.parts.filter((value) => value !== independentPart);
+    manifest = manifest.map((entry) => entry.kind === "part" && entry.part_id === independentPart.part_id
+      ? { kind: "record" as const, record_id: id }
+      : entry);
+    relations = [...relations, { source: independentPart.parent_record_id, kind: "parent_of", target: id }];
+  }
   if (options.semantic_only === true) {
     const semanticOnlyId = `${roadmap}.fixture-semantic-only-structural` as (typeof rawRecord)["id"];
     records = [...records, {
@@ -431,7 +476,7 @@ function promotionDocuments(
       body_md: rawFragment.source_block_md,
       source_replacements: rawFragment.span_ids.map(replacement),
     }),
-    parts: rawPart === undefined ? base.parts : base.parts.map((value) => value !== rawPart ? value : {
+    parts: rawPart === undefined ? parts : parts.map((value) => value !== rawPart ? value : {
       part_id: rawPart.part_id,
       parent_record_id: rawPart.parent_record_id,
       ...(rawPart.title === undefined ? {} : { title: rawPart.title }),
@@ -442,12 +487,22 @@ function promotionDocuments(
     }),
     records,
     manifest,
-    spans: base.spans.map((span) => convertedSpanIds.has(span.id) ? {
+    relations,
+    spans: base.spans.map((span) => span.id === partToRecordSpanId ? {
+      ...span,
+      source_kind: "record" as const,
+      owner_id: `${roadmap}.${base.parts.find((value) => "span_ids" in value && value.span_ids.includes(span.id))!.part_id}`,
+      owner_field: "payload.detail_md",
+      migration_status: "replaced" as const,
+    } : convertedSpanIds.has(span.id) ? {
       ...span,
       owner_field: structuralSpanIds.has(span.id) ? "body_md" : "payload.summary_md",
       migration_status: "replaced" as const,
     } : span),
   };
+  if (partToRecordSpanId !== undefined) {
+    candidate.document.frozen_legacy_span_ids = candidate.document.frozen_legacy_span_ids.filter((spanId) => spanId !== partToRecordSpanId);
+  }
   return {
     base,
     candidate,
@@ -1556,6 +1611,28 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       }
       return pass("positive");
     }
+    case "cli_against_part_to_record_scoped_matrix":
+    case "cli_against_part_to_record_scoped_testing":
+    case "cli_against_part_to_record_all_simultaneous":
+    case "cli_against_part_to_record_other_base_not_loaded": {
+      const selection = id.includes("all_simultaneous") ? "all" : id.includes("testing") ? "testing" : "matrix";
+      const baseReads: RepoPath[] = [];
+      const result = run(
+        ["--check", "--roadmap", selection, "--against", HASH],
+        promotionPorts(context, selection, baseReads, { record: false, part_to_record: true }),
+      );
+      assert(
+        result.exit_code === 0 && result.stderr.byteLength === 0 && text(result.stdout).includes("CHECK OK\n"),
+        `${id} failed through public part-to-record --against: ${text(result.stderr)}`,
+      );
+      if (id === "cli_against_part_to_record_other_base_not_loaded") {
+        assert(
+          JSON.stringify(baseReads) === JSON.stringify(["cddl-matrix/roadmap.toml"]),
+          `scoped part-to-record promotion loaded an unselected base roadmap: ${JSON.stringify(baseReads)}`,
+        );
+      }
+      return pass("positive");
+    }
     case "cli_semantic_conversion_current_omission_rejected": {
       const sources = bothAuthoritativePorts();
       const omitted = (bytes: Uint8Array): Uint8Array => UTF8.encode(
@@ -1638,7 +1715,6 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         "part-inline-anonymous-two-arm-choices-recognized",
         "part-mangling-still-general-fix",
         "part-member-position-duplicates-extension",
-        "part-nested-cargo-test",
         "part-non-idiom-choice-bodied-generic-defs-refused-supported",
         "part-occurrence-aware-generic-instance-identity",
         "part-own-reviewed-change-never-drive",
@@ -1677,7 +1753,50 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           ),
           `${name} live parts do not all carry an explicit reviewed lifecycle disposition`,
         );
+
+        const readiness = document.parts.filter((part) =>
+          part.render_authority === "raw" && part.lifecycle_disposition === "independent_record"
+        );
+        const expectedReadiness = name === "matrix" ? 4 : 31;
+        const expectedDelta = name === "matrix" ? -16 : -124;
+        assert(readiness.length === expectedReadiness, `${name} part-to-record readiness denominator drifted`);
+        assert(-readiness.length * 4 === expectedDelta, `${name} part-to-record blocker delta floor drifted`);
+        const mintedIds = readiness.map((part) => `${name}.${part.part_id}`);
+        assert(new Set(mintedIds).size === mintedIds.length, `${name} part-to-record deterministic IDs collide`);
+        const activeIds = new Set(document.records.map((record) => record.id));
+        const systematicIds = new Set<string>();
+        for (const record of document.records) {
+          const payload = "payload" in record ? record.payload
+            : "semantic_shadow" in record ? record.semantic_shadow : undefined;
+          if (payload?.kind !== "family") continue;
+          for (const axis of payload.axes) {
+            systematicIds.add(axis.id);
+            for (const value of axis.values) systematicIds.add(value.id);
+          }
+          for (const value of payload.evidence_requirements) systematicIds.add(value.id);
+          for (const value of payload.cells) systematicIds.add(value.id);
+          for (const value of payload.exclusions) systematicIds.add(value.id);
+        }
+        for (const [index, part] of readiness.entries()) {
+          const recordId = mintedIds[index]! as RoadmapId;
+          assert(validateRoadmapId(recordId, name).ok, `${name} part-to-record ID is not permanent grammar: ${recordId}`);
+          assert(!activeIds.has(recordId) && !systematicIds.has(recordId), `${name} part-to-record ID collides: ${recordId}`);
+          assert(part.title !== undefined && part.title.length > 0, `${name} ready part lacks a record title: ${part.part_id}`);
+          assert("source_block_md" in part, `${name} ready part is not a raw source owner: ${part.part_id}`);
+          if (!("source_block_md" in part)) continue;
+          assert(part.span_ids.length === 1, `${name} ready part lacks a singleton span: ${part.part_id}`);
+          assert(document.spans.filter((span) => span.id === part.span_ids[0] && span.source_kind === "part" &&
+            span.owner_id === part.part_id && span.owner_field === "source_block_md" && span.migration_status === "raw").length === 1,
+          `${name} ready part lacks its exact raw span: ${part.part_id}`);
+          assert(document.manifest.filter((entry) => entry.kind === "part" && entry.part_id === part.part_id).length === 1,
+            `${name} ready part lacks one replaceable manifest slot: ${part.part_id}`);
+          assert(document.records.filter((record) => record.id === part.parent_record_id).length === 1,
+            `${name} ready part lacks one parent record: ${part.part_id}`);
+        }
       }
+      const testingNested = testing.parts.find((part) => part.part_id === "part-nested-cargo-test");
+      assert(testingNested?.render_authority === "raw" && testingNested.lifecycle_disposition === "parent_supporting_prose",
+        "testing nested-cargo source classification exception drifted");
       assert(matrix.fragments.length === 5 && matrix.parts.length === 13, "matrix subordinate live denominator drifted");
       assert(testing.fragments.length === 2 && testing.parts.length === 60, "testing subordinate live denominator drifted");
       return pass("positive");
@@ -1696,13 +1815,13 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         return JSON.stringify(keys) === JSON.stringify([...keys].sort((left, right) => left < right ? -1 : left > right ? 1 : 0));
       };
       assert(independentTotal(matrix) === 18, `matrix independent migration floor drifted: ${independentTotal(matrix)}`);
-      assert(independentTotal(testing) === 34, `testing independent migration floor drifted: ${independentTotal(testing)}`);
+      assert(independentTotal(testing) === 33, `testing independent migration floor drifted: ${independentTotal(testing)}`);
       assert(JSON.stringify(matrix.independent_counts) === JSON.stringify({
         inferred_transitions: 7, pending_family_classifications: 7, raw_subordinate_lifecycles: 4,
         unmodelled_coordinates: 0, unrendered_fields: 0, unresolved_references: 0,
       }), "matrix independent category vector drifted");
       assert(JSON.stringify(testing.independent_counts) === JSON.stringify({
-        inferred_transitions: 1, pending_family_classifications: 1, raw_subordinate_lifecycles: 32,
+        inferred_transitions: 1, pending_family_classifications: 1, raw_subordinate_lifecycles: 31,
         unmodelled_coordinates: 0, unrendered_fields: 0, unresolved_references: 0,
       }), "testing independent category vector drifted");
       assert(
@@ -1722,10 +1841,10 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           testing.migration_progress.raw_spans.count === 208 &&
           testing.migration_progress.frozen_spans.count === 208 &&
           testing.migration_progress.semantic_shadows.count === 1 &&
-          testing.migration_progress.boundary_debt.count === 32 &&
+          testing.migration_progress.boundary_debt.count === 31 &&
           testing.migration_progress.replacement_coverage.denominator === 0 &&
           testing.migration_progress.replacement_coverage.numerator === 0 &&
-          testing.migration_progress.completion_audit.lane_blockers.length === 659 &&
+          testing.migration_progress.completion_audit.lane_blockers.length === 658 &&
           testing.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
         "testing exact live migration facts drifted",
       );

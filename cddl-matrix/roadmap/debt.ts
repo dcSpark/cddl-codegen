@@ -19,9 +19,11 @@ import type {
   ManifestEntry,
   ReplacementPin,
   RoadmapDocument,
+  RoadmapDocumentV1,
   SemanticPayload,
   TombstoneOwnerFact,
 } from "./model/documents.ts";
+import { validateRoadmapId } from "./ids.ts";
 import {
   exactProjectedFieldSegment,
   type CompletedRenderIr,
@@ -1009,6 +1011,220 @@ function structuralPromotionFacts(
   return count;
 }
 
+function partToRecordPromotionFacts(
+  base: MigrationDebt,
+  candidate: MigrationDebt,
+  options: Pick<DebtComparisonOptions, "base_document" | "candidate_document"> & {
+    readonly base_completed?: CompletedRenderIr;
+    readonly candidate_completed?: CompletedRenderIr;
+  },
+  removed: Set<string>,
+  added: Set<string>,
+  issues: RoadmapIssue[],
+): { readonly count: number; readonly record_ids: ReadonlySet<RoadmapId> } {
+  const comparisonOptions: DebtComparisonOptions = options;
+  const roadmap = options.base_document.document.roadmap;
+  const converted = new Set<RoadmapId>();
+  let count = 0;
+  const expectedIds = new Map<RoadmapId, typeof options.base_document.parts[number][]>();
+  for (const part of options.base_document.parts) {
+    const id = `${roadmap}.${part.part_id}` as RoadmapId;
+    const rows = expectedIds.get(id) ?? [];
+    rows.push(part);
+    expectedIds.set(id, rows);
+  }
+  const baseSystematicIds = new Set(documentSystematicProviders(options.base_document).map((value) => value.id));
+  const candidateSystematicIds = new Set(documentSystematicProviders(options.candidate_document).map((value) => value.id));
+  const baseV1 = options.base_document.document.schema_version === 1
+    ? options.base_document as RoadmapDocumentV1
+    : undefined;
+  const candidateV1 = options.candidate_document.document.schema_version === 1
+    ? options.candidate_document as RoadmapDocumentV1
+    : undefined;
+  const attemptedPartConversions = [...expectedIds].flatMap(([id, parts]) => {
+    const records = options.candidate_document.records.filter((record) =>
+      record.id === id && "payload" in record && record.projection_visibility === "document"
+    );
+    return parts.length === 1 && records.length === 1 ? [{ id, part: parts[0]! }] : [];
+  });
+  const attemptedPartIds = new Map(attemptedPartConversions.map(({ id, part }) => [part.part_id, id]));
+  const relationSort = (left: RoadmapDocumentV1["relations"][number], right: RoadmapDocumentV1["relations"][number]): number =>
+    codePointSort(JSON.stringify(exactValueSignature(left)), JSON.stringify(exactValueSignature(right)));
+  const expectedConversionRelations = (baseV1 === undefined ? [] : [
+    ...baseV1.relations,
+    ...attemptedPartConversions.map(({ id, part }) => ({
+      source: part.parent_record_id,
+      kind: "parent_of" as const,
+      target: id,
+    })),
+  ]).sort(relationSort);
+  const expectedConversionManifest = options.base_document.manifest.map((entry) => {
+    if (entry.kind !== "part") return entry;
+    const id = attemptedPartIds.get(entry.part_id);
+    return id === undefined ? entry : { kind: "record" as const, record_id: id };
+  });
+  for (const [recordId, matchingParts] of expectedIds) {
+    const candidateRecords = options.candidate_document.records.filter((record) => record.id === recordId);
+    if (candidateRecords.length === 0) continue;
+    const candidateRecord = candidateRecords[0]!;
+    if (!("payload" in candidateRecord) || candidateRecord.projection_visibility !== "document") continue;
+    const part = matchingParts[0];
+    const path = `part_to_record[${JSON.stringify(recordId)}]`;
+    const idResult = validateRoadmapId(recordId, roadmap);
+    const basePartMatches = part !== undefined && matchingParts.length === 1 &&
+      "source_block_md" in part && "render_authority" in part && part.render_authority === "raw" &&
+      part.lifecycle_disposition === "independent_record";
+    const candidatePartMatches = part === undefined ? [] : options.candidate_document.parts.filter((value) =>
+      value.part_id === part.part_id
+    );
+    const baseRecordCollisions = options.base_document.records.filter((record) => record.id === recordId);
+    let valid = idResult.ok && basePartMatches && candidateRecords.length === 1 &&
+      candidatePartMatches.length === 0 && baseRecordCollisions.length === 0 && !baseSystematicIds.has(recordId) &&
+      !candidateSystematicIds.has(recordId) &&
+      options.base_document.document.schema_version === 1 && options.candidate_document.document.schema_version === 1;
+    if (part === undefined || !("source_block_md" in part)) valid = false;
+    if (part === undefined || !("source_block_md" in part)) {
+      issues.push(issue(comparisonOptions, "E-DEBT-OWNER-REGRESSION", path,
+        "candidate-visible record has no unique reviewed independent part source"));
+      continue;
+    }
+    const parentBase = options.base_document.records.filter((record) => record.id === part.parent_record_id);
+    const parentCandidate = options.candidate_document.records.filter((record) => record.id === part.parent_record_id);
+    const parentProjectionGroup = parentBase.length === 1 ? parentBase[0]!.projection_group : undefined;
+    const parentRelations = candidateV1?.relations.filter((relation) =>
+      relation.source === recordId || relation.target === recordId
+    ) ?? [];
+    valid = valid && part.title !== undefined && candidateRecord.title === part.title &&
+      parentBase.length === 1 && parentCandidate.length === 1 &&
+      candidateRecord.projection_group === parentProjectionGroup &&
+      candidateRecord.projection_group === parentCandidate[0]?.projection_group && parentRelations.length === 1 &&
+      parentRelations[0]?.source === part.parent_record_id && parentRelations[0]?.kind === "parent_of" &&
+      parentRelations[0]?.target === recordId && parentRelations[0]?.note_md === undefined &&
+      candidateV1 !== undefined && exactSemanticValue([...candidateV1.relations].sort(relationSort), expectedConversionRelations);
+
+    const replacement = candidateRecord.source_replacements[0];
+    const spanId = part.span_ids[0];
+    valid = valid && part.span_ids.length === 1 && candidateRecord.source_replacements.length === 1 &&
+      replacement !== undefined && spanId !== undefined && replacement.span_id === spanId &&
+      replacement.replacement_field === "payload.detail_md" && replacement.review_note_md.byteLength > 0 &&
+      "detail_md" in candidateRecord.payload && candidateRecord.payload.detail_md instanceof Uint8Array &&
+      bytesEqual(part.source_block_md, candidateRecord.payload.detail_md);
+
+    const baseManifest = options.base_document.manifest.flatMap((entry, index) =>
+      entry.kind === "part" && entry.part_id === part.part_id ? [index] : []
+    );
+    const candidateManifest = options.candidate_document.manifest.flatMap((entry, index) =>
+      entry.kind === "record" && entry.record_id === recordId ? [index] : []
+    );
+    const semanticOnlyAdditionIds = new Set(options.candidate_document.records.filter((record) =>
+      !options.base_document.records.some((baseRecord) => baseRecord.id === record.id) &&
+      "payload" in record && record.projection_visibility === "semantic_only" &&
+      record.source_replacements.length === 0
+    ).map((record) => record.id));
+    const candidateConversionManifest = options.candidate_document.manifest.filter((entry) =>
+      !(entry.kind === "record" && semanticOnlyAdditionIds.has(entry.record_id))
+    );
+    valid = valid && baseManifest.length === 1 && candidateManifest.length === 1 &&
+      baseManifest[0] === candidateManifest[0] &&
+      !options.candidate_document.manifest.some((entry) => entry.kind === "part" && entry.part_id === part.part_id) &&
+      exactSemanticValue(candidateConversionManifest, expectedConversionManifest);
+
+    const baseChunk = exactOwnerChunk(options.base_completed, "part", part.part_id);
+    const candidateChunk = options.candidate_completed === undefined
+      ? undefined
+      : recordChunk(options.candidate_completed, recordId);
+    const ledgers = options.candidate_completed?.field_consumption.filter((entry) =>
+      entry.owner_kind === "record" && entry.owner_id === recordId
+    ) ?? [];
+    const payloadFields = semanticMarkdownFields(candidateRecord.payload);
+    const ledger = ledgers[0];
+    valid = valid && baseChunk !== undefined && candidateChunk !== undefined && ledgers.length === 1 &&
+      baseChunk.owner.field === "source_block_md" && candidateChunk.owner.field === "payload" &&
+      baseChunk.manifest_index === baseManifest[0] && candidateChunk.manifest_index === candidateManifest[0] &&
+      bytesEqual(baseChunk.bytes, part.source_block_md) && bytesEqual(candidateChunk.bytes, part.source_block_md) &&
+      options.base_completed?.expected_bytes.bytesEqual(options.candidate_completed!.expected_bytes) === true &&
+      exactSemanticValue(ledger?.expected_fields, payloadFields) &&
+      ledger?.duplicate_fields.length === 0 && ledger?.unknown_fields.length === 0 &&
+      ledger?.mismatched_fields.length === 0 && ledger?.consumed_fields.length === payloadFields.length &&
+      payloadFields.every((field) => ledger?.consumed_fields.filter((value) => value === field).length === 1) &&
+      exactSemanticValue(candidateChunk.source_span_ids, [spanId]) &&
+      exactSemanticValue(candidateChunk.consumed_fields, ledger?.consumed_fields) &&
+      options.base_completed?.build_issues.length === 0 && options.candidate_completed?.build_issues.length === 0;
+
+    const projected = options.candidate_completed?.projected_field_segments.filter((segment) =>
+      segment.owner_kind === "record" && segment.owner_id === recordId
+    ) ?? [];
+    valid = valid && projected.length === 1 && projected[0]?.logical_path === "payload.detail_md";
+    const baseSpans = options.base_document.spans.filter((span) => span.id === spanId);
+    const candidateSpans = options.candidate_document.spans.filter((span) => span.id === spanId);
+    const baseOwnerSpans = options.base_document.spans.filter((span) =>
+      span.source_kind === "part" && span.owner_id === part.part_id
+    );
+    const candidateOwnerSpans = options.candidate_document.spans.filter((span) =>
+      span.source_kind === "record" && span.owner_id === recordId
+    );
+    const baseSpan = baseSpans[0];
+    const candidateSpan = candidateSpans[0];
+    const candidateConvertedSpanIds = new Set(options.candidate_document.spans.filter((span) =>
+      span.migration_status === "replaced"
+    ).map((span) => span.id));
+    const expectedFrozen = baseV1?.document.frozen_legacy_span_ids.filter((id) =>
+      !candidateConvertedSpanIds.has(id)
+    );
+    valid = valid && baseSpans.length === 1 && candidateSpans.length === 1 &&
+      baseOwnerSpans.length === 1 && candidateOwnerSpans.length === 1 && baseSpan !== undefined &&
+      candidateSpan !== undefined && baseSpan.start_byte === candidateSpan.start_byte &&
+      baseSpan.end_byte === candidateSpan.end_byte && baseSpan.sha256 === candidateSpan.sha256 &&
+      baseSpan.source_kind === "part" && baseSpan.owner_id === part.part_id &&
+      baseSpan.owner_field === "source_block_md" && baseSpan.migration_status === "raw" &&
+      candidateSpan.source_kind === "record" && candidateSpan.owner_id === recordId &&
+      candidateSpan.owner_field === "payload.detail_md" && candidateSpan.migration_status === "replaced" &&
+      baseV1?.document.frozen_legacy_span_ids.includes(spanId!) === true &&
+      candidateV1?.document.frozen_legacy_span_ids.includes(spanId!) === false && expectedFrozen !== undefined &&
+      exactSemanticValue(candidateV1?.document.frozen_legacy_span_ids, expectedFrozen) &&
+      candidateChunk !== undefined && candidateSpan !== undefined && exactProjectedFieldSegment(
+        options.candidate_completed!, candidateChunk, "record", recordId, "payload.detail_md",
+        candidateSpan.start_byte, candidateSpan.end_byte,
+      ) !== undefined;
+
+    const removedKey: DebtOwnerKey = { roadmap, owner_kind: "part", owner_id: part.part_id, owner_field: "source_block_md" };
+    const removedIndex = debtOwnerIndex(removedKey);
+    const spanKey: DebtOwnerKey = { roadmap, owner_kind: "source_span", owner_id: spanId!, owner_field: "coverage" };
+    const spanIndex = debtOwnerIndex(spanKey);
+    const expectedAdded = payloadFields.map((field): DebtOwnerKey => ({
+      roadmap, owner_kind: "record", owner_id: recordId, owner_field: field,
+    }));
+    const lifecycleRows = [...base.independent.values()].filter((value) =>
+      value.category === "raw_subordinate_lifecycles" && value.owner.owner_kind === "part" &&
+      value.owner.owner_id === part.part_id
+    );
+    const candidateLifecycleRows = [...candidate.independent.values()].filter((value) =>
+      value.category === "raw_subordinate_lifecycles" && value.owner.owner_kind === "part" &&
+      value.owner.owner_id === part.part_id
+    );
+    valid = valid && base.owners.get(removedIndex)?.state === "raw_unclassified" &&
+      !candidate.owners.has(removedIndex) && lifecycleRows.length === 1 && candidateLifecycleRows.length === 0 &&
+      base.owners.get(spanIndex)?.state === "raw_unclassified" &&
+      candidate.owners.get(spanIndex)?.state === "semantic" &&
+      base.frozen_legacy_spans.has(spanIndex) && !candidate.frozen_legacy_spans.has(spanIndex) &&
+      expectedAdded.length > 0 &&
+      expectedAdded.every((key) => !base.owners.has(debtOwnerIndex(key)) &&
+        candidate.owners.get(debtOwnerIndex(key))?.state === "semantic") &&
+      [...candidate.owners.values()].filter(({ key }) => key.owner_kind === "record" && key.owner_id === recordId)
+        .length === expectedAdded.length;
+    if (!valid) {
+      issues.push(issue(comparisonOptions, "E-DEBT-OWNER-REGRESSION", path,
+        "part-to-record conversion lacks reviewed independence, deterministic collision-free identity, exact parent/manifest/bytes/span/frozen/render/debt joins, or complete Markdown consumption"));
+      continue;
+    }
+    converted.add(recordId);
+    count++;
+    removed.add(removedIndex);
+    for (const key of expectedAdded) added.add(debtOwnerIndex(key));
+  }
+  return Object.freeze({ count, record_ids: converted });
+}
+
 /**
  * Recognize the one public raw+shadow -> document-visible semantic conversion. The request is
  * derived entirely from exact base/candidate documents and completed render IR; no caller-shaped
@@ -1029,10 +1245,13 @@ export function validateSemanticConversionFacts(
   const baseRecords = new Map(options.base_document.records.map((record) => [record.id, record]));
   let promotionCount = 0;
   promotionCount += structuralPromotionFacts(base, candidate, options, removed, added, issues);
+  const partToRecord = partToRecordPromotionFacts(base, candidate, options, removed, added, issues);
+  promotionCount += partToRecord.count;
 
   for (const candidateRecord of options.candidate_document.records) {
     const baseRecord = baseRecords.get(candidateRecord.id);
     if (baseRecord === undefined) {
+      if (partToRecord.record_ids.has(candidateRecord.id)) continue;
       const validSemanticOnly = "payload" in candidateRecord &&
         candidateRecord.projection_visibility === "semantic_only" &&
         candidateRecord.source_replacements.length === 0 &&
@@ -1190,6 +1409,30 @@ export function validateSemanticConversionFacts(
     }
     removed.add(removedIndex);
     for (const key of expectedAdded) added.add(debtOwnerIndex(key));
+  }
+
+  for (const part of options.base_document.parts) {
+    if (!("source_block_md" in part) || !("render_authority" in part) ||
+      part.lifecycle_disposition !== "independent_record") continue;
+    const expectedId = `${options.base_document.document.roadmap}.${part.part_id}` as RoadmapId;
+    const candidateStillHasPart = options.candidate_document.parts.some((value) => value.part_id === part.part_id);
+    const candidateHasVisibleRecord = options.candidate_document.records.some((record) =>
+      record.id === expectedId && "payload" in record && record.projection_visibility === "document"
+    );
+    if (!candidateStillHasPart && !candidateHasVisibleRecord) {
+      issues.push(issue(comparisonOptions, "E-DEBT-OWNER-REGRESSION", `part[${JSON.stringify(part.part_id)}]`,
+        "reviewed independent part disappeared without its deterministic document-visible record"));
+    }
+  }
+
+  if (options.base_document.document.schema_version === 1 &&
+    options.candidate_document.document.schema_version === 1) {
+    for (const index of candidate.independent.keys()) {
+      if (!base.independent.has(index)) {
+        issues.push(issue(comparisonOptions, "E-DEBT-SET-GROWTH", `independent.${index}`,
+          "semantic conversion cannot introduce ordinary independent debt"));
+      }
+    }
   }
 
   if (issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
