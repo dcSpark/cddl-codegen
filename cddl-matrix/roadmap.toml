@@ -8,7 +8,7 @@ frozen_source_sha256 = "f010705393ddbd0b5fa25368c7903df5c5f87a6e500bbdb9c99f7f22
 frozen_source_byte_length = 84580
 frozen_source_line_count = 996
 frozen_source_eof = "lf"
-projection_layout = "unnumbered_v1"
+projection_layout = "curated_v1"
 
 [[section]]
 section_id = "expansion"

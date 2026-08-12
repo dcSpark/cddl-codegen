@@ -3073,6 +3073,9 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 
 ## Operational watches
 
+
+### Operational systems, controls, and resource work
+
 <a id="roadmap-id-testing.gate-s-own-stdout-print-column-result-pass"></a>
 - **A gate's own stdout can print a column-0 `RESULT: PASS (...)` line, so a log poll that greps
   for `RESULT:` (even line-anchored) reads a sub-check's verdict as the tier's.** Proven
@@ -3117,100 +3120,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   twin's committed content, and iterate run-and-bless to exhaustion — the suite's final fully-green
   run is the only complete enumeration; one failure list never is.
 
-<a id="roadmap-id-testing.e0463-t-find-crate-core-scratch-tree-std"></a>
-- **An `E0463: can't find crate for core` from a SCRATCH-TREE no-std-check run is a toolchain
-  artifact until proven otherwise — and "fails identically on the baseline binary" is not that
-  proof, because an environmental failure is binary-independent by construction.** Proven
-  2026-08-06 (the tagged-preserve-table delivery): an implementation agent's scratch e2e pass ran a generated
-  `no-std-check/` shim outside the repo directory, where `rust-toolchain.toml` does not govern, so
-  cargo used the DEFAULT toolchain — which lacks the `thumbv7m-none-eabi` target — and the run
-  died E0463 on `core`. The agent controlled for its own change by re-running on the baseline
-  binary (also red, necessarily) and reported a "pre-existing no-std-check defect under
-  `--json-serde-derives --json-schema-export`"; the claim propagated into cycle bookkeeping before
-  a disambiguating re-run under the PINNED toolchain (`rustup run <pinned> cargo check --target
-  thumbv7m-none-eabi`) compiled the same shim clean and retired it. The per-toolchain-target trap
-  was already documented for the GATE (AGENTS.md § fresh-worktree setup); what this watch adds is
-  the attribution rule for AD-HOC shim runs: before ledgering any scratch no-std E0463, re-run
-  under the pinned toolchain (or from inside the repo directory, where the pin governs) — a
-  baseline differential distinguishes regression from pre-existing, never product from
-  environment. (The clean pinned-toolchain run also showed 2 `unused_imports` warnings in the
-  generated crate under the json flags — the class the "unused_imports on generated crates" work
-  item above already owns; noted here so the sighting is not re-derived as new.)
-
-<a id="roadmap-id-testing.working-tree-gate-run-concurrent-live-implementation-agent"></a>
-- **A working-tree gate run concurrent with a live implementation agent measures a hybrid tree that
-  exists in no commit — and a gate that REWRITES committed files on pass launders that hybrid into
-  plausible-looking state.** Proven 2026-08-06: an orchestrator launched `check.ts --only verify`
-  while an implementation sub-agent was mid-edit in `src/generation/deserialize.rs`; verify built
-  the generator from the working tree, probed dozens of fixed-value cells through the half-edited
-  binary (every one exit-101), PASSED its own gate contract, and rewrote
-  `cddl-matrix/annotations/cddl_codegen.toml` with the garbage verdicts. Nothing failed loudly: the
-  banner's `-dirty` marker was the only trace, and the damage was caught by reading the diff, not
-  by any guard. Working rule: gates that read `src/` are serialized against anything editing
-  `src/` — an orchestrator running implementation agents runs NO gates until the agent commits and
-  reports (the same session later ran the identical gate on the quiet tree: PASS with a
-  byte-identical annotation rewrite, which is what validation looks like). Mechanical layer on a
-  second instance: `verify.ts` refusing to REWRITE annotations when the tree is dirty under
-  `src/` or `static/` (probing dirty is fine; publishing verdicts from a tree no commit names is
-  the hazard — the `-dirty` marker it already prints is the predicate).
-
-<a id="roadmap-id-testing.stale-pin-guard-cannot-distinguish-gap-closed-vector"></a>
-- **A stale-pin guard cannot distinguish "the gap closed" from "the vector that proved the gap went
-  blunt" — and a wholesale re-mint of RANDOMLY GENERATED vectors produces the second while reporting
-  the first.** Proven 2026-07-30 (native-float preserve delivery): adding one corpus rule required a
-  catalog row, and `verify.ts --mint-decode-corpus` was run in its FULL-refresh form, which re-rolled
-  every row's ruby-generated vectors (3817-line diff for one new row). `corpus_decode_replay` then
-  failed with `ENCODING_VARIANT_SKIP names (table_preserve.md, reverse_maps) … the gap closed —
-  remove the entry (stale pin)`. It had not: that pin exists because reversing a `@duplicates
-  preserve` pair-map's entry order changes the VALUE, and the re-rolled vector set had replaced
-  HEAD's multi-entry maps (`8200a2…`, `8200a3…`) with the empty map `8200a0`, which reverses to
-  itself. Taking the guard at its word would have deleted a live order-collapse tripwire AND left the
-  coverage silently gone — the guard's message names exactly one of its two possible causes, and it
-  names the wrong one whenever the data moved. The mint's own `--only=<id|fixture>` form is the fix
-  and the working rule: **re-mint the row you changed, never the catalog** (108-line diff, other rows'
-  vectors preserved verbatim, `table_preserve.md` still carrying multi-entry maps). The mechanical
-  layer on a second instance: have the mint refuse a full refresh that REDUCES any row's vector-shape
-  diversity (it already classifies vectors by shape — `vectorShapeClass` — so an empty-map-only row
-  where the committed one had multi-entry maps is detectable at mint time, before the pin ever goes
-  stale). Trigger: a second pin retired or nearly-retired by vector churn rather than by a fix. (The
-  order-sensitivity pins that produced the proven instance are gone — those exemptions are now
-  derived from each row's `spec` and carry no stale guard, precisely because "this vector's
-  reordering was the identity" is not evidence about the row. Every remaining stale-guarded pin is
-  still exposed to the class, which is why the watch stands.)
-
-<a id="roadmap-id-testing.migration-handoff-s-complete-list-found-survey-negative"></a>
-- **A migration handoff's "complete list found by survey" is a NEGATIVE premise, and the first
-  consumer falsified one twice.** The no_std handoff's hand-action survey ended "Nothing else,"
-  and CML's executed migration found two more required classes (public struct fields typed
-  `LinkedHashMap<…>`; `Entry::or_default()` call sites) plus a three-manifests-wider stale-dep
-  sweep. Both misses are instances of standing AGENTS.md rules, recorded here because they
-  happened in a SURVEY DOC rather than in code: the field-annotation half was surveyed with a
-  grep truncated through `| head -8` and presented as complete (the evidence-lost-to-tail class —
-  the pipe ate the `witness_builder.rs` hits), and `or_default` was simply not in the grep
-  vocabulary, so absence-of-hits read as absence-of-thing (the vocabulary-bounded-negative
-  class — a survey's completeness is established by enumerating the CATEGORY registry, not by
-  the searches one thought of). The systematic fix is committed where the next consumer will
-  meet it: the four-category migration-search recipe in `docs/docs/output_format.mdx`
-  § "Upgrading a crate generated before the `no_std` output" (including resolve-`.entry(`-by-type,
-  since the inherent method shadows `Deref` and no text search settles the receiver). Watch, not
-  work item: the next handoff doc's survey section should cite that recipe as its method — a
-  survey that instead presents its own grep list as complete is this entry recurring.
-
-<a id="roadmap-id-testing.shared-cargo-target-dir-across-same-named-scratch"></a>
-- **A shared `CARGO_TARGET_DIR` across same-named scratch crates masks compile failures as
-  cached passes.** Proven 2026-08-01 (the same-chain `.cbor` refusal delivery): two scratch
-  probes generated crates with the same package name into different directories and
-  `cargo check`ed them under one shared target dir; the second check reused the first's
-  fingerprint and reported clean for a crate that does not compile — the probe's verdict was
-  the CACHE's, not the crate's. The gate-cache machinery is not implicated (it keys on
-  generated-crate content hashes); this is raw cargo fingerprint reuse, and it can flip a
-  red-first probe green. Working rule: compile probes of scratch crates use a per-crate target
-  dir (or distinct package names); a probe that must share a target dir for warm-cache speed
-  asserts something the cache cannot fake (`cargo clean -p <name>` first, or check the error
-  output of a build it forced). Watch, not work item: the next false-green scratch probe traced
-  to fingerprint reuse is the second instance; if one appears inside a REGISTERED gate rather
-  than an ad-hoc probe, that gate's cell keying is the defect and it graduates to a work item.
-
 <a id="roadmap-id-testing.config-run-s-convergence-warning-name-crate-already"></a>
 - **The config run's convergence warning can name a crate that already converged.** `Convergence`
   snapshots each consumed sidecar's bytes at the START of the run and compares them after, so any
@@ -3246,27 +3155,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 - **Exclusion-record reasons are informational, not interchange.** Consumers never parse the text
   after `; unexported: <ident> — `; wording may change freely. If tooling ever wants to act on
   exclusion REASONS, that's a dialect v2 field, not a regex over prose.
-<a id="roadmap-id-testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until"></a>
-- **Nested-cargo scratch retention: `/tmp/cddl*` leaks until the disk fills.** The nested-cargo
-  gates and the in-process test suites mint per-run scratch dirs under the system temp dir
-  (`cddl_codegen_test_*`, `cddl_codegen_corpus_compile_*`, `cddl_verify_*` — the verify wasm
-  target dirs are ~2 GB each) and rely on end-of-run cleanup that a killed or crashed run never
-  reaches, so debris accumulates silently across sessions. Observed 2026-07-19: 3316 leaked
-  `/tmp/cddl*` entries totaling 43 GB filled the root filesystem to 0 bytes free, which then
-  cascaded — one session's full-tier run died mid-gate (the closure-audit strace could not write,
-  and the death left a half-updated `cddl-matrix/annotations` overlay that failed the NEXT run's
-  `build_matrix_check`), and harness task-output plumbing broke for every concurrent session.
-  Manual remediation (delete only entries older than a day, sparing paths named by live
-  processes' cmdlines — the pattern-kill warning in AGENTS.md applies to deletion too) recovered
-  35 GB. Scratch is self-retiring since: every `check.ts` run sweeps registry-named, day-old,
-  live-process-unguarded entries before its disk preflight (`tests/README.md` § "Run-start scratch
-  sweep"), and the sweep's first run on the development box removed 8284 entries / 42 GiB — the same
-  saturation, re-formed. What the sweep cannot reach bounds what is left to watch: debris younger
-  than the 24 h threshold (a single day of crashed full-tier runs can leak tens of GiB inside the
-  window), and scratch minted by a `cargo test` invocation that never goes through `check.ts`. So
-  still treat unexplained ENOSPC/mid-gate deaths as possible scratch saturation and check before
-  re-attributing — but read the run's own sweep line first, because a run that swept and still
-  refused on the disk floor is reporting a different problem.
   <a id="roadmap-id-testing.scratch-retention.reopening-signal"></a>
   - **Reopening signal** (for a bounded named scratch root the tiers reuse and truncate, which
     retires debris by construction rather than by age): a disk-floor refusal or an ENOSPC gate death
@@ -3279,32 +3167,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   but consistent with a full `/tmp`), and a local-tier run failing three nested-cargo gates on
   os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
   destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
-<a id="roadmap-id-testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"></a>
-- **A tier's PEAK MEMORY is bounded by arithmetic over ASSUMED constants — the sampler now
-  measures the real peak, and replacing the assumptions with its measurements is the open work.**
-  The sibling of the disk entry above, and the proven class: a full disk fails a gate, an
-  overcommitted memory cap takes the whole machine — three times now (a ~10-minute freeze that
-  produced the first bound, then two ~1–1.5 h freezes at 100 % memory and swap, 2026-08-04, that
-  went through every check the first fix installed). The second incident's root-cause (`d5d43bba`)
-  closed three budget holes the arithmetic had: the basis was MemTotal where the question is
-  MemAvailable (now re-measured per batch), the sequential gate path set no bound at all (so
-  `CHECK_JOBS=1` — the cautious setting — routed everything through the unbounded path), and bare
-  `cargo test`/`build` invocations outside the runner had no bound anywhere (now floored at
-  `[build] jobs = 4` by the repo `.cargo/config.toml`). Two further holes closed since, both
-  found by asking what still multiplies concurrency after those fixes: the slot COUNT model was
-  wrong, not just the slot-size constant — `CARGO_BUILD_JOBS` divides one nested cargo's
-  compilers while the number of nested cargos a `cargo test` gate holds open is the libtest
-  thread count (`nproc`), a `threads × jobs` product no arithmetic modeled — bounded now by
-  `tool_cmd`'s counting semaphore (`CDDL_NESTED_TOOL_PERMITS`, runner-exported per gate, safe
-  default for bare runs); and the `.cargo/config.toml` floor never reached a bare invocation's
-  NESTED cargos (config discovery walks up from the scratch CWD and finds nothing; cargo does not
-  export its jobs to test children), so `tool_cmd` also defaults `CARGO_BUILD_JOBS` to the same
-  floor when the environment has neither. The measurement system this entry used to name as
-  missing exists now: every run samples its own descendant tree and reports peak Σ RSS
-  (test processes included), peak concurrent `rustc`, the largest single process and the
-  MemAvailable floor — printed per run and appended to `draft/memory-peaks.jsonl`, reported and
-  never asserted (peaks are nondeterministic; a gate that fails on a number would be flaky by
-  construction). What remains, in order of leverage:
   <a id="roadmap-id-testing.tier-memory.spend-measurements"></a>
   - **Spend the measurements.** The 4 GiB slot constant and the one-permit nested bound are
     deliberately pessimistic prices for unmeasured quantities, and the pessimism costs real wall
@@ -3385,6 +3247,54 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   - The pre-cache remedies stay valid if the UNCACHED path ever bites (a touch-everything change
     pays full price): batch cells into fewer crates, or adopt `cargo-nextest` as the suite runner
     (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 144 at HEAD).
+
+### Live operational watches
+
+<a id="roadmap-id-testing.stale-pin-guard-cannot-distinguish-gap-closed-vector"></a>
+- **A stale-pin guard cannot distinguish "the gap closed" from "the vector that proved the gap went
+  blunt" — and a wholesale re-mint of RANDOMLY GENERATED vectors produces the second while reporting
+  the first.** Proven 2026-07-30 (native-float preserve delivery): adding one corpus rule required a
+  catalog row, and `verify.ts --mint-decode-corpus` was run in its FULL-refresh form, which re-rolled
+  every row's ruby-generated vectors (3817-line diff for one new row). `corpus_decode_replay` then
+  failed with `ENCODING_VARIANT_SKIP names (table_preserve.md, reverse_maps) … the gap closed —
+  remove the entry (stale pin)`. It had not: that pin exists because reversing a `@duplicates
+  preserve` pair-map's entry order changes the VALUE, and the re-rolled vector set had replaced
+  HEAD's multi-entry maps (`8200a2…`, `8200a3…`) with the empty map `8200a0`, which reverses to
+  itself. Taking the guard at its word would have deleted a live order-collapse tripwire AND left the
+  coverage silently gone — the guard's message names exactly one of its two possible causes, and it
+  names the wrong one whenever the data moved. The mint's own `--only=<id|fixture>` form is the fix
+  and the working rule: **re-mint the row you changed, never the catalog** (108-line diff, other rows'
+  vectors preserved verbatim, `table_preserve.md` still carrying multi-entry maps). The mechanical
+  layer on a second instance: have the mint refuse a full refresh that REDUCES any row's vector-shape
+  diversity (it already classifies vectors by shape — `vectorShapeClass` — so an empty-map-only row
+  where the committed one had multi-entry maps is detectable at mint time, before the pin ever goes
+  stale). Trigger: a second pin retired or nearly-retired by vector churn rather than by a fix. (The
+  order-sensitivity pins that produced the proven instance are gone — those exemptions are now
+  derived from each row's `spec` and carry no stale guard, precisely because "this vector's
+  reordering was the identity" is not evidence about the row. Every remaining stale-guarded pin is
+  still exposed to the class, which is why the watch stands.)
+
+<a id="roadmap-id-testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until"></a>
+- **Nested-cargo scratch retention: `/tmp/cddl*` leaks until the disk fills.** The nested-cargo
+  gates and the in-process test suites mint per-run scratch dirs under the system temp dir
+  (`cddl_codegen_test_*`, `cddl_codegen_corpus_compile_*`, `cddl_verify_*` — the verify wasm
+  target dirs are ~2 GB each) and rely on end-of-run cleanup that a killed or crashed run never
+  reaches, so debris accumulates silently across sessions. Observed 2026-07-19: 3316 leaked
+  `/tmp/cddl*` entries totaling 43 GB filled the root filesystem to 0 bytes free, which then
+  cascaded — one session's full-tier run died mid-gate (the closure-audit strace could not write,
+  and the death left a half-updated `cddl-matrix/annotations` overlay that failed the NEXT run's
+  `build_matrix_check`), and harness task-output plumbing broke for every concurrent session.
+  Manual remediation (delete only entries older than a day, sparing paths named by live
+  processes' cmdlines — the pattern-kill warning in AGENTS.md applies to deletion too) recovered
+  35 GB. Scratch is self-retiring since: every `check.ts` run sweeps registry-named, day-old,
+  live-process-unguarded entries before its disk preflight (`tests/README.md` § "Run-start scratch
+  sweep"), and the sweep's first run on the development box removed 8284 entries / 42 GiB — the same
+  saturation, re-formed. What the sweep cannot reach bounds what is left to watch: debris younger
+  than the 24 h threshold (a single day of crashed full-tier runs can leak tens of GiB inside the
+  window), and scratch minted by a `cargo test` invocation that never goes through `check.ts`. So
+  still treat unexplained ENOSPC/mid-gate deaths as possible scratch saturation and check before
+  re-attributing — but read the run's own sweep line first, because a run that swept and still
+  refused on the disk floor is reporting a different problem.
 <a id="roadmap-id-testing.registry-fetch-transients-nested-cargo-cells"></a>
 - **Registry-fetch transients in nested-cargo cells.** Nested-cargo cells used to resolve deps
   from crates.io per temp crate, so a flaky network/proxy (a proxy aborting ~1-in-6 CONNECTs to
@@ -3443,6 +3353,105 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   The mechanical fix, when the rate warrants: make the emission-embed generation use a fresh output dir
   per cell (mirror the base-probe fix) so a prior cell's minted `mod.rs` can't be read for the current
   holder.
+
+### Attributed and historical operating guidance
+
+<a id="roadmap-id-testing.e0463-t-find-crate-core-scratch-tree-std"></a>
+- **An `E0463: can't find crate for core` from a SCRATCH-TREE no-std-check run is a toolchain
+  artifact until proven otherwise — and "fails identically on the baseline binary" is not that
+  proof, because an environmental failure is binary-independent by construction.** Proven
+  2026-08-06 (the tagged-preserve-table delivery): an implementation agent's scratch e2e pass ran a generated
+  `no-std-check/` shim outside the repo directory, where `rust-toolchain.toml` does not govern, so
+  cargo used the DEFAULT toolchain — which lacks the `thumbv7m-none-eabi` target — and the run
+  died E0463 on `core`. The agent controlled for its own change by re-running on the baseline
+  binary (also red, necessarily) and reported a "pre-existing no-std-check defect under
+  `--json-serde-derives --json-schema-export`"; the claim propagated into cycle bookkeeping before
+  a disambiguating re-run under the PINNED toolchain (`rustup run <pinned> cargo check --target
+  thumbv7m-none-eabi`) compiled the same shim clean and retired it. The per-toolchain-target trap
+  was already documented for the GATE (AGENTS.md § fresh-worktree setup); what this watch adds is
+  the attribution rule for AD-HOC shim runs: before ledgering any scratch no-std E0463, re-run
+  under the pinned toolchain (or from inside the repo directory, where the pin governs) — a
+  baseline differential distinguishes regression from pre-existing, never product from
+  environment. (The clean pinned-toolchain run also showed 2 `unused_imports` warnings in the
+  generated crate under the json flags — the class the "unused_imports on generated crates" work
+  item above already owns; noted here so the sighting is not re-derived as new.)
+
+<a id="roadmap-id-testing.working-tree-gate-run-concurrent-live-implementation-agent"></a>
+- **A working-tree gate run concurrent with a live implementation agent measures a hybrid tree that
+  exists in no commit — and a gate that REWRITES committed files on pass launders that hybrid into
+  plausible-looking state.** Proven 2026-08-06: an orchestrator launched `check.ts --only verify`
+  while an implementation sub-agent was mid-edit in `src/generation/deserialize.rs`; verify built
+  the generator from the working tree, probed dozens of fixed-value cells through the half-edited
+  binary (every one exit-101), PASSED its own gate contract, and rewrote
+  `cddl-matrix/annotations/cddl_codegen.toml` with the garbage verdicts. Nothing failed loudly: the
+  banner's `-dirty` marker was the only trace, and the damage was caught by reading the diff, not
+  by any guard. Working rule: gates that read `src/` are serialized against anything editing
+  `src/` — an orchestrator running implementation agents runs NO gates until the agent commits and
+  reports (the same session later ran the identical gate on the quiet tree: PASS with a
+  byte-identical annotation rewrite, which is what validation looks like). Mechanical layer on a
+  second instance: `verify.ts` refusing to REWRITE annotations when the tree is dirty under
+  `src/` or `static/` (probing dirty is fine; publishing verdicts from a tree no commit names is
+  the hazard — the `-dirty` marker it already prints is the predicate).
+
+<a id="roadmap-id-testing.migration-handoff-s-complete-list-found-survey-negative"></a>
+- **A migration handoff's "complete list found by survey" is a NEGATIVE premise, and the first
+  consumer falsified one twice.** The no_std handoff's hand-action survey ended "Nothing else,"
+  and CML's executed migration found two more required classes (public struct fields typed
+  `LinkedHashMap<…>`; `Entry::or_default()` call sites) plus a three-manifests-wider stale-dep
+  sweep. Both misses are instances of standing AGENTS.md rules, recorded here because they
+  happened in a SURVEY DOC rather than in code: the field-annotation half was surveyed with a
+  grep truncated through `| head -8` and presented as complete (the evidence-lost-to-tail class —
+  the pipe ate the `witness_builder.rs` hits), and `or_default` was simply not in the grep
+  vocabulary, so absence-of-hits read as absence-of-thing (the vocabulary-bounded-negative
+  class — a survey's completeness is established by enumerating the CATEGORY registry, not by
+  the searches one thought of). The systematic fix is committed where the next consumer will
+  meet it: the four-category migration-search recipe in `docs/docs/output_format.mdx`
+  § "Upgrading a crate generated before the `no_std` output" (including resolve-`.entry(`-by-type,
+  since the inherent method shadows `Deref` and no text search settles the receiver). Watch, not
+  work item: the next handoff doc's survey section should cite that recipe as its method — a
+  survey that instead presents its own grep list as complete is this entry recurring.
+
+<a id="roadmap-id-testing.shared-cargo-target-dir-across-same-named-scratch"></a>
+- **A shared `CARGO_TARGET_DIR` across same-named scratch crates masks compile failures as
+  cached passes.** Proven 2026-08-01 (the same-chain `.cbor` refusal delivery): two scratch
+  probes generated crates with the same package name into different directories and
+  `cargo check`ed them under one shared target dir; the second check reused the first's
+  fingerprint and reported clean for a crate that does not compile — the probe's verdict was
+  the CACHE's, not the crate's. The gate-cache machinery is not implicated (it keys on
+  generated-crate content hashes); this is raw cargo fingerprint reuse, and it can flip a
+  red-first probe green. Working rule: compile probes of scratch crates use a per-crate target
+  dir (or distinct package names); a probe that must share a target dir for warm-cache speed
+  asserts something the cache cannot fake (`cargo clean -p <name>` first, or check the error
+  output of a build it forced). Watch, not work item: the next false-green scratch probe traced
+  to fingerprint reuse is the second instance; if one appears inside a REGISTERED gate rather
+  than an ad-hoc probe, that gate's cell keying is the defect and it graduates to a work item.
+
+<a id="roadmap-id-testing.tier-s-peak-memory-bounded-arithmetic-over-assumed"></a>
+- **A tier's PEAK MEMORY is bounded by arithmetic over ASSUMED constants — the sampler now
+  measures the real peak, and replacing the assumptions with its measurements is the open work.**
+  The sibling of the disk entry above, and the proven class: a full disk fails a gate, an
+  overcommitted memory cap takes the whole machine — three times now (a ~10-minute freeze that
+  produced the first bound, then two ~1–1.5 h freezes at 100 % memory and swap, 2026-08-04, that
+  went through every check the first fix installed). The second incident's root-cause (`d5d43bba`)
+  closed three budget holes the arithmetic had: the basis was MemTotal where the question is
+  MemAvailable (now re-measured per batch), the sequential gate path set no bound at all (so
+  `CHECK_JOBS=1` — the cautious setting — routed everything through the unbounded path), and bare
+  `cargo test`/`build` invocations outside the runner had no bound anywhere (now floored at
+  `[build] jobs = 4` by the repo `.cargo/config.toml`). Two further holes closed since, both
+  found by asking what still multiplies concurrency after those fixes: the slot COUNT model was
+  wrong, not just the slot-size constant — `CARGO_BUILD_JOBS` divides one nested cargo's
+  compilers while the number of nested cargos a `cargo test` gate holds open is the libtest
+  thread count (`nproc`), a `threads × jobs` product no arithmetic modeled — bounded now by
+  `tool_cmd`'s counting semaphore (`CDDL_NESTED_TOOL_PERMITS`, runner-exported per gate, safe
+  default for bare runs); and the `.cargo/config.toml` floor never reached a bare invocation's
+  NESTED cargos (config discovery walks up from the scratch CWD and finds nothing; cargo does not
+  export its jobs to test children), so `tool_cmd` also defaults `CARGO_BUILD_JOBS` to the same
+  floor when the environment has neither. The measurement system this entry used to name as
+  missing exists now: every run samples its own descendant tree and reports peak Σ RSS
+  (test processes included), peak concurrent `rustc`, the largest single process and the
+  MemAvailable floor — printed per run and appended to `draft/memory-peaks.jsonl`, reported and
+  never asserted (peaks are nondeterministic; a gate that fails on a number would be flaky by
+  construction). What remains, in order of leverage:
 <a id="roadmap-id-testing.full-suite-flake-attributed-hardened-acquire-scratch-lock"></a>
 - **Full-suite flake, attributed and hardened: `acquire_scratch_lock_serializes` — watch only for
   a recurrence that outlives the retry deadline.** Five sightings (2026-07-06 through 2026-07-17),
