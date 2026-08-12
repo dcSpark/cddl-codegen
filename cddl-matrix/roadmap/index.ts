@@ -525,10 +525,17 @@ function validateChange(
     against,
     load_base: () => {
       const base = prepareRoadmapCore(selection, baseReader);
-      return { document: base.document, debt: base.debt, identity: identityFor(base), registry: base.registry };
+      return {
+        document: base.document,
+        debt: base.debt,
+        completed: base.completed,
+        identity: identityFor(base),
+        registry: base.registry,
+      };
     },
     candidate_document: candidate.document,
     candidate_debt: candidate.debt,
+    candidate_completed: candidate.completed,
     candidate_registry: candidateGlobal.registry,
     candidate_global_identity: candidateGlobal.identity,
   });
@@ -698,6 +705,10 @@ function assembleLifecycle(
       ...(matrix === undefined ? {} : { matrix: matrix.debt }),
       ...(testing === undefined ? {} : { testing: testing.debt }),
     },
+    completed: {
+      ...(matrix === undefined ? {} : { matrix: matrix.completed }),
+      ...(testing === undefined ? {} : { testing: testing.completed }),
+    },
   };
 }
 
@@ -727,6 +738,10 @@ function validateAllChange(against: FullCommitId, ports: ReadOnlyRoadmapPorts): 
     roadmaps,
     registry: registryWithRoadmapMarkdownFacts(baseReader.registry(), roadmaps),
     debt: { matrix: matrix.debt, ...(testing === undefined ? {} : { testing: testing.debt }) },
+    completed: {
+      matrix: matrix.completed,
+      ...(testing === undefined ? {} : { testing: testing.completed }),
+    },
   };
   return validateTransaction({ scope: "all", against, base, candidate, bootstrap: true }).issues;
 }

@@ -19,7 +19,7 @@ import type {
   ScratchGitHarnessPorts,
 } from "../io.ts";
 import type { FixtureRelativePath, RepoPath, RepositoryRevision } from "../model/core.ts";
-import type { RoadmapDocumentV0 } from "../model/documents.ts";
+import type { RoadmapDocumentV0, RoadmapDocumentV1, SemanticPayload } from "../model/documents.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
 import {
   LEGACY_STATUS_OUTPUT_CLAIMS,
@@ -102,6 +102,10 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "query_as_of_does_not_select_git_revision",
   "cli_production_port_factory_smoke",
   "dispatch_capability_narrowing",
+  "cli_against_semantic_promotion_scoped_matrix",
+  "cli_against_semantic_promotion_scoped_testing",
+  "cli_against_semantic_promotion_all_simultaneous",
+  "cli_against_semantic_promotion_other_base_not_loaded",
 ] as const;
 
 export type RequiredCliSelfTestCaseId = (typeof REQUIRED_CLI_SELFTEST_CASE_IDS)[number];
@@ -267,6 +271,114 @@ function expectFailure(
 
 function fixture(context: SelfTestContext, path: string): Uint8Array {
   return context.ports.fixtures.readFixtureFile(FIXTURE_ROOT, path as FixtureRelativePath);
+}
+
+function promotionDocuments(
+  _context: SelfTestContext,
+  roadmap: "matrix" | "testing",
+): { readonly base: RoadmapDocumentV1; readonly candidate: RoadmapDocumentV1; readonly projection: Uint8Array } {
+  const sourcePath = (roadmap === "matrix" ? "cddl-matrix/roadmap.toml" : "tests/testing-roadmap.toml") as RepoPath;
+  const source = roadmap === "matrix" ? liveMatrixAuthoritativeSource() : liveTestingAuthoritativeSource();
+  const decoded = decodeRoadmapSource(source, sourcePath, roadmap, true);
+  if (decoded.document.schema_version !== 1) throw new Error("promotion fixture is not v1");
+  const v1 = decoded as RoadmapDocumentV1;
+  const rawRecord = v1.records.find((record) =>
+    "source_block_md" in record && record.span_ids.length === 1 &&
+    "semantic_shadow" in record && record.semantic_shadow !== undefined
+  );
+  if (rawRecord === undefined || !("source_block_md" in rawRecord)) throw new Error("promotion fixture lacks raw shadow");
+  const payload: SemanticPayload = {
+    kind: "work",
+    summary_md: rawRecord.source_block_md,
+    work_state: "ready",
+    work_intent: roadmap === "matrix" ? "build_capability" : "build_system",
+    work_kind: roadmap === "matrix" ? "feature" : "infrastructure",
+    risk: roadmap === "matrix" ? "cosmetic" : "false_pass_or_red",
+    family_classification: "none_reviewed",
+    acceptance_md: UTF8.encode("Reviewed promotion preserves the exact legacy bytes."),
+    priority_rationale_md: UTF8.encode("Fixture promotion is transaction-scoped."),
+  };
+  const base: RoadmapDocumentV1 = {
+    ...v1,
+    records: v1.records.map((record) => record === rawRecord ? { ...rawRecord, semantic_shadow: payload } : record),
+  };
+  const candidate: RoadmapDocumentV1 = {
+    ...base,
+    document: {
+      ...base.document,
+      frozen_legacy_span_ids: base.document.frozen_legacy_span_ids.filter((spanId) => !rawRecord.span_ids.includes(spanId)),
+    },
+    records: base.records.map((record) => record.id === rawRecord.id ? {
+      id: rawRecord.id,
+      title: rawRecord.title,
+      projection_group: rawRecord.projection_group,
+      render_authority: "semantic" as const,
+      projection_visibility: "document" as const,
+      payload,
+      source_replacements: rawRecord.span_ids.map((span_id) => ({
+        span_id,
+        replacement_field: "payload.summary_md",
+        review_note_md: UTF8.encode("Reviewed exact raw-span promotion."),
+      })),
+    } : record),
+    spans: base.spans.map((span) => rawRecord.span_ids.includes(span.id) ? {
+      ...span,
+      owner_field: "payload.summary_md",
+      migration_status: "replaced" as const,
+    } : span),
+  };
+  return {
+    base,
+    candidate,
+    projection: roadmap === "matrix" ? liveMatrixProjection() : liveTestingProjection(),
+  };
+}
+
+function promotionPorts(
+  context: SelfTestContext,
+  selection: "matrix" | "testing" | "all",
+  baseReads: RepoPath[] = [],
+): RoadmapCliPorts {
+  const matrix = promotionDocuments(context, "matrix");
+  const testing = promotionDocuments(context, "testing");
+  const campaign = UTF8.encode(`[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`);
+  const retired = UTF8.encode(`[retired_ids]\nschema_version = 1\n`);
+  const candidate = new Map<RepoPath, Uint8Array>([
+    ["cddl-matrix/roadmap.toml" as RepoPath, selection === "testing" ? composeRoadmapDocument(matrix.base) : composeRoadmapDocument(matrix.candidate)],
+    ["tests/testing-roadmap.toml" as RepoPath, selection === "matrix" ? composeRoadmapDocument(testing.base) : composeRoadmapDocument(testing.candidate)],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, matrix.projection],
+    ["tests/TESTING_ROADMAP.md" as RepoPath, testing.projection],
+    ["roadmap-campaign.toml" as RepoPath, campaign],
+    ["roadmap-retired-ids.toml" as RepoPath, retired],
+  ]);
+  const base = new Map<RepoPath, Uint8Array>([
+    ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(matrix.base)],
+    ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(testing.base)],
+    ["cddl-matrix/ROADMAP.md" as RepoPath, matrix.projection],
+    ["tests/TESTING_ROADMAP.md" as RepoPath, testing.projection],
+    ["roadmap-campaign.toml" as RepoPath, campaign],
+    ["roadmap-retired-ids.toml" as RepoPath, retired],
+  ]);
+  const readMap = (values: ReadonlyMap<RepoPath, Uint8Array>, path: RepoPath): Uint8Array => {
+    const value = values.get(path);
+    if (value === undefined) throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
+    return new Uint8Array(value);
+  };
+  return fakePorts({
+    read: (path) => readMap(candidate, path),
+    readAtCommit: (path) => {
+      baseReads.push(path);
+      return readMap(base, path);
+    },
+    registry(revision) {
+      return {
+        ...emptyRegistry(revision),
+        production_output_stage: "both_authoritative",
+        output_claims: productionOutputInventory("both_authoritative").claims,
+        matrix_status_inputs: liveMatrixStatusInputs(),
+      };
+    },
+  });
 }
 
 function validTestingPorts(context: SelfTestContext, atomic?: FakeOptions["atomic"]): RoadmapCliPorts {
@@ -979,6 +1091,25 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
 
 function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
   switch (id) {
+    case "cli_against_semantic_promotion_scoped_matrix":
+    case "cli_against_semantic_promotion_scoped_testing":
+    case "cli_against_semantic_promotion_all_simultaneous":
+    case "cli_against_semantic_promotion_other_base_not_loaded": {
+      const selection = id.includes("all_simultaneous") ? "all" : id.includes("testing") ? "testing" : "matrix";
+      const baseReads: RepoPath[] = [];
+      const result = run(["--check", "--roadmap", selection, "--against", HASH], promotionPorts(context, selection, baseReads));
+      assert(
+        result.exit_code === 0 && result.stderr.byteLength === 0 && text(result.stdout).includes("CHECK OK\n"),
+        `${id} failed through public --against: ${text(result.stderr)}`,
+      );
+      if (id === "cli_against_semantic_promotion_other_base_not_loaded") {
+        assert(
+          JSON.stringify(baseReads) === JSON.stringify(["cddl-matrix/roadmap.toml"]),
+          `scoped promotion loaded an unselected base roadmap: ${JSON.stringify(baseReads)}`,
+        );
+      }
+      return pass("positive");
+    }
     case "cli_format_declared_source":
     {
       let writes = 0;

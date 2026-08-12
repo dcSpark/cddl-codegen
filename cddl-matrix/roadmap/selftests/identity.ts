@@ -89,6 +89,7 @@ import {
   independentDebtIndex,
   validateDebtGuardTransferFacts,
   validateDebtRetirementFacts,
+  validateSemanticConversionFacts,
   validateDebtTransitionFacts,
   type MigrationDebt,
 } from "../debt.ts";
@@ -96,6 +97,7 @@ import {
   createImmutableByteView,
   createExpectedByteView,
   type ExpectedByteViewObserver,
+  type CompletedRenderIr,
   type RenderChunk,
 } from "../render_ir.ts";
 
@@ -271,6 +273,7 @@ export const REQUIRED_IDENTITY_SELFTEST_CASE_IDS = [
   "against_per_roadmap_absent_selected_source_rejected",
   "against_per_roadmap_shadow_selected_source_rejected",
   "against_per_roadmap_owner_change_requires_all",
+  "against_forged_debt_transition_facts_ignored",
   "against_all_testing_legacy_absent_valid",
   "against_all_testing_shadow_valid",
   "against_all_testing_authoritative_valid",
@@ -4222,6 +4225,124 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
           transition_facts: facts,
         }).length === 0, "disjoint guard+restructure capabilities must compose in both orders");
       }
+
+      const conversionId = "matrix.fixture-semantic-conversion" as RoadmapId;
+      const conversionSpanId = "semantic-conversion-span" as RoadmapDocumentV1["spans"][number]["id"];
+      const conversionPayload = {
+        kind: "decision" as const,
+        summary_md: bytes("matrix"),
+        decision_state: "pending" as const,
+        question_md: bytes("review"),
+        transition_ids: [],
+      };
+      const conversionRaw: RoadmapDocumentV1["records"][number] = {
+        id: conversionId,
+        title: "Semantic conversion",
+        projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
+        render_authority: "raw",
+        source_block_md: bytes("matrix"),
+        span_ids: [conversionSpanId],
+        semantic_shadow: conversionPayload,
+      };
+      const conversionSemantic: RoadmapDocumentV1["records"][number] = {
+        id: conversionId,
+        title: "Semantic conversion",
+        projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
+        render_authority: "semantic",
+        projection_visibility: "document",
+        payload: conversionPayload,
+        source_replacements: [{
+          span_id: conversionSpanId,
+          replacement_field: "payload.summary_md",
+          review_note_md: bytes("reviewed"),
+        }],
+      };
+      const conversionBase = c5V1("matrix", [c5FamilyRecord(C5_ID), conversionRaw]);
+      conversionBase.document.frozen_legacy_span_ids = [conversionSpanId];
+      conversionBase.spans.push({
+        id: conversionSpanId,
+        start_byte: 0,
+        end_byte: 6,
+        sha256: c5Sha(bytes("matrix")),
+        source_kind: "record",
+        owner_id: conversionId,
+        owner_field: "source_block_md",
+        migration_status: "raw",
+      });
+      const conversionCandidate = c5V1("matrix", [conversionSemantic]);
+      conversionCandidate.spans.push({
+        id: conversionSpanId,
+        start_byte: 0,
+        end_byte: 6,
+        sha256: c5Sha(bytes("matrix")),
+        source_kind: "record",
+        owner_id: conversionId,
+        owner_field: "payload.summary_md",
+        migration_status: "replaced",
+      });
+      const conversionBaseDebt = c5Debt(conversionBase);
+      const conversionCandidateDebt = c5Debt(conversionCandidate);
+      const completed = (
+        ownerField: string,
+        consumedFields: readonly string[],
+        segments: CompletedRenderIr["projected_field_segments"],
+      ): CompletedRenderIr => {
+        const chunks: RenderChunk[] = [{
+          manifest_index: 1,
+          owner: { kind: "record", id: conversionId, field: ownerField },
+          bytes: bytes("matrix"),
+          source_span_ids: [conversionSpanId],
+          consumed_fields: consumedFields,
+        }];
+        return {
+        chunks,
+        field_consumption: consumedFields.length === 0 ? [] : [{
+          owner_kind: "record",
+          owner_id: conversionId,
+          expected_fields: ["payload.question_md", "payload.summary_md"],
+          consumed_fields: ["payload.question_md", "payload.summary_md"],
+          duplicate_fields: [], unknown_fields: [], mismatched_fields: [],
+        }],
+        projected_field_segments: segments,
+        slot_resolutions: [], build_issues: [],
+        expected_bytes: createExpectedByteView(chunks),
+      };
+      };
+      const baseCompleted = completed("source_block_md", [], []);
+      const candidateCompleted = completed("payload", ["payload.question_md", "payload.summary_md"], [{
+        owner_kind: "record", owner_id: conversionId, logical_path: "payload.summary_md",
+        start_in_chunk: 0, end_in_chunk: 6, bytes: bytes("matrix"),
+      }]);
+      const conversionGuard = validateDebtGuardTransferFacts(
+        conversionBaseDebt,
+        conversionCandidateDebt,
+        { base_document: conversionBase, candidate_document: conversionCandidate },
+        [{ ...request, base_owner: { ...request.base_owner, record: conversionBase.records[0]! } }],
+      );
+      const conversion = validateSemanticConversionFacts(
+        conversionBaseDebt,
+        conversionCandidateDebt,
+        {
+          base_document: conversionBase,
+          candidate_document: conversionCandidate,
+          base_completed: baseCompleted,
+          candidate_completed: candidateCompleted,
+        },
+      );
+      assert(conversionGuard.ok && conversion.ok && conversion.facts !== undefined,
+        `disjoint direct guard and semantic-conversion capabilities must both mint: guard=${conversionGuard.ok ? "ok" : JSON.stringify(conversionGuard.issues)} conversion=${conversion.ok ? "ok" : JSON.stringify(conversion.issues)}`);
+      for (const facts of [
+        [conversionGuard.facts, conversion.facts],
+        [conversion.facts, conversionGuard.facts],
+      ]) {
+        assert(compareMigrationDebt(conversionBaseDebt, conversionCandidateDebt, {
+          base_document: conversionBase,
+          candidate_document: conversionCandidate,
+          base_completed: baseCompleted,
+          candidate_completed: candidateCompleted,
+          transition_facts: facts,
+        }).length === 0, "disjoint guard+semantic-conversion capabilities must compose in both orders");
+      }
       return true;
     }
     case "transaction_missing_campaign_removal": {
@@ -4895,6 +5016,45 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
       assertIssue(result.issues, "E-TRANSACTION-OWNER", "owner change requires all scope");
       return true;
     }
+    case "against_forged_debt_transition_facts_ignored": {
+      const rawId = activeId;
+      const semantic = c5ReadyRecord(rawId);
+      const raw: RoadmapDocumentV1["records"][number] = {
+        id: rawId,
+        title: semantic.title,
+        projection_group: semantic.projection_group,
+        render_authority: "raw",
+        source_block_md: bytes("summary"),
+        span_ids: [],
+        semantic_shadow: semantic.payload,
+      };
+      const baseDocument = c5V1(roadmap, [raw]);
+      const candidateDocument = c5V1(roadmap, [semantic]);
+      const baseIdentity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(baseDocument).indexes.identity_inputs] });
+      const candidateIdentity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(candidateDocument).indexes.identity_inputs] });
+      const forged = {
+        scope: roadmap,
+        against: C5_BASE,
+        load_base: () => ({
+          document: baseDocument,
+          debt: c5Debt(baseDocument),
+          identity: baseIdentity,
+          registry: c5Registry({ kind: "commit", commit: C5_BASE }),
+        }),
+        candidate_document: candidateDocument,
+        candidate_debt: c5Debt(candidateDocument),
+        candidate_registry: c5Registry({ kind: "worktree" }),
+        candidate_global_identity: candidateIdentity,
+        debt_transition_facts: { restructure_count: 1, retirement_count: 0 },
+      } as Parameters<typeof validateTransaction>[0];
+      const result = validateTransaction(forged);
+      const rejected = result.issues.find((issue) =>
+        issue.code === "E-DEBT-OWNER-REGRESSION" && issue.logical_path === `record[${JSON.stringify(rawId)}]`
+      );
+      assert(rejected !== undefined, `caller-shaped transition facts must be ignored by the public transaction input: ${JSON.stringify(result.issues)}`);
+      observeSelfTestIssue(rejected);
+      return true;
+    }
     case "against_all_testing_legacy_absent_valid": {
       const result = allSame(
         c5Campaign("legacy_markdown", "legacy_markdown"),
@@ -5428,6 +5588,7 @@ function c5Subcases(id: C5SelfTestCaseId): readonly string[] | undefined {
       "unrelated_source_span", "unrelated_owner_regression", "independent_growth",
       "category_hide", "frozen_growth", "lifecycle_guard_retirement", "guard_retirement_forward",
       "guard_retirement_reverse", "guard_restructure_forward", "guard_restructure_reverse",
+      "guard_semantic_conversion_forward", "guard_semantic_conversion_reverse",
     ];
   }
   if (id === "transaction_complete_tombstone") return ["complete", "missing_base_debt", "missing_candidate_debt"];

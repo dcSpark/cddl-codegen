@@ -257,6 +257,16 @@ const REFERENCE_KIND_SUBCASES = [
 
 /** Frozen named reviewer vectors. A case absent from this map must report no subcases. */
 export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
+  ["debt_semantic_promotion_rejection_matrix", [
+    "raw_unclassified", "payload_markdown_bytes", "payload_array_order", "missing_replacement",
+    "duplicate_replacement", "fresh_replacement_span", "missing_span", "duplicate_span", "extra_span",
+    "start_coordinate", "end_coordinate", "digest", "source_kind", "owner_id", "wrong_replacement_field",
+    "wrong_status", "incomplete_consumption", "rendered_byte_drift", "retained_frozen", "base_unfrozen",
+    "candidate_only_raw", "existing_visibility_change",
+  ]],
+  ["debt_semantic_promotion_capability_mutation_rejected", [
+    "payload_after_mint", "completed_content_after_mint", "completed_clone_after_mint", "expected_bytes_after_mint",
+  ]],
   ["outputs_slot_cardinality", ["status_zero_open", "status_two_open", "status_zero_close", "status_two_close", "reversed", "crossed", "manifest_zero", "manifest_two_declarations", "manifest_two_placements", "manifest_two_spans"]],
   ["outputs_interval_overlap", ["same_interval", "partial_left", "partial_right", "contained", "whole_vs_slot", "same_producer_overlap", "adjacent"]],
   ["status_projector_before_after_target_byte_parity", ["roadmap", "matrix_readme", "tests_readme"]],
@@ -286,6 +296,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
     "valid_input_reversal", "forged", "empty", "wrong_family_object", "wrong_guard_object", "direction_reversal", "overlap", "unrelated_capability",
     "attached_source_span", "unrelated_source_span", "unrelated_owner_regression", "independent_growth", "category_hide", "frozen_growth",
     "lifecycle_guard_retirement", "guard_retirement_forward", "guard_retirement_reverse", "guard_restructure_forward", "guard_restructure_reverse",
+    "guard_semantic_conversion_forward", "guard_semantic_conversion_reverse",
   ]],
   ["transaction_partial_guard", ["missing", "wrong_id", "unresolved_pin", "simultaneous_tombstone", "leftover_family", "missing_child_guard", "unused_guard", "future_reuse"]],
   ["transaction_full_hash_git_integration", ["scratch_lifecycle", "argv", "unsigned", "sha1", "sha256", "durable_corpus_facts", "crlf_byte_citation", "revision_isolation", "retirement_closure", "heading_text_precondition", "wrong_base_revision", "candidate_commit_rejected", "abbreviated"]],
@@ -413,6 +424,13 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["debt_frozen_set_growth_rejected", { code: "E-DEBT-FROZEN-SET", logical_path: "frozen_legacy_spans" }],
   ["debt_v1_v0_rejected", { code: "E-DEBT-BASE-MISMATCH", logical_path: "document.schema_version" }],
   ["debt_unrelated_base_rejected", { code: "E-DEBT-BASE-MISMATCH", logical_path: "document" }],
+  ["debt_semantic_promotion_payload_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
+  ["debt_semantic_promotion_span_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
+  ["debt_semantic_promotion_visibility_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
+  ["debt_candidate_only_document_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-semantic-only-addition\"]" }],
+  ["debt_semantic_promotion_rejection_matrix", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
+  ["debt_semantic_promotion_swapped_segment_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
+  ["debt_semantic_promotion_capability_mutation_rejected", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
   ["render_zero_chunks_rejected", { code: "E-SELFTEST-CASE", logical_path: "render_zero_chunks_rejected" }],
   ["render_semantic_consumption_once", { code: "E-FIELD-CONSUMPTION", logical_path: "record[\"matrix.fixture-work\"]" }],
   ["render_semantic_only_identity_debt", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
@@ -520,6 +538,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["transaction_legacy_delivery_live_repo_citation", { code: "E-TRANSACTION-CITATION", logical_path: "citation[\"matrix.fixture-lifecycle\"]" }],
   ["transaction_shadow_only_delivery_rejected", { code: "E-TRANSACTION-ORIGIN", logical_path: "owner[\"matrix.fixture-lifecycle\"]" }],
   ["transaction_single_roadmap_owner_removal_rejected", { code: "E-TRANSACTION-OWNER", logical_path: "owner[\"matrix.fixture-lifecycle\"]" }],
+  ["against_forged_debt_transition_facts_ignored", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-lifecycle\"]" }],
   ["transaction_citation_in_nonroadmap_file_rejected", { code: "E-TRANSACTION-CITATION", logical_path: "citation[\"matrix.fixture-lifecycle\"]" }],
   ["against_per_roadmap_candidate_global_collision_rejected", { code: "E-OWNER-DUPLICATE", logical_path: "owner[\"matrix.fixture-lifecycle\"]" }],
   ["against_per_roadmap_absent_selected_source_rejected", { code: "E-TRANSACTION-BASE", logical_path: "matrix" }],

@@ -20,7 +20,12 @@ import type {
   RoadmapDocument,
   TombstoneOwnerFact,
 } from "./model/documents.ts";
-import type { CompletedRenderIr, FieldConsumptionLedgerEntry, RenderChunk } from "./render_ir.ts";
+import {
+  exactProjectedFieldSegment,
+  type CompletedRenderIr,
+  type FieldConsumptionLedgerEntry,
+  type RenderChunk,
+} from "./render_ir.ts";
 
 export type OwnerDebtState = "raw_unclassified" | "raw_with_semantic_shadow" | "semantic";
 
@@ -133,10 +138,16 @@ export interface DebtComparisonOptions {
   readonly candidate_document: RoadmapDocument;
   /** Opaque facts minted by C3 after restructure checks or C5-supplied retirement coordinates. */
   readonly transition_facts?: DebtTransitionFactsInput;
+  readonly base_completed?: CompletedRenderIr;
+  readonly candidate_completed?: CompletedRenderIr;
 }
 
 export type DebtTransitionFactResult =
   | { readonly ok: true; readonly facts: ValidatedDebtTransitionFacts; readonly issues: readonly [] }
+  | { readonly ok: false; readonly issues: readonly RoadmapIssue[] };
+
+export type SemanticConversionFactResult =
+  | { readonly ok: true; readonly facts?: ValidatedDebtTransitionFacts; readonly issues: readonly [] }
   | { readonly ok: false; readonly issues: readonly RoadmapIssue[] };
 
 export interface DebtReport {
@@ -172,9 +183,56 @@ interface PrivateDebtTransitionFacts {
   readonly candidate_document_signature: string;
   readonly removed: ReadonlySet<string>;
   readonly added: ReadonlySet<string>;
+  readonly semantic_signature?: string;
+  readonly base_completed?: CompletedRenderIr;
+  readonly candidate_completed?: CompletedRenderIr;
+  readonly base_completed_signature?: string;
+  readonly candidate_completed_signature?: string;
 }
 
 const validatedDebtTransitions = new WeakMap<object, PrivateDebtTransitionFacts>();
+
+function exactValueSignature(value: unknown): unknown {
+  if (value instanceof Uint8Array) return ["bytes", ...value];
+  if (Array.isArray(value)) return value.map(exactValueSignature);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort(codePointSort).map((key) => [
+      key,
+      exactValueSignature((value as Record<string, unknown>)[key]),
+    ]));
+  }
+  return value;
+}
+
+function semanticDocumentSignature(base: RoadmapDocument, candidate: RoadmapDocument): string {
+  const records = (document: RoadmapDocument) => document.records.map((record) => [
+    record.id,
+    "payload" in record ? exactValueSignature(record.payload) :
+      "semantic_shadow" in record ? exactValueSignature(record.semantic_shadow) : null,
+  ]);
+  return JSON.stringify([records(base), records(candidate)]);
+}
+
+function completedRenderSignature(completed: CompletedRenderIr): string | undefined {
+  try {
+    return JSON.stringify(exactValueSignature({
+      chunks: completed.chunks,
+      field_consumption: completed.field_consumption,
+      projected_field_segments: completed.projected_field_segments,
+      slot_resolutions: completed.slot_resolutions,
+      build_issues: completed.build_issues,
+      expected: {
+        byte_length: completed.expected_bytes.byte_length,
+        bytes: completed.expected_bytes.sliceBytes(0, completed.expected_bytes.byte_length),
+        prefix_offsets: completed.expected_bytes.prefix_offsets,
+        source_facts: completed.expected_bytes.sourceFacts(),
+        whole_sha256: completed.expected_bytes.wholeSha256(),
+      },
+    }));
+  } catch {
+    return undefined;
+  }
+}
 
 function debtSignature(debt: MigrationDebt): string {
   return JSON.stringify({
@@ -613,6 +671,282 @@ function replacementMatches(document: RoadmapDocument, key: DebtOwnerKey, spanId
   return value.source_replacements.filter((replacement) =>
     replacement.span_id === spanId && replacement.replacement_field === key.owner_field
   ).length === 1;
+}
+
+function exactSemanticValue(left: unknown, right: unknown): boolean {
+  if (left instanceof Uint8Array || right instanceof Uint8Array) {
+    return left instanceof Uint8Array && right instanceof Uint8Array &&
+      left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length &&
+      left.every((value, index) => exactSemanticValue(value, right[index]));
+  }
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") {
+    return Object.is(left, right);
+  }
+  const leftKeys = Object.keys(left).sort(codePointSort);
+  const rightKeys = Object.keys(right).sort(codePointSort);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) =>
+    key === rightKeys[index] && exactSemanticValue(
+      (left as Record<string, unknown>)[key],
+      (right as Record<string, unknown>)[key],
+    )
+  );
+}
+
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
+}
+
+function recordChunk(completed: CompletedRenderIr, id: RoadmapId): RenderChunk | undefined {
+  const rows = completed.chunks.filter((chunk) => chunk.owner.kind === "record" && chunk.owner.id === id);
+  return rows.length === 1 ? rows[0] : undefined;
+}
+
+function semanticMarkdownFields(payload: unknown): readonly string[] {
+  const fields: string[] = [];
+  const collect = (value: unknown, path: string): void => {
+    if (value instanceof Uint8Array) {
+      if (path.endsWith("_md")) fields.push(path);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => collect(entry, `${path}[${index}]`));
+      return;
+    }
+    if (value !== null && typeof value === "object") {
+      for (const key of Object.keys(value).sort(codePointSort)) {
+        collect((value as Record<string, unknown>)[key], `${path}.${key}`);
+      }
+    }
+  };
+  collect(payload, "payload");
+  return Object.freeze(fields.sort(codePointSort));
+}
+
+/**
+ * Recognize the one public raw+shadow -> document-visible semantic conversion. The request is
+ * derived entirely from exact base/candidate documents and completed render IR; no caller-shaped
+ * migration coordinate crosses this seam.
+ */
+export function validateSemanticConversionFacts(
+  base: MigrationDebt,
+  candidate: MigrationDebt,
+  options: Pick<DebtComparisonOptions, "base_document" | "candidate_document"> & {
+    readonly base_completed?: CompletedRenderIr;
+    readonly candidate_completed?: CompletedRenderIr;
+  },
+): SemanticConversionFactResult {
+  const comparisonOptions: DebtComparisonOptions = options;
+  const issues: RoadmapIssue[] = [];
+  const removed = new Set<string>();
+  const added = new Set<string>();
+  const baseRecords = new Map(options.base_document.records.map((record) => [record.id, record]));
+  let promotionCount = 0;
+
+  for (const candidateRecord of options.candidate_document.records) {
+    const baseRecord = baseRecords.get(candidateRecord.id);
+    if (baseRecord === undefined) {
+      const validSemanticOnly = "payload" in candidateRecord &&
+        candidateRecord.projection_visibility === "semantic_only" &&
+        candidateRecord.source_replacements.length === 0 &&
+        !options.candidate_document.spans.some((span) =>
+          span.source_kind === "record" && span.owner_id === candidateRecord.id
+        );
+      if (!validSemanticOnly) {
+        issues.push(issue(
+          comparisonOptions,
+          "E-DEBT-OWNER-REGRESSION",
+          `record[${JSON.stringify(candidateRecord.id)}]`,
+          "candidate-only roadmap record must be semantic-only and own no source replacements or spans",
+        ));
+      }
+      continue;
+    }
+
+    if ("payload" in baseRecord) {
+      if ("payload" in candidateRecord &&
+        baseRecord.projection_visibility !== candidateRecord.projection_visibility) {
+        issues.push(issue(
+          comparisonOptions,
+          "E-DEBT-OWNER-REGRESSION",
+          `record[${JSON.stringify(candidateRecord.id)}].projection_visibility`,
+          "an existing semantic record cannot change projection visibility",
+        ));
+      }
+      continue;
+    }
+    if (!("payload" in candidateRecord)) continue;
+
+    const path = `record[${JSON.stringify(candidateRecord.id)}]`;
+    const baseShadow = "semantic_shadow" in baseRecord ? baseRecord.semantic_shadow : undefined;
+    if (baseShadow === undefined || candidateRecord.projection_visibility !== "document") {
+      issues.push(issue(
+        comparisonOptions,
+        "E-DEBT-OWNER-REGRESSION",
+        path,
+        baseShadow === undefined
+          ? "raw-unclassified record cannot convert directly to semantic authority"
+          : "raw semantic-shadow promotion must remain document-visible",
+      ));
+      continue;
+    }
+    promotionCount++;
+    let valid = exactSemanticValue(baseShadow, candidateRecord.payload);
+    const baseChunk = options.base_completed === undefined
+      ? undefined
+      : recordChunk(options.base_completed, candidateRecord.id);
+    const candidateChunk = options.candidate_completed === undefined
+      ? undefined
+      : recordChunk(options.candidate_completed, candidateRecord.id);
+    const ledger = options.candidate_completed?.field_consumption.filter((entry) =>
+      entry.owner_kind === "record" && entry.owner_id === candidateRecord.id
+    );
+    const expectedFields = ledger?.length === 1 ? ledger[0]!.expected_fields : [];
+    const payloadFields = semanticMarkdownFields(candidateRecord.payload);
+    const completeConsumption = ledger?.length === 1 &&
+      ledger[0]!.duplicate_fields.length === 0 && ledger[0]!.unknown_fields.length === 0 &&
+      ledger[0]!.mismatched_fields.length === 0 &&
+      expectedFields.length === payloadFields.length &&
+      expectedFields.every((field, index) => field === payloadFields[index]) &&
+      ledger[0]!.consumed_fields.length === expectedFields.length &&
+      expectedFields.every((field) => ledger[0]!.consumed_fields.filter((value) => value === field).length === 1);
+    valid = valid && baseChunk !== undefined && candidateChunk !== undefined &&
+      bytesEqual(baseChunk.bytes, candidateChunk.bytes) && completeConsumption;
+
+    const baseSpanIds = new Set(baseRecord.span_ids);
+    const replacementBySpan = new Map(candidateRecord.source_replacements.map((replacement) => [
+      replacement.span_id,
+      replacement,
+    ]));
+    const replacementFields = new Set(candidateRecord.source_replacements.map((replacement) =>
+      replacement.replacement_field
+    ));
+    valid = valid && baseSpanIds.size === baseRecord.span_ids.length &&
+      replacementBySpan.size === candidateRecord.source_replacements.length &&
+      replacementBySpan.size === baseSpanIds.size &&
+      [...baseSpanIds].every((spanId) => replacementBySpan.has(spanId)) &&
+      candidateChunk !== undefined && candidateChunk.source_span_ids.length === baseSpanIds.size &&
+      new Set(candidateChunk.source_span_ids).size === baseSpanIds.size &&
+      candidateChunk.source_span_ids.every((spanId) => baseSpanIds.has(spanId));
+
+    const projectedFields = new Set((options.candidate_completed?.projected_field_segments ?? [])
+      .filter((segment) => segment.owner_id === candidateRecord.id)
+      .map((segment) => segment.logical_path));
+    valid = valid && projectedFields.size === replacementFields.size &&
+      [...replacementFields].every((field) => projectedFields.has(field));
+
+    for (const spanId of baseSpanIds) {
+      const baseSpans = options.base_document.spans.filter((span) => span.id === spanId);
+      const candidateSpans = options.candidate_document.spans.filter((span) => span.id === spanId);
+      const replacement = replacementBySpan.get(spanId);
+      const baseSpan = baseSpans[0];
+      const candidateSpan = candidateSpans[0];
+      if (baseSpans.length !== 1 || candidateSpans.length !== 1 || replacement === undefined ||
+        baseSpan === undefined || candidateSpan === undefined ||
+        baseSpan.start_byte !== candidateSpan.start_byte || baseSpan.end_byte !== candidateSpan.end_byte ||
+        baseSpan.sha256 !== candidateSpan.sha256 || baseSpan.source_kind !== candidateSpan.source_kind ||
+        baseSpan.owner_id !== candidateSpan.owner_id || baseSpan.owner_field !== "source_block_md" ||
+        baseSpan.migration_status !== "raw" || candidateSpan.owner_field !== replacement.replacement_field ||
+        candidateSpan.migration_status !== "replaced" || candidateSpan.source_kind !== "record" ||
+        candidateSpan.owner_id !== candidateRecord.id ||
+        options.base_document.document.schema_version !== 1 ||
+        !options.base_document.document.frozen_legacy_span_ids.includes(spanId) ||
+        options.candidate_document.document.schema_version !== 1 ||
+        options.candidate_document.document.frozen_legacy_span_ids.includes(spanId)) {
+        valid = false;
+      }
+      if (candidateSpan !== undefined && candidateChunk !== undefined && replacement !== undefined &&
+        exactProjectedFieldSegment(
+          options.candidate_completed!,
+          candidateChunk,
+          candidateRecord.id,
+          replacement.replacement_field,
+          candidateSpan.start_byte,
+          candidateSpan.end_byte,
+        ) === undefined) {
+        valid = false;
+      }
+    }
+    if (options.candidate_document.spans.some((span) =>
+      span.source_kind === "record" && span.owner_id === candidateRecord.id && !baseSpanIds.has(span.id)
+    )) valid = false;
+
+    const removedKey: DebtOwnerKey = {
+      roadmap: options.base_document.document.roadmap,
+      owner_kind: "record",
+      owner_id: candidateRecord.id,
+      owner_field: "source_block_md",
+    };
+    const removedIndex = debtOwnerIndex(removedKey);
+    const expectedAdded = expectedFields.map((field): DebtOwnerKey => ({
+      roadmap: options.candidate_document.document.roadmap,
+      owner_kind: "record",
+      owner_id: candidateRecord.id,
+      owner_field: field,
+    }));
+    valid = valid && base.owners.get(removedIndex)?.state === "raw_with_semantic_shadow" &&
+      !candidate.owners.has(removedIndex) && expectedAdded.length > 0 && expectedAdded.every((key) =>
+        !base.owners.has(debtOwnerIndex(key)) && candidate.owners.get(debtOwnerIndex(key))?.state === "semantic"
+      ) && [...candidate.owners.values()].filter(({ key }) =>
+        key.owner_kind === "record" && key.owner_id === candidateRecord.id
+      ).length === expectedAdded.length;
+
+    if (!valid) {
+      issues.push(issue(
+        comparisonOptions,
+        "E-DEBT-OWNER-REGRESSION",
+        path,
+        "semantic-shadow promotion lacks exact payload, rendered bytes, field consumption, replacement bijection, span metadata transition, frozen-set removal, or debt-owner joins",
+      ));
+      continue;
+    }
+    removed.add(removedIndex);
+    for (const key of expectedAdded) added.add(debtOwnerIndex(key));
+  }
+
+  if (issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
+  if (promotionCount === 0) return Object.freeze({ ok: true, issues: Object.freeze([]) as readonly [] });
+  const baseCompletedSignature = options.base_completed === undefined
+    ? undefined
+    : completedRenderSignature(options.base_completed);
+  const candidateCompletedSignature = options.candidate_completed === undefined
+    ? undefined
+    : completedRenderSignature(options.candidate_completed);
+  if (baseCompletedSignature === undefined || candidateCompletedSignature === undefined) {
+    return Object.freeze({
+      ok: false,
+      issues: Object.freeze([issue(
+        comparisonOptions,
+        "E-DEBT-BASE-MISMATCH",
+        "completed_render_ir",
+        "semantic conversion requires two completely signable render IR views",
+      )]),
+    });
+  }
+  const facts: ValidatedDebtTransitionFacts = Object.freeze({
+    restructure_count: promotionCount,
+    retirement_count: 0,
+  });
+  validatedDebtTransitions.set(facts, {
+    base,
+    candidate,
+    base_document: options.base_document,
+    candidate_document: options.candidate_document,
+    base_signature: debtSignature(base),
+    candidate_signature: debtSignature(candidate),
+    base_document_signature: documentTransitionSignature(options.base_document),
+    candidate_document_signature: documentTransitionSignature(options.candidate_document),
+    removed,
+    added,
+    semantic_signature: semanticDocumentSignature(options.base_document, options.candidate_document),
+    base_completed: options.base_completed,
+    candidate_completed: options.candidate_completed,
+    base_completed_signature: baseCompletedSignature,
+    candidate_completed_signature: candidateCompletedSignature,
+  });
+  return Object.freeze({ ok: true, facts, issues: Object.freeze([]) as readonly [] });
 }
 
 /**
@@ -1126,7 +1460,17 @@ function transitionFacts(
       facts.base_document !== options.base_document || facts.candidate_document !== options.candidate_document ||
       facts.base_signature !== debtSignature(base) || facts.candidate_signature !== debtSignature(candidate) ||
       facts.base_document_signature !== documentTransitionSignature(options.base_document) ||
-      facts.candidate_document_signature !== documentTransitionSignature(options.candidate_document)) return undefined;
+      facts.candidate_document_signature !== documentTransitionSignature(options.candidate_document) ||
+      (facts.semantic_signature !== undefined &&
+        facts.semantic_signature !== semanticDocumentSignature(options.base_document, options.candidate_document)) ||
+      (facts.base_completed !== undefined && (
+        facts.base_completed !== options.base_completed ||
+        facts.base_completed_signature !== completedRenderSignature(facts.base_completed)
+      )) ||
+      (facts.candidate_completed !== undefined && (
+        facts.candidate_completed !== options.candidate_completed ||
+        facts.candidate_completed_signature !== completedRenderSignature(facts.candidate_completed)
+      ))) return undefined;
     for (const index of [...facts.removed, ...facts.added]) {
       if (claimed.has(index)) return undefined;
       claimed.add(index);
@@ -1158,6 +1502,7 @@ function newSemanticRecord(
   if (key.owner_kind !== "record" || candidateState !== "semantic") return false;
   const candidateRecord = options.candidate_document.records.find((record) => record.id === key.owner_id);
   return candidateRecord !== undefined && !("source_block_md" in candidateRecord) &&
+    candidateRecord.projection_visibility === "semantic_only" &&
     documentHasOwner(options.candidate_document, key) &&
     !options.base_document.records.some((record) => record.id === key.owner_id) &&
     ![...base.owners.values()].some(({ key: baseKey }) =>

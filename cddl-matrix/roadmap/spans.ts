@@ -8,6 +8,7 @@ import type {
 } from "./model/documents.ts";
 import {
   ExpectedByteViewError,
+  exactProjectedFieldSegment,
   type CompletedRenderIr,
   type RenderChunk,
 } from "./render_ir.ts";
@@ -360,21 +361,16 @@ export function validateSourceSpans(input: SpanValidationInput): readonly Roadma
           record.id === chunk.owner.id && "render_authority" in record && record.render_authority === "semantic"
         )
         : undefined;
-      const segments = replacement === undefined ? [] : completed.projected_field_segments.filter((segment) =>
-        segment.owner_kind === "record" && segment.owner_id === chunk.owner.id &&
-        segment.logical_path === replacement.replacement_field
+      const segment = replacement === undefined ? undefined : exactProjectedFieldSegment(
+        completed,
+        chunk,
+        chunk.owner.id,
+        replacement.replacement_field,
+        span.start_byte,
+        span.end_byte,
       );
-      const segment = segments[0];
-      const chunkIndex = completed.chunks.indexOf(chunk);
-      const chunkStart = completed.expected_bytes.prefix_offsets[chunkIndex];
-      const exactCoordinates = segment !== undefined && chunkStart !== undefined &&
-        span.start_byte === chunkStart + segment.start_in_chunk &&
-        span.end_byte === chunkStart + segment.end_in_chunk;
-      const exactBytes = segment !== undefined &&
-        segment.end_in_chunk - segment.start_in_chunk === segment.bytes.byteLength &&
-        completed.expected_bytes.equals(expectedSlice, segment.bytes);
       const exactSegmentBinding = semanticRecord === undefined ||
-        (segments.length === 1 && exactCoordinates && exactBytes);
+        segment !== undefined;
       if (
         replacementRows.length !== 1 || replacement === undefined ||
         replacement.replacement_field !== span.owner_field ||

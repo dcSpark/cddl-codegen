@@ -61,6 +61,40 @@ export interface CompletedRenderIr {
   readonly build_issues: readonly RoadmapIssue[];
 }
 
+/** Resolve one exact projected field binding in both chunk-local and whole-document coordinates. */
+export function exactProjectedFieldSegment(
+  completed: CompletedRenderIr,
+  chunk: RenderChunk,
+  ownerId: string,
+  logicalPath: string,
+  startByte: number,
+  endByte: number,
+): ProjectedFieldSegment | undefined {
+  const segments = completed.projected_field_segments.filter((segment) =>
+    segment.owner_kind === "record" && segment.owner_id === ownerId &&
+    segment.logical_path === logicalPath
+  );
+  const segment = segments[0];
+  const chunkIndex = completed.chunks.indexOf(chunk);
+  const chunkStart = completed.expected_bytes.prefix_offsets[chunkIndex];
+  if (segments.length !== 1 || segment === undefined || chunkStart === undefined ||
+    !Number.isSafeInteger(segment.start_in_chunk) || !Number.isSafeInteger(segment.end_in_chunk) ||
+    segment.start_in_chunk < 0 || segment.start_in_chunk >= segment.end_in_chunk ||
+    segment.end_in_chunk > chunk.bytes.byteLength ||
+    startByte !== chunkStart + segment.start_in_chunk ||
+    endByte !== chunkStart + segment.end_in_chunk ||
+    segment.end_in_chunk - segment.start_in_chunk !== segment.bytes.byteLength ||
+    !bytesEqual(chunk.bytes.subarray(segment.start_in_chunk, segment.end_in_chunk), segment.bytes)) {
+    return undefined;
+  }
+  try {
+    const slice = completed.expected_bytes.slice(startByte, endByte);
+    return completed.expected_bytes.equals(slice, segment.bytes) ? segment : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface ExpectedByteView {
   readonly byte_length: number;
   readonly prefix_offsets: readonly number[];

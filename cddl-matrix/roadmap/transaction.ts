@@ -20,9 +20,9 @@ import {
   debtOwnerIndex,
   validateDebtGuardTransferFacts,
   validateDebtRetirementFacts,
+  validateSemanticConversionFacts,
   type DebtReplacementResolutionFact,
   type MigrationDebt,
-  type DebtTransitionFactsInput,
   type ValidatedDebtTransitionFacts,
 } from "./debt.ts";
 import type { RoadmapIssue } from "./errors.ts";
@@ -42,6 +42,7 @@ import type {
   RecordNode,
   TombstoneEligibleBaseOwner,
 } from "./model/documents.ts";
+import type { CompletedRenderIr } from "./render_ir.ts";
 import {
   resolveReplacementPin,
   validateRetiredIds,
@@ -60,6 +61,7 @@ export interface LifecycleRevisionInput {
   readonly registry: RegistryView;
   readonly legacy_title_bindings?: readonly LegacyTitleBindingFact[];
   readonly debt: Partial<Readonly<Record<RoadmapName, MigrationDebt>>>;
+  readonly completed?: Partial<Readonly<Record<RoadmapName, CompletedRenderIr>>>;
 }
 
 export interface ValidatedLifecycleRevision {
@@ -71,6 +73,7 @@ export interface ValidatedLifecycleRevision {
   readonly registry: RegistryView;
   readonly identity: GlobalIdentityResult;
   readonly debt: Partial<Readonly<Record<RoadmapName, MigrationDebt>>>;
+  readonly completed: Partial<Readonly<Record<RoadmapName, CompletedRenderIr>>>;
   readonly issues: readonly RoadmapIssue[];
 }
 
@@ -80,14 +83,15 @@ export interface ScopedRoadmapTransactionInputs {
   readonly load_base: (roadmap: RoadmapName) => ScopedRoadmapBaseFacts;
   readonly candidate_document?: RoadmapDocument;
   readonly candidate_debt: MigrationDebt;
+  readonly candidate_completed?: CompletedRenderIr;
   readonly candidate_registry: RegistryView;
   readonly candidate_global_identity: GlobalIdentityResult;
-  readonly debt_transition_facts?: DebtTransitionFactsInput;
 }
 
 export interface ScopedRoadmapBaseFacts {
   readonly document?: RoadmapDocument;
   readonly debt: MigrationDebt;
+  readonly completed?: CompletedRenderIr;
   readonly identity: GlobalIdentityResult;
   readonly registry: RegistryView;
 }
@@ -98,7 +102,6 @@ export interface AllRoadmapsTransactionInputs {
   readonly base: LifecycleRevisionInput;
   readonly candidate: LifecycleRevisionInput;
   readonly bootstrap?: boolean;
-  readonly debt_transition_facts?: Partial<Readonly<Record<RoadmapName, DebtTransitionFactsInput>>>;
 }
 
 export type TransactionValidationInputs = ScopedRoadmapTransactionInputs | AllRoadmapsTransactionInputs;
@@ -239,6 +242,7 @@ export function validateLifecycleRevision(input: LifecycleRevisionInput): Valida
       registry: input.registry,
       identity: validateGlobalIdentity({ documents: [] }),
       debt: input.debt,
+      completed: input.completed ?? {},
       issues: sortIssues(issues),
     });
   }
@@ -286,6 +290,7 @@ export function validateLifecycleRevision(input: LifecycleRevisionInput): Valida
     registry: input.registry,
     identity,
     debt: input.debt,
+    completed: input.completed ?? {},
     issues: sortIssues(issues),
   });
 }
@@ -542,10 +547,19 @@ function validateScoped(inputs: ScopedRoadmapTransactionInputs): TransactionVali
   ) {
     issues.push(issue("E-TRANSACTION-BASE", inputs.scope, "single-roadmap comparison requires matching authoritative-v1 selected documents"));
   } else {
+    const transition = validateSemanticConversionFacts(base.debt, inputs.candidate_debt, {
+      base_document: base.document,
+      candidate_document: inputs.candidate_document,
+      ...(base.completed === undefined ? {} : { base_completed: base.completed }),
+      ...(inputs.candidate_completed === undefined ? {} : { candidate_completed: inputs.candidate_completed }),
+    });
+    if (!transition.ok) issues.push(...transition.issues);
     issues.push(...compareMigrationDebt(base.debt, inputs.candidate_debt, {
       base_document: base.document,
       candidate_document: inputs.candidate_document,
-      ...(inputs.debt_transition_facts === undefined ? {} : { transition_facts: inputs.debt_transition_facts }),
+      ...(base.completed === undefined ? {} : { base_completed: base.completed }),
+      ...(inputs.candidate_completed === undefined ? {} : { candidate_completed: inputs.candidate_completed }),
+      ...(transition.ok && transition.facts !== undefined ? { transition_facts: transition.facts } : {}),
     }));
   }
   issues.push(...inputs.candidate_global_identity.issues);
@@ -604,6 +618,7 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
       registry: inputs.base.registry,
       identity,
       debt: inputs.base.debt,
+      completed: inputs.base.completed ?? {},
       issues: bootstrapCampaign.issues,
     });
   } else {
@@ -767,11 +782,16 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
     }
     const facts: ValidatedDebtTransitionFacts[] = [];
     let factsSupplied = false;
-    const external = inputs.debt_transition_facts?.[roadmap];
-    if (external !== undefined) {
+    const conversion = validateSemanticConversionFacts(baseDebt, candidateDebt, {
+      base_document: baseDocument,
+      candidate_document: candidateDocument,
+      ...(base.completed[roadmap] === undefined ? {} : { base_completed: base.completed[roadmap] }),
+      ...(candidate.completed[roadmap] === undefined ? {} : { candidate_completed: candidate.completed[roadmap] }),
+    });
+    if (!conversion.ok) issues.push(...conversion.issues);
+    else if (conversion.facts !== undefined) {
       factsSupplied = true;
-      if (Array.isArray(external)) facts.push(...external);
-      else facts.push(external as ValidatedDebtTransitionFacts);
+      facts.push(conversion.facts);
     }
     if (lifecycleReady) {
       const retirementRequests = (activeRetirements.get(roadmap) ?? []).flatMap((id) => {
@@ -836,6 +856,8 @@ function validateAll(inputs: AllRoadmapsTransactionInputs): TransactionValidatio
     issues.push(...compareMigrationDebt(baseDebt, candidateDebt, {
       base_document: baseDocument,
       candidate_document: candidateDocument,
+      ...(base.completed[roadmap] === undefined ? {} : { base_completed: base.completed[roadmap] }),
+      ...(candidate.completed[roadmap] === undefined ? {} : { candidate_completed: candidate.completed[roadmap] }),
       ...(factsSupplied ? { transition_facts: Object.freeze(facts) } : {}),
     }));
   }
