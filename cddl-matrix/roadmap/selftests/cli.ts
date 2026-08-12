@@ -2,6 +2,7 @@ import type { RegistryView } from "../adapters/types.ts";
 import { ROADMAP_CLI_USAGE } from "../cli.ts";
 import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
+import { decodeCampaignSource } from "../decode/campaign.ts";
 import { RoadmapFailure } from "../errors.ts";
 import type { IssueCode } from "../errors.ts";
 import {
@@ -26,6 +27,7 @@ import {
   productionOutputInventory,
 } from "../output_registry.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
+import { validateSelectedLifecycleContext } from "../transaction.ts";
 import { observeSelfTestIssue } from "./observations.ts";
 import {
   liveMatrixAuthoritativeSource,
@@ -75,6 +77,30 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "exit_authority_stage_mismatch_one",
   "parse_error_stable_prefix",
   "query_stdout_payload_only",
+  "query_debt_live_migration_floors",
+  "query_debt_scoped_does_not_load_other_roadmap",
+  "query_debt_all_reports_both",
+  "query_debt_duplicate_campaign_selection_rejected",
+  "query_debt_unselected_duplicate_selection_rejected",
+  "query_debt_unselected_duplicate_reservation_rejected",
+  "query_debt_selected_shadow_reservation_coalesces",
+  "query_debt_selected_shadow_title_binding_rejected",
+  "query_debt_unselected_legacy_selection_missing_reservation_rejected",
+  "query_debt_unselected_active_reservation_rejected",
+  "query_debt_unselected_reservation_guard_tombstone_rejected",
+  "query_debt_selected_alias_reservation_rejected",
+  "query_debt_invalid_campaign_target_rejected",
+  "query_debt_invalid_campaign_state_rejected",
+  "query_debt_authoritative_reservation_rejected",
+  "query_debt_active_tombstone_collision_rejected",
+  "query_debt_active_guard_collision_rejected",
+  "query_debt_active_reservation_collision_rejected",
+  "query_debt_invalid_guard_pin_rejected",
+  "query_debt_authority_mismatch_rejected",
+  "query_debt_missing_campaign_root_rejected",
+  "query_debt_missing_retired_root_rejected",
+  "query_debt_invalid_retired_pin_rejected",
+  "query_debt_stage_mismatch_rejected",
   "failure_stdout_empty",
   "success_receipt_nonvacuous",
   "cli_against_matrix_check_allowed",
@@ -590,6 +616,76 @@ schema_version = 1
   });
 }
 
+const SCOPED_CAMPAIGN_ROOT = `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`;
+
+function scopedSelection(id: string, extra = ""): string {
+  return `\n[[selection]]\nitem_id = "${id}"\ntarget_kind = "active_id"\nselected_state = "selected"\npriority_class = "fixture"\nselection_reason_md = """Reason."""\ncycle = "fixture"\nremaining_scope_md = """Scope."""${extra}\n`;
+}
+
+function scopedLegacySelection(id: string): string {
+  return `\n[[selection]]\nitem_id = "${id}"\ntarget_kind = "legacy_markdown_reservation"\nselected_state = "selected"\npriority_class = "fixture"\nselection_reason_md = """Reason."""\ncycle = "fixture"\nremaining_scope_md = """Scope."""\n`;
+}
+
+function scopedReservation(id: string, roadmapPath: "cddl-matrix/ROADMAP.md" | "tests/TESTING_ROADMAP.md"): string {
+  return `\n[[legacy_markdown_reservation]]\nid = "${id}"\nwork_kind = "feature"\nroadmap_path = "${roadmapPath}"\nsource_title = "Fixture"\nsource_start_byte = 0\nsource_end_byte = 1\nsource_sha256 = "${"0".repeat(64)}"\nwhole_source_sha256 = "${"0".repeat(64)}"\n`;
+}
+
+function selectedShadowCampaignFixture(
+  mutatedTitle?: string,
+): { readonly campaign: string; readonly source: Uint8Array } {
+  const originalSource = liveMatrixShadowV0Source();
+  const document = decodeRoadmapSource(
+    originalSource,
+    "cddl-matrix/roadmap.toml" as RepoPath,
+    "matrix",
+    true,
+  );
+  assert(document.document.schema_version === 0, "selected shadow fixture did not decode as v0");
+  const shadow = document as RoadmapDocumentV0;
+  const record = shadow.records[0]!;
+  const spans = record.span_ids.map((id) => shadow.spans.find((span) => span.id === id)!);
+  const start = Math.min(...spans.map((span) => span.start_byte));
+  const end = Math.max(...spans.map((span) => span.end_byte));
+  const sourceSha = new Bun.CryptoHasher("sha256").update(record.source_block_md).digest("hex");
+  const title = mutatedTitle ?? record.title;
+  return {
+    source: originalSource,
+    campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "shadow"\ntesting_authority = "shadow"\n\n[[legacy_markdown_reservation]]\nid = "${record.id}"\nwork_kind = "feature"\nroadmap_path = "cddl-matrix/ROADMAP.md"\nsource_title = ${JSON.stringify(title)}\nsource_start_byte = ${start}\nsource_end_byte = ${end}\nsource_sha256 = "${sourceSha}"\nwhole_source_sha256 = "${shadow.document.frozen_source_sha256}"\n`,
+  };
+}
+
+interface ScopedDebtMutation {
+  readonly campaign?: string | null;
+  readonly retired?: string | null;
+  readonly source?: Uint8Array;
+  readonly guards?: RegistryView["current_guards"];
+  readonly gates?: RegistryView["gates"];
+  readonly stage?: RegistryView["production_output_stage"];
+}
+
+function scopedDebtMutationPorts(mutation: ScopedDebtMutation): RoadmapCliPorts {
+  const campaign = mutation.campaign === undefined ? SCOPED_CAMPAIGN_ROOT : mutation.campaign;
+  const retired = mutation.retired === undefined ? `[retired_ids]\nschema_version = 1\n` : mutation.retired;
+  return fakePorts({
+    read(path) {
+      if (path === "cddl-matrix/roadmap.toml") return mutation.source ?? liveMatrixAuthoritativeSource();
+      if (path === "roadmap-campaign.toml" && campaign !== null) return UTF8.encode(campaign);
+      if (path === "roadmap-retired-ids.toml" && retired !== null) return UTF8.encode(retired);
+      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
+    },
+    registry(revision) {
+      return {
+        ...emptyRegistry(revision),
+        production_output_stage: mutation.stage ?? "both_authoritative",
+        output_claims: productionOutputInventory(mutation.stage ?? "both_authoritative").claims,
+        matrix_status_inputs: liveMatrixStatusInputs(),
+        current_guards: mutation.guards ?? [],
+        gates: mutation.gates ?? [],
+      };
+    },
+  });
+}
+
 function wp4mBootstrapProbePorts(
   context: SelfTestContext,
   onBaseRead: (path: RepoPath) => void,
@@ -1091,6 +1187,227 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
 
 function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
   switch (id) {
+    case "query_debt_selected_shadow_reservation_coalesces": {
+      const fixture = selectedShadowCampaignFixture();
+      const result = run(
+        ["--roadmap", "matrix", "--query", "debt", "--json"],
+        scopedDebtMutationPorts({
+          campaign: fixture.campaign,
+          source: fixture.source,
+          stage: "pre_cutover",
+        }),
+      );
+      assert(
+        result.exit_code === 0 && result.stderr.byteLength === 0 &&
+          JSON.parse(text(result.stdout)).roadmaps[0].roadmap === "matrix",
+        `selected shadow reservation did not coalesce with its same-ID shadow: ${text(result.stderr)}`,
+      );
+      return pass("positive");
+    }
+    case "query_debt_selected_shadow_title_binding_rejected": {
+      const fixture = selectedShadowCampaignFixture("Mutated fixture title");
+      const recordId = "matrix.additional-tool-annotations";
+      const decoded = decodeRoadmapSource(
+        fixture.source,
+        "cddl-matrix/roadmap.toml" as RepoPath,
+        "matrix",
+        true,
+      );
+      assert(decoded.document.schema_version === 0, "selected shadow title repro did not decode as v0");
+      const document = {
+        ...decoded,
+        records: decoded.records.map((record) => record.id === recordId
+          ? { ...record, title: "Mutated fixture title" }
+          : record),
+      } as RoadmapDocumentV0;
+      const issues = validateSelectedLifecycleContext({
+        selection: "matrix",
+        campaign: decodeCampaignSource(UTF8.encode(fixture.campaign), "roadmap-campaign.toml" as RepoPath, true),
+        retired: { retired_ids: { schema_version: 1 }, entries: [] },
+        document,
+        registry: scopedDebtMutationPorts({ stage: "pre_cutover" }).read.registryView({ kind: "worktree" }),
+      });
+      assert(issues.some((issue) =>
+        issue.code === "E-CAMPAIGN-TARGET" && issue.logical_path === `record[${JSON.stringify(recordId)}]`
+      ), `${id} accepted mutated record title plus matching reservation source_title`);
+      observeSelfTestIssue({ code: "E-CAMPAIGN-TARGET", logical_path: `record[${JSON.stringify(recordId)}]` });
+      return pass("negative");
+    }
+    case "query_debt_duplicate_campaign_selection_rejected":
+    case "query_debt_unselected_duplicate_selection_rejected":
+    case "query_debt_unselected_duplicate_reservation_rejected":
+    case "query_debt_unselected_legacy_selection_missing_reservation_rejected":
+    case "query_debt_unselected_active_reservation_rejected":
+    case "query_debt_unselected_reservation_guard_tombstone_rejected":
+    case "query_debt_selected_alias_reservation_rejected":
+    case "query_debt_invalid_campaign_target_rejected":
+    case "query_debt_invalid_campaign_state_rejected":
+    case "query_debt_authoritative_reservation_rejected":
+    case "query_debt_active_tombstone_collision_rejected":
+    case "query_debt_active_guard_collision_rejected":
+    case "query_debt_active_reservation_collision_rejected":
+    case "query_debt_invalid_guard_pin_rejected":
+    case "query_debt_authority_mismatch_rejected":
+    case "query_debt_missing_campaign_root_rejected":
+    case "query_debt_missing_retired_root_rejected":
+    case "query_debt_invalid_retired_pin_rejected":
+    case "query_debt_stage_mismatch_rejected": {
+      const activeId = "matrix.fixed-array.static-representation";
+      const validGate = { id: "fixture-durable", kind: "cmd", stub: false } as const;
+      const retired = (recordId: string, gateId: string): string => `[retired_ids]\nschema_version = 1\n\n[[retired_ids.entry]]\nid = "${recordId}"\nlast_active_at = "${"a".repeat(40)}"\n\n[retired_ids.entry.replacement]\nkind = "gate"\ngate_id = "${gateId}"\nclaim_md = """Replacement."""\n`;
+      let mutation: ScopedDebtMutation = {};
+      let expected: { code: IssueCode; source: string; path: string };
+      switch (id) {
+        case "query_debt_duplicate_campaign_selection_rejected":
+          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + scopedSelection(activeId) + scopedSelection(activeId) };
+          expected = { code: "E-CAMPAIGN-DUPLICATE", source: "roadmap-campaign.toml", path: "selection[1]" };
+          break;
+        case "query_debt_unselected_duplicate_selection_rejected":
+          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + scopedSelection("testing.fixture-unselected") + scopedSelection("testing.fixture-unselected") };
+          expected = { code: "E-CAMPAIGN-DUPLICATE", source: "roadmap-campaign.toml", path: "selection[1]" };
+          break;
+        case "query_debt_unselected_duplicate_reservation_rejected": {
+          const reservation = `\n[[legacy_markdown_reservation]]\nid = "testing.fixture-reserved"\nwork_kind = "feature"\nroadmap_path = "tests/TESTING_ROADMAP.md"\nsource_title = "Fixture"\nsource_start_byte = 0\nsource_end_byte = 1\nsource_sha256 = "${"0".repeat(64)}"\nwhole_source_sha256 = "${"0".repeat(64)}"\n`;
+          mutation = { campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n${reservation}${reservation}`, stage: "matrix_authoritative" };
+          expected = { code: "E-CAMPAIGN-DUPLICATE", source: "roadmap-campaign.toml", path: "legacy_markdown_reservation[1]" };
+          break;
+        }
+        case "query_debt_unselected_legacy_selection_missing_reservation_rejected":
+          mutation = {
+            campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n` +
+              scopedLegacySelection("testing.fixture-unselected"),
+            stage: "matrix_authoritative",
+          };
+          expected = { code: "E-CAMPAIGN-TARGET", source: "roadmap-campaign.toml", path: "selection[0]" };
+          break;
+        case "query_debt_unselected_active_reservation_rejected": {
+          const reservedId = "testing.fixture-reserved";
+          mutation = {
+            campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n` +
+              scopedReservation(reservedId, "tests/TESTING_ROADMAP.md") + scopedSelection(reservedId),
+            stage: "matrix_authoritative",
+          };
+          expected = { code: "E-CAMPAIGN-TARGET", source: "roadmap-campaign.toml", path: "selection[0]" };
+          break;
+        }
+        case "query_debt_unselected_reservation_guard_tombstone_rejected": {
+          const reservedId = "testing.fixture-reserved";
+          const campaign = `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n` +
+            scopedReservation(reservedId, "tests/TESTING_ROADMAP.md");
+          const guard = {
+            id: reservedId as import("../model/core.ts").RoadmapId,
+            owner_registry: "fixture",
+            replacement_pin: { kind: "gate" as const, gate_id: validGate.id, claim_md: UTF8.encode("Pin.") },
+          };
+          for (const [subcase, collision] of [
+            ["guard", { guards: [guard], gates: [validGate] }],
+            ["tombstone", { retired: retired(reservedId, validGate.id), gates: [validGate] }],
+          ] as const) {
+            const result = run(
+              ["--roadmap", "matrix", "--query", "debt", "--json"],
+              scopedDebtMutationPorts({ campaign, stage: "matrix_authoritative", ...collision }),
+            );
+            const prefix = `FAIL [E-OWNER-DUPLICATE] <identity>#owner[${JSON.stringify(reservedId)}]:`;
+            assert(
+              result.exit_code === 1 && result.stdout.byteLength === 0 && text(result.stderr).includes(prefix),
+              `${id}/${subcase} did not reject at ${prefix}: ${text(result.stderr)}`,
+            );
+          }
+          observeSelfTestIssue({ code: "E-OWNER-DUPLICATE", logical_path: `owner[${JSON.stringify(reservedId)}]` });
+          return pass("negative", ["guard", "tombstone"]);
+        }
+        case "query_debt_selected_alias_reservation_rejected": {
+          const reservedId = "testing.fixture-reserved";
+          const source = UTF8.encode(text(liveMatrixAuthoritativeSource()).replace(
+            `projection_group = "expansion"\nrender_authority = "raw"`,
+            `projection_group = "expansion"\nlegacy_aliases = ["${reservedId}"]\nrender_authority = "raw"`,
+          ));
+          assert(text(source).includes(`legacy_aliases = ["${reservedId}"]`), "selected alias fixture mutation missed its target");
+          mutation = {
+            campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n` +
+              scopedReservation(reservedId, "tests/TESTING_ROADMAP.md"),
+            source,
+            stage: "matrix_authoritative",
+          };
+          expected = { code: "E-ALIAS-COLLISION", source: "<identity>", path: `alias[${JSON.stringify(reservedId)}]` };
+          break;
+        }
+        case "query_debt_invalid_campaign_target_rejected":
+          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + scopedSelection("matrix.fixture-missing") };
+          expected = { code: "E-CAMPAIGN-TARGET", source: "roadmap-campaign.toml", path: "selection[0]" };
+          break;
+        case "query_debt_invalid_campaign_state_rejected":
+        {
+          const validCampaign = decodeCampaignSource(
+            UTF8.encode(SCOPED_CAMPAIGN_ROOT + scopedSelection(activeId)),
+            "roadmap-campaign.toml" as RepoPath,
+            true,
+          );
+          const directIssues = validateSelectedLifecycleContext({
+            selection: "matrix",
+            campaign: {
+              ...validCampaign,
+              selections: validCampaign.selections.map((selection) => ({
+                ...selection,
+                pickup_commit: "a".repeat(40) as import("../model/core.ts").FullCommitId,
+              })),
+            },
+            retired: { retired_ids: { schema_version: 1 }, entries: [] },
+            document: decodeRoadmapSource(liveMatrixAuthoritativeSource(), "cddl-matrix/roadmap.toml" as RepoPath, "matrix", true),
+            registry: scopedDebtMutationPorts({}).read.registryView({ kind: "worktree" }),
+          });
+          assert(directIssues.some((issue) => issue.code === "E-CAMPAIGN-STATE" && issue.logical_path === "selection[0]"), "selected-scope validator accepted a programmatic invalid campaign state");
+          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + scopedSelection(activeId, `\npickup_commit = "${"a".repeat(40)}"`) };
+          expected = { code: "E-SCHEMA-FORBIDDEN-KEY", source: "roadmap-campaign.toml", path: "selection[0].pickup_commit" };
+          break;
+        }
+        case "query_debt_authoritative_reservation_rejected":
+          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + `\n[[legacy_markdown_reservation]]\nid = "testing.fixture-reserved"\nwork_kind = "feature"\nroadmap_path = "tests/TESTING_ROADMAP.md"\nsource_title = "Fixture"\nsource_start_byte = 0\nsource_end_byte = 1\nsource_sha256 = "${"0".repeat(64)}"\nwhole_source_sha256 = "${"0".repeat(64)}"\n` };
+          expected = { code: "E-CAMPAIGN-TARGET-EXPIRED", source: "roadmap-campaign.toml", path: "legacy_markdown_reservation[0]" };
+          break;
+        case "query_debt_active_tombstone_collision_rejected":
+          mutation = { retired: retired(activeId, validGate.id), gates: [validGate] };
+          expected = { code: "E-OWNER-DUPLICATE", source: "<identity>", path: `owner[${JSON.stringify(activeId)}]` };
+          break;
+        case "query_debt_active_guard_collision_rejected":
+          mutation = { gates: [validGate], guards: [{ id: activeId as import("../model/core.ts").RoadmapId, owner_registry: "fixture", replacement_pin: { kind: "gate", gate_id: validGate.id, claim_md: UTF8.encode("Pin.") } }] };
+          expected = { code: "E-OWNER-DUPLICATE", source: "<identity>", path: `owner[${JSON.stringify(activeId)}]` };
+          break;
+        case "query_debt_active_reservation_collision_rejected":
+          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + `\n[[legacy_markdown_reservation]]\nid = "${activeId}"\nwork_kind = "optimization"\nroadmap_path = "cddl-matrix/ROADMAP.md"\nsource_title = "Fixture"\nsource_start_byte = 0\nsource_end_byte = 1\nsource_sha256 = "${"0".repeat(64)}"\nwhole_source_sha256 = "${"0".repeat(64)}"\n` };
+          expected = { code: "E-OWNER-DUPLICATE", source: "<identity>", path: `owner[${JSON.stringify(activeId)}]` };
+          break;
+        case "query_debt_invalid_guard_pin_rejected":
+          mutation = { guards: [{ id: "matrix.fixture-guard" as import("../model/core.ts").RoadmapId, owner_registry: "fixture", replacement_pin: { kind: "gate", gate_id: "missing", claim_md: UTF8.encode("Pin.") } }] };
+          expected = { code: "E-TRANSACTION-GUARD", source: "<transaction>", path: `guard["matrix.fixture-guard"]` };
+          break;
+        case "query_debt_authority_mismatch_rejected":
+          mutation = { campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "shadow"\ntesting_authority = "shadow"\n` };
+          expected = { code: "E-SCHEMA-STATE", source: "roadmap-campaign.toml", path: "campaign.matrix_authority" };
+          break;
+        case "query_debt_missing_campaign_root_rejected":
+          mutation = { campaign: null };
+          expected = { code: "E-SOURCE-MISSING", source: "roadmap-campaign.toml", path: "$" };
+          break;
+        case "query_debt_missing_retired_root_rejected":
+          mutation = { retired: null };
+          expected = { code: "E-SOURCE-MISSING", source: "roadmap-retired-ids.toml", path: "$" };
+          break;
+        case "query_debt_invalid_retired_pin_rejected":
+          mutation = { retired: retired("matrix.fixture-retired", "missing") };
+          expected = { code: "E-RETIRED-REPLACEMENT", source: "roadmap-retired-ids.toml", path: "retired_ids.entry[0].replacement" };
+          break;
+        case "query_debt_stage_mismatch_rejected":
+          mutation = { stage: "matrix_authoritative" };
+          expected = { code: "E-OUTPUT-CLAIM", source: "<output-registry>", path: "production_output_stage" };
+          break;
+      }
+      const result = run(["--roadmap", "matrix", "--query", "debt", "--json"], scopedDebtMutationPorts(mutation));
+      const prefix = `FAIL [${expected.code}] ${expected.source}#${expected.path}:`;
+      assert(result.exit_code === 1 && result.stdout.byteLength === 0 && text(result.stderr).includes(prefix), `${id} did not reject at ${prefix}: ${text(result.stderr)}`);
+      observeSelfTestIssue({ code: expected.code, logical_path: expected.path });
+      return pass("negative");
+    }
     case "cli_against_semantic_promotion_scoped_matrix":
     case "cli_against_semantic_promotion_scoped_testing":
     case "cli_against_semantic_promotion_all_simultaneous":
@@ -1132,6 +1449,97 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const result = run(["--roadmap", "testing", "--query", "summary", "--json"], validTestingPorts(context));
       assert(result.exit_code === 0 && result.stdout.byteLength > 0 && result.stderr.byteLength === 0, "query streams are not isolated");
       assert(!text(result.stdout).includes("CHECK OK") && JSON.parse(text(result.stdout)).evaluation_as_of === null, "query stdout contains a receipt or unstable envelope");
+      return pass("positive");
+    }
+    case "query_debt_live_migration_floors": {
+      const result = run(["--roadmap", "all", "--query", "debt", "--json"], bothAuthoritativePorts());
+      assert(result.exit_code === 0 && result.stderr.byteLength === 0, `live debt query failed: ${text(result.stderr)}`);
+      const rows = JSON.parse(text(result.stdout)).roadmaps as readonly Record<string, any>[];
+      const matrix = rows.find((row) => row.roadmap === "matrix");
+      const testing = rows.find((row) => row.roadmap === "testing");
+      assert(matrix !== undefined && testing !== undefined, "live debt query omitted a roadmap");
+      const independentTotal = (row: Record<string, any>): number =>
+        Object.values(row.independent_counts as Record<string, number>).reduce((sum, value) => sum + value, 0);
+      const sorted = (values: readonly unknown[], key: (value: any) => string): boolean => {
+        const keys = values.map(key);
+        return JSON.stringify(keys) === JSON.stringify([...keys].sort((left, right) => left < right ? -1 : left > right ? 1 : 0));
+      };
+      assert(independentTotal(matrix) === 32, `matrix independent migration floor drifted: ${independentTotal(matrix)}`);
+      assert(independentTotal(testing) === 64, `testing independent migration floor drifted: ${independentTotal(testing)}`);
+      assert(JSON.stringify(matrix.independent_counts) === JSON.stringify({
+        inferred_transitions: 7, pending_family_classifications: 7, raw_subordinate_lifecycles: 18,
+        unmodelled_coordinates: 0, unrendered_fields: 0, unresolved_references: 0,
+      }), "matrix independent category vector drifted");
+      assert(JSON.stringify(testing.independent_counts) === JSON.stringify({
+        inferred_transitions: 1, pending_family_classifications: 1, raw_subordinate_lifecycles: 62,
+        unmodelled_coordinates: 0, unrendered_fields: 0, unresolved_references: 0,
+      }), "testing independent category vector drifted");
+      assert(
+        matrix.migration_progress.raw_content_owners.count === 86 &&
+          matrix.migration_progress.raw_spans.count === 86 &&
+          matrix.migration_progress.frozen_spans.count === 86 &&
+          matrix.migration_progress.semantic_shadows.count === 7 &&
+          matrix.migration_progress.boundary_debt.count === 18 &&
+          matrix.migration_progress.replacement_coverage.denominator === 0 &&
+          matrix.migration_progress.replacement_coverage.numerator === 0 &&
+          matrix.migration_progress.completion_audit.lane_blockers.length === 297 &&
+          matrix.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
+        "matrix exact live migration facts drifted",
+      );
+      assert(
+        testing.migration_progress.raw_content_owners.count === 208 &&
+          testing.migration_progress.raw_spans.count === 208 &&
+          testing.migration_progress.frozen_spans.count === 208 &&
+          testing.migration_progress.semantic_shadows.count === 1 &&
+          testing.migration_progress.boundary_debt.count === 62 &&
+          testing.migration_progress.replacement_coverage.denominator === 0 &&
+          testing.migration_progress.replacement_coverage.numerator === 0 &&
+          testing.migration_progress.completion_audit.lane_blockers.length === 689 &&
+          testing.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
+        "testing exact live migration facts drifted",
+      );
+      for (const row of [matrix, testing]) {
+        const progress = row.migration_progress;
+        assert(progress.independent_debt.items.filter((item: any) => item.category === "unmodelled_coordinates").length === 0, `${row.roadmap} visible unmodelled coordinate floor drifted`);
+        assert(sorted(progress.raw_content_owners.owners, (owner) => JSON.stringify([owner.roadmap, owner.owner_kind, owner.owner_id, owner.owner_field])), `${row.roadmap} raw owner list is not canonical`);
+        assert(sorted(progress.raw_spans.span_ids, String) && sorted(progress.frozen_spans.span_ids, String) &&
+          sorted(progress.semantic_shadows.record_ids, String) &&
+          sorted(progress.completion_audit.lane_blockers, (blocker) => JSON.stringify([blocker.category, blocker.subject])),
+        `${row.roadmap} migration IDs/blockers are not canonical`);
+      }
+      return pass("positive");
+    }
+    case "query_debt_scoped_does_not_load_other_roadmap": {
+      const source = bothAuthoritativePorts();
+      const reads: RepoPath[] = [];
+      const ports = fakePorts({
+        read(path) {
+          reads.push(path);
+          return source.read.readDeclared(path);
+        },
+        registry: source.read.registryView,
+      });
+      const result = run(["--roadmap", "matrix", "--query", "debt", "--json"], ports);
+      assert(result.exit_code === 0 && result.stderr.byteLength === 0, `scoped debt query failed: ${text(result.stderr)}`);
+      const rows = JSON.parse(text(result.stdout)).roadmaps;
+      assert(rows.length === 1 && rows[0].roadmap === "matrix", "scoped debt query returned another roadmap");
+      assert(
+        JSON.stringify(reads) === JSON.stringify([
+          "cddl-matrix/roadmap.toml", "roadmap-campaign.toml", "roadmap-retired-ids.toml",
+        ]),
+        `scoped debt query read set drifted or loaded unselected TOML/Markdown: ${JSON.stringify(reads)}`,
+      );
+      return pass("positive");
+    }
+    case "query_debt_all_reports_both": {
+      const result = run(["--roadmap", "all", "--query", "debt", "--json"], bothAuthoritativePorts());
+      assert(result.exit_code === 0 && result.stderr.byteLength === 0, `all debt query failed: ${text(result.stderr)}`);
+      const rows = JSON.parse(text(result.stdout)).roadmaps;
+      assert(
+        JSON.stringify(rows.map((row: { roadmap: string }) => row.roadmap)) === JSON.stringify(["matrix", "testing"]) &&
+          rows.every((row: Record<string, unknown>) => "migration_progress" in row),
+        "all debt query did not report both roadmap progress views in canonical order",
+      );
       return pass("positive");
     }
     case "cli_as_of_valid_leap_day": {

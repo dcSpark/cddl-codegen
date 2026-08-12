@@ -4,7 +4,12 @@ import type { RegistryView, RoadmapAdapter } from "./adapters/types.ts";
 import { parseRoadmapCli, ROADMAP_CLI_USAGE, RoadmapCliParseError } from "./cli.ts";
 import { createImmutableByteView, validateLegacyTitleBinding } from "./campaign.ts";
 import { composeCanonicalDocument } from "./compose.ts";
-import { deriveMigrationDebt, migrationDebtReport, type MigrationDebt } from "./debt.ts";
+import {
+  deriveMigrationDebt,
+  migrationDebtReport,
+  migrationProgressReport,
+  type MigrationDebt,
+} from "./debt.ts";
 import { decodeCampaignSource } from "./decode/campaign.ts";
 import { decodeRetiredSource } from "./decode/retired.ts";
 import { decodeRoadmapSource } from "./decode/roadmap.ts";
@@ -59,6 +64,7 @@ import { runSelfTests } from "./selftest.ts";
 import { validateSourceSpans } from "./spans.ts";
 import {
   validateLifecycleRevision,
+  validateSelectedLifecycleContext,
   validateTransaction,
   type LifecycleRevisionInput,
 } from "./transaction.ts";
@@ -233,6 +239,45 @@ function validatePreActivationOutputStage(registry: RegistryView): void {
   }
 }
 
+/** Validate activated roots and selected authority without loading the unselected roadmap lane. */
+function validateScopedDebtQueryContext(
+  selection: RoadmapName,
+  core: ValidatedRoadmapCore,
+  reader: RevisionReader,
+): void {
+  const campaignBytes = readOptionalSource(reader, CAMPAIGN_SOURCE);
+  const retiredBytes = readOptionalSource(reader, RETIRED_SOURCE);
+  if (campaignBytes === undefined && retiredBytes === undefined) {
+    validatePreActivationOutputStage(core.registry);
+    return;
+  }
+  if (campaignBytes === undefined) {
+    failure([issue("E-SOURCE-MISSING", CAMPAIGN_SOURCE, "$", "declared source is missing")]);
+  }
+  if (retiredBytes === undefined) {
+    failure([issue("E-SOURCE-MISSING", RETIRED_SOURCE, "$", "declared source is missing")]);
+  }
+  const campaign = decodeCampaignSource(campaignBytes, CAMPAIGN_SOURCE, true);
+  const retired = decodeRetiredSource(retiredBytes, RETIRED_SOURCE, true);
+  const contextIssues = validateSelectedLifecycleContext({
+    selection,
+    campaign,
+    retired,
+    document: core.document,
+    registry: core.registry,
+  });
+  if (contextIssues.length > 0) failure(contextIssues);
+  const stage = productionOutputStage(campaign);
+  if (core.registry.production_output_stage !== stage) {
+    failure([issue(
+      "E-OUTPUT-CLAIM",
+      "<output-registry>",
+      "production_output_stage",
+      `revision registry stage ${core.registry.production_output_stage} does not match campaign stage ${stage}`,
+    )]);
+  }
+}
+
 function finalizeRoadmap(core: ValidatedRoadmapCore): FinalizedRoadmap {
   return Object.freeze({
     ...core,
@@ -382,6 +427,7 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
       return { evaluation_as_of, roadmaps: prepared.map((item) => ({
         roadmap: item.document.document.roadmap,
         ...migrationDebtReport(item.debt),
+        migration_progress: migrationProgressReport(item.document, item.debt, item.completed),
       })) };
     case "references":
       return { evaluation_as_of, roadmaps: prepared.map((item) => ({
@@ -437,6 +483,11 @@ function queryRoadmaps(
   const reader = worktreeReader(ports);
   if (selection !== "all") {
     const core = prepareRoadmapCore(selection, reader);
+    if (view === "debt") {
+      validateScopedDebtQueryContext(selection, core, reader);
+      const value = stableJsonValue(queryValue([finalizeRoadmap(core)], view, asOf));
+      return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
+    }
     const lifecycle = loadActivatedLifecycle(
       reader,
       selection === "matrix" ? { matrix: core } : { testing: core },

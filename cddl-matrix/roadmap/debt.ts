@@ -18,6 +18,7 @@ import type {
   IdentityOwnerFact,
   ReplacementPin,
   RoadmapDocument,
+  SemanticPayload,
   TombstoneOwnerFact,
 } from "./model/documents.ts";
 import {
@@ -157,6 +158,67 @@ export interface DebtReport {
   readonly independent: readonly IndependentDebtKey[];
 }
 
+export interface MigrationProgressBlocker {
+  readonly category:
+    | "raw_content_owner"
+    | "raw_span"
+    | "frozen_span"
+    | "semantic_shadow"
+    | "uncovered_replacement_span"
+    | IndependentDebtCategory;
+  readonly subject: string;
+}
+
+export interface MigrationProgressReport {
+  readonly raw_content_owners: {
+    readonly count: number;
+    readonly owners: readonly DebtOwnerKey[];
+  };
+  readonly raw_spans: {
+    readonly count: number;
+    readonly span_ids: readonly SpanId[];
+  };
+  readonly frozen_spans: {
+    readonly count: number;
+    readonly span_ids: readonly SpanId[];
+  };
+  readonly semantic_shadows: {
+    readonly count: number;
+    readonly record_ids: readonly RoadmapId[];
+  };
+  readonly replacement_coverage: {
+    readonly denominator: number;
+    readonly numerator: number;
+    readonly covered_span_ids: readonly SpanId[];
+  };
+  readonly independent_debt: {
+    readonly count: number;
+    readonly items: readonly IndependentDebtKey[];
+  };
+  readonly boundary_debt: {
+    readonly count: number;
+    readonly items: readonly IndependentDebtKey[];
+  };
+  readonly typed_semantic_state: {
+    readonly signals: {
+      readonly unknown_record_ids: readonly RoadmapId[];
+      readonly stale_record_ids: readonly RoadmapId[];
+    };
+    readonly evidence: {
+      readonly unknown_record_ids: readonly RoadmapId[];
+      readonly stale_record_ids: readonly RoadmapId[];
+    };
+    readonly controls: {
+      readonly stale_record_ids: readonly RoadmapId[];
+    };
+    readonly unrepresentable_coordinates: readonly ["controls.unknown"];
+  };
+  readonly completion_audit: {
+    readonly lane_blockers: readonly MigrationProgressBlocker[];
+    readonly wp5c_join_blockers: readonly MigrationProgressBlocker[];
+  };
+}
+
 const OWNER_RANK: Readonly<Record<OwnerDebtState, number>> = {
   semantic: 0,
   raw_with_semantic_shadow: 1,
@@ -171,6 +233,21 @@ const INDEPENDENT_CATEGORIES: readonly IndependentDebtCategory[] = [
   "unrendered_fields",
   "unmodelled_coordinates",
 ];
+
+export const LANE_BLOCKING_INDEPENDENT_CATEGORIES = Object.freeze([
+  "raw_subordinate_lifecycles",
+  "inferred_transitions",
+  "pending_family_classifications",
+  "unrendered_fields",
+] as const satisfies readonly IndependentDebtCategory[]);
+
+export const WP5C_JOIN_BLOCKING_INDEPENDENT_CATEGORIES = Object.freeze([
+  "unresolved_references",
+] as const satisfies readonly IndependentDebtCategory[]);
+
+export const VISIBLE_NON_BLOCKING_INDEPENDENT_CATEGORIES = Object.freeze([
+  "unmodelled_coordinates",
+] as const satisfies readonly IndependentDebtCategory[]);
 
 interface PrivateDebtTransitionFacts {
   readonly base: MigrationDebt;
@@ -403,6 +480,41 @@ function unrenderedFromLedger(
   }
 }
 
+function addSemanticPayloadDebt(
+  document: RoadmapDocument,
+  payload: SemanticPayload,
+  owner: DebtOwnerKey,
+  independent: Map<string, IndependentDebtKey>,
+): void {
+  if (payload.kind === "work" && payload.work_state === "pending_review") {
+    addIndependent(independent, {
+      roadmap: document.document.roadmap,
+      category: "inferred_transitions",
+      owner,
+      subject: "payload.work_state",
+    });
+  }
+  if (payload.kind === "work" && payload.family_classification === "pending") {
+    addIndependent(independent, {
+      roadmap: document.document.roadmap,
+      category: "pending_family_classifications",
+      owner,
+      subject: "payload.family_classification",
+    });
+  }
+  if (
+    payload.kind === "family" && payload.family_maturity === "under_design" &&
+    payload.denominator_unknowns_md !== undefined
+  ) {
+    addIndependent(independent, {
+      roadmap: document.document.roadmap,
+      category: "unmodelled_coordinates",
+      owner,
+      subject: "payload.denominator_unknowns_md",
+    });
+  }
+}
+
 /** Derive owner atoms from decoded values and completed render ledgers, never from raw wire data. */
 export function deriveMigrationDebt(
   document: RoadmapDocument,
@@ -475,12 +587,16 @@ export function deriveMigrationDebt(
 
   for (const record of document.records) {
     if ("source_block_md" in record) {
-      addOwner(owners, {
+      const owner: DebtOwnerKey = {
         roadmap,
         owner_kind: "record",
         owner_id: record.id,
         owner_field: "source_block_md",
-      }, recordRawState(record));
+      };
+      addOwner(owners, owner, recordRawState(record));
+      if ("semantic_shadow" in record && record.semantic_shadow !== undefined) {
+        addSemanticPayloadDebt(document, record.semantic_shadow, owner, independent);
+      }
       continue;
     }
     const chunk = chunks.get(JSON.stringify(["record", record.id]));
@@ -497,27 +613,12 @@ export function deriveMigrationDebt(
         owner_field: field,
       }, "semantic");
     }
-    if (record.payload.kind === "work" && record.payload.family_classification === "pending") {
-      const owner = ownerForRecord(document, record.id, owners);
-      addIndependent(independent, {
-        roadmap,
-        category: "pending_family_classifications",
-        owner,
-        subject: "payload.family_classification",
-      });
-    }
-    if (
-      record.payload.kind === "family" && record.payload.family_maturity === "under_design" &&
-      record.payload.denominator_unknowns_md !== undefined
-    ) {
-      const owner = ownerForRecord(document, record.id, owners);
-      addIndependent(independent, {
-        roadmap,
-        category: "unmodelled_coordinates",
-        owner,
-        subject: "payload.denominator_unknowns_md",
-      });
-    }
+    addSemanticPayloadDebt(
+      document,
+      record.payload,
+      ownerForRecord(document, record.id, owners),
+      independent,
+    );
   }
 
   for (const span of document.spans) {
@@ -1533,6 +1634,24 @@ function validateMapIndexes(
   }
 }
 
+function isCutoverRevealedShadowDebt(
+  value: IndependentDebtKey,
+  options: DebtComparisonOptions,
+): boolean {
+  if (options.base_document.document.schema_version !== 0 ||
+    options.candidate_document.document.schema_version !== 1 ||
+    value.owner.owner_kind !== "record" || value.owner.owner_field !== "source_block_md") return false;
+  const record = options.candidate_document.records.find((candidate) => candidate.id === value.owner.owner_id);
+  if (record === undefined || !("source_block_md" in record) ||
+    !("semantic_shadow" in record) || record.semantic_shadow === undefined) return false;
+  return value.category === "inferred_transitions"
+    ? value.subject === "payload.work_state" && record.semantic_shadow.kind === "work" &&
+      record.semantic_shadow.work_state === "pending_review"
+    : value.category === "pending_family_classifications" &&
+      value.subject === "payload.family_classification" && record.semantic_shadow.kind === "work" &&
+      record.semantic_shadow.family_classification === "pending";
+}
+
 /** Compare owner lattice and independent/frozen sets; counts never authorize a transition. */
 export function compareMigrationDebt(
   base: MigrationDebt,
@@ -1603,6 +1722,7 @@ export function compareMigrationDebt(
       baseValue.subject === value.subject &&
       baseValue.category !== value.category
     );
+    if (hidden === undefined && isCutoverRevealedShadowDebt(value, options)) continue;
     issues.push(issue(
       options,
       hidden === undefined ? "E-DEBT-SET-GROWTH" : "E-DEBT-CATEGORY-HIDE",
@@ -1630,6 +1750,169 @@ export function compareMigrationDebt(
     }
   }
   return Object.freeze(issues);
+}
+
+function sourceReplacementsForSpan(
+  document: RoadmapDocument,
+  span: RoadmapDocument["spans"][number],
+): readonly { readonly span_id: SpanId; readonly replacement_field: string }[] {
+  const value = span.source_kind === "record"
+    ? document.records.find((candidate) => candidate.id === span.owner_id)
+    : span.source_kind === "section"
+      ? document.sections.find((candidate) => candidate.section_id === span.owner_id)
+      : span.source_kind === "fragment"
+        ? document.fragments.find((candidate) => candidate.fragment_id === span.owner_id)
+        : span.source_kind === "part"
+          ? document.parts.find((candidate) => candidate.part_id === span.owner_id)
+          : span.source_kind === "legacy_marker"
+            ? document.legacy_markers.find((candidate) => candidate.marker_id === span.owner_id)
+            : undefined;
+  if (value === undefined || !("source_replacements" in value)) return [];
+  return value.source_replacements.filter((replacement) =>
+    replacement.span_id === span.id && replacement.replacement_field === span.owner_field
+  );
+}
+
+function hasExactReplacementBinding(
+  document: RoadmapDocument,
+  completed: CompletedRenderIr,
+  span: RoadmapDocument["spans"][number],
+): boolean {
+  if (span.migration_status !== "replaced") return false;
+  const replacements = sourceReplacementsForSpan(document, span);
+  if (replacements.length !== 1) return false;
+  const chunks = completed.chunks.filter((chunk) =>
+    chunk.owner.kind === span.source_kind && chunk.owner.id === span.owner_id &&
+    chunk.source_span_ids.filter((spanId) => spanId === span.id).length === 1
+  );
+  const chunk = chunks[0];
+  if (chunks.length !== 1 || chunk === undefined) return false;
+  if (span.source_kind === "record") {
+    return exactProjectedFieldSegment(
+      completed,
+      chunk,
+      span.owner_id,
+      span.owner_field,
+      span.start_byte,
+      span.end_byte,
+    ) !== undefined;
+  }
+  const chunkIndex = completed.chunks.indexOf(chunk);
+  const chunkStart = completed.expected_bytes.prefix_offsets[chunkIndex];
+  if (chunkStart === undefined || span.start_byte !== chunkStart ||
+    span.end_byte !== chunkStart + chunk.bytes.byteLength) return false;
+  try {
+    return completed.expected_bytes.equals(
+      completed.expected_bytes.slice(span.start_byte, span.end_byte),
+      chunk.bytes,
+    );
+  } catch {
+    return false;
+  }
+}
+
+function progressBlockerSort(
+  left: MigrationProgressBlocker,
+  right: MigrationProgressBlocker,
+): number {
+  return codePointSort(JSON.stringify([left.category, left.subject]), JSON.stringify([right.category, right.subject]));
+}
+
+/** Pure, canonical progress view. Typed stale/unknown postures are visible state, never debt. */
+export function migrationProgressReport(
+  document: RoadmapDocument,
+  debt: MigrationDebt,
+  completed: CompletedRenderIr,
+): MigrationProgressReport {
+  const rawContentOwners = [...debt.owners.values()]
+    .filter(({ key, state }) => key.owner_kind !== "source_span" && state !== "semantic")
+    .map(({ key }) => key)
+    .sort((left, right) => codePointSort(debtOwnerIndex(left), debtOwnerIndex(right)));
+  const rawSpanIds = document.spans.filter((span) => span.migration_status === "raw")
+    .map((span) => span.id).sort(codePointSort);
+  const frozenSpanIds = [...debt.frozen_legacy_spans.values()].map((key) => key.owner_id as SpanId)
+    .sort(codePointSort);
+  const shadowIds = document.records.filter((record) =>
+    "source_block_md" in record && "semantic_shadow" in record && record.semantic_shadow !== undefined
+  ).map((record) => record.id).sort(codePointSort);
+  const replacementDenominator = document.spans.filter((span) => span.migration_status === "replaced");
+  const coveredSpanIds = replacementDenominator.filter((span) =>
+    hasExactReplacementBinding(document, completed, span)
+  ).map((span) => span.id).sort(codePointSort);
+  const covered = new Set(coveredSpanIds);
+  const independent = [...debt.independent.values()].sort((left, right) =>
+    codePointSort(independentDebtIndex(left), independentDebtIndex(right))
+  );
+  const boundary = independent.filter((item) => item.category === "raw_subordinate_lifecycles");
+
+  const signalUnknown = new Set<RoadmapId>();
+  const signalStale = new Set<RoadmapId>();
+  const evidenceUnknown = new Set<RoadmapId>();
+  const evidenceStale = new Set<RoadmapId>();
+  const controlStale = new Set<RoadmapId>();
+  for (const record of document.records) {
+    const payload = "payload" in record
+      ? record.payload
+      : "semantic_shadow" in record ? record.semantic_shadow : undefined;
+    if (payload?.kind === "signal") {
+      if (payload.evaluation === "unknown") signalUnknown.add(record.id);
+      if (payload.evaluation === "stale") signalStale.add(record.id);
+    } else if (payload?.kind === "evidence") {
+      if (payload.evidence_verdict === "unknown") evidenceUnknown.add(record.id);
+      if (payload.freshness === "stale") evidenceStale.add(record.id);
+    } else if (payload?.kind === "control" && payload.control_state === "stale") {
+      controlStale.add(record.id);
+    }
+  }
+  const sortedIds = (values: ReadonlySet<RoadmapId>): readonly RoadmapId[] =>
+    Object.freeze([...values].sort(codePointSort));
+
+  const laneBlockers: MigrationProgressBlocker[] = [
+    ...rawContentOwners.map((owner) => ({ category: "raw_content_owner" as const, subject: debtOwnerIndex(owner) })),
+    ...rawSpanIds.map((spanId) => ({ category: "raw_span" as const, subject: spanId })),
+    ...frozenSpanIds.map((spanId) => ({ category: "frozen_span" as const, subject: spanId })),
+    ...shadowIds.map((recordId) => ({ category: "semantic_shadow" as const, subject: recordId })),
+    ...replacementDenominator.filter((span) => !covered.has(span.id)).map((span) => ({
+      category: "uncovered_replacement_span" as const,
+      subject: span.id,
+    })),
+    ...independent.filter((item) =>
+      LANE_BLOCKING_INDEPENDENT_CATEGORIES.some((category) => category === item.category)
+    ).map((item) => ({
+      category: item.category,
+      subject: independentDebtIndex(item),
+    })),
+  ].sort(progressBlockerSort);
+  const wp5cJoinBlockers: MigrationProgressBlocker[] = independent
+    .filter((item) =>
+      WP5C_JOIN_BLOCKING_INDEPENDENT_CATEGORIES.some((category) => category === item.category)
+    )
+    .map((item) => ({ category: item.category, subject: independentDebtIndex(item) }))
+    .sort(progressBlockerSort);
+
+  return Object.freeze({
+    raw_content_owners: Object.freeze({ count: rawContentOwners.length, owners: Object.freeze(rawContentOwners) }),
+    raw_spans: Object.freeze({ count: rawSpanIds.length, span_ids: Object.freeze(rawSpanIds) }),
+    frozen_spans: Object.freeze({ count: frozenSpanIds.length, span_ids: Object.freeze(frozenSpanIds) }),
+    semantic_shadows: Object.freeze({ count: shadowIds.length, record_ids: Object.freeze(shadowIds) }),
+    replacement_coverage: Object.freeze({
+      denominator: replacementDenominator.length,
+      numerator: coveredSpanIds.length,
+      covered_span_ids: Object.freeze(coveredSpanIds),
+    }),
+    independent_debt: Object.freeze({ count: independent.length, items: Object.freeze(independent) }),
+    boundary_debt: Object.freeze({ count: boundary.length, items: Object.freeze(boundary) }),
+    typed_semantic_state: Object.freeze({
+      signals: Object.freeze({ unknown_record_ids: sortedIds(signalUnknown), stale_record_ids: sortedIds(signalStale) }),
+      evidence: Object.freeze({ unknown_record_ids: sortedIds(evidenceUnknown), stale_record_ids: sortedIds(evidenceStale) }),
+      controls: Object.freeze({ stale_record_ids: sortedIds(controlStale) }),
+      unrepresentable_coordinates: Object.freeze(["controls.unknown"] as const),
+    }),
+    completion_audit: Object.freeze({
+      lane_blockers: Object.freeze(laneBlockers),
+      wp5c_join_blockers: Object.freeze(wp5cJoinBlockers),
+    }),
+  });
 }
 
 export function migrationDebtReport(debt: MigrationDebt): DebtReport {

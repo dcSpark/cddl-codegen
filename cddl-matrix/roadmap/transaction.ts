@@ -40,9 +40,12 @@ import type {
   RoadmapDocument,
   SemanticPayload,
   RecordNode,
+  RoadmapDocumentV0,
+  ShadowRecordClaim,
   TombstoneEligibleBaseOwner,
 } from "./model/documents.ts";
 import type { CompletedRenderIr } from "./render_ir.ts";
+import { shadowRecordSourceTitle } from "./shadow_title.ts";
 import {
   resolveReplacementPin,
   validateRetiredIds,
@@ -96,6 +99,14 @@ export interface ScopedRoadmapBaseFacts {
   readonly registry: RegistryView;
 }
 
+export interface SelectedLifecycleContextInputs {
+  readonly selection: RoadmapName;
+  readonly campaign: CampaignDocumentV1;
+  readonly retired: RetiredIdsDocumentV1;
+  readonly document: RoadmapDocument;
+  readonly registry: RegistryView;
+}
+
 export interface AllRoadmapsTransactionInputs {
   readonly scope: "all";
   readonly against: FullCommitId;
@@ -127,6 +138,264 @@ function issue(
     message,
     exit: 1,
   };
+}
+
+function selectedContextIssue(
+  code: RoadmapIssue["code"],
+  logical_path: string,
+  message: string,
+  source = "roadmap-campaign.toml",
+): RoadmapIssue {
+  return { code, source, logical_path, message, exit: 1 };
+}
+
+function namespaceOfRoadmapId(id: RoadmapId): RoadmapName | undefined {
+  return id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
+}
+
+const LEGACY_ROADMAP_PATH = Object.freeze({
+  matrix: "cddl-matrix/ROADMAP.md",
+  testing: "tests/TESTING_ROADMAP.md",
+} as const);
+
+function sha256(value: Uint8Array): string {
+  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
+}
+
+/**
+ * Prove a selected v0 record's reservation ownership from the selected TOML alone. The scoped
+ * query deliberately has no Markdown bytes: the frozen document metadata, raw owner bytes,
+ * manifest placement, and exact span ledger are the complete evidence available at this seam.
+ */
+function selectedShadowClaim(
+  document: RoadmapDocumentV0,
+  id: RoadmapId,
+  reservation?: CampaignDocumentV1["legacy_markdown_reservations"][number],
+): ShadowRecordClaim | undefined {
+  const namespace = document.document.roadmap;
+  const records = document.records.filter((record) => record.id === id);
+  const manifestRows = document.manifest.filter((entry) =>
+    entry.kind === "record" && entry.record_id === id
+  );
+  if (records.length !== 1 || manifestRows.length !== 1) return undefined;
+  const record = records[0]!;
+  if (record.span_ids.length === 0 || new Set(record.span_ids).size !== record.span_ids.length) {
+    return undefined;
+  }
+  const spans = record.span_ids.map((spanId) => document.spans.find((span) => span.id === spanId));
+  if (spans.some((span) => span === undefined)) return undefined;
+  const ordered = spans.map((span) => span!).sort((left, right) =>
+    left.start_byte - right.start_byte || codePointSort(left.id, right.id)
+  );
+  const start = reservation?.source_start_byte ?? ordered[0]!.start_byte;
+  const end = reservation?.source_end_byte ?? ordered.at(-1)!.end_byte;
+  const allOwnerSpans = document.spans.filter((span) =>
+    span.source_kind === "record" && span.owner_id === id && span.owner_field === "source_block_md"
+  ).map((span) => span.id).sort(codePointSort);
+  const claimedSpans = [...record.span_ids].sort(codePointSort);
+  if (
+    namespaceOfRoadmapId(id) !== namespace || document.document.authority !== "shadow" ||
+    document.document.projection_path !== LEGACY_ROADMAP_PATH[namespace] ||
+    ordered[0]!.start_byte !== start || ordered.at(-1)!.end_byte !== end ||
+    end - start !== record.source_block_md.byteLength ||
+    ordered.some((span, index) => index > 0 && ordered[index - 1]!.end_byte !== span.start_byte) ||
+    ordered.some((span) => {
+      const relativeStart = span.start_byte - start;
+      const relativeEnd = span.end_byte - start;
+      return span.source_kind !== "record" || span.owner_id !== id ||
+        span.owner_field !== "source_block_md" || span.migration_status !== "raw" ||
+        relativeStart < 0 || relativeEnd <= relativeStart || relativeEnd > record.source_block_md.byteLength ||
+        sha256(record.source_block_md.slice(relativeStart, relativeEnd)) !== span.sha256;
+    }) ||
+    allOwnerSpans.length !== claimedSpans.length ||
+    allOwnerSpans.some((spanId, index) => claimedSpans[index] !== spanId) ||
+    shadowRecordSourceTitle(record.source_block_md, namespace) !== record.title ||
+    (reservation !== undefined && (
+      reservation.id !== id || reservation.roadmap_path !== LEGACY_ROADMAP_PATH[namespace] ||
+      reservation.source_title !== record.title || reservation.source_sha256 !== sha256(record.source_block_md) ||
+      reservation.whole_source_sha256 !== document.document.frozen_source_sha256
+    ))
+  ) return undefined;
+  return Object.freeze({
+    id,
+    namespace,
+    source_path: document.document.source_path,
+    logical_path: `record[${JSON.stringify(id)}]`,
+    legacy_span_ids: Object.freeze(record.span_ids.slice()),
+  });
+}
+
+/**
+ * Validate every activated invariant decidable from one selected roadmap plus global roots/registry.
+ * Cross-roadmap joins deliberately remain the `all` scope's responsibility.
+ */
+export function validateSelectedLifecycleContext(
+  inputs: SelectedLifecycleContextInputs,
+): readonly RoadmapIssue[] {
+  const issues: RoadmapIssue[] = [...validateCampaignAuthorityTuple(inputs.campaign.campaign)];
+  const declaredAuthority = campaignAuthority(inputs.campaign, inputs.selection);
+  if (declaredAuthority !== inputs.document.document.authority ||
+    inputs.document.document.roadmap !== inputs.selection) {
+    issues.push(selectedContextIssue(
+      "E-SCHEMA-STATE",
+      `campaign.${inputs.selection}_authority`,
+      `campaign ${inputs.selection} authority ${declaredAuthority} does not match selected roadmap authority ${inputs.document.document.authority}`,
+    ));
+  }
+  const seenReservations = new Set<RoadmapId>();
+  for (const [index, reservation] of inputs.campaign.legacy_markdown_reservations.entries()) {
+    if (seenReservations.has(reservation.id)) {
+      issues.push(selectedContextIssue("E-CAMPAIGN-DUPLICATE", `legacy_markdown_reservation[${index}]`, "duplicate legacy reservation"));
+    }
+    seenReservations.add(reservation.id);
+    const namespace = namespaceOfRoadmapId(reservation.id);
+    const expectedPath = namespace === "matrix" ? "cddl-matrix/ROADMAP.md" : "tests/TESTING_ROADMAP.md";
+    if (namespace === undefined || reservation.roadmap_path !== expectedPath) {
+      issues.push(selectedContextIssue("E-CAMPAIGN-TARGET", `legacy_markdown_reservation[${index}]`, "reservation ID namespace and roadmap path differ"));
+    }
+    if (namespace !== undefined && campaignAuthority(inputs.campaign, namespace) === "authoritative") {
+      issues.push(selectedContextIssue("E-CAMPAIGN-TARGET-EXPIRED", `legacy_markdown_reservation[${index}]`, `${namespace} reservations expire at authoritative v1`));
+    }
+  }
+  const activeWork = new Map(inputs.document.records.flatMap((record) => {
+    const kind = workKindOfRecord(inputs.document, record.id);
+    return kind === undefined ? [] : [[record.id, kind] as const];
+  }));
+  const firedPromotions = new Set(inputs.document.records.filter((record) => {
+    const payload = "payload" in record
+      ? record.payload
+      : "semantic_shadow" in record ? record.semantic_shadow : undefined;
+    return payload?.kind === "signal" && payload.transition_kind === "promotion_trigger" &&
+      payload.evaluation === "met";
+  }).map((record) => record.id));
+  const firedWork = new Set(inputs.document.records.filter((record) => {
+    const payload = "payload" in record
+      ? record.payload
+      : "semantic_shadow" in record ? record.semantic_shadow : undefined;
+    return payload?.kind === "work" && payload.work_state === "armed" &&
+      payload.transition_ids.some((id) => firedPromotions.has(id));
+  }).map((record) => record.id));
+  const seenSelections = new Set<RoadmapId>();
+  for (const [index, selection] of inputs.campaign.selections.entries()) {
+    if (seenSelections.has(selection.item_id)) {
+      issues.push(selectedContextIssue("E-CAMPAIGN-DUPLICATE", `selection[${index}]`, "duplicate campaign selection"));
+    }
+    seenSelections.add(selection.item_id);
+    if (selection.selected_state === "selected") {
+      if (selection.pickup_commit !== undefined) {
+        issues.push(selectedContextIssue("E-CAMPAIGN-STATE", `selection[${index}]`, "selected state forbids pickup_commit"));
+      }
+    } else if (selection.pickup_commit === undefined || selection.assignee === undefined) {
+      issues.push(selectedContextIssue("E-CAMPAIGN-STATE", `selection[${index}]`, "in_progress requires assignee and pickup_commit"));
+    }
+    const reservation = inputs.campaign.legacy_markdown_reservations.find((row) => row.id === selection.item_id);
+    if (selection.target_kind === "legacy_markdown_reservation" && reservation === undefined) {
+      issues.push(selectedContextIssue("E-CAMPAIGN-TARGET", `selection[${index}]`, "legacy target must resolve to one reservation"));
+    }
+    if (selection.target_kind === "active_id" && reservation !== undefined) {
+      issues.push(selectedContextIssue("E-CAMPAIGN-TARGET", `selection[${index}]`, "active_id must not resolve to a legacy reservation"));
+    }
+    if (namespaceOfRoadmapId(selection.item_id) !== inputs.selection) continue;
+    if (selection.target_kind === "active_id") {
+      if (!activeWork.has(selection.item_id)) {
+        issues.push(selectedContextIssue("E-CAMPAIGN-TARGET", `selection[${index}]`, "active_id must resolve to selected authoritative work and no reservation"));
+      }
+    }
+  }
+  for (const id of firedWork) {
+    if (!seenSelections.has(id)) {
+      issues.push(selectedContextIssue("E-CAMPAIGN-FIRED-HIDDEN", `selection[${JSON.stringify(id)}]`, `fired promotion for ${id} is hidden from the campaign`));
+    }
+  }
+  const retired = validateRetiredIds(inputs.retired, inputs.registry);
+  issues.push(...retired.issues);
+  for (const guard of inputs.registry.current_guards) {
+    if (!resolveReplacementPin(guard.replacement_pin, inputs.registry).resolved) {
+      issues.push(issue("E-TRANSACTION-GUARD", `guard[${JSON.stringify(guard.id)}]`, "current guard replacement pin must resolve exactly once in this revision"));
+    }
+  }
+  const indexes = buildRoadmapIndexes(inputs.document);
+  issues.push(...indexes.issues);
+  const selectedIsAuthoritative = declaredAuthority === "authoritative" &&
+    inputs.document.document.schema_version === 1;
+  const identity = validateGlobalIdentity({
+    documents: indexes.issues.length === 0 && selectedIsAuthoritative
+      ? [indexes.indexes.identity_inputs]
+      : [],
+    current_guards: inputs.registry.current_guards,
+    tombstones: retired.issues.length === 0 ? inputs.retired.entries : [],
+  });
+  issues.push(...identity.issues);
+
+  const guards = new Set(inputs.registry.current_guards.map((guard) => guard.id));
+  const tombstones = new Set(inputs.retired.entries.map((entry) => entry.id));
+  const reservations = new Map(inputs.campaign.legacy_markdown_reservations.map((row) => [row.id, row]));
+  const selectedFirstClass = new Set(selectedIsAuthoritative
+    ? indexes.indexes.identity_inputs.id_providers.map((provider) => provider.id)
+    : []);
+  const selectedShadowClaims = new Map<RoadmapId, ShadowRecordClaim>();
+  if (declaredAuthority === "shadow" && inputs.document.document.schema_version === 0) {
+    const shadowDocument = inputs.document as RoadmapDocumentV0;
+    for (const record of inputs.document.records) {
+      const reservation = reservations.get(record.id);
+      const claim = selectedShadowClaim(shadowDocument, record.id, reservation);
+      if (claim === undefined) {
+        issues.push(selectedContextIssue(
+          "E-CAMPAIGN-TARGET",
+          `record[${JSON.stringify(record.id)}]`,
+          reservation === undefined
+            ? "selected shadow declaration lacks one exact TOML owner/manifest/span binding"
+            : "selected shadow reservation lacks one exact same-ID TOML owner/manifest/span binding",
+          inputs.document.document.source_path,
+        ));
+      } else {
+        selectedShadowClaims.set(record.id, claim);
+      }
+    }
+    for (const reservation of inputs.campaign.legacy_markdown_reservations) {
+      if (namespaceOfRoadmapId(reservation.id) === inputs.selection &&
+        !selectedShadowClaims.has(reservation.id)) {
+        issues.push(selectedContextIssue(
+          "E-CAMPAIGN-TARGET",
+          `legacy_markdown_reservation[${JSON.stringify(reservation.id)}]`,
+          "selected shadow reservation lacks one exact same-ID TOML owner/manifest/span binding",
+        ));
+      }
+    }
+  }
+
+  for (const reservation of inputs.campaign.legacy_markdown_reservations) {
+    const id = reservation.id;
+    if (guards.has(id) || tombstones.has(id) || selectedFirstClass.has(id)) {
+      issues.push(selectedContextIssue(
+        "E-OWNER-DUPLICATE",
+        `owner[${JSON.stringify(id)}]`,
+        "selected active/guard/tombstone ID collides with a legacy reservation",
+        "<identity>",
+      ));
+    }
+  }
+  for (const id of selectedShadowClaims.keys()) {
+    if (guards.has(id) || tombstones.has(id)) {
+      issues.push(selectedContextIssue(
+        "E-OWNER-DUPLICATE",
+        `owner[${JSON.stringify(id)}]`,
+        "selected shadow reservation collides with a guard or tombstone",
+        "<identity>",
+      ));
+    }
+  }
+  for (const alias of indexes.indexes.identity_inputs.alias_providers) {
+    if (reservations.has(alias.alias as RoadmapId)) {
+      issues.push(selectedContextIssue(
+        "E-ALIAS-COLLISION",
+        `alias[${JSON.stringify(alias.alias)}]`,
+        `legacy alias ${JSON.stringify(alias.alias)} collides with a legacy reservation ID`,
+        "<identity>",
+      ));
+    }
+  }
+  return sortIssues(issues);
 }
 
 function sortIssues(issues: readonly RoadmapIssue[]): readonly RoadmapIssue[] {
