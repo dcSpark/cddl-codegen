@@ -221,7 +221,7 @@ function documentTransitionSignature(document: RoadmapDocument): string {
         }
       };
       collect(value.payload, "payload");
-      return fields.map((field) => ["record", value.id, field]);
+      return fields.map((field) => ["record", value.id, value.projection_visibility, field]);
     }),
     ...document.parts.map((value) => ["part", value.part_id, "source_block_md" in value ? "source_block_md" : "body_md"]),
   ].sort((left, right) => codePointSort(JSON.stringify(left), JSON.stringify(right)));

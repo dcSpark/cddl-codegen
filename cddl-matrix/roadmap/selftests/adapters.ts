@@ -52,6 +52,11 @@ import {
   liveMatrixShadowV0Document,
   liveMatrixShadowV0Source,
 } from "./live_matrix.ts";
+import {
+  liveTestingAuthoritativeDocument,
+  liveTestingShadowV0Document,
+  liveTestingShadowV0Source,
+} from "./live_testing.ts";
 
 export const REQUIRED_ADAPTER_SELFTEST_CASE_IDS = [
   "decoder_domain_dispatch_once",
@@ -59,6 +64,8 @@ export const REQUIRED_ADAPTER_SELFTEST_CASE_IDS = [
   "pipeline_indexes_before_adapter_validation",
   "indexes_created_from_decoded_document",
   "matrix_mixed_v1_preserves_inline_slots",
+  "matrix_v0_reconstruction_visibility_arms",
+  "testing_v0_reconstruction_visibility_arms",
 ] as const;
 
 export type RequiredAdapterSelfTestCaseId =
@@ -894,6 +901,7 @@ function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
     ...(rawRecord.legacy_aliases === undefined ? {} : { legacy_aliases: [...rawRecord.legacy_aliases] }),
     ...(rawRecord.tags === undefined ? {} : { tags: [...rawRecord.tags] }),
     render_authority: "semantic",
+    projection_visibility: "document",
     payload: {
       kind: "matrix_policy",
       policy_kind: "boundary",
@@ -999,6 +1007,91 @@ function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
     bindingIssues.issues.some((entry) => entry.logical_path === "generated_slot[\"constraint\"].binding"),
     "malformed production slot binding escaped the declared matrix slot floor",
   );
+}
+
+function withSemanticOnlyRecord(document: RoadmapDocumentV1, id: RoadmapId): RoadmapDocumentV1 {
+  const record = {
+    id,
+    title: "Semantic-only reconstruction vector",
+    projection_group: document.sections[0]!.section_id,
+    render_authority: "semantic" as const,
+    projection_visibility: "semantic_only" as const,
+    payload: {
+      kind: "work" as const,
+      summary_md: new TextEncoder().encode("Semantic-only metadata."),
+      work_state: "ready" as const,
+      work_intent: "build_capability" as const,
+      work_kind: "feature" as const,
+      risk: "cosmetic" as const,
+      family_classification: "none_reviewed" as const,
+      acceptance_md: new TextEncoder().encode("Identity remains active."),
+      priority_rationale_md: new TextEncoder().encode("No document bytes are owned."),
+    },
+    source_replacements: [],
+  };
+  return {
+    ...document,
+    records: [...document.records, record],
+    manifest: [...document.manifest, { kind: "record", record_id: record.id }],
+  };
+}
+
+function withDocumentVisibleRecord(document: RoadmapDocumentV1): RoadmapDocumentV1 {
+  const raw = document.records.find((record) => record.render_authority === "raw" && record.span_ids.length === 1);
+  assert(raw !== undefined && raw.render_authority === "raw", "document-visible reconstruction vector lacks a single-span raw record");
+  const spanId = raw.span_ids[0]!;
+  const converted = {
+    id: raw.id,
+    title: raw.title,
+    projection_group: raw.projection_group,
+    ...(raw.legacy_aliases === undefined ? {} : { legacy_aliases: raw.legacy_aliases }),
+    ...(raw.tags === undefined ? {} : { tags: raw.tags }),
+    render_authority: "semantic" as const,
+    projection_visibility: "document" as const,
+    payload: {
+      kind: "decision" as const,
+      summary_md: raw.source_block_md,
+      decision_state: "pending" as const,
+      question_md: new TextEncoder().encode("Reconstruction-only metadata."),
+      transition_ids: [],
+    },
+    source_replacements: [{
+      span_id: spanId,
+      replacement_field: "payload.summary_md",
+      review_note_md: new TextEncoder().encode("Exact legacy block reviewed."),
+    }],
+  };
+  return {
+    ...document,
+    document: {
+      ...document.document,
+      frozen_legacy_span_ids: document.document.frozen_legacy_span_ids.filter((id) => id !== spanId),
+    },
+    records: document.records.map((record) => record === raw ? converted : record),
+    spans: document.spans.map((span) => span.id === spanId ? {
+      ...span,
+      owner_field: "payload.summary_md",
+      migration_status: "replaced" as const,
+    } : span),
+  };
+}
+
+function testMatrixV0ReconstructionVisibilityArms(bundle: AdapterFixtureBundle): void {
+  const authoritative = liveMatrixAuthoritativeDocument();
+  const semanticOnly = withSemanticOnlyRecord(authoritative, "matrix.fixture-semantic-only" as RoadmapId);
+  const rendered = renderFixture(semanticOnly, MATRIX_ADAPTER, registryView(bundle, semanticOnly, liveMatrixStatusInputs()));
+  assert(bytesEqual(rendered.bytes, liveMatrixProjection()), "semantic-only matrix record changed live projection bytes");
+  assert(bytesEqual(composeRoadmapDocument(liveMatrixShadowV0Document(semanticOnly)), liveMatrixShadowV0Source()), "matrix v0 reconstruction retained semantic-only record or placement");
+  const documentVisible = withDocumentVisibleRecord(authoritative);
+  assert(bytesEqual(composeRoadmapDocument(liveMatrixShadowV0Document(documentVisible)), liveMatrixShadowV0Source()), "matrix v0 reconstruction did not restore a document-visible semantic record");
+}
+
+function testTestingV0ReconstructionVisibilityArms(): void {
+  const authoritative = liveTestingAuthoritativeDocument();
+  const semanticOnly = withSemanticOnlyRecord(authoritative, "testing.fixture-semantic-only" as RoadmapId);
+  assert(bytesEqual(composeRoadmapDocument(liveTestingShadowV0Document(semanticOnly)), liveTestingShadowV0Source()), "testing v0 reconstruction retained semantic-only record or placement");
+  const documentVisible = withDocumentVisibleRecord(authoritative);
+  assert(bytesEqual(composeRoadmapDocument(liveTestingShadowV0Document(documentVisible)), liveTestingShadowV0Source()), "testing v0 reconstruction did not restore a document-visible semantic record");
 }
 
 function liveMatrixFloorProbe(): RoadmapDocumentV0 {
@@ -1404,8 +1497,8 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
       assert(calls.calls.map((call) => call.path).join("|") === expectedOrder.join("|"), `${context} renderer call order differs from frozen per-arm oracle`);
       assert(calls.calls.every((call) => call.bytes === expectedInputs.get(call.path)), `${context} renderer passed a noncanonical path-to-input byte mapping`);
       const replacements = new Set(record.source_replacements.map((entry) => entry.replacement_field));
-      const renderedPaths = replacements.size === 0
-        ? expectedOrder.filter((logicalPath) => logicalPath === "payload.summary_md" || logicalPath === "payload.detail_md")
+      const renderedPaths = record.projection_visibility === "semantic_only"
+        ? []
         : expectedOrder.filter((logicalPath) => replacements.has(logicalPath));
       assert(bytesEqual(rendered, combineBytes(renderedPaths.map((logicalPath) => expectedInputs.get(logicalPath)!))), `${context} output differs after exact order and input mapping validation`);
     }
@@ -1703,6 +1796,12 @@ function execute(id: RequiredAdapterSelfTestCaseId, bundle: AdapterFixtureBundle
     case "matrix_mixed_v1_preserves_inline_slots":
       testMixedLiveMatrixInlineSlots(bundle);
       return;
+    case "matrix_v0_reconstruction_visibility_arms":
+      testMatrixV0ReconstructionVisibilityArms(bundle);
+      return;
+    case "testing_v0_reconstruction_visibility_arms":
+      testTestingV0ReconstructionVisibilityArms();
+      return;
   }
 }
 
@@ -1739,7 +1838,7 @@ export const ADAPTER_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
 
 export function runAdapterDirectSelfTests(
   bundle: AdapterFixtureBundle,
-): { readonly executed: 5; readonly subcases: readonly ["matrix", "testing"] } {
+): { readonly executed: 7; readonly subcases: readonly ["matrix", "testing"] } {
   for (const id of REQUIRED_ADAPTER_SELFTEST_CASE_IDS) execute(id, bundle);
-  return { executed: 5, subcases: ADAPTER_SELFTEST_SUBCASES };
+  return { executed: 7, subcases: ADAPTER_SELFTEST_SUBCASES };
 }

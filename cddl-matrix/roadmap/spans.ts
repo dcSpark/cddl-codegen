@@ -41,13 +41,16 @@ function ownerKey(kind: ManifestEntry["kind"], id: string): string {
   return JSON.stringify([kind, id]);
 }
 
-function replacementMap(document: RoadmapDocument): ReadonlyMap<string, SourceReplacement> {
-  const result = new Map<string, SourceReplacement>();
+function replacementMap(document: RoadmapDocument): ReadonlyMap<string, readonly SourceReplacement[]> {
+  const result = new Map<string, SourceReplacement[]>();
   if (document.document.schema_version === 0) return result;
   const add = (kind: ManifestEntry["kind"], id: string, value: object): void => {
     if (!("source_replacements" in value) || !Array.isArray(value.source_replacements)) return;
     for (const replacement of value.source_replacements as SourceReplacement[]) {
-      result.set(JSON.stringify([kind, id, replacement.span_id]), replacement);
+      const key = JSON.stringify([kind, id, replacement.span_id]);
+      const rows = result.get(key) ?? [];
+      rows.push(replacement);
+      result.set(key, rows);
     }
   };
   for (const value of document.sections) add("section", value.section_id, value);
@@ -83,6 +86,81 @@ export function validateSourceSpans(input: SpanValidationInput): readonly Roadma
   const { document, completed } = input;
   const sourceFacts = completed.expected_bytes.sourceFacts();
   const issues: RoadmapIssue[] = [];
+  if (document.document.schema_version === 1) {
+    for (const record of document.records) {
+      if (!("render_authority" in record) || record.render_authority !== "semantic") continue;
+      if (record.projection_visibility === "document" && record.source_replacements.length === 0) {
+        issues.push(issue(document, "E-SPAN-OWNER", `record[${JSON.stringify(record.id)}].source_replacements`, "document-visible semantic record requires replacement spans"));
+      }
+      if (record.projection_visibility === "semantic_only" && record.source_replacements.length !== 0) {
+        issues.push(issue(document, "E-SPAN-OWNER", `record[${JSON.stringify(record.id)}].source_replacements`, "semantic-only record forbids replacement spans"));
+      }
+      if (record.projection_visibility === "document") {
+        const fields = new Set<string>();
+        const spanIds = new Set<string>();
+        for (const replacement of record.source_replacements) {
+          if (fields.has(replacement.replacement_field)) {
+            issues.push(issue(
+              document,
+              "E-SPAN-OWNER",
+              `record[${JSON.stringify(record.id)}].source_replacements`,
+              `replacement field ${JSON.stringify(replacement.replacement_field)} is duplicated`,
+            ));
+          }
+          if (spanIds.has(replacement.span_id)) {
+            issues.push(issue(
+              document,
+              "E-SPAN-OWNER",
+              `record[${JSON.stringify(record.id)}].source_replacements`,
+              `replacement span ID ${JSON.stringify(replacement.span_id)} is duplicated`,
+            ));
+          }
+          fields.add(replacement.replacement_field);
+          spanIds.add(replacement.span_id);
+          const segments = completed.projected_field_segments.filter((segment) =>
+            segment.owner_kind === "record" && segment.owner_id === record.id &&
+            segment.logical_path === replacement.replacement_field
+          );
+          const declaredSpans = document.spans.filter((span) =>
+            span.id === replacement.span_id && span.source_kind === "record" && span.owner_id === record.id
+          );
+          if (segments.length !== 1 || declaredSpans.length !== 1) {
+            issues.push(issue(
+              document,
+              "E-SPAN-OWNER",
+              `record[${JSON.stringify(record.id)}].source_replacements`,
+              `replacement ${JSON.stringify(replacement.span_id)} has ${segments.length} projected segments and ${declaredSpans.length} source spans, expected exactly one of each`,
+            ));
+          }
+        }
+        const ownerSegments = completed.projected_field_segments.filter((segment) =>
+          segment.owner_kind === "record" && segment.owner_id === record.id
+        );
+        for (const segment of ownerSegments) {
+          const count = record.source_replacements.filter((replacement) =>
+            replacement.replacement_field === segment.logical_path
+          ).length;
+          if (count !== 1) {
+            issues.push(issue(
+              document,
+              "E-SPAN-OWNER",
+              `record[${JSON.stringify(record.id)}].projected_field_segments`,
+              `projected field ${JSON.stringify(segment.logical_path)} has ${count} replacements, expected exactly one`,
+            ));
+          }
+        }
+      }
+      if (record.projection_visibility !== "semantic_only") continue;
+      for (const span of document.spans.filter((candidate) =>
+        candidate.source_kind === "record" && candidate.owner_id === record.id
+      )) {
+        issues.push(issue(document, "E-SPAN-OWNER", `source_span[${JSON.stringify(span.id)}]`, "semantic-only record forbids source spans", {
+          start_byte: span.start_byte,
+          end_byte: span.end_byte,
+        }));
+      }
+    }
+  }
   const spans = [...document.spans].sort((left, right) =>
     left.start_byte - right.start_byte || codePointSort(left.id, right.id)
   );
@@ -271,20 +349,42 @@ export function validateSourceSpans(input: SpanValidationInput): readonly Roadma
         coordinate,
       ));
     } else if (status === "replaced") {
-      const replacement = replacements.get(JSON.stringify([
+      const replacementRows = replacements.get(JSON.stringify([
         chunk.owner.kind,
         chunk.owner.id,
         span.id,
-      ]));
+      ])) ?? [];
+      const replacement = replacementRows[0];
+      const semanticRecord = document.document.schema_version === 1 && chunk.owner.kind === "record"
+        ? document.records.find((record) =>
+          record.id === chunk.owner.id && "render_authority" in record && record.render_authority === "semantic"
+        )
+        : undefined;
+      const segments = replacement === undefined ? [] : completed.projected_field_segments.filter((segment) =>
+        segment.owner_kind === "record" && segment.owner_id === chunk.owner.id &&
+        segment.logical_path === replacement.replacement_field
+      );
+      const segment = segments[0];
+      const chunkIndex = completed.chunks.indexOf(chunk);
+      const chunkStart = completed.expected_bytes.prefix_offsets[chunkIndex];
+      const exactCoordinates = segment !== undefined && chunkStart !== undefined &&
+        span.start_byte === chunkStart + segment.start_in_chunk &&
+        span.end_byte === chunkStart + segment.end_in_chunk;
+      const exactBytes = segment !== undefined &&
+        segment.end_in_chunk - segment.start_in_chunk === segment.bytes.byteLength &&
+        completed.expected_bytes.equals(expectedSlice, segment.bytes);
+      const exactSegmentBinding = semanticRecord === undefined ||
+        (segments.length === 1 && exactCoordinates && exactBytes);
       if (
-        replacement === undefined || replacement.replacement_field !== span.owner_field ||
-        !chunk.consumed_fields.includes(span.owner_field)
+        replacementRows.length !== 1 || replacement === undefined ||
+        replacement.replacement_field !== span.owner_field ||
+        !chunk.consumed_fields.includes(span.owner_field) || !exactSegmentBinding
       ) {
         issues.push(issue(
           document,
           "E-SPAN-OWNER",
           logicalPath,
-          `replaced span field ${JSON.stringify(span.owner_field)} has no exact consumed replacement`,
+          `replaced span field ${JSON.stringify(span.owner_field)} is not bijectively bound to its complete exact projected field segment`,
           coordinate,
         ));
       }

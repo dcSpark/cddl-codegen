@@ -613,6 +613,7 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
         writeSemanticPayload(writer, record.semantic_shadow, "record.semantic_shadow");
       }
     } else {
+      writer.string("projection_visibility", record.projection_visibility);
       writer.table("record.payload");
       writeSemanticPayload(writer, record.payload, "record.payload");
       writeReplacements(writer, "record", record.source_replacements);

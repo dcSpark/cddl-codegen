@@ -79,6 +79,7 @@ export const ROADMAP_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "roadmap", values: ["matrix", "testing"] },
   { name: "frozen_source_eof", values: ["lf", "none"] },
   { name: "render_authority", values: ["raw", "semantic"] },
+  { name: "projection_visibility", values: ["document", "semantic_only"] },
   { name: "manifest_kind", values: STRUCTURAL_KINDS },
   { name: "source_kind", values: STRUCTURAL_KINDS },
   { name: "migration_status", values: ["raw", "replaced", "generated"] },
@@ -103,9 +104,9 @@ export const ROADMAP_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
   { name: "v0 legacy marker", required: ["marker_id", "legacy_aliases", ...RAW_KEYS], forbidden: ["render_authority", "marker_md", "source_replacement"] },
   { name: "v1 raw legacy marker", required: ["marker_id", "legacy_aliases", "render_authority", ...RAW_KEYS], forbidden: ["marker_md", "source_replacement"] },
   { name: "v1 semantic legacy marker", required: ["marker_id", "legacy_aliases", "render_authority", "marker_md"], optional: REPLACEMENT_CHILD, forbidden: ["source_block_md", "span_ids"] },
-  { name: "v0 record", required: ["id", "title", "projection_group", ...RAW_KEYS], optional: ["legacy_aliases", "tags"], forbidden: ["render_authority", "semantic_shadow", "payload", "source_replacement"] },
-  { name: "v1 raw record", required: ["id", "title", "projection_group", "render_authority", ...RAW_KEYS], optional: ["legacy_aliases", "tags", "semantic_shadow"], forbidden: ["payload", "source_replacement"] },
-  { name: "v1 semantic record", required: ["id", "title", "projection_group", "render_authority", "payload"], optional: ["legacy_aliases", "tags", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids", "semantic_shadow"] },
+  { name: "v0 record", required: ["id", "title", "projection_group", ...RAW_KEYS], optional: ["legacy_aliases", "tags"], forbidden: ["render_authority", "projection_visibility", "semantic_shadow", "payload", "source_replacement"] },
+  { name: "v1 raw record", required: ["id", "title", "projection_group", "render_authority", ...RAW_KEYS], optional: ["legacy_aliases", "tags", "semantic_shadow"], forbidden: ["projection_visibility", "payload", "source_replacement"] },
+  { name: "v1 semantic record", required: ["id", "title", "projection_group", "render_authority", "projection_visibility", "payload"], optional: ["legacy_aliases", "tags", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids", "semantic_shadow"] },
   { name: "source replacement", required: ["span_id", "replacement_field", "review_note_md"] },
   { name: "v0 part", required: ["part_id", "parent_record_id", ...RAW_KEYS], optional: ["title"], forbidden: ["render_authority", "body_md", "source_replacement"] },
   { name: "v1 raw part", required: ["part_id", "parent_record_id", "render_authority", ...RAW_KEYS], optional: ["title"], forbidden: ["body_md", "source_replacement"] },
@@ -344,7 +345,7 @@ function decodeV0Record(ctx: DecodeContext, raw: unknown, path: string, roadmap:
 }
 
 function decodeV1Record(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): RawAuthorityRecordV1 | SemanticAuthorityRecordV1 {
-  const pre = expectExactTable(ctx, raw, path, { name: "v1 record discriminator", required: ["id", "title", "projection_group", "render_authority"], optional: ["legacy_aliases", "tags", "source_block_md", "span_ids", "semantic_shadow", "payload", "source_replacement"] });
+  const pre = expectExactTable(ctx, raw, path, { name: "v1 record discriminator", required: ["id", "title", "projection_group", "render_authority"], optional: ["projection_visibility", "legacy_aliases", "tags", "source_block_md", "span_ids", "semantic_shadow", "payload", "source_replacement"] });
   const authority = expectEnum(ctx, requiredValue(pre, "render_authority"), ["raw", "semantic"] as const, p(path, "render_authority"));
   const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[authority === "raw" ? 14 : 15]);
   const base = { ...envelope(ctx, table, path, roadmap), render_authority: authority };
@@ -356,11 +357,25 @@ function decodeV1Record(ctx: DecodeContext, raw: unknown, path: string, roadmap:
       ...(hasOwn(table, "semantic_shadow") ? { semantic_shadow: decodeSemanticPayload(ctx, optionalValue(table, "semantic_shadow"), p(path, "semantic_shadow"), roadmap, "shadow") } : {}),
     } as RawAuthorityRecordV1;
   }
+  const projectionVisibility = expectEnum(
+    ctx,
+    requiredValue(table, "projection_visibility"),
+    ["document", "semantic_only"] as const,
+    p(path, "projection_visibility"),
+  );
+  const sourceReplacements = replacements(ctx, table, path);
+  if (projectionVisibility === "document" && sourceReplacements.length === 0) {
+    schemaFail(ctx, "E-SCHEMA-STATE", p(path, "source_replacement"), "document-visible semantic record requires at least one source replacement");
+  }
+  if (projectionVisibility === "semantic_only" && sourceReplacements.length !== 0) {
+    schemaFail(ctx, "E-SCHEMA-STATE", p(path, "source_replacement"), "semantic-only record forbids source replacements");
+  }
   return {
     ...base,
     render_authority: authority,
+    projection_visibility: projectionVisibility,
     payload: decodeSemanticPayload(ctx, requiredValue(table, "payload"), p(path, "payload"), roadmap, "authority"),
-    source_replacements: replacements(ctx, table, path),
+    source_replacements: sourceReplacements,
   } as SemanticAuthorityRecordV1;
 }
 
@@ -559,6 +574,14 @@ export function decodeRoadmapFromBindings(
     references,
   };
   if (doc.sections.length === 0 || doc.records.length === 0 || doc.spans.length === 0) schemaFail(ctx, "E-SCHEMA-FLOOR", "$", "roadmap requires at least one section, record, manifest entry, and source span");
+  for (const record of doc.records) {
+    if (
+      record.render_authority === "semantic" && record.projection_visibility === "semantic_only" &&
+      doc.spans.some((span) => span.source_kind === "record" && span.owner_id === record.id)
+    ) {
+      schemaFail(ctx, "E-SCHEMA-STATE", `record.${record.id}.projection_visibility`, "semantic-only record forbids source spans");
+    }
+  }
   assertSpanBounds(ctx, doc);
   assertFrozenRawSpans(ctx, doc);
   assertDecodedDomainJoins(ctx, doc);

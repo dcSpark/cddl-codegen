@@ -463,10 +463,9 @@ function concatenate(chunks: readonly Uint8Array[]): Uint8Array {
 }
 
 /**
- * Consume every decoded Markdown field exactly once. New semantic records project their authored
- * summary/detail prose; converted owners project the reviewed replacement fields in canonical
- * payload order. Metadata Markdown is still consumed so the completed-chunk ledger can prove that
- * no decoded field escaped the adapter.
+ * Consume every decoded Markdown field exactly once. Document-visible converted owners project
+ * only reviewed replacement fields in canonical payload order. Semantic-only records intentionally
+ * emit no bytes. Metadata Markdown remains ledgered as consumed nonrendering content.
  */
 export function renderCanonicalSemanticRecord(
   record: SemanticRecord,
@@ -477,8 +476,8 @@ export function renderCanonicalSemanticRecord(
     const bytes = fields.consume(entry.logical_path, entry.bytes);
     return { path: entry.logical_path, bytes };
   });
-  const rendered = replacements.size === 0
-    ? consumed.filter((entry) => entry.path === "payload.summary_md" || entry.path === "payload.detail_md")
+  const rendered = record.projection_visibility === "semantic_only"
+    ? []
     : consumed.filter((entry) => replacements.has(entry.path));
   return concatenate(rendered.map((entry) => entry.bytes));
 }

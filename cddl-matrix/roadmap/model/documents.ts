@@ -131,6 +131,7 @@ export interface SourceReplacement {
 export interface SemanticAuthorityRecordV1<P extends SemanticPayload = SemanticPayload>
   extends CommonEnvelope {
   render_authority: "semantic";
+  projection_visibility: "document" | "semantic_only";
   payload: P;
   source_replacements: SourceReplacement[];
 }

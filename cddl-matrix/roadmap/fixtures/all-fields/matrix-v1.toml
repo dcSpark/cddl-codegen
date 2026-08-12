@@ -731,6 +731,7 @@ id = "matrix.fixture-semantic-owner"
 title = "Semantic authority boundary"
 projection_group = "fixture"
 render_authority = "semantic"
+projection_visibility = "document"
 
 [record.payload]
 kind = "matrix_policy"

@@ -2410,6 +2410,7 @@ function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticA
     title: "Lifecycle",
     projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
     render_authority: "semantic",
+    projection_visibility: "semantic_only",
     payload: {
       kind: "work",
       summary_md: bytes("summary"),
@@ -2433,6 +2434,7 @@ function c5FamilyRecord(id: RoadmapId, workIds: readonly RoadmapId[] = []): Sema
     title: "Family",
     projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
     render_authority: "semantic",
+    projection_visibility: "semantic_only",
     payload: {
       kind: "family",
       summary_md: bytes("family"),
@@ -4148,6 +4150,7 @@ function c5TransactionCase(id: C5SelfTestCaseId, context?: SelfTestContext): boo
         title: "Restructure",
         projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
         render_authority: "semantic" as const,
+        projection_visibility: "document" as const,
         payload: { kind: "decision", summary_md: bytes("done") },
         source_replacements: [{
           span_id: newSpanId,

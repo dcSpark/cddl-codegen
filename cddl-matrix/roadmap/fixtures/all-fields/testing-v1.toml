@@ -95,6 +95,7 @@ id = "testing.fixture-all-fields-semantic"
 title = "Testing semantic cost"
 projection_group = "fixture"
 render_authority = "semantic"
+projection_visibility = "document"
 
 [record.payload]
 kind = "testing_cost"

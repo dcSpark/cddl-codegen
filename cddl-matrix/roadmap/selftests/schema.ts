@@ -34,7 +34,7 @@ const text = (value: string): Uint8Array => UTF8.encode(value);
 const ZERO_HASH = "0".repeat(64);
 
 export const REQUIRED_SCHEMA_SELFTEST_CASE_IDS = [
-  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_campaign", "strict_unknown_retired", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "v0_missing_manifest", "v0_empty_records_floor", "truncated_span_read", "campaign_missing_root", "campaign_empty_valid", "campaign_impossible_authority_tuple_rejected", "retired_missing_root", "retired_empty_valid", "v0_all_fields_identity", "v1_all_fields_identity", "campaign_all_fields_identity", "retired_all_fields_identity", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "v0_rejects_semantics", "v0_rejects_authoritative", "v1_raw_requires_frozen_span", "v1_new_raw_rejected", "v1_raw_shadow_nonrendering", "v1_semantic_forbids_raw", "v1_unsupported_v2", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "domain_closed_denominator_rejected", "schema_v0_exact_keys_every_table", "schema_v1_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_campaign_retired_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "schema_campaign_authority_keys", "schema_campaign_reservation_exact_keys", "schema_campaign_selection_binding_keys_forbidden", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "campaign_inline_legacy_binding_rejected", "schema_priority_band_closed_enum", "schema_campaign_slug_grammars", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
+  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_campaign", "strict_unknown_retired", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "v0_missing_manifest", "v0_empty_records_floor", "truncated_span_read", "campaign_missing_root", "campaign_empty_valid", "campaign_impossible_authority_tuple_rejected", "retired_missing_root", "retired_empty_valid", "v0_all_fields_identity", "v1_all_fields_identity", "campaign_all_fields_identity", "retired_all_fields_identity", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "v0_rejects_semantics", "v0_rejects_authoritative", "v1_raw_requires_frozen_span", "v1_new_raw_rejected", "v1_raw_shadow_nonrendering", "v1_semantic_forbids_raw", "schema_projection_visibility_document_arm", "schema_projection_visibility_semantic_only_arm", "schema_projection_visibility_forbidden_nonsemantic_arms", "v1_unsupported_v2", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "domain_closed_denominator_rejected", "schema_v0_exact_keys_every_table", "schema_v1_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_campaign_retired_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "schema_campaign_authority_keys", "schema_campaign_reservation_exact_keys", "schema_campaign_selection_binding_keys_forbidden", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "campaign_inline_legacy_binding_rejected", "schema_priority_band_closed_enum", "schema_campaign_slug_grammars", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
 ] as const;
 
 export type RequiredSchemaSelfTestCaseId = (typeof REQUIRED_SCHEMA_SELFTEST_CASE_IDS)[number];
@@ -70,6 +70,19 @@ function minimalRoadmap(version: 0 | 1, roadmap: RoadmapName = "matrix"): Uint8A
   const frozen = version === 1 ? 'frozen_legacy_span_ids = ["record", "section"]\n' : "";
   const render = version === 1 ? 'render_authority = "raw"\n' : "";
   return text(`[document]\nschema_version = ${version}\nauthority = "${authority}"\nroadmap = "${roadmap}"\nsource_path = "fixture/${roadmap}.toml"\nprojection_path = "fixture/${roadmap}.md"\nfrozen_source_sha256 = "${ZERO_HASH}"\nfrozen_source_byte_length = 2\nfrozen_source_line_count = 1\nfrozen_source_eof = "lf"\n${frozen}\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\n${render}source_block_md = """S\n"""\nspan_ids = ["section"]\n\n[[record]]\nid = "${id}"\ntitle = "Fixture record"\nprojection_group = "fixture"\n${render}source_block_md = """R\n"""\nspan_ids = ["record"]\n\n[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "${id}"\n\n[[source_span]]\nid = "section"\nstart_byte = 0\nend_byte = 1\nsha256 = "${ZERO_HASH}"\nsource_kind = "section"\nowner_id = "fixture"\nowner_field = "source_block_md"\nmigration_status = "raw"\n\n[[source_span]]\nid = "record"\nstart_byte = 1\nend_byte = 2\nsha256 = "${ZERO_HASH}"\nsource_kind = "record"\nowner_id = "${id}"\nowner_field = "source_block_md"\nmigration_status = "raw"\n`);
+}
+
+function semanticRecordRoadmap(visibility: "document" | "semantic_only"): string {
+  const source = new TextDecoder().decode(minimalRoadmap(1));
+  const record = `[[record]]\nid = "matrix.fixture-minimal"\ntitle = "Fixture record"\nprojection_group = "fixture"\nrender_authority = "raw"\nsource_block_md = """R\n"""\nspan_ids = ["record"]`;
+  const semantic = `[[record]]\nid = "matrix.fixture-minimal"\ntitle = "Fixture record"\nprojection_group = "fixture"\nrender_authority = "semantic"\nprojection_visibility = "${visibility}"\n\n[record.payload]\nkind = "work"\nsummary_md = """R\n"""\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "none_reviewed"\nacceptance_md = """Accepted.\n"""\npriority_rationale_md = """Normal.\n"""${visibility === "document" ? `\n\n[[record.source_replacement]]\nspan_id = "record"\nreplacement_field = "payload.summary_md"\nreview_note_md = """Reviewed.\n"""` : ""}`;
+  const converted = source.replace(record, semantic)
+    .replace('frozen_legacy_span_ids = ["record", "section"]', 'frozen_legacy_span_ids = ["section"]')
+    .replace('owner_field = "source_block_md"\nmigration_status = "raw"\n', 'owner_field = "source_block_md"\nmigration_status = "raw"\n')
+    .replace('owner_id = "matrix.fixture-minimal"\nowner_field = "source_block_md"\nmigration_status = "raw"', `owner_id = "matrix.fixture-minimal"\nowner_field = "payload.summary_md"\nmigration_status = "replaced"`);
+  return visibility === "semantic_only"
+    ? converted.replace(/\n\n\[\[source_span\]\]\nid = "record"[\s\S]*$/u, "\n")
+    : converted;
 }
 
 function emptyCampaign(): Uint8Array {
@@ -838,7 +851,37 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       return;
     }
     case "v1_unsupported_v2": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(1)).replace("schema_version = 1", "schema_version = 2")), "<v2>", "matrix"), ["E-SCHEMA-VERSION"]); return;
-    case "v1_semantic_forbids_raw": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(1)).replace('render_authority = "raw"\nsource_block_md = """R', 'render_authority = "semantic"\nsource_block_md = """R')), "<semantic-raw>", "matrix"), ["E-SCHEMA-FORBIDDEN-KEY", "E-SCHEMA-UNKNOWN-KEY"]); return;
+    case "v1_semantic_forbids_raw": {
+      expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(1)).replace('render_authority = "raw"\nsource_block_md = """R', 'render_authority = "semantic"\nsource_block_md = """R')), "<semantic-raw>", "matrix"), ["E-SCHEMA-FORBIDDEN-KEY", "E-SCHEMA-UNKNOWN-KEY"]);
+      return;
+    }
+    case "schema_projection_visibility_document_arm": {
+      const document = semanticRecordRoadmap("document");
+      decodeRoadmapSource(text(document), "<semantic-document>", "matrix");
+      expectFailure(() => decodeRoadmapSource(text(document.replace('projection_visibility = "document"\n', "")), "<missing-visibility>", "matrix"), ["E-SCHEMA-MISSING-KEY"]);
+      expectFailure(() => decodeRoadmapSource(text(document.replace(/\n\n\[\[record\.source_replacement\]\][\s\S]*?review_note_md = """Reviewed\.\n"""/u, "")), "<document-no-replacement>", "matrix"), ["E-SCHEMA-STATE"]);
+      return;
+    }
+    case "schema_projection_visibility_semantic_only_arm": {
+      const semanticOnly = semanticRecordRoadmap("semantic_only");
+      const semanticOnlyDocument = decodeRoadmapSource(text(semanticOnly), "<semantic-only>", "matrix");
+      const semanticOnlyRoundTrip = decodeRoadmapSource(composeRoadmapDocument(semanticOnlyDocument), "<semantic-only-round-trip>", "matrix");
+      assert(semanticOnlyRoundTrip.document.schema_version === 1 && semanticOnlyRoundTrip.records.some((record) => "projection_visibility" in record && record.projection_visibility === "semantic_only"), "semantic-only visibility did not compose/decode round-trip");
+      expectFailure(() => decodeRoadmapSource(text(semanticOnly.replace('[record.payload]', '[[record.source_replacement]]\nspan_id = "record"\nreplacement_field = "payload.summary_md"\nreview_note_md = """No.\n"""\n\n[record.payload]')), "<semantic-only-replacement>", "matrix"), ["E-SCHEMA-STATE"]);
+      expectFailure(() => decodeRoadmapSource(text(semanticOnly + '\n[[source_span]]\nid = "semantic-only-span"\nstart_byte = 1\nend_byte = 2\nsha256 = "' + ZERO_HASH + '"\nsource_kind = "record"\nowner_id = "matrix.fixture-minimal"\nowner_field = "payload.summary_md"\nmigration_status = "replaced"\n'), "<semantic-only-span>", "matrix"), ["E-SCHEMA-STATE"]);
+      return;
+    }
+    case "schema_projection_visibility_forbidden_nonsemantic_arms": {
+      for (const [version, misplaced] of [[1, new TextDecoder().decode(minimalRoadmap(1))], [0, new TextDecoder().decode(minimalRoadmap(0))]] as const) {
+        expectFailure(() => decodeRoadmapSource(text(misplaced.replace('source_block_md = """R', 'projection_visibility = "document"\nsource_block_md = """R')), `<misplaced-visibility-v${version}>`, "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"]);
+      }
+      const shadowMisplaced = new TextDecoder().decode(minimalRoadmap(1)).replace(
+        'span_ids = ["record"]',
+        'span_ids = ["record"]\n\n[record.semantic_shadow]\nkind = "decision"\nsummary_md = """Shadow.\n"""\nprojection_visibility = "semantic_only"\ndecision_state = "pending"\nquestion_md = """Question.\n"""',
+      );
+      expectFailure(() => decodeRoadmapSource(text(shadowMisplaced), "<misplaced-shadow-visibility>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]);
+      return;
+    }
     case "domain_defect_regression_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "defect"'), "matrix", "authority"), ["E-SCHEMA-STATE"]); return;
     case "domain_missing_system_admission_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "missing_system"'), "testing", "authority"), ["E-SCHEMA-STATE"]); return;
     case "schema_held_permanent_rejected": expectFailure(() => decodePayload('kind = "decision"\nsummary_md = """Held."""\ndecision_state = "held"\nrationale_md = """R."""\npermanence = "permanent"\ntransition_ids = ["matrix.fixture-signal"]\n', "matrix"), ["E-SCHEMA-ENUM"]); return;
@@ -1098,6 +1141,9 @@ const NEGATIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "v1_raw_requires_frozen_span",
   "v1_new_raw_rejected",
   "v1_semantic_forbids_raw",
+  "schema_projection_visibility_document_arm",
+  "schema_projection_visibility_semantic_only_arm",
+  "schema_projection_visibility_forbidden_nonsemantic_arms",
   "v1_unsupported_v2",
   "domain_state_required_forbidden",
   "domain_defect_regression_required",

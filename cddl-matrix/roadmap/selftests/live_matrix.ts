@@ -140,7 +140,9 @@ export function liveMatrixShadowV0Document(
     legacy_aliases: [...owner.legacy_aliases],
     ...reconstructedRawFields(owner, "legacy_marker", owner.marker_id, spansById, projection),
   }));
-  const records: RawRecordV0[] = authoritative.records.map((owner) => ({
+  const records: RawRecordV0[] = authoritative.records.filter((owner) =>
+    owner.render_authority !== "semantic" || owner.projection_visibility === "document"
+  ).map((owner) => ({
     id: owner.id,
     title: owner.title,
     projection_group: owner.projection_group,
@@ -168,7 +170,9 @@ export function liveMatrixShadowV0Document(
     records,
     parts,
     generated_slots: authoritative.generated_slots,
-    manifest: authoritative.manifest,
+    manifest: authoritative.manifest.filter((entry) =>
+      entry.kind !== "record" || records.some((record) => record.id === entry.record_id)
+    ),
     spans: authoritative.spans.map((span) => span.source_kind === "generated_slot"
       ? span
       : { ...span, owner_field: "source_block_md", migration_status: "raw" }),

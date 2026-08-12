@@ -52,6 +52,7 @@ import {
   renderValidatedChunks,
 } from "../render.ts";
 import { validateSourceSpans } from "../spans.ts";
+import { renderCanonicalSemanticRecord } from "../adapters/matrix.ts";
 import {
   compareMigrationDebt,
   debtOwnerIndex,
@@ -138,6 +139,13 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "render_zero_chunks_rejected",
   "render_no_implicit_lf",
   "render_semantic_consumption_once",
+  "render_semantic_only_zero_byte_consumption",
+  "render_semantic_only_identity_debt",
+  "render_semantic_only_span_prohibition",
+  "render_semantic_exact_field_binding_swapped_labels",
+  "render_semantic_exact_field_binding_partial",
+  "render_semantic_exact_field_binding_duplicate",
+  "render_semantic_replacement_rows_order_independent",
   "render_shadow_ignored",
   "render_prior_projection_irrelevant",
   "outputs_duplicate_whole",
@@ -394,6 +402,11 @@ function requireIssue(issues: readonly RoadmapIssue[], code: RoadmapIssue["code"
   const matched = issues.find((issue) => issue.code === code);
   if (matched === undefined) fail(`expected ${code}, got ${[...issueCodes(issues)].join(", ")}`);
   observeSelfTestIssue(matched);
+}
+
+function requireExactIssue(issues: readonly RoadmapIssue[], code: RoadmapIssue["code"], logicalPath: string): void {
+  const matched = observeMatchingIssue(issues, code, logicalPath);
+  if (matched === undefined) fail(`expected ${code} at ${logicalPath}, got ${issues.map((issue) => `${issue.code}@${issue.logical_path}`).join(", ")}`);
 }
 
 function pass(polarity: "positive" | "negative" = "positive", subcases?: readonly string[]): SelfTestResult {
@@ -1020,16 +1033,17 @@ function semanticFixture(
 ): { readonly document: RoadmapDocumentV1; readonly renderCalls: { value: number } } {
   const raw = authoritativeFixture().document;
   const record = raw.records[0];
-  const summary = bytes("S");
-  const acceptance = bytes("A");
-  const rationale = bytes("Q");
-  const output = bytes("HFMSAQPG");
+  const summary = bytes("SUM");
+  const acceptance = bytes("ACC");
+  const rationale = bytes("RATIONALE");
+  const output = bytes("HFMSUMACCRATIONALEPG");
   const spanIds = [asSpanId("span-summary"), asSpanId("span-acceptance"), asSpanId("span-rationale")];
   const semantic = {
     id: record.id,
     title: record.title,
     projection_group: record.projection_group,
     render_authority: "semantic" as const,
+    projection_visibility: "document" as const,
     payload: {
       kind: "work" as const,
       summary_md: summary,
@@ -1052,12 +1066,12 @@ function semanticFixture(
     : [semantic];
   const semanticSpans: SourceSpan[] = [
     ...raw.spans.filter((span) => span.id !== asSpanId("span-r")).map((span) => {
-      const shift = span.start_byte >= 4 ? 2 : 0;
+      const shift = span.start_byte >= 4 ? 14 : 0;
       return { ...span, start_byte: span.start_byte + shift, end_byte: span.end_byte + shift };
     }),
-    { id: spanIds[0], start_byte: 3, end_byte: 4, sha256: sha256(summary), source_kind: "record", owner_id: record.id, owner_field: "payload.summary_md", migration_status: "replaced" },
-    { id: spanIds[1], start_byte: 4, end_byte: 5, sha256: sha256(acceptance), source_kind: "record", owner_id: record.id, owner_field: "payload.acceptance_md", migration_status: "replaced" },
-    { id: spanIds[2], start_byte: 5, end_byte: 6, sha256: sha256(rationale), source_kind: "record", owner_id: record.id, owner_field: "payload.priority_rationale_md", migration_status: "replaced" },
+    { id: spanIds[0], start_byte: 3, end_byte: 6, sha256: sha256(summary), source_kind: "record", owner_id: record.id, owner_field: "payload.summary_md", migration_status: "replaced" },
+    { id: spanIds[1], start_byte: 6, end_byte: 9, sha256: sha256(acceptance), source_kind: "record", owner_id: record.id, owner_field: "payload.acceptance_md", migration_status: "replaced" },
+    { id: spanIds[2], start_byte: 9, end_byte: 18, sha256: sha256(rationale), source_kind: "record", owner_id: record.id, owner_field: "payload.priority_rationale_md", migration_status: "replaced" },
   ];
   semanticSpans.sort((left, right) => left.start_byte - right.start_byte);
   const document: RoadmapDocumentV1 = {
@@ -1098,6 +1112,30 @@ function completeSemantic(document: RoadmapDocumentV1, calls: { value: number })
     },
     resolveGeneratedSlot(slot) { return { binding: slot.binding, bytes: bytes("G") }; },
   });
+}
+
+function semanticOnlyCompletion(): {
+  readonly document: RoadmapDocumentV1;
+  readonly record: Extract<RoadmapDocumentV1["records"][number], { render_authority: "semantic" }>;
+  readonly placement: ReturnType<typeof resolveManifest>;
+  readonly completed: CompletedRenderIr;
+} {
+  const exact = semanticFixture("exact");
+  const record = exact.document.records.find((candidate) =>
+    "render_authority" in candidate && candidate.render_authority === "semantic"
+  );
+  if (record === undefined || record.render_authority !== "semantic") fail("semantic-only render vector lacks semantic record");
+  const semanticOnlyRecord = { ...record, projection_visibility: "semantic_only" as const, source_replacements: [] };
+  const document: RoadmapDocumentV1 = {
+    ...exact.document,
+    records: exact.document.records.map((candidate) => candidate === record ? semanticOnlyRecord : candidate),
+  };
+  const placement = resolveManifest(document);
+  const completed = buildExpectedChunks(document, placement.ops, {
+    renderSemanticRecord: renderCanonicalSemanticRecord,
+    resolveGeneratedSlot(slot) { return { binding: slot.binding, bytes: bytes("G") }; },
+  });
+  return { document, record: semanticOnlyRecord, placement, completed };
 }
 
 function testRenderCase(
@@ -1142,7 +1180,11 @@ function testRenderCase(
     const placement = resolveManifest(fixture.document);
     const completed = completeSemantic(fixture.document, fixture.renderCalls);
     if (completed.chunks.length !== placement.ops.length) fail("field failure prevented chunk completion");
-    requireIssue(validateCompletedChunks(fixture.document, placement.ops, completed), "E-FIELD-CONSUMPTION");
+    requireExactIssue(
+      validateCompletedChunks(fixture.document, placement.ops, completed),
+      "E-FIELD-CONSUMPTION",
+      'record["matrix.fixture-work"]',
+    );
     if (id === "render_chunks_precede_consumption_validation") {
       const raw = rawFixture();
       const rawPlacement = resolveManifest(raw.document);
@@ -1185,6 +1227,168 @@ function testRenderCase(
       }), "E-OUTPUT-SLOT");
     }
     return pass("negative");
+  }
+  if (id === "render_semantic_only_zero_byte_consumption") {
+    const { document, placement, completed } = semanticOnlyCompletion();
+    const issues = validateCompletedChunks(document, placement.ops, completed);
+    if (issues.length !== 0) fail(`semantic-only zero-byte chunk failed: ${issues.map((issue) => issue.message).join(";")}`);
+    const semanticChunk = completed.chunks.find((chunk) => chunk.owner.kind === "record");
+    const ledger = completed.field_consumption.find((entry) => entry.owner_kind === "record");
+    if (semanticChunk?.bytes.byteLength !== 0 || semanticChunk.source_span_ids.length !== 0 || completed.projected_field_segments.length !== 0) {
+      fail("semantic-only manifest record emitted bytes, spans, or projected field segments");
+    }
+    if (ledger === undefined || ledger.expected_fields.length !== 3 || ledger.consumed_fields.length !== 3) {
+      fail("semantic-only record did not explicitly consume every Markdown field");
+    }
+    return pass();
+  }
+  if (id === "render_semantic_only_identity_debt") {
+    const { document, record, placement, completed } = semanticOnlyCompletion();
+    if (!placement.ops.some((op) => op.node.kind === "record" && op.node.id === record.id)) {
+      fail("semantic-only record lost first-class manifest identity");
+    }
+    const semanticDebt = deriveMigrationDebt(document, completed);
+    if ([...semanticDebt.owners.values()].filter(({ key }) => key.owner_kind === "record" && key.owner_id === record.id).length !== 3) {
+      fail("semantic-only fields did not retain semantic debt owner atoms");
+    }
+    const baseFixture = semanticFixture("shadow");
+    const candidateFixture = semanticFixture("exact");
+    const baseDebt = deriveMigrationDebt(baseFixture.document, complete(baseFixture.document).completed);
+    const candidateDebt = deriveMigrationDebt(candidateFixture.document, completeSemantic(candidateFixture.document, candidateFixture.renderCalls));
+    const transition = validateDebtTransitionFacts(
+      baseDebt,
+      candidateDebt,
+      { base_document: baseFixture.document, candidate_document: candidateFixture.document },
+      [{
+        removed: owner("record", "matrix.fixture-work", "source_block_md"),
+        added: [
+          owner("record", "matrix.fixture-work", "payload.acceptance_md"),
+          owner("record", "matrix.fixture-work", "payload.priority_rationale_md"),
+          owner("record", "matrix.fixture-work", "payload.summary_md"),
+        ],
+      }],
+    );
+    if (!transition.ok) fail("semantic-only debt signature vector could not mint its control transition facts");
+    const changedCandidate: RoadmapDocumentV1 = {
+      ...candidateFixture.document,
+      records: candidateFixture.document.records.map((candidate) =>
+        "render_authority" in candidate && candidate.render_authority === "semantic"
+          ? { ...candidate, projection_visibility: "semantic_only" as const }
+          : candidate
+      ),
+    };
+    requireIssue(compareMigrationDebt(baseDebt, candidateDebt, {
+      base_document: baseFixture.document,
+      candidate_document: changedCandidate,
+      transition_facts: transition.facts,
+    }), "E-DEBT-BASE-MISMATCH");
+    return pass("negative");
+  }
+  if (id === "render_semantic_only_span_prohibition") {
+    const { document, record, completed } = semanticOnlyCompletion();
+    requireIssue(validateSourceSpans({ document, completed }), "E-SPAN-OWNER");
+    const exactRecord = semanticFixture("exact").document.records.find((value) =>
+      "render_authority" in value && value.render_authority === "semantic"
+    );
+    if (exactRecord === undefined || exactRecord.render_authority !== "semantic") fail("span-prohibition vector lacks replacement source");
+    const replacementOnly: RoadmapDocumentV1 = {
+      ...document,
+      records: document.records.map((candidate) => candidate === record
+        ? { ...candidate, source_replacements: [exactRecord.source_replacements[0]!] }
+        : candidate),
+    };
+    requireIssue(validateSourceSpans({ document: replacementOnly, completed }), "E-SPAN-OWNER");
+    return pass("negative");
+  }
+  if (
+    id === "render_semantic_exact_field_binding_swapped_labels" ||
+    id === "render_semantic_exact_field_binding_partial" ||
+    id === "render_semantic_exact_field_binding_duplicate" ||
+    id === "render_semantic_replacement_rows_order_independent"
+  ) {
+    const exact = semanticFixture("exact");
+    const exactPlacement = resolveManifest(exact.document);
+    const exactCompleted = completeSemantic(exact.document, exact.renderCalls);
+    const exactIssues = [
+      ...validateCompletedChunks(exact.document, exactPlacement.ops, exactCompleted),
+      ...validateSourceSpans({ document: exact.document, completed: exactCompleted }),
+    ];
+    if (exactIssues.length !== 0) fail(`exact semantic control failed: ${exactIssues.map((issue) => issue.message).join(";")}`);
+    const record = exact.document.records.find((candidate) =>
+      "render_authority" in candidate && candidate.render_authority === "semantic"
+    );
+    if (record === undefined || record.render_authority !== "semantic") fail("exact binding vector lacks semantic record");
+    if (id === "render_semantic_exact_field_binding_swapped_labels") {
+      const [first, second, third] = record.source_replacements;
+      const swapped: RoadmapDocumentV1 = {
+        ...exact.document,
+        records: exact.document.records.map((candidate) => candidate === record ? {
+          ...record,
+          source_replacements: [
+            { ...first!, replacement_field: second!.replacement_field },
+            { ...second!, replacement_field: first!.replacement_field },
+            third!,
+          ],
+        } : candidate),
+        spans: exact.document.spans.map((span) => span.id === first!.span_id
+          ? { ...span, owner_field: second!.replacement_field }
+          : span.id === second!.span_id ? { ...span, owner_field: first!.replacement_field } : span),
+      };
+      requireIssue(validateSourceSpans({ document: swapped, completed: exactCompleted }), "E-SPAN-OWNER");
+      return pass("negative");
+    }
+    if (id === "render_semantic_exact_field_binding_partial") {
+      const first = record.source_replacements[0]!;
+      const partial: RoadmapDocumentV1 = {
+        ...exact.document,
+        spans: exact.document.spans.map((span) => span.id === first.span_id
+          ? { ...span, end_byte: span.end_byte - 1, sha256: sha256(bytes("SU")) }
+          : span),
+      };
+      requireIssue(validateSourceSpans({ document: partial, completed: exactCompleted }), "E-SPAN-OWNER");
+      return pass("negative");
+    }
+    if (id === "render_semantic_exact_field_binding_duplicate") {
+      const [first, second, third] = record.source_replacements;
+      const duplicateField: RoadmapDocumentV1 = {
+        ...exact.document,
+        records: exact.document.records.map((candidate) => candidate === record ? {
+          ...record,
+          source_replacements: [first!, { ...second!, replacement_field: first!.replacement_field }, third!],
+        } : candidate),
+      };
+      requireIssue(validateCompletedChunks(duplicateField, resolveManifest(duplicateField).ops, exactCompleted), "E-FIELD-CONSUMPTION");
+      requireIssue(validateSourceSpans({ document: duplicateField, completed: exactCompleted }), "E-SPAN-OWNER");
+      const duplicateSpan: RoadmapDocumentV1 = {
+        ...exact.document,
+        records: exact.document.records.map((candidate) => candidate === record ? {
+          ...record,
+          source_replacements: [first!, { ...second!, span_id: first!.span_id }, third!],
+        } : candidate),
+      };
+      requireIssue(validateCompletedChunks(duplicateSpan, resolveManifest(duplicateSpan).ops, exactCompleted), "E-FIELD-CONSUMPTION");
+      requireIssue(validateSourceSpans({ document: duplicateSpan, completed: exactCompleted }), "E-SPAN-OWNER");
+      return pass("negative");
+    }
+    const reversed: RoadmapDocumentV1 = {
+      ...exact.document,
+      records: exact.document.records.map((candidate) => candidate === record ? {
+        ...record,
+        source_replacements: [...record.source_replacements].reverse(),
+      } : candidate),
+    };
+    const reversedCompleted = completeSemantic(reversed, { value: 0 });
+    const reversedPlacement = resolveManifest(reversed);
+    const reversedIssues = [
+      ...validateCompletedChunks(reversed, reversedPlacement.ops, reversedCompleted),
+      ...validateSourceSpans({ document: reversed, completed: reversedCompleted }),
+    ];
+    if (reversedIssues.length !== 0 || !exactCompleted.expected_bytes.bytesEqual(reversedCompleted.expected_bytes) ||
+      JSON.stringify(exactCompleted.projected_field_segments.map((segment) => [segment.logical_path, segment.start_in_chunk, segment.end_in_chunk])) !==
+        JSON.stringify(reversedCompleted.projected_field_segments.map((segment) => [segment.logical_path, segment.start_in_chunk, segment.end_in_chunk]))) {
+      fail("replacement row order changed rendered bytes or canonical projected field segments");
+    }
+    return pass();
   }
   if (id === "render_shadow_ignored") {
     const fixture = semanticFixture("shadow");

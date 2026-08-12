@@ -43,6 +43,7 @@ id = "testing.fixture-mixed-semantic"
 title = "Mixed semantic testing owner"
 projection_group = "fixture"
 render_authority = "semantic"
+projection_visibility = "document"
 
 [record.payload]
 kind = "work"
