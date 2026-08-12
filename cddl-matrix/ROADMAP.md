@@ -419,8 +419,10 @@ entry, so the atomicity is the rule).
   and the merge generalized to group statements. On implementation: flip the `assigng.extend` reject
   row (verify.ts re-probe) and re-mint its decode rows. Reopening signal — it is the
   choice-of-bodies entry's signal, since nothing here can move first.
-- **Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record
-  fields.** A **final-position** `* t` after ≥1 fixed member is the loose open-array rest tail;
+
+### Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record fields.
+
+A **final-position** `* t` after ≥1 fixed member is the loose open-array rest tail;
   final `+ t` / `1* t` is its `NonEmptyVec` twin with a first-element construction door (both
   supported by `contain.occurrence-target.grpent.member.{zero_array,plus_array}`). Still rejected
   gracefully: bounded (`n*m`) final tails and any **non-final / middle** `*` / `+` member
@@ -430,34 +432,86 @@ entry, so the atomicity is the rule).
   invisible to round-trip tests, surfaced only by spec-derived decode vectors. Real support for the
   middle-position case needs an occurrence-decoding design that honors RFC 8610's greedy,
   non-backtracking semantics; repeated occurrences additionally need a representation and residue
-  policy of their own.
-  - **An open table's min-1 typed row** (`t = { + K_t => V_t, * K_r => V_r }`): the one min-1 shape
-    that does NOT use the unrepresentable model, because the container it bounds is one `pub` member
-    of a struct whose OTHER member is an unbounded sibling. It is enforced at a seeded door
-    (`new(first_key, first_value)`, so a constructed value satisfies it) plus one check after each
-    reader's loop, raising the very `RangeCheck` `NonEmptyMap`'s `TryFrom` raises — but clearing the
-    field afterwards is representable. Making it unrepresentable means giving that member the
-    `NonEmptyMap`/`NonEmptyPairMap` type, which ripples through the JSON, wasm, WIT and
-    extern-interface faces of a shape that currently reuses the rest row's container spelling
-    verbatim. Reopening signal: a consumer reporting a value that reached the wire — or a
-    cross-crate boundary — with an empty typed row, i.e. the bypass observed rather than argued.
-  - **Atomic hand-over** (value windows: `uint .le N`, `.size` ranges on bytes/text): private-field
-    newtypes whose `TryFrom` door replaces today's ctor/deserialize checks (the
-    `value_bounds_check_line` emission sites).
-  - **Static-representable** (`bytes .size 32` → `[u8; 32]`, exact `n*n T` → `[T; n]`): the
-    representation itself carries the constraint — the `uint .size 1` → `u8` mapping is the shipped
-    precedent — independently of the `TryFrom` door, which stays as the ergonomic entry point.
-  Each class lands tests-first when picked up; the `+` case's fixture surface (the `nev_*` rules in
-  `tests/core/input.cddl`, the `tests/robustness/non_empty_*` collision/dedup pins) is the template,
-  and any wasm-boundary shape a new class mints must be enumerated in the wasm-ABI/multifile matrix
-  `SHAPES` in the same change (the "Keep EVERY matrix axis honest" rule).
-- Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
-  gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
+  policy of their own. Any honored carrier must prevent invalid construction and cover
+  serialization, deserialization, every generated projection, matrix classification, and
+  spec-derived boundary vectors.
+
+### Resolve optional fields adjacent to open array tails or open-table rows
+
+Type-disjoint non-final optionals already decode by peeking at the next value's major type. An
+optional whose value domain overlaps its follower or an open tail/row has no sound discriminator,
+so that decode surface remains explicitly refused rather than guessed. RFC 8610 matching is greedy
+and non-backtracking: `[? uint, uint]` does not accept `[uint]`, because the optional consumes the
+item and leaves the mandatory field absent. This work may honor a newly demonstrated,
+spec-valid adjacency only when its carrier and lookahead/residue policy preserve those semantics;
+intrinsically overlapping spellings remain intentional refusals, not decoder-heuristic work. Any
+newly honored shape must prove that boundary through serialization/deserialization and the applicable
+Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived-vector surfaces.
+
+### Honor bounded occurrences on open-table rows
+
+Bounded typed or catch-all rows in an open table/open struct remain rejected rather than being
+silently lowered to a loose or mandatory field. Support requires a per-row carrier and construction
+door that cannot create an out-of-window value, plus matching deserialize residue and bound checks
+across Rust, wasm, JSON, component, and cross-crate projections. This is distinct from the min-1
+typed-row hardening question below and from zero-permitting fixed-key fields, which have their own
+lifecycle.
+
+### Harden an open table's min-1 typed row when an invalid value is observed
+
+An open table's min-1 typed row (`t = { + K_t => V_t, * K_r => V_r }`) is the one min-1 shape
+that does NOT use the unrepresentable model, because the container it bounds is one `pub` member
+of a struct whose OTHER member is an unbounded sibling. It is enforced at a seeded door
+(`new(first_key, first_value)`, so a constructed value satisfies it) plus one check after each
+reader's loop, raising the very `RangeCheck` `NonEmptyMap`'s `TryFrom` raises — but clearing the
+field afterwards is representable. Making it unrepresentable means giving that member the
+`NonEmptyMap`/`NonEmptyPairMap` type, which ripples through the JSON, wasm, WIT and
+extern-interface faces of a shape that currently reuses the rest row's container spelling
+verbatim. Reopening signal: a consumer reporting a value that reached the wire — or a
+cross-crate boundary — with an empty typed row, i.e. the bypass observed rather than argued.
+
+### Atomically hand over bounded scalar and byte/text values to private-field newtypes
+
+Value windows (`uint .le N`, `.size` ranges on bytes/text) need private-field newtypes whose
+`TryFrom` door replaces today's ctor/deserialize checks (the `value_bounds_check_line` emission
+sites).
+
+### Fixed-byte representation optimization
+
+`bytes .size 32` can map to `[u8; 32]`: the representation itself carries the constraint. The
+`uint .size 1` → `u8` mapping is the shipped precedent, independently of the `TryFrom` door, which
+stays as the ergonomic entry point.
+
+### Fixed-array representation optimization
+
+An exact `n*n T` can map to `[T; n]`, so the representation itself carries the constraint. The
+`uint .size 1` → `u8` mapping is the shipped precedent, independently of the `TryFrom` door, which
+stays as the ergonomic entry point. The fixed carrier and its construction door must compose with
+serialization, deserialization, Rust, wasm, JSON, component, cross-crate projection, matrix
+classification, and spec-derived boundary vectors.
+
+### Shared delivery requirements for occurrence and bounds carrier classes
+
+Each class above lands tests-first when picked up; the `+` case's fixture surface (the `nev_*` rules
+in `tests/core/input.cddl`, the `tests/robustness/non_empty_*` collision/dedup pins) is the template,
+and any wasm-boundary shape a new class mints must be enumerated in the wasm-ABI/multifile matrix
+`SHAPES` in the same change (the "Keep EVERY matrix axis honest" rule).
+
+### Honor zero-permitting occurrences on keyed struct-map fields
+
+Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
+gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
   in `tests/matrix_reject/`) rather than silently narrowed to a mandatory field. `+` / `n*m` with a
   lower bound ≥ 1 still generate a mandatory field — under unique map keys they collapse to
   exactly-one, so mandatory is the honored semantics (a deliberate boundary). Real support for `*`
-  (an `Option<T>` field, like `?`) is a candidate feature.
-- An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]` — is **rejected
+  (an `Option<T>` field, like `?`) is a candidate feature. Its carrier and construction door must
+  make absence representable without silently widening the keyed-map semantics and must cover
+  serialization, deserialization, every applicable generated projection, matrix classification,
+  and spec-derived boundary vectors.
+
+### Honor zero-permitting occurrences on inline parenthesized groups when a carrier exists
+
+An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]` — is **rejected
   gracefully** (pinned by `contain.occurrence-target.grpent.inline_group.{plus_array,optional_array,bounded_array,zero_map}`
   in `tests/matrix_reject/`) rather than silently narrowed to an exactly-once record. Boundaries
   kept: `[1*1 (…)]` still generates (exactly-once IS the semantics, so flattening the group away is
@@ -659,25 +713,41 @@ remains is deleting the notes that explain why we do not have it yet.
   `bun run check.ts full --only ir_conformance_corpus`. The independent Rust `cddl` decoder may
   still collapse `f7`; do not remove its per-rule oracle accommodation unless its own exact probe
   accepts.
-- When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17): first confirm that
+
+### When a `cddl` parser release accepts lowercase-hex and base64 fixed-byte literals
+
+The pinned parser accepts uppercase `h'CAFE'` and raw UTF-8 byte literals but rejects lowercase hex
+and RFC 8610 base64 spellings before generation. When a published parser release accepts both
+refused forms, re-probe the exact `h'cafe'` and `b64'yv4='` spellings alongside `h'CAFE'` and a raw
+UTF-8 positive control, adopt the release, and update the `value.bytes` feature description, parser
+limitation documentation, matrix projections, and fixed-byte vectors in one change. Closure requires
+both newly parsed forms to lower to the same bytes as `h'CAFE'` and exercise the already-supported
+fixed-value surfaces; it is independent of the CBOR validator repair below.
+
+### When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17)
+
+First confirm that
   `h'CAFE'` and raw UTF-8 fixed-byte rules validate without a panic, then remove the three pinned
   decode-foreign rows and re-mint them with
   `bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes`.
   Re-run the full verify pass so their evidence gains normal two-oracle corroboration, and mint
   reason-bearing constraint rejects so all three rows move from Q4's unverified set to enforce-green.
-  Then prune README gap #17 and `draft/b3-024c-rust-cddl-fixed-bytes-validator.md`. This closes an
+  Then prune README gap #17. This closes an
   independent-certification gap only; do not demote the execution-gated support rows while the external release is
   being evaluated. Also verify that upstream `B16ByteString` display no longer treats decoded bytes
   as UTF-8; re-run the fixed-member and recombination regressions before simplifying the generator's
   lazy byte-safe diagnostic renderer. Until then, generated execution is the equality-enforcement
   pin; the missing independent oracle certification is explicit rather than inferred as `n/a`.
-- When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
-  `ac1b98e` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
-  `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row
-  it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its `pinned_reason`
-  disappears once candidates survive the two-oracle gate), re-run the full `verify.ts` in the same
-  change so the row's evidence picks up the corroboration clause, and prune README gap #8 + that
-  draft.
+
+### When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8)
+
+This remains OPEN at the pinned `ac1b98e` rev; the differential repro, suspected
+`src/validator/cbor.rs` site, and prune steps are recorded in
+`draft/rust-cddl-tag-map-key-gap.md`, and no upstream issue has been filed yet. When a fix ships,
+re-mint the row it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its
+`pinned_reason` disappears once candidates survive the two-oracle gate), re-run the full `verify.ts`
+in the same change so the row's evidence picks up the corroboration clause, and prune README gap #8
+plus that draft.
 - When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
   #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
   multi-entry-composite-array-key observations, and prune steps in

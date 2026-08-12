@@ -105,8 +105,9 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   internal-error class, so the exit-contract tripwire it leans on stops being where formatter
   surprises surface).
 
-- **Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery —
-  blocked on publishing the reviewed fork revision.** At the pinned cddl revision (`ac1b98ec`) a
+### Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery — blocked on publishing the reviewed fork revision.
+
+At the pinned cddl revision (`ac1b98ec`) a
   group rule's rule-position directive binds to its LAST GROUP ENTRY's trailing slot, so the
   spelling that puts the closing paren on its own line (`grp = (\n a: uint\n) ; @x`) leaves the
   trailing comment past every slot the AST offers — it is merged into the following rule's
