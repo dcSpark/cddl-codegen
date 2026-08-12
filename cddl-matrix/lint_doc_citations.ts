@@ -23,6 +23,8 @@
  *      probe ids, the `draft/loose-cbor/` scratchpad home). Such references resolve
  *      only inside gitignored `draft/` files, so they dangle silently to any future reader — state
  *      the constraint inline with a durable citation instead. See EPHEMERAL_PATTERNS.
+ *   6. Roadmap fragment integrity: generated roadmap stable-ID anchors have canonical syntax,
+ *      occur exactly once, and every durable stable-ID fragment resolves to one anchor.
  *
  * Run from cddl-matrix/:
  *   bun run lint_doc_citations.ts
@@ -248,6 +250,79 @@ function positionalCitationProblems(file: TrackedFile): string[] {
   return problems;
 }
 
+// Capture the whole fragment token, not only a valid-looking prefix: `matrix.foo!bad` must be
+// rejected as malformed rather than silently resolving through an existing `matrix.foo` anchor.
+const ROADMAP_FRAGMENT_PREFIX = "#roadmap-" + "id-";
+const ROADMAP_FRAGMENT_RE = new RegExp(`${ROADMAP_FRAGMENT_PREFIX}([^\\s)\\]}>"'\\x60]+)`, "g");
+const ROADMAP_ANCHOR_RE = /^\s*<a id="roadmap-id-((?:matrix|testing)\.[a-z0-9.-]+)"><\/a>\s*$/gm;
+const ROADMAP_ID_RE = /^(?:matrix|testing)\.[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*(?:\.[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*)*$/;
+
+function roadmapFragmentProblems(files: readonly TrackedFile[]): string[] {
+  const problems: string[] = [];
+  const anchors = new Map<string, { rel: string; line: number }[]>();
+  for (const file of files.filter((candidate) =>
+    candidate.rel === "cddl-matrix/ROADMAP.md" || candidate.rel === "tests/TESTING_ROADMAP.md"
+  )) {
+    for (const match of file.text.matchAll(ROADMAP_ANCHOR_RE)) {
+      const id = match[1]!;
+      if (!ROADMAP_ID_RE.test(id)) problems.push(`${file.rel}:${lineOf(file.text, match.index ?? 0)}: malformed stable roadmap anchor '${id}'`);
+      const rows = anchors.get(id) ?? [];
+      rows.push({ rel: file.rel, line: lineOf(file.text, match.index ?? 0) });
+      anchors.set(id, rows);
+    }
+    for (const match of file.text.matchAll(/id="roadmap-id-([^"]+)"/g)) {
+      if (!ROADMAP_ID_RE.test(match[1]!)) problems.push(`${file.rel}:${lineOf(file.text, match.index ?? 0)}: malformed stable roadmap anchor '${match[1]}'`);
+    }
+  }
+  for (const [id, rows] of [...anchors].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
+    if (rows.length !== 1) problems.push(`${rows[0]!.rel}:${rows[0]!.line}: stable roadmap anchor '${id}' occurs ${rows.length} times, expected once`);
+  }
+  for (const file of files.filter((candidate) => !candidate.rel.startsWith("draft/"))) {
+    for (const match of file.text.matchAll(ROADMAP_FRAGMENT_RE)) {
+      const id = match[1]!;
+      if (!ROADMAP_ID_RE.test(id)) {
+        problems.push(`${file.rel}:${lineOf(file.text, match.index ?? 0)}: malformed roadmap fragment '${ROADMAP_FRAGMENT_PREFIX}${id}'`);
+      } else if ((anchors.get(id)?.length ?? 0) !== 1) {
+        problems.push(`${file.rel}:${lineOf(file.text, match.index ?? 0)}: roadmap fragment '${ROADMAP_FRAGMENT_PREFIX}${id}' does not resolve to exactly one generated anchor`);
+      }
+    }
+  }
+  return problems;
+}
+
+function roadmapFragmentSelfTestProblems(): string[] {
+  const generated = (anchors: string): TrackedFile => ({ rel: "cddl-matrix/ROADMAP.md", text: anchors });
+  const durable = (fragment: string): TrackedFile => ({ rel: "tests/citation-canary.md", text: fragment });
+  const resolved = roadmapFragmentProblems([
+    generated('<a id="roadmap-id-matrix.canary"></a>\n'),
+    durable(`[resolved](../cddl-matrix/ROADMAP.md${ROADMAP_FRAGMENT_PREFIX}matrix.canary)`),
+  ]);
+  const missing = roadmapFragmentProblems([
+    generated('<a id="roadmap-id-matrix.canary"></a>\n'),
+    durable(`[missing](../cddl-matrix/ROADMAP.md${ROADMAP_FRAGMENT_PREFIX}matrix.absent)`),
+  ]);
+  const malformed = roadmapFragmentProblems([
+    generated('<a id="roadmap-id-matrix.canary"></a>\n'),
+    durable(`[malformed](../cddl-matrix/ROADMAP.md${ROADMAP_FRAGMENT_PREFIX}matrix.canary!bad)`),
+  ]);
+  const duplicate = roadmapFragmentProblems([
+    generated('<a id="roadmap-id-matrix.canary"></a>\n<a id="roadmap-id-matrix.canary"></a>\n'),
+    durable(`[duplicate](../cddl-matrix/ROADMAP.md${ROADMAP_FRAGMENT_PREFIX}matrix.canary)`),
+  ]);
+  const failures: string[] = [];
+  if (resolved.length !== 0) failures.push("roadmap-fragment self-check: resolved canary failed");
+  if (!missing.some((problem) => problem.includes("does not resolve"))) {
+    failures.push("roadmap-fragment self-check: missing canary escaped");
+  }
+  if (!malformed.some((problem) => problem.includes("malformed roadmap fragment") && problem.includes("!bad"))) {
+    failures.push("roadmap-fragment self-check: malformed whole-token canary escaped");
+  }
+  if (!duplicate.some((problem) => problem.includes("occurs 2 times"))) {
+    failures.push("roadmap-fragment self-check: duplicate-anchor canary escaped");
+  }
+  return failures;
+}
+
 // Directive-swallows-closer ban (user docs): a CDDL comment runs to the end of the line, so an
 // illustration that puts a `; @<directive>` comment on the same line/span as the container's
 // closing `}`/`]` models a spelling that silently swallows the closer — a reader who copies it
@@ -354,6 +429,8 @@ for (const doc of handDocFiles) {
 for (const f of allFiles) problems.push(...positionalCitationProblems(f));
 for (const f of allFiles) problems.push(...ephemeralReferenceProblems(f));
 for (const f of allFiles) problems.push(...directiveSwallowedCloserProblems(f));
+problems.push(...roadmapFragmentProblems(allFiles));
+problems.push(...roadmapFragmentSelfTestProblems());
 
 // Self-check: each ephemeral pattern must still match its canary (guards against a regex silently
 // going vacuous — e.g. an errant edit that never fires and lets dangling references back in).

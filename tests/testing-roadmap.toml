@@ -8,7 +8,7 @@ frozen_source_sha256 = "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b
 frozen_source_byte_length = 323398
 frozen_source_line_count = 3597
 frozen_source_eof = "lf"
-projection_layout = "legacy_v1"
+projection_layout = "anchors_v1"
 
 [[section]]
 section_id = "declined-boundaries"
