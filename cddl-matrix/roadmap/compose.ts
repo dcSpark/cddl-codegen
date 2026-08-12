@@ -278,13 +278,14 @@ function writeFamily(writer: CanonicalTomlWriter, payload: FamilyPayload, prefix
     optionalStrings(writer, "evidence_ids", cell.evidence_ids);
     optionalString(writer, "work_id", cell.work_id);
     for (const binding of sorted(cell.evidence_bindings ?? [], (value) =>
-      `${value.requirement_id}\0${value.profile}\0${value.face}\0${value.stage}\0${value.evidence_id}`
+      `${value.requirement_id}\0${value.profile}\0${value.face}\0${value.stage}\0${value.outcome}\0${value.evidence_id}`
     )) {
       writer.arrayTable(`${prefix}.cell.evidence_binding`);
       writer.string("requirement_id", binding.requirement_id);
       writer.string("profile", binding.profile);
       writer.string("face", binding.face);
       writer.string("stage", binding.stage);
+      writer.string("outcome", binding.outcome);
       writer.string("evidence_id", binding.evidence_id);
     }
     for (const coordinate of sorted(cell.coordinates, (value) => value.axis_id)) {

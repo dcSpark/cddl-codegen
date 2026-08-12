@@ -2515,6 +2515,7 @@ function c5FamilyRecord(id: RoadmapId, workIds: readonly RoadmapId[] = []): Sema
           profile: "default",
           face: "rust",
           stage: "compiled",
+          outcome: "succeeded",
           evidence_id: `${id}.fixture-evidence` as RoadmapId,
         }],
       }],

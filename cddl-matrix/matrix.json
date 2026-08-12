@@ -3252,6 +3252,106 @@
         "status": "unsupported"
       },
       {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.null.fixed-kind",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.true.fixed-kind",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.undefined.fixed-kind",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.bytes.fixed-kind",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.float.fixed-kind",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.nint.fixed-kind",
+        "status": "unsupported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.text.fixed-kind",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.uint.fixed-kind",
+        "status": "supported"
+      },
+      {
         "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
         "id": "ctl.abnf",
         "status": "unsupported"
@@ -3790,6 +3890,70 @@
       "feature": "prelude.true",
       "id": "contain.choice-member.prelude.true.same_major_brute",
       "note": "A three-arm type choice whose two FIXED arms share a CBOR major type (`t = true / null / tstr`): `true` and `null` are both major 7 specials, so the arm discriminant cannot be the wire major. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize anchors `raw.position()`, runs each arm's reader in source order (the `true` arm verifying its constant as `FixedValueMismatch`, the `null` arm as `ExpectedNull`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch every other fixed-arm cell in this matrix takes (`contain.group-choice-arm.type2.value.map` and its array-rep siblings), which is why the kind axis has to be probed on both: a fixed kind proven on one path certifies nothing about the other. Deliberately three arms — the two-arm `true / null` is not this shape at all: it now uses the nominal fixed/null Option lowering pinned by `contain.choice-member.type2.value.fixed_null`. Executed under the flag that reaches the site by `fixed_special_type_choice_brute` in `tests/preserve-encodings/input.cddl`. RFC8610 §2.2.2, App. D.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = true / tstr",
+      "feature": "prelude.true",
+      "id": "contain.choice-member.prelude.true.fixed-kind",
+      "note": "Canonical BOOL representative for the source-derived FixedValue-kind closure: `true / tstr` reaches the bare rule-level type-choice naming and execution path, with a disjoint-major sibling. This is one reviewed representative, not every boolean spelling. RFC8610 §2.2.2, App. D.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = h'CAFE' / tstr",
+      "feature": "type2.value",
+      "id": "contain.choice-member.type2.value.bytes.fixed-kind",
+      "note": "Canonical BYTES representative for the source-derived FixedValue-kind closure: `h'CAFE' / tstr`. The uppercase hex spelling avoids the rust-cddl lowercase-parser limitation while exercising the byte-vector-derived variant and wire path. One representative only. RFC8610 §2.2.2, §2.2.4.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = 1.5 / tstr",
+      "feature": "type2.value",
+      "id": "contain.choice-member.type2.value.float.fixed-kind",
+      "note": "Canonical FLOAT representative for the source-derived FixedValue-kind closure: `1.5 / tstr` is spec-legal and gracefully refused because its derived variant name `F1.5` is not a Rust identifier; `; @name` is the supported remedy. One representative only. RFC8610 §2.2.2, §2.2.4.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = -1 / null / tstr",
+      "feature": "type2.value",
+      "id": "contain.choice-member.type2.value.nint.fixed-kind",
+      "note": "Canonical NINT representative for the source-derived FixedValue-kind closure: `-1 / null / tstr` is spec-legal and gracefully refused because its derived variant name `U-1` is not a Rust identifier; the third arm avoids the two-arm `/ null` collapse. One representative only. RFC8610 §2.2.2, §2.2.4.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = null / tstr / uint",
+      "feature": "prelude.null",
+      "id": "contain.choice-member.prelude.null.fixed-kind",
+      "note": "Canonical NULL representative for the source-derived FixedValue-kind closure: `null / tstr / uint`. Three arms deliberately prevent the dedicated two-arm `/ null` Option collapse, so null remains a fixed choice arm. One representative only. RFC8610 §2.2.2, App. D.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = \"x\" / uint",
+      "feature": "type2.value",
+      "id": "contain.choice-member.type2.value.text.fixed-kind",
+      "note": "Canonical TEXT representative for the source-derived FixedValue-kind closure: `\"x\" / uint` mints the spellable derived variant `X` and round-trips. This explicitly does not generalize to keyword-minting text such as `\"self\"`, whose separate graceful refusal remains live. RFC8610 §2.2.2, §2.2.4.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = 5 / tstr",
+      "feature": "type2.value",
+      "id": "contain.choice-member.type2.value.uint.fixed-kind",
+      "note": "Canonical UINT representative for the source-derived FixedValue-kind closure: `5 / tstr` mints a spellable fixed-value variant and exercises the disjoint-major type-choice path. One representative only. RFC8610 §2.2.2, §2.2.4.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = undefined / tstr",
+      "feature": "prelude.undefined",
+      "id": "contain.choice-member.prelude.undefined.fixed-kind",
+      "note": "Canonical UNDEFINED representative for the source-derived FixedValue-kind closure: `undefined / tstr` exercises the fixed special arm beside a disjoint-major sibling. One representative only. RFC8610 §2.2.2, App. D.",
       "role": "role.choice-member",
       "spec": "allowed"
     },

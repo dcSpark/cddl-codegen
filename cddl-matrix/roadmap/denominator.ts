@@ -2,13 +2,21 @@ import type { RegistryView } from "./adapters/types.ts";
 import type { RoadmapIssue } from "./errors.ts";
 import type { RoadmapIndexes, SemanticPayloadProviderFact } from "./indexes.ts";
 import type { ReferenceId, RepoPath, RoadmapId } from "./model/core.ts";
-import type { FamilyCoordinate, FamilyEvidenceRequirement, FamilyPayload } from "./model/systematic.ts";
+import type { EvidenceStageOutcome, FamilyCoordinate, FamilyEvidenceRequirement, FamilyPayload } from "./model/systematic.ts";
 
 export interface DerivedDenominatorCandidate {
   readonly coordinates: readonly FamilyCoordinate[];
   readonly spec_legality: "legal" | "illegal";
   readonly affected_profiles: readonly string[];
   readonly affected_faces: readonly string[];
+  readonly expected_disposition?: "supported" | "safely_refused" | "deliberately_unsupported";
+  readonly expected_outcomes?: readonly {
+    readonly requirement_id: RoadmapId;
+    readonly profile: string;
+    readonly face: string;
+    readonly stage: FamilyEvidenceRequirement["stages"][number];
+    readonly outcome: EvidenceStageOutcome;
+  }[];
 }
 
 export interface DerivedDenominator {
@@ -148,6 +156,9 @@ function closedShape(
     const candidate = legal.get(key);
     if (candidate === undefined) continue;
     if (cell.cell_disposition === "unknown") issues.push(issue(source, `${path}.cell[${JSON.stringify(cell.id)}].cell_disposition`, "closed denominator forbids unknown disposition"));
+    if (candidate.expected_disposition === undefined || cell.cell_disposition !== candidate.expected_disposition) {
+      issues.push(issue(source, `${path}.cell[${JSON.stringify(cell.id)}].cell_disposition`, "cell disposition must exactly equal the authority-derived disposition"));
+    }
     if (cell.evidence_ids !== undefined) issues.push(issue(source, `${path}.cell[${JSON.stringify(cell.id)}].evidence_ids`, "closed denominator forbids loose evidence_ids; use exact evidence bindings"));
     if (!same(sorted(cell.affected_profiles), sorted(candidate.affected_profiles)) || !same(sorted(cell.affected_faces), sorted(candidate.affected_faces))) {
       issues.push(issue(source, `${path}.cell[${JSON.stringify(cell.id)}]`, "cell applicability must equal authority-derived profiles/faces"));
@@ -165,20 +176,29 @@ function closedShape(
       requirement.profiles.filter((profile) => cell.affected_profiles.includes(profile)).flatMap((profile) =>
         requirement.faces.filter((face) => cell.affected_faces.includes(face)).flatMap((face) =>
           requirement.stages.map((stage) => JSON.stringify([requirement.id, profile, face, stage])))));
+    const expectedOutcomes = new Map((candidate.expected_outcomes ?? []).map((value) => [
+      JSON.stringify([value.requirement_id, value.profile, value.face, value.stage]), value.outcome,
+    ]));
     const actual = new Map<string, number>();
     for (const binding of cell.evidence_bindings ?? []) {
       bindingCount++;
       const tuple = JSON.stringify([binding.requirement_id, binding.profile, binding.face, binding.stage]);
       actual.set(tuple, (actual.get(tuple) ?? 0) + 1);
       const evidence = indexes.payload_records.get(binding.evidence_id)?.payload;
-      if (evidence?.kind !== "evidence" || !["confirmed", "inapplicable"].includes(evidence.evidence_verdict) ||
+      if (expectedOutcomes.get(tuple) !== binding.outcome) {
+        issues.push(issue(source, `${path}.cell[${JSON.stringify(cell.id)}].evidence_binding`, "binding outcome must exactly equal the authority-derived stage outcome"));
+      }
+      if (evidence?.kind !== "evidence" || evidence.evidence_verdict !== "confirmed" ||
         evidence.freshness !== "live" || !evidence.scope.cell_ids?.includes(cell.id) ||
         !evidence.scope.profiles?.includes(binding.profile) || !evidence.scope.faces?.includes(binding.face)) {
-        issues.push(issue(source, `${path}.cell[${JSON.stringify(cell.id)}].evidence_binding`, "binding must resolve to applicable confirmed/inapplicable live evidence scoped to its cell/profile/face"));
+        issues.push(issue(source, `${path}.cell[${JSON.stringify(cell.id)}].evidence_binding`, "binding must resolve to applicable confirmed live evidence scoped to its cell/profile/face"));
       }
     }
     if (!same(sorted(required), sorted([...actual.keys()])) || [...actual.values()].some((count) => count !== 1)) {
       issues.push(issue(source, `${path}.cell[${JSON.stringify(cell.id)}].evidence_binding`, "every derived requirement/profile/face/stage tuple requires exactly one evidence binding"));
+    }
+    if (!same(sorted(required), sorted([...expectedOutcomes.keys()]))) {
+      issues.push(issue(source, `${path}.cell[${JSON.stringify(cell.id)}].evidence_binding`, "authority must derive one exact stage outcome for every required binding tuple"));
     }
   }
   if (bindingCount < derived.evidence_binding_floor) issues.push(issue(source, `${path}.cell.evidence_binding`, "derived evidence-binding anti-vacuity floor was not met"));

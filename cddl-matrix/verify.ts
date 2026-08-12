@@ -341,14 +341,97 @@ const onlyArg = process.argv.find(a => a.startsWith("--only="));
 const MINT_ONLY = onlyArg
   ? new Set(onlyArg.slice("--only=".length).split(",").map(s => s.trim()).filter(s => s.length))
   : null;
+// --probe-only=id,id,… is the NORMAL support-publishing selector. Unlike the catalog modes'
+// `--only`, it probes only named feature/containment/control rows, replaces only those exact
+// `[[support]]` blocks in the committed annotations, preserves every unselected byte, writes no
+// subset-shaped verify_report.json, and exits. Unknown/empty selectors fail before oracle work.
+const probeOnlyArg = process.argv.find(a => a.startsWith("--probe-only="));
+const PROBE_ONLY = probeOnlyArg
+  ? new Set(probeOnlyArg.slice("--probe-only=".length).split(",").map(s => s.trim()).filter(Boolean))
+  : null;
+if (probeOnlyArg !== undefined && PROBE_ONLY?.size === 0) {
+  console.error("HARNESS FAILURE: --probe-only requires at least one row id; refusing to run.");
+  process.exit(2);
+}
+if (PROBE_ONLY && (MINT_ONLY || MINT_DECODE || MINT_DECODE_CORPUS || COMPONENT_BUILD_SWEEP || SMOKE)) {
+  console.error("HARNESS FAILURE: --probe-only is exclusive to normal support publishing; refusing ambiguous mode flags.");
+  process.exit(2);
+}
 const MINT_ACCEPT_REJECTED = "MINT_ACCEPT_REJECTED";
+const SELFTEST = process.argv.includes("--selftest");
+
+interface SupportBlock { readonly id: string; readonly start: number; readonly end: number; readonly bytes: string }
+function supportBlocks(source: string): readonly SupportBlock[] {
+  const boundaries = [...source.matchAll(/^\[\[support\]\]|^# ---/gmu)].map(match => match.index!);
+  const blocks: SupportBlock[] = [];
+  for (let index = 0; index < boundaries.length; index++) {
+    const start = boundaries[index]!;
+    if (!source.startsWith("[[support]]", start)) continue;
+    const end = boundaries[index + 1] ?? source.length;
+    const bytes = source.slice(start, end);
+    const parsed = Bun.TOML.parse(bytes) as { support?: readonly { id?: unknown }[] };
+    const id = parsed.support?.[0]?.id;
+    if (parsed.support?.length !== 1 || typeof id !== "string") throw new Error("support block must parse as exactly one identified row");
+    blocks.push({ id, start, end, bytes });
+  }
+  if (new Set(blocks.map(value => value.id)).size !== blocks.length) throw new Error("annotation support ids must be unique");
+  return blocks;
+}
+
+function selectivelyReplaceSupportRows(existing: string, rendered: string, selected: ReadonlySet<string>): string {
+  const oldBlocks = supportBlocks(existing);
+  const newBlocks = new Map(supportBlocks(rendered).map(value => [value.id, value.bytes]));
+  const missing = [...selected].filter(id => !newBlocks.has(id)).sort();
+  if (missing.length) throw new Error(`selected rows were not rendered: ${missing.join(", ")}`);
+  let output = "";
+  let cursor = 0;
+  const replaced = new Set<string>();
+  for (const block of oldBlocks) {
+    output += existing.slice(cursor, block.start);
+    if (selected.has(block.id)) {
+      output += newBlocks.get(block.id)!;
+      replaced.add(block.id);
+    } else output += block.bytes;
+    cursor = block.end;
+  }
+  output += existing.slice(cursor);
+  const additions = [...selected].filter(id => !replaced.has(id)).sort().map(id => newBlocks.get(id)!).join("");
+  if (additions.length) {
+    const controlMarker = output.indexOf("# --- per-control-op support");
+    if (controlMarker < 0) throw new Error("annotation control-op section marker is missing");
+    output = `${output.slice(0, controlMarker)}${additions}${output.slice(controlMarker)}`;
+  }
+  // Mechanical preservation proof: remove selected rows from both sides and require identical bytes.
+  const erase = (value: string): string => {
+    let out = "", at = 0;
+    for (const block of supportBlocks(value)) {
+      out += value.slice(at, block.start);
+      if (!selected.has(block.id)) out += block.bytes;
+      at = block.end;
+    }
+    return out + value.slice(at);
+  };
+  if (erase(existing) !== erase(output)) throw new Error("focused support publish changed unselected annotation bytes");
+  return output;
+}
+
+{
+  const before = "head\n[[support]]\nid = \"a\"\nstatus = \"old\"\n\n[[support]]\nid = \"b\"\nstatus = \"stay\"\n\n# --- per-control-op support\n";
+  const rendered = "[[support]]\nid = \"a\"\nstatus = \"new\"\n\n[[support]]\nid = \"c\"\nstatus = \"new\"\n\n";
+  const got = selectivelyReplaceSupportRows(before, rendered, new Set(["a", "c"]));
+  if (!got.includes('id = "a"\nstatus = "new"') || !got.includes('id = "b"\nstatus = "stay"') ||
+    !got.includes('id = "c"\nstatus = "new"')) {
+    console.error("HARNESS FAILURE: --probe-only preservation self-test failed; refusing to run.");
+    process.exit(2);
+  }
+  if (SELFTEST) console.log("probe-only selective-publish self-test OK (replacement + insertion + byte preservation)");
+}
 
 // ASSERT-AT-STARTUP self-tests for the three pure evidence-vocabulary deciders. They run on EVERY
 // invocation before any oracle work, because all three fail SILENTLY in production — a wrong verdict
 // token, stage name, or policy classification reads as a plausible annotation or hidden triage
 // exemption, not as an error. `--selftest` runs ONLY these blocks and exits, for a sub-second
 // red/green check without the multi-minute pipeline.
-const SELFTEST = process.argv.includes("--selftest");
 // (1) The ruby-generate Bernoulli classifier (Change A's deterministic verdict source): a
 // mis-classification would silently route a Bernoulli row back onto the flaky `generate` verdict (or a
 // deterministic row onto the nondet token), surfacing only as a spurious annotations flip.
@@ -774,6 +857,14 @@ const splitlines = (t: string): string[] => {
 // 1. LOAD the merged matrix exactly as build_matrix.ts does.
 // ==================================================================================================
 const { features, roles, contain, encodings, controlOps: control_ops } = loadMatrixInputs();
+if (PROBE_ONLY) {
+  const known = new Set([...features, ...contain, ...control_ops].map(value => value.id));
+  const unknown = [...PROBE_ONLY].filter(id => !known.has(id)).sort();
+  if (unknown.length) {
+    console.error(`HARNESS FAILURE: --probe-only names unknown matrix row(s): ${unknown.join(", ")}; refusing to run.`);
+    process.exit(2);
+  }
+}
 const feature_ids = new Set(features.map(f => f.id));
 const role_ids = new Set(roles.map(r => r.id));
 const enc_ids = new Set(encodings.map(e => e.id));
@@ -3126,7 +3217,7 @@ if (!GATE_CACHE_ENABLED) {
 const probe_results: ProbeResult[] = [];
 const sortedFeatures = [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 // --smoke=N probes only the first N features (see the flag comment near the top).
-const featureList = SMOKE ? sortedFeatures.slice(0, SMOKE_N) : sortedFeatures;
+const featureList = SMOKE ? sortedFeatures.slice(0, SMOKE_N) : PROBE_ONLY ? sortedFeatures.filter(value => PROBE_ONLY.has(value.id)) : sortedFeatures;
 for (const f of featureList) {
   const [a, b, cg] = oracles(f.id, f.example, f.example_extern_stub);
   const profile = f.profile ?? "RFC8610";
@@ -3158,7 +3249,7 @@ codegenInput = probeFile;
 // Second harness-health layer (the warm-up catches a broken environment at startup; this catches one
 // that degrades mid-run): zero supported features is not a plausible verdict shape for this repo.
 // Skipped under --smoke (a small feature slice may legitimately contain no supported rows).
-if (!SMOKE && !probe_results.some(pr => pr.support === "supported")) {
+if (!SMOKE && !PROBE_ONLY && !probe_results.some(pr => pr.support === "supported")) {
   console.error("HARNESS FAILURE: no feature probed 'supported' — implausible verdict shape; refusing to write verdicts.");
   process.exit(2);
 }
@@ -3173,7 +3264,7 @@ if (!SMOKE && !probe_results.some(pr => pr.support === "supported")) {
 const containment_missing_example = contain.filter(c => !c.example).map(c => c.id).sort();
 const containment_corroboration: ContainmentCorr[] = [];
 // --smoke skips the containment loop entirely (see the flag comment near the top).
-const containCells = SMOKE ? [] : contain.filter(x => x.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+const containCells = SMOKE ? [] : contain.filter(x => x.example && (!PROBE_ONLY || PROBE_ONLY.has(x.id))).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 for (const c of containCells) {
   writeFileSync(probeFile, c.example + "\n");
   const a = RUBY_CDDL ? runProbe([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
@@ -3221,7 +3312,7 @@ const controlop_missing_example = control_ops.filter(co => !co.example).map(co =
 const controlop_uncorroborated: string[] = [];
 const controlop_support: ControlOpSupport[] = [];
 // --smoke skips the control-op loop entirely (see the flag comment near the top).
-const controlOpCells = SMOKE ? [] : [...control_ops].filter(co => co.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+const controlOpCells = SMOKE ? [] : [...control_ops].filter(co => co.example && (!PROBE_ONLY || PROBE_ONLY.has(co.id))).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 for (const co of controlOpCells) {
   const [a, b, cg] = oracles(co.id, co.example!);
   // Change A: the corroboration verdict is deterministic (rubyClause) — a value-narrowing op is
@@ -3360,6 +3451,29 @@ try {
 } catch (e) {
   console.error(`HARNESS FAILURE: composed annotations/cddl_codegen.toml does not parse as TOML (${e}) — a writer bug, not a probe verdict. Refusing to write.`);
   process.exit(2);
+}
+
+if (PROBE_ONLY) {
+  const focusedFailures = [
+    ...probe_results.filter(value => value.status === "spec_invalid" || value.status === "uncertain").map(value => value.id),
+    ...containment_corroboration.filter(value => value.contradiction).map(value => value.id),
+  ].sort();
+  if (focusedFailures.length) {
+    console.error(`FOCUSED PROBE FAIL: selected row(s) have non-publishable spec verdicts: ${focusedFailures.join(", ")}`);
+    process.exit(1);
+  }
+  const prior = readFileSync(`${ROOT}/annotations/cddl_codegen.toml`, "utf8");
+  let focused: string;
+  try {
+    focused = selectivelyReplaceSupportRows(prior, annoContent, PROBE_ONLY);
+    Bun.TOML.parse(focused);
+  } catch (error) {
+    console.error(`HARNESS FAILURE: focused annotation publish could not preserve/validate the committed file (${error}); refusing to write.`);
+    process.exit(2);
+  }
+  writeFileSync(`${ROOT}/annotations/cddl_codegen.toml`, focused);
+  console.log(`FOCUSED PROBE PASS: published ${PROBE_ONLY.size} exact support row(s); preserved every unselected annotation byte; verify_report.json unchanged.`);
+  process.exit(0);
 }
 
 // --smoke: print the parse-validated preview and exit WITHOUT writing anything (no annotations, no

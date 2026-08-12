@@ -15,6 +15,9 @@ export type EvidenceStage =
   | "constraint_enforced"
   | "over_accepted";
 
+/** The exact result claimed for one evidence stage, distinct from the stage being evaluated. */
+export type EvidenceStageOutcome = "succeeded" | "safely_refused" | "inapplicable";
+
 export interface FamilyAxisValue {
   id: RoadmapId;
   label: string;
@@ -41,6 +44,7 @@ export interface FamilyEvidenceBinding {
   profile: string;
   face: string;
   stage: EvidenceStage;
+  outcome: EvidenceStageOutcome;
   evidence_id: RoadmapId;
 }
 

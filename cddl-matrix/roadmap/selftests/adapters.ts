@@ -1081,6 +1081,18 @@ function testMixedLiveMatrixInlineSlots(bundle: AdapterFixtureBundle): void {
     const resolved = resolvers.get(slot.slot_id)?.resolve(slot, view);
     assert(resolved !== undefined && resolved.bytes.at(-1) !== 0x0a, `mixed-v1 inline slot ${slot.slot_id} retained fixture-only LF ownership`);
   }
+  const refreshedGeneratedDigest: RoadmapDocumentV1 = {
+    ...mixed,
+    spans: mixed.spans.map((span) => span.id === "slot-counts"
+      ? { ...span, sha256: "f".repeat(64) }
+      : span),
+  };
+  const refreshedResolvers = MATRIX_ADAPTER.slotResolvers(view, refreshedGeneratedDigest);
+  for (const slot of refreshedGeneratedDigest.generated_slots) {
+    const resolved = refreshedResolvers.get(slot.slot_id)?.resolve(slot, view);
+    assert(resolved !== undefined && resolved.bytes.at(-1) !== 0x0a,
+      `refreshed generated digest changed production inline ownership for ${slot.slot_id}`);
+  }
 
   const projection = liveMatrixLegacyProjection();
   const rendered = renderFixture(mixed, MATRIX_ADAPTER, view);

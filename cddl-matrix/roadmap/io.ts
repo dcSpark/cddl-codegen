@@ -39,6 +39,7 @@ import {
   scanRoadmapCitations,
   type TrackedTextInput,
 } from "./references.ts";
+import { extractFixedValueSourceFacts } from "./source_facts.ts";
 
 declare const scratchRepositoryHandleBrand: unique symbol;
 export type ScratchRepositoryHandle = {
@@ -713,9 +714,9 @@ function parseJson<T>(inputs: ReadonlyMap<string, Uint8Array>, path: string, fal
 
 function matrixStatusInputs(inputs: ReadonlyMap<string, Uint8Array>): MatrixStatusInputs {
   type MatrixWire = {
-    annotations?: { cddl_codegen?: readonly { id?: unknown; status?: unknown; emission?: unknown }[] };
+    annotations?: { cddl_codegen?: readonly { id?: unknown; status?: unknown; evidence?: unknown; emission?: unknown }[] };
     features?: readonly { id?: unknown; profile?: unknown }[];
-    containment?: readonly { id?: unknown }[];
+    containment?: readonly { id?: unknown; role?: unknown; feature?: unknown; spec?: unknown; example?: unknown }[];
     control_operators?: readonly { id?: unknown }[];
   };
   const matrix = parseJson<MatrixWire>(inputs, "cddl-matrix/matrix.json", {});
@@ -903,11 +904,52 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
   const matrix = parseJson<{
     features?: readonly { id?: unknown }[];
     roles?: readonly { id?: unknown }[];
-    containment?: readonly { id?: unknown }[];
+    containment?: readonly { id?: unknown; role?: unknown; feature?: unknown; spec?: unknown; example?: unknown }[];
+    annotations?: { cddl_codegen?: readonly { id?: unknown; status?: unknown; evidence?: unknown; emission?: unknown }[] };
   }>(byPath, "cddl-matrix/matrix.json", {});
   const ids = (rows: readonly { id?: unknown }[] | undefined): readonly { id: string }[] =>
     Object.freeze((rows ?? []).flatMap((row) => typeof row.id === "string" ? [{ id: row.id }] : [])
       .sort((left, right) => codePointSort(left.id, right.id)));
+  const requiredText = (value: unknown, field: string, id: string): string => {
+    if (typeof value !== "string") throw new RoadmapFailure(issue("E-SCHEMA-TYPE", "cddl-matrix/matrix.json", `registry-facts.${id}.${field}`, "matrix authority fact must be a string", 1));
+    return value;
+  };
+  const containment = Object.freeze((matrix.containment ?? []).map((row) => {
+    const id = requiredText(row.id, "id", "containment");
+    return Object.freeze({
+      id,
+      role: requiredText(row.role, "role", id),
+      feature: requiredText(row.feature, "feature", id),
+      spec: requiredText(row.spec, "spec", id),
+      example: requiredText(row.example, "example", id),
+    });
+  }).sort((left, right) => codePointSort(left.id, right.id)));
+  const support = Object.freeze((matrix.annotations?.cddl_codegen ?? []).map((row) => {
+    const id = requiredText(row.id, "id", "support");
+    const emission = row.emission === undefined ? {} : row.emission;
+    if (typeof emission !== "object" || emission === null || Array.isArray(emission)) {
+      throw new RoadmapFailure(issue("E-SCHEMA-TYPE", "cddl-matrix/matrix.json", `registry-facts.${id}.emission`, "matrix emission authority fact must be a table", 1));
+    }
+    return Object.freeze({
+      id,
+      status: requiredText(row.status, "status", id),
+      evidence: requiredText(row.evidence, "evidence", id),
+      emission: Object.freeze(emission as Readonly<Record<string, { readonly status?: string; readonly evidence?: string }>>),
+    });
+  }).sort((left, right) => codePointSort(left.id, right.id)));
+  const rustTypeBytes = byPath.get("src/intermediate/rust_type.rs" as RepoPath);
+  const parsingBytes = byPath.get("src/parsing.rs" as RepoPath);
+  if ((rustTypeBytes === undefined) !== (parsingBytes === undefined)) {
+    throw new RoadmapFailure(issue("E-SOURCE-MISSING", "<registry-facts>", "fixed-value-source", "FixedValue authority sources must both be tracked", 1));
+  }
+  let fixedValueSource;
+  if (rustTypeBytes !== undefined && parsingBytes !== undefined) {
+    try {
+      fixedValueSource = extractFixedValueSourceFacts(UTF8.decode(rustTypeBytes), UTF8.decode(parsingBytes));
+    } catch (error) {
+      throw new RoadmapFailure(issue("E-SCHEMA-STATE", "src/intermediate/rust_type.rs", "fixed-value-source", error instanceof Error ? error.message : String(error), 1));
+    }
+  }
   return Object.freeze({
     revision,
     production_output_stage: outputInventory.stage,
@@ -915,6 +957,9 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
     matrix_features: ids(matrix.features),
     matrix_roles: ids(matrix.roles),
     matrix_cells: ids(matrix.containment),
+    ...(fixedValueSource === undefined ? {} : { fixed_value_source: fixedValueSource }),
+    matrix_containment: containment,
+    matrix_support: support,
     tracked_headings: headings.facts,
     test_symbols: testSymbols.facts,
     roadmap_citations: citations.facts,

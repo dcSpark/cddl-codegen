@@ -4,7 +4,7 @@ authority = "authoritative"
 roadmap = "matrix"
 source_path = "cddl-matrix/roadmap.toml"
 projection_path = "cddl-matrix/ROADMAP.md"
-frozen_source_sha256 = "40c3a439d6f5c8dafa45edab9fea252116aea6b7fbd691edcf905692fb6d181d"
+frozen_source_sha256 = "4c75615331221fbec14ea689c6cd2b027533f7a7d2967ca8144a30ea5b034dc0"
 frozen_source_byte_length = 84591
 frozen_source_line_count = 995
 frozen_source_eof = "lf"
@@ -665,6 +665,25 @@ review_note_md = """WP5M source-owner review: the complete legacy block is retai
 """
 
 [[record]]
+id = "matrix.control.fixed-value-choice-member-closure"
+title = "FixedValue choice-member closure drift gate."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "control"
+summary_md = """FixedValue choice-member closure drift gate.
+"""
+control_kind = "gate"
+control_state = "live"
+reference_ids = ["ref-matrix-control-fixed-value-choice-member-closure-projection", "ref-matrix-control-fixed-value-choice-member-closure-verify"]
+claim_md = """Normal roadmap validation derives the FixedValue vocabulary from source and fails closed when the enum, lowering match, canonical containment rows, final support dispositions, applicability, or any of the exact 36 stage outcomes drifts.
+"""
+boundary_md = """This control closes one reviewed canonical bare rule-level type-choice representative per FixedValue kind. It does not generalize from that literal to every literal of the same kind.
+"""
+
+[[record]]
 id = "matrix.derived-variant-naming"
 title = "No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named."
 projection_group = "findings-open"
@@ -835,6 +854,214 @@ span_id = "record-emission-narrowing-fixture-floor"
 replacement_field = "payload.detail_md"
 review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
+
+[[record]]
+id = "matrix.evidence.fixed-value-choice-member.bool"
+title = "Live bool FixedValue choice-member evidence."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "evidence"
+summary_md = """Live bool FixedValue choice-member evidence.
+"""
+evidence_kind = "gate"
+claim_md = """For `t = true / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+"""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-bool-verify"]
+unprobed_remainder_md = """No other boolean spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
+"""
+refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-bool-verify"
+
+[record.payload.scope]
+faces = ["rust", "wasm"]
+profiles = ["default"]
+cell_ids = ["matrix.fixed-value-choice-member.coordinate-bool"]
+
+[[record]]
+id = "matrix.evidence.fixed-value-choice-member.bytes"
+title = "Live bytes FixedValue choice-member evidence."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "evidence"
+summary_md = """Live bytes FixedValue choice-member evidence.
+"""
+evidence_kind = "gate"
+claim_md = """For `t = h'CAFE' / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+"""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-bytes-verify"]
+unprobed_remainder_md = """No other byte-string spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
+"""
+refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-bytes-verify"
+
+[record.payload.scope]
+faces = ["rust", "wasm"]
+profiles = ["default"]
+cell_ids = ["matrix.fixed-value-choice-member.coordinate-bytes"]
+
+[[record]]
+id = "matrix.evidence.fixed-value-choice-member.float"
+title = "Live float FixedValue choice-member evidence."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "evidence"
+summary_md = """Live float FixedValue choice-member evidence.
+"""
+evidence_kind = "gate"
+claim_md = """For `t = 1.5 / tstr` under the default profile, Rust generation safely refuses with exit 1; Rust compilation and Rust round-trip are therefore inapplicable.
+"""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-float-verify"]
+unprobed_remainder_md = """No other float spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
+"""
+refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-float-verify"
+
+[record.payload.scope]
+faces = ["rust"]
+profiles = ["default"]
+cell_ids = ["matrix.fixed-value-choice-member.coordinate-float"]
+
+[[record]]
+id = "matrix.evidence.fixed-value-choice-member.nint"
+title = "Live nint FixedValue choice-member evidence."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "evidence"
+summary_md = """Live nint FixedValue choice-member evidence.
+"""
+evidence_kind = "gate"
+claim_md = """For `t = -1 / null / tstr` under the default profile, Rust generation safely refuses with exit 1; Rust compilation and Rust round-trip are therefore inapplicable.
+"""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-nint-verify"]
+unprobed_remainder_md = """No other negative-integer spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
+"""
+refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-nint-verify"
+
+[record.payload.scope]
+faces = ["rust"]
+profiles = ["default"]
+cell_ids = ["matrix.fixed-value-choice-member.coordinate-nint"]
+
+[[record]]
+id = "matrix.evidence.fixed-value-choice-member.null"
+title = "Live null FixedValue choice-member evidence."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "evidence"
+summary_md = """Live null FixedValue choice-member evidence.
+"""
+evidence_kind = "gate"
+claim_md = """For `t = null / tstr / uint` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+"""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-null-verify"]
+unprobed_remainder_md = """No other null placement, profile, or face is claimed; this is the canonical representative coordinate only.
+"""
+refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-null-verify"
+
+[record.payload.scope]
+faces = ["rust", "wasm"]
+profiles = ["default"]
+cell_ids = ["matrix.fixed-value-choice-member.coordinate-null"]
+
+[[record]]
+id = "matrix.evidence.fixed-value-choice-member.text"
+title = "Live text FixedValue choice-member evidence."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "evidence"
+summary_md = """Live text FixedValue choice-member evidence.
+"""
+evidence_kind = "gate"
+claim_md = """For `t = \"x\" / uint` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+"""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-text-verify"]
+unprobed_remainder_md = """No other text literal, placement, profile, or face is claimed; in particular the keyword-minting literal `\"self\"` remains a separately pinned refusal.
+"""
+refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-text-verify"
+
+[record.payload.scope]
+faces = ["rust", "wasm"]
+profiles = ["default"]
+cell_ids = ["matrix.fixed-value-choice-member.coordinate-text"]
+
+[[record]]
+id = "matrix.evidence.fixed-value-choice-member.uint"
+title = "Live uint FixedValue choice-member evidence."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "evidence"
+summary_md = """Live uint FixedValue choice-member evidence.
+"""
+evidence_kind = "gate"
+claim_md = """For `t = 5 / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+"""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-uint-verify"]
+unprobed_remainder_md = """No other unsigned-integer spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
+"""
+refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-uint-verify"
+
+[record.payload.scope]
+faces = ["rust", "wasm"]
+profiles = ["default"]
+cell_ids = ["matrix.fixed-value-choice-member.coordinate-uint"]
+
+[[record]]
+id = "matrix.evidence.fixed-value-choice-member.undefined"
+title = "Live undefined FixedValue choice-member evidence."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "evidence"
+summary_md = """Live undefined FixedValue choice-member evidence.
+"""
+evidence_kind = "gate"
+claim_md = """For `t = undefined / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+"""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-undefined-verify"]
+unprobed_remainder_md = """No other undefined placement, profile, or face is claimed; this is the canonical representative coordinate only.
+"""
+refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-undefined-verify"
+
+[record.payload.scope]
+faces = ["rust", "wasm"]
+profiles = ["default"]
+cell_ids = ["matrix.fixed-value-choice-member.coordinate-undefined"]
 
 [[record]]
 id = "matrix.extern-emitted-test-boundary"
@@ -3880,28 +4107,477 @@ retirement_owner_reference_id = "ref-matrix-systematic-control-host-placement-re
 
 [[record]]
 id = "matrix.systematic.fixed-value-choice-member"
-title = "Observed fixed-value kind behavior in type-choice member position."
+title = "Closed canonical fixed-value representatives in bare type-choice arms."
 projection_group = "matrix-side-work"
 render_authority = "semantic"
 projection_visibility = "semantic_only"
 
 [record.payload]
 kind = "family"
-summary_md = """Observed fixed-value kind behavior in type-choice member position.
+summary_md = """Closed canonical fixed-value representatives in bare type-choice arms.
 """
-family_maturity = "observed_only"
-campaign_state = "designing"
-goal_md = """Enumerate the source-derived fixed-value kinds in role.choice-member with truthful accept/refuse evidence.
+family_maturity = "closed_denominator"
+campaign_state = "closing"
+goal_md = """Maintain exactly one reviewed canonical bare-choice representative for every FixedValue IR variant, with truthful support or graceful-refusal evidence.
 """
-boundary_md = """The reviewed source proves uint/text versus float/nint non-uniformity; it does not establish a closed fixed-kind vocabulary.
+boundary_md = """This closes representative-by-kind coverage only: it does not claim every literal within a kind behaves uniformly. In particular, canonical text `\"x\"` is supported while keyword-minting text `\"self\"` remains a separately pinned graceful refusal.
 """
 work_ids = ["matrix.fixed-value-choice-member"]
-observation_reference_ids = ["ref-matrix-fixed-value-choice-member-source"]
-affected_profiles = ["default", "preserve"]
-affected_faces = ["component", "cross-crate", "json", "rust", "wasm"]
-control_ids = []
+authority_kind = "registry"
+authority_reference_id = "ref-matrix-systematic-fixed-value-choice-member-authority"
+derivation_md = """Read the exact `FixedValue` enum and cross-check `type2_to_fixed_value`; join each variant to its reviewed containment row and execution-minted support evidence. Any source, row, applicability, disposition, or stage-outcome drift invalidates closure.
+"""
+legality_rule_md = """Each of the eight source-derived FixedValue variants has exactly one spec-allowed canonical representative in a bare rule-level type-choice arm; there are no exclusions. Representative literals are reviewed coordinates, not claims over all values of their kind.
+"""
+legality_owner_reference_id = "ref-matrix-systematic-fixed-value-choice-member-legality"
+affected_profiles = ["default"]
+affected_faces = ["rust", "wasm"]
+control_ids = ["matrix.control.fixed-value-choice-member-closure"]
 completion_owner_reference_id = "ref-matrix-systematic-fixed-value-choice-member-completion"
 retirement_owner_reference_id = "ref-matrix-systematic-fixed-value-choice-member-retirement"
+drift_check_reference_id = "ref-matrix-systematic-fixed-value-choice-member-drift"
+mutation_test_reference_id = "ref-matrix-systematic-fixed-value-choice-member-completion"
+
+[[record.payload.axis]]
+id = "matrix.fixed-value-representative-kind"
+label = "FixedValue representative kind"
+authority_reference_id = "ref-matrix-fixed-value-choice-member-axis"
+
+[[record.payload.axis.value]]
+id = "matrix.fixed-value-kind.bool"
+label = "bool"
+source_reference_id = "ref-matrix-fixed-value-choice-member-kind-bool"
+
+[[record.payload.axis.value]]
+id = "matrix.fixed-value-kind.bytes"
+label = "bytes"
+source_reference_id = "ref-matrix-fixed-value-choice-member-kind-bytes"
+
+[[record.payload.axis.value]]
+id = "matrix.fixed-value-kind.float"
+label = "float"
+source_reference_id = "ref-matrix-fixed-value-choice-member-kind-float"
+
+[[record.payload.axis.value]]
+id = "matrix.fixed-value-kind.nint"
+label = "nint"
+source_reference_id = "ref-matrix-fixed-value-choice-member-kind-nint"
+
+[[record.payload.axis.value]]
+id = "matrix.fixed-value-kind.null"
+label = "null"
+source_reference_id = "ref-matrix-fixed-value-choice-member-kind-null"
+
+[[record.payload.axis.value]]
+id = "matrix.fixed-value-kind.text"
+label = "text"
+source_reference_id = "ref-matrix-fixed-value-choice-member-kind-text"
+
+[[record.payload.axis.value]]
+id = "matrix.fixed-value-kind.uint"
+label = "uint"
+source_reference_id = "ref-matrix-fixed-value-choice-member-kind-uint"
+
+[[record.payload.axis.value]]
+id = "matrix.fixed-value-kind.undefined"
+label = "undefined"
+source_reference_id = "ref-matrix-fixed-value-choice-member-kind-undefined"
+
+[[record.payload.evidence_requirement]]
+id = "matrix.requirement.fixed-value-choice-member-generation"
+profiles = ["default"]
+faces = ["rust"]
+stages = ["generated"]
+
+[[record.payload.evidence_requirement]]
+id = "matrix.requirement.fixed-value-choice-member-runtime"
+profiles = ["default"]
+faces = ["rust", "wasm"]
+stages = ["compiled", "round_tripped"]
+
+[[record.payload.cell]]
+id = "matrix.fixed-value-choice-member.coordinate-bool"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust", "wasm"]
+work_id = "matrix.fixed-value-choice-member"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
+profile = "default"
+face = "rust"
+stage = "generated"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bool"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixed-value-representative-kind"
+value_id = "matrix.fixed-value-kind.bool"
+
+[[record.payload.cell]]
+id = "matrix.fixed-value-choice-member.coordinate-bytes"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust", "wasm"]
+work_id = "matrix.fixed-value-choice-member"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
+profile = "default"
+face = "rust"
+stage = "generated"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.bytes"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixed-value-representative-kind"
+value_id = "matrix.fixed-value-kind.bytes"
+
+[[record.payload.cell]]
+id = "matrix.fixed-value-choice-member.coordinate-float"
+spec_legality = "legal"
+cell_disposition = "safely_refused"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+work_id = "matrix.fixed-value-choice-member"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
+profile = "default"
+face = "rust"
+stage = "generated"
+outcome = "safely_refused"
+evidence_id = "matrix.evidence.fixed-value-choice-member.float"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "compiled"
+outcome = "inapplicable"
+evidence_id = "matrix.evidence.fixed-value-choice-member.float"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "round_tripped"
+outcome = "inapplicable"
+evidence_id = "matrix.evidence.fixed-value-choice-member.float"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixed-value-representative-kind"
+value_id = "matrix.fixed-value-kind.float"
+
+[[record.payload.cell]]
+id = "matrix.fixed-value-choice-member.coordinate-nint"
+spec_legality = "legal"
+cell_disposition = "safely_refused"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+work_id = "matrix.fixed-value-choice-member"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
+profile = "default"
+face = "rust"
+stage = "generated"
+outcome = "safely_refused"
+evidence_id = "matrix.evidence.fixed-value-choice-member.nint"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "compiled"
+outcome = "inapplicable"
+evidence_id = "matrix.evidence.fixed-value-choice-member.nint"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "round_tripped"
+outcome = "inapplicable"
+evidence_id = "matrix.evidence.fixed-value-choice-member.nint"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixed-value-representative-kind"
+value_id = "matrix.fixed-value-kind.nint"
+
+[[record.payload.cell]]
+id = "matrix.fixed-value-choice-member.coordinate-null"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust", "wasm"]
+work_id = "matrix.fixed-value-choice-member"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
+profile = "default"
+face = "rust"
+stage = "generated"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.null"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.null"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.null"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.null"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.null"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixed-value-representative-kind"
+value_id = "matrix.fixed-value-kind.null"
+
+[[record.payload.cell]]
+id = "matrix.fixed-value-choice-member.coordinate-text"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust", "wasm"]
+work_id = "matrix.fixed-value-choice-member"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
+profile = "default"
+face = "rust"
+stage = "generated"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.text"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.text"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.text"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.text"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.text"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixed-value-representative-kind"
+value_id = "matrix.fixed-value-kind.text"
+
+[[record.payload.cell]]
+id = "matrix.fixed-value-choice-member.coordinate-uint"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust", "wasm"]
+work_id = "matrix.fixed-value-choice-member"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
+profile = "default"
+face = "rust"
+stage = "generated"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.uint"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixed-value-representative-kind"
+value_id = "matrix.fixed-value-kind.uint"
+
+[[record.payload.cell]]
+id = "matrix.fixed-value-choice-member.coordinate-undefined"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust", "wasm"]
+work_id = "matrix.fixed-value-choice-member"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-generation"
+profile = "default"
+face = "rust"
+stage = "generated"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "rust"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "compiled"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
+
+[[record.payload.cell.evidence_binding]]
+requirement_id = "matrix.requirement.fixed-value-choice-member-runtime"
+profile = "default"
+face = "wasm"
+stage = "round_tripped"
+outcome = "succeeded"
+evidence_id = "matrix.evidence.fixed-value-choice-member.undefined"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixed-value-representative-kind"
+value_id = "matrix.fixed-value-kind.undefined"
 
 [[record]]
 id = "matrix.systematic.named-group-reference-grid"
@@ -5586,7 +6262,7 @@ migration_status = "replaced"
 id = "slot-counts"
 start_byte = 1761
 end_byte = 1890
-sha256 = "c4ba9082a3c86cee77945905c9e5e08430c6f7cfa6dbd39e4cf6d5066d10e6a9"
+sha256 = "c1c697845b9a1035cd665515f5c524d96bdbe0e322ecf9a93558132bb51a8ddc"
 source_kind = "generated_slot"
 owner_id = "counts"
 owner_field = "generated"
@@ -7103,6 +7779,18 @@ path = "cddl-matrix/ROADMAP.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
+id = "ref-matrix-control-fixed-value-choice-member-closure-projection"
+source = "matrix.control.fixed-value-choice-member-closure"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "ref-matrix-control-fixed-value-choice-member-closure-verify"
+source = "matrix.control.fixed-value-choice-member-closure"
+kind = "gate"
+gate_id = "verify"
+
+[[reference]]
 id = "ref-matrix-derived-variant-naming-source"
 source = "matrix.derived-variant-naming"
 kind = "file_heading"
@@ -7174,6 +7862,54 @@ id = "ref-matrix-emission-narrowing-fixture-floor-matrix-feature-h2ad8572a3f687e
 source = "matrix.emission-narrowing-fixture-floor"
 kind = "matrix_feature"
 feature_id = "prelude.float16"
+
+[[reference]]
+id = "ref-matrix-evidence-fixed-value-choice-member-bool-verify"
+source = "matrix.evidence.fixed-value-choice-member.bool"
+kind = "gate"
+gate_id = "verify"
+
+[[reference]]
+id = "ref-matrix-evidence-fixed-value-choice-member-bytes-verify"
+source = "matrix.evidence.fixed-value-choice-member.bytes"
+kind = "gate"
+gate_id = "verify"
+
+[[reference]]
+id = "ref-matrix-evidence-fixed-value-choice-member-float-verify"
+source = "matrix.evidence.fixed-value-choice-member.float"
+kind = "gate"
+gate_id = "verify"
+
+[[reference]]
+id = "ref-matrix-evidence-fixed-value-choice-member-nint-verify"
+source = "matrix.evidence.fixed-value-choice-member.nint"
+kind = "gate"
+gate_id = "verify"
+
+[[reference]]
+id = "ref-matrix-evidence-fixed-value-choice-member-null-verify"
+source = "matrix.evidence.fixed-value-choice-member.null"
+kind = "gate"
+gate_id = "verify"
+
+[[reference]]
+id = "ref-matrix-evidence-fixed-value-choice-member-text-verify"
+source = "matrix.evidence.fixed-value-choice-member.text"
+kind = "gate"
+gate_id = "verify"
+
+[[reference]]
+id = "ref-matrix-evidence-fixed-value-choice-member-uint-verify"
+source = "matrix.evidence.fixed-value-choice-member.uint"
+kind = "gate"
+gate_id = "verify"
+
+[[reference]]
+id = "ref-matrix-evidence-fixed-value-choice-member-undefined-verify"
+source = "matrix.evidence.fixed-value-choice-member.undefined"
+kind = "gate"
+gate_id = "verify"
 
 [[reference]]
 id = "ref-matrix-extern-emitted-test-boundary-source"
@@ -7840,6 +8576,13 @@ kind = "gate"
 gate_id = "roadmap_projection_check"
 
 [[reference]]
+id = "ref-matrix-systematic-fixed-value-choice-member-legality"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "file_heading"
+path = "cddl-matrix/README.md"
+heading = "Registering a CONTAINMENT cell"
+
+[[reference]]
 id = "ref-matrix-systematic-fixed-value-choice-member-retirement"
 source = "matrix.systematic.fixed-value-choice-member"
 kind = "file_heading"
@@ -7851,6 +8594,81 @@ id = "ref-matrix-systematic-fixed-value-choice-member-completion"
 source = "matrix.systematic.fixed-value-choice-member"
 kind = "gate"
 gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "ref-matrix-systematic-fixed-value-choice-member-drift"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "gate"
+gate_id = "verify"
+
+[[reference]]
+id = "ref-matrix-systematic-fixed-value-choice-member-authority"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "matrix_cell"
+cell_id = "contain.choice-member.prelude.true.fixed-kind"
+
+[[reference]]
+id = "ref-matrix-fixed-value-choice-member-kind-bool"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "spec_passage"
+document = "src/intermediate/rust_type.rs"
+passage = "FixedValue::Bool(bool)"
+
+[[reference]]
+id = "ref-matrix-fixed-value-choice-member-kind-bytes"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "spec_passage"
+document = "src/intermediate/rust_type.rs"
+passage = "FixedValue::Bytes(Vec<u8>)"
+
+[[reference]]
+id = "ref-matrix-fixed-value-choice-member-kind-float"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "spec_passage"
+document = "src/intermediate/rust_type.rs"
+passage = "FixedValue::Float(f64)"
+
+[[reference]]
+id = "ref-matrix-fixed-value-choice-member-kind-nint"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "spec_passage"
+document = "src/intermediate/rust_type.rs"
+passage = "FixedValue::Nint(i128)"
+
+[[reference]]
+id = "ref-matrix-fixed-value-choice-member-kind-null"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "spec_passage"
+document = "src/intermediate/rust_type.rs"
+passage = "FixedValue::Null"
+
+[[reference]]
+id = "ref-matrix-fixed-value-choice-member-kind-text"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "spec_passage"
+document = "src/intermediate/rust_type.rs"
+passage = "FixedValue::Text(String)"
+
+[[reference]]
+id = "ref-matrix-fixed-value-choice-member-kind-uint"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "spec_passage"
+document = "src/intermediate/rust_type.rs"
+passage = "FixedValue::Uint(u64)"
+
+[[reference]]
+id = "ref-matrix-fixed-value-choice-member-kind-undefined"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "spec_passage"
+document = "src/intermediate/rust_type.rs"
+passage = "FixedValue::Undefined"
+
+[[reference]]
+id = "ref-matrix-fixed-value-choice-member-axis"
+source = "matrix.systematic.fixed-value-choice-member"
+kind = "spec_passage"
+document = "src/intermediate/rust_type.rs"
+passage = "pub enum FixedValue"
 
 [[reference]]
 id = "ref-matrix-systematic-named-group-reference-grid-retirement"

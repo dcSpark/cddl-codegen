@@ -128,7 +128,7 @@ export const SHARED_SEMANTIC_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
 
 export const SEMANTIC_V2_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
   { name: "closed-denominator family", required: ["kind", "summary_md", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "drift_check_reference_id", "mutation_test_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id", "axis", "evidence_requirement", "cell"], optional: ["detail_md", "exclusion"], forbidden: ["observation_reference_ids", "denominator_unknowns_md"] },
-  { name: "family evidence binding", required: ["requirement_id", "profile", "face", "stage", "evidence_id"] },
+  { name: "family evidence binding", required: ["requirement_id", "profile", "face", "stage", "outcome", "evidence_id"] },
   { name: "closed family cell", required: ["id", "spec_legality", "cell_disposition", "affected_profiles", "affected_faces", "coordinate", "evidence_binding"], optional: ["work_id"], forbidden: ["evidence_ids"] },
 ] as const;
 
@@ -406,6 +406,7 @@ function decodeCell(ctx: DecodeContext, raw: unknown, path: string, closed: bool
         profile: expectString(ctx, requiredValue(binding, "profile"), p(entryPath, "profile")),
         face: expectString(ctx, requiredValue(binding, "face"), p(entryPath, "face")),
         stage: expectEnum(ctx, requiredValue(binding, "stage"), EVIDENCE_STAGES, p(entryPath, "stage")),
+        outcome: expectEnum(ctx, requiredValue(binding, "outcome"), ["succeeded", "safely_refused", "inapplicable"] as const, p(entryPath, "outcome")),
         evidence_id: expectRoadmapId(ctx, requiredValue(binding, "evidence_id"), p(entryPath, "evidence_id")),
       };
     })) ?? [];

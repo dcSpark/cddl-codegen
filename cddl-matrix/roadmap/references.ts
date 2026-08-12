@@ -1124,13 +1124,13 @@ function utf8Offsets(value: string): readonly number[] {
   return result;
 }
 
-interface RustToken {
+export interface RustToken {
   readonly text: string;
   readonly start: number;
   readonly end: number;
 }
 
-function rustTokens(source: string): readonly RustToken[] {
+export function rustTokens(source: string): readonly RustToken[] {
   const offsets = utf8Offsets(source);
   const tokens: RustToken[] = [];
   let index = 0;
@@ -1218,7 +1218,7 @@ function rustTokens(source: string): readonly RustToken[] {
   return tokens;
 }
 
-function matchingBrace(tokens: readonly RustToken[], open: number): number | undefined {
+export function matchingRustDelimiter(tokens: readonly RustToken[], open: number): number | undefined {
   const opening = tokens[open]?.text;
   const closing = opening === "{" ? "}" : opening === "[" ? "]" : opening === "(" ? ")" : undefined;
   if (closing === undefined) return undefined;
@@ -1242,7 +1242,7 @@ function skipMacroRules(tokens: readonly RustToken[], start: number, end: number
   if (tokens[start]?.text !== "macro_rules" || tokens[start + 1]?.text !== "!") return undefined;
   let body = start + 2;
   while (body < end && !["{", "[", "("].includes(tokens[body]!.text)) body += 1;
-  const close = matchingBrace(tokens, body);
+  const close = matchingRustDelimiter(tokens, body);
   return close === undefined || close >= end ? end : close + 1;
 }
 
@@ -1265,7 +1265,7 @@ function skipMacroInvocation(
   if (tokens[cursor]?.text !== "!" || !["{", "[", "("].includes(tokens[cursor + 1]?.text ?? "")) {
     return undefined;
   }
-  const close = matchingBrace(tokens, cursor + 1);
+  const close = matchingRustDelimiter(tokens, cursor + 1);
   if (close === undefined || close >= end) return end;
   return tokens[close + 1]?.text === ";" ? close + 2 : close + 1;
 }
@@ -1295,7 +1295,7 @@ function moduleDeclarationAt(
   } else if (tokens[start]?.text === "pub" && tokens[start + 1]?.text === "mod") {
     moduleIndex = start + 1;
   } else if (tokens[start]?.text === "pub" && tokens[start + 1]?.text === "(") {
-    const close = matchingBrace(tokens, start + 1);
+    const close = matchingRustDelimiter(tokens, start + 1);
     if (close === undefined || close >= end) {
       return { start, module_index: start, end, exact_crate_visibility: false };
     }
@@ -1313,7 +1313,7 @@ function moduleDeclarationAt(
   let declarationEnd = Math.min(end, moduleIndex + (hasName ? 2 : 1));
   if (terminator === ";") declarationEnd = moduleIndex + 3;
   if (terminator === "{") {
-    const close = matchingBrace(tokens, moduleIndex + 2);
+    const close = matchingRustDelimiter(tokens, moduleIndex + 2);
     declarationEnd = close === undefined || close >= end ? end : close + 1;
   }
   return {
@@ -1334,7 +1334,7 @@ function contiguousAttributes(
   const attributes: RustToken[][] = [];
   let index = start;
   while (tokens[index]?.text === "#" && tokens[index + 1]?.text === "[") {
-    const close = matchingBrace(tokens, index + 1);
+    const close = matchingRustDelimiter(tokens, index + 1);
     if (close === undefined || close >= end) return { attributes, next: end };
     attributes.push(tokens.slice(index, close + 1));
     index = close + 1;
@@ -1376,7 +1376,7 @@ function validateTestRoot(tokens: readonly RustToken[]): readonly string[] {
       continue;
     }
     if (tokens[index]!.text === "{") {
-      const close = matchingBrace(tokens, index);
+      const close = matchingRustDelimiter(tokens, index);
       index = close === undefined ? tokens.length : close + 1;
       continue;
     }
@@ -1419,7 +1419,7 @@ function declaredTestModules(tokens: readonly RustToken[]): DeclaredTestModules 
       continue;
     }
     if (tokens[index]!.text === "{") {
-      const close = matchingBrace(tokens, index);
+      const close = matchingRustDelimiter(tokens, index);
       index = close === undefined ? tokens.length : close + 1;
       continue;
     }
@@ -1435,7 +1435,7 @@ function declaredTestModules(tokens: readonly RustToken[]): DeclaredTestModules 
       index = declaration.end;
       continue;
     }
-    if (tokens[index]!.text === "pub" && tokens[index + 1]?.text === "(" && matchingBrace(tokens, index + 1) === undefined) {
+    if (tokens[index]!.text === "pub" && tokens[index + 1]?.text === "(" && matchingRustDelimiter(tokens, index + 1) === undefined) {
       problems.push(`malformed visibility at byte ${tokens[index]!.start} in test module registry`);
       index = tokens.length;
       continue;
@@ -1476,7 +1476,7 @@ function scanTestItems(
       continue;
     }
     if (["{", "[", "("].includes(tokens[index]!.text)) {
-      const close = matchingBrace(tokens, index);
+      const close = matchingRustDelimiter(tokens, index);
       const preservesTestAttribute = testAttribute &&
         tokens[index]!.text === "(" && tokens[index - 1]?.text === "pub";
       index = close === undefined || close >= end ? end : close + 1;
@@ -1484,7 +1484,7 @@ function scanTestItems(
       continue;
     }
     if (tokens[index]!.text === "#" && tokens[index + 1]?.text === "[") {
-      const close = matchingBrace(tokens, index + 1);
+      const close = matchingRustDelimiter(tokens, index + 1);
       if (close === undefined || close >= end) return;
       if (close === index + 3 && tokens[index + 2]?.text === "test") testAttribute = true;
       index = close + 1;
@@ -1495,7 +1495,7 @@ function scanTestItems(
       /^[A-Za-z_][A-Za-z0-9_]*$/u.test(tokens[index + 1]?.text ?? "") &&
       tokens[index + 2]?.text === "{"
     ) {
-      const close = matchingBrace(tokens, index + 2);
+      const close = matchingRustDelimiter(tokens, index + 2);
       if (close === undefined || close > end) return;
       scanTestItems(source, tokens, [...modulePath, tokens[index + 1]!.text], out, index + 3, close);
       index = close + 1;

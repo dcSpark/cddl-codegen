@@ -101,3 +101,72 @@ feature = "prelude.true"
 spec = "allowed"
 note = "A three-arm type choice whose two FIXED arms share a CBOR major type (`t = true / null / tstr`): `true` and `null` are both major 7 specials, so the arm discriminant cannot be the wire major. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize anchors `raw.position()`, runs each arm's reader in source order (the `true` arm verifying its constant as `FixedValueMismatch`, the `null` arm as `ExpectedNull`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch every other fixed-arm cell in this matrix takes (`contain.group-choice-arm.type2.value.map` and its array-rep siblings), which is why the kind axis has to be probed on both: a fixed kind proven on one path certifies nothing about the other. Deliberately three arms — the two-arm `true / null` is not this shape at all: it now uses the nominal fixed/null Option lowering pinned by `contain.choice-member.type2.value.fixed_null`. Executed under the flag that reaches the site by `fixed_special_type_choice_brute` in `tests/preserve-encodings/input.cddl`. RFC8610 §2.2.2, App. D."
 example = "t = true / null / tstr"
+
+# Closed WP9 representative-by-kind slice. These rows enumerate one deliberately reviewed canonical
+# literal for every `FixedValue` IR variant reachable as a bare rule-level type-choice arm. They do
+# NOT claim every literal of a kind behaves alike: for example, the canonical text representative
+# `"x"` is supported while the separately pinned keyword-minting text `"self"` is gracefully refused.
+
+[[contain]]
+id = "contain.choice-member.prelude.true.fixed-kind"
+role = "role.choice-member"
+feature = "prelude.true"
+spec = "allowed"
+note = "Canonical BOOL representative for the source-derived FixedValue-kind closure: `true / tstr` reaches the bare rule-level type-choice naming and execution path, with a disjoint-major sibling. This is one reviewed representative, not every boolean spelling. RFC8610 §2.2.2, App. D."
+example = "t = true / tstr"
+
+[[contain]]
+id = "contain.choice-member.type2.value.bytes.fixed-kind"
+role = "role.choice-member"
+feature = "type2.value"
+spec = "allowed"
+note = "Canonical BYTES representative for the source-derived FixedValue-kind closure: `h'CAFE' / tstr`. The uppercase hex spelling avoids the rust-cddl lowercase-parser limitation while exercising the byte-vector-derived variant and wire path. One representative only. RFC8610 §2.2.2, §2.2.4."
+example = "t = h'CAFE' / tstr"
+
+[[contain]]
+id = "contain.choice-member.type2.value.float.fixed-kind"
+role = "role.choice-member"
+feature = "type2.value"
+spec = "allowed"
+note = "Canonical FLOAT representative for the source-derived FixedValue-kind closure: `1.5 / tstr` is spec-legal and gracefully refused because its derived variant name `F1.5` is not a Rust identifier; `; @name` is the supported remedy. One representative only. RFC8610 §2.2.2, §2.2.4."
+example = "t = 1.5 / tstr"
+
+[[contain]]
+id = "contain.choice-member.type2.value.nint.fixed-kind"
+role = "role.choice-member"
+feature = "type2.value"
+spec = "allowed"
+note = "Canonical NINT representative for the source-derived FixedValue-kind closure: `-1 / null / tstr` is spec-legal and gracefully refused because its derived variant name `U-1` is not a Rust identifier; the third arm avoids the two-arm `/ null` collapse. One representative only. RFC8610 §2.2.2, §2.2.4."
+example = "t = -1 / null / tstr"
+
+[[contain]]
+id = "contain.choice-member.prelude.null.fixed-kind"
+role = "role.choice-member"
+feature = "prelude.null"
+spec = "allowed"
+note = "Canonical NULL representative for the source-derived FixedValue-kind closure: `null / tstr / uint`. Three arms deliberately prevent the dedicated two-arm `/ null` Option collapse, so null remains a fixed choice arm. One representative only. RFC8610 §2.2.2, App. D."
+example = "t = null / tstr / uint"
+
+[[contain]]
+id = "contain.choice-member.type2.value.text.fixed-kind"
+role = "role.choice-member"
+feature = "type2.value"
+spec = "allowed"
+note = "Canonical TEXT representative for the source-derived FixedValue-kind closure: `\"x\" / uint` mints the spellable derived variant `X` and round-trips. This explicitly does not generalize to keyword-minting text such as `\"self\"`, whose separate graceful refusal remains live. RFC8610 §2.2.2, §2.2.4."
+example = "t = \"x\" / uint"
+
+[[contain]]
+id = "contain.choice-member.type2.value.uint.fixed-kind"
+role = "role.choice-member"
+feature = "type2.value"
+spec = "allowed"
+note = "Canonical UINT representative for the source-derived FixedValue-kind closure: `5 / tstr` mints a spellable fixed-value variant and exercises the disjoint-major type-choice path. One representative only. RFC8610 §2.2.2, §2.2.4."
+example = "t = 5 / tstr"
+
+[[contain]]
+id = "contain.choice-member.prelude.undefined.fixed-kind"
+role = "role.choice-member"
+feature = "prelude.undefined"
+spec = "allowed"
+note = "Canonical UNDEFINED representative for the source-derived FixedValue-kind closure: `undefined / tstr` exercises the fixed special arm beside a disjoint-major sibling. One representative only. RFC8610 §2.2.2, App. D."
+example = "t = undefined / tstr"

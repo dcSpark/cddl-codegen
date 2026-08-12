@@ -305,15 +305,13 @@ function usesLiveMatrixInlineSlots(doc: RoadmapDocument): boolean {
   ) return false;
   const slots = new Map(authorityDoc.generated_slots.map((slot) => [slot.slot_id, slot]));
   return slots.size === MATRIX_V0_SLOT_FLOORS.length && MATRIX_V0_SLOT_FLOORS.every(
-    ([slotId, binding, spanId, start, end, digest]) => {
+    ([slotId, binding, spanId, start, end]) => {
       const slot = slots.get(slotId);
-      return slot?.binding === binding && exactSpanBinding(
-        authorityDoc,
-        slot.span_ids,
-        "generated_slot",
-        slotId,
-        [spanId, start, end, digest],
-      );
+      const span = authorityDoc.spans.find((entry) => entry.id === spanId);
+      return slot?.binding === binding && slot.span_ids.length === 1 &&
+        slot.span_ids[0] === spanId && span?.source_kind === "generated_slot" &&
+        span.owner_id === slotId && span.owner_field === "generated" &&
+        span.migration_status === "generated" && span.start_byte === start && span.end_byte === end;
     },
   );
 }

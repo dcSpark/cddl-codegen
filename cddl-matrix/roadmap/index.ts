@@ -78,6 +78,7 @@ import {
   type LifecycleRevisionInput,
 } from "./transaction.ts";
 import { applyProjectionWritePlan, createProjectionWritePlan } from "./write_plan.ts";
+import { MATRIX_DENOMINATOR_AUTHORITIES } from "./fixed_value_authority.ts";
 
 export { createNodeRoadmapCliPorts } from "./io.ts";
 
@@ -233,6 +234,7 @@ function prepareDecodedRoadmapCore(
     : registry;
   const domain = domainValidation(document, validationRegistry, {
     defer_foreign_roadmap_joins: true,
+    denominator_authorities: document.document.roadmap === "matrix" ? MATRIX_DENOMINATOR_AUTHORITIES : undefined,
   });
   const structuralIssues = [...domain.issues];
   if (structuralIssues.length > 0) failure(structuralIssues);
