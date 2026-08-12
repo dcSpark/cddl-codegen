@@ -899,6 +899,8 @@ At the pinned cddl revision (`ac1b98ec`) a
     takes for an unknown row id. Red-first: assert `verify.ts --mint-decode` exits 2 before
     building the list.
 
+## Standing-system residuals
+
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
 system (or working rule) owns it meanwhile, and the trigger — usually a SECOND instance — that
 justifies building the named mechanical layer. Building before the trigger fires is deliberate
