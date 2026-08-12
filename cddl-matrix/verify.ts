@@ -207,6 +207,14 @@ const decodeMintPinReason = (id: string): string | undefined =>
       ? "references user-supplied code, whose wire the reference oracle does not describe (the crate itself is compile-gated via the def splice)"
       : undefined;
 
+// Precise reasons for rows whose generated candidates all fail the two-oracle gate in a known,
+// reproducible way. This does NOT pre-pin: mintRow still re-runs both oracles on every candidate and
+// automatically promotes the row to active as soon as one cross-validates. The map only replaces the
+// otherwise generic post-probe reason, keeping the committed pin reviewable without a transient log.
+const DECODE_ALL_CANDIDATES_PIN_REASON: Record<string, string> = {
+  "contain.choice-member.type2.value.bytes.fixed-kind": "pinned rust-cddl local-fixes @ ac1b98e validator panics for every generated candidate for the spec-valid `t = h'CAFE' / tstr`: fixed-byte CBOR at src/validator/cbor.rs:4840, and tstr candidates while formatting the fixed-byte mismatch; Ruby accepts; each re-mint re-probes and activates the row when two-oracle cross-validation succeeds",
+};
+
 const BASE_DEF_DERIVES = ["Clone", "Debug", "PartialEq", "Eq", "PartialOrd", "Ord", "Hash"];
 const JSON_DEF_DERIVES = ["serde::Serialize", "serde::Deserialize", "schemars::JsonSchema"];
 
@@ -2661,7 +2669,8 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
     // disagree) — an oracle-artifact class, not a decoder verdict: nothing validated ever reached our
     // decoder, so there is no vector to commit and no triage to run. Pin mechanically; the per-vector
     // `dropped` log records each contested instance for review.
-    return pin("all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)");
+    return pin(DECODE_ALL_CANDIDATES_PIN_REASON[id] ??
+      "all generated candidates failed two-oracle cross-validation (oracle disagreement — see mint log)");
   }
 
   const vecs: ReplayVec[] = [

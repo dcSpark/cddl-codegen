@@ -1122,6 +1122,117 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.choice-member.prelude.null.fixed-kind"
+axis = "containment"
+example = "t = null / tstr / uint"
+spec = "t = null / tstr / uint"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "184c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190399"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190511"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190765"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190a75"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190aa9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "686a756e6b65742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6c756e64657273656c6c696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.choice-member.prelude.true.fixed-kind"
+axis = "containment"
+example = "t = true / tstr"
+spec = "t = true / tstr"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "66416c6f6e7a6f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "666c696e742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6967696d6c6574696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "69736879737465722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6a63726f74636865742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6a67697665617761792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6a7472616e736c61746573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6b756e656d6f74696f6e616c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6d6e7574726974696f6e616c6c79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.choice-member.prelude.true.same_major_brute"
 axis = "containment"
 example = "t = true / null / tstr"
@@ -1154,6 +1265,49 @@ expect = "accept"
 
 [[row.vector]]
 hex = "f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.choice-member.prelude.undefined.fixed-kind"
+axis = "containment"
+example = "t = undefined / tstr"
+spec = "t = undefined / tstr"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "646c6f616e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "657669636573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "67656e7477696e65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "687475726b65792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6962726173686e657373"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6b616d706c69666965722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6b6d656368616e6963732773"
 source = "ruby-generate"
 expect = "accept"
 
@@ -1396,6 +1550,12 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.choice-member.type2.value.bytes.fixed-kind"
+axis = "containment"
+example = "t = h'CAFE' / tstr"
+pinned_reason = "pinned rust-cddl local-fixes @ ac1b98e validator panics for every generated candidate for the spec-valid `t = h'CAFE' / tstr`: fixed-byte CBOR at src/validator/cbor.rs:4840, and tstr candidates while formatting the fixed-byte mismatch; Ruby accepts; each re-mint re-probes and activates the row when two-oracle cross-validation succeeds"
+
+[[row]]
 id = "contain.choice-member.type2.value.fixed_null"
 axis = "containment"
 example = "t = true / null"
@@ -1418,6 +1578,87 @@ expect = "accept"
 
 [[row.vector]]
 hex = "8200f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.choice-member.type2.value.text.fixed-kind"
+axis = "containment"
+example = "t = \"x\" / uint"
+spec = "t = \"x\" / uint"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "1904e8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190695"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "1906fe"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190e71"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "190ecc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6178"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.choice-member.type2.value.uint.fixed-kind"
+axis = "containment"
+example = "t = 5 / tstr"
+spec = "t = 5 / tstr"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "684b656c7365792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "684d6f6e7463616c6d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "696d6964646c656d616e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "696f766572636f617473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6a70726f70656c6c657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "6f696e636f6e76656e69656e63696e67"
 source = "ruby-generate"
 expect = "accept"
 

@@ -370,8 +370,8 @@ for (const r of rows) {
 // The EXACT (row id -> sorted arm classes) set the CONSERVATIVE resolver (lib.ts, shared with the mint)
 // fires on at HEAD. Decay pin (the query_q4 EXPECTED_ENFORCE_YES pattern): a resolver change that
 // silently widens or narrows the in-scope set fails got/want here — growing/shrinking it must be a
-// conscious edit. Only `prelude.number` is under-covered at HEAD (float arm class 7 unsampled); the
-// re-mint's resample loop closes it. Classes are majors-0/1-merged ("int"); `prelude.integer` /
+// conscious edit. Only fixed `undefined` is under-covered at HEAD (class 7 is blocked by the pinned
+// Rust oracle gap and ledgered below). Classes are majors-0/1-merged ("int"); `prelude.integer` /
 // `.unsigned` therefore read {6, int} (nint covers int, tagged bignum covers 6) and do NOT flag on their
 // unsampled plain-uint side.
 const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
@@ -384,6 +384,9 @@ const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "contain.choice-member.prelude.any.last": ["3"],
   "contain.choice-member.type2.tag.any_non_last": ["3", "6"],
   "contain.choice-member.prelude.null": ["3", "7"],
+  "contain.choice-member.prelude.null.fixed-kind": ["3", "7", "int"],
+  "contain.choice-member.prelude.true.fixed-kind": ["3", "7"],
+  "contain.choice-member.prelude.undefined.fixed-kind": ["3", "7"],
   // The same-major-type (brute-force) fixed-arm row: `true` and `null` BOTH resolve to major 7, so
   // the two-class floor {3, 7} is satisfied by a single major-7 accept and cannot, by construction,
   // demand one per fixed arm. That is the arm floor's known blind spot on this shape rather than a
@@ -395,6 +398,8 @@ const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   // the third-special rejection. Keep it in the floor so a future mint cannot silently lose that
   // decode evidence.
   "contain.choice-member.type2.value.fixed_null": ["7"],
+  "contain.choice-member.type2.value.text.fixed-kind": ["3", "int"],
+  "contain.choice-member.type2.value.uint.fixed-kind": ["3", "int"],
   "contain.choice-member.type2.tag": ["6"],
   // The tag-set idiom rows spell the two WIRE arms (`#6.258([..]) → major 6`, `[..] → major 4`)
   // regardless of whether codegen collapses (set_idiom) or retains the enum (set_idiom_near_miss), so

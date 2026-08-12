@@ -632,9 +632,10 @@ export function resolveChoiceArmClasses(example: string): ArmClassResolution | n
 // class) and the drift gate (won't fail the coverage floor for it). Stale-guarded on the gate side: a
 // ledger entry for a (row, class) that is now covered — or a row no longer in scope — fails the gate, so
 // when the underlying oracle gap closes the class is re-minted and the entry must be removed.
-// Currently empty: the last resident (`prelude.number`'s float arm, blocked by the pre-ac1b98e rust
-// oracle rejecting floats against the prelude `number` keyword) was re-minted when the fork fix landed.
-export const DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
+// The fixed-undefined validator gap below is the only resident matrix arm exemption at HEAD.
+export const DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {
+  "contain.choice-member.prelude.undefined.fixed-kind/7": "pinned rust-cddl local-fixes @ ac1b98e validator gap: CBOR f7 is misclassified as Null and rejected against the spec-valid `t = undefined / tstr`; Ruby accepts; remove when the pinned oracle validates the fixed-undefined arm",
+};
 
 // The CORPUS twin of DECODE_FLOOR_ARM_EXEMPT, keyed `"<fixture>.<rule>/<class>"` -> cited reason. A
 // SEPARATE ledger because each stale-guard iterates its OWN uncovered-in-scope set: a corpus-keyed
