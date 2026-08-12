@@ -117,8 +117,8 @@ resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` ho
 > authored source is `roadmap.toml`; format it with `bun run project_roadmaps.ts --format-source
 > cddl-matrix/roadmap.toml`, validate both roadmap projections with `bun run project_roadmaps.ts
 > --roadmap all --check`, and regenerate only with `bun run project_roadmaps.ts --roadmap matrix
-> --write`. Never hand-edit generated `ROADMAP.md`. The testing roadmap remains hand-authored in
-> `tests/TESTING_ROADMAP.md` until its separate authority cutover. These documents are linted: the sibling script
+> --write`. Never hand-edit generated `ROADMAP.md`. The testing roadmap follows the same source and
+> projection contract documented in `tests/README.md`. These documents are linted: the sibling script
 > `lint_doc_citations.ts` (check.ts `local` tier; not matrix tooling — it lives here for the shared
 > tsc coverage, as does `no_std_check.ts`, the no_std drift gate, which additionally shares
 > `lib.ts`'s gate-cache helpers; see `tests/README.md` § "The no_std drift gate") asserts every

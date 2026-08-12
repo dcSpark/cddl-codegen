@@ -32,13 +32,18 @@ import {
   liveMatrixProjection,
   liveMatrixShadowV0Source,
 } from "./live_matrix.ts";
-import { liveTestingProjection, liveTestingShadowV0Source } from "./live_testing.ts";
+import {
+  liveTestingAuthoritativeSource,
+  liveTestingProjection,
+  liveTestingShadowV0Source,
+} from "./live_testing.ts";
 
 export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_selftest_exact",
   "cli_check_each_roadmap",
   "cli_write_each_single_roadmap",
   "cli_write_authoritative_matrix",
+  "cli_write_authoritative_testing",
   "cli_query_each_view",
   "cli_format_declared_source",
   "cli_no_args_rejected",
@@ -442,6 +447,37 @@ function validGenericAllPorts(_context: SelfTestContext): RoadmapCliPorts {
   });
 }
 
+function bothAuthoritativePorts(atomic?: FakeOptions["atomic"]): RoadmapCliPorts {
+  const campaign = UTF8.encode(`[campaign]
+schema_version = 1
+matrix_authority = "authoritative"
+testing_authority = "authoritative"
+`);
+  const retired = UTF8.encode(`[retired_ids]
+schema_version = 1
+`);
+  return fakePorts({
+    read(path) {
+      if (path === "cddl-matrix/roadmap.toml") return liveMatrixAuthoritativeSource();
+      if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
+      if (path === "tests/testing-roadmap.toml") return liveTestingAuthoritativeSource();
+      if (path === "tests/TESTING_ROADMAP.md") return liveTestingProjection();
+      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
+      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
+      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
+    },
+    registry(revision) {
+      return {
+        ...emptyRegistry(revision),
+        production_output_stage: "both_authoritative",
+        output_claims: productionOutputInventory("both_authoritative").claims,
+        matrix_status_inputs: liveMatrixStatusInputs(),
+      };
+    },
+    atomic,
+  });
+}
+
 function wp4mBootstrapProbePorts(
   context: SelfTestContext,
   onBaseRead: (path: RepoPath) => void,
@@ -694,6 +730,27 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
           replacements[0].path === "cddl-matrix/ROADMAP.md" && replacements[0].bytes.byteLength > 0 &&
           text(result.stdout).startsWith("WRITE OK roadmap=matrix target=cddl-matrix/ROADMAP.md bytes="),
         `authoritative matrix write did not apply exactly one validated whole-file plan: ${text(result.stderr)}`,
+      );
+      return pass("positive");
+    }
+    case "cli_write_authoritative_testing": {
+      const replacements: { path: RepoPath; bytes: Uint8Array }[] = [];
+      const result = run(
+        ["--write", "--roadmap", "testing"],
+        bothAuthoritativePorts((path, value) => {
+          replacements.push({ path, bytes: new Uint8Array(value) });
+        }),
+      );
+      const expected = liveTestingProjection();
+      assert(
+        result.exit_code === 0 && result.stderr.byteLength === 0 && replacements.length === 1 &&
+          replacements[0].path === "tests/TESTING_ROADMAP.md" &&
+          replacements[0].bytes.byteLength === expected.byteLength &&
+          replacements[0].bytes.every((value, index) => value === expected[index]) &&
+          text(result.stdout).startsWith(
+            "WRITE OK roadmap=testing target=tests/TESTING_ROADMAP.md bytes=",
+          ),
+        `authoritative testing write did not apply the exact committed whole-file projection: ${text(result.stderr)}`,
       );
       return pass("positive");
     }

@@ -1,17 +1,7 @@
 [campaign]
 schema_version = 1
 matrix_authority = "authoritative"
-testing_authority = "shadow"
-
-[[legacy_markdown_reservation]]
-id = "testing.rule-trailing.directive-classification"
-work_kind = "feature"
-roadmap_path = "tests/TESTING_ROADMAP.md"
-source_title = "Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery — blocked on publishing the reviewed fork revision."
-source_start_byte = 8737
-source_end_byte = 11601
-source_sha256 = "c5a5b506dba80f59781f9024767bd7b6bd14d191981f1923553d12ad65b8d338"
-whole_source_sha256 = "b9115ada896726060e02bc5722bc8568650b0d64f73522f5affbb30b4120d70e"
+testing_authority = "authoritative"
 
 [[selection]]
 item_id = "matrix.fixed-array.static-representation"
@@ -78,7 +68,7 @@ remaining_scope_md = """Define carriers and construction doors for bounded typed
 
 [[selection]]
 item_id = "testing.rule-trailing.directive-classification"
-target_kind = "legacy_markdown_reservation"
+target_kind = "active_id"
 selected_state = "selected"
 priority_class = "correctness"
 selection_reason_md = """The loud refusal is an interim safety boundary, while adopting the reviewed parser anchor is the only known sound route to classify rule-only directives without stealing the last entry's metadata."""
