@@ -409,7 +409,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.true` | · | ✅ | ✅ |  | · | ✅ |  | · |  |  |
 | `prelude.tstr` |  | · | · | · |  | · |  | · |  | · |
 | `prelude.uint` | · | · | · | · | · | · |  | · | · | · |
-| `prelude.undefined` | · | ✅ | ✅ |  |  |  |  |  |  |  |
+| `prelude.undefined` | · | ✅ | ✅ |  |  | ✅ |  |  |  |  |
 | `prelude.unsigned` |  | · |  |  |  |  |  |  |  |  |
 | `prelude.uri` |  | · |  |  |  |  |  |  |  |  |
 | `rangeop.exclusive` |  | · |  |  | · |  |  |  |  |  |
@@ -423,15 +423,15 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `type2.tag` | · | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | · | ✅ |  |
 | `type2.typename` | · | · | · | · | · | · |  | · | · | · |
 | `type2.unwrap` | ➖ | ➖ | ➖ |  |  |  |  |  |  |  |
-| `type2.value` | · | ✅ | ✅ | · | · | ✅ | ✅ | ◐ | · | · |
+| `type2.value` | · | ✅ | ✅ | · | · | ◐ | ✅ | ◐ | · | · |
 | `value.bytes` | · | ✅ | ✅ |  | · | · |  | · | · |  |
 | `value.number` | · | ✅ | ✅ | · | · | · |  | · | · | · |
 | `value.text` | · | ✅ | ✅ | · |  | · |  | · |  |  |
 
-- Modelled `(role × feature)` cells: **69** (over 136 shape-granular containment rows).
+- Modelled `(role × feature)` cells: **70** (over 144 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **37**.
 - Exercised by the corpus, modelled by **nothing**: **172** (the `·` cells).
-- Modelled but not exercised by any corpus fixture: **32**.
+- Modelled but not exercised by any corpus fixture: **33**.
 
 ## Notable findings
 
