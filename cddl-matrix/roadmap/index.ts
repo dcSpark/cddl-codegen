@@ -1,5 +1,6 @@
-import { MATRIX_ADAPTER, validateMatrixRoadmapDocument } from "./adapters/matrix.ts";
-import { TESTING_ADAPTER, validateTestingRoadmapDocument } from "./adapters/testing.ts";
+import { MATRIX_ADAPTER } from "./adapters/matrix.ts";
+import { TESTING_ADAPTER } from "./adapters/testing.ts";
+import { validateMatrixRoadmapDocument, validateTestingRoadmapDocument } from "./adapters/validation.ts";
 import type { RegistryView, RoadmapAdapter } from "./adapters/types.ts";
 import { parseRoadmapCli, ROADMAP_CLI_USAGE, RoadmapCliParseError } from "./cli.ts";
 import { composeCanonicalDocument } from "./compose.ts";

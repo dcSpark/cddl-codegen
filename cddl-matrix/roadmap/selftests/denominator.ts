@@ -1,5 +1,6 @@
 import { validateSystematicFamilies, type DenominatorAuthorityAdapter } from "../denominator.ts";
-import { MATRIX_ADAPTER, validateDecodedRoadmapDocument } from "../adapters/matrix.ts";
+import { validateDecodedRoadmapDocument } from "../adapters/engine.ts";
+import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
 import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import { buildRoadmapIndexes } from "../indexes.ts";

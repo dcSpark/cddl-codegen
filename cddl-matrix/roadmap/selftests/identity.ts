@@ -61,7 +61,7 @@ import { validateTransaction } from "../transaction.ts";
 import { debtOwnerIndex, type MigrationDebt } from "../debt.ts";
 import { buildExpectedChunks, createExpectedByteView, type CompletedRenderIr, type RenderChunk } from "../render_ir.ts";
 import { resolveManifest } from "../manifest.ts";
-import { renderCanonicalSemanticRecord } from "../adapters/matrix.ts";
+import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
 import { codePointSort } from "../kernel.ts";
 
 export const IDENTITY_ROADMAP_FIXTURE_PATHS = Object.freeze([

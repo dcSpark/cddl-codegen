@@ -1,62 +1,19 @@
-import type { IssueCollector, RoadmapIssue } from "../errors.ts";
-import { namespaceOf, validateRoadmapId } from "../ids.ts";
-import type { RoadmapIndexes, SemanticPayloadProviderFact } from "../indexes.ts";
-import type { RepoPath, RoadmapId, RoadmapName, SlotId } from "../model/core.ts";
+import type { IssueCollector } from "../errors.ts";
+import type { SemanticPayloadProviderFact } from "../indexes.ts";
+import type { RepoPath, SlotId } from "../model/core.ts";
 import type { RoadmapDocument, SemanticPayload, SemanticRecord } from "../model/documents.ts";
 import type { GeneratedSlotResolver, Indexes, RegistryView, RoadmapAdapter } from "./types.ts";
 import {
-  MATRIX_ADAPTER,
+  createRoadmapFloorValidator,
   renderCanonicalSemanticRecord,
+  requirePayloadKind,
   validateDecodedRoadmapDocument,
   type DecodedRoadmapValidationOptions,
   type DecodedRoadmapValidationResult,
-} from "./matrix.ts";
+} from "./engine.ts";
 
 const TESTING_SOURCE_PATH = "tests/testing-roadmap.toml" as RepoPath;
 const TESTING_PROJECTION_PATH = "tests/TESTING_ROADMAP.md" as RepoPath;
-function issue(
-  provider: SemanticPayloadProviderFact,
-  source: string,
-  logicalPath: string,
-  message: string,
-): RoadmapIssue {
-  return {
-    code: "E-SCHEMA-STATE",
-    source,
-    logical_path: `${provider.logical_path}.${logicalPath}`,
-    message,
-    exit: 1,
-  };
-}
-
-function payloadAt(indexes: Indexes, id: RoadmapId): SemanticPayload | undefined {
-  if ("payload_records" in indexes) {
-    return (indexes as Indexes & Pick<RoadmapIndexes, "payload_records">).payload_records.get(id)?.payload;
-  }
-  return indexes.records.get(id)?.payload;
-}
-
-function requirePayloadKind(
-  provider: SemanticPayloadProviderFact,
-  source: string,
-  indexes: Indexes,
-  id: RoadmapId,
-  field: string,
-  predicate: (payload: SemanticPayload) => boolean,
-  expected: string,
-  out: IssueCollector,
-): void {
-  const target = payloadAt(indexes, id);
-  const deferred = (indexes as Indexes & { readonly deferred_foreign_roadmap_joins?: RoadmapName })
-    .deferred_foreign_roadmap_joins;
-  const targetNamespace = namespaceOf(id);
-  if (target === undefined && deferred !== undefined && targetNamespace !== undefined &&
-    targetNamespace !== deferred) return;
-  if (target === undefined || !predicate(target)) {
-    out.add(issue(provider, source, field, `${id} must resolve to ${expected}`));
-  }
-}
-
 export function validateTestingPayloadFact(
   provider: SemanticPayloadProviderFact,
   indexes: Indexes,
@@ -126,6 +83,16 @@ export function validateTestingPayloadFact(
   }
 }
 
+const TESTING_FLOORS = createRoadmapFloorValidator({
+  roadmap: "testing",
+  source_path: TESTING_SOURCE_PATH,
+  projection_path: TESTING_PROJECTION_PATH,
+  // The testing roadmap declares no generated slots at all; the empty binding list is what makes
+  // that an explicit contract rather than an omission.
+  slot_bindings: [],
+  slot_inventory_message: "testing roadmap declares exactly zero generated slots",
+});
+
 export const TESTING_ADAPTER: RoadmapAdapter<SemanticPayload> = Object.freeze({
   roadmap: "testing",
   namespace: "testing",
@@ -150,71 +117,7 @@ export const TESTING_ADAPTER: RoadmapAdapter<SemanticPayload> = Object.freeze({
   slotResolvers(_view: RegistryView, _document: RoadmapDocument): ReadonlyMap<SlotId, GeneratedSlotResolver> {
     return new Map<SlotId, GeneratedSlotResolver>();
   },
-  validateFloors(doc: RoadmapDocument, out: IssueCollector) {
-    if (doc.document.roadmap !== "testing") {
-      out.add({
-        code: "E-SCHEMA-FLOOR",
-        source: doc.document.source_path,
-        logical_path: "document.roadmap",
-        message: "testing adapter requires a testing roadmap document",
-        exit: 1,
-      });
-    }
-    if (doc.document.source_path !== TESTING_SOURCE_PATH) {
-      out.add({
-        code: "E-SCHEMA-FLOOR",
-        source: doc.document.source_path,
-        logical_path: "document.source_path",
-        message: `testing source path must be ${TESTING_SOURCE_PATH}`,
-        exit: 1,
-      });
-    }
-    if (doc.document.projection_path !== TESTING_PROJECTION_PATH) {
-      out.add({
-        code: "E-SCHEMA-FLOOR",
-        source: doc.document.source_path,
-        logical_path: "document.projection_path",
-        message: `testing projection path must be ${TESTING_PROJECTION_PATH}`,
-        exit: 1,
-      });
-    }
-    if (doc.records.length === 0 || doc.manifest.length === 0 || doc.spans.length === 0) {
-      out.add({
-        code: "E-SCHEMA-FLOOR",
-        source: doc.document.source_path,
-        logical_path: "$",
-        message: "testing roadmap requires records, manifest placements, and source spans",
-        exit: 1,
-      });
-    }
-    if (doc.generated_slots.length !== 0) {
-      out.add({
-        code: "E-SCHEMA-FLOOR",
-        source: doc.document.source_path,
-        logical_path: "generated_slot",
-        message: "testing roadmap declares exactly zero generated slots",
-        exit: 1,
-      });
-    }
-  },
+  validateFloors: TESTING_FLOORS,
 });
 
 export const TESTING_GENERATED_SLOT_BINDINGS: readonly never[] = Object.freeze([]);
-
-export function validateTestingRoadmapDocument(
-  document: RoadmapDocument,
-  view: RegistryView,
-  options: DecodedRoadmapValidationOptions = {},
-): DecodedRoadmapValidationResult {
-  return validateDecodedRoadmapDocument(
-    document,
-    view,
-    TESTING_ADAPTER,
-    [
-      ...MATRIX_ADAPTER.referenceProviders(view),
-      ...TESTING_ADAPTER.referenceProviders(view),
-    ],
-    validateTestingPayloadFact,
-    options,
-  );
-}

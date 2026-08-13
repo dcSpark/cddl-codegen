@@ -5,7 +5,7 @@ import { resolveManifest } from "../manifest.ts";
 import { buildExpectedChunks } from "../render_ir.ts";
 import { buildProjectionViews, validateContentReachability, validateLegacySpanProvenance } from "../projection_views.ts";
 import type { ProjectionLayout } from "../projection_layout.ts";
-import { renderCanonicalSemanticRecord } from "../adapters/matrix.ts";
+import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
 import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import { scanRoadmapMarkdownFacts } from "../repository_facts.ts";
 import { createImmutableByteView } from "../render_ir.ts";

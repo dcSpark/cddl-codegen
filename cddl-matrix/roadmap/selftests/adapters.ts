@@ -1,14 +1,14 @@
+import { canonicalSemanticMarkdownFields } from "../adapters/engine.ts";
 import {
-  canonicalSemanticMarkdownFields,
   MATRIX_ADAPTER,
   MATRIX_GENERATED_SLOT_BINDINGS,
-  validateMatrixRoadmapDocument,
 } from "../adapters/matrix.ts";
 import { composeRoadmapDocument } from "../compose.ts";
+import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import {
-  TESTING_ADAPTER,
+  validateMatrixRoadmapDocument,
   validateTestingRoadmapDocument,
-} from "../adapters/testing.ts";
+} from "../adapters/validation.ts";
 import type { FieldConsumer, RegistryView, RoadmapAdapter } from "../adapters/types.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import type { SchemaDecodeTrace } from "../decode/primitives.ts";

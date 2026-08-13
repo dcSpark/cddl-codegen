@@ -53,7 +53,7 @@ import {
   renderValidatedChunks,
 } from "../render.ts";
 import { validateSourceSpans } from "../spans.ts";
-import { renderCanonicalSemanticRecord } from "../adapters/matrix.ts";
+import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
 import {
   compareMigrationDebt,
   debtOwnerIndex,
