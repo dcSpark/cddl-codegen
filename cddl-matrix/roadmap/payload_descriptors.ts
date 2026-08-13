@@ -45,7 +45,13 @@ export type PayloadFieldValue =
   | { readonly t: "enum"; readonly values: readonly string[] }
   | { readonly t: "string" }
   | { readonly t: "slug" }
-  | { readonly t: "markdown"; readonly nonempty?: true }
+  /**
+   * `slot` marks a PROSE SLOT: a top-level Markdown field a placed record renders.  Rendering is
+   * the concatenation of the arm's present slot fields in declared field order; every other
+   * Markdown field is nonrendering typed content.  Slots are the record's one rendering surface,
+   * so they are excluded from query rows and drive section-plan renderability.
+   */
+  | { readonly t: "markdown"; readonly nonempty?: true; readonly slot?: true }
   | { readonly t: "number" }
   | { readonly t: "civil_date" }
   | { readonly t: "commit" }
@@ -184,7 +190,15 @@ function field(
 }
 
 const kindField = (): PayloadField => field("kind", "required", { t: "kind" });
-const detail = (): PayloadField => field("detail_md", "optional", { t: "markdown" });
+/** The primary prose slot: the record's rendered block (absent on semantic-only records). */
+const body = (): PayloadField => field("body_md", "optional", { t: "markdown", slot: true });
+/**
+ * The trailing transition-signal prose slot: the narrative half of the typed transition contract
+ * the arm carries.  Declared exactly on the arms with a nested transition-contract field
+ * (reopening_signal / promotion_trigger / cadence / unblock_predicate / retirement_predicate /
+ * watch_escalation); an arm that structurally cannot reopen does not declare it.
+ */
+const signal = (): PayloadField => field("signal_md", "optional", { t: "markdown", slot: true });
 const md = (name: string, presence: "required" | "optional" = "required", nonempty?: true): PayloadField =>
   field(name, presence, { t: "markdown", ...(nonempty === undefined ? {} : { nonempty }) });
 const str = (name: string, presence: "required" | "optional" = "required"): PayloadField =>
@@ -258,9 +272,11 @@ const REGRESSION_GAP_TARGET: RoadmapTargetExpectation = { payload_kind: "work", 
 const ADMISSION_TARGET: RoadmapTargetExpectation = { payload_kind: "testing_system_admission" };
 const INCIDENT_TARGET: RoadmapTargetExpectation = { payload_kind: "testing_incident" };
 
-const workCommon = (): PayloadField[] => [
+/** Delegated and pending-review work carry no transition contract, so no signal slot. */
+const workCommon = (slots: "body_and_signal" | "body_only" = "body_and_signal"): PayloadField[] => [
   kindField(),
-  detail(),
+  body(),
+  ...(slots === "body_and_signal" ? [signal()] : []),
   en("work_state", WORK_STATES),
   en("work_intent", WORK_INTENTS),
   en("work_kind", WORK_KINDS),
@@ -304,7 +320,7 @@ export const TRANSITION_PREDICATE_GROUP: NestedGroup = Object.freeze({
 // ---------------------------------------------------------------------------------------------
 // Nested transition groups (Packet 3A-2): the six transition kinds' typed contracts, packaged as
 // nested tables on the record that owns them.  The nested field's NAME is the transition kind, so
-// `kind`/`transition_kind`/`detail_md` have no nested representation; everything else is the same
+// `kind`/`transition_kind` and the prose slots have no nested representation; everything else is the same
 // arm contract the standalone transition records keep.
 
 const NESTED_TRANSITION_GROUP_ARMS: readonly PayloadArm[] = [
@@ -439,14 +455,14 @@ const WORK_ARM_LIST: readonly PayloadArm[] = [
     nestedTable("unblock_predicate", NESTED_UNBLOCK_GROUP, "optional"),
   ], ["priority_band", "priority_rationale_md", "blocker_md", "return_condition_md", "uncertainty_md", "promotion_trigger", "reopening_signal"]),
   arm("delegated work", [["work_state", ["delegated"]]], [
-    ...workCommon(),
+    ...workCommon("body_only"),
     md("acceptance_md", "optional"),
     idSet("control_ids", CONTROL_TARGET, "optional"),
     md("return_condition_md"),
     ...workTail(),
   ], ["priority_band", "priority_rationale_md", "blocker_md", "external_owner_reference_id", "uncertainty_md", "unblock_predicate", "promotion_trigger", "reopening_signal", "retirement_predicate"]),
   arm("pending review work", [["work_state", ["pending_review"]]], [
-    ...workCommon(),
+    ...workCommon("body_only"),
     idSet("control_ids", CONTROL_TARGET, "optional"),
     md("uncertainty_md"),
     ...workTail(),
@@ -456,14 +472,16 @@ const WORK_ARM_LIST: readonly PayloadArm[] = [
 const DECISION_ARM_LIST: readonly PayloadArm[] = [
   arm("pending decision", [["decision_state", ["pending"]]], [
     kindField(),
-    detail(),
+    body(),
+    signal(),
     en("decision_state", DECISION_STATES),
     md("question_md"),
     nestedTable("unblock_predicate", NESTED_UNBLOCK_GROUP),
   ], ["rationale_md", "authority_reference_id", "permanence", "reopening_signal"]),
   arm("held decision", [["decision_state", ["held"]]], [
     kindField(),
-    detail(),
+    body(),
+    signal(),
     en("decision_state", DECISION_STATES),
     md("rationale_md"),
     en("permanence", ["reopenable"]),
@@ -471,7 +489,7 @@ const DECISION_ARM_LIST: readonly PayloadArm[] = [
   ], ["question_md", "authority_reference_id", "unblock_predicate"]),
   arm("decided permanent decision", [["decision_state", ["decided"]], ["permanence", ["permanent"]]], [
     kindField(),
-    detail(),
+    body(),
     en("decision_state", DECISION_STATES),
     md("rationale_md"),
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
@@ -479,7 +497,8 @@ const DECISION_ARM_LIST: readonly PayloadArm[] = [
   ], ["question_md", "reopening_signal", "unblock_predicate"]),
   arm("decided reopenable decision", [["decision_state", ["decided"]], ["permanence", ["reopenable"]]], [
     kindField(),
-    detail(),
+    body(),
+    signal(),
     en("decision_state", DECISION_STATES),
     md("rationale_md"),
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
@@ -511,7 +530,7 @@ const EVIDENCE_ALLOWED: AllowedReferenceKinds = {
 const EVIDENCE_ARM_LIST: readonly PayloadArm[] = [
   arm("evidence", [], [
     kindField(),
-    detail(),
+    body(),
     en("evidence_kind", EVIDENCE_KINDS),
     md("claim_md"),
     en("evidence_verdict", EVIDENCE_VERDICTS),
@@ -533,7 +552,7 @@ const EVIDENCE_ARM_LIST: readonly PayloadArm[] = [
 const CONTROL_ARM_LIST: readonly PayloadArm[] = [
   arm("control", [], [
     kindField(),
-    detail(),
+    body(),
     en("control_kind", CONTROL_KINDS),
     en("control_state", CONTROL_STATES),
     refSet("reference_ids", { by: "control_kind", map: CONTROL_REFERENCE_KINDS_BY_CONTROL_KIND }, "required", true),
@@ -573,7 +592,8 @@ export const CLOSEOUT_BRANCH_GROUP: NestedGroup = Object.freeze({
 
 const closeoutFields = (state: "waiting" | "due" | "blocked"): PayloadField[] => [
   kindField(),
-  detail(),
+  body(),
+  signal(),
   en("closeout_state", CLOSEOUT_STATES),
   refId("upstream_owner_reference_id", UPSTREAM_REFERENCE_KINDS),
   md("current_upstream_state_md"),
@@ -606,7 +626,8 @@ const CLOSEOUT_ARM_LIST: readonly PayloadArm[] = [
 const POLICY_ARM_LIST: readonly PayloadArm[] = [
   arm("matrix maintenance policy", [["policy_kind", ["maintenance_protocol"]]], [
     kindField(),
-    detail(),
+    body(),
+    signal(),
     en("policy_kind", POLICY_KINDS),
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
     md("protocol_md"),
@@ -614,7 +635,7 @@ const POLICY_ARM_LIST: readonly PayloadArm[] = [
   ], ["reopening_signal"]),
   arm("matrix permanent boundary", [["policy_kind", ["boundary"]], ["permanence", ["permanent"]]], [
     kindField(),
-    detail(),
+    body(),
     en("policy_kind", POLICY_KINDS),
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
     md("rationale_md"),
@@ -622,7 +643,8 @@ const POLICY_ARM_LIST: readonly PayloadArm[] = [
   ], ["cadence", "reopening_signal"]),
   arm("matrix reopenable boundary", [["policy_kind", ["boundary"]], ["permanence", ["reopenable"]]], [
     kindField(),
-    detail(),
+    body(),
+    signal(),
     en("policy_kind", POLICY_KINDS),
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
     md("rationale_md"),
@@ -640,7 +662,8 @@ export const CAPTURE_STEP_GROUP: NestedGroup = Object.freeze({
 
 const watchFields = (state: "watching" | "attributed" | "retire_pending"): PayloadField[] => [
   kindField(),
-  detail(),
+  body(),
+  signal(),
   en("watch_state", WATCH_STATES),
   md("signature_md"),
   ...(state === "watching" ? [] : [
@@ -668,7 +691,7 @@ const WATCH_ARM_LIST: readonly PayloadArm[] = [
 
 const incidentFields = (posture: "live" | "attributed" | "historical"): PayloadField[] => [
   kindField(),
-  detail(),
+  body(),
   en("incident_posture", INCIDENT_POSTURES),
   md("signature_md"),
   idSet("evidence_ids", EVIDENCE_TARGET, "required", true),
@@ -688,7 +711,7 @@ const INCIDENT_ARM_LIST: readonly PayloadArm[] = [
 const COST_ARM_LIST: readonly PayloadArm[] = [
   arm("live registry testing cost", [["cost_posture", ["live_registry"]]], [
     kindField(),
-    detail(),
+    body(),
     en("cost_posture", COST_POSTURES),
     str("unit"),
     md("scope_md"),
@@ -696,7 +719,7 @@ const COST_ARM_LIST: readonly PayloadArm[] = [
   ], ["value_min", "value_max", "observed_at", "environment_md", "evidence_ids", "valid_through"]),
   arm("historical testing cost", [["cost_posture", ["historical_observation"]]], [
     kindField(),
-    detail(),
+    body(),
     en("cost_posture", COST_POSTURES),
     str("unit"),
     md("scope_md"),
@@ -711,14 +734,14 @@ const COST_ARM_LIST: readonly PayloadArm[] = [
 const ADMISSION_ARM_LIST: readonly PayloadArm[] = [
   arm("silent-corruption admission", [["admission_kind", ["silent_corruption"]]], [
     kindField(),
-    detail(),
+    body(),
     en("admission_kind", ADMISSION_KINDS),
     md("claim_md"),
     idSet("evidence_ids", EVIDENCE_TARGET, "required", true),
   ], ["incident_ids"]),
   arm("independent-recurrence admission", [["admission_kind", ["independent_recurrence"]]], [
     kindField(),
-    detail(),
+    body(),
     en("admission_kind", ADMISSION_KINDS),
     md("claim_md"),
     idSet("evidence_ids", EVIDENCE_TARGET, "required", true),
@@ -835,8 +858,38 @@ export function fieldProperty(entry: PayloadField): string {
   return entry.value.t === "array_table" ? entry.value.prop : entry.name;
 }
 
+/** Whether a field is a prose slot (a top-level Markdown field a placed record renders). */
+export function isProseSlotField(entry: PayloadField): boolean {
+  return entry.value.t === "markdown" && entry.value.slot === true;
+}
+
+/** The arm's declared prose-slot fields, in declared (rendering) order. */
+export function proseSlotFields(arm: PayloadArm): readonly PayloadField[] {
+  return arm.fields.filter(isProseSlotField);
+}
+
+export interface PresentProseSlot {
+  readonly name: string;
+  readonly bytes: Uint8Array;
+}
+
 /**
- * The arm's query-row entries: every field of the payload's arm in order, minus `kind` and the
+ * The payload's PRESENT prose slots in declared order — the record's whole rendering surface:
+ * a placed record renders exactly the concatenation of these byte fields, and a record with none
+ * is semantic-only (renders nowhere).
+ */
+export function presentProseSlots(payload: SemanticPayload): readonly PresentProseSlot[] {
+  const slots: PresentProseSlot[] = [];
+  for (const entry of proseSlotFields(armOfPayload(payload))) {
+    const value = (payload as unknown as Record<string, unknown>)[entry.name];
+    if (value !== undefined) slots.push(Object.freeze({ name: entry.name, bytes: value as Uint8Array }));
+  }
+  return Object.freeze(slots);
+}
+
+/**
+ * The arm's query-row entries: every field of the payload's arm in order, minus `kind`, the
+ * prose slots, and the
  * caller's exclusions, honoring the per-field query hints (renames; null / empty-array defaults
  * for absent optionals).  View-specific computed values stay at the call site — this derives the
  * SHAPE, so a new payload field appears in its arm's query rows without touching query code.
@@ -848,7 +901,8 @@ export function armQueryEntries(
   const arm = armOfPayload(payload);
   const entries: (readonly [string, unknown])[] = [];
   for (const entry of arm.fields) {
-    if (entry.value.t === "kind" || exclude.includes(entry.name)) continue;
+    // Prose slots are the record's rendering surface, never query-row data.
+    if (entry.value.t === "kind" || isProseSlotField(entry) || exclude.includes(entry.name)) continue;
     const prop = fieldProperty(entry);
     let value: unknown = (payload as unknown as Record<string, unknown>)[prop];
     if (value === undefined) {

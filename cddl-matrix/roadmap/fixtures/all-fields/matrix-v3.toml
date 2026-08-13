@@ -74,7 +74,7 @@ title = "Decision arm a"
 
 [record.payload]
 kind = "decision"
-detail_md = '''Decision a: pending.
+body_md = '''Decision a: pending.
 '''
 decision_state = "pending"
 question_md = '''Which branch should become authoritative?
@@ -96,7 +96,7 @@ title = "Decision arm b"
 
 [record.payload]
 kind = "decision"
-detail_md = '''Decision b: held.
+body_md = '''Decision b: held.
 '''
 decision_state = "held"
 rationale_md = '''The reviewed choice remains reopenable.
@@ -122,7 +122,7 @@ title = "Decision arm c"
 
 [record.payload]
 kind = "decision"
-detail_md = '''Decision c: decided.
+body_md = '''Decision c: decided.
 '''
 decision_state = "decided"
 rationale_md = '''The authority permanently closes this branch.
@@ -136,7 +136,7 @@ title = "Decision arm d"
 
 [record.payload]
 kind = "decision"
-detail_md = '''Decision d: decided and reopenable.
+body_md = '''Decision d: decided and reopenable.
 '''
 decision_state = "decided"
 rationale_md = '''The authority allows reopening on the declared transition.
@@ -162,7 +162,7 @@ title = "Control arm a"
 
 [record.payload]
 kind = "control"
-detail_md = '''Control a: gate.
+body_md = '''Control a: gate.
 '''
 control_kind = "gate"
 control_state = "live"
@@ -178,7 +178,7 @@ title = "Control arm b"
 
 [record.payload]
 kind = "control"
-detail_md = '''Control b: test.
+body_md = '''Control b: test.
 '''
 control_kind = "test"
 control_state = "proposed"
@@ -194,7 +194,7 @@ title = "Control arm c"
 
 [record.payload]
 kind = "control"
-detail_md = '''Control c: fixture.
+body_md = '''Control c: fixture.
 '''
 control_kind = "fixture"
 control_state = "stale"
@@ -210,7 +210,7 @@ title = "Control arm d"
 
 [record.payload]
 kind = "control"
-detail_md = '''Control d: review_rule.
+body_md = '''Control d: review_rule.
 '''
 control_kind = "review_rule"
 control_state = "live"
@@ -226,7 +226,7 @@ title = "Control arm e"
 
 [record.payload]
 kind = "control"
-detail_md = '''Control e: consumer_ci.
+body_md = '''Control e: consumer_ci.
 '''
 control_kind = "consumer_ci"
 control_state = "proposed"
@@ -242,7 +242,7 @@ title = "Control arm f"
 
 [record.payload]
 kind = "control"
-detail_md = '''Control f: upstream_issue.
+body_md = '''Control f: upstream_issue.
 '''
 control_kind = "upstream_issue"
 control_state = "stale"
@@ -258,7 +258,7 @@ title = "Control arm g"
 
 [record.payload]
 kind = "control"
-detail_md = '''Control g: operator_procedure.
+body_md = '''Control g: operator_procedure.
 '''
 control_kind = "operator_procedure"
 control_state = "live"
@@ -274,7 +274,7 @@ title = "Evidence arm a"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence a: regression_pin.
+body_md = '''Evidence a: regression_pin.
 '''
 evidence_kind = "regression_pin"
 claim_md = '''The regression_pin evidence arm is represented.
@@ -301,7 +301,7 @@ title = "Evidence arm b"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence b: gate.
+body_md = '''Evidence b: gate.
 '''
 evidence_kind = "gate"
 claim_md = '''The gate evidence arm is represented.
@@ -326,7 +326,7 @@ title = "Evidence arm c"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence c: harness_free_repro.
+body_md = '''Evidence c: harness_free_repro.
 '''
 evidence_kind = "harness_free_repro"
 claim_md = '''The harness_free_repro evidence arm is represented.
@@ -354,7 +354,7 @@ title = "Evidence arm d"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence d: committed_vector.
+body_md = '''Evidence d: committed_vector.
 '''
 evidence_kind = "committed_vector"
 claim_md = '''The committed_vector evidence arm is represented.
@@ -378,7 +378,7 @@ title = "Evidence arm e"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence e: execution_probe.
+body_md = '''Evidence e: execution_probe.
 '''
 evidence_kind = "execution_probe"
 claim_md = '''The execution_probe evidence arm is represented.
@@ -406,7 +406,7 @@ title = "Evidence arm f"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence f: registry_enumeration.
+body_md = '''Evidence f: registry_enumeration.
 '''
 evidence_kind = "registry_enumeration"
 claim_md = '''The registry_enumeration evidence arm is represented.
@@ -431,7 +431,7 @@ title = "Evidence arm g"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence g: source_read.
+body_md = '''Evidence g: source_read.
 '''
 evidence_kind = "source_read"
 claim_md = '''The source_read evidence arm is represented.
@@ -455,7 +455,7 @@ title = "Evidence arm h"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence h: spec_read.
+body_md = '''Evidence h: spec_read.
 '''
 evidence_kind = "spec_read"
 claim_md = '''The spec_read evidence arm is represented.
@@ -479,7 +479,7 @@ title = "Evidence arm i"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence i: consumer_report.
+body_md = '''Evidence i: consumer_report.
 '''
 evidence_kind = "consumer_report"
 claim_md = '''The consumer_report evidence arm is represented.
@@ -503,7 +503,7 @@ title = "Evidence arm j"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence j: incident.
+body_md = '''Evidence j: incident.
 '''
 evidence_kind = "incident"
 claim_md = '''The incident evidence arm is represented.
@@ -527,7 +527,7 @@ title = "Evidence arm k"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence k: external_issue.
+body_md = '''Evidence k: external_issue.
 '''
 evidence_kind = "external_issue"
 claim_md = '''The external_issue evidence arm is represented.
@@ -551,7 +551,7 @@ title = "Evidence arm l"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence l: external_commit.
+body_md = '''Evidence l: external_commit.
 '''
 evidence_kind = "external_commit"
 claim_md = '''The external_commit evidence arm is represented.
@@ -575,7 +575,7 @@ title = "Evidence arm m"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Evidence m: decision.
+body_md = '''Evidence m: decision.
 '''
 evidence_kind = "decision"
 claim_md = '''The decision evidence arm is represented.
@@ -596,7 +596,7 @@ title = "Maintenance policy"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = '''Matrix maintenance protocol.
+body_md = '''Matrix maintenance protocol.
 '''
 policy_kind = "maintenance_protocol"
 authority_reference_id = "ref-file"
@@ -623,7 +623,7 @@ title = "Permanent boundary policy"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = '''Permanent matrix boundary.
+body_md = '''Permanent matrix boundary.
 '''
 policy_kind = "boundary"
 authority_reference_id = "ref-file"
@@ -637,7 +637,7 @@ title = "Reopenable boundary policy"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = '''Reopenable matrix boundary.
+body_md = '''Reopenable matrix boundary.
 '''
 policy_kind = "boundary"
 authority_reference_id = "ref-file"
@@ -669,7 +669,7 @@ tags = ["coverage:closeout_state:blocked", "coverage:closeout_state:due", "cover
 
 [record.payload]
 kind = "work"
-detail_md = '''Raw authority shadow.
+body_md = '''Raw authority shadow.
 '''
 work_state = "ready"
 work_intent = "build_system"
@@ -686,7 +686,7 @@ title = "Semantic authority boundary"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = '''## Semantic authority boundary
+body_md = '''## Semantic authority boundary
 Permanent matrix fixture boundary.
 '''
 policy_kind = "boundary"
@@ -701,7 +701,7 @@ title = "Work arm a"
 
 [record.payload]
 kind = "work"
-detail_md = '''Exercises every optional work-base linkage.
+body_md = '''Exercises every optional work-base linkage.
 '''
 work_state = "ready"
 work_intent = "repair"
@@ -723,7 +723,7 @@ title = "Work arm b"
 
 [record.payload]
 kind = "work"
-detail_md = '''Work b: ready.
+body_md = '''Work b: ready.
 '''
 work_state = "ready"
 work_intent = "add_regression"
@@ -759,7 +759,7 @@ title = "Work arm c"
 
 [record.payload]
 kind = "work"
-detail_md = '''Work c: ready.
+body_md = '''Work c: ready.
 '''
 work_state = "ready"
 work_intent = "build_capability"
@@ -795,7 +795,7 @@ title = "Work arm d"
 
 [record.payload]
 kind = "work"
-detail_md = '''Work d: ready.
+body_md = '''Work d: ready.
 '''
 work_state = "ready"
 work_intent = "build_system"
@@ -831,7 +831,7 @@ title = "Work arm e"
 
 [record.payload]
 kind = "work"
-detail_md = '''Work e: blocked.
+body_md = '''Work e: blocked.
 '''
 work_state = "blocked"
 work_intent = "establish_honest_refusal"
@@ -856,7 +856,7 @@ title = "Work arm f"
 
 [record.payload]
 kind = "work"
-detail_md = '''Work f: armed.
+body_md = '''Work f: armed.
 '''
 work_state = "armed"
 work_intent = "optimize"
@@ -897,7 +897,7 @@ title = "Work arm g"
 
 [record.payload]
 kind = "work"
-detail_md = '''Work g: deferred.
+body_md = '''Work g: deferred.
 '''
 work_state = "deferred"
 work_intent = "change_documentation"
@@ -923,7 +923,7 @@ title = "Work arm h"
 
 [record.payload]
 kind = "work"
-detail_md = '''Work h: waiting_external.
+body_md = '''Work h: waiting_external.
 '''
 work_state = "waiting_external"
 work_intent = "repair"
@@ -947,7 +947,7 @@ title = "Work arm i"
 
 [record.payload]
 kind = "work"
-detail_md = '''Work i: delegated.
+body_md = '''Work i: delegated.
 '''
 work_state = "delegated"
 work_intent = "add_regression"
@@ -965,7 +965,7 @@ title = "Work arm j"
 
 [record.payload]
 kind = "work"
-detail_md = '''Work j: ready.
+body_md = '''Work j: ready.
 '''
 work_state = "ready"
 work_intent = "build_capability"
@@ -1000,7 +1000,7 @@ title = "Matrix closeout a"
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = '''Matrix external closeout waiting.
+body_md = '''Matrix external closeout waiting.
 '''
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-issue"
@@ -1048,7 +1048,7 @@ title = "Matrix closeout b"
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = '''Matrix external closeout due.
+body_md = '''Matrix external closeout due.
 '''
 closeout_state = "due"
 upstream_owner_reference_id = "ref-issue"
@@ -1094,7 +1094,7 @@ title = "Matrix closeout c"
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = '''Matrix external closeout blocked.
+body_md = '''Matrix external closeout blocked.
 '''
 closeout_state = "blocked"
 upstream_owner_reference_id = "ref-issue"

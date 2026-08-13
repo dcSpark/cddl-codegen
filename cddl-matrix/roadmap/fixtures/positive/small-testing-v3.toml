@@ -20,7 +20,7 @@ title = "Small semantic testing owner"
 
 [record.payload]
 kind = "work"
-detail_md = '''Semantic testing detail.'''
+body_md = '''Semantic testing detail.'''
 work_state = "ready"
 work_intent = "build_system"
 work_kind = "infrastructure"

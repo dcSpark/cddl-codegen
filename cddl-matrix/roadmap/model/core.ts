@@ -83,9 +83,16 @@ export type Risk =
   | "cosmetic";
 export type PriorityBand = "critical" | "high" | "normal" | "low";
 
+/**
+ * The prose slots (Phase 4): a placed record renders exactly the concatenation of its present
+ * slot fields in declared descriptor order — `body_md` (the prose block) then `signal_md` (the
+ * trailing transition-signal prose, declared only on arms carrying a transition contract; the
+ * decoder rejects it elsewhere).  A record with no present slot is semantic-only.
+ */
 export interface SemanticPayloadBase {
   kind: string;
-  detail_md?: Uint8Array;
+  body_md?: Uint8Array;
+  signal_md?: Uint8Array;
 }
 
 interface WorkBase extends SemanticPayloadBase {

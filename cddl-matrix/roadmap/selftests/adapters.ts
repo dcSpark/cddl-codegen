@@ -1,5 +1,5 @@
 import { canonicalSemanticMarkdownFields } from "../adapters/engine.ts";
-import { PAYLOAD_KIND_ARMS, type PayloadArm } from "../payload_descriptors.ts";
+import { PAYLOAD_KIND_ARMS, presentProseSlots, type PayloadArm } from "../payload_descriptors.ts";
 import {
   MATRIX_ADAPTER,
   MATRIX_GENERATED_SLOT_BINDINGS,
@@ -95,6 +95,9 @@ function firstByteDifference(left: Uint8Array, right: Uint8Array): number {
   for (let index = 0; index < shared; index++) if (left[index] !== right[index]) return index;
   return left.byteLength === right.byteLength ? -1 : shared;
 }
+
+/** The record prose-slot logical paths, as the substitution/order oracles filter them. */
+const PROSE_SLOT_PATHS: readonly string[] = ["payload.body_md", "payload.signal_md"];
 
 function combineBytes(values: readonly Uint8Array[]): Uint8Array {
   const result = new Uint8Array(values.reduce((total, value) => total + value.byteLength, 0));
@@ -917,7 +920,7 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
       rendered: rendered.bytes,
     });
     // v3 has one render authority per record: every record's renderer runs exactly once, and the
-    // semantic-only ones (no section placement, no detail_md) are the ones that must yield zero
+    // semantic-only ones (no section placement, no prose slot) are the ones that must yield zero
     // bytes -- which validateCompletedChunks, not this count, is what proves.
     assert(rendered.semantic_calls === document.records.length, `${roadmap} a record did not reach the renderer exactly once`);
     const second = renderFixture(document, adapter, registryView(bundle, document, statusInputs));
@@ -945,7 +948,7 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
     assert(bytesEqual(normalBytes, adapter.renderSemantic(reversed, reversedSpy.consumer)), `${roadmap} rendering depends on payload property construction order`);
     assert(normal.calls.map((call) => call.path).join("|") === reversedSpy.calls.map((call) => call.path).join("|"), `${roadmap} field traversal order changed with object construction order`);
     const substitutions = new Map<string, Uint8Array>([
-      ["payload.detail_md", new TextEncoder().encode(`SUBSTITUTED ${roadmap.toUpperCase()} DETAIL\n`)],
+      ["payload.body_md", new TextEncoder().encode(`SUBSTITUTED ${roadmap.toUpperCase()} DETAIL\n`)],
     ]);
     const substitutionCalls: { path: string; input: Uint8Array }[] = [];
     const substituted = adapter.renderSemantic(record, {
@@ -957,7 +960,7 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
     assert(substitutionCalls.map((call) => call.path).join("|") === expectedOrder.join("|"), `${roadmap} substitution changed the exact FieldConsumer call sequence`);
     assert(substitutionCalls.every((call) => call.input === expectedInputs.get(call.path)), `${roadmap} substitution did not receive the exact decoded field input`);
     const expectedSubstitution = combineBytes(expectedOrder
-      .filter((logicalPath) => logicalPath === "payload.detail_md")
+      .filter((logicalPath) => PROSE_SLOT_PATHS.includes(logicalPath))
       .map((logicalPath) => substitutions.get(logicalPath) ?? expectedInputs.get(logicalPath)!));
     assert(bytesEqual(substituted, expectedSubstitution) && !bytesEqual(substituted, normalBytes), `${roadmap} renderer did not append and expose FieldConsumer substitute bytes in exact canonical output order`);
   }
@@ -986,7 +989,7 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
       const rendered = adapter.renderSemantic(record, calls.consumer);
       assert(calls.calls.map((call) => call.path).join("|") === expectedOrder.join("|"), `${context} renderer call order differs from frozen per-arm oracle`);
       assert(calls.calls.every((call) => call.bytes === expectedInputs.get(call.path)), `${context} renderer passed a noncanonical path-to-input byte mapping`);
-      const renderedPaths = expectedOrder.filter((logicalPath) => logicalPath === "payload.detail_md");
+      const renderedPaths = expectedOrder.filter((logicalPath) => PROSE_SLOT_PATHS.includes(logicalPath));
       assert(bytesEqual(rendered, combineBytes(renderedPaths.map((logicalPath) => expectedInputs.get(logicalPath)!))), `${context} output differs after exact order and input mapping validation`);
     }
   }
@@ -1151,7 +1154,8 @@ function testIndexesFromDecoded(bundle: AdapterFixtureBundle): void {
     const spy = fieldSpy();
     const rendered = adapter.renderSemantic(record, spy.consumer);
     assert(spy.calls.length === 3, `${roadmap} adapter did not consume all three decoded ready-work Markdown fields`);
-    assert(record.payload.detail_md !== undefined && bytesEqual(rendered, record.payload.detail_md), `${roadmap} canonical rendering is not exactly the decoded detail bytes`);
+    const slotConcat = combineBytes(presentProseSlots(record.payload).map((slot) => slot.bytes));
+    assert(slotConcat.byteLength !== 0 && bytesEqual(rendered, slotConcat), `${roadmap} canonical rendering is not exactly the decoded prose-slot bytes`);
   }
   testFloors(bundle);
   testGoldenRendering(bundle);

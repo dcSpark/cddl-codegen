@@ -15,6 +15,7 @@ import {
   armOfGroupValue,
   armOfPayload,
   fieldProperty,
+  proseSlotFields,
   type PayloadArm,
 } from "../payload_descriptors.ts";
 import type { RepoPath, RoadmapId, RoadmapName, SlotId } from "../model/core.ts";
@@ -129,19 +130,23 @@ export function canonicalSemanticMarkdownFields(
 }
 
 /**
- * Consume every decoded Markdown field exactly once. A record renders exactly its detail_md
- * bytes (the section plan guarantees placed records have one and unplaced records do not);
- * every other Markdown field is ledgered as consumed nonrendering content.
+ * Consume every decoded Markdown field exactly once. A record renders exactly the concatenation
+ * of its present prose-slot bytes in declared descriptor order (the section plan guarantees
+ * placed records have at least one slot and unplaced records have none); every other Markdown
+ * field is ledgered as consumed nonrendering content.
  */
 export function renderCanonicalSemanticRecord(
   record: SemanticRecord,
   fields: FieldConsumer,
 ): Uint8Array {
+  const slotPaths = new Set(
+    proseSlotFields(armOfPayload(record.payload)).map((entry) => `payload.${entry.name}`),
+  );
   const consumed = canonicalSemanticMarkdownFields(record.payload).map((entry) => {
     const bytes = fields.consume(entry.logical_path, entry.bytes);
     return { path: entry.logical_path, bytes };
   });
-  return concatenate(consumed.filter((entry) => entry.path === "payload.detail_md").map((entry) => entry.bytes));
+  return concatenate(consumed.filter((entry) => slotPaths.has(entry.path)).map((entry) => entry.bytes));
 }
 
 export interface RoadmapFloorSpec {

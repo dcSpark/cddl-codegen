@@ -271,21 +271,43 @@ function basePieces(completed: CompletedRenderIr): Piece[] {
   });
 }
 
-function transformWholePiece(
+/**
+ * Apply a layout transformation to the piece's LEADING authored field.  The bindings must tile the
+ * piece contiguously from byte zero (a record's prose slots and a single whole-field owner both
+ * do); the transformation rewrites the first binding's exact byte range — its expected prefix
+ * lives there — and every later binding shifts by the byte delta, keeping the per-field
+ * reachability ledger exact.  A single whole-piece binding is the degenerate case.
+ */
+function transformLeadingField(
   document: RoadmapDocument,
   piece: Piece,
   transformation: ContentTransformation,
   issues: RoadmapIssue[],
 ): Piece {
-  const binding = piece.bindings[0];
-  const transformed = transformedBytes(transformation, piece.bytes);
-  if (piece.bindings.length !== 1 || binding === undefined || binding.start !== 0 ||
-    binding.end !== piece.bytes.byteLength || transformed === undefined) {
+  const first = piece.bindings[0];
+  const contiguous = first !== undefined && first.start === 0 &&
+    piece.bindings.every((binding, index) =>
+      index === 0 || binding.start === piece.bindings[index - 1]!.end) &&
+    piece.bindings[piece.bindings.length - 1]!.end === piece.bytes.byteLength;
+  const transformed = first === undefined
+    ? undefined
+    : transformedBytes(transformation, piece.bytes.subarray(first.start, first.end));
+  if (first === undefined || !contiguous || transformed === undefined) {
     issues.push(issue(document, `projection.layout.${piece.owner.kind}.${piece.owner.id}`,
-      `layout transform ${transformation.kind} requires one exact whole-field source with its expected prefix`));
+      `layout transform ${transformation.kind} requires contiguous exact field sources with the expected prefix leading`));
     return piece;
   }
-  return { ...piece, bytes: transformed, bindings: [{ ...binding, transformation, start: 0, end: transformed.byteLength }] };
+  const delta = transformed.byteLength - (first.end - first.start);
+  return {
+    ...piece,
+    bytes: concatenate([transformed, piece.bytes.subarray(first.end)]),
+    bindings: [
+      { ...first, transformation, start: 0, end: transformed.byteLength },
+      ...piece.bindings.slice(1).map((binding) => ({
+        ...binding, start: binding.start + delta, end: binding.end + delta,
+      })),
+    ],
+  };
 }
 
 /**
@@ -350,9 +372,9 @@ function layoutPieces(document: RoadmapDocument, completed: CompletedRenderIr, i
     if (standingSections.length > 1) issues.push(issue(document, "projection.layout.standing-system",
       `testing layout requires at most one standing-system section, found ${standingSections.length}`));
     pieces = pieces.map((piece) => {
-      if (piece === nextSections[0]) return transformWholePiece(document, piece,
+      if (piece === nextSections[0]) return transformLeadingField(document, piece,
         { kind: "testing_next_heading" }, issues);
-      if (piece === standingSections[0]) return transformWholePiece(document, piece,
+      if (piece === standingSections[0]) return transformLeadingField(document, piece,
         { kind: "testing_standing_heading" }, issues);
       if (piece.owner.kind !== "record") return piece;
       const record = document.records.find((candidate) => candidate.id === piece.owner.id);
@@ -363,7 +385,7 @@ function layoutPieces(document: RoadmapDocument, completed: CompletedRenderIr, i
           `testing Next-work record requires exactly one ordinal alias, found ${aliases.length}`));
         return piece;
       }
-      return transformWholePiece(document, piece,
+      return transformLeadingField(document, piece,
         { kind: "testing_next_ordinal", ordinal: aliases[0]!.slice("Next work ".length) }, issues);
     });
     const ordinals = document.records.flatMap((record) => record.legacy_aliases?.flatMap((alias) =>

@@ -33,7 +33,7 @@ title = "Independent recurrence admission"
 
 [record.payload]
 kind = "testing_system_admission"
-detail_md = '''Independent recurrence admission.
+body_md = '''Independent recurrence admission.
 '''
 admission_kind = "independent_recurrence"
 claim_md = '''Two distinct incidents recur independently.'''
@@ -46,7 +46,7 @@ title = "Silent corruption admission"
 
 [record.payload]
 kind = "testing_system_admission"
-detail_md = '''Silent corruption admission.
+body_md = '''Silent corruption admission.
 '''
 admission_kind = "silent_corruption"
 claim_md = '''The evidence demonstrates a silent-corruption risk.'''
@@ -59,7 +59,7 @@ tags = ["coverage:admission_kind:independent_recurrence", "coverage:admission_ki
 
 [record.payload]
 kind = "work"
-detail_md = '''Pending-review migration owner.
+body_md = '''Pending-review migration owner.
 '''
 work_state = "ready"
 work_intent = "build_system"
@@ -76,7 +76,7 @@ title = "Testing semantic cost"
 
 [record.payload]
 kind = "testing_cost"
-detail_md = '''## Testing semantic cost
+body_md = '''## Testing semantic cost
 
 Live fixture timing registry.
 '''
@@ -92,7 +92,7 @@ title = "Review rule control"
 
 [record.payload]
 kind = "control"
-detail_md = '''Review-rule control.
+body_md = '''Review-rule control.
 '''
 control_kind = "review_rule"
 control_state = "live"
@@ -106,7 +106,7 @@ title = "Historical cost"
 
 [record.payload]
 kind = "testing_cost"
-detail_md = '''Historical cost observation.
+body_md = '''Historical cost observation.
 '''
 cost_posture = "historical_observation"
 unit = "milliseconds"
@@ -123,7 +123,7 @@ title = "Gate evidence"
 
 [record.payload]
 kind = "evidence"
-detail_md = '''Live gate evidence.
+body_md = '''Live gate evidence.
 '''
 evidence_kind = "gate"
 claim_md = '''A non-stub synthetic gate protects this fixture.'''
@@ -142,7 +142,7 @@ title = "Attributed incident"
 
 [record.payload]
 kind = "testing_incident"
-detail_md = '''Attributed incident.
+body_md = '''Attributed incident.
 '''
 incident_posture = "attributed"
 signature_md = '''Synthetic attributed signature.'''
@@ -156,7 +156,7 @@ title = "Historical incident"
 
 [record.payload]
 kind = "testing_incident"
-detail_md = '''Historical incident.
+body_md = '''Historical incident.
 '''
 incident_posture = "historical"
 signature_md = '''Synthetic historical signature.'''
@@ -171,7 +171,7 @@ title = "Live incident"
 
 [record.payload]
 kind = "testing_incident"
-detail_md = '''Live incident.
+body_md = '''Live incident.
 '''
 incident_posture = "live"
 signature_md = '''Synthetic live signature.'''
@@ -183,7 +183,7 @@ title = "Attributed operational watch"
 
 [record.payload]
 kind = "testing_operational_watch"
-detail_md = '''Attributed operational watch.
+body_md = '''Attributed operational watch.
 '''
 watch_state = "attributed"
 signature_md = '''Synthetic attributed watch signature.'''
@@ -215,7 +215,7 @@ title = "Retire-pending operational watch"
 
 [record.payload]
 kind = "testing_operational_watch"
-detail_md = '''Retire-pending operational watch.
+body_md = '''Retire-pending operational watch.
 '''
 watch_state = "retire_pending"
 signature_md = '''Synthetic retire-pending watch signature.'''
@@ -248,7 +248,7 @@ title = "Watching operational watch"
 
 [record.payload]
 kind = "testing_operational_watch"
-detail_md = '''Watching operational watch.
+body_md = '''Watching operational watch.
 '''
 watch_state = "watching"
 signature_md = '''Synthetic watching signature.'''
@@ -273,7 +273,7 @@ title = "Ready missing-system task"
 
 [record.payload]
 kind = "work"
-detail_md = '''Ready missing-system task.
+body_md = '''Ready missing-system task.
 '''
 work_state = "ready"
 work_intent = "build_system"

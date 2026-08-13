@@ -59,8 +59,9 @@ export interface CommonEnvelope {
 }
 
 /**
- * A record renders exactly when `payload.detail_md` is present (its one rendering field) and it is
- * listed in a section's `entries`. The section-plan resolver enforces both directions.
+ * A record renders exactly when at least one of its prose slots (`payload.body_md` /
+ * `payload.signal_md`) is present and it is listed in a section's `entries`. The section-plan
+ * resolver enforces both directions.
  */
 export interface SemanticAuthorityRecord<P extends SemanticPayload = SemanticPayload>
   extends CommonEnvelope {

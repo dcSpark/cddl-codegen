@@ -371,7 +371,7 @@ function temporalTestingPorts(
   const payload = kind === "cadence"
     ? `[record.payload]
 kind = "work"
-detail_md = '''Semantic testing detail.'''
+body_md = '''Semantic testing detail.'''
 work_state = "armed"
 work_intent = "build_system"
 work_kind = "infrastructure"
@@ -411,7 +411,7 @@ boundary_md = '''It covers only the temporal fixture.'''
 `
     : `[record.payload]
 kind = "evidence"
-detail_md = '''Semantic testing detail.'''
+body_md = '''Semantic testing detail.'''
 evidence_kind = "external_commit"
 claim_md = '''The fixture commit is point-in-time evidence.'''
 evidence_verdict = "confirmed"

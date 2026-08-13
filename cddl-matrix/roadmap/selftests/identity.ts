@@ -991,7 +991,7 @@ legacy_aliases = ["Legacy ${String.fromCharCode(90 - index)}"]
 
 [record.payload]
 kind = "work"
-detail_md = """R"""
+body_md = """R"""
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"

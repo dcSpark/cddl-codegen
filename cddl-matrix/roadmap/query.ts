@@ -205,11 +205,11 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
       const costs = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] =>
         payload.kind !== "testing_cost"
           ? []
-          : [{ roadmap, id, ...Object.fromEntries(armQueryEntries(payload, ["detail_md"])) }]);
+          : [{ roadmap, id, ...Object.fromEntries(armQueryEntries(payload)) }]);
       const externalCloseouts = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] =>
         payload.kind !== "matrix_external_closeout"
           ? []
-          : [{ roadmap, id, ...Object.fromEntries(armQueryEntries(payload, ["detail_md"])) }]);
+          : [{ roadmap, id, ...Object.fromEntries(armQueryEntries(payload)) }]);
       const ready = rows.filter((row) => row.work_state === "ready");
       const armed = rows.filter((row) => row.work_state === "armed");
       const relations = prepared.flatMap((item) => item.document.relations);
@@ -248,7 +248,7 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
       const rows = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] =>
         payload.kind !== "decision" ? [] : [{ roadmap, id, decision_state: payload.decision_state,
           permanence: payload.decision_state === "pending" ? "pending" : payload.permanence,
-          ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "decision_state", "permanence"])) }]);
+          ...Object.fromEntries(armQueryEntries(payload, ["decision_state", "permanence"])) }]);
       return { evaluation_as_of, decisions: groupQueryRows(rows, (row) => String(row.decision_state)) };
     }
     case "watches":
@@ -256,22 +256,22 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
         live: payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {
           if (payload.kind === "testing_operational_watch" && payload.watch_state === "watching") return [{
             roadmap, id, payload_kind: payload.kind,
-            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "watch_state"])),
+            ...Object.fromEntries(armQueryEntries(payload, ["watch_state"])),
           }];
           if (payload.kind === "testing_incident" && payload.incident_posture === "live") return [{
             roadmap, id, payload_kind: payload.kind,
-            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "incident_posture"])),
+            ...Object.fromEntries(armQueryEntries(payload, ["incident_posture"])),
           }];
           return [];
         }),
         attributed_history: payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {
           if (payload.kind === "testing_operational_watch" && payload.watch_state !== "watching") return [{
             roadmap, id, payload_kind: payload.kind, posture: payload.watch_state,
-            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "watch_state"])),
+            ...Object.fromEntries(armQueryEntries(payload, ["watch_state"])),
           }];
           if (payload.kind === "testing_incident" && payload.incident_posture !== "live") return [{
             roadmap, id, payload_kind: payload.kind, posture: payload.incident_posture,
-            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "incident_posture"])),
+            ...Object.fromEntries(armQueryEntries(payload, ["incident_posture"])),
           }];
           return [];
         }),

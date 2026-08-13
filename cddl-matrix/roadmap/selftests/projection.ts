@@ -401,7 +401,7 @@ function testSectionPlanCase(id: RequiredProjectionSelfTestCaseId): SelfTestResu
     case "section_entry_non_rendering_record": {
       const record = document.records[0]!;
       if (record.payload.kind !== "work") fail("section-plan vector payload drifted");
-      const { detail_md: _detail, ...payload } = record.payload;
+      const { body_md: _detail, ...payload } = record.payload;
       document = { ...document, records: [{ ...record, payload: payload as SemanticPayload }] };
       expected = "E-SECTION-KIND";
       break;
@@ -524,7 +524,7 @@ function semanticFixture(
       title: "Work",
       payload: {
         kind: "work",
-        detail_md: bytes("DET"),
+        body_md: bytes("DET"),
         work_state: "ready",
         work_intent: "repair",
         work_kind: "feature",
@@ -555,10 +555,10 @@ function completeSemantic(document: RoadmapDocument, calls: { value: number }): 
     renderSemanticRecord(record, fields) {
       calls.value++;
       const payload = record.payload;
-      if (payload.kind !== "work" || payload.work_state !== "ready" || payload.detail_md === undefined ||
+      if (payload.kind !== "work" || payload.work_state !== "ready" || payload.body_md === undefined ||
         payload.acceptance_md === undefined) return new Uint8Array();
-      const first = fields.consume("payload.detail_md", payload.detail_md);
-      if (mode === "duplicate") fields.consume("payload.detail_md", payload.detail_md);
+      const first = fields.consume("payload.body_md", payload.body_md);
+      if (mode === "duplicate") fields.consume("payload.body_md", payload.body_md);
       if (mode !== "missing") fields.consume("payload.acceptance_md", payload.acceptance_md);
       fields.consume("payload.priority_rationale_md", payload.priority_rationale_md);
       return new Uint8Array(first);
@@ -583,7 +583,7 @@ function semanticOnlyCompletion(): {
   const record = exact.document.records[0];
   if (record === undefined) fail("unplaced render vector lacks a record");
   if (record.payload.kind !== "work") fail("unplaced render vector payload drifted");
-  const { detail_md: _detail, ...payload } = record.payload;
+  const { body_md: _detail, ...payload } = record.payload;
   const unplacedRecord = { ...record, payload: payload as SemanticPayload };
   const document: RoadmapDocument = {
     ...exact.document,

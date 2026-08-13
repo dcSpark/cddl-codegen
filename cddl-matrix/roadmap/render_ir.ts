@@ -9,6 +9,7 @@ import type {
   SemanticPayload,
 } from "./model/documents.ts";
 import { bytesEqual, codePointSort } from "./kernel.ts";
+import { presentProseSlots } from "./payload_descriptors.ts";
 import { documentSlots, planSectionBody, type SectionSlotPlan } from "./slots.ts";
 
 export interface RenderChunk {
@@ -645,23 +646,32 @@ export function buildExpectedChunks(
       const trackedResult = tracked.finish();
       const ledger = trackedResult.ledger;
       fieldConsumption.push(Object.freeze(ledger));
-      const detail = node.value.payload.detail_md;
-      if (detail === undefined || rendered.byteLength === 0 || !bytesEqual(rendered, detail)) {
+      const slots = presentProseSlots(node.value.payload);
+      const slotTotal = slots.reduce((sum, slot) => sum + slot.bytes.byteLength, 0);
+      const slotConcat = concatBytes(slots.map((slot) => slot.bytes), slotTotal);
+      if (
+        slots.length === 0 || rendered.byteLength === 0 ||
+        slots.some((slot) => slot.bytes.byteLength === 0) || !bytesEqual(rendered, slotConcat)
+      ) {
         buildIssues.push(issue(
           document,
           "E-RENDER-AUTHORITY",
           `record[${JSON.stringify(node.id)}]`,
-          "placed record output must be exactly its non-empty detail_md bytes",
+          "placed record output must be exactly its non-empty prose-slot bytes in declared order",
         ));
       } else {
-        projectedFieldSegments.push(Object.freeze({
-          owner_kind: "record",
-          owner_id: node.id,
-          logical_path: "payload.detail_md",
-          start_in_chunk: 0,
-          end_in_chunk: rendered.byteLength,
-          bytes: cloneBytes(rendered),
-        }));
+        let slotOffset = 0;
+        for (const slot of slots) {
+          projectedFieldSegments.push(Object.freeze({
+            owner_kind: "record",
+            owner_id: node.id,
+            logical_path: `payload.${slot.name}`,
+            start_in_chunk: slotOffset,
+            end_in_chunk: slotOffset + slot.bytes.byteLength,
+            bytes: cloneBytes(slot.bytes),
+          }));
+          slotOffset += slot.bytes.byteLength;
+        }
       }
       chunks.push(immutableChunk({
         plan_index: op.plan_index,
@@ -923,7 +933,7 @@ export function validateCompletedChunks(
     );
     const plan = op.node.kind === "section" ? sectionPlans.get(op.plan_index) : undefined;
     const expectedPaths = op.node.kind === "record"
-      ? ["payload.detail_md"]
+      ? presentProseSlots(op.node.value.payload).map((slot) => `payload.${slot.name}`)
       : nonEmptyRunCount(op, plan).map(() => "body_md");
     const actualPaths = segments.map((segment) => segment.logical_path);
     const ledger = completed.field_consumption.filter((entry) =>
@@ -934,13 +944,14 @@ export function validateCompletedChunks(
         document,
         "E-FIELD-CONSUMPTION",
         logicalPath,
-        "projected fields are not in exact bijection with the owner's one rendering field",
+        "projected fields are not in exact bijection with the owner's rendering fields",
       ));
     }
     const chunkIndex = ops.indexOf(op);
     const chunk = completed.chunks[chunkIndex];
     // A section's chunk tiles as authored prose runs plus the resolved bytes of the slots its
-    // prose places; every other owner tiles as its single rendering field.
+    // prose places; a record's chunk tiles as its present prose slots in declared order; every
+    // other owner tiles as its single rendering field.
     const tiles = [
       ...segments.map((segment) => ({
         logical_path: segment.logical_path,

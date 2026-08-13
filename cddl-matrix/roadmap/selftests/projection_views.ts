@@ -29,7 +29,7 @@ function fixture(): { document: RoadmapDocumentV3 } {
     parts: [],
     records: [{ id: recordId, title: "Visible record",
       legacy_aliases: ["Legacy item 1"],
-      payload: { kind: "work", detail_md: record, work_state: "ready", work_intent: "build_system",
+      payload: { kind: "work", body_md: record, work_state: "ready", work_intent: "build_system",
         work_kind: "infrastructure", risk: "false_pass_or_red",
         acceptance_md: bytes("Acceptance detail.\n"), priority_rationale_md: bytes("Priority detail.\n") } }],
     relations: [{ source: recordId, kind: "related", target: recordId, note_md: bytes("Relation audit note.\n") }],

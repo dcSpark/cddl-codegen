@@ -85,7 +85,7 @@ title = "Fixture record"
 
 [record.payload]
 kind = "work"
-detail_md = '''R
+body_md = '''R
 '''
 work_state = "ready"
 work_intent = "build_capability"
@@ -109,11 +109,11 @@ function minimalDocument(): RoadmapDocumentV3 {
  * arms. Both subordinate kinds declare the one disposition their kind permits.
  */
 function subordinateRoadmap(): string {
-  return `[document]\nschema_version = 3\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\n\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\nbody_md = '''S{{slot:status}}\n'''\nentries = [\n  "matrix.fixture-record",\n  "part",\n]\n\n[section.slots.status]\nbinding = "fixture-status"\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\n\n[record.payload]\nkind = "work"\ndetail_md = '''R\n'''\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nacceptance_md = '''Accepted.\n'''\npriority_rationale_md = '''Normal.\n'''\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\nbody_md = '''P\n'''\n`;
+  return `[document]\nschema_version = 3\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\n\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\nbody_md = '''S{{slot:status}}\n'''\nentries = [\n  "matrix.fixture-record",\n  "part",\n]\n\n[section.slots.status]\nbinding = "fixture-status"\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\n\n[record.payload]\nkind = "work"\nbody_md = '''R\n'''\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nacceptance_md = '''Accepted.\n'''\npriority_rationale_md = '''Normal.\n'''\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\nbody_md = '''P\n'''\n`;
 }
 
 /**
- * The pending-review posture is authored on an unplaced (non-rendering) record: no detail_md and
+ * The pending-review posture is authored on an unplaced (non-rendering) record: no body_md and
  * no section placement. This synthetic source is the exact-key corpus target for that row.
  */
 function pendingReviewRoadmap(): Uint8Array {
@@ -708,7 +708,7 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       return;
     }
     case "strict_unknown_kind": expectFailure(() => decodePayload('kind = "unknown"\n', "matrix"), ["E-SCHEMA-ENUM"]); return;
-    case "strict_missing_discriminator": expectFailure(() => decodePayload('detail_md = """Missing."""\n', "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;
+    case "strict_missing_discriminator": expectFailure(() => decodePayload('body_md = """Missing."""\n', "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;
     case "strict_generic_state_rejected": expectFailure(() => decodePayload(`${READY}state = "ready"\n`, "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]); return;
     case "strict_generic_disposition_rejected": expectFailure(() => decodePayload(`${READY}disposition = "ready"\n`, "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]); return;
     case "missing_section_entries": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap()).replace(/entries = \[\n(?:.*\n)*?\]\n/u, "")), "<missing-entries>", "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;

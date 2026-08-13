@@ -3,7 +3,7 @@
  * places. Sections own presentation order outright — there is no separate placement table to keep
  * in sync with them — and membership is total in both directions:
  *
- *   - every record with renderable prose (`payload.detail_md`) is listed exactly once;
+ *   - every record with renderable prose (a present prose slot) is listed exactly once;
  *   - a record without it is listed nowhere (listing one is an error, not a silent no-op);
  *   - every declared part is listed exactly once;
  *   - every listed ID resolves to a declared record or part.
@@ -16,6 +16,7 @@ import type {
   RoadmapDocument,
   Section,
 } from "./model/documents.ts";
+import { presentProseSlots } from "./payload_descriptors.ts";
 
 export type RenderNode =
   | { kind: "section"; id: string; value: Section }
@@ -48,7 +49,7 @@ function issue(
 }
 
 function renderable(node: RenderNode): boolean {
-  return !(node.kind === "record" && node.value.payload.detail_md === undefined);
+  return !(node.kind === "record" && presentProseSlots(node.value.payload).length === 0);
 }
 
 function entryPath(sectionId: string, index: number): string {
@@ -123,7 +124,7 @@ export function resolveSectionPlan(document: RoadmapDocument): SectionPlan {
           document,
           "E-SECTION-KIND",
           path,
-          `record ${JSON.stringify(entryId)} has no detail_md and cannot be a section entry`,
+          `record ${JSON.stringify(entryId)} has no prose slot and cannot be a section entry`,
         ));
         continue;
       }
