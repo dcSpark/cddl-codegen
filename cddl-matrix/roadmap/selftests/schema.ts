@@ -261,6 +261,7 @@ function fixtureIdentity(context: SelfTestContext): void {
     ["positive/mixed-matrix-v1.toml", "matrix"], ["positive/mixed-testing-v1.toml", "testing"],
     ["irregular/matrix-v0.toml", "matrix"], ["irregular/testing-v0.toml", "testing"],
     ["all-fields/matrix-v1.toml", "matrix"], ["all-fields/testing-v1.toml", "testing"],
+    ["all-fields/matrix-v2.toml", "matrix"], ["all-fields/testing-v2.toml", "testing"],
   ];
   for (const [path, roadmap] of paths) {
     const bytes = readFixture(context, path);

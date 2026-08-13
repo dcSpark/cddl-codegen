@@ -323,7 +323,7 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
           if (row.adapter !== "codec" || typeof row.expected !== "string" || row.schema_version !== undefined || (row.projection_eof !== "lf" && row.projection_eof !== "none")) issues.push(`${String(id)} violates codec binding rules`);
         } else if (
           (row.adapter !== "matrix" && row.adapter !== "testing") || typeof row.expected !== "string" ||
-          (row.schema_version !== 0 && row.schema_version !== 1) || (row.projection_eof !== "lf" && row.projection_eof !== "none")
+          (row.schema_version !== 0 && row.schema_version !== 1 && row.schema_version !== 2) || (row.projection_eof !== "lf" && row.projection_eof !== "none")
         ) issues.push(`${String(id)} violates roadmap fixture binding rules`);
         rows.push(row as unknown as import("../selftest.ts").SingleFileFixtureCaseRow);
       }
@@ -351,6 +351,7 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
     "fixture_codec_leading_eof", "fixture_codec_no_eof", "fixture_codec_controls",
     "fixture_minimal_matrix_v0", "fixture_minimal_testing_v0", "fixture_mixed_matrix_v1", "fixture_mixed_testing_v1",
     "fixture_all_fields_matrix_v1", "fixture_all_fields_testing_v1",
+    "fixture_all_fields_matrix_v2", "fixture_all_fields_testing_v2",
     "fixture_irregular_matrix_v0", "fixture_irregular_testing_v0", "fixture_status_compat",
   ];
   if (JSON.stringify(rows.map((row) => row.id)) !== JSON.stringify(expectedIds)) issues.push("fixture case IDs/order differ from the frozen row registry");
@@ -368,6 +369,8 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
     "fixture_mixed_testing_v1|positive|positive/mixed-testing-v1.toml|positive/mixed-testing-v1.expected.md|testing|1|none",
     "fixture_all_fields_matrix_v1|all_fields|all-fields/matrix-v1.toml|all-fields/matrix-v1.expected.md|matrix|1|lf",
     "fixture_all_fields_testing_v1|all_fields|all-fields/testing-v1.toml|all-fields/testing-v1.expected.md|testing|1|lf",
+    "fixture_all_fields_matrix_v2|all_fields|all-fields/matrix-v2.toml|all-fields/matrix-v2.expected.md|matrix|2|lf",
+    "fixture_all_fields_testing_v2|all_fields|all-fields/testing-v2.toml|all-fields/testing-v2.expected.md|testing|2|lf",
     "fixture_irregular_matrix_v0|irregular|irregular/matrix-v0.toml|irregular/matrix-v0.expected.md|matrix|0|lf",
     "fixture_irregular_testing_v0|irregular|irregular/testing-v0.toml|irregular/testing-v0.expected.md|testing|0|none",
   ];
@@ -473,9 +476,9 @@ function executeFixtureCase(id: RequiredFixtureSelfTestCaseId, context: SelfTest
     const decoded = registry(context);
     const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
     assert(decoded.issues.length === 0, decoded.issues.join("; "));
-    assert(decoded.rows.length === 12, `fixture registry has ${decoded.rows.length} rows instead of 12`);
-    assert(decoded.declared_paths.length === 31, `fixture registry binds ${decoded.declared_paths.length} files instead of 31`);
-    assert(inventory.length === 32, `fixture inventory has ${inventory.length} files including cases.toml instead of 32`);
+    assert(decoded.rows.length === 14, `fixture registry has ${decoded.rows.length} rows instead of 14`);
+    assert(decoded.declared_paths.length === 35, `fixture registry binds ${decoded.declared_paths.length} files instead of 35`);
+    assert(inventory.length === 36, `fixture inventory has ${inventory.length} files including cases.toml instead of 36`);
   } else if (id === "fixture_registry_missing_file") {
     const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
     const decoded = registry(context);

@@ -87,6 +87,26 @@ projection_eof = "lf"
 
 [[case]]
 kind = "single_file"
+id = "fixture_all_fields_matrix_v2"
+class = "all_fields"
+input = "all-fields/matrix-v2.toml"
+expected = "all-fields/matrix-v2.expected.md"
+adapter = "matrix"
+schema_version = 2
+projection_eof = "lf"
+
+[[case]]
+kind = "single_file"
+id = "fixture_all_fields_testing_v2"
+class = "all_fields"
+input = "all-fields/testing-v2.toml"
+expected = "all-fields/testing-v2.expected.md"
+adapter = "testing"
+schema_version = 2
+projection_eof = "lf"
+
+[[case]]
+kind = "single_file"
 id = "fixture_irregular_matrix_v0"
 class = "irregular"
 input = "irregular/matrix-v0.toml"

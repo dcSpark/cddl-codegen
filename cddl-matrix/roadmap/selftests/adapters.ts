@@ -83,8 +83,12 @@ const FIXTURE_ROOT = "cddl-matrix/roadmap/fixtures" as RepoPath;
 const FIXTURE_PATHS = Object.freeze([
   "all-fields/matrix-v1.expected.md",
   "all-fields/matrix-v1.toml",
+  "all-fields/matrix-v2.expected.md",
+  "all-fields/matrix-v2.toml",
   "all-fields/testing-v1.expected.md",
   "all-fields/testing-v1.toml",
+  "all-fields/testing-v2.expected.md",
+  "all-fields/testing-v2.toml",
   "positive/mixed-matrix-v1.expected.md",
   "positive/mixed-matrix-v1.toml",
   "positive/mixed-testing-v1.expected.md",
@@ -95,7 +99,7 @@ const FIXTURE_PATHS = Object.freeze([
 type AdapterFixturePath = (typeof FIXTURE_PATHS)[number];
 
 export interface AdapterFixtureBundle {
-  readonly file_count: 10;
+  readonly file_count: 14;
 }
 
 const fixtureFiles = new WeakMap<object, ReadonlyMap<AdapterFixturePath, Uint8Array>>();
@@ -136,14 +140,14 @@ function combineBytes(values: readonly Uint8Array[]): Uint8Array {
 export function createAdapterFixtureBundle(
   files: ReadonlyMap<AdapterFixturePath, Uint8Array>,
 ): AdapterFixtureBundle {
-  assert(files.size === FIXTURE_PATHS.length, "adapter fixture bundle must contain exactly ten files");
+  assert(files.size === FIXTURE_PATHS.length, "adapter fixture bundle must contain exactly fourteen files");
   const snapshots = new Map<AdapterFixturePath, Uint8Array>();
   for (const path of FIXTURE_PATHS) {
     const value = files.get(path);
     assert(value !== undefined && value.byteLength > 0, `adapter fixture bundle is missing ${path}`);
     snapshots.set(path, new Uint8Array(value));
   }
-  const bundle: AdapterFixtureBundle = Object.freeze({ file_count: 10 });
+  const bundle: AdapterFixtureBundle = Object.freeze({ file_count: 14 });
   fixtureFiles.set(bundle, snapshots);
   return bundle;
 }
@@ -1612,6 +1616,8 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
     ["testing", "positive/mixed-testing-v1.toml", "positive/mixed-testing-v1.expected.md", TESTING_ADAPTER, statusCompatibilityInputs(), 96],
     ["matrix", "all-fields/matrix-v1.toml", "all-fields/matrix-v1.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 3051],
     ["testing", "all-fields/testing-v1.toml", "all-fields/testing-v1.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 697],
+    ["matrix", "all-fields/matrix-v2.toml", "all-fields/matrix-v2.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 1737],
+    ["testing", "all-fields/testing-v2.toml", "all-fields/testing-v2.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 511],
   ] as const) {
     const document = decoded(bundle, sourcePath, roadmap);
     const snapshots = markdownSnapshots(document);
@@ -1674,6 +1680,8 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
   for (const [roadmap, path, adapter] of [
     ["matrix", "all-fields/matrix-v1.toml", MATRIX_ADAPTER],
     ["testing", "all-fields/testing-v1.toml", TESTING_ADAPTER],
+    ["matrix", "all-fields/matrix-v2.toml", MATRIX_ADAPTER],
+    ["testing", "all-fields/testing-v2.toml", TESTING_ADAPTER],
   ] as const) {
     const document = decoded(bundle, path, roadmap);
     const built = buildRoadmapIndexes(document);
