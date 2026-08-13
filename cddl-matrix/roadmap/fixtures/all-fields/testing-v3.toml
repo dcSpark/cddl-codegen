@@ -18,6 +18,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_system_admission"
+detail_md = """Independent recurrence admission.
+"""
 admission_kind = "independent_recurrence"
 claim_md = """Two distinct incidents recur independently."""
 evidence_ids = ["testing.fixture-evidence-gate"]
@@ -30,6 +32,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_system_admission"
+detail_md = """Silent corruption admission.
+"""
 admission_kind = "silent_corruption"
 claim_md = """The evidence demonstrates a silent-corruption risk."""
 evidence_ids = ["testing.fixture-evidence-gate"]
@@ -42,6 +46,8 @@ tags = ["coverage:admission_kind:independent_recurrence", "coverage:admission_ki
 
 [record.payload]
 kind = "work"
+detail_md = """Pending-review migration owner.
+"""
 work_state = "ready"
 work_intent = "build_system"
 work_kind = "infrastructure"
@@ -58,6 +64,10 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_cost"
+detail_md = """## Testing semantic cost
+
+Live fixture timing registry.
+"""
 cost_posture = "live_registry"
 unit = "milliseconds"
 scope_md = """Live fixture timing registry.
@@ -71,6 +81,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "control"
+detail_md = """Review-rule control.
+"""
 control_kind = "review_rule"
 control_state = "live"
 reference_ids = ["control-review-heading"]
@@ -84,6 +96,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_cost"
+detail_md = """Historical cost observation.
+"""
 cost_posture = "historical_observation"
 unit = "milliseconds"
 scope_md = """One synthetic fixture execution."""
@@ -100,6 +114,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
+detail_md = """Live gate evidence.
+"""
 evidence_kind = "gate"
 claim_md = """A non-stub synthetic gate protects this fixture."""
 evidence_verdict = "confirmed"
@@ -118,6 +134,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_incident"
+detail_md = """Attributed incident.
+"""
 incident_posture = "attributed"
 signature_md = """Synthetic attributed signature."""
 evidence_ids = ["testing.fixture-evidence-gate"]
@@ -131,6 +149,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_incident"
+detail_md = """Historical incident.
+"""
 incident_posture = "historical"
 signature_md = """Synthetic historical signature."""
 evidence_ids = ["testing.fixture-evidence-gate"]
@@ -145,6 +165,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_incident"
+detail_md = """Live incident.
+"""
 incident_posture = "live"
 signature_md = """Synthetic live signature."""
 evidence_ids = ["testing.fixture-evidence-gate"]
@@ -156,6 +178,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_operational_watch"
+detail_md = """Attributed operational watch.
+"""
 watch_state = "attributed"
 signature_md = """Synthetic attributed watch signature."""
 attribution_md = """The fixture attributes the watch."""
@@ -175,6 +199,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_operational_watch"
+detail_md = """Retire-pending operational watch.
+"""
 watch_state = "retire_pending"
 signature_md = """Synthetic retire-pending watch signature."""
 attribution_md = """The fixture attributes the retired watch."""
@@ -195,6 +221,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "testing_operational_watch"
+detail_md = """Watching operational watch.
+"""
 watch_state = "watching"
 signature_md = """Synthetic watching signature."""
 response_md = """Capture the failure before responding."""
@@ -212,6 +240,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
+detail_md = """Watch escalation signal.
+"""
 transition_kind = "watch_escalation"
 failure_signature_md = """The synthetic watch signature recurs."""
 capture_procedure_md = """Capture the exact fixture output."""
@@ -227,6 +257,8 @@ projection_group = "fixture"
 
 [record.payload]
 kind = "work"
+detail_md = """Ready missing-system task.
+"""
 work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
@@ -239,6 +271,66 @@ admission_ids = ["testing.fixture-admission-independent"]
 [[manifest.entry]]
 kind = "section"
 section_id = "fixture"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-task-ready"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-signal-escalation"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-operational-watching"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-operational-retire-pending"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-operational-attributed"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-incident-live"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-incident-historical"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-incident-attributed"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-evidence-gate"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-cost-historical"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-control-review"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-all-fields-semantic"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-all-fields-raw"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-admission-silent"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-admission-independent"
 
 [[reference]]
 id = "semantic-cost-gate"

@@ -373,7 +373,7 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     ],
   },
   id_use_roles: {
-    manifest_record: 1,
+    manifest_record: 53,
     parent_record: 1,
     provider: 53,
     reference_source: 12,
@@ -496,6 +496,7 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     ],
   },
   id_use_roles: {
+    manifest_record: 15,
     provider: 15,
     reference_source: 9,
     semantic_target: 12,
