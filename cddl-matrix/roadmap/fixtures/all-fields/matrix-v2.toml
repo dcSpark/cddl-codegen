@@ -1276,8 +1276,23 @@ label = "Axis a"
 authority_reference_id = "ref-spec"
 
 [[record.payload.axis.value]]
+id = "matrix.fixture-option-a-five"
+label = "Value a five"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-a-four"
+label = "Value a four"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
 id = "matrix.fixture-option-a-one"
 label = "Value a one"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-a-three"
+label = "Value a three"
 source_reference_id = "ref-spec"
 
 [[record.payload.axis.value]]
@@ -1324,7 +1339,7 @@ affected_faces = ["rust"]
 
 [[record.payload.cell.coordinate]]
 axis_id = "matrix.fixture-dimension-a"
-value_id = "matrix.fixture-option-a-one"
+value_id = "matrix.fixture-option-a-three"
 
 [[record.payload.cell]]
 id = "matrix.fixture-coordinate-d"
@@ -1335,7 +1350,7 @@ affected_faces = ["rust"]
 
 [[record.payload.cell.coordinate]]
 axis_id = "matrix.fixture-dimension-a"
-value_id = "matrix.fixture-option-a-two"
+value_id = "matrix.fixture-option-a-four"
 
 [[record.payload.exclusion]]
 id = "matrix.fixture-exclusion-a"
@@ -1348,7 +1363,7 @@ liveness_reference_id = "ref-gate"
 
 [[record.payload.exclusion.coordinate]]
 axis_id = "matrix.fixture-dimension-a"
-value_id = "matrix.fixture-option-a-one"
+value_id = "matrix.fixture-option-a-five"
 
 [[record.source_replacement]]
 span_id = "record-fixture-family-a"
@@ -1373,7 +1388,7 @@ goal_md = """Enumerate the declared synthetic coordinate space.
 """
 boundary_md = """Only the fixture axes and profiles are in scope.
 """
-work_ids = ["matrix.fixture-task-a"]
+work_ids = []
 authority_kind = "grammar"
 authority_reference_id = "ref-spec"
 derivation_md = """Derive coordinates from the declared authority.
@@ -1397,6 +1412,11 @@ authority_reference_id = "ref-spec"
 [[record.payload.axis.value]]
 id = "matrix.fixture-option-b-one"
 label = "Value b one"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-b-two"
+label = "Value b two"
 source_reference_id = "ref-spec"
 
 [[record.payload.evidence_requirement]]
@@ -1429,7 +1449,7 @@ liveness_reference_id = "ref-gate"
 
 [[record.payload.exclusion.coordinate]]
 axis_id = "matrix.fixture-dimension-b"
-value_id = "matrix.fixture-option-b-one"
+value_id = "matrix.fixture-option-b-two"
 
 [[record.source_replacement]]
 span_id = "record-fixture-family-b"
@@ -1454,7 +1474,7 @@ goal_md = """Enumerate the declared synthetic coordinate space.
 """
 boundary_md = """Only the fixture axes and profiles are in scope.
 """
-work_ids = ["matrix.fixture-task-a"]
+work_ids = []
 authority_kind = "registry"
 authority_reference_id = "ref-feature"
 derivation_md = """Derive coordinates from the declared authority.
@@ -1476,6 +1496,11 @@ authority_reference_id = "ref-spec"
 [[record.payload.axis.value]]
 id = "matrix.fixture-option-c-one"
 label = "Value c one"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-c-two"
+label = "Value c two"
 source_reference_id = "ref-spec"
 
 [[record.payload.evidence_requirement]]
@@ -1508,7 +1533,7 @@ liveness_reference_id = "ref-gate"
 
 [[record.payload.exclusion.coordinate]]
 axis_id = "matrix.fixture-dimension-c"
-value_id = "matrix.fixture-option-c-one"
+value_id = "matrix.fixture-option-c-two"
 
 [[record.source_replacement]]
 span_id = "record-fixture-family-c"
@@ -1533,7 +1558,7 @@ goal_md = """Enumerate the declared synthetic coordinate space.
 """
 boundary_md = """Only the fixture axes and profiles are in scope.
 """
-work_ids = ["matrix.fixture-task-a"]
+work_ids = []
 authority_kind = "reviewed_relation"
 authority_reference_id = "ref-roadmap"
 derivation_md = """Derive coordinates from the declared authority.
@@ -1555,6 +1580,11 @@ authority_reference_id = "ref-spec"
 [[record.payload.axis.value]]
 id = "matrix.fixture-option-d-one"
 label = "Value d one"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-d-two"
+label = "Value d two"
 source_reference_id = "ref-spec"
 
 [[record.payload.evidence_requirement]]
@@ -1587,7 +1617,7 @@ liveness_reference_id = "ref-gate"
 
 [[record.payload.exclusion.coordinate]]
 axis_id = "matrix.fixture-dimension-d"
-value_id = "matrix.fixture-option-d-one"
+value_id = "matrix.fixture-option-d-two"
 
 [[record.source_replacement]]
 span_id = "record-fixture-family-d"

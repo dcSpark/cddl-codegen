@@ -396,35 +396,10 @@ function requireSemantic(
   return record;
 }
 
-/**
- * The all-fields v2 fixture is a byte-for-byte port of the v1 corpus, in which every payload but one
- * lived under shadow authority and therefore never reached cross-record family validation. At v2
- * every payload is semantic, so the fixture's four systematic families now cross-validate against
- * each other — and the ported coordinates collide. The exact issue set is pinned here rather than
- * waived, so any OTHER production issue still fails the case. Retiring these needs the fixture's
- * family coordinate space redesigned, which is fixture work, not adapter work.
- */
-const ALL_FIELDS_V2_PORTED_FAMILY_ISSUES: readonly string[] = Object.freeze([
-  'E-SCHEMA-STATE@record["matrix.fixture-systematic-a"].payload.cell',
-  'E-SCHEMA-STATE@record["matrix.fixture-systematic-a"].payload.cell',
-  'E-SCHEMA-STATE@record["matrix.fixture-systematic-a"].payload.exclusion',
-  'E-SCHEMA-STATE@record["matrix.fixture-systematic-b"].payload.exclusion',
-  'E-SCHEMA-STATE@record["matrix.fixture-systematic-b"].payload.work_ids',
-  'E-SCHEMA-STATE@record["matrix.fixture-systematic-c"].payload.exclusion',
-  'E-SCHEMA-STATE@record["matrix.fixture-systematic-c"].payload.work_ids',
-  'E-SCHEMA-STATE@record["matrix.fixture-systematic-d"].payload.exclusion',
-  'E-SCHEMA-STATE@record["matrix.fixture-systematic-d"].payload.work_ids',
-]);
-
-function assertPortedFamilyIssuesOnly(
-  issues: readonly RoadmapIssue[],
-  expected: readonly string[],
-  label: string,
-): void {
-  const actual = issues.map((issue) => `${issue.code}@${issue.logical_path}`).sort(codePointSort);
+function assertNoProductionIssues(issues: readonly RoadmapIssue[], label: string): void {
   assert(
-    JSON.stringify(actual) === JSON.stringify([...expected].sort(codePointSort)),
-    `${label}: production issues differ from the frozen ported-fixture set: ${JSON.stringify(issues)}`,
+    issues.length === 0,
+    `${label}: the all-fields fixture must validate as a clean production document, got ${JSON.stringify(issues)}`,
   );
 }
 
@@ -452,7 +427,7 @@ function testDecoderDispatch(bundle: AdapterFixtureBundle): void {
       },
     },
   );
-  assertPortedFamilyIssuesOnly(matrixResult.issues, ALL_FIELDS_V2_PORTED_FAMILY_ISSUES, "matrix decoder dispatch");
+  assertNoProductionIssues(matrixResult.issues, "matrix decoder dispatch");
   assert(matrixCallbacks.length === 1 && matrixCallbacks[0]?.payload === matrixPayload && matrixCallbacks[0]?.authority === "semantic", "matrix production domain callback did not receive the exact S1 branded payload object once");
 
   const testingRows: string[] = [];
@@ -474,7 +449,7 @@ function testDecoderDispatch(bundle: AdapterFixtureBundle): void {
       },
     },
   });
-  assertPortedFamilyIssuesOnly(testingResult.issues, [], "testing decoder dispatch");
+  assertNoProductionIssues(testingResult.issues, "testing decoder dispatch");
   assert(testingCallbacks.length === 1 && testingCallbacks[0]?.payload === testingPayload && testingCallbacks[0]?.authority === "semantic", "testing production domain callback did not receive the exact S1 branded payload object once");
 }
 
@@ -1264,6 +1239,54 @@ function testDomainMutationTable(bundle: AdapterFixtureBundle): void {
           return { ...payload, family_id: "matrix.fixture-task-b" as RoadmapId };
         }),
     },
+    // The three cross-record family rules the retired ported-fixture pin used to prove, each as a
+    // targeted cause->effect vector over the now-valid fixture.
+    {
+      name: "family duplicate cell coordinate",
+      roadmap: "matrix",
+      logical_path: matrixPath("matrix.fixture-systematic-a", "cell"),
+      issue_codes: ["E-SCHEMA-STATE"],
+      mutate: (document) => replacePayload(document,
+        (payload) => payload.kind === "family" && payload.family_maturity === "observed_only",
+        (payload) => {
+          assert(payload.kind === "family" && payload.cells.length >= 2, "family cell vector selected the wrong payload");
+          return {
+            ...payload,
+            cells: payload.cells.map((cell, index) => index === 1
+              ? { ...cell, coordinates: payload.cells[0]!.coordinates.map((coordinate) => ({ ...coordinate })) }
+              : cell),
+          };
+        }),
+    },
+    {
+      name: "family exclusion coordinate collides with cell",
+      roadmap: "matrix",
+      logical_path: matrixPath("matrix.fixture-systematic-a", "exclusion"),
+      issue_codes: ["E-SCHEMA-STATE"],
+      mutate: (document) => replacePayload(document,
+        (payload) => payload.kind === "family" && payload.family_maturity === "observed_only",
+        (payload) => {
+          assert(payload.kind === "family" && payload.cells.length >= 1 && payload.exclusions.length >= 1, "family exclusion vector selected the wrong payload");
+          return {
+            ...payload,
+            exclusions: payload.exclusions.map((exclusion) =>
+              ({ ...exclusion, coordinates: payload.cells[0]!.coordinates.map((coordinate) => ({ ...coordinate })) })),
+          };
+        }),
+    },
+    {
+      name: "family work_ids bidirectional mismatch",
+      roadmap: "matrix",
+      logical_path: matrixPath("matrix.fixture-systematic-b", "work_ids"),
+      issue_codes: ["E-SCHEMA-STATE"],
+      mutate: (document) => replacePayload(document,
+        (payload) => payload.kind === "family" && payload.family_maturity === "under_design" && payload.authority_kind === "grammar",
+        (payload) => {
+          assert(payload.kind === "family", "family work_ids vector selected the wrong payload");
+          // matrix.fixture-task-a is family a's work, so authoring it here breaks the join both ways.
+          return { ...payload, work_ids: ["matrix.fixture-task-a" as RoadmapId] };
+        }),
+    },
   ];
 
   for (const vector of vectors) {
@@ -1297,11 +1320,7 @@ function testPipeline(bundle: AdapterFixtureBundle): void {
         domainPayloadValidated(provider) { domain.push({ provider }); },
       },
     });
-    assertPortedFamilyIssuesOnly(
-      result.issues,
-      roadmap === "matrix" ? ALL_FIELDS_V2_PORTED_FAMILY_ISSUES : [],
-      `${roadmap} production validation`,
-    );
+    assertNoProductionIssues(result.issues, `${roadmap} production validation`);
     assert(shared.length === 1 && shared[0] === result.indexes, `${roadmap} shared validation did not receive the internally built indexes exactly once`);
     assert(domain.length === result.indexes.payload_records.size, `${roadmap} did not validate every payload fact`);
     assert([...result.indexes.payload_records.values()].every((provider, index) => domain[index]?.provider === provider), `${roadmap} domain validation changed payload-fact identity or order`);
