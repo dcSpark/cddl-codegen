@@ -34,9 +34,8 @@ import type {
   FamilyPayload,
 } from "./model/systematic.ts";
 import { validateReferenceId, validateRoadmapId, validateSubordinateId } from "./ids.ts";
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
+import { codePointSort } from "./kernel.ts";
+import { sortRoadmapIssues as sortIssues } from "./errors.ts";
 
 export type FirstClassIdProviderKind =
   | "record"
@@ -202,15 +201,6 @@ function issue(
     message,
     exit: 1,
   };
-}
-
-function sortIssues(issues: RoadmapIssue[]): readonly RoadmapIssue[] {
-  return Object.freeze(issues.sort((left, right) =>
-    codePointSort(left.source, right.source) ||
-    codePointSort(left.logical_path, right.logical_path) ||
-    codePointSort(left.code, right.code) ||
-    codePointSort(left.message, right.message)
-  ));
 }
 
 function firstById<K extends string, V extends { readonly id: K }>(

@@ -69,6 +69,7 @@ import { validateSourceSpans } from "./spans.ts";
 import { validateTransaction } from "./transaction.ts";
 import { applyProjectionWritePlan, createProjectionWritePlan } from "./write_plan.ts";
 import { MATRIX_DENOMINATOR_AUTHORITIES } from "./fixed_value_authority.ts";
+import { sha256 } from "./kernel.ts";
 
 export { createNodeRoadmapCliPorts } from "./io.ts";
 
@@ -106,10 +107,6 @@ interface RevisionReader {
   read(path: RepoPath): Uint8Array;
   registry(): RegistryView;
   revision: RepositoryRevision;
-}
-
-function sha256(bytes: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 }
 
 function failure(issues: readonly RoadmapIssue[]): never {

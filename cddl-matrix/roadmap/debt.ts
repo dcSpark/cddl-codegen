@@ -15,6 +15,7 @@ import {
   type FieldConsumptionLedgerEntry,
   type RenderChunk,
 } from "./render_ir.ts";
+import { codePointSort } from "./kernel.ts";
 
 /** Every owner of the sole supported schema is semantic; the state remains a report axis. */
 export type OwnerDebtState = "semantic";
@@ -136,9 +137,6 @@ export const LANE_BLOCKING_INDEPENDENT_CATEGORIES = Object.freeze([
 export const VISIBLE_NON_BLOCKING_INDEPENDENT_CATEGORIES = Object.freeze([
   "unmodelled_coordinates",
 ] as const satisfies readonly IndependentDebtCategory[]);
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
 
 export function debtOwnerIndex(key: DebtOwnerKey): string {
   return JSON.stringify([key.roadmap, key.owner_kind, key.owner_id, key.owner_field]);

@@ -60,6 +60,7 @@ import { debtOwnerIndex, type MigrationDebt } from "../debt.ts";
 import { buildExpectedChunks, createExpectedByteView, type CompletedRenderIr, type RenderChunk } from "../render_ir.ts";
 import { resolveManifest } from "../manifest.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/matrix.ts";
+import { codePointSort } from "../kernel.ts";
 
 export const IDENTITY_ROADMAP_FIXTURE_PATHS = Object.freeze([
   "all-fields/matrix-v2.toml",
@@ -174,9 +175,6 @@ const ROADMAP_CITATION_PREFIX_FOR_TESTS = `${"road"}${"map:"}`;
 function citationText(suffix: string): string {
   return `${ROADMAP_CITATION_PREFIX_FOR_TESTS}${suffix}`;
 }
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
 
 function suffixed(prefix: string, suffixes: string): string[] {
   return [...suffixes].map((suffix) => `${prefix}${suffix}`);

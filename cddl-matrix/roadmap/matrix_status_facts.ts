@@ -13,6 +13,7 @@ import {
   resolveOutputClaims,
   type ProductionOutputStage,
 } from "./output_registry.ts";
+import { bytesEqual, codePointSort } from "./kernel.ts";
 
 export { LEGACY_STATUS_OUTPUT_CLAIMS, LEGACY_STATUS_OUTPUT_REGISTRY } from "./output_registry.ts";
 
@@ -48,8 +49,6 @@ const WORDS = [
 ] as const;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
 
 function countWord(value: number): string {
   return value >= 0 && value < WORDS.length ? WORDS[value] : String(value);
@@ -251,12 +250,6 @@ function legacyPath(path: RepoPath): string {
   if (path === ROADMAP_PATH) return "ROADMAP.md";
   if (path === MATRIX_README_PATH) return "README.md";
   return "../tests/README.md";
-}
-
-function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.byteLength !== right.byteLength) return false;
-  for (let index = 0; index < left.byteLength; index++) if (left[index] !== right[index]) return false;
-  return true;
 }
 
 function replacePayloads(

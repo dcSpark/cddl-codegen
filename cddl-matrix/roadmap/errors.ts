@@ -1,3 +1,4 @@
+import { codePointSort } from "./kernel.ts";
 export const ISSUE_CODES = [
   "E-CLI-UNKNOWN-OPTION",
   "E-CLI-MISSING-VALUE",
@@ -141,9 +142,6 @@ export interface IssueCollector {
   readonly issues: readonly RoadmapIssue[];
   add(issue: RoadmapIssue): void;
 }
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
 
 export function compareRoadmapIssues(left: RoadmapIssue, right: RoadmapIssue): number {
   return codePointSort(left.source, right.source) ||

@@ -4,9 +4,7 @@ import { validateRoadmapId } from "./ids.ts";
 import type { RoadmapId, RoadmapName } from "./model/core.ts";
 import type { CurrentGuard } from "./model/documents.ts";
 import { isImmutableByteView } from "./render_ir.ts";
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
+import { codePointSort } from "./kernel.ts";
 
 export type GlobalOwnerKind = "first_class" | "current_guard";
 

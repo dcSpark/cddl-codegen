@@ -12,14 +12,12 @@ import {
   type CompletedRenderIr,
   type RenderChunk,
 } from "./render_ir.ts";
+import { codePointSort } from "./kernel.ts";
 
 export interface SpanValidationInput {
   readonly document: RoadmapDocument;
   readonly completed: CompletedRenderIr;
 }
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
 
 function issue(
   document: RoadmapDocument,

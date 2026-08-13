@@ -49,6 +49,7 @@ import {
 import { validateRelations } from "../relations.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import { liveMatrixProjection } from "./live_matrix.ts";
+import { bytesEqual, codePointSort, sha256 } from "../kernel.ts";
 
 export const REQUIRED_ADAPTER_SELFTEST_CASE_IDS = [
   "decoder_domain_dispatch_once",
@@ -85,19 +86,6 @@ const fixtureFiles = new WeakMap<object, ReadonlyMap<AdapterFixturePath, Uint8Ar
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
-}
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
-
-function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.byteLength !== right.byteLength) return false;
-  for (let index = 0; index < left.byteLength; index++) if (left[index] !== right[index]) return false;
-  return true;
-}
-
-function sha256(value: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
 }
 
 function firstByteDifference(left: Uint8Array, right: Uint8Array): number {

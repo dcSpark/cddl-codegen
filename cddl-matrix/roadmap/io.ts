@@ -42,6 +42,7 @@ import {
 import { extractFixedValueSourceFacts } from "./source_facts.ts";
 import { deriveFixedValueCurrentGuards, fixedValueGuardActivationState } from "./fixed_value_guards.ts";
 import { FIXED_VALUE_DELIVERY_BASE } from "./fixed_value_guards.ts";
+import { codePointSort } from "./kernel.ts";
 
 declare const scratchRepositoryHandleBrand: unique symbol;
 export type ScratchRepositoryHandle = {
@@ -115,8 +116,6 @@ const SOURCE_PATHS = new Set([
   "cddl-matrix/roadmap.toml",
   "tests/testing-roadmap.toml",
 ]);
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
 
 function issue(code: IssueCode, source: string, logical_path: string, message: string, exit: 1 | 2): RoadmapIssue {
   return { code, source, logical_path, message, exit };

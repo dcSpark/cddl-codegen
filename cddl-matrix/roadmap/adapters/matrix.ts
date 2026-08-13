@@ -27,6 +27,8 @@ import type {
   RoadmapAdapter,
 } from "./types.ts";
 import { MATRIX_SLOT_FLOORS } from "./matrix_slot_floors.ts";
+import { concatenate } from "../kernel.ts";
+import { sortRoadmapIssues as sortIssues } from "../errors.ts";
 
 const MATRIX_SOURCE_PATH = "cddl-matrix/roadmap.toml" as RepoPath;
 const MATRIX_PROJECTION_PATH = "cddl-matrix/ROADMAP.md" as RepoPath;
@@ -211,17 +213,6 @@ export function canonicalSemanticMarkdownFields(
     }
   }
   return Object.freeze(fields);
-}
-
-function concatenate(chunks: readonly Uint8Array[]): Uint8Array {
-  const length = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-  const result = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return result;
 }
 
 /**
@@ -431,16 +422,6 @@ export type DomainPayloadFactValidator = (
   out: IssueCollector,
   source: string,
 ) => void;
-
-function sortIssues(values: readonly RoadmapIssue[]): readonly RoadmapIssue[] {
-  return Object.freeze([...values].sort((left, right) =>
-    (left.source < right.source ? -1 : left.source > right.source ? 1 : 0) ||
-    (left.logical_path < right.logical_path ? -1 : left.logical_path > right.logical_path ? 1 : 0) ||
-    (left.span?.start_byte ?? -1) - (right.span?.start_byte ?? -1) ||
-    (left.code < right.code ? -1 : left.code > right.code ? 1 : 0) ||
-    (left.message < right.message ? -1 : left.message > right.message ? 1 : 0)
-  ));
-}
 
 /**
  * Pure production orchestration over one already-decoded document. C4A is the mandatory first

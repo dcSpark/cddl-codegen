@@ -2,6 +2,8 @@ import type { RoadmapIssue } from "./errors.ts";
 import type { ManifestEntry, RoadmapDocument, SourceReplacement } from "./model/documents.ts";
 import { projectionLayout, projectionLayoutRank } from "./projection_layout.ts";
 import type { CompletedRenderIr, ProjectedFieldSegment } from "./render_ir.ts";
+import { bytesEqual } from "./kernel.ts";
+import { concatenate } from "./kernel.ts";
 
 export type ProjectionContentView = "full" | "audit";
 export type ContentTransformation =
@@ -72,10 +74,6 @@ function issue(document: RoadmapDocument, logicalPath: string, message: string):
 
 function digest(bytes: Uint8Array): string {
   return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-}
-
-function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
-  return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
 }
 
 function key(value: AuthoredContentCoordinate): string {
@@ -242,13 +240,6 @@ function legacySpanProvenance(document: RoadmapDocument): readonly LegacySpanPro
     .map((span) => Object.freeze({ span_id: span.id, source_kind: span.source_kind,
       owner_id: span.owner_id, owner_field: span.owner_field, migration_status: span.migration_status,
       start_byte: span.start_byte, end_byte: span.end_byte, sha256: span.sha256 })));
-}
-
-function concatenate(values: readonly Uint8Array[]): Uint8Array {
-  const result = new Uint8Array(values.reduce((sum, value) => sum + value.byteLength, 0));
-  let offset = 0;
-  for (const value of values) { result.set(value, offset); offset += value.byteLength; }
-  return result;
 }
 
 function chunkSegments(completed: CompletedRenderIr, owner: Piece["owner"]): readonly ProjectedFieldSegment[] {

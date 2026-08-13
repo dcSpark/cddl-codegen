@@ -22,6 +22,7 @@ import {
   observeSelfTestIssue,
   validateNegativeSelfTestEvidence,
 } from "./observations.ts";
+import { codePointSort } from "../kernel.ts";
 
 export const REQUIRED_FIXTURE_SELFTEST_CASE_IDS = [
   "fixture_registry_no_orphans",
@@ -201,8 +202,6 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
 } as const;
 
 export type AllFieldsCoverageAxis = keyof typeof ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS;
-
-const codePointSort = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
 export const ALL_FIELDS_EXPECTED_COVERAGE_AXES = Object.freeze(
   (Object.keys(ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS) as AllFieldsCoverageAxis[]).sort(codePointSort),

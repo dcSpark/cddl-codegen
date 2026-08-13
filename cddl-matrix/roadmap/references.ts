@@ -17,9 +17,8 @@ import { validateRoadmapId } from "./ids.ts";
 import type { RepoPath, RoadmapId } from "./model/core.ts";
 import type { Reference } from "./model/documents.ts";
 import type { CurrentGuard, FamilyGuardRole, Relation, SemanticPayload } from "./model/documents.ts";
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
+import { codePointSort } from "./kernel.ts";
+import { sortRoadmapIssues as sortIssues } from "./errors.ts";
 
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
 const textEncoder = new TextEncoder();
@@ -142,16 +141,6 @@ function issue(
   span?: { start_byte: number; end_byte: number },
 ): RoadmapIssue {
   return { code, source, logical_path: logicalPath, message, span, exit: 1 };
-}
-
-function sortIssues(values: RoadmapIssue[]): readonly RoadmapIssue[] {
-  return Object.freeze(values.sort((left, right) =>
-    codePointSort(left.source, right.source) ||
-    codePointSort(left.logical_path, right.logical_path) ||
-    (left.span?.start_byte ?? -1) - (right.span?.start_byte ?? -1) ||
-    codePointSort(left.code, right.code) ||
-    codePointSort(left.message, right.message)
-  ));
 }
 
 function exactOne<T>(values: readonly T[], predicate: (value: T) => boolean): T | undefined {

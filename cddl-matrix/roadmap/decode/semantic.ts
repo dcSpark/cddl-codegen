@@ -44,6 +44,7 @@ import {
   type EnumSchemaField,
   type ExactSchemaRow,
 } from "./primitives.ts";
+import { codePointSort } from "../kernel.ts";
 
 const WORK_STATES = ["ready", "blocked", "armed", "deferred", "waiting_external", "delegated", "pending_review"] as const;
 const WORK_INTENTS = ["repair", "add_regression", "build_capability", "build_system", "establish_honest_refusal", "optimize", "change_documentation"] as const;
@@ -57,7 +58,6 @@ const EVIDENCE_VERDICTS = ["proposed", "confirmed", "falsified", "unknown", "ina
 const FRESHNESS = ["live", "as_of", "historical", "stale"] as const;
 const CONTROL_KINDS = ["gate", "test", "fixture", "review_rule", "consumer_ci", "upstream_issue", "operator_procedure"] as const;
 const EVIDENCE_STAGES = ["generated", "compiled", "executed", "round_tripped", "independently_decoded", "constraint_enforced", "over_accepted"] as const;
-const codePointSort = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
 
 export const SEMANTIC_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "shared_semantic_kind", values: ["work", "decision", "signal", "evidence", "control", "family"] },

@@ -12,9 +12,8 @@ import type { FullCommitId, RoadmapId, RoadmapName } from "./model/core.ts";
 import type { Reference, RoadmapDocument, RoadmapDocumentV2 } from "./model/documents.ts";
 import type { CompletedRenderIr } from "./render_ir.ts";
 import { projectionLayout, projectionLayoutRank, validateProjectionLayoutTransition } from "./projection_layout.ts";
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
+import { bytesEqual, codePointSort } from "./kernel.ts";
+import { sortRoadmapIssues as sortIssues } from "./errors.ts";
 
 export interface ScopedRoadmapTransactionInputs {
   readonly scope: RoadmapName;
@@ -55,10 +54,6 @@ function issue(
   };
 }
 
-function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
-  return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
-}
-
 function allowedProjectionHeadingRetarget(base: Reference, candidate: Reference): boolean {
   return base.kind === "file_heading" && candidate.kind === "file_heading" &&
     base.id === candidate.id && base.source === candidate.source && base.path === candidate.path &&
@@ -97,14 +92,6 @@ function exactProjectionLayoutPromotion(base: RoadmapDocument, candidate: Roadma
 function completedBytesEqual(base: CompletedRenderIr | undefined, candidate: CompletedRenderIr | undefined): boolean {
   return base !== undefined && candidate !== undefined &&
     base.expected_bytes.bytesEqual(candidate.expected_bytes);
-}
-
-function sortIssues(issues: readonly RoadmapIssue[]): readonly RoadmapIssue[] {
-  return Object.freeze([...issues].sort((left, right) =>
-    codePointSort(left.source, right.source) || codePointSort(left.logical_path, right.logical_path) ||
-    (left.span?.start_byte ?? -1) - (right.span?.start_byte ?? -1) ||
-    codePointSort(left.code, right.code) || codePointSort(left.message, right.message)
-  ));
 }
 
 function validCommit(value: string): boolean {
@@ -183,7 +170,6 @@ function validateScoped(inputs: ScopedRoadmapTransactionInputs): TransactionVali
   }
   return Object.freeze({ issues: sortIssues(issues) });
 }
-
 
 export function validateTransaction(inputs: TransactionValidationInputs): TransactionValidationResult {
   return validateScoped(inputs);

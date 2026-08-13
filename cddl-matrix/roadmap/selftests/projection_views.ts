@@ -10,11 +10,11 @@ import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import { scanRoadmapMarkdownFacts } from "../references.ts";
 import { createImmutableByteView } from "../render_ir.ts";
 import { liveTestingLegacyProjection, liveTestingProjection, liveTestingV2Document } from "./live_testing.ts";
+import { sha256 } from "../kernel.ts";
 
 const UTF8 = new TextEncoder();
 const TEXT = new TextDecoder();
 const bytes = (value: string): Uint8Array => UTF8.encode(value);
-const sha256 = (value: Uint8Array): string => new Bun.CryptoHasher("sha256").update(value).digest("hex");
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 const pass = (subcases: readonly string[]): SelfTestResult => ({ ok: true, polarity: "positive", subcases });
 

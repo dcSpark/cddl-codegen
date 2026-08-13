@@ -9,6 +9,7 @@ import type {
   SemanticPayload,
 } from "./model/documents.ts";
 import type { SpanId } from "./model/core.ts";
+import { bytesEqual, codePointSort } from "./kernel.ts";
 
 export interface RenderChunk {
   readonly manifest_index: number;
@@ -196,19 +197,8 @@ export function checkedPrefixOffsets(byteLengths: readonly number[]): readonly n
   return Object.freeze(prefix);
 }
 
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
-
 function cloneBytes(value: Uint8Array): Uint8Array {
   return new Uint8Array(value);
-}
-
-function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.byteLength !== right.byteLength) return false;
-  for (let index = 0; index < left.byteLength; index++) {
-    if (left[index] !== right[index]) return false;
-  }
-  return true;
 }
 
 function issue(

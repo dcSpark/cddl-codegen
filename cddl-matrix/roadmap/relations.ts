@@ -4,9 +4,7 @@ import type { RoadmapId } from "./model/core.ts";
 import type { RoadmapName } from "./model/core.ts";
 import type { Relation, RelationKind } from "./model/documents.ts";
 import type { CurrentGuard } from "./model/documents.ts";
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
+import { codePointSort } from "./kernel.ts";
 
 const CYCLIC_KINDS = Object.freeze([
   "parent_of",

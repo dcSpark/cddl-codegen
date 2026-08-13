@@ -92,6 +92,7 @@ import {
 import {
   createProjectionWritePlan,
 } from "../write_plan.ts";
+import { sha256 } from "../kernel.ts";
 
 /**
  * The projection packet's stable executable registry.  Detailed case bodies are installed beside
@@ -274,10 +275,6 @@ function asPartId(value: string): PartId { return value as PartId; }
 function asSlotId(value: string): SlotId { return value as SlotId; }
 function asSpanId(value: string): SpanId { return value as SpanId; }
 function asRepoPath(value: string): RepoPath { return value as RepoPath; }
-
-function sha256(value: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
-}
 
 function complete(document: RoadmapDocument): { readonly completed: CompletedRenderIr; readonly manifestIssues: readonly RoadmapIssue[] } {
   const placement = resolveManifest(document);

@@ -5,6 +5,7 @@ import type {
   ExpectedByteViewObserver,
   RenderChunk,
 } from "./render_ir.ts";
+import { sha256 } from "./kernel.ts";
 
 export class RenderValidationError extends Error {
   constructor(readonly issues: readonly RoadmapIssue[]) {
@@ -83,10 +84,6 @@ export function checkCommittedProjectionBytes(
     exit: 1,
   };
   return Object.freeze({ expected: new Uint8Array(expected), issues: Object.freeze([drift]) });
-}
-
-function sha256(bytes: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 }
 
 function firstDifference(left: Uint8Array, right: Uint8Array): number {

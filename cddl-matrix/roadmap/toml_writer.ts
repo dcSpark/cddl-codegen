@@ -1,7 +1,7 @@
 import { encodeMarkdownString } from "./markdown_codec.ts";
+import { codePointSort } from "./kernel.ts";
 
 const UTF8 = new TextEncoder();
-const codePointSort = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
 export function encodeTomlBasicString(value: string): string {
   const out: string[] = ['"'];

@@ -12,6 +12,7 @@ import type {
 } from "../model/core.ts";
 import type { MarkdownBindings } from "./raw_markdown.ts";
 import { childLogicalPath, indexLogicalPath } from "./raw_markdown.ts";
+import { codePointSort } from "../kernel.ts";
 
 export interface DecodeContext {
   readonly source: string;
@@ -35,8 +36,6 @@ export interface EnumSchemaField {
   readonly name: string;
   readonly values: readonly string[];
 }
-
-const codePointSort = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
 export function schemaFail(
   ctx: DecodeContext,

@@ -9,6 +9,7 @@ import type { RoadmapDocumentV2 } from "../model/documents.ts";
 import { renderValidatedChunks } from "../render.ts";
 import { buildExpectedChunks, validateCompletedChunks } from "../render_ir.ts";
 import { deepFreeze } from "./frozen.ts";
+import { sha256 } from "../kernel.ts";
 
 const UTF8 = new TextEncoder();
 const TESTING_SOURCE_PATH = "tests/testing-roadmap.toml" as RepoPath;
@@ -92,6 +93,3 @@ export function liveTestingLegacyProjection(): Uint8Array {
   return new Uint8Array(memoizedLegacyProjection);
 }
 
-function sha256(value: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
-}

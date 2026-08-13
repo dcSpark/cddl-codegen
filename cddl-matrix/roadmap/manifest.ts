@@ -9,6 +9,7 @@ import type {
   RoadmapDocument,
   Section,
 } from "./model/documents.ts";
+import { codePointSort } from "./kernel.ts";
 
 export type RenderNode =
   | { kind: "section"; id: string; value: Section }
@@ -28,9 +29,6 @@ export interface ManifestResolution {
   readonly ops: readonly RenderOp[];
   readonly issues: readonly RoadmapIssue[];
 }
-
-const codePointSort = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
 
 function issue(
   document: RoadmapDocument,

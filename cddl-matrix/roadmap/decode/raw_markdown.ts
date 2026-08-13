@@ -3,6 +3,7 @@ import {
   decodeFatalUtf8Lf,
   decodeMarkdownToken,
 } from "../markdown_codec.ts";
+import { sha256 } from "../kernel.ts";
 
 const UTF8 = new TextEncoder();
 
@@ -40,10 +41,6 @@ function wireFail(
   span?: { start_byte: number; end_byte: number },
 ): never {
   throw new RoadmapWireError({ code, source, logical_path: logicalPath, message, span, exit: 1 });
-}
-
-function sha256(bytes: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 }
 
 export function placeholderCandidate(
