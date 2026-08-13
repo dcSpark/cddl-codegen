@@ -258,38 +258,46 @@ function positionalCitationProblems(file: TrackedFile): string[] {
 
 // Capture the whole fragment token, not only a valid-looking prefix: `matrix.foo!bad` must be
 // rejected as malformed rather than silently resolving through an existing `matrix.foo` anchor.
+// The anchor universe is derived from the TOML SOURCES (section-placed record IDs — exactly the
+// set the roadmap pipeline's own anchor validation renders as `roadmap-id-` anchors): the
+// projections that used to carry the rendered anchors are gitignored and not scannable here.
 const ROADMAP_FRAGMENT_PREFIX = "#roadmap-" + "id-";
 const ROADMAP_FRAGMENT_RE = new RegExp(`${ROADMAP_FRAGMENT_PREFIX}([^\\s)\\]}>"'\\x60]+)`, "g");
-const ROADMAP_ANCHOR_RE = /^\s*<a id="roadmap-id-((?:matrix|testing)\.[a-z0-9.-]+)"><\/a>\s*$/gm;
 const ROADMAP_ID_RE = /^(?:matrix|testing)\.[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*(?:\.[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*)*$/;
+
+function placedRoadmapRecordIds(files: readonly TrackedFile[], problems: string[]): Set<string> {
+  const placed = new Set<string>();
+  for (const file of files.filter((candidate) => (ROADMAP_SOURCE_DOCS as readonly string[]).includes(candidate.rel))) {
+    let parsed: { section?: readonly { entries?: readonly unknown[] }[]; record?: readonly { id?: unknown }[] };
+    try {
+      parsed = Bun.TOML.parse(file.text) as typeof parsed;
+    } catch {
+      problems.push(`${file.rel}: roadmap source failed to parse as TOML; fragment anchors cannot be derived`);
+      continue;
+    }
+    const recordIds = new Set((parsed.record ?? []).flatMap((row) => typeof row.id === "string" ? [row.id] : []));
+    for (const section of parsed.section ?? []) {
+      for (const entry of section.entries ?? []) {
+        if (typeof entry === "string" && recordIds.has(entry)) placed.add(entry);
+      }
+    }
+  }
+  return placed;
+}
 
 function roadmapFragmentProblems(files: readonly TrackedFile[]): string[] {
   const problems: string[] = [];
-  const anchors = new Map<string, { rel: string; line: number }[]>();
-  for (const file of files.filter((candidate) =>
-    candidate.rel === "cddl-matrix/ROADMAP.md" || candidate.rel === "tests/TESTING_ROADMAP.md"
-  )) {
-    for (const match of file.text.matchAll(ROADMAP_ANCHOR_RE)) {
-      const id = match[1]!;
-      if (!ROADMAP_ID_RE.test(id)) problems.push(`${file.rel}:${lineOf(file.text, match.index ?? 0)}: malformed stable roadmap anchor '${id}'`);
-      const rows = anchors.get(id) ?? [];
-      rows.push({ rel: file.rel, line: lineOf(file.text, match.index ?? 0) });
-      anchors.set(id, rows);
-    }
-    for (const match of file.text.matchAll(/id="roadmap-id-([^"]+)"/g)) {
-      if (!ROADMAP_ID_RE.test(match[1]!)) problems.push(`${file.rel}:${lineOf(file.text, match.index ?? 0)}: malformed stable roadmap anchor '${match[1]}'`);
-    }
-  }
-  for (const [id, rows] of [...anchors].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
-    if (rows.length !== 1) problems.push(`${rows[0]!.rel}:${rows[0]!.line}: stable roadmap anchor '${id}' occurs ${rows.length} times, expected once`);
+  const anchors = placedRoadmapRecordIds(files, problems);
+  for (const id of [...anchors].sort()) {
+    if (!ROADMAP_ID_RE.test(id)) problems.push(`roadmap sources: malformed stable roadmap anchor id '${id}'`);
   }
   for (const file of files.filter((candidate) => !candidate.rel.startsWith("draft/"))) {
     for (const match of file.text.matchAll(ROADMAP_FRAGMENT_RE)) {
       const id = match[1]!;
       if (!ROADMAP_ID_RE.test(id)) {
         problems.push(`${file.rel}:${lineOf(file.text, match.index ?? 0)}: malformed roadmap fragment '${ROADMAP_FRAGMENT_PREFIX}${id}'`);
-      } else if ((anchors.get(id)?.length ?? 0) !== 1) {
-        problems.push(`${file.rel}:${lineOf(file.text, match.index ?? 0)}: roadmap fragment '${ROADMAP_FRAGMENT_PREFIX}${id}' does not resolve to exactly one generated anchor`);
+      } else if (!anchors.has(id)) {
+        problems.push(`${file.rel}:${lineOf(file.text, match.index ?? 0)}: roadmap fragment '${ROADMAP_FRAGMENT_PREFIX}${id}' does not resolve to a section-placed roadmap record`);
       }
     }
   }
@@ -297,23 +305,35 @@ function roadmapFragmentProblems(files: readonly TrackedFile[]): string[] {
 }
 
 function roadmapFragmentSelfTestProblems(): string[] {
-  const generated = (anchors: string): TrackedFile => ({ rel: "cddl-matrix/ROADMAP.md", text: anchors });
+  const source = (body: string): TrackedFile => ({ rel: "cddl-matrix/roadmap.toml", text: body });
+  const canarySource = source([
+    '[[section]]',
+    'section_id = "fixture"',
+    'entries = ["matrix.canary"]',
+    '',
+    '[[record]]',
+    'id = "matrix.canary"',
+    '',
+    '[[record]]',
+    'id = "matrix.unplaced"',
+    '',
+  ].join("\n"));
   const durable = (fragment: string): TrackedFile => ({ rel: "tests/citation-canary.md", text: fragment });
   const resolved = roadmapFragmentProblems([
-    generated('<a id="roadmap-id-matrix.canary"></a>\n'),
-    durable(`[resolved](../cddl-matrix/ROADMAP.md${ROADMAP_FRAGMENT_PREFIX}matrix.canary)`),
+    canarySource,
+    durable(`[resolved](x${ROADMAP_FRAGMENT_PREFIX}matrix.canary)`),
   ]);
   const missing = roadmapFragmentProblems([
-    generated('<a id="roadmap-id-matrix.canary"></a>\n'),
-    durable(`[missing](../cddl-matrix/ROADMAP.md${ROADMAP_FRAGMENT_PREFIX}matrix.absent)`),
+    canarySource,
+    durable(`[missing](x${ROADMAP_FRAGMENT_PREFIX}matrix.absent)`),
   ]);
   const malformed = roadmapFragmentProblems([
-    generated('<a id="roadmap-id-matrix.canary"></a>\n'),
-    durable(`[malformed](../cddl-matrix/ROADMAP.md${ROADMAP_FRAGMENT_PREFIX}matrix.canary!bad)`),
+    canarySource,
+    durable(`[malformed](x${ROADMAP_FRAGMENT_PREFIX}matrix.canary!bad)`),
   ]);
-  const duplicate = roadmapFragmentProblems([
-    generated('<a id="roadmap-id-matrix.canary"></a>\n<a id="roadmap-id-matrix.canary"></a>\n'),
-    durable(`[duplicate](../cddl-matrix/ROADMAP.md${ROADMAP_FRAGMENT_PREFIX}matrix.canary)`),
+  const unplaced = roadmapFragmentProblems([
+    canarySource,
+    durable(`[unplaced](x${ROADMAP_FRAGMENT_PREFIX}matrix.unplaced)`),
   ]);
   const failures: string[] = [];
   if (resolved.length !== 0) failures.push("roadmap-fragment self-check: resolved canary failed");
@@ -323,8 +343,8 @@ function roadmapFragmentSelfTestProblems(): string[] {
   if (!malformed.some((problem) => problem.includes("malformed roadmap fragment") && problem.includes("!bad"))) {
     failures.push("roadmap-fragment self-check: malformed whole-token canary escaped");
   }
-  if (!duplicate.some((problem) => problem.includes("occurs 2 times"))) {
-    failures.push("roadmap-fragment self-check: duplicate-anchor canary escaped");
+  if (!unplaced.some((problem) => problem.includes("does not resolve"))) {
+    failures.push("roadmap-fragment self-check: unplaced-record canary escaped");
   }
   return failures;
 }
@@ -379,8 +399,14 @@ const trackedRels = gitLsFiles();
 const readTextState = newReadTextState();
 const allFiles = readTrackedTextFiles(trackedRels, readTextState);
 
+// The roadmap hand docs are the TOML SOURCES: the markdown projections are gitignored
+// human-review renders under draft/roadmaps/ (regenerate with `project_roadmaps.ts --write`) and
+// must never be committed — an agent that finds a committed projection will read it as a source
+// of truth, which is exactly what the move out of the repository forecloses.
+const ROADMAP_SOURCE_DOCS = ["cddl-matrix/roadmap.toml", "tests/testing-roadmap.toml"] as const;
+const RETIRED_PROJECTION_PATHS = ["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADMAP.md"] as const;
 const handDocSet = new Set<string>([
-  ...trackedRels.filter(rel => rel.endsWith(".md") && rel.includes("ROADMAP") && !rel.startsWith("draft/")),
+  ...ROADMAP_SOURCE_DOCS,
   "tests/README.md",
   "cddl-matrix/README.md",
 ]);
@@ -389,6 +415,11 @@ const handDocs = [...handDocSet].sort();
 const problems: string[] = [];
 const missingHandDocs = handDocs.filter(rel => !trackedRels.includes(rel));
 for (const rel of missingHandDocs) problems.push(`${rel}: hand doc is not tracked by git`);
+for (const rel of trackedRels) {
+  if ((RETIRED_PROJECTION_PATHS as readonly string[]).includes(rel) || rel === "draft" || rel.startsWith("draft/")) {
+    problems.push(`${rel}: generated roadmap projections and draft/ scratch material must not be tracked by git; the TOML sources are the authority and the renders live under gitignored draft/roadmaps/`);
+  }
+}
 
 const handDocFiles = handDocs.flatMap(rel => {
   const text = readText(rel, readTextState);
@@ -417,7 +448,11 @@ const perDocCitationCounts = new Map<string, number>();
 const titles = headingTitles(allFiles);
 
 for (const doc of handDocFiles) {
-  const extracted = extractCitations(doc.rel, doc.text);
+  // A TOML hand doc spells prose inside TOML strings, where a basic string escapes `"` and `\`;
+  // decode those two escapes for citation extraction so a token like `(<override>, "int")` reads
+  // as its rendered spelling. Newlines are untouched, so reported line numbers stay exact.
+  const citationText = doc.rel.endsWith(".toml") ? doc.text.replace(/\\(["\\])/g, "$1") : doc.text;
+  const extracted = extractCitations(doc.rel, citationText);
   for (const citation of extracted.identifiers) {
     identifierCitationCount++;
     perDocCitationCounts.set(doc.rel, (perDocCitationCounts.get(doc.rel) ?? 0) + 1);
@@ -429,7 +464,9 @@ for (const doc of handDocFiles) {
     if (!titles.has(citation.title))
       problems.push(`${citation.doc}:${citation.line}: cited by "${citation.title}" does not match an ATX heading title in tracked markdown`);
   }
-  problems.push(...md022Problems(doc.rel, doc.text));
+  // Markdown layout rules apply to the markdown hand docs only: a TOML source's `#` comment lines
+  // are not headings, and the roadmap renderer owns blank-line hygiene for its own projection.
+  if (doc.rel.endsWith(".md")) problems.push(...md022Problems(doc.rel, doc.text));
 }
 
 for (const f of allFiles) problems.push(...positionalCitationProblems(f));

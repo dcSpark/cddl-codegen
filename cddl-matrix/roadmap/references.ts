@@ -17,6 +17,7 @@ import {
   type SemanticPayloadProviderFact,
 } from "./indexes.ts";
 import { namespaceOf } from "./ids.ts";
+import { isRoadmapProjectionPath } from "./projection_paths.ts";
 import {
   EXTERNAL_OWNER_REFERENCE_KINDS,
   armOfPayload,
@@ -134,7 +135,12 @@ export function createCoreReferenceProviders(
           );
     }),
     provider("file_heading", (reference, view) => {
-        if (reference.path === "draft" || reference.path.startsWith("draft/")) {
+        // The roadmap projections are the one draft/ exception: their heading facts are injected
+        // from the fresh in-memory render, never read from the gitignored disk file.
+        if (
+          (reference.path === "draft" || reference.path.startsWith("draft/")) &&
+          !isRoadmapProjectionPath(reference.path)
+        ) {
           return unresolved(`forbidden: draft path ${JSON.stringify(reference.path)} is not durable`);
         }
         return exactOne(

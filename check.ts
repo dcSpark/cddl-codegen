@@ -294,7 +294,7 @@ export function parseJobs(raw: string | undefined): { jobs: number; warning?: st
  * thrashing) under full tiers that every memory check passed — the largest single rustc ever observed
  * here is 455 MiB, so 8 of those is ~3.6 GiB and cannot explain a 31 GiB box going down. The old
  * value was not a small margin over the wrong quantity; it was a comfortable margin over a quantity
- * that was never the binding one. Until a slot's true peak is measured (see `tests/TESTING_ROADMAP.md`),
+ * that was never the binding one. Until a slot's true peak is measured (see `tests/testing-roadmap.toml`),
  * this is deliberately pessimistic: the cost of being too low is a slower tier, and the cost of being
  * too high is a machine that stops responding for an hour and takes every other session with it.
  */
@@ -914,7 +914,7 @@ function printScratchSweep(): void {
 // Memory DEGRADES rather than refuses: a sequential tier is slow but correct, and a slow tier beats
 // no tier. Only a floor at which even one cargo would thrash refuses outright. Disk REFUSES, because
 // going sequential does not create free space and every nested-cargo gate downstream would die on
-// ENOSPC tens of minutes in — the ENOSPC entry in `tests/TESTING_ROADMAP.md` is that failure already
+// ENOSPC tens of minutes in — the ENOSPC entry in `tests/testing-roadmap.toml` is that failure already
 // paid for once.
 //
 // `fast` (what CI runs) is deliberately untouched: it spawns no batch, mints no scratch, and must not
@@ -1531,7 +1531,7 @@ export const REGISTRY: Gate[] = [
   { id: "roadmap_projection_check", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "project_roadmaps.ts", "--roadmap", "all", "--check"], cwd: MATRIX,
     script: "project_roadmaps.ts",
-    desc: "roadmap selftests + schema/identity/reference/section validation, canonical-TOML equality and projection drift for both roadmaps (pure committed files, no cargo/network)" },
+    desc: "roadmap selftests + schema/identity/reference/section validation, canonical-TOML equality and an in-memory render of both roadmap projections (pure committed files, no cargo/network)" },
   // --- THE SUB-SECOND NO-CARGO FILE-SCANNER CLASS, promoted from `local` into `fast` (CI) ---
   // Eight gates: `lint_doc_citations`, `project_decode_conformance`, `project_recombination_check`,
   // the four `query_q*` gates and `project_status_headers`. Maintainer call, 2026-08-03 — the same
@@ -1540,8 +1540,9 @@ export const REGISTRY: Gate[] = [
   // wall, against a proven cost of the split (a HEAD commit shipped CI-green with three of these
   // red locally, surfacing one per session behind fail-fast).
   // `roadmap_projection_check` is a separately approved ninth member (maintainer call,
-  // 2026-08-11): it has the same pure committed-file shape, and it is what keeps both generated
-  // roadmap projections from drifting off their authoritative TOML sources.
+  // 2026-08-11): it has the same pure committed-file shape, and it is what keeps both roadmap
+  // TOML sources valid and canonical and proves both projections still render (the renders
+  // themselves are gitignored draft/roadmaps/ artifacts, so there is no committed copy to drift).
   //
   // THE CLASS BOUNDARY, so the next gate addition can answer for itself whether it belongs here:
   // pure reads of COMMITTED files, no cargo, no network, no `cddl-matrix/node_modules`, no `draft/`
@@ -1582,7 +1583,7 @@ export const REGISTRY: Gate[] = [
   { id: "project_status_headers", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "project_status_headers.ts", "--check"], cwd: MATRIX,
     script: "project_status_headers.ts",
-    desc: "status-header count spans drift gate (matrix.json + catalog.toml + check.ts registry → ROADMAP/README/tests-README, no cargo)" },
+    desc: "status-header count spans drift gate (matrix.json + catalog.toml + check.ts registry → README/tests-README, no cargo)" },
   // STRUCTURE only — this gate never asserts a duration. Gate durations are nondeterministic
   // (machine load, cross-session contention), so a drift gate on the numbers would add a flaky gate
   // to the very suite the measurement work exists to make cheaper.
@@ -1695,7 +1696,7 @@ export const REGISTRY: Gate[] = [
   // Rows that generate and do not build are held BOTH WAYS by `SWEEP_EXPECTED_BUILD_FAIL` in
   // verify.ts — a listed row that starts building (or stops generating) fails as a stale entry, an
   // unlisted one that stops building fails as a new finding. Each entry is an open defect ledgered
-  // in `cddl-matrix/ROADMAP.md` § "Findings — open", never a decision to stop looking.
+  // in `cddl-matrix/roadmap.toml` § "Findings — open", never a decision to stop looking.
   //
   // Bun, not cargo, and no `#[ignore]` test behind it: the enumeration is the committed catalog,
   // which only the matrix scripts parse. It needs no CDDL oracle (its per-row verdict is a cargo
@@ -2684,7 +2685,7 @@ async function main() {
   if (digestChanged) {
     if (sh(["bun", "run", "project_status_headers.ts", "--write"], MATRIX) === 0)
       console.log("timings: commit tests/timings.json together with the spans it derives — " +
-        "tests/README.md, cddl-matrix/README.md, cddl-matrix/ROADMAP.md");
+        "tests/README.md, cddl-matrix/README.md");
     else
       console.log("check.ts: STALE SPANS — tests/timings.json was rewritten but " +
         "`project_status_headers.ts --write` failed; run it by hand before committing, or the next " +

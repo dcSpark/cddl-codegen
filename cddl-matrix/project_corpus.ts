@@ -312,7 +312,7 @@ for (const n of notes) {
 //     a proposed "Candidate cddl-codegen fix" — must name at least one resolvable tracking artifact (an
 //     existing file under tests/, or a test-fn / ledger-const symbol in src/tests/), checked against the
 //     tree, so a finding whose pin disappears (or that never had one) fails LOUDLY here instead of rotting
-//     as prose. This is the FINDINGS-LEDGER home of the TESTING_ROADMAP "stale known-limitation prose
+//     as prose. This is the FINDINGS-LEDGER home of the testing-roadmap.toml "stale known-limitation prose
 //     surviving its fix" residual (fired by findings 7/8/11 + the prelude/value notes going stale in one
 //     new home): findings live in THIS overlay and render into COVERAGE.md — a GENERATED span — so
 //     lint_doc_citations (which scans hand docs only) can never see them; project_corpus.ts already parses

@@ -86,4 +86,4 @@ laxity, unrelated to map matching.
    pinned) once candidates survive the two-oracle gate. If the fix also covers the adjacent
    observations, re-mint `--only=wasm_nested_alias.passthru_tags_map,composite_map_key` in the
    same change.
-3. Prune README gap #11, the ROADMAP § findings close-out entry, and this report.
+3. Prune README gap #11, the roadmap.toml § findings close-out entry, and this report.

@@ -120,7 +120,7 @@ function run(cmd: string[], cwd: string, env?: Record<string, string>, timeoutS 
  *     crate-type is right for the crate's normal consumers.
  *  2. the documented `Serialize` trait residue — the usage-derived import prune cannot prove a trait
  *     unused (it is exercised by a method call whose name never mentions it), so a scope importing
- *     `cbor_event::se::Serialize` without calling it warns. Tracked in tests/TESTING_ROADMAP.md's
+ *     `cbor_event::se::Serialize` without calling it warns. Tracked in tests/testing-roadmap.toml's
  *     `unused_imports` entry and encoded in integration_tests' `UNUSED_IMPORT_TRAIT_RESIDUE`. Rustc
  *     renders the path in backticks either fully (`cbor_event::se::Serialize`) or as the bare leaf
  *     (`Serialize`) when it came from a braced group — both are matched, on the LEAF, exactly as the

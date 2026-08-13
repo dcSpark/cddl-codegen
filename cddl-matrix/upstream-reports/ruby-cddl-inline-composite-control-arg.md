@@ -60,4 +60,4 @@ positions its parser happens to cover.
    `abnftt`-generated parser) and file against https://github.com/cabo/cddl.
 2. When a fixed gem ships: remove the `RUBY_EXPECTED_FAIL` entry (the gate's stale-ledger guard
    flips red on its own once the divergence disappears), re-run `check.ts full`, and prune this
-   note + the `cddl-matrix/ROADMAP.md` upstream close-out bullet.
+   note + the `cddl-matrix/roadmap.toml` upstream close-out bullet.

@@ -701,7 +701,7 @@ interface ComponentVectorCounts { accepts: number; rejects: number }
 // Catalog rows whose component crate GENERATES and does not BUILD today — the sweep's expectation
 // ledger, the direct sibling of `component_tests::EXPECTED_COMPILE_FAIL` and held to the same
 // discipline: every entry is a FINDING this instrument made, ledgered as an open defect in
-// `cddl-matrix/ROADMAP.md` § "Findings — open", never a decision to stop looking. Guarded BOTH ways
+// `cddl-matrix/roadmap.toml` § "Findings — open", never a decision to stop looking. Guarded BOTH ways
 // by `sweepVerdict` below — a listed row that starts building (or stops generating) fails as a stale
 // entry to retire, an unlisted row that stops building fails as the new finding.
 //
@@ -1952,7 +1952,7 @@ function runComponentBuildSweep(): never {
       stale.push(
         gen !== 0
           ? `${row.id}: the row no longer GENERATES (generator exit ${gen}), so its ledgered build failure is unreachable`
-          : `${row.id}: the component crate now BUILDS — the class closed; retire the SWEEP_EXPECTED_BUILD_FAIL entry (and its ROADMAP findings entry) in the same change`,
+          : `${row.id}: the component crate now BUILDS — the class closed; retire the SWEEP_EXPECTED_BUILD_FAIL entry (and its roadmap.toml findings entry) in the same change`,
       );
       console.log(`${where}: STALE LEDGER ENTRY (generator exit ${gen}, cargo exit ${build ? build.exit : "none"})`);
     } else {
@@ -1998,7 +1998,7 @@ function runComponentBuildSweep(): never {
     for (const r of refused) console.log(`  - ${r}`);
   }
   if (expectedFail.length) {
-    console.log("\nLEDGERED BUILD FAILURES (open findings in cddl-matrix/ROADMAP.md § \"Findings — open\"):");
+    console.log("\nLEDGERED BUILD FAILURES (open findings in cddl-matrix/roadmap.toml § \"Findings — open\"):");
     for (const e of expectedFail) console.log(`  - ${e}`);
   }
   if (stale.length) {
@@ -2007,7 +2007,7 @@ function runComponentBuildSweep(): never {
     console.log(
       `\nRESULT: COMPONENT BUILD SWEEP FAIL — ${stale.length} stale expectation(s). An expectation that has ` +
       "stopped describing reality is how a both-ways guard degrades into a skip-list; update the ledger " +
-      "and its ROADMAP findings entry in the same change.",
+      "and its roadmap.toml findings entry in the same change.",
     );
     process.exit(1);
   }
@@ -2697,7 +2697,7 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
     outVecs.push(p);  // keep the row either way (re-confirmed pin, or kept for human re-triage)
     if (res.verdicts.get(`${foreignIdent(id)}_r${i}`) !== true)
       pinBreak.push(p.class === "constraint"
-        ? `${id}/${p.hex}: constraint vector now DECODES cleanly — the generated decoder does NOT enforce the constraint (enforcement gap); record it in ROADMAP § findings`
+        ? `${id}/${p.hex}: constraint vector now DECODES cleanly — the generated decoder does NOT enforce the constraint (enforcement gap); record it in roadmap.toml § findings`
         : p.class === "policy-rejected"
           ? `${id}/${p.hex}: policy-rejected vector now DECODES cleanly — cddl-codegen no longer applies the documented narrowing policy; investigate the policy regression (do NOT re-triage/unpin as a bug fix)`
           : `${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
@@ -2705,7 +2705,7 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   validatedOverAccept.forEach((p, i) => {
     outVecs.push(p);  // committed VERBATIM (class="over-acceptance", reason, source preserved)
     if (res.verdicts.get(`${foreignIdent(id)}_o${i}`) !== true)
-      pinBreak.push(`${id}/${p.hex}: over-acceptance vector now REJECTS — the decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed); promote it to class="constraint" (+ expect_err), move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts, and update the ROADMAP § findings entry`);
+      pinBreak.push(`${id}/${p.hex}: over-acceptance vector now REJECTS — the decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed); promote it to class="constraint" (+ expect_err), move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts, and update the roadmap.toml § findings entry`);
   });
   return { id, axis, example, spec, mode, type_name: decodeType, vectors: outVecs };
 }
@@ -2865,7 +2865,7 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   if (candidates.length === 0 && handVecs.length === 0 && rejectPins.length === 0 && overAcceptPins.length === 0) {
     // The dominant pin cause here is the ruby 0.12.14 inline-composite `.cbor`-controller parse gap
     // (exit 65 — cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; the ir_conformance_corpus
-    // RUBY_EXPECTED_FAIL prune condition in cddl-matrix/ROADMAP.md re-mints these when the gem fix ships).
+    // RUBY_EXPECTED_FAIL prune condition in cddl-matrix/roadmap.toml re-mints these when the gem fix ships).
     const gap = lastRubyExit === 65
       ? " — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; re-mint when the gem fix ships)"
       : "";
@@ -2996,7 +2996,7 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
     outVecs.push(p);
     if (res.verdicts.get(`${foreignIdent(id)}_r${i}`) !== true)
       pinBreak.push(p.class === "constraint"
-        ? `${id}/${p.hex}: constraint vector now DECODES cleanly — the generated decoder does NOT enforce the constraint (enforcement gap); record it in ROADMAP § findings`
+        ? `${id}/${p.hex}: constraint vector now DECODES cleanly — the generated decoder does NOT enforce the constraint (enforcement gap); record it in roadmap.toml § findings`
         : p.class === "policy-rejected"
           ? `${id}/${p.hex}: policy-rejected vector now DECODES cleanly — cddl-codegen no longer applies the documented narrowing policy; investigate the policy regression (do NOT re-triage/unpin as a bug fix)`
           : `${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
@@ -3004,7 +3004,7 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   validatedOverAccept.forEach((p, i) => {
     outVecs.push(p);
     if (res.verdicts.get(`${foreignIdent(id)}_o${i}`) !== true)
-      pinBreak.push(`${id}/${p.hex}: over-acceptance vector now REJECTS — the decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed); promote it to class="constraint" (+ expect_err) and update the ROADMAP § findings entry`);
+      pinBreak.push(`${id}/${p.hex}: over-acceptance vector now REJECTS — the decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed); promote it to class="constraint" (+ expect_err) and update the roadmap.toml § findings entry`);
   });
   return { id, axis, example, fixture, rule: rule.name, spec, mode, type_name: decodeType, vectors: outVecs };
 }

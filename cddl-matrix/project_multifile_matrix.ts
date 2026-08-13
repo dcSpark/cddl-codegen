@@ -20,7 +20,7 @@
  * surfaces through it) — mis-scoped placement fails loudly there as a specific red cell; any
  * deliberately-held class goes into that gate's `MULTIFILE_MATRIX_SKIP` ledger (currently: the
  * `collrec` array-structural-wrapper cells — the Array-arm placement class, enumerated after review
- * found the SHAPES hole; see the cddl-matrix/ROADMAP.md finding). The behavioural upgrade
+ * found the SHAPES hole; see the cddl-matrix/roadmap.toml finding). The behavioural upgrade
  * `integration_tests::multifile_matrix_roundtrips` (#[ignore]d, check.ts full tier) re-generates
  * each cell `--emit-tests=true` across all profiles and `cargo test`s BOTH generated subcrates, so
  * the cross-module wiring is EXECUTED (round-tripped) rather than only type-checked; its
@@ -62,7 +62,7 @@ const CHECK = process.argv.includes("--check");
 //     and its alias-position residue escaped to production once (feature request 07: generic-extern
 //     instance alias targets are `Base<Args>` type expressions). Hand-pinned by
 //     tests/extern-generic-scoped; a generation-only excluded-shapes leg is recorded recur-first in
-//     tests/TESTING_ROADMAP.md ("Multifile reference-POSITION coverage").
+//     tests/testing-roadmap.toml ("Multifile reference-POSITION coverage").
 interface Shape {
   defs: string[]; // named-type definitions -> module `a` (authored dependency order; CDDL is order-free)
   ty: string; // the shape's named rule, referenced cross-module by the `named` mode
@@ -99,7 +99,7 @@ const SHAPES: Record<string, Shape> = {
   // RESTRICTED non-empty list over a NON-exposable (record) element (`[+ foo]`) — the `+` analogue of
   // `collrec`. Mints the loose structural wrapper (`FooList`) AND the restricted wrapper cross-module,
   // so it hits the SAME `mark_refs` Array-arm structural-wrapper placement class as `collrec` (the
-  // ROOT_SCOPE hard-code — the remaining issue-138 half; cddl-matrix/ROADMAP.md § findings). Both
+  // ROOT_SCOPE hard-code — the remaining issue-138 half; cddl-matrix/roadmap.toml § findings). Both
   // reference modes are known-red (MULTIFILE_MATRIX_SKIP, citing that finding); the single-file anon
   // control is green (like `collrec`/`cborwrap`, the anon form references the named `foo` cross-module).
   necollrec: { defs: ["foo = [a0: uint]", "recs = [+ foo]"], ty: "recs", anonForm: "[+ foo]", rootRef: true },
@@ -140,7 +140,7 @@ const SHAPES: Record<string, Shape> = {
   // structural wrapper (`FooList`), i.e. the Array-arm sibling of `collmap`'s structural-map class —
   // `mark_refs`' Array arm still hard-codes ROOT_SCOPE as the wrapper's import source (the remaining
   // issue-138 half). `coll` ([* uint]) is transparent `Vec<u64>` and can never probe this. Both
-  // reference modes are known-red (see MULTIFILE_MATRIX_SKIP + the cddl-matrix/ROADMAP.md finding);
+  // reference modes are known-red (see MULTIFILE_MATRIX_SKIP + the cddl-matrix/roadmap.toml finding);
   // the shape was enumerated AFTER review found the hole — the single-file anon control is green
   // (like cborwrap, the anon form references the named `foo` cross-module).
   collrec: { defs: ["foo = [a0: uint]", "recs = [* foo]"], ty: "recs", anonForm: "[* foo]", rootRef: true },
@@ -185,7 +185,7 @@ const SHAPES: Record<string, Shape> = {
   // NAMED generic-collection-instance rule over a record element (`gcn = gcoll<foo>`) — the
   // generic-instance twin of `collrec` (`recs = [* foo]`): its NAMED cross-module reference dangles on
   // the root-minted structural `FooList` wrapper name (E0432), the residual mark_refs Array-arm
-  // structural-WRAPPER-NAME ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings). `gcolln__named` is
+  // structural-WRAPPER-NAME ROOT_SCOPE class (cddl-matrix/roadmap.toml § findings). `gcolln__named` is
   // known-red (MULTIFILE_MATRIX_SKIP + MULTIFILE_ROUNDTRIP_SKIP); `aliased`/`unref` are green (the
   // alias-base mint + `scope_references` type-alias walk cover the base, like `collrec__aliased`).
   gcolln: { defs: ["foo = [a0: uint]", "gcoll<e0> = [* e0]", "gcn = gcoll<foo>"], ty: "gcn" },

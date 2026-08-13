@@ -2,7 +2,7 @@
 schema_version = 3
 roadmap = "matrix"
 source_path = "cddl-matrix/roadmap.toml"
-projection_path = "cddl-matrix/ROADMAP.md"
+projection_path = "draft/roadmaps/matrix-roadmap.md"
 
 [[section]]
 section_id = "preamble"
@@ -27,7 +27,7 @@ cross-module input since 2023) until a pickup probe caught it. Pickup re-probing
 enforcement (a prose rule cannot enforce itself); naming the pin is what gives the probe a target
 and the reader a checkable referent.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->{{slot:counts}}<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated slots, resolved when the projection renders (cd cddl-matrix && bun run project_roadmaps.ts --roadmap matrix --write) --><!-- gen:sh:roadmap-counts -->{{slot:counts}}<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->{{slot:ops}}<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -130,7 +130,7 @@ own content INTO generated files, so a harness-written emission is indistinguish
 generator-written one. One entry was retracted on exactly that (2026-08-07): its "greppable in the
 fixture trees" emission defect — an unused `use serialization::*;` — was such an append, and a
 fresh-generation probe found the generator emits that glob nowhere. The retraction record is in
-`tests/TESTING_ROADMAP.md`'s unused-imports entry. Two corollaries, each learned from a shipped
+`tests/testing-roadmap.toml`'s unused-imports entry. Two corollaries, each learned from a shipped
 imprecision: a verified remedy's MECHANISM gloss is part of the claim — write only what the probe
 executed (a 2026-08 entry glossed its executed rename-the-rule remedy as "`@name` renames a rule",
 which the parser refuses; the gloss outlived the entry into a delegation spec before a parse probe
@@ -296,7 +296,7 @@ title = "Related"
 body_md = '''## Related
 
 Broader testing work (clear-wins, roadmap items, the trailing-bytes runtime change) lives in
-`tests/TESTING_ROADMAP.md` — the matrix is the reference that testing effort *projects from*.
+`tests/testing-roadmap.toml` — the matrix is the reference that testing effort *projects from*.
 '''
 entries = []
 
@@ -448,7 +448,7 @@ kind = "matrix_policy"
 body_md = '''- **`cbor-any` is a decided permanent exclusion, not a candidate feature.** Its
   `#6.55799(any)` self-describe tag is a property of a complete serialized CBOR stream, not an
   ordinary value a generated wrapper can hold. Keep its role-neutral graceful refusal and the
-  `tests/TESTING_ROADMAP.md` § North star exclusion; do not reopen it without an explicit maintainer
+  `tests/testing-roadmap.toml` § North star exclusion; do not reopen it without an explicit maintainer
   decision.
 '''
 policy_kind = "boundary"
@@ -2266,7 +2266,7 @@ body_md = '''- **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + the
   (`module_directive_import_aborts`/`module_directive_include_aborts`), with cddlc `as`-expansion
   output rejected at the dotted-ident seam (`dotted_rule_name_rejects_gracefully`). Feature rows for
   the draft's constructs become worthwhile only if real module support lands
-  (`tests/TESTING_ROADMAP.md` § Deferred features tracks that decision); bump cddl-codegen's
+  (`tests/testing-roadmap.toml` § Deferred features tracks that decision); bump cddl-codegen's
   declared target profile if it updates its `cddl` dependency.
 '''
 policy_kind = "maintenance_protocol"
@@ -2908,7 +2908,7 @@ body_md = '''  - **The EXCLUSION comments, not just the missing rows** — a sha
     floor cannot build it standalone (`extern` / `rawbytes`) bounds the GATE, not the generator, and
     a consumer regen has already broken inside exactly such an exclusion. An exclusion justified by
     the gate's execution model is never evidence the generator has nothing to get wrong there.
-  One residual is recorded rather than enumerated, in `tests/TESTING_ROADMAP.md`: the
+  One residual is recorded rather than enumerated, in `tests/testing-roadmap.toml`: the
   `gcvariant` mode extension over the Record-resolving shapes plus a generation-only leg over the
   excluded shapes (§ "Multifile reference-POSITION coverage"). (Input REALISM — consumer-scale
   identifier length, a dimension no axis here enumerates — is not a residual here: the
@@ -2927,7 +2927,7 @@ part_id = "extern-execution"
 parent_record_id = "matrix.extern-execution-multifile"
 title = "EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —"
 body_md = '''  - EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —
-    is `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry. A seeded codec round-trips
+    is `tests/testing-roadmap.toml`'s extern-deps wasm-boundary entry. A seeded codec round-trips
     because the seed says so, which is why `feature_corpus_roundtrips_nondefault_profiles` skips
     those stems on an execution-side reason of its own rather than inheriting the compile floor's.
 '''
@@ -3080,7 +3080,7 @@ target = "matrix.undefined-validator-upstream"
 id = "roadmap-expansion-when-relevant"
 source = "matrix.additional-tool-annotations"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
@@ -3101,14 +3101,14 @@ release = "A published release contains commit c2ebf9f behavior for bignum map k
 id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the"
 source = "matrix.cbor-any-boundary"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
 
 [[reference]]
 id = "roadmap-wasm-abi-multifile-placement-matrices-remaining"
 source = "matrix.emission-input-mode-honesty"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "wasm-ABI & multifile placement matrices — remaining work"
 
 [[reference]]
@@ -3170,21 +3170,21 @@ gate_id = "verify"
 id = "roadmap-explicitly-out-of-scope-decided-not-overlooked"
 source = "matrix.extern-emitted-test-boundary"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
 id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n2"
 source = "matrix.extern-execution-multifile"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
 
 [[reference]]
 id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n2"
 source = "matrix.extern-interface-sentinel-boundary"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
@@ -3269,35 +3269,35 @@ release = "A published release accumulates the base = arm and every /= arm when 
 id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n3"
 source = "matrix.inline-cbor-containment-boundary"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
 id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n4"
 source = "matrix.interaction-tuples-boundary"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
 id = "roadmap-expansion-when-relevant-n2"
 source = "matrix.intra-alternative-variations"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
 id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n5"
 source = "matrix.matching-semantics-boundary"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
 id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n3"
 source = "matrix.multi-choice-group-rule"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
 
 [[reference]]
@@ -3318,7 +3318,7 @@ release = "A published release contains commit 885c61c behavior for integer-sign
 id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n4"
 source = "matrix.open-array.optional-adjacency"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
 
 [[reference]]
@@ -3332,21 +3332,21 @@ release = "A published release contains commit 3d56d8e behavior for optional ent
 id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n6"
 source = "matrix.over-acceptance-ast-notes"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
 id = "roadmap-pending-decisions-need-a-human-call"
 source = "matrix.over-acceptance-denominator"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Pending decisions (need a human call)"
 
 [[reference]]
 id = "roadmap-wasm-abi-multifile-placement-matrices-remaining-n2"
 source = "matrix.periodic-coverage-honesty"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "wasm-ABI & multifile placement matrices — remaining work"
 
 [[reference]]
@@ -3360,7 +3360,7 @@ release = "A published release contains commit 90f66ff behavior accepting floats
 id = "roadmap-expansion-when-relevant-n3"
 source = "matrix.profile-version-scope"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
@@ -3374,7 +3374,7 @@ release = "A published release contains commit 2c7548e behavior for RFC radix in
 id = "roadmap-expansion-when-relevant-n4"
 source = "matrix.refusal-spelling-space"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
@@ -3444,5 +3444,5 @@ release = "A published release accepts validate_cbor_from_slice(\"x = undefined\
 id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n7"
 source = "matrix.wasm-macro-behavior-boundary"
 kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
+path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Explicitly out of scope (decided, not overlooked)"

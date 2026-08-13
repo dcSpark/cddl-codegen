@@ -12,6 +12,7 @@ import {
 } from "../adapters/validation.ts";
 import type { FieldConsumer, RegistryView, RoadmapAdapter } from "../adapters/types.ts";
 import { documentSlots } from "../slots.ts";
+import { PROJECTION_PATH_BY_ROADMAP } from "../projection_paths.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import type { SchemaDecodeTrace } from "../decode/primitives.ts";
 import type { IssueCollector, RoadmapIssue } from "../errors.ts";
@@ -50,7 +51,6 @@ import {
 } from "../references.ts";
 import { validateRelations } from "../relations.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
-import { liveMatrixProjection } from "./live_matrix.ts";
 import { bytesEqual, codePointSort, sha256 } from "../kernel.ts";
 
 export const REQUIRED_ADAPTER_SELFTEST_CASE_IDS = [
@@ -181,7 +181,7 @@ function productionDocument<T extends RoadmapDocumentV3>(document: T): T {
     document: {
       ...document.document,
       source_path: (matrix ? "cddl-matrix/roadmap.toml" : "tests/testing-roadmap.toml") as RepoPath,
-      projection_path: (matrix ? "cddl-matrix/ROADMAP.md" : "tests/TESTING_ROADMAP.md") as RepoPath,
+      projection_path: PROJECTION_PATH_BY_ROADMAP[matrix ? "matrix" : "testing"],
     },
   } as T;
 }

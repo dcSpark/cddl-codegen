@@ -1,6 +1,7 @@
 import type { IssueCollector } from "../errors.ts";
 import type { SemanticPayloadProviderFact } from "../indexes.ts";
 import type { RepoPath, SlotId } from "../model/core.ts";
+import { PROJECTION_PATH_BY_ROADMAP } from "../projection_paths.ts";
 import type { RoadmapDocument, SemanticPayload, SemanticRecord } from "../model/documents.ts";
 import type { GeneratedSlotResolver, Indexes, RegistryView, RoadmapAdapter } from "./types.ts";
 import {
@@ -13,7 +14,7 @@ import {
 } from "./engine.ts";
 
 const TESTING_SOURCE_PATH = "tests/testing-roadmap.toml" as RepoPath;
-const TESTING_PROJECTION_PATH = "tests/TESTING_ROADMAP.md" as RepoPath;
+const TESTING_PROJECTION_PATH = PROJECTION_PATH_BY_ROADMAP.testing;
 export function validateTestingPayloadFact(
   provider: SemanticPayloadProviderFact,
   indexes: Indexes,

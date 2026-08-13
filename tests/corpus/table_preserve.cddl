@@ -18,7 +18,7 @@
 ;                 named preserve table (the directive is per-rule, so the inline arm is named).
 ;                 Recursion lives in the map VALUE; a union-keyed table (`{* md => md}`) trips a
 ;                 pre-existing, policy-independent keys-list synthesis panic (see the
-;                 TESTING_ROADMAP phase-2 residual), and real metadata keys are int/text/bytes.
+;                 testing-roadmap.toml phase-2 residual), and real metadata keys are int/text/bytes.
 ; - `holder`    — embeds the preserve rules in record-field position (incl. an OPTIONAL field) so
 ;                 the member-side (de)serialize and optional-field wrapping compile and round-trip.
 pmap = { * uint => text } ; @duplicates preserve

@@ -486,7 +486,7 @@ code_anchor = "element type for a parameter to name"
 [[note]]
 id = "prelude.cbor-any"
 status = "unsupported"
-reason = "the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/TESTING_ROADMAP.md` § North star). Pinned by `cbor_any_prelude_tag_rejects_gracefully_in_every_position`."
+reason = "the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/testing-roadmap.toml` § North star). Pinned by `cbor_any_prelude_tag_rejects_gracefully_in_every_position`."
 code_anchor = "self-described STREAM marker"
 
 # Fixed simple-value types are nominal singleton TypeChoices (B3-024A), with direct codecs and

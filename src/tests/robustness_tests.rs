@@ -2382,7 +2382,7 @@ fn inline_258_array_defaults_to_reject() {
 /// is the inner inline set nominalized to `SetU64`, so `Foo` wraps `OrderedSet<SetU64>` (previously
 /// `OrderedSet<Vec<u64>>`, the retired boundary). This replaces the former
 /// `nested_inline_258_inside_named_idiom_keeps_vec_documented_boundary` pin, retired together with its
-/// TESTING_ROADMAP ledger entry and the `current_capacities.mdx` boundary note.
+/// testing-roadmap.toml ledger entry and the `current_capacities.mdx` boundary note.
 #[test]
 fn nested_inline_258_inside_named_idiom_nominalizes() {
     let path = std::env::temp_dir().join(format!(
@@ -10095,7 +10095,7 @@ fn sign_partition_map_rep_generates_and_checks() {
 /// the spec excludes and rejected `[2^(8N-1), 2^8N)` values it admits. We reject rather than
 /// aligning because the rust `cddl` oracle (parser dep + conformance validator) hard-errors on the
 /// construct, so an aligned implementation would be uncertifiable; revisit when upstream ships the
-/// per-value semantics (ledgered in `cddl-matrix/ROADMAP.md`; scoreboard in
+/// per-value semantics (ledgered in `cddl-matrix/roadmap.toml`; scoreboard in
 /// `cddl-matrix/upstream-reports/rust-cddl-size-on-int-divergence.md`). Pins the message (actionable: names the rule and both
 /// conformant spellings) and the boundary: `uint .size N` must KEEP generating.
 #[test]

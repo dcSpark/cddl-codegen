@@ -79,7 +79,7 @@
 //! What remains — alias to a wasm-defined target whose name is generator-invented (`MapU64ToText`, not
 //! on the rust surface) AND NOT provenance-marked as a synthesized instance — is exactly the
 //! usage-dependent-JS-class-name bug: a genuine CDDL RULE name that reaches JS only as an invented
-//! class, so its JS name flips with unrelated spec content (`cddl-matrix/ROADMAP.md` § findings).
+//! class, so its JS name flips with unrelated spec content (`cddl-matrix/roadmap.toml` § findings).
 //! `pub use` counterparts stay JS-visible by design (Copy c-enums carry `#[wasm_bindgen]` at their
 //! rust-crate definition and are re-exported — extern re-exports are the user's contract); defined
 //! wasm structs/enums are themselves `#[wasm_bindgen]` classes.
@@ -994,7 +994,7 @@ fn diff_surfaces(
     // What remains — alias to a wasm-defined type whose name is generator-invented (`MapU64ToText`,
     // not on the rust surface) — is the usage-dependent-JS-class-name bug: the CDDL rule name is
     // JS-invisible and the shape's JS class name flips with unrelated spec content
-    // (`cddl-matrix/ROADMAP.md` § findings). `pub use` counterparts stay JS-visible by design
+    // (`cddl-matrix/roadmap.toml` § findings). `pub use` counterparts stay JS-visible by design
     // (c-style enums carry `#[wasm_bindgen]` at their definition and are re-exported — the user's
     // contract), and defined wasm structs/enums are themselves `#[wasm_bindgen]` classes.
     let rust_surface: BTreeSet<&str> = rust

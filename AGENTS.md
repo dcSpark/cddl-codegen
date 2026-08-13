@@ -278,7 +278,7 @@ Rules:
   FROM the repo's own `cargo test` stays pinned even in a scratch cwd (the rustup proxy exports
   `RUSTUP_TOOLCHAIN` down the process tree) — the exposed spawns are those whose env lacks it,
   i.e. anything shell- or bun-launched (verify.ts's nested cargo is the known instance;
-  tests/TESTING_ROADMAP.md item "Pin the toolchain of verify.ts's nested cargo").
+  tests/testing-roadmap.toml item "Pin the toolchain of verify.ts's nested cargo").
 - **A scratch-tree `E0463: can't find crate for core` is an environment-red baseline, not product
   attribution.** Outside the repository, an unqualified cargo command can select the default
   toolchain, where the repo's declared target is absent. Re-run with the exact repository pin and
@@ -304,7 +304,7 @@ Rules:
   gates run.** Concurrent multi-minute tiers share `/tmp` scratch, disk headroom **and the memory
   cap**, and the preflight above measures only what is free at *its* start — a second tier launched
   into a machine the first has already committed sees a floor that was clear a minute ago. Two
-  same-day runs saturating the disk is the ENOSPC ledger entry in `tests/TESTING_ROADMAP.md`.
+  same-day runs saturating the disk is the ENOSPC ledger entry in `tests/testing-roadmap.toml`.
 - **Serialize publishing gates with live implementation edits.** `verify.ts` rewrites
   `cddl-matrix/annotations/cddl_codegen.toml`; one run overlapped edits under `src/` and published
   annotations from a hybrid tree that never existed as a commit. Before a publishing run, coordinate
@@ -355,7 +355,7 @@ Rules:
   two further commits until a clean-tree tier run surfaced it. The skipped-gate list is in the
   tier's own output; walk it, don't sample it.
 - **TDD.** For every failure, ask what could have systematically caught it: add the missing test
-  vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
+  vector, or record the missing system in `tests/testing-roadmap.toml`.
 
 ## Which AI model to use
 
@@ -469,11 +469,17 @@ For sessions that spawn their own sub-agents (an orchestrating session, or a sub
 
 
 
-A lot of components of this library have markdown files following two different structures:
+A lot of components of this library have documents following two different structures:
 1. `README.md` which stores the *current* state of the project. It shouldn't contain historical notes, unless important for backwards-compatibility
-2. `ROADMAP.md` which stores the *future* state of the project. It shouldn't contain "done" marks (always be future-facing) unless context for a partially completed item is important for a future item
+2. a roadmap which stores the *future* state of the project. It shouldn't contain "done" marks (always be future-facing) unless context for a partially completed item is important for a future item
 
-The two repository roadmaps (`cddl-matrix/ROADMAP.md`, `tests/TESTING_ROADMAP.md`) are **generated projections**: their authored source is TOML (`cddl-matrix/roadmap.toml`, `tests/testing-roadmap.toml`), so every convention below is applied by editing the TOML record and regenerating — never by editing the Markdown. The authoring commands are in `tests/README.md` § "Editing the testing roadmap".
+The two repository roadmaps are authored as TOML — `cddl-matrix/roadmap.toml` and
+`tests/testing-roadmap.toml` — and the TOML sources are the ONLY committed form: read and edit the
+TOML, never a rendered markdown. Human-review markdown renders are generated on demand into the
+gitignored `draft/roadmaps/` directory (`cd cddl-matrix && bun run project_roadmaps.ts --roadmap
+matrix|testing --write`); they are disposable, may be stale, and must never be checked in (the
+`lint_doc_citations` gate refuses a tracked copy). The authoring commands are in `tests/README.md`
+§ "Editing the testing roadmap".
 
 Entries in both projects should generally avoid "we tried X, then we did Y", and instead prefer "we did Y, to avoid issues like X". Otherwise, it's unclear if Y was the proper fix, whereas if you start with Y and properly justify it, it's easier to understand as an approach reached through thinking from first principles and easier to verify for correctness (important for our test-driven development)
 
@@ -488,12 +494,12 @@ signal against the entry's own body before shipping it: a signal that the entry 
 evidence for is not a signal, it is a deferral with no exit, and such an entry must be either built
 or re-signalled onto an observable it does not already meet.
 
-Given this means we actively prune ROADMAP as features are implemented, code should generally not store references to roadmap items long-term. They can be acceptable as an intermediate step (i.e. call-outs so reviewing agents know how to code maps to implementation plans), but should generally be fixed up before features are shipped. Never cite a roadmap item by NUMBER or position ("ROADMAP item <N>") in any document or comment: pruning/renumbering retargets a positional citation silently — it never dangles, so no existence check can flag it. Cite a stable identifier instead (a pin/test/gate name, the delivered system's doc section, or the item's exact title): those fail loudly and greppably when the referent goes away. Both halves are mechanically enforced by the `lint_doc_citations` gate (check.ts `fast` tier): it bans the positional form tree-wide (outside `draft/`) and asserts hand-doc citations still resolve.
+Given this means we actively prune the roadmaps as features are implemented, code should generally not store references to roadmap items long-term. They can be acceptable as an intermediate step (i.e. call-outs so reviewing agents know how to code maps to implementation plans), but should generally be fixed up before features are shipped. Never cite a roadmap item by NUMBER or position ("ROADMAP item <N>") in any document or comment: pruning/renumbering retargets a positional citation silently — it never dangles, so no existence check can flag it. Cite a stable identifier instead (a pin/test/gate name, the delivered system's doc section, or the item's exact title): those fail loudly and greppably when the referent goes away. Both halves are mechanically enforced by the `lint_doc_citations` gate (check.ts `fast` tier): it bans the positional form tree-wide (outside `draft/`) and asserts hand-doc citations still resolve.
 
 Note: there is no roadmap that isn't related to the testing framework. That's because a "feature" roadmap is encoded indirectly in tests: any test that fail is a feature we need to support, and any new feature we decide to add should be encoded as a test (that first fails, then passes when the test is implemented)
 
 Every delivery cycle ends with a **completeness sweep over the durable docs** — `docs/docs/*.mdx`,
-`cddl-matrix/README.md` + `ROADMAP.md`, `tests/README.md` + `TESTING_ROADMAP.md` — checking each
+`cddl-matrix/README.md` + `roadmap.toml`, `tests/README.md` + `testing-roadmap.toml` — checking each
 surface against the cycle's implications and either confirming it accurate WITH the reason or
 fixing it in the sweep's own commit. The classes it exists to catch, each proven by a shipped
 instance: a delta documented on one face while the sibling face's doc stays silent (a
@@ -506,7 +512,7 @@ Additionally, `draft/` is the recommended location for scratchpads (for agents t
 ## Testing & further docs
 
 - `tests/README.md` — how the test layers work and how to add/bless snapshots.
-- `tests/TESTING_ROADMAP.md` — prioritized plan for the next testing improvements.
+- `tests/testing-roadmap.toml` — prioritized plan for the next testing improvements.
 - `docs/docs/*.mdx` — authoritative user-facing reference: `current_capacities` (supported CDDL +
   limitations), `command_line_flags`, `comment_dsl`, `output_format`, `wasm_differences`,
   `component_differences`.

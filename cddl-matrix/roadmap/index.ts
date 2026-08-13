@@ -27,11 +27,7 @@ import {
   resolveOutputClaims,
   validateProductionOutputRegistry,
 } from "./output_registry.ts";
-import {
-  checkCommittedProjectionBytes,
-  renderThenCheckCommittedProjection,
-  RenderValidationError,
-} from "./render.ts";
+import { RenderValidationError } from "./render.ts";
 import {
   failure,
   finalizeRoadmap,
@@ -43,7 +39,6 @@ import {
   TESTING_SOURCE,
   worktreeReader,
   type FinalizedRoadmap,
-  type ValidatedRoadmapCore,
 } from "./pipeline.ts";
 import { garbageCollectUncitedReferences } from "./references.ts";
 import { queryText, queryValue, stableJsonValue } from "./query.ts";
@@ -78,6 +73,12 @@ function success(stdout: string | Uint8Array): RoadmapCliResult {
   return { exit_code: 0, stdout: typeof stdout === "string" ? UTF8.encode(stdout) : stdout, stderr: new Uint8Array() };
 }
 
+/**
+ * `--check` validates the TOML sources and renders each projection in memory (anchors, views and
+ * output authority included). There is no committed projection to compare against: the markdown
+ * render is a gitignored human-review artifact (`--write` refreshes it), so the sources are the
+ * only authority and a fresh checkout is check-clean by construction.
+ */
 function checkRoadmaps(
   selection: RoadmapSelection,
   ports: ReadOnlyRoadmapPorts,
@@ -85,32 +86,9 @@ function checkRoadmaps(
   const receipts: string[] = [];
   for (const name of selectedRoadmaps(selection)) {
     const core = prepareRoadmapCore(name, worktreeReader(ports));
-    receipts.push(roadmapReceipt(checkCommittedProjection(core, ports)));
+    receipts.push(roadmapReceipt(finalizeRoadmap(core)));
   }
   return success(`CHECK OK\n${receipts.join("\n")}\n`);
-}
-
-function checkCommittedProjection(
-  core: ValidatedRoadmapCore,
-  ports: ReadOnlyRoadmapPorts,
-): FinalizedRoadmap {
-  let checked: ReturnType<typeof renderThenCheckCommittedProjection>;
-  try {
-    checked = checkCommittedProjectionBytes(
-      core.projection_views.full,
-      core.document.document.projection_path,
-      () => ports.readDeclared(core.document.document.projection_path),
-    );
-  } catch (error) {
-    if (isRoadmapFailure(error)) {
-      failure(error.issues.map((value) => value.code === "E-SOURCE-MISSING"
-        ? { ...value, code: "E-PROJECTION-MISSING" as const, source: core.document.document.projection_path }
-        : value));
-    }
-    throw error;
-  }
-  if (checked.issues.length > 0) failure(checked.issues);
-  return Object.freeze({ ...core, projection: checked.expected });
 }
 
 function queryRoadmaps(
@@ -157,6 +135,8 @@ function writeRoadmap(name: RoadmapName, ports: RoadmapWritePorts): RoadmapCliRe
   const projectionClaim = productionOutput.claims.find((claim) =>
     claim.kind === "whole_file" && claim.path === prepared.document.document.projection_path
   );
+  // The whole-file claim resolves against the freshly rendered bytes, never the prior target:
+  // the gitignored render may be absent or stale, and either way it is not an input.
   const resolution = projectionClaim === undefined
     ? undefined
     : resolveOutputClaims({
@@ -164,7 +144,7 @@ function writeRoadmap(name: RoadmapName, ports: RoadmapWritePorts): RoadmapCliRe
       claims: [projectionClaim],
       targets: new Map([[
         prepared.document.document.projection_path,
-        ports.readDeclared(prepared.document.document.projection_path),
+        finalized.projection,
       ]]),
     });
   const result = createProjectionWritePlan({

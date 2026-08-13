@@ -5,11 +5,15 @@ questions.
 
 ## Editing the testing roadmap
 
-`tests/testing-roadmap.toml` is the sole authored source for the testing roadmap. Format it from the
-repository root with `cd cddl-matrix && bun run project_roadmaps.ts --format-source
-tests/testing-roadmap.toml`, validate both roadmap projections with `bun run project_roadmaps.ts
---roadmap all --check`, and regenerate the testing projection only with `bun run project_roadmaps.ts
---roadmap testing --write`. Never hand-edit the generated `tests/TESTING_ROADMAP.md`.
+`tests/testing-roadmap.toml` is the testing roadmap — the authored TOML is the only committed
+form. Edit it directly, format it with `cd cddl-matrix && bun run project_roadmaps.ts
+--format-source tests/testing-roadmap.toml`, and validate with `bun run project_roadmaps.ts
+--roadmap all --check` (the check renders both projections in memory, so a fresh edit is
+check-clean once the TOML itself validates — there is no committed render to fall out of sync
+with). A human-review markdown render can be generated on demand with `bun run
+project_roadmaps.ts --roadmap testing --write`; it lands in the gitignored `draft/roadmaps/`
+directory, may go stale between writes, and must never be committed (`lint_doc_citations` refuses
+a tracked copy — agents read the TOML, not the render).
 
 Selection and pickup state — which entries are picked up, by whom, and in what order — is
 plan-internal and is not tracked in the repository at all: it lives in the gitignored `draft/`
@@ -44,8 +48,8 @@ gate must satisfy to join, rather than defaulting to `local` — is that it read
 files: no cargo, no network, no `cddl-matrix/node_modules`, no `draft/` ledger. The separately
 approved `roadmap_projection_check` joined `fast` on
 2026-08-11 with the same pure committed-file boundary; it runs the hermetic roadmap self-tests and
-then byte-checks both committed roadmap shadows, so it is not included in the sub-second timing
-claim above. `local` is "run
+then fully validates both roadmap TOML sources (rendering each projection in memory), so it is
+not included in the sub-second timing claim above. `local` is "run
 before considering work done" — the heavy correctness gates (full
 `cargo test`, corpus + wasm-matrix compiles) plus `matrix_typecheck` (`tsc --noEmit` over the
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in
@@ -290,7 +294,7 @@ device). No incident is attributed to bandwidth alone — the freezes that motiv
 bounds were memory (swap thrashing), with disk saturation as their symptom — but a
 bandwidth-driven stall would share their signature: whole-machine, observable by no gate. The
 watch entry, with candidate mitigations and what would make it buildable, is in
-`tests/TESTING_ROADMAP.md` § Operational watches.
+`tests/testing-roadmap.toml` § Operational watches.
 
 **Resource preflight (`local`/`full` only).** A tier commits to its peak in its first seconds and
 cannot discover a memory cap mid-run; the failure mode is not a red gate but a machine that stops
@@ -615,7 +619,7 @@ scratch must live INSIDE the hashed root — including files the gate itself wri
 crates, appended modules). A gate-authored input parked beside the hashed tree is invisible to the
 key, so editing it serves the stale PASS forever — and the closure audit cannot flag it, because its
 allowed-read classes treat everything under scratch as derived-from-hashed (true only by this
-discipline; the gap is ledgered in `tests/TESTING_ROADMAP.md`). Shipped exemplar of the rule
+discipline; the gap is ledgered in `tests/testing-roadmap.toml`). Shipped exemplar of the rule
 applied: `no_std_check.ts` writes every crate it hand-authors inside the hashed output root — the two
 single-crate consumer crates, and the split profile's co-owned runtime `[package]` table, crate root
 and host consumer — with relative path deps so the hashed bytes stay run-independent.
@@ -1795,7 +1799,7 @@ idiom") is verified across the layers:
   `integration_tests::alias_of_instance_chain_member_compiles`. The embedded-element flavor carries
   independent decode evidence: the corpus decode-conformance row `tag_set_reject_anon_generic.outer`
   (`outer = [* oset<uint>]` under holder mode, which embeds the rule).
-- **Boundary limitations** — `tests/TESTING_ROADMAP.md` § "Deferred features", entry "Transparent
+- **Boundary limitations** — `tests/testing-roadmap.toml` § "Deferred features", entry "Transparent
   tag-set idiom — recognized-shape boundary": non-idiom choice-bodied generic defs (refused at
   parse, not supported) and inline/anonymous two-arm choices (not recognized).
 
@@ -2304,7 +2308,7 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   `record_array_tagged` minted vectors while its evidence still claimed none. A spec-valid vector the
   decoder rejects is normally written as a **class-less `expect = "reject"` pin and the mint exits 1**;
   the drift gate stays red until a human triages it into `class = "bug"` (ledger it in
-  `cddl-matrix/ROADMAP.md` § findings) or `class = "limitation"` (cite `current_capacities.mdx` / the
+  `cddl-matrix/roadmap.toml` § findings) or `class = "limitation"` (cite `current_capacities.mdx` / the
   overlay note). The sole narrow exception deduplicates an already-proven policy rejection: the mint
   omits a generated candidate only when its marked generated-error Display matches an existing
   same-row `class = "policy-rejected"` pin's `expect_err` (that pin is hand-authored and already
@@ -2440,7 +2444,7 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     indefinite framing, non-minimal int/len widths, chunked strings, reversed maps): a re-encoding
     the decoder REJECTS (over-strict, the motivating class) or mis-decodes to a different value
     fails the gate. `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) ledgers any
-    (row, label) that legitimately fails against a `cddl-matrix/ROADMAP.md` finding — a claim about
+    (row, label) that legitimately fails against a `cddl-matrix/roadmap.toml` finding — a claim about
     the DECODER, which stays hand-reviewed; a variant-test vacuity floor keeps the leg live.
     A second exemption class is DERIVED rather than listed: the two map-reordering labels
     (`reverse_maps`, `everything`) assume entry order is an encoding detail, which an
@@ -2565,7 +2569,7 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   downgrades a support verdict; failures surface in the report's `decode_foreign_failures`. A
   replay that produces NO per-test verdict (a compile error, or the shifting-cell registry
   transient — the "Registry-fetch transients in nested-cargo cells" watch in
-  `tests/TESTING_ROADMAP.md`) regenerates and retries once before recording FAILED, the same
+  `tests/testing-roadmap.toml`) regenerates and retries once before recording FAILED, the same
   absorber the mint paths carry, so one transient cannot flip a row's committed evidence clause.
 
 First-sweep payoff — two miscompiles invisible to every self-consistent gate, each caught here by
@@ -2692,7 +2696,7 @@ skip row's leg still RUNS, and the entry is consumed only if the leg still fails
 emitted test passes fails the gate as a stale pin): a row skipped on one leg still runs the other.
 `JSON_SURFACE_SKIP` — rows whose json boundary legitimately can't round-trip; each resident cites
 its owning record — a decided posture in `cddl-matrix/README.md` § Gotchas, or a
-`cddl-matrix/ROADMAP.md` finding for a defect — and it also suppresses the wasm `from_json` sub-leg
+`cddl-matrix/roadmap.toml` finding for a defect — and it also suppresses the wasm `from_json` sub-leg
 (same serde path). Resident classes at HEAD (both decided postures, recorded in
 `cddl-matrix/README.md` § Gotchas):
 **`@custom_json`** omitting the serde derives the leg's serde_json usage needs (`dsl.custom_json` /
@@ -2788,7 +2792,7 @@ rejections and justified redundant no-ops of that shared slot, and there is no s
 position to sweep. Writing the closing paren on its own line puts the trailing comment past that
 slot entirely, where the parser can deliver nothing; generation refuses the spelling, so all 18 cells
 of `plain_group_spliced_multiline_paren` go green through the nonzero with-directive exit and need no
-allowlist rows. The unpublished parser fix tracked in `tests/TESTING_ROADMAP.md` adds a
+allowlist rows. The unpublished parser fix tracked in `tests/testing-roadmap.toml` adds a
 `RuleTrailing` anchor for that spelling. Adopting it must convert those cells from rejections to
 rule-only honor/reject classifications in the same delivery, not reinterpret the working last-entry
 slot ahead of the parser change.
@@ -2958,7 +2962,7 @@ section below, since the derivation is where the flag is actually used.
 What these layers cannot see — a collision whose loser has no row and whose `schema_id`s match, a
 cross-crate collision between two `add_schemas` calls whose `schema_id`s match, a name schemars
 percent-encodes, and a collision between two types that BOTH lack rows — is enumerated in
-`tests/TESTING_ROADMAP.md`, along with the conditions under which the emitted closure check
+`tests/testing-roadmap.toml`, along with the conditions under which the emitted closure check
 silently skips, and the extra-root-on-the-losing-side cell that is recorded rather than minted.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
@@ -3148,7 +3152,7 @@ failure, and a real generator finding rather than a fixture defect: the wasm ext
 emits `pub use crate::<Name>;` for every in-crate extern / raw-bytes rule whether or not the wasm
 tree references it, and here `pub_key` is reached only as a generic ARGUMENT (`ext_set<pub_key>`),
 so the re-export is unused. That const's own doc comment carries the full story, and the contract
-decision it waits on is ledgered in `cddl-matrix/ROADMAP.md` § findings; the fixture's behavioural
+decision it waits on is ledgered in `cddl-matrix/roadmap.toml` § findings; the fixture's behavioural
 coverage meanwhile is the `extern-generic-raw-bytes` integration fixture. Both lists are read by
 the sibling gates that share this gate's compile machinery, each named where it uses them.
 
@@ -3274,7 +3278,7 @@ completed build is then judged fresh and reported `Finished` without being compi
 Measured directly: six pre-generated cells checked in sequence into one target dir, the first
 compiled and the other five reported `Finished` in 0.13 s with zero errors, four of them
 non-compiling; with distinct package names all six compiled and the four red ones failed. See
-`tests/TESTING_ROADMAP.md` for the same hazard in the sibling sharded shared-target gates.
+`tests/testing-roadmap.toml` for the same hazard in the sibling sharded shared-target gates.
 
 ### Encoding-fidelity oracle (`--emit-tests` × `--preserve-encodings`)
 
@@ -3412,7 +3416,7 @@ no knowable accepted LENGTH, so an emitted mint would be runtime-red against a c
 the once-considered def-file mint hook is impossible harness-side (the mint decision is taken
 DURING generation off the IR struct variant, before any def splice runs — the falsification
 `6ce3b6e0` records), and the feature-shaped alternative was declined (full record + reopening
-signals: `cddl-matrix/ROADMAP.md` § "Explicitly out of scope (decided, not overlooked)").
+signals: `cddl-matrix/roadmap.toml` § "Explicitly out of scope (decided, not overlooked)").
 Mutation-verified
 red-first (three `generation/` wasm-boundary mutations each turned exactly the intended assertion class
 red; see the `src/emit_tests_wasm.rs` header).
@@ -3930,7 +3934,7 @@ stays a transparent `Vec`).
 
 **Fixing a red cell (the TDD loop).** A red cell is a bug the matrix *wants* fixed. Known reds sit in the
 gate's `WASM_MATRIX_SKIP` list, with the shared reason comment and a ledger entry in
-[`cddl-matrix/ROADMAP.md`](../cddl-matrix/ROADMAP.md) (which shape/role, the exact `E####`, root cause).
+[`cddl-matrix/roadmap.toml`](../cddl-matrix/roadmap.toml) (which shape/role, the exact `E####`, root cause).
 At HEAD the list is EMPTY — its one former resident, `extern__array-element`, came off it when the
 extern defs above started being seeded — so any red appearing is a regression to fix, not a backlog
 item. The round-trip gate's `WASM_MATRIX_PROFILE_SKIP` (compile-clean cells red only under some
@@ -3942,7 +3946,7 @@ profiles) is likewise empty. To close one:
    step 1 and the list can't rot.
 
 A *new* red cell (red but not in `WASM_MATRIX_SKIP`) also fails the gate: fix it, or skip-list it
-**deliberately** with a ROADMAP entry — never silently.
+**deliberately** with a roadmap entry — never silently.
 
 **Adding / changing cells.** Edit `SHAPES`/`ROLES` in the projection, `bun run project_wasm_matrix.ts`,
 review the new fixtures, run the gate. Prune cells whose emission duplicates an existing one — the
@@ -4478,7 +4482,7 @@ The npm dependencies are `@bytecodealliance/jco` and `@bytecodealliance/preview2
 **exact** in a committed `package-lock.json` and installed with `npm ci` (never `npm install`, which
 would resolve a newer jco and answer a question about a version nobody committed; the shared
 TS-toolchain install makes the opposite choice — caret ranges, no lockfile — and the dep-universe
-refresh work item in `tests/TESTING_ROADMAP.md` owns stating that universe's posture). The shim is
+refresh work item in `tests/testing-roadmap.toml` owns stating that universe's posture). The shim is
 installed but **not mapped**: jco rewrites the `wasi:*` imports to it by default, and a hand-written
 `wasi:*` map breaks the output. There is no test-framework dependency — `node --test` and
 `node:assert`.
@@ -4576,7 +4580,7 @@ output) and on a mandatory member (exit-0 E0061 on the wasm and component faces)
 to the sweep and to every other breadth gate until the product was spelled into the corpus
 (fixed; `default_mandatory`, `default_array_rep`, `default_scalar_kinds`). Growing that
 cross-product is the matrix's own enumeration program, not a gap in the sweep — owned by
-`cddl-matrix/ROADMAP.md` § Expansion's "A supported control's HOST-PLACEMENT spelling space"
+`cddl-matrix/roadmap.toml` § Expansion's "A supported control's HOST-PLACEMENT spelling space"
 entry.
 
 **Depth of exactly two stages**, deliberately: generate, then build. No host, no oracle, no vectors,
@@ -4602,7 +4606,7 @@ rather than a pass.
 
 **`SWEEP_EXPECTED_BUILD_FAIL`** holds the rows that generate and do not build today — the sibling of
 `component_tests`' `EXPECTED_COMPILE_FAIL`, on the same terms. Every entry is a FINDING this
-instrument made and an open defect in `cddl-matrix/ROADMAP.md` § "Findings — open", never a decision
+instrument made and an open defect in `cddl-matrix/roadmap.toml` § "Findings — open", never a decision
 to stop looking, and each is guarded BOTH ways: a listed row that starts building — or stops
 generating, which makes its expectation unreachable — fails the sweep as a stale entry to retire
 alongside its findings entry, and an unlisted row that stops building fails as the new finding. An
@@ -4814,7 +4818,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   `EnumVariant::group_ctor_record_fields` helper) — is pinned by the hand fixture instead
   (`tests/multifile`: `relay` in `qux.cddl` over `relay_host` in `b/bar.cddl`, test
   `cross_module_group_choice_ctor`, compiled rust+wasm under both fixture profiles); the mode-axis
-  extension is recorded recur-first in `tests/TESTING_ROADMAP.md` ("Multifile reference-POSITION
+  extension is recorded recur-first in `tests/testing-roadmap.toml` ("Multifile reference-POSITION
   coverage").
 - **The compile floor** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs,
   generates each with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which
@@ -4861,7 +4865,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
 - **Skip ledger (compile floor).** `MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)]` (cell stem, expected rustc
   error codes, reason) holds the deliberately-red cells, four-state like `WASM_MATRIX_SKIP`:
   red+listed = expected; red+unlisted = a new placement finding to fix or (deliberately, with a
-  ROADMAP entry) pin; green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted =
+  roadmap entry) pin; green+listed = "resurfaced — remove the pin (a fix landed)"; green+unlisted =
   pass. **Class assertion:** a red+listed cell is NOT satisfied by any redness — the observed rustc
   error-code set (`rustc_error_codes` scans the captured cargo stderr for `error[E####]` headers)
   must EQUAL the pin's declared set, or the gate fails loud with "the cell's failure class changed —
@@ -4971,7 +4975,7 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   normalized key matches no `KNOWN_PANIC_CLASSES` entry is a NEW
   finding and FAILS the sweep, printing the spec + message + promotion instructions (minimize by
   hand → pin as a matrix row if the matrix can express the cell, else a `tests/robustness/*.cddl`
-  fixture → ledger it in `cddl-matrix/ROADMAP.md` § findings → add the ledger entry citing the
+  fixture → ledger it in `cddl-matrix/roadmap.toml` § findings → add the ledger entry citing the
   pin). Every ledger entry cites a committed pin AND is asserted actually observed (stale-pin
   guard). The CITATION is guarded too, by `known_panic_classes_cite_fixtures_that_produce_them`
   (always-on, same tier): it generates each `tests/**/*.cddl` fixture an entry cites and requires at
@@ -5010,7 +5014,7 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   aliases, pinned by tests/corpus/int_alias.cddl — but the caveat stands for the next
   crate-global-definition class). Consequence: a known-bad class proven by a STANDALONE repro is
   ledgered even when current batch boundaries compile it green; the mechanical detector (a second
-  deterministic batch permutation / singleton mode) is a `tests/TESTING_ROADMAP.md` item.
+  deterministic batch permutation / singleton mode) is a `tests/testing-roadmap.toml` item.
 - `recombination_preserve_crates_execute` (`#[ignore]`, check.ts full tier): the PRESERVE escalation
   of layer 2, driven by the SAME shared runner (`run_layer2_profile`) parameterized with a different
   `Layer2Profile`. Its profile flags are sourced from `src/tests/mod.rs`'s `ALL_PROFILES` by name
@@ -5021,7 +5025,7 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   default-profile gate and was caught only by review — a preserve batch over the same compositions
   fails loudly on it. Preserve-only panic classes belong in `PRESERVE_ONLY_PANIC_CLASSES` (checked
   after the shared `KNOWN_PANIC_CLASSES` allowlist, with entries citing a
-  `cddl-matrix/ROADMAP.md` § findings entry and vacuity-guarded). That ledger is currently empty:
+  `cddl-matrix/roadmap.toml` § findings entry and vacuity-guarded). That ledger is currently empty:
   every former class gained preserve support or a graceful refusal. A preserve panic matching
   neither ledger is a NEW finding. Per-profile scratch root + `CARGO_TARGET_DIR`
   (`cddl_codegen_recomb_<profile>_<hash>`) keep profiles from clobbering each other. Exclusion set =
@@ -5257,7 +5261,7 @@ one schema name and asserts the injectivity guard names the consumer's row.
 
 Six rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
 Review is their current owner; the conditional mechanical layers (built only if a class recurs) are a
-`tests/TESTING_ROADMAP.md` item.
+`tests/testing-roadmap.toml` item.
 
 - **Invariant-softening refactors keep impossible states loud.** When a panic/assert is converted
   into a graceful rejection, enumerate the states the assert covered and downgrade ONLY the
@@ -5351,7 +5355,7 @@ Scored behaviorally, the survivor list is a direct map of emit logic no behavior
 All settings from the experiment (scope, nextest filterset, timeouts) remain pinned in
 `.cargo/mutants.toml` as historical/probing machinery. **Do not run or resume the full sweep.** It
 is permanently declined, will never become a `check.ts` gate, and has no reopening signal; see
-`tests/TESTING_ROADMAP.md` § Declined. In particular, do not interpret the retained config or the
+`tests/testing-roadmap.toml` § Declined. In particular, do not interpret the retained config or the
 partial measurements below as an unfinished obligation.
 
 Measured scale (first survey): **1040 mutants**, ~1.8 min/mutant average (the behavioral suite

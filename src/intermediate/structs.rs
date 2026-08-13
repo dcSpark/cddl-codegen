@@ -103,7 +103,7 @@ impl EnumVariant {
                             // its own rep header (its serialize writes outer header then its own
                             // per-arm header), i.e. `Some(ty.cbor_types(types))` — but no row/cell
                             // pins that shape's dispatch today, so keep brute force until one does
-                            // (enumerate the row first, per cddl-matrix/ROADMAP.md's
+                            // (enumerate the row first, per cddl-matrix/roadmap.toml's
                             // "Intra-alternative variation rows" rule).
                             RustStructType::GroupChoice { .. } => None,
                             _ => Some(ty.cbor_types(types)),

@@ -198,7 +198,7 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 
 // The enforcement-bearing rows: the ctl.* axis plus the cut feature — Q4's prose names exactly
 // "`.size`/cut enforcement" as where generators cut corners, so cut must not read n/a (no constraint).
-// Also enforcement-bearing (the variation-row classification-gap lesson (ROADMAP § Expansion) — an enforced constraint invisible as
+// Also enforcement-bearing (the variation-row classification-gap lesson (roadmap.toml § Expansion) — an enforced constraint invisible as
 // n/a is indistinguishable from "carries no constraint", so a vector loss would silently shed
 // enforcement evidence instead of reading as a gap):
 //   - `occur.bounded*` — occurrence bounds are a rejectable count constraint (the generated decoder's
@@ -222,7 +222,7 @@ function deriveDecode(id: string, evidence: string, roundTrip: string): string {
 // projects the stronger honest fact `no (over-accepts: M)` (deriveEnforce, dominating) instead of
 // hiding the hole as `unverified`. The populated set is the three widened-occurrence-marker table
 // rows (`contain.occurrence-target.memberkey.type1.{plus,optional,bounded}_table` — the `+`/`?`/`n*m`
-// count-permitting markers table-detected to an unbounded 0..N map; cddl-matrix/ROADMAP.md § findings),
+// count-permitting markers table-detected to an unbounded 0..N map; cddl-matrix/roadmap.toml § findings),
 // each carrying its certified out-of-window map pin. (The seed instance — the no-occurrence type-domain
 // arrow widening — took the other branch: closed by graceful rejection at generation, so its row left
 // the supported set and the catalog.)
@@ -448,7 +448,7 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       (the emitted range check, executed by the replay gate). Assert the exact set so a widening
   //       (a type-violation vector engineered onto a numeric row) or a narrowing (a range row losing its
   //       reject vector, re-hiding a silent-acceptance hole) fails this gate.
-  //   (c) The controller-value / occurrence-bound variation rows (the variation-row enumeration, ROADMAP § Expansion).
+  //   (c) The controller-value / occurrence-bound variation rows (the variation-row enumeration, roadmap.toml § Expansion).
   //       `ctl.ne.zero` / `ctl.ne.one` carry the NE sign-boundary violations (`00` / `01` — the `(1,-1)`
   //       and degenerate `(2,0)` encodings), int-targeted so both oracles certify like family (a).
   //       `occur.bounded{,.lower,.upper}` carry holder-wrapped out-of-count arrays (below the lower
@@ -545,7 +545,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     "type2.value", "value.number", "value.number.bin", "value.number.hex", "value.number.hexfloat", "value.text"];
   // The unverified set is pinned EXACTLY like the green set (same decay argument, opposite
   // direction): a NEW supported enforcement-bearing row landing vectorless would otherwise slide
-  // into `unverified` with no gate noticing — the variation-row lesson (ROADMAP § Expansion) is that an unenumerated/unvectored
+  // into `unverified` with no gate noticing — the variation-row lesson (roadmap.toml § Expansion) is that an unenumerated/unvectored
   // constraint is an enforcement blind spot, so growing this set must be a conscious pin edit.
   // The four fixed-byte rows are temporarily vectorless because the pinned rust-cddl validator
   // panics on both valid and invalid instances before it can corroborate the spec verdict. Generated
@@ -561,7 +561,7 @@ function vacuityProblems(rs: Directional[]): string[] {
   // The over-accepts set is pinned the SAME way: a row carrying a class="over-acceptance" vector
   // projects `enforce = no (over-accepts: M)` — the SHIPPED over-acceptance vector class (catalog pin
   // + rust replay leg asserting "still wrongly accepts" + this projection). EMPTY today: the
-  // widened-occurrence-marker table class (cddl-matrix/ROADMAP.md § findings) is CLOSED. Both promotion
+  // widened-occurrence-marker table class (cddl-matrix/roadmap.toml § findings) is CLOSED. Both promotion
   // branches fired for a COUNT-PERMITTING occurrence marker on a single non-literal arrow map entry:
   //   - `+` / `1*` is now HONORED — the entry decodes as a `NonEmptyMap` whose single TryFrom door
   //     rejects the empty map, so `plus_table`'s empty-map vector was promoted to class="constraint"

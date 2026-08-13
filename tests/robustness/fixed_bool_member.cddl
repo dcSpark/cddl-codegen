@@ -5,7 +5,7 @@
 ; fixture is the regression pin that the shape GENERATES rather than panicking the deserialize
 ; catch-all; tests/corpus/fixed_bool_member.cddl additionally round-trips the mandatory array/map
 ; placements and the tag-wrapped members (OPTIONAL fixed-value placements stay a pre-existing
-; generation-failure class — see cddl-matrix/ROADMAP.md § findings).
+; generation-failure class — see cddl-matrix/roadmap.toml § findings).
 ; Distinct from neighboring shapes that stay REJECTED, all of them gracefully: top-level
 ; `foo = true` (tests/matrix_reject/prelude.true.cddl), a fixed value under a count-permitting
 ; occurrence `[* true]` (tests/robustness/fixed_value_occurrence.cddl) and its table-VALUE sibling

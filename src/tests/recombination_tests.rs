@@ -856,7 +856,7 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 
 // ---- the known-panic-class ledger (layer 1) --------------------------------------------------------
 /// Normalized-message substring -> the existing pin that owns the class. EVERY entry must cite a
-/// committed pin (a matrix fixture row, a `tests/robustness/` fixture, or a `cddl-matrix/ROADMAP.md`
+/// committed pin (a matrix fixture row, a `tests/robustness/` fixture, or a `cddl-matrix/roadmap.toml`
 /// findings-ledger entry) — cite stable identifiers, never positions. Every entry is also asserted
 /// OBSERVED by the sweep (stale-pin guard: an entry whose class stops firing must be pruned or the
 /// composer fixed), and its CITATION is asserted to hold by
@@ -1143,7 +1143,7 @@ fn recombination_generation_sweep() {
                          Promotion: minimize by hand; pin it as a matrix containment row (annotations \
                          TOMLs + `bun run project_robustness.ts`) if the matrix can express the cell, \
                          else a tests/robustness/*.cddl catalog fixture with a rationale comment; \
-                         ledger the finding in cddl-matrix/ROADMAP.md § findings; then add a \
+                         ledger the finding in cddl-matrix/roadmap.toml § findings; then add a \
                          KNOWN_PANIC_CLASSES entry citing that pin.",
                         c.id, c.desc, c.spec
                     )),
@@ -1575,8 +1575,8 @@ fn run_layer2_profile(p: &Layer2Profile) {
                     panic_findings.push(format!(
                         "NEW panic class under {} profile — composition {} ({}):\n--- spec ---\n{}--- panic ---\n{msg}\n\
                          Promotion: minimize by hand; pin it (matrix row / tests/robustness/ / \
-                         tests/corpus/) or cite an existing ROADMAP § findings entry; ledger it in \
-                         cddl-matrix/ROADMAP.md § findings; add a profile panic-ledger entry citing the pin.",
+                         tests/corpus/) or cite an existing roadmap.toml § findings entry; ledger it in \
+                         cddl-matrix/roadmap.toml § findings; add a profile panic-ledger entry citing the pin.",
                         p.name, c.id, c.desc, c.spec
                     ));
                 }
@@ -1687,7 +1687,7 @@ fn run_layer2_profile(p: &Layer2Profile) {
                         findings.push(format!(
                             "NEW layer-2 finding under {} profile — composition {} ({}):\n--- spec ---\n{}--- failure ---\n{reason}\n\
                              Promotion: minimize by hand; pin it (matrix row / tests/robustness/ / \
-                             tests/corpus/); ledger it in cddl-matrix/ROADMAP.md § findings; add a \
+                             tests/corpus/); ledger it in cddl-matrix/roadmap.toml § findings; add a \
                              profile known-bad entry citing the pin.",
                             p.name, c.id, c.desc, c.spec
                         ));
@@ -1767,7 +1767,7 @@ fn recombination_crates_execute() {
 /// Panic classes that appear when classifying under `--preserve-encodings=true` but are ok/graceful
 /// under the default profile. Checked AFTER the shared `KNOWN_PANIC_CLASSES` (which stays the
 /// allowlist); a preserve panic matching neither is a NEW finding. Each entry cites an existing
-/// `cddl-matrix/ROADMAP.md` § findings entry (stable title, never a position). Vacuity-guarded in
+/// `cddl-matrix/roadmap.toml` § findings entry (stable title, never a position). Vacuity-guarded in
 /// `recombination_preserve_crates_execute`.
 const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when native floats gained preserve support) a float in member / element / tag /
@@ -1808,7 +1808,7 @@ const LAYER2_PRESERVE_KNOWN_BAD: &[(&str, &str)] = &[];
 /// generate and round-trip via a `bool` presence field under both profiles — the former
 /// encoding-less optional-fixed preserve assert is gone; the composition set still has no
 /// optional-FIXED member kind, so adding one is the extended-member-kind residual in
-/// tests/TESTING_ROADMAP.md.) Profile flags are sourced from
+/// tests/testing-roadmap.toml.) Profile flags are sourced from
 /// `crate::tests::ALL_PROFILES` by name (asserted found), never re-hard-coded.
 ///
 /// NAMING/SELECTION GOTCHA: this name must NOT contain the `recombination_crates_execute` needle
@@ -1844,7 +1844,7 @@ fn recombination_preserve_crates_execute() {
 /// Panic classes that appear when classifying under
 /// `--json-serde-derives=true --json-schema-export=true` but are ok/graceful under the default
 /// profile. Checked AFTER the shared `KNOWN_PANIC_CLASSES` allowlist; a json panic matching neither
-/// is a NEW finding. Each non-empty entry must cite an existing `cddl-matrix/ROADMAP.md` § findings
+/// is a NEW finding. Each non-empty entry must cite an existing `cddl-matrix/roadmap.toml` § findings
 /// entry or another committed stable pin. Vacuity-guarded in
 /// `recombination_json_crates_execute`.
 const JSON_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[];
@@ -1902,7 +1902,7 @@ fn recombination_json_crates_execute() {
 /// Panic classes that appear when classifying under `--wasm=true` but are ok/graceful under the
 /// default `--wasm=false` profile. Checked AFTER the shared `KNOWN_PANIC_CLASSES` allowlist; a wasm
 /// panic matching neither is a NEW finding. Each non-empty entry must cite an existing
-/// `cddl-matrix/ROADMAP.md` § findings entry or another committed stable pin. Vacuity-guarded in
+/// `cddl-matrix/roadmap.toml` § findings entry or another committed stable pin. Vacuity-guarded in
 /// `recombination_wasm_crates_check`.
 // Empty: the former class (a CBOR tag wrapping a table panicked `codegen_table_type`'s wasm-only
 // `assert!(tag.is_none())`) is FIXED — the wasm wrapper is accessors-only and delegates ALL

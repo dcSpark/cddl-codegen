@@ -1,6 +1,7 @@
 import type { IssueCollector } from "../errors.ts";
 import { deriveMatrixStatusFacts, renderMatrixStatusPayloads } from "../matrix_status_facts.ts";
 import type { RepoPath, SlotId } from "../model/core.ts";
+import { PROJECTION_PATH_BY_ROADMAP } from "../projection_paths.ts";
 import type {
   Reference,
   RoadmapDocument,
@@ -29,7 +30,11 @@ import { documentSlots } from "../slots.ts";
 const issue = payloadFactIssue;
 
 const MATRIX_SOURCE_PATH = "cddl-matrix/roadmap.toml" as RepoPath;
-const MATRIX_PROJECTION_PATH = "cddl-matrix/ROADMAP.md" as RepoPath;
+const MATRIX_PROJECTION_PATH = PROJECTION_PATH_BY_ROADMAP.matrix;
+// The status payload rows are keyed by the LEGACY status seam path (matrix_status_facts.ts),
+// which predates the projection's move out of the repository and is pinned by the status-compat
+// fixture bundle. It is a seam identifier, not a file this adapter reads or writes.
+const LEGACY_MATRIX_STATUS_PATH = "cddl-matrix/ROADMAP.md" as RepoPath;
 const SLOT_BINDINGS = Object.freeze([
   ["constraint" as SlotId, "status_header_markers:roadmap-constraint"],
   ["counts" as SlotId, "status_header_markers:roadmap-counts"],
@@ -94,7 +99,7 @@ function matrixSlotResolvers(
   const inlineProductionSlots = usesLiveMatrixInlineSlots(document);
   const payloads = new Map<string, Uint8Array>(
     renderMatrixStatusPayloads(facts)
-      .filter((payload) => payload.path === MATRIX_PROJECTION_PATH)
+      .filter((payload) => payload.path === LEGACY_MATRIX_STATUS_PATH)
       .map((payload) => {
         if (inlineProductionSlots) {
           // The live roadmap slots own only inline marker interiors while the document retains the

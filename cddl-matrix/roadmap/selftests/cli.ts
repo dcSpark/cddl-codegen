@@ -29,14 +29,17 @@ import {
 } from "../output_registry.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import { observeSelfTestIssue } from "./observations.ts";
+import { resolveSectionPlan } from "../section_plan.ts";
+import { buildExpectedChunks } from "../render_ir.ts";
+import { buildProjectionViews } from "../projection_views.ts";
+import { TESTING_ADAPTER } from "../adapters/testing.ts";
+import { PROJECTION_PATH_BY_ROADMAP } from "../projection_paths.ts";
 import {
   liveMatrixAuthoritativeSource,
-  liveMatrixProjection,
   liveMatrixV3Document,
 } from "./live_matrix.ts";
 import {
   liveTestingAuthoritativeSource,
-  liveTestingProjection,
   liveTestingV3Document,
 } from "./live_testing.ts";
 
@@ -60,7 +63,6 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_as_of_requires_query",
   "cli_format_target_declared_only",
   "exit_declared_source_enoent_one",
-  "exit_declared_projection_enoent_one",
   "exit_declared_source_eacces_two",
   "exit_declared_reference_enoent_one",
   "exit_other_read_io_two",
@@ -324,6 +326,20 @@ function validTestingPorts(context: SelfTestContext, atomic?: FakeOptions["atomi
   });
 }
 
+function renderedLiveTestingProjection(): Uint8Array {
+  const document = liveTestingV3Document();
+  const plan = resolveSectionPlan(document);
+  assert(plan.issues.length === 0, "live testing section plan is invalid");
+  const completed = buildExpectedChunks(document, plan.ops, {
+    renderSemanticRecord: (record, fields) => TESTING_ADAPTER.renderSemantic(record, fields),
+    resolveGeneratedSlot: () => undefined,
+  });
+  assert(completed.build_issues.length === 0, "live testing render IR failed to build");
+  const views = buildProjectionViews(document, completed);
+  assert(views.issues.length === 0, "live testing projection views reported issues");
+  return new Uint8Array(views.full);
+}
+
 const CROSS_ROADMAP_TESTING_EXTERN_TARGET =
   "testing.extern-deps-wasm-boundary-surface-packaging-json-gen" as RoadmapId;
 
@@ -361,7 +377,7 @@ function temporalTestingPorts(
   kind: "cadence" | "evidence",
 ): RoadmapCliPorts {
   const sourcePath = "tests/testing-roadmap.toml" as RepoPath;
-  const projectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
+  const projectionPath = PROJECTION_PATH_BY_ROADMAP.testing;
   const base = text(fixture(context, "positive/small-testing-v3.toml"))
     .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.toml", sourcePath)
     .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.expected.md", projectionPath);
@@ -457,13 +473,10 @@ issue = "17"
     false,
   ));
   const source = withCrossRoadmapTestingExternTarget(splicedCanonical);
-  const projection = fixture(context, "positive/small-testing-v3.expected.md");
   return fakePorts({
     read(path) {
       if (path === sourcePath) return new Uint8Array(source);
-      if (path === projectionPath) return new Uint8Array(projection);
       if (path === "cddl-matrix/roadmap.toml") return liveMatrixAuthoritativeSource();
-      if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     registry(revision) {
@@ -528,9 +541,7 @@ function bothAuthoritativePorts(atomic?: FakeOptions["atomic"]): RoadmapCliPorts
   return fakePorts({
     read(path) {
       if (path === "cddl-matrix/roadmap.toml") return liveMatrixAuthoritativeSource();
-      if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
       if (path === "tests/testing-roadmap.toml") return liveTestingAuthoritativeSource();
-      if (path === "tests/TESTING_ROADMAP.md") return liveTestingProjection();
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     registry(revision) {
@@ -559,7 +570,7 @@ function authoritativeProjectionReferencePorts(
   projectionReads: { value: number },
 ): RoadmapCliPorts {
   const sourcePath = "tests/testing-roadmap.toml" as RepoPath;
-  const projectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
+  const projectionPath = PROJECTION_PATH_BY_ROADMAP.testing;
   const sourceFixture = text(fixture(context, "positive/small-testing-v3.toml"))
     .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.toml", sourcePath)
     .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.expected.md", projectionPath);
@@ -639,16 +650,19 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
           replacements.push({ path, bytes: new Uint8Array(value) });
         }),
       );
-      const expected = liveTestingProjection();
+      // The oracle is a hand-assembled render over the same pure stages (section plan → expected
+      // chunks → projection views), independent of the write path's authority/plan plumbing; the
+      // projection itself is gitignored, so there are no committed bytes to compare against.
+      const expected = renderedLiveTestingProjection();
       assert(
         result.exit_code === 0 && result.stderr.byteLength === 0 && replacements.length === 1 &&
-          replacements[0].path === "tests/TESTING_ROADMAP.md" &&
+          replacements[0].path === PROJECTION_PATH_BY_ROADMAP.testing &&
           replacements[0].bytes.byteLength === expected.byteLength &&
           replacements[0].bytes.every((value, index) => value === expected[index]) &&
           text(result.stdout).startsWith(
-            "WRITE OK roadmap=testing target=tests/TESTING_ROADMAP.md bytes=",
+            `WRITE OK roadmap=testing target=${PROJECTION_PATH_BY_ROADMAP.testing} bytes=`,
           ),
-        `authoritative testing write did not apply the exact committed whole-file projection: ${text(result.stderr)}`,
+        `authoritative testing write did not apply the exact rendered whole-file projection: ${text(result.stderr)}`,
       );
       return pass("positive");
     }
@@ -696,17 +710,6 @@ function invalidDate(value: string): SelfTestResult {
 function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
   switch (id) {
     case "exit_declared_source_enoent_one": expectFailure(["--query", "summary", "--roadmap", "matrix"], expectedIssue("E-SOURCE-MISSING", "cddl-matrix/roadmap.toml", "$", "declared source is missing", 1)); return pass("negative");
-    case "exit_declared_projection_enoent_one": {
-      const valid = validTestingPorts(context);
-      const ports = fakePorts({ read: (path) => {
-        if (path === "tests/TESTING_ROADMAP.md") {
-          throw roadmapFailure("E-SOURCE-MISSING", path, "projection", "projection missing", 1);
-        }
-        return valid.read.readDeclared(path);
-      }, registry: valid.read.registryView });
-      expectFailure(["--check", "--roadmap", "testing"], expectedIssue("E-PROJECTION-MISSING", "tests/TESTING_ROADMAP.md", "projection", "projection missing", 1), ports);
-      return pass("negative");
-    }
     case "exit_declared_source_eacces_two": expectFailure(["--query", "summary", "--roadmap", "matrix"], expectedIssue("E-IO-PERMISSION", "cddl-matrix/roadmap.toml", "$", "permission denied", 2), fakePorts({ read: (path) => { throw roadmapFailure("E-IO-PERMISSION", path, "$", "permission denied", 2); } })); return pass("negative");
     case "exit_declared_reference_enoent_one": expectFailure(["--query", "references", "--roadmap", "matrix"], expectedIssue("E-REFERENCE-UNRESOLVED", "cddl-matrix/roadmap.toml", "reference", "declared reference missing", 1), fakePorts({ read: (path) => { throw roadmapFailure("E-REFERENCE-UNRESOLVED", path, "reference", "declared reference missing", 1); } })); return pass("negative");
     case "exit_other_read_io_two": expectFailure(["--query", "summary", "--roadmap", "matrix"], expectedIssue("E-IO-READ", "cddl-matrix/roadmap.toml", "$", "read failed", 2), fakePorts({ read: (path) => { throw roadmapFailure("E-IO-READ", path, "$", "read failed", 2); } })); return pass("negative");
@@ -992,7 +995,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           transitions.length === 1 && transitions[0].evaluation === "unknown_no_as_of",
         "no-as-of query fabricated time or did not preserve the decoded unknown posture",
       );
-      assert(!paths.includes("tests/TESTING_ROADMAP.md" as RepoPath), "query read the committed projection");
+      assert(!paths.includes(PROJECTION_PATH_BY_ROADMAP.testing), "query read the on-disk projection render");
       return pass("positive");
     }
     case "query_as_of_does_not_select_git_revision": {

@@ -77,7 +77,7 @@ a rotted regex silently shrinks the set.
 ## Findings disposition
 
 Findings graduate to committed regressions: codegen-owned crashes become a `tests/core`
-`structural_rejects` case; dependency-level ones are ledgered in `cddl-matrix/ROADMAP.md`.
+`structural_rejects` case; dependency-level ones are ledgered in `cddl-matrix/roadmap.toml`.
 
 - The **`cbor_event` untrusted length-prefix over-allocation** (a `0x7b`/`0x5b`… 8-byte length
   header drove a multi-GB `Vec::with_capacity` before any payload byte was read) was fixed upstream

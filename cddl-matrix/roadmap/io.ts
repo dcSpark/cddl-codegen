@@ -120,7 +120,6 @@ interface NodeErrorLike {
 
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
 const FIXTURE_ROOT = "cddl-matrix/roadmap/fixtures";
-const PROJECTION_PATHS = new Set(["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADMAP.md"]);
 const SOURCE_PATHS = new Set([
   "cddl-matrix/roadmap.toml",
   "tests/testing-roadmap.toml",
@@ -261,7 +260,7 @@ function rejectSymlinkComponents(
   root: string,
   path: string,
   includeLeaf: boolean,
-  failureRole: "source" | "projection" | "reference" | "write",
+  failureRole: "source" | "reference" | "write",
 ): void {
   const parts = strictRelativePath(path, "repository");
   const limit = includeLeaf ? parts.length : Math.max(0, parts.length - 1);
@@ -276,15 +275,17 @@ function rejectSymlinkComponents(
         throw error;
       }
     } catch (error) {
+      // A missing component on a WRITE path is not a hazard: the atomic writer creates the
+      // parents itself (draft/roadmaps/ in a fresh checkout), and nothing below a missing
+      // directory can be a symlink.
+      if (failureRole === "write" && nodeErrorCode(error) === "ENOENT") return;
       throw classifyRoadmapIoError(error, { role: failureRole, path, operation: failureRole === "write" ? "atomic-path" : "read-declared" });
     }
   }
 }
 
-function declaredRole(path: string): "source" | "projection" | "reference" {
-  if (SOURCE_PATHS.has(path)) return "source";
-  if (PROJECTION_PATHS.has(path)) return "projection";
-  return "reference";
+function declaredRole(path: string): "source" | "reference" {
+  return SOURCE_PATHS.has(path) ? "source" : "reference";
 }
 
 interface GitResult {
@@ -472,6 +473,13 @@ function atomicReplaceAt(root: string, target: RepoPath, bytes: Uint8Array): voi
   rejectSymlinkComponents(root, target, false, "write");
   if (existsSync(absolute)) rejectSymlinkComponents(root, target, true, "write");
   const parent = dirname(absolute);
+  // The gitignored projection home (draft/roadmaps/) may not exist yet in a fresh checkout; the
+  // confined target path was symlink-vetted above, so creating its parents is safe.
+  try {
+    mkdirSync(parent, { recursive: true });
+  } catch (error) {
+    throw classifyRoadmapIoError(error, { role: "write", path: target, operation: "atomic-parent-dir" });
+  }
   let temporary: string | undefined;
   let descriptor: number | undefined;
   for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -665,10 +673,10 @@ function auditRoadmapEffectImports(repositoryRoot: string): void {
 }
 
 function readAllTracked(root: string, revision: RepositoryRevision): readonly TrackedTextInput[] {
+  // The roadmap projections live under gitignored draft/, so this one exclusion also keeps any
+  // committed copy of a projection from ever becoming a fact input again.
   const entries = trackedEntries(root, revision)
-    .filter((entry) =>
-      !PROJECTION_PATHS.has(entry.path) && entry.path !== "draft" && !entry.path.startsWith("draft/")
-    );
+    .filter((entry) => entry.path !== "draft" && !entry.path.startsWith("draft/"));
   if (revision.kind === "worktree") {
     return entries.map((entry) => {
       const absolute = confinedPath(root, entry.path, "repository");
@@ -888,9 +896,11 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
   const tracked = readAllTracked(root, revision);
   const byPath = new Map(tracked.flatMap((input) => input.bytes === undefined ? [] : [[input.source, input.bytes] as const]));
   const outputInventory = productionOutputInventory(productionOutputStage());
-  // Projection files are supplied later from the lifecycle stage-selected immutable view. Every
-  // other tracked regular, non-draft path participates regardless of extension or corpus role.
-  const citationInputs = tracked.filter((input) => !PROJECTION_PATHS.has(input.source));
+  // Projection facts are supplied later from the lifecycle stage-selected immutable view (the
+  // in-memory render); the projections themselves are untracked draft/ files and never appear in
+  // the tracked universe. Every tracked regular, non-draft path participates regardless of
+  // extension or corpus role.
+  const citationInputs = tracked;
   const testSymbolInputs = tracked.filter((input) =>
     input.source === "src/main.rs" || input.source === "src/tests/mod.rs" ||
     (input.source.startsWith("src/tests/") && input.source.endsWith(".rs"))

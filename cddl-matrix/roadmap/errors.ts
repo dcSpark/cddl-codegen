@@ -17,7 +17,6 @@ export const ISSUE_CODES = [
   "E-IO-RENAME",
   "E-INTERNAL",
   "E-SOURCE-MISSING",
-  "E-PROJECTION-MISSING",
   "E-SOURCE-UTF8",
   "E-SOURCE-LINE-END",
   "E-SOURCE-EMPTY",
@@ -73,7 +72,6 @@ export const ISSUE_CODES = [
   "E-OUTPUT-SLOT",
   "E-OUTPUT-AUTHORITY",
   "E-OUTPUT-TOML",
-  "E-PROJECTION-DRIFT",
   "E-FIXTURE-REGISTRY",
   "E-FIXTURE-FLOOR",
   "E-FIXTURE-EXPECTED",
@@ -94,7 +92,6 @@ export interface RoadmapIssue {
 
 export type RoadmapIoRole =
   | "source"
-  | "projection"
   | "fixture"
   | "reference"
   | "read"
@@ -120,7 +117,6 @@ export function classifyRoadmapIoErrno(
 ): RoadmapIoClassification {
   if (errno === "EACCES" || errno === "EPERM") return { code: "E-IO-PERMISSION", exit: 2 };
   if (errno === "ENOENT" && role === "source") return { code: "E-SOURCE-MISSING", exit: 1 };
-  if (errno === "ENOENT" && role === "projection") return { code: "E-PROJECTION-MISSING", exit: 1 };
   if (errno === "ENOENT" && role === "fixture") return { code: "E-FIXTURE-REGISTRY", exit: 1 };
   if (errno === "ENOENT" && role === "reference") return { code: "E-REFERENCE-UNRESOLVED", exit: 1 };
   if (role === "git") return { code: "E-GIT-IO", exit: 2 };

@@ -576,7 +576,7 @@ function explicitArmHeadClass(arm: string): string | null {
 
 // The root rule's RHS from an `example`, or null when the root rule uses an INCREMENTAL choice extension
 // (`/=` / `//=`): that spelling spreads the choice across multiple statements the single-statement reader
-// here can't merge, and cddl-codegen itself silently drops all but the last arm (ROADMAP § findings), so
+// here can't merge, and cddl-codegen itself silently drops all but the last arm (roadmap.toml § findings), so
 // the floor refuses to model it rather than guess a wrong arm set (e.g. `a = int` / `a /= tstr`).
 function rootRuleRhs(example: string): string | null {
   for (const raw of example.split(/\r?\n/)) {

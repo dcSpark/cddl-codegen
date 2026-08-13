@@ -2,7 +2,7 @@
 schema_version = 3
 roadmap = "testing"
 source_path = "tests/testing-roadmap.toml"
-projection_path = "tests/TESTING_ROADMAP.md"
+projection_path = "draft/roadmaps/testing-roadmap.md"
 
 [[section]]
 section_id = "preamble"
@@ -158,7 +158,7 @@ over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is buil
 
 **Entries whose trigger has FIRED are work items, not deferrals, and they are listed here so the
 section's recur-first premise stays honest.** Cited count-free and by exact title, because a
-hand-maintained tally of this list is itself the rot class `cddl-matrix/ROADMAP.md` § Maintenance
+hand-maintained tally of this list is itself the rot class `cddl-matrix/roadmap.toml` § Maintenance
 records — this one went stale twice in a single day of deliveries before the number came out. The
 full record stays in place below: "A "no gate demands this" premise probed against ONE gate
 is not evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
@@ -2395,7 +2395,7 @@ body_md = '''- **Extern-deps wasm-boundary surface: packaging- and json-gen-gaps
   dep-owned rows (a dep type's schema root is owned by the dep's own json-gen run, and this crate's
   json-gen manifest depends only on the own rust crate), pinned in-memory by
   `snapshot_tests::json_gen_extern_schema_rows`. COMPILING emitted json-gen crates at breadth is
-  owned by `cddl-matrix/ROADMAP.md`'s extern-compile-breadth entry; the residual owned HERE is
+  owned by `cddl-matrix/roadmap.toml`'s extern-compile-breadth entry; the residual owned HERE is
   execution — no gate RUNS `export_schemas()` from a json-gen crate built from a spec carrying
   extern deps (such a crate now compiles precisely because the dep rows are skipped; the unprobed
   layer is the runtime over the surviving in-crate rows in that configuration).
@@ -2505,7 +2505,7 @@ body_md = '''- **Extreme-value boundary correctness of generation-time encode pa
   canonical spec with a fixed `-9223372036854775808` map key would have gotten wrong key
   ordering silently. `i64::MIN` is representable in the old `isize` field, so this was a
   correctness hole at a representable boundary — a different class from the representability
-  widening the nint entry in `cddl-matrix/ROADMAP.md` scopes (that entry even named this call
+  widening the nint entry in `cddl-matrix/roadmap.toml` scopes (that entry even named this call
   site, but as a range cap, and its "generation already uses `_sz` where the `i64` limit bites"
   premise was exactly what the bug falsified). Standing coverage now:
   `nint_to_bytes_canonical_across_boundaries` pins hard-coded canonical bytes across the full
@@ -2527,7 +2527,7 @@ control_ids = ["testing.guard.extreme-value-boundary-correctness-generation-time
 [record.payload.promotion_trigger]
 observer = "fresh-evidence submitter for testing.extreme-value-boundary-correctness-generation-time-encode-paths"
 dimension = "Extreme-value boundary correctness of generation-time encode paths: a value that FITS the type can still encode wrong at the type's boundary, and no fixture minted from \"supported shapes\" ever lands there."
-observable = "- **Extreme-value boundary correctness of generation-time encode paths: a value that FITS the type can still encode wrong at the type's boundary, and no fixture minted from \"supported shapes\" ever lands there.** Proven instance (read-caught during the `FixedValue` i128/u64 widening, not by any test): `FixedValue::to_bytes` — the generation-time canonical-ordering encoder for fixed map keys — called cbor_event's `write_negative_integer(*i as i64)`, which produced wrong bytes for `i64::MIN` on the then-current cbor_event 2.4.0 (`-i64::MIN` overflowed i64; the 3.x endpoint computes in i128), so a canonical spec with a fixed `-9223372036854775808` map key would have gotten wrong key ordering silently. `i64::MIN` is representable in the old `isize` field, so this was a correctness hole at a representable boundary — a different class from the representability widening the nint entry in `cddl-matrix/ROADMAP.md` scopes (that entry even named this call site, but as a range cap, and its \"generation already uses `_sz` where the `i64` limit bites\" premise was exactly what the bug falsified). Standing coverage now: `nint_to_bytes_canonical_across_boundaries` pins hard-coded canonical bytes across the full magnitude ladder + `i64::MIN` through `to_bytes`, and `i64_min_fixed_value_emits_width_correct_nint` pins the emitted serialize line under default + preserve profiles. What no gate yet does: thread each numeric extreme (`i64::MIN`/`MAX`, `u64::MAX`, the `±2^63±1` off-by-ones) through every POSITION class systematically — fixed value, fixed map key under `--canonical`, range/bounds windows, deserialize mismatch arms — in a generated crate whose emitted tests execute. A SECOND read-caught extreme-value bug in any encode/compare path is the trigger to build that boundary-vector sweep as a corpus/matrix axis rather than hand-pinning per instance."
+observable = "- **Extreme-value boundary correctness of generation-time encode paths: a value that FITS the type can still encode wrong at the type's boundary, and no fixture minted from \"supported shapes\" ever lands there.** Proven instance (read-caught during the `FixedValue` i128/u64 widening, not by any test): `FixedValue::to_bytes` — the generation-time canonical-ordering encoder for fixed map keys — called cbor_event's `write_negative_integer(*i as i64)`, which produced wrong bytes for `i64::MIN` on the then-current cbor_event 2.4.0 (`-i64::MIN` overflowed i64; the 3.x endpoint computes in i128), so a canonical spec with a fixed `-9223372036854775808` map key would have gotten wrong key ordering silently. `i64::MIN` is representable in the old `isize` field, so this was a correctness hole at a representable boundary — a different class from the representability widening the nint entry in `cddl-matrix/roadmap.toml` scopes (that entry even named this call site, but as a range cap, and its \"generation already uses `_sz` where the `i64` limit bites\" premise was exactly what the bug falsified). Standing coverage now: `nint_to_bytes_canonical_across_boundaries` pins hard-coded canonical bytes across the full magnitude ladder + `i64::MIN` through `to_bytes`, and `i64_min_fixed_value_emits_width_correct_nint` pins the emitted serialize line under default + preserve profiles. What no gate yet does: thread each numeric extreme (`i64::MIN`/`MAX`, `u64::MAX`, the `±2^63±1` off-by-ones) through every POSITION class systematically — fixed value, fixed map key under `--canonical`, range/bounds windows, deserialize mismatch arms — in a generated crate whose emitted tests execute. A SECOND read-caught extreme-value bug in any encode/compare path is the trigger to build that boundary-vector sweep as a corpus/matrix axis rather than hand-pinning per instance."
 action_on_fire_md = '''Set testing.extreme-value-boundary-correctness-generation-time-encode-paths to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
@@ -6448,7 +6448,7 @@ body_md = '''  - ***rustfmt, so the code never reaches rustc at all.*** Not a du
     so it predated that change; making the default profile generate the uint spelling is what put a
     reader in front of it. The class is not empty: the brute-force-dispatch sibling
     (`t = true / null / tstr`) still fails at the same seam and is ledgered in
-    `cddl-matrix/ROADMAP.md` § findings — a robustness row for it would record an error today, but
+    `cddl-matrix/roadmap.toml` § findings — a robustness row for it would record an error today, but
     an `ok`-flip after a fix would again certify only generation. '''
 signal_md = '''Reopening signal, on the
     magnitude axis the deferred cost grows along: **the count of `ok`-recording robustness rows
@@ -6466,7 +6466,7 @@ control_ids = ["testing.guard.process-boundary-rustfmt-pre-rustc"]
 [record.payload.promotion_trigger]
 observer = "fresh-evidence submitter for testing.process-boundary.rustfmt-pre-rustc"
 dimension = "*rustfmt, so the code never reaches rustc at all."
-observable = "- ***rustfmt, so the code never reaches rustc at all.*** Not a duplicate of the class above: there the emitted crate reached rustc and was rejected, so any compile leg would catch it; here generation itself fails at the rustfmt merge step, so no compile leg can even receive a crate. One premise correction this entry now carries, probed rather than reasoned (an earlier version asserted the opposite on the strength of a dangling doc reference): the rustfmt pass runs IN-PROCESS too — `generated_strings` is post-rustfmt — so any vehicle that generates the shape under the failing profile witnesses this class as a generation error; the residual blindness is the same two-part bound as the siblings' (a vehicle must exist under the failing profile at all, and an `ok`-flip after a fix certifies only generation). Proven instance (since fixed on the type-match dispatch sites and given exactly this entry's remedy — promoted into `tests/corpus/group_choice_fixed_special.cddl`, whose cells shell the real CLI so the rustfmt seam is witnessed for the shape): a bool or null fixed value in a map-representation group-choice arm emitted Rust that rustfmt rejects (`expected pattern, found '='`) under `--preserve-encodings`. It reproduced against the parent of the fixed-value-arm support commit, so it predated that change; making the default profile generate the uint spelling is what put a reader in front of it. The class is not empty: the brute-force-dispatch sibling (`t = true / null / tstr`) still fails at the same seam and is ledgered in `cddl-matrix/ROADMAP.md` § findings — a robustness row for it would record an error today, but an `ok`-flip after a fix would again certify only generation. Reopening signal, on the magnitude axis the deferred cost grows along: **the count of `ok`-recording robustness rows whose emitted crate fails at export** — measurable by a consumer whose generation aborts at rustfmt while our catalog records the shape as `ok`, a party that already has the problem and needs nothing from us to notice it. That count is zero today, so the signal is unmet rather than pre-satisfied."
+observable = "- ***rustfmt, so the code never reaches rustc at all.*** Not a duplicate of the class above: there the emitted crate reached rustc and was rejected, so any compile leg would catch it; here generation itself fails at the rustfmt merge step, so no compile leg can even receive a crate. One premise correction this entry now carries, probed rather than reasoned (an earlier version asserted the opposite on the strength of a dangling doc reference): the rustfmt pass runs IN-PROCESS too — `generated_strings` is post-rustfmt — so any vehicle that generates the shape under the failing profile witnesses this class as a generation error; the residual blindness is the same two-part bound as the siblings' (a vehicle must exist under the failing profile at all, and an `ok`-flip after a fix certifies only generation). Proven instance (since fixed on the type-match dispatch sites and given exactly this entry's remedy — promoted into `tests/corpus/group_choice_fixed_special.cddl`, whose cells shell the real CLI so the rustfmt seam is witnessed for the shape): a bool or null fixed value in a map-representation group-choice arm emitted Rust that rustfmt rejects (`expected pattern, found '='`) under `--preserve-encodings`. It reproduced against the parent of the fixed-value-arm support commit, so it predated that change; making the default profile generate the uint spelling is what put a reader in front of it. The class is not empty: the brute-force-dispatch sibling (`t = true / null / tstr`) still fails at the same seam and is ledgered in `cddl-matrix/roadmap.toml` § findings — a robustness row for it would record an error today, but an `ok`-flip after a fix would again certify only generation. Reopening signal, on the magnitude axis the deferred cost grows along: **the count of `ok`-recording robustness rows whose emitted crate fails at export** — measurable by a consumer whose generation aborts at rustfmt while our catalog records the shape as `ok`, a party that already has the problem and needs nothing from us to notice it. That count is zero today, so the signal is unmet rather than pre-satisfied."
 action_on_fire_md = '''Set testing.process-boundary.rustfmt-pre-rustc to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
@@ -7583,7 +7583,7 @@ kind = "work"
 body_md = '''- **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not
   by any gate): the extern-only-scope undeclared-module finding was ledgered both in
-  `cddl-matrix/ROADMAP.md` and as a hand "Known limitation" paragraph in
+  `cddl-matrix/roadmap.toml` and as a hand "Known limitation" paragraph in
   `docs/docs/comment_dsl.mdx`; the fix pruned the roadmap entry and minted the pin
   (`integration_extern_only_scope_declared_in_root`) but the user-docs paragraph survived — through
   a later docs pass over the same file — until the facade compile pin
@@ -7595,7 +7595,7 @@ body_md = '''- **Stale "known limitation" prose surviving its fix — a finding 
   fixed-value "panics" prose) — these render into `tests/corpus/COVERAGE.md`, a GENERATED span
   `lint_doc_citations` never scans, so that gate could never have caught them. THIRD instance, a
   distinct rot mode — a NEGATIVE-INVENTORY scan claim (caught at item pickup during the tag-set
-  matrix-cell delivery): a `cddl-matrix/ROADMAP.md` bullet asserted "no current row's example
+  matrix-cell delivery): a `cddl-matrix/roadmap.toml` bullet asserted "no current row's example
   matches the recognized shape" as its coverage-hole premise, and the claim was silently falsified
   the SAME DAY it shipped when the `dsl.duplicates.{reject,preserve}` registration (`5485b2c`)
   landed a matching example (`#6.258([* uint]) / [* uint] ; @duplicates reject`; harmless there —
@@ -7663,7 +7663,7 @@ control_ids = ["testing.guard.stale-known-limitation-prose-surviving-fix-finding
 [record.payload.promotion_trigger]
 observer = "fresh-evidence submitter for testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 dimension = "Stale \"known limitation\" prose surviving its fix — a finding ledgered in TWO homes where the fixing commit prunes only one."
-observable = "- **Stale \"known limitation\" prose surviving its fix — a finding ledgered in TWO homes where the fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not by any gate): the extern-only-scope undeclared-module finding was ledgered both in `cddl-matrix/ROADMAP.md` and as a hand \"Known limitation\" paragraph in `docs/docs/comment_dsl.mdx`; the fix pruned the roadmap entry and minted the pin (`integration_extern_only_scope_declared_in_root`) but the user-docs paragraph survived — through a later docs pass over the same file — until the facade compile pin (`facade_composition_compiles`) delivery pruned it. SECOND instance SET, a DIFFERENT home (read-caught during the findings-sweep delivery): the corpus findings ledger (`cddl-matrix/annotations/corpus/cddl_codegen.toml`) carried four failure-claim `[[finding]]`s / sibling `[[note]]`s whose defects had been fixed out from under them (the `bool`-in-type-choice E0282, the single-letter-`r` E0574, the inline-group data-loss \"Bug\", and the top-level fixed-value \"panics\" prose) — these render into `tests/corpus/COVERAGE.md`, a GENERATED span `lint_doc_citations` never scans, so that gate could never have caught them. THIRD instance, a distinct rot mode — a NEGATIVE-INVENTORY scan claim (caught at item pickup during the tag-set matrix-cell delivery): a `cddl-matrix/ROADMAP.md` bullet asserted \"no current row's example matches the recognized shape\" as its coverage-hole premise, and the claim was silently falsified the SAME DAY it shipped when the `dsl.duplicates.{reject,preserve}` registration (`5485b2c`) landed a matching example (`#6.258([* uint]) / [* uint] ; @duplicates reject`; harmless there — that row's verdict was minted with the collapse live, so nothing was actually stale — but the prose was wrong from that commit on). The class property: a point-in-time inventory claim DANGLES NOTHING — every artifact it names keeps resolving — so no citation lint can ever fire; and mechanically re-checking arbitrary prose inventory claims against the live matrix is the same claim-semantics boundary check `I` deliberately stops at. No mechanical layer proposed; the guard is pickup discipline, which worked here: a roadmap item's scan/inventory premises are claims to re-verify against the live tree when the item is picked up (AGENTS.md's premise-probing rule — the re-scan is one grep), and the delivery prunes the whole bullet, premise included. Authoring rule for future bullets: scope any inventory claim to its evidence (\"scanned at <sha>\") or phrase it as the check to re-run, never as a standing fact. FOURTH instance, in a home the first three did not reach — a session HANDOFF file, where the claim is about VERIFICATION STATE rather than about the tree: a `draft/` worklist's carry-forward bullet read \"no cycle-1 commit has been seen by a `full`-tier gate\", true when written and falsified as soon as the tier was run. The next cycle's orchestrator propagated the file's line into its own report in preference to the fresher fact it had been given directly, which is the rot mode worth naming: a handoff doc is READ as current state by construction, so a stale standing fact in one is not merely wrong, it OUTRANKS newer evidence in the reader's head. The authoring rule above already covers it verbatim (a tier verdict is a point-in-time inventory claim, and \"PASSED at `<sha>`\" satisfies it while \"has never run\" does not), so this is the rule firing rather than a gap — but note it applies to `draft/` handoff files, which no gate scans and which are gitignored, so review is the only reader that can enforce it. The SECOND-instance mechanical layer is now BUILT for that home: the findings-claims arm (`project_corpus.ts` check `I`, local tier) fails a failure-claim finding that names no resolvable tracking pin — current state, including its accepted looseness (a resolving citation does not validate claim SEMANTICS, which stay review-owned; any backtick token matching `src/tests/` text satisfies resolution — tighten on the first vacuous pass observed), is documented in `cddl-matrix/README.md` § \"Gotchas\". Still future: the USER-DOCS home has no arm — a parallel limitation-claims arm on `lint_doc_citations` (every known-limitation-classed paragraph outside a generated span carries a resolvable tracking citation, or folds into a projected span — the matrix north star's \"more docs follow\") remains unbuilt, since the two homes have different scanners and neither arm sees the other's prose. That half needs its own signal rather than inheriting the parent's second-instance trigger, which four recorded instances have already met: on the axis its cost grows along, it is **the count of known-limitation paragraphs in `docs/docs/*.mdx` that name no tracking artifact** — measured by the next author who greps `docs/` before shipping a fix, which the working rule below already requires them to do, so the count arrives as a by-product of work someone is doing anyway. Build the arm when that grep returns a set too large to walk by hand; until then the grep IS the arm. Working rules meanwhile: a limitation recorded in user docs names its tracking artifact (the reject/panic fixture, pin, or ledger entry) in the same paragraph; a fixing session greps `docs/` for the limitation's key phrases before shipping; and the prose that CLOSES a stale finding attributes the fix by REPRODUCING against the candidate commit's parent (a throwaway worktree + the probe is minutes), never by narrative plausibility — the findings sweep's first closure draft attributed both compile-bug closures to a plausible-but-wrong commit, falsified only by a worktree reproduction at that commit's parent before the wrong story shipped. The reproduce-at-parent rule is REVIEW-OWNED by explicit decision, not pending a mechanical layer: whether a reproduction happened leaves no machine-checkable artifact, so a detector could only check that prose CLAIMS verification — the same claim-semantics boundary check I stops at (same disposition class as the declined docs-conformance harness; the reopening signal is a false attribution SHIPPING past review, not one being caught by it). Bisect/reproduction mechanics for whoever next needs them — chiefly the `git bisect run` exit-convention POLARITY trap (exit 0 always means the OLD term, so a fix-hunting script that exits 0 on \"works\" is inverted and the search returns its own fixed endpoint), plus the specific-error-keyed verdict shape and the cheaper reproduce-at-parent/pickaxe-first alternatives — live in `draft/bisect-verdict-discipline.md`."
+observable = "- **Stale \"known limitation\" prose surviving its fix — a finding ledgered in TWO homes where the fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not by any gate): the extern-only-scope undeclared-module finding was ledgered both in `cddl-matrix/roadmap.toml` and as a hand \"Known limitation\" paragraph in `docs/docs/comment_dsl.mdx`; the fix pruned the roadmap entry and minted the pin (`integration_extern_only_scope_declared_in_root`) but the user-docs paragraph survived — through a later docs pass over the same file — until the facade compile pin (`facade_composition_compiles`) delivery pruned it. SECOND instance SET, a DIFFERENT home (read-caught during the findings-sweep delivery): the corpus findings ledger (`cddl-matrix/annotations/corpus/cddl_codegen.toml`) carried four failure-claim `[[finding]]`s / sibling `[[note]]`s whose defects had been fixed out from under them (the `bool`-in-type-choice E0282, the single-letter-`r` E0574, the inline-group data-loss \"Bug\", and the top-level fixed-value \"panics\" prose) — these render into `tests/corpus/COVERAGE.md`, a GENERATED span `lint_doc_citations` never scans, so that gate could never have caught them. THIRD instance, a distinct rot mode — a NEGATIVE-INVENTORY scan claim (caught at item pickup during the tag-set matrix-cell delivery): a `cddl-matrix/roadmap.toml` bullet asserted \"no current row's example matches the recognized shape\" as its coverage-hole premise, and the claim was silently falsified the SAME DAY it shipped when the `dsl.duplicates.{reject,preserve}` registration (`5485b2c`) landed a matching example (`#6.258([* uint]) / [* uint] ; @duplicates reject`; harmless there — that row's verdict was minted with the collapse live, so nothing was actually stale — but the prose was wrong from that commit on). The class property: a point-in-time inventory claim DANGLES NOTHING — every artifact it names keeps resolving — so no citation lint can ever fire; and mechanically re-checking arbitrary prose inventory claims against the live matrix is the same claim-semantics boundary check `I` deliberately stops at. No mechanical layer proposed; the guard is pickup discipline, which worked here: a roadmap item's scan/inventory premises are claims to re-verify against the live tree when the item is picked up (AGENTS.md's premise-probing rule — the re-scan is one grep), and the delivery prunes the whole bullet, premise included. Authoring rule for future bullets: scope any inventory claim to its evidence (\"scanned at <sha>\") or phrase it as the check to re-run, never as a standing fact. FOURTH instance, in a home the first three did not reach — a session HANDOFF file, where the claim is about VERIFICATION STATE rather than about the tree: a `draft/` worklist's carry-forward bullet read \"no cycle-1 commit has been seen by a `full`-tier gate\", true when written and falsified as soon as the tier was run. The next cycle's orchestrator propagated the file's line into its own report in preference to the fresher fact it had been given directly, which is the rot mode worth naming: a handoff doc is READ as current state by construction, so a stale standing fact in one is not merely wrong, it OUTRANKS newer evidence in the reader's head. The authoring rule above already covers it verbatim (a tier verdict is a point-in-time inventory claim, and \"PASSED at `<sha>`\" satisfies it while \"has never run\" does not), so this is the rule firing rather than a gap — but note it applies to `draft/` handoff files, which no gate scans and which are gitignored, so review is the only reader that can enforce it. The SECOND-instance mechanical layer is now BUILT for that home: the findings-claims arm (`project_corpus.ts` check `I`, local tier) fails a failure-claim finding that names no resolvable tracking pin — current state, including its accepted looseness (a resolving citation does not validate claim SEMANTICS, which stay review-owned; any backtick token matching `src/tests/` text satisfies resolution — tighten on the first vacuous pass observed), is documented in `cddl-matrix/README.md` § \"Gotchas\". Still future: the USER-DOCS home has no arm — a parallel limitation-claims arm on `lint_doc_citations` (every known-limitation-classed paragraph outside a generated span carries a resolvable tracking citation, or folds into a projected span — the matrix north star's \"more docs follow\") remains unbuilt, since the two homes have different scanners and neither arm sees the other's prose. That half needs its own signal rather than inheriting the parent's second-instance trigger, which four recorded instances have already met: on the axis its cost grows along, it is **the count of known-limitation paragraphs in `docs/docs/*.mdx` that name no tracking artifact** — measured by the next author who greps `docs/` before shipping a fix, which the working rule below already requires them to do, so the count arrives as a by-product of work someone is doing anyway. Build the arm when that grep returns a set too large to walk by hand; until then the grep IS the arm. Working rules meanwhile: a limitation recorded in user docs names its tracking artifact (the reject/panic fixture, pin, or ledger entry) in the same paragraph; a fixing session greps `docs/` for the limitation's key phrases before shipping; and the prose that CLOSES a stale finding attributes the fix by REPRODUCING against the candidate commit's parent (a throwaway worktree + the probe is minutes), never by narrative plausibility — the findings sweep's first closure draft attributed both compile-bug closures to a plausible-but-wrong commit, falsified only by a worktree reproduction at that commit's parent before the wrong story shipped. The reproduce-at-parent rule is REVIEW-OWNED by explicit decision, not pending a mechanical layer: whether a reproduction happened leaves no machine-checkable artifact, so a detector could only check that prose CLAIMS verification — the same claim-semantics boundary check I stops at (same disposition class as the declined docs-conformance harness; the reopening signal is a false attribution SHIPPING past review, not one being caught by it). Bisect/reproduction mechanics for whoever next needs them — chiefly the `git bisect run` exit-convention POLARITY trap (exit 0 always means the OLD term, so a fix-hunting script that exits 0 on \"works\" is inverted and the search returns its own fixed endpoint), plus the specific-error-keyed verdict shape and the cheaper reproduce-at-parent/pickaxe-first alternatives — live in `draft/bisect-verdict-discipline.md`."
 action_on_fire_md = '''Set testing.stale-known-limitation-prose-surviving-fix-finding-ledgered to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
@@ -9888,7 +9888,7 @@ target = "testing.guard.wrapper-name-user-set-name-synthesized-collection-wrappe
 id = "testing-roadmap-next-work"
 source = "testing.add-profile-wrapper-participation-grid-participation-differs-across"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -9901,7 +9901,7 @@ target_id = "testing.guard.add-profile-wrapper-participation-grid-participation-
 id = "testing-roadmap-next-work-n2"
 source = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -9927,7 +9927,7 @@ symbol = "tests::integration_tests::json_arbitrary_precision"
 id = "testing-roadmap-declined-decided-with-a-reopening-signal"
 source = "testing.checking-runtime-flavor-s-safety-condition-rather-stating"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -9954,7 +9954,7 @@ symbol = "tests::integration_tests::extern_reexport_diagnostic_skips_replace_del
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n2"
 source = "testing.complete-cargo-mutants-sweep-will-never-run"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -9991,28 +9991,28 @@ gate_id = "regen_over_prior_output_corpus"
 id = "testing-roadmap-next-work-n3"
 source = "testing.dependency-swap-pass-compile-parity-existing-gate-silently"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n4"
 source = "testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n5"
 source = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n3"
 source = "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -10060,14 +10060,14 @@ symbol = "tests::integration_tests::generated_code_clippy_clean"
 id = "testing-roadmap-next-work-n6"
 source = "testing.dsl-position-tests-string-level-design-green-emitted"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n7"
 source = "testing.duplicates-policy-residuals"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10081,14 +10081,14 @@ symbol = "tests::robustness_tests::inline_258_nominal_name_collision_is_rejected
 id = "testing-roadmap-next-work-n8"
 source = "testing.emission-branch-generated-output-fixture-exercises-invisible-gate"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n9"
 source = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10102,8 +10102,15 @@ symbol = "tests::integration_tests::generated_code_clippy_clean"
 id = "testing-roadmap-next-work-n10"
 source = "testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
+
+[[reference]]
+id = "testing-roadmap-operational-watches"
+source = "testing.exclusion-reasons-informational-interchange"
+kind = "file_heading"
+path = "draft/roadmaps/testing-roadmap.md"
+heading = "Operational watches"
 
 [[reference]]
 id = "readme-extern-interface-export-extern-import-the-machine"
@@ -10113,17 +10120,10 @@ path = "tests/README.md"
 heading = "Extern-interface export & `--extern-import` (the machine-generated stub channel)"
 
 [[reference]]
-id = "testing-roadmap-operational-watches"
-source = "testing.exclusion-reasons-informational-interchange"
-kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
-heading = "Operational watches"
-
-[[reference]]
 id = "testing-roadmap-next-work-n11"
 source = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10164,7 +10164,7 @@ gate_id = "corpus_decode_replay"
 id = "testing-roadmap-next-work-n12"
 source = "testing.fixture-models-obsolete-user-contract-stays-green-real"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10199,7 +10199,7 @@ heading = "Build & verify"
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n4"
 source = "testing.full-n-flag-powerset-pict-pairwise"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -10212,7 +10212,7 @@ target_id = "testing.guard.full-n-flag-powerset-pict-pairwise"
 id = "testing-roadmap-next-work-n13"
 source = "testing.gate-cache-closure-audit-structurally-blind-gate-authored"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10245,21 +10245,21 @@ gate_id = "fuzz_compile_rot"
 id = "testing-roadmap-next-work-n14"
 source = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n15"
 source = "testing.generated-local-collision.scope-wide-probe"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n16"
 source = "testing.generic-raw-bytes-base-refused-generic-extern-base"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10272,14 +10272,14 @@ target_id = "testing.guard.generic-raw-bytes-base-refused-generic-extern-base"
 id = "testing-roadmap-next-work-n17"
 source = "testing.grammar-fuzzer-escalations"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n18"
 source = "testing.grammar-fuzzer.batch-masking-detector"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10299,14 +10299,14 @@ symbol = "tests::integration_tests::export_static_crate_writes_composed_runtime_
 id = "testing-roadmap-next-work-n19"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n20"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10319,14 +10319,14 @@ target_id = "testing.build-registration-class-reference-position-sweep-second-es
 id = "testing-roadmap-next-work-n21"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n22"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10339,14 +10339,14 @@ target_id = "testing.build-registration-class-reference-position-sweep-second-es
 id = "testing-roadmap-next-work-n23"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n24"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10359,14 +10359,14 @@ target_id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
 id = "testing-roadmap-next-work-n25"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n26"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10379,14 +10379,14 @@ target_id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
 id = "testing-roadmap-next-work-n27"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n28"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10399,14 +10399,14 @@ target_id = "testing.grammar-fuzzer.embed-site-alias-roots"
 id = "testing-roadmap-next-work-n29"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n30"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10419,14 +10419,14 @@ target_id = "testing.grammar-fuzzer.embed-site-alias-roots"
 id = "testing-roadmap-next-work-n31"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n32"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10439,14 +10439,14 @@ target_id = "testing.minted-identifier-spellability-floor-identifier-generator-e
 id = "testing-roadmap-next-work-n33"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n34"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10459,14 +10459,14 @@ target_id = "testing.minted-identifier-spellability-floor-identifier-generator-e
 id = "testing-roadmap-next-work-n35"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n36"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10479,14 +10479,14 @@ target_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 id = "testing-roadmap-next-work-n37"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n38"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10505,7 +10505,7 @@ gate_id = "lint_doc_citations"
 id = "testing-roadmap-next-work-n39"
 source = "testing.logic-tool-emits-source-text-outside-layer-reasons"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10518,14 +10518,14 @@ target_id = "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns"
 id = "testing-roadmap-next-work-n40"
 source = "testing.make-fixture-comment-s-claimed-wire-bytes-executable"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n5"
 source = "testing.making-type-choice-path-reject-duplicated-explicit-name"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -10538,7 +10538,7 @@ target_id = "testing.guard.making-type-choice-path-reject-duplicated-explicit-na
 id = "testing-roadmap-next-work-n41"
 source = "testing.matrix-s-note-names-panic-site-aborts-nothing"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10559,14 +10559,14 @@ symbol = "tests::integration_tests::corpus_special_map_key_supported"
 id = "testing-roadmap-next-work-n42"
 source = "testing.message-s-level-classification-review-owned-two-ways"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n6"
 source = "testing.msrv-declaration-os-matrix-generated-code"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -10593,7 +10593,7 @@ symbol = "tests::snapshot_tests::extern_generic_scoped_alias_imports"
 id = "testing-roadmap-next-work-n43"
 source = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10627,7 +10627,7 @@ gate_id = "corpus_decode_replay"
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n7"
 source = "testing.orphan-fixture-directory-meta-test"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -10640,7 +10640,7 @@ target_id = "testing.guard.orphan-fixture-directory-meta-test"
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n8"
 source = "testing.ownership-journal-making-dropped-std-forward-dep-converge"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -10653,7 +10653,7 @@ target_id = "testing.guard.ownership-journal-making-dropped-std-forward-dep-conv
 id = "testing-roadmap-next-work-n44"
 source = "testing.panic-site-un-shadowing-converting-shallow-panic-graceful"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10687,7 +10687,7 @@ symbol = "tests::integration_tests::recursive_collection_ref_preserve"
 id = "testing-roadmap-next-work-n45"
 source = "testing.process-boundary.rustfmt-pre-rustc"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10700,7 +10700,7 @@ gate_id = "no_std_check"
 id = "testing-roadmap-next-work-n46"
 source = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10713,7 +10713,7 @@ target_id = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom
 id = "testing-roadmap-next-work-n47"
 source = "testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10726,7 +10726,7 @@ target_id = "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"
 id = "testing-roadmap-next-work-n48"
 source = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10739,7 +10739,7 @@ target_id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring
 id = "testing-roadmap-next-work-n49"
 source = "testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10752,7 +10752,7 @@ target_id = "testing.same-named-generated-crates-silently-share-cargo-fingerprin
 id = "testing-roadmap-next-work-n50"
 source = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10765,7 +10765,7 @@ target_id = "testing.warm-up-refresh-dep-universe-lock-trust-fresh"
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n9"
 source = "testing.quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -10793,7 +10793,7 @@ symbol = "tests::extern_import_tests::extern_import_flavored_generic_base_projec
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n10"
 source = "testing.restructuring-features-std-tool-owned-sub-feature-cddl"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
@@ -10825,7 +10825,7 @@ target_id = "testing.rule-trailing.reviewed-fork-publication"
 id = "testing-roadmap-next-work-n51"
 source = "testing.ruling-premise-gate-x-stays-green-must-probed"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10838,28 +10838,28 @@ gate_id = "verify_cache_transparency"
 id = "testing-roadmap-next-work-n52"
 source = "testing.schema-document-s-name-injectivity-enforced-row-side"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n53"
 source = "testing.schema-name.collision-loser-no-row-same-id"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n54"
 source = "testing.schema-name.cross-crate-same-id-collision"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n55"
 source = "testing.schema-name.two-rowless-types-collide"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10885,7 +10885,7 @@ symbol = "tests::integration_tests::synthesized_name_interaction_sweep"
 id = "testing-roadmap-deferred-features-build-when-a-real"
 source = "testing.tag-set.non-idiom-generic-boundary"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Deferred features (build when a real consumer needs them)"
 
 [[reference]]
@@ -10898,7 +10898,7 @@ target_id = "testing.guard.tag-set-non-idiom-generic-boundary"
 id = "testing-roadmap-next-work-n56"
 source = "testing.three-defect-classes-process-test-see-sharing-remedy"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -10911,63 +10911,63 @@ target_id = "testing.tier-memory.spend-measurements"
 id = "testing-roadmap-operational-watches-n2"
 source = "testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Operational watches"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n11"
 source = "testing.tooling.generated-coverage-instrumentation"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n12"
 source = "testing.tooling.goldenfile-expect-test-corpus"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n13"
 source = "testing.tooling.no-panic-lints"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n14"
 source = "testing.tooling.quickcheck-parallel-corpus"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n15"
 source = "testing.tooling.trybuild-whole-crate"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
 id = "testing-roadmap-deferred-features-build-when-a-real-n2"
 source = "testing.transparent-tag-set-idiom-recognized-shape-boundary-request"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Deferred features (build when a real consumer needs them)"
 
 [[reference]]
 id = "testing-roadmap-next-work-n57"
 source = "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
 id = "testing-roadmap-next-work-n58"
 source = "testing.twin-implementation.own-reviewed-change-rule"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -11021,7 +11021,7 @@ symbol = "tests::integration_tests::workspace_requests_hosts_cross_scope_element
 id = "testing-roadmap-next-work-n59"
 source = "testing.value-anchor-rot-field-addition-delivery-grows-existing"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
@@ -11040,7 +11040,7 @@ gate_id = "component_jco"
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n16"
 source = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
 kind = "file_heading"
-path = "tests/TESTING_ROADMAP.md"
+path = "draft/roadmaps/testing-roadmap.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]

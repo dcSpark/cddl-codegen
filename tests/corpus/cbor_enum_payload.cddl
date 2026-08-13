@@ -27,7 +27,7 @@
 ; with a null arm Option-collapses in `parse_type_choices` rather than becoming an enum, and a
 ; FIXED inner leaves nothing to put in the collapsed `Option<T>`, so the shape is refused
 ; gracefully at the collapse site itself (tests/robustness/choice_fixed_null_collapse.cddl; the
-; deferred presence-shaped lowering is ledgered in cddl-matrix/ROADMAP.md § "Findings — open") —
+; deferred presence-shaped lowering is ledgered in cddl-matrix/roadmap.toml § "Findings — open") —
 ; so it pins nothing about this site; the empty-list edge is instead covered by these same rules
 ; under the default/json profiles.
 payload_enum = 0 / 1 / 2

@@ -46,10 +46,8 @@ import {
   type ExpectedByteViewObserver,
   type RenderChunk,
 } from "../render_ir.ts";
-import {
-  renderThenCheckCommittedProjection,
-  renderValidatedChunks,
-} from "../render.ts";
+import { renderValidatedChunks } from "../render.ts";
+import { PROJECTION_PATH_BY_ROADMAP } from "../projection_paths.ts";
 import { stableJsonValue } from "../query.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
 import {
@@ -100,7 +98,6 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "render_no_implicit_lf",
   "render_semantic_consumption_once",
   "render_semantic_only_zero_byte_consumption",
-  "render_prior_projection_irrelevant",
   "outputs_duplicate_whole",
   "outputs_whole_vs_slot",
   "outputs_duplicate_slot",
@@ -127,9 +124,7 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "render_chunks_precede_consumption_validation",
   "render_slots_resolved_before_slot_validation",
   "render_undeclared_slot_placeholder_rejected",
-  "render_invalid_chunk_skips_projection_read",
-  "render_committed_projection_read_last",
-  "render_projection_mutation_changes_only_drift",
+  "render_invalid_chunk_rejected_before_bytes",
   "outputs_interval_overlap",
   "outputs_interval_utf8_bytes",
   "outputs_section_slot_binding_owner",
@@ -717,70 +712,35 @@ function testRenderCase(
     requireIssue(completed.build_issues, "E-OUTPUT-SLOT");
     return pass("negative");
   }
-  if (id === "render_invalid_chunk_skips_projection_read") {
+  if (id === "render_invalid_chunk_rejected_before_bytes") {
+    // With the committed-projection seam retired, the property left to pin is that a validation
+    // issue rejects the render before any final projection bytes are produced.
     const fixture = semanticFixture("exact");
     const completed = complete(fixture.document).completed;
-    let reads = 0;
     let rejection: unknown;
     try {
-      renderThenCheckCommittedProjection(
+      renderValidatedChunks(
         completed.chunks,
         [{ code: "E-RENDER-AUTHORITY", source: "fixture", logical_path: "span", message: "bad", exit: 1 }],
         completed.expected_bytes,
-        fixture.document.document.projection_path,
-        () => { reads++; return bytes("prior"); },
+        {
+          hashSegmentVisited: () => {},
+          combinedHashBufferAllocated: () => {},
+          finalProjectionAllocated: () => fail("invalid chunks reached final projection allocation"),
+        },
       );
     } catch (error) { rejection = error; }
-    if (rejection === undefined || reads !== 0) fail("invalid chunks reached committed projection read");
+    if (rejection === undefined) fail("invalid chunks were rendered");
     if (typeof rejection === "object" && rejection !== null && "issues" in rejection) {
       observeMatchingIssue((rejection as { issues: readonly RoadmapIssue[] }).issues, "E-RENDER-AUTHORITY", "span");
     }
     return pass("negative");
-  }
-  if (id === "render_committed_projection_read_last" || id === "render_projection_mutation_changes_only_drift") {
-    const fixture = semanticFixture("exact");
-    const completed = complete(fixture.document).completed;
-    let reads = 0;
-    const rendered = renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
-    // The drifted bytes carry a newline so the diagnostic's escaped local context is exercised.
-    const actual = id === "render_committed_projection_read_last" ? rendered : bytes("X\nDETPG");
-    const checked = renderThenCheckCommittedProjection(
-      completed.chunks,
-      [],
-      completed.expected_bytes,
-      fixture.document.document.projection_path,
-      () => { reads++; return actual; },
-    );
-    if (reads !== 1) fail("committed projection was not read exactly once at the late seam");
-    if (id === "render_committed_projection_read_last" && checked.issues.length !== 0) fail("matching projection drifted");
-    if (id === "render_projection_mutation_changes_only_drift") {
-      if (checked.issues.length !== 1 || checked.issues[0].code !== "E-PROJECTION-DRIFT") fail("mutation changed more than drift verdict");
-      observeMatchingIssue(checked.issues, "E-PROJECTION-DRIFT", "projection");
-      if (
-        !checked.issues[0].message.includes("expected context=") ||
-        !checked.issues[0].message.includes("actual context=") ||
-        !checked.issues[0].message.includes("\\n")
-      ) fail("drift diagnostic omitted escaped local byte context");
-    }
-    return pass(id === "render_projection_mutation_changes_only_drift" ? "negative" : "positive");
   }
   const fixture = semanticFixture("exact");
   const completed = complete(fixture.document).completed;
   const first = renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
   const second = renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
   if (new TextDecoder().decode(first) !== "HGFDETP") fail(`${id}: exact render differs`);
-  if (id === "render_prior_projection_irrelevant") {
-    const stale = renderThenCheckCommittedProjection(
-      completed.chunks,
-      [],
-      completed.expected_bytes,
-      fixture.document.document.projection_path,
-      () => bytes("unrelated prior projection"),
-    );
-    if (sha256(stale.expected) !== sha256(first) || stale.issues.length !== 1) {
-      fail("prior projection bytes influenced freshly rendered bytes");
-    }
-  }
   if (id === "two_clean_renders_equal" && sha256(first) !== sha256(second)) fail("clean renders differ");
   return pass();
 }
@@ -1163,10 +1123,13 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     const wholePaths = (inventory: typeof matrix): string[] => inventory.claims.flatMap((claim) =>
       claim.kind === "whole_file" ? [claim.path] : []
     );
-    if (JSON.stringify(wholePaths(matrix)) !== JSON.stringify(["cddl-matrix/ROADMAP.md"])) {
+    if (JSON.stringify(wholePaths(matrix)) !== JSON.stringify([PROJECTION_PATH_BY_ROADMAP.matrix])) {
       fail("matrix_authoritative whole-file inventory does not name exactly the matrix projection");
     }
-    if (JSON.stringify(wholePaths(both)) !== JSON.stringify(["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADMAP.md"])) {
+    if (
+      JSON.stringify(wholePaths(both)) !==
+        JSON.stringify([PROJECTION_PATH_BY_ROADMAP.matrix, PROJECTION_PATH_BY_ROADMAP.testing])
+    ) {
       fail("both_authoritative whole-file inventory does not name exactly both projections");
     }
     if (productionOutputStage() !== "both_authoritative") {
@@ -1201,7 +1164,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
   if (id === "outputs_production_whole_authority") {
     const inventory = productionOutputInventory("matrix_authoritative");
     const claim = inventory.claims.find((value) =>
-      value.kind === "whole_file" && value.path === "cddl-matrix/ROADMAP.md"
+      value.kind === "whole_file" && value.path === PROJECTION_PATH_BY_ROADMAP.matrix
     );
     if (claim === undefined) fail("matrix_authoritative inventory omitted matrix whole-file ownership");
     const resolution = resolveOutputClaims({
@@ -1555,15 +1518,13 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       },
     });
     if (id === "write_check_read_only_port") {
+      // Check renders in memory only; the one port interaction it may have is the read arm.
       const completed = complete(fixture.document).completed;
-      const checked = renderThenCheckCommittedProjection(
-        completed.chunks,
-        [],
-        completed.expected_bytes,
-        fixture.document.document.projection_path,
-        () => readOnly.readDeclared(fixture.document.document.projection_path),
-      );
-      if (checked.issues.length !== 0) fail("read-only check unexpectedly drifted");
+      const rendered = renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
+      const served = readOnly.readDeclared(fixture.document.document.source_path);
+      if (sha256(rendered) !== sha256(new Uint8Array(served))) {
+        fail("read-only check render drifted from its port-served snapshot");
+      }
     } else {
       const value = stableJsonValue(new Map([["query", { owner_id: "query" }]])) as Record<string, unknown>;
       if (Object.keys(value).length !== 1) fail("read-only query omitted its structured result");
@@ -1866,7 +1827,6 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   render_no_implicit_lf: { category: "section-render", run: testRenderCase },
   render_semantic_consumption_once: { category: "section-render", run: testRenderCase },
   render_semantic_only_zero_byte_consumption: { category: "section-render", run: testRenderCase },
-  render_prior_projection_irrelevant: { category: "section-render", run: testRenderCase },
   outputs_duplicate_whole: { category: "output-ownership", run: testOutputCase },
   outputs_whole_vs_slot: { category: "output-ownership", run: testOutputCase },
   outputs_duplicate_slot: { category: "output-ownership", run: testOutputCase },
@@ -1893,9 +1853,7 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   render_chunks_precede_consumption_validation: { category: "section-render", run: testRenderCase },
   render_slots_resolved_before_slot_validation: { category: "section-render", run: testRenderCase },
   render_undeclared_slot_placeholder_rejected: { category: "section-render", run: testRenderCase },
-  render_invalid_chunk_skips_projection_read: { category: "section-render", run: testRenderCase },
-  render_committed_projection_read_last: { category: "section-render", run: testRenderCase },
-  render_projection_mutation_changes_only_drift: { category: "section-render", run: testRenderCase },
+  render_invalid_chunk_rejected_before_bytes: { category: "section-render", run: testRenderCase },
   outputs_interval_overlap: { category: "output-ownership", run: testOutputCase },
   outputs_interval_utf8_bytes: { category: "output-ownership", run: testOutputCase },
   outputs_section_slot_binding_owner: { category: "output-ownership", run: testOutputCase },

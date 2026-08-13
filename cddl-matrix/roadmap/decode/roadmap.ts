@@ -19,6 +19,7 @@ import type {
   RoadmapName,
 } from "../model/core.ts";
 import { composeRoadmapDocument } from "../compose.ts";
+import { isRoadmapProjectionPath } from "../projection_paths.ts";
 import { decodeMatrixPayload } from "./matrix.ts";
 import {
   childLogicalPath as p,
@@ -252,7 +253,9 @@ function decodeReference(ctx: DecodeContext, raw: unknown, path: string, roadmap
     case "test_symbol": return { ...base, kind, test_id: string("test_id"), symbol: string("symbol") };
     case "file_heading": {
       const targetPath = expectRepoPath(ctx, requiredValue(table, "path"), p(path, "path"));
-      if (targetPath.startsWith("draft/")) {
+      // The roadmap projections are the one draft/ exception: they resolve against the freshly
+      // rendered projection facts, never the gitignored disk file (see projection_paths.ts).
+      if (targetPath.startsWith("draft/") && !isRoadmapProjectionPath(targetPath)) {
         schemaFail(ctx, "E-REFERENCE-FORBIDDEN", p(path, "path"), "draft/ paths cannot provide durable evidence");
       }
       return { ...base, kind, path: targetPath, heading: string("heading") };

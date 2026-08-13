@@ -38,8 +38,9 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > `tests/corpus/COVERAGE.md` (the original north-star target, now subsumed; `corpus_detect.ts` +
 > `annotations/corpus/`) — `query_q1_gaps.ts`, which generates the `## Limitations` section of
 > `docs/docs/current_capacities.mdx`, and `project_status_headers.ts`, which drift-checks the countable
-> status-header prose (feature/annotation/op/divergence/constraint counts) as spans in this README,
-> `ROADMAP.md`, and `tests/README.md`. A fifth projection feeds a consumer that is not a hand doc:
+> status-header prose (feature/annotation/op/divergence/constraint counts) as spans in this README
+> and `tests/README.md` (the matrix roadmap's counts render as generated slots when its projection
+> is written). A fifth projection feeds a consumer that is not a hand doc:
 > `project_recombination.ts` distils every feature `example` + the containment legality data into
 > `tests/recomb/ingredients.json` (drift-gated by check.ts `project_recombination_check`), the
 > ingredient set the shape-recombination fuzzer composes from (`tests/README.md`
@@ -113,12 +114,13 @@ regenerated, never hand-edited. `build_matrix.ts` also runs the **drift-check** 
 resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` holds the shared loaders
 + the byte-exact JSON serializer.
 
-> **Editing this README or the roadmap?** This README remains hand-authored. The matrix roadmap's
-> authored source is `roadmap.toml`; format it with `bun run project_roadmaps.ts --format-source
-> cddl-matrix/roadmap.toml`, validate both roadmap projections with `bun run project_roadmaps.ts
-> --roadmap all --check`, and regenerate only with `bun run project_roadmaps.ts --roadmap matrix
-> --write`. Never hand-edit generated `ROADMAP.md`. The testing roadmap follows the same source and
-> projection contract documented in `tests/README.md`. These documents are linted: the sibling script
+> **Editing this README or the roadmap?** This README remains hand-authored. The matrix roadmap IS
+> `roadmap.toml` — the authored TOML is the only committed form; format it with `bun run
+> project_roadmaps.ts --format-source cddl-matrix/roadmap.toml` and validate with `bun run
+> project_roadmaps.ts --roadmap all --check` (the projections render in memory). A human-review
+> markdown render can be generated with `bun run project_roadmaps.ts --roadmap matrix --write`;
+> it lands in the gitignored `draft/roadmaps/` directory and must never be committed. The testing
+> roadmap follows the same source contract documented in `tests/README.md`. These documents are linted: the sibling script
 > `lint_doc_citations.ts` (check.ts `local` tier; not matrix tooling — it lives here for the shared
 > tsc coverage, as does `no_std_check.ts`, the no_std drift gate, which additionally shares
 > `lib.ts`'s gate-cache helpers; see `tests/README.md` § "The no_std drift gate") asserts every
@@ -732,7 +734,7 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   backtick-quoted tracking artifact that resolves against the tree (a `tests/…` file or a
   `src/tests/` symbol), or `project_corpus.ts` hard-fails. Findings render into COVERAGE.md — a
   generated span `lint_doc_citations` never scans — so this arm is what keeps a fixed-but-unpruned
-  finding from rotting silently (the class is ledgered in `tests/TESTING_ROADMAP.md`'s
+  finding from rotting silently (the class is ledgered in `tests/testing-roadmap.toml`'s
   "stale known-limitation prose" residual). Claim SEMANTICS stay review-owned: a resolving citation
   does not prove the claim is still true.
 - **Over-acceptance / silent corruption is invisible to round-trip tests by construction** — the
@@ -863,7 +865,7 @@ records the ORDER (walked empirically for the `@used_as_elem` registration):
 
 If the directive is a comment-DSL tag, `corpus_detect.ts`'s `MIRRORED_DIRECTIVES` lockstep
 tripwire also fires until the mirror (plus selfCheck vectors for any new grammar) is extended —
-or better, move the dsl channel onto the AST floor instead (`tests/TESTING_ROADMAP.md`, the
+or better, move the dsl channel onto the AST floor instead (`tests/testing-roadmap.toml`, the
 twin-implementation drift entry).
 
 The mirror and the feature registry are **independent mechanisms with different triggers**, so

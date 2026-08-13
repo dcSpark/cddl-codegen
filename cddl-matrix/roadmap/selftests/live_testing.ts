@@ -1,5 +1,3 @@
-// @ts-expect-error Bun's text loader supports the live Markdown pickup; TypeScript has no .md declaration.
-import liveTestingProjectionText from "../../../tests/TESTING_ROADMAP.md" with { type: "text" };
 import liveTestingSourceText from "../../../tests/testing-roadmap.toml" with { type: "text" };
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import type { RepoPath } from "../model/core.ts";
@@ -8,7 +6,7 @@ import { deepFreeze } from "./frozen.ts";
 
 const UTF8 = new TextEncoder();
 const TESTING_SOURCE_PATH = "tests/testing-roadmap.toml" as RepoPath;
-const TESTING_PROJECTION_PATH = "tests/TESTING_ROADMAP.md" as RepoPath;
+const TESTING_PROJECTION_PATH = "draft/roadmaps/testing-roadmap.md" as RepoPath;
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -45,8 +43,4 @@ export function liveTestingV3Document(): RoadmapDocumentV3 {
 export function liveTestingAuthoritativeSource(): Uint8Array {
   liveTestingV3Document();
   return UTF8.encode(liveTestingSourceText);
-}
-
-export function liveTestingProjection(): Uint8Array {
-  return UTF8.encode(liveTestingProjectionText);
 }

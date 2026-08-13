@@ -63,7 +63,7 @@ non-literal key types (match each entry key against the `TaggedData`, not the co
    (the pinned row should mint real accept vectors; the `pinned_reason` disappears from the catalog).
 2. Re-run the full `verify.ts` so the row's evidence picks up the corroboration clause; fold both
    into one commit.
-3. Prune this report and the `contain.map-key.type2.tag` mention in the ROADMAP upstream close-outs.
+3. Prune this report and the `contain.map-key.type2.tag` mention in the roadmap.toml upstream close-outs.
 
 Before filing upstream: re-verify against a stock upstream `cddl` build (the observed binary carries
 local-fixes commits; the failing path is untouched by them, but the issue should cite vanilla) and

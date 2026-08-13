@@ -4565,7 +4565,7 @@ hex = "8200a0"
 source = "hand"
 expect = "reject"
 class = "constraint"
-reason = "Empty map against `{ + tstr => uint }` (`+` requires at least one entry): spec-INVALID (both oracles reject), and cddl-codegen now decodes `m` as NonEmptyMap<String, u64> whose single TryFrom door rejects the empty map with the same RangeCheck the API raises — the widened-occurrence-marker over-acceptance class (cddl-matrix/ROADMAP.md § findings) is CLOSED for `+`, honored as a non-empty table."
+reason = "Empty map against `{ + tstr => uint }` (`+` requires at least one entry): spec-INVALID (both oracles reject), and cddl-codegen now decodes `m` as NonEmptyMap<String, u64> whose single TryFrom door rejects the empty map with the same RangeCheck the API raises — the widened-occurrence-marker over-acceptance class (cddl-matrix/roadmap.toml § findings) is CLOSED for `+`, honored as a non-empty table."
 expect_err = "0 not at least 1"
 
 [[row.vector]]

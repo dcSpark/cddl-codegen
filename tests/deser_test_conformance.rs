@@ -1,4 +1,4 @@
-// Independent conformance oracle (TESTING_ROADMAP "cddl-crate conformance oracle"): validate our
+// Independent conformance oracle (tests/testing-roadmap.toml "cddl-crate conformance oracle"): validate our
 // serialized bytes against the SOURCE `.cddl` using the `cddl` crate's validator. Its DECODE +
 // CONSTRAINT-EVALUATION path is independent of our encoder/decoder (it decodes with ciborium and
 // evaluates constraints itself), so it catches a symmetric encoder/decoder bug a round-trip cannot

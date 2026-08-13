@@ -548,7 +548,7 @@ function selfCheck() {
   // Extract the authority's `tag("@…")` literals and demand set equality with MIRRORED_DIRECTIVES;
   // this fires in every importer (project_corpus = fast tier) the moment a directive is added or
   // removed on either side. ARG-GRAMMAR drift within an unchanged set is NOT catchable here — the
-  // AST floor is that residual's fix (tests/TESTING_ROADMAP.md, the twin-implementation drift entry).
+  // AST floor is that residual's fix (tests/testing-roadmap.toml, the twin-implementation drift entry).
   {
     const rust = readFileSync(`${CODEGEN}/src/comment_ast.rs`, "utf8");
     const rustSet = new Set([...rust.matchAll(/\btag\("(@[a-z_]+)"\)/g)].map(m => m[1]));

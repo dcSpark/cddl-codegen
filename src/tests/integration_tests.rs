@@ -262,7 +262,7 @@ pub(crate) const CORPUS_DEF_SPLICE: &[CorpusDefs] = &[
 /// (`warning: unused import: crate::PubKey` at a generated location), while the user is still
 /// obliged to hand-write a wasm `PubKey` wrapper for it to resolve at all. Making the wasm
 /// re-export usage-conditional changes what the "Own-spec extern re-export contract" demands of a
-/// consumer, so it is a contract decision, not a test fix; ledgered in `cddl-matrix/ROADMAP.md`
+/// consumer, so it is a contract decision, not a test fix; ledgered in `cddl-matrix/roadmap.toml`
 /// § findings. The fixture's behavioural coverage is the `extern-generic-raw-bytes` integration
 /// fixture; its matrix face (`dsl.raw_bytes_flavor`) is compile-gated on both crates.
 pub(crate) const COMPILE_SKIP: &[&str] = &["extern_generic_raw_bytes"];
@@ -284,7 +284,7 @@ const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
 )];
 
 /// Wasm-matrix cells that deliberately never compile standalone in this harness. Each entry would
-/// pair with a ledger entry in `cddl-matrix/ROADMAP.md` § findings (which shape/role, the exact
+/// pair with a ledger entry in `cddl-matrix/roadmap.toml` § findings (which shape/role, the exact
 /// `E####`, root cause).
 ///
 /// EMPTY. Its one resident was `extern__array-element`, skipped because
@@ -385,7 +385,7 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[];
 /// UNDER THAT PROFILE — a red the sweep tolerates deliberately, distinct from `WASM_MATRIX_SKIP`'s
 /// "red in EVERY profile" (extern). Such a cell COMPILEs (so it can't go in `WASM_MATRIX_SKIP`,
 /// which the compile floor also consults and would flag as "resurfaced") — it is listed once per
-/// affected profile and ledgered in cddl-matrix/ROADMAP.md § findings. A resurfaced guard fails the
+/// affected profile and ledgered in cddl-matrix/roadmap.toml § findings. A resurfaced guard fails the
 /// gate if a listed cell starts passing, and an up-front stale-pin guard rejects entries naming a
 /// dead profile or cell stem, so the list can't rot silently. Currently empty: no cell is
 /// profile-specifically red.
@@ -485,7 +485,7 @@ fn acquire_scratch_lock_serializes() {
     // the CLOEXEC fds — during that fork-to-exec window the duplicate keeps the lock alive, so an
     // INSTANTANEOUS post-drop `try_lock` can observe `WouldBlock` under parallel nested-cargo load
     // (the profile of all five ledgered sightings; first self-attributed capture 2026-07-17 after
-    // the match split landed — see the flake ledger in tests/TESTING_ROADMAP.md). The gates' real
+    // the match split landed — see the flake ledger in tests/testing-roadmap.toml). The gates' real
     // acquisition path is the BLOCKING `lock()`, which waits out that window by construction; only
     // this test's instantaneous assert ever raced it. A hold that outlives the deadline still
     // fails loudly — that remains a genuine release-on-drop break.
@@ -510,7 +510,7 @@ fn acquire_scratch_lock_serializes() {
                 "the lock should be acquirable once the first handle is dropped, but try_lock \
                  errored: {e} (raw_os_error {:?}) — a syscall failure, not a lock-semantics break; \
                  if transient (e.g. ENOLCK under load), see the flake ledger in \
-                 tests/TESTING_ROADMAP.md",
+                 tests/testing-roadmap.toml",
                 e.raw_os_error()
             ),
         }
@@ -2187,7 +2187,7 @@ fn run_test(
 /// is exercised by a method call whose ident never appears (`x.serialize(..)` for `cbor_event`'s
 /// `Serialize`), so name-scanning can't prove it unused. The generated serialization prelude imports
 /// `Serialize` (non-canonical profiles) and a scope that never calls it warns — an out-of-model
-/// residue tracked in `tests/TESTING_ROADMAP.md`'s `unused_imports` entry, NOT a prune regression.
+/// residue tracked in `tests/testing-roadmap.toml`'s `unused_imports` entry, NOT a prune regression.
 /// Everything else in a PURELY-generated crate is a prune target, so the scan flags it.
 const UNUSED_IMPORT_TRAIT_RESIDUE: &[&str] = &["Serialize"];
 
@@ -2354,7 +2354,7 @@ pub(crate) struct GeneratedOwnership {
 /// export dir name, export-relative file, exact warning text)`: deliberately no line number, which
 /// moves whenever emission shifts, and deliberately no wildcard, so a SECOND instance of the same
 /// class in the same file is a fresh failure rather than something an existing pin silently absorbs.
-/// A row never travels alone — it means an entry exists in `cddl-matrix/ROADMAP.md` § Findings
+/// A row never travels alone — it means an entry exists in `cddl-matrix/roadmap.toml` § Findings
 /// describing the defect and what retires it.
 ///
 /// **Empty, and expected to stay that way**: the only warning the wiring has ever surfaced (an
@@ -2449,7 +2449,7 @@ impl GeneratedOwnership {
                 observed.contains(&key),
                 "KNOWN_GENERATOR_OWNED_WARNINGS pins `{warning}` in {} but this run never saw it — \
                  the emission finding is fixed (retire the pin and its \
-                 `cddl-matrix/ROADMAP.md` § Findings entry) or it moved (repoint the pin)",
+                 `cddl-matrix/roadmap.toml` § Findings entry) or it moved (repoint the pin)",
                 file.display()
             );
         }
@@ -4151,7 +4151,7 @@ fn extern_interface_check_has_no_trailing_row_comments() {
 /// was invisible. Here an un-covered boundary bug shows up as a specific red cell instead of by luck.
 ///
 /// `WASM_MATRIX_SKIP` holds the deliberately-red cells (pre-existing gaps tracked in
-/// `cddl-matrix/ROADMAP.md`, plus `extern`, which references a user-supplied type and can't compile
+/// `cddl-matrix/roadmap.toml`, plus `extern`, which references a user-supplied type and can't compile
 /// standalone). `rawbytes__*` cells also reference a user-supplied type, but its defs are in-repo —
 /// `append_raw_bytes_defs` splices them in per cell (same 2 commands, no extra cargo invocation), so
 /// those cells compile for real instead of being skipped. A fix lands by taking its cell off
@@ -4330,7 +4330,7 @@ fn wasm_matrix_compiles_shard(shard: usize) {
         match (skipped, outcome.success()) {
             (false, false) => failures.push(format!(
                 "{stem}: cargo check failed (new wasm-ABI red cell — fix the emitter or, deliberately, \
-                 add to WASM_MATRIX_SKIP + cddl-matrix/ROADMAP.md)\n{}",
+                 add to WASM_MATRIX_SKIP + cddl-matrix/roadmap.toml)\n{}",
                 String::from_utf8_lossy(&check_output.unwrap().stderr)
             )),
             (true, true) => resurfaced.push(stem.to_string()),
@@ -4498,7 +4498,7 @@ fn multifile_matrix_compiles_shard(shard: usize) {
                     "{stem}: generation aborted, but MULTIFILE_MATRIX_SKIP pins a rustc compile-error \
                      class {codes:?} ({reason}) — a generation abort produces no rustc error code, so \
                      the cell's failure class changed — re-triage the pin and its \
-                     cddl-matrix/ROADMAP.md finding\n{}",
+                     cddl-matrix/roadmap.toml finding\n{}",
                     String::from_utf8_lossy(&gen_out.stderr)
                 )),
                 // A NON-skipped generation failure is a plain red.
@@ -4555,7 +4555,7 @@ fn multifile_matrix_compiles_shard(shard: usize) {
         match (skipped, outcome.success()) {
             (false, false) => failures.push(format!(
                 "{stem}: cargo check failed (new multifile-placement red cell — fix the emitter or, \
-                 deliberately, add to MULTIFILE_MATRIX_SKIP + cddl-matrix/ROADMAP.md)\n{}",
+                 deliberately, add to MULTIFILE_MATRIX_SKIP + cddl-matrix/roadmap.toml)\n{}",
                 String::from_utf8_lossy(&check_output.unwrap().stderr)
             )),
             (true, true) => resurfaced.push(stem.to_string()),
@@ -4572,7 +4572,7 @@ fn multifile_matrix_compiles_shard(shard: usize) {
                     failures.push(format!(
                         "{stem}: red as pinned, but the observed rustc error-code set {observed:?} \
                          does NOT equal the pinned set {expected:?} ({reason}) — the cell's failure \
-                         class changed — re-triage the pin and its cddl-matrix/ROADMAP.md finding. \
+                         class changed — re-triage the pin and its cddl-matrix/roadmap.toml finding. \
                          Captured stderr:\n{stderr}"
                     ));
                 }
@@ -4960,7 +4960,7 @@ fn wasm_matrix_roundtrips() {
 /// `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`.
 ///
 /// Two skip ledgers, both four-state (red+listed = expected; red+unlisted = fail — fix or,
-/// deliberately, pin + cddl-matrix/ROADMAP.md ledger reason; green+listed = "resurfaced — remove
+/// deliberately, pin + cddl-matrix/roadmap.toml ledger reason; green+listed = "resurfaced — remove
 /// the pin"; green+unlisted = pass) with up-front stale-key guards: `MULTIFILE_ROUNDTRIP_SKIP`
 /// (red in EVERY profile — the collrec compile-floor carries) and
 /// `MULTIFILE_ROUNDTRIP_PROFILE_SKIP` (profile-specific reds). No rustc-error-code class assertion
@@ -5149,7 +5149,7 @@ fn multifile_matrix_roundtrips() {
                 (false, Some((crate_sub, test))) => failures.push(format!(
                     "{label} ({crate_sub}): cargo test failed (multifile round-trip red cell — \
                      fix the emitter/generator or, deliberately, add to MULTIFILE_ROUNDTRIP_SKIP \
-                     / MULTIFILE_ROUNDTRIP_PROFILE_SKIP + a cddl-matrix/ROADMAP.md ledger \
+                     / MULTIFILE_ROUNDTRIP_PROFILE_SKIP + a cddl-matrix/roadmap.toml ledger \
                      reason)\nstdout:\n{}\nstderr:\n{}",
                     String::from_utf8_lossy(&test.stdout),
                     String::from_utf8_lossy(&test.stderr)
@@ -5299,7 +5299,7 @@ fn wasm_list_macro_compiles() {
 /// semantic fact a source snapshot cannot judge and a single-file fixture cannot reach.
 ///
 /// Compile-only is the DECIDED, PERMANENT posture for macro-mode wasm surfaces
-/// (`cddl-matrix/ROADMAP.md` § "Explicitly out of scope"): the macro bodies are user-supplied, so
+/// (`cddl-matrix/roadmap.toml` § "Explicitly out of scope"): the macro bodies are user-supplied, so
 /// their runtime behaviour is not this project's to assert. This case adds the input-mode axis to
 /// that same compile verdict — it is not a behavioural row.
 ///
@@ -5471,7 +5471,7 @@ fn flag_value_smoke() {
 
 /// `--preserve-encodings=true --annotate-fields=false` over bool/null fixed-value MEMBERS — a
 /// standing cell for an escaped flag interaction (the third on record; policy per
-/// tests/TESTING_ROADMAP.md's declined flag-powerset entry: escaped interactions earn their own
+/// tests/testing-roadmap.toml's declined flag-powerset entry: escaped interactions earn their own
 /// standing cells rather than the whole powerset). No profile combines preserve with
 /// annotate=false, and `flag_value_smoke`'s annotate=false case runs a spec with no encoding-LESS
 /// fixed member, so the combination's fixed-value deserialize path was unreachable by every gate,
@@ -5880,7 +5880,7 @@ fn rust_wasm_bindgen_feature_gated_crate_compiles_standalone() {
 ///     The `sub` table deliberately uses a non-exposable KEY so its `keys()` accessor names
 ///     `SubKeyList` — a root-minted wrapper the non-root `SubTbl` class must import
 ///     (`use crate::generated::SubKeyList;`). Before the `mark_refs` keys-list registration this
-///     dangled E0425 (cddl-matrix/ROADMAP.md § findings, now retired; enumerated as the `tblrec`
+///     dangled E0425 (cddl-matrix/roadmap.toml § findings, now retired; enumerated as the `tblrec`
 ///     multifile cells); the compile assertion below is what would catch a regression here.
 /// The acceptance property (feature-request criterion 4) is that the wasm crate COMPILES with the
 /// index in place; we assert that here alongside the exact line set. Tier: check.ts `local`.
@@ -9183,7 +9183,7 @@ mod __tagged_preserve_bytes_pin {
 // These three corpus constructs generate code whose behavior contradicts the CDDL spec, and no
 // automated oracle observes it: the corpus's only verdicts are "snapshot unchanged" + "it
 // compiles" (`feature_corpus_compiles`), both of which the wrong code passes. Each is ledgered in
-// cddl-matrix/ROADMAP.md ("Bugs / gaps surfaced as findings") and flagged ⚠️ in
+// cddl-matrix/roadmap.toml ("Bugs / gaps surfaced as findings") and flagged ⚠️ in
 // tests/corpus/COVERAGE.md, but a hand-authored overlay note can't fail a build — these stubs make
 // the gaps visible in the suite itself, per the same convention as the wasm-fidelity pair above.
 // Remove #[ignore] and write the real behavioral assertion when the generator is fixed (or when
@@ -21836,7 +21836,7 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     // Compile coverage for these is `feature_corpus_compiles`' (which seeds them and builds all
     // three crates); making their EXECUTION meaningful needs hand-written codecs whose wire is
     // pinned independently, which is the extern-deps wasm-boundary entry's scope in
-    // `tests/TESTING_ROADMAP.md`, not this gate's. Deliberately NOT aliased to `COMPILE_SKIP`: that
+    // `tests/testing-roadmap.toml`, not this gate's. Deliberately NOT aliased to `COMPILE_SKIP`: that
     // list now seeds and compiles two of these three, and an alias would silently have promoted
     // them into an execution claim nothing backs.
     const EXECUTION_SKIP: &[&str] = &["dsl_copy", "dsl_custom", "extern_generic_raw_bytes"];
@@ -22117,7 +22117,7 @@ const ORDER_CHANGING_VARIANT_LABELS: &[&str] = &["reverse_maps", "everything"];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum VariantSkip {
     /// Class (a): hand-ledgered in the gate's `ENCODING_VARIANT_SKIP` — a real decoder gap over a
-    /// genuinely spec-EQUAL re-encoding, cited to a `cddl-matrix/ROADMAP.md` § findings entry. A
+    /// genuinely spec-EQUAL re-encoding, cited to a `cddl-matrix/roadmap.toml` § findings entry. A
     /// ledger entry ASSERTS a live failure, so it is stale-guarded: a listed (row, label) that stops
     /// failing fails the gate.
     Ledgered,
@@ -23345,7 +23345,7 @@ fn decode_replay_run(
             let body = format!(
                 "match {type_name}::from_cbor_bytes(BYTES) {{\n\
                  \x20           Ok(_) => {{}}\n\
-                 \x20           Err(e) => panic!(\"{MARKER_OVER_ACCEPT_NOW_REJECTED} {name}: a class=over-acceptance vector was REJECTED — the decoder no longer wrongly accepts this spec-INVALID CBOR (the fix landed): promote this vector to class=\\\"constraint\\\" with an expect_err, move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts, update the ROADMAP finding, re-mint — err: {{}}\", e),\n\
+                 \x20           Err(e) => panic!(\"{MARKER_OVER_ACCEPT_NOW_REJECTED} {name}: a class=over-acceptance vector was REJECTED — the decoder no longer wrongly accepts this spec-INVALID CBOR (the fix landed): promote this vector to class=\\\"constraint\\\" with an expect_err, move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts, update the roadmap.toml finding, re-mint — err: {{}}\", e),\n\
                  \x20       }}"
             );
             // Vacuity guard at the emission site (the durable-reject arm's wrong-reason body
@@ -23787,7 +23787,7 @@ fn decode_replay_json_wasm_legs(
             r.failures.push(format!(
                 "{}: `--wasm=true --json-serde-derives=true` generation FAILED — a finding: either a \
                  real combined-flag generation regression, or add it to WASM_SURFACE_SKIP with an \
-                 honest reason (a citation to a cddl-matrix/ROADMAP.md finding)\n{}",
+                 honest reason (a citation to a cddl-matrix/roadmap.toml finding)\n{}",
                 row.id,
                 String::from_utf8_lossy(&jwgen.stderr)
             ));
@@ -23835,14 +23835,14 @@ fn decode_replay_json_wasm_legs(
                             "{}: json leg — `serde_json::to_string` FAILED on accepted value {orig_hex} \
                              (the value is not json-serializable: a byte-string map key, a non-finite \
                              float, …). If legitimate, ledger the row in JSON_SURFACE_SKIP citing a \
-                             cddl-matrix/ROADMAP.md finding; else report. Captured output:\n{combined}",
+                             cddl-matrix/roadmap.toml finding; else report. Captured output:\n{combined}",
                             row.id
                         )),
                         JsonFailureKind::Rejected => r.failures.push(format!(
                             "{}: json leg — `serde_json::from_str::<{ty}>` REJECTED the value's OWN \
                              serialization of accepted value {orig_hex} — the json decode surface is \
                              over-strict about a value the CBOR decoder accepts (the motivating class). \
-                             Ledger the row in JSON_SURFACE_SKIP citing a cddl-matrix/ROADMAP.md finding, \
+                             Ledger the row in JSON_SURFACE_SKIP citing a cddl-matrix/roadmap.toml finding, \
                              or report it. Captured output:\n{combined}",
                             row.id,
                             ty = row.type_name
@@ -23970,7 +23970,7 @@ fn decode_replay_json_wasm_legs(
                 r.failures.push(format!(
                     "{}: wasm leg — the wasm crate did not compile / produced no wasm results — a \
                      finding: fix it or add the row to WASM_SURFACE_SKIP with an honest reason (a \
-                     citation to a cddl-matrix/ROADMAP.md finding). Captured output:\n{combined}",
+                     citation to a cddl-matrix/roadmap.toml finding). Captured output:\n{combined}",
                     row.id
                 ));
             }
@@ -24272,7 +24272,7 @@ fn replay_failure_summary_groups_by_row() {
 /// reversed maps) to the decoder: a spec-EQUAL re-encoding that the decoder REJECTS (over-strict — the
 /// motivating class) or mis-decodes to a different value fails the gate. Two failure classes are
 /// legitimate. A real DECODER GAP over a genuinely spec-equal re-encoding is hand-ledgered in
-/// `ENCODING_VARIANT_SKIP` (stale-guarded) against a `cddl-matrix/ROADMAP.md` finding — EMPTY at HEAD.
+/// `ENCODING_VARIANT_SKIP` (stale-guarded) against a `cddl-matrix/roadmap.toml` finding — EMPTY at HEAD.
 /// A row whose "spec-equal" PREMISE is false — an `@duplicates preserve` pair-map, whose entry order
 /// is part of its VALUE — is exempted from the two map-reordering labels automatically, DERIVED from
 /// the row's own `spec` by `encoding_variant_skip_kind` rather than hand-listed.
@@ -24331,7 +24331,7 @@ fn decode_conformance_replay() {
     // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately
     // fails. CLASS (a) ONLY: a spec-EQUAL re-encoding (indefinite framing, non-minimal width, chunked
     // string, reversed map) the generated decoder is over-strict about, or mis-decodes — an HONEST
-    // finding ledgered in `cddl-matrix/ROADMAP.md` § findings (a real decoder gap, NOT fixed here).
+    // finding ledgered in `cddl-matrix/roadmap.toml` § findings (a real decoder gap, NOT fixed here).
     // Such a claim is about the DECODER and stays hand-reviewed. EMPTY at HEAD.
     //
     // Class (b) — a variant whose "spec-equal" PREMISE is false for the row's type by design — is no
@@ -24407,7 +24407,7 @@ fn decode_conformance_replay() {
     // JSON_SURFACE_SKIP: rows whose json boundary legitimately can't round-trip (a value the CBOR
     // decoder accepts that serde_json can't serialize / re-accept / round-trip bit-for-bit). Each
     // resident cites its owning record — a decided posture in cddl-matrix/README.md § Gotchas, or a
-    // cddl-matrix/ROADMAP.md finding for a defect. Stale-guarded (a listed row that now round-trips
+    // cddl-matrix/roadmap.toml finding for a defect. Stale-guarded (a listed row that now round-trips
     // fails the gate). A row skipped here still runs the wasm accept + cbor differential leg (only its
     // wasm from_json sub-leg is suppressed too, since that shares the same serde parse path).
     const JSON_SURFACE_SKIP: &[(&str, &str)] = &[
@@ -24863,7 +24863,7 @@ fn decode_conformance_replay() {
                                  wrongly accepts this spec-INVALID CBOR (the fix landed): promote this \
                                  vector to class=\"constraint\" with an expect_err, move the row id from \
                                  EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in \
-                                 query_q4_directional.ts, update the ROADMAP finding, re-mint. Captured \
+                                 query_q4_directional.ts, update the roadmap.toml finding, re-mint. Captured \
                                  output:\n{combined}",
                                 row.id
                             )),
@@ -25001,7 +25001,7 @@ fn decode_conformance_replay() {
                              the default decoder — a spec-EQUAL re-encoding (indefinite framing / \
                              non-minimal width / chunked string / reversed map) the decoder is \
                              over-strict about (the motivating class). If it is a known decoder gap, \
-                             ledger it in cddl-matrix/ROADMAP.md § findings and add ({}, {label}) to \
+                             ledger it in cddl-matrix/roadmap.toml § findings and add ({}, {label}) to \
                              ENCODING_VARIANT_SKIP. Captured output:\n{combined}",
                             row.id, row.id
                         )),
@@ -25487,7 +25487,7 @@ fn corpus_decode_replay() {
     const EXPECTED_MISMATCH: &[(&str, &str)] = &[];
     // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately
     // fails. Same contract as the matrix gate's ledger (see its comment): CLASS (a) ONLY — a real
-    // decoder gap over a genuinely spec-equal re-encoding, cited to a `cddl-matrix/ROADMAP.md`
+    // decoder gap over a genuinely spec-equal re-encoding, cited to a `cddl-matrix/roadmap.toml`
     // § findings entry, hand-reviewed and stale-guarded. EMPTY at HEAD.
     //
     // The `table_preserve.*` and `open_table.open_table_dup` rows that used to fill this list were
@@ -25523,7 +25523,7 @@ fn corpus_decode_replay() {
     // corpus row is holder mode (`type_name = ProbeHolder`, a generated array struct that always has a
     // decode surface), so no mechanical wasm skips are expected here. Both stale-guarded; each resident
     // cites its owning record — a decided posture in cddl-matrix/README.md § Gotchas, or a
-    // cddl-matrix/ROADMAP.md finding for a defect.
+    // cddl-matrix/roadmap.toml finding for a defect.
     const JSON_SURFACE_SKIP: &[(&str, &str)] = &[
         // Non-string map keys don't cross the json boundary (serde_json errors on byte-string / composite
         // keys) — cddl-matrix/README.md § Gotchas, the non-string-map-key entry.
@@ -25605,7 +25605,7 @@ fn corpus_decode_replay() {
     // rows sat on JSON_SURFACE_SKIP and 1 on WASM_SURFACE_SKIP). Deliberately a pinning-time
     // observation, never a live tally: the consts above are the live ledger, and a hand count here
     // rots on every ledger change (it did — twice; see the observed-baseline-comment note in
-    // tests/TESTING_ROADMAP.md).
+    // tests/testing-roadmap.toml).
     const JSON_ACCEPT_FLOOR: usize = 910;
     const JSON_ROWS_FLOOR: usize = 106;
     const WASM_ACCEPT_FLOOR: usize = 945;
@@ -25950,7 +25950,7 @@ fn corpus_decode_replay() {
                                  wrongly accepts this spec-INVALID CBOR (the fix landed): promote this \
                                  vector to class=\"constraint\" with an expect_err, move the row id from \
                                  EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in \
-                                 query_q4_directional.ts, update the ROADMAP finding, re-mint. Captured \
+                                 query_q4_directional.ts, update the roadmap.toml finding, re-mint. Captured \
                                  output:\n{combined}",
                                 row.id
                             )),
@@ -26084,7 +26084,7 @@ fn corpus_decode_replay() {
                              the default decoder — a spec-EQUAL re-encoding (indefinite framing / \
                              non-minimal width / chunked string / reversed map) the decoder is \
                              over-strict about (the motivating class). If it is a known decoder gap, \
-                             ledger it in cddl-matrix/ROADMAP.md § findings and add ({}, {label}) to \
+                             ledger it in cddl-matrix/roadmap.toml § findings and add ({}, {label}) to \
                              ENCODING_VARIANT_SKIP. Captured output:\n{combined}",
                             row.id, row.id
                         )),

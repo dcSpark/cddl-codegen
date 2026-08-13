@@ -1,11 +1,9 @@
 import type { RoadmapIssue } from "./errors.ts";
-import type { RepoPath } from "./model/core.ts";
 import type {
   ExpectedByteView,
   ExpectedByteViewObserver,
   RenderChunk,
 } from "./render_ir.ts";
-import { sha256 } from "./kernel.ts";
 
 export class RenderValidationError extends Error {
   constructor(readonly issues: readonly RoadmapIssue[]) {
@@ -62,71 +60,3 @@ export function renderValidatedChunks(
   return result;
 }
 
-export interface ProjectionCheckResult {
-  readonly expected: Uint8Array;
-  readonly issues: readonly RoadmapIssue[];
-}
-
-/** Check an already validated redesigned projection without reusing frozen legacy chunk provenance. */
-export function checkCommittedProjectionBytes(
-  expected: Uint8Array,
-  projectionPath: RepoPath,
-  readCommitted: () => Uint8Array,
-): ProjectionCheckResult {
-  const actual = new Uint8Array(readCommitted());
-  const difference = firstDifference(expected, actual);
-  if (difference === -1) return Object.freeze({ expected: new Uint8Array(expected), issues: Object.freeze([]) });
-  const drift: RoadmapIssue = {
-    code: "E-PROJECTION-DRIFT",
-    source: projectionPath,
-    logical_path: "projection",
-    message: `projection drift: expected sha256=${sha256(expected)} length=${expected.byteLength}, actual sha256=${sha256(actual)} length=${actual.byteLength}, first differing byte=${difference}, expected context=${localByteContext(expected, difference)}, actual context=${localByteContext(actual, difference)}`,
-    exit: 1,
-  };
-  return Object.freeze({ expected: new Uint8Array(expected), issues: Object.freeze([drift]) });
-}
-
-function firstDifference(left: Uint8Array, right: Uint8Array): number {
-  const shared = Math.min(left.byteLength, right.byteLength);
-  for (let index = 0; index < shared; index++) if (left[index] !== right[index]) return index;
-  return left.byteLength === right.byteLength ? -1 : shared;
-}
-
-function escapedByte(byte: number): string {
-  if (byte === 0x0a) return "\\n";
-  if (byte === 0x0d) return "\\r";
-  if (byte === 0x09) return "\\t";
-  if (byte === 0x5c) return "\\\\";
-  if (byte === 0x22) return '\\"';
-  if (byte >= 0x20 && byte <= 0x7e) return String.fromCharCode(byte);
-  return `\\x${byte.toString(16).padStart(2, "0")}`;
-}
-
-function localByteContext(bytes: Uint8Array, difference: number): string {
-  const radius = 12;
-  const start = Math.max(0, difference - radius);
-  const end = Math.min(bytes.byteLength, difference + radius + 1);
-  return `[${start},${end}) \"${[...bytes.subarray(start, end)].map(escapedByte).join("")}\"`;
-}
-
-/** The committed projection callback is invoked only after validation and final rendering. */
-export function renderThenCheckCommittedProjection(
-  chunks: readonly RenderChunk[],
-  validationIssues: readonly RoadmapIssue[],
-  expectedBytes: ExpectedByteView,
-  projectionPath: RepoPath,
-  readCommitted: () => Uint8Array,
-): ProjectionCheckResult {
-  const expected = renderValidatedChunks(chunks, validationIssues, expectedBytes);
-  const actual = new Uint8Array(readCommitted());
-  const difference = firstDifference(expected, actual);
-  if (difference === -1) return Object.freeze({ expected, issues: Object.freeze([]) });
-  const drift: RoadmapIssue = {
-    code: "E-PROJECTION-DRIFT",
-    source: projectionPath,
-    logical_path: "projection",
-    message: `projection drift: expected sha256=${sha256(expected)} length=${expected.byteLength}, actual sha256=${sha256(actual)} length=${actual.byteLength}, first differing byte=${difference}, expected context=${localByteContext(expected, difference)}, actual context=${localByteContext(actual, difference)}`,
-    exit: 1,
-  };
-  return Object.freeze({ expected, issues: Object.freeze([drift]) });
-}

@@ -477,7 +477,7 @@ What that costs, verified by reading the code and by expanding such a config on 
   duplication: **keep `workspace-dep = ["cml_chain"]` in the hand-spelled set.** A hand-written
   `extern-wrapper-index` WITHOUT the matching `workspace-dep` is the one shape that sits outside
   every convergence instrument the run has (recorded with a reproduction in
-  `tests/TESTING_ROADMAP.md`, Operational watches) — the run exits 0 a pass behind and the next run
+  `tests/testing-roadmap.toml`, Operational watches) — the run exits 0 a pass behind and the next run
   changes bytes over an unchanged tree.
 - **The committed-state verdict disappears**, because it iterates `deps` edges. `check_convergence`
   must stay in the script until `deps` lands.

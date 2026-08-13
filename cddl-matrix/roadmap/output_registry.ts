@@ -5,6 +5,7 @@ import type {
   ResolvedOutputClaim,
 } from "./adapters/types.ts";
 import { documentSlots, planSectionBody } from "./slots.ts";
+import { PROJECTION_PATH_BY_ROADMAP } from "./projection_paths.ts";
 import type { RoadmapIssue } from "./errors.ts";
 import type { RepoPath, RoadmapName, SlotId } from "./model/core.ts";
 import type { RoadmapDocument } from "./model/documents.ts";
@@ -202,12 +203,14 @@ export const LEGACY_STATUS_OUTPUT_CLAIMS: readonly OutputClaim[] = Object.freeze
   });
 }));
 
-const MATRIX_PROJECTION_PATH = "cddl-matrix/ROADMAP.md" as RepoPath;
-const TESTING_PROJECTION_PATH = "tests/TESTING_ROADMAP.md" as RepoPath;
+// The gitignored human-review renders (the `/draft/` gitignore rule covers them). The legacy
+// `cddl-matrix/ROADMAP.md` spelling survives only as the pre_cutover status seam key above.
+const MATRIX_PROJECTION_PATH = PROJECTION_PATH_BY_ROADMAP.matrix;
+const TESTING_PROJECTION_PATH = PROJECTION_PATH_BY_ROADMAP.testing;
 
 const README_STATUS_OUTPUT_CLAIMS = Object.freeze(
   LEGACY_STATUS_OUTPUT_CLAIMS.filter((claim): claim is Extract<OutputClaim, { kind: "slot" }> =>
-    claim.kind === "slot" && claim.path !== MATRIX_PROJECTION_PATH
+    claim.kind === "slot" && claim.path !== STATUS_PATHS.roadmap
   ),
 );
 

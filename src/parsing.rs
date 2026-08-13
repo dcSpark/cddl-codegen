@@ -3007,7 +3007,7 @@ fn parse_control_operator(
                         // mis-enforced it in both directions. The rust cddl oracle also
                         // hard-errors on the construct, so an aligned window would be
                         // uncertifiable; revisit when upstream ships the per-value semantics
-                        // (ledgered in cddl-matrix/ROADMAP.md).
+                        // (ledgered in cddl-matrix/roadmap.toml).
                         types.record_rejection(format!(
                             "{}`.size` on a signed `int` is unsupported — its spec meaning is the `uint .size` window (cbor-wg/cddl#32), which the signed reading mis-enforces; use `uint .size N`, or an explicit range for an N-byte signed int",
                             reject_rule_prefix(rule_name)
@@ -3307,7 +3307,7 @@ fn handle_rust_name_pin(
 /// paren and fails to parse. The fork-side fix (an additive `RuleTrailing` merge fallback) exists on
 /// the dcSpark fork's `local-fixes` branch, unadopted by maintainer ruling, and is what would make
 /// the refused spelling HONORED rather than merely loud; state and design constraints are tracked in
-/// `tests/TESTING_ROADMAP.md` ("Adopt the parser's `RuleTrailing` anchor for multi-line group
+/// `tests/testing-roadmap.toml` ("Adopt the parser's `RuleTrailing` anchor for multi-line group
 /// rules").
 fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments>) -> RuleMetadata {
     let mut metadata = RuleMetadata::from(comments_after_group);

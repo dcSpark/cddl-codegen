@@ -84,7 +84,7 @@ const TOOL_OWNED_TREES: &[&str] = &[
 /// `--preserve-encodings` is the second row because it emits a FILE the default profile does not
 /// (`cbor_encodings.rs`, one struct per rule that carries encodings) — a per-rule surface is exactly
 /// where a deletable-row comment would live, and no other gate looks for one there. The `json` and
-/// `component` profiles are not swept; see `tests/TESTING_ROADMAP.md` for the residual and the
+/// `component` profiles are not swept; see `tests/testing-roadmap.toml` for the residual and the
 /// observable that would add one.
 const FLOOR_AND_DELETION_PROFILES: &[(&str, &[&str])] = &[
     ("default", &[]),

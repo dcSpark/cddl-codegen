@@ -90,7 +90,7 @@ pmap_holder = [m: pmap]
 ; preserve-mode pair-map, so a duplicate-keyed metadata map must decode AND re-emit byte-exact through
 ; the recursive-descent (de)serializer (the recursion lives in the map VALUE here; a union used as the
 ; map KEY trips a pre-existing generation limitation orthogonal to this policy — see the
-; TESTING_ROADMAP phase-2 entry). `md_holder` wraps the union so it has a standalone (de)serializer.
+; testing-roadmap.toml phase-2 entry). `md_holder` wraps the union so it has a standalone (de)serializer.
 md         = mdmap / [* md] / int / bytes / tstr
 mdmap      = { * tstr => md } ; @duplicates preserve
 md_holder  = [meta: md]

@@ -1890,7 +1890,7 @@ fn overload_scoped_literals() -> Vec<(&'static str, String, usize, String, bool,
 /// [`emitter_overload_lint_sees_its_anchors`] pins that the KNOWN fns stay scoped. The residual
 /// neither can see — a scoped fn that builds a FRESH config instead of threading the caller's, so
 /// every literal below it correctly spells an accessor resolving to the default — is recorded with
-/// its reopening signal in `tests/TESTING_ROADMAP.md` (the overload-lint residuals entry).
+/// its reopening signal in `tests/testing-roadmap.toml` (the overload-lint residuals entry).
 #[test]
 fn emitter_overload_no_bare_default_tokens() {
     let mut failures = Vec::new();

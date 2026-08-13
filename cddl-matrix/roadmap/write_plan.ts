@@ -7,6 +7,7 @@ import {
   resolvedWholeFileClaim,
   type ValidatedOutputAuthority,
 } from "./output_registry.ts";
+import { isRoadmapProjectionPath } from "./projection_paths.ts";
 
 const validatedPlans = new WeakSet<object>();
 const privatePlanBytes = new WeakMap<object, Uint8Array>();
@@ -45,8 +46,11 @@ function issue(
   };
 }
 
+// The projection is a gitignored human-review render: the ONLY authorized write targets are the
+// two declared projection paths. Everything else — fixture trees, tracked repository files, the
+// draft/ root — is out of the projector's write authority.
 function forbiddenAuthorityPath(path: string): boolean {
-  return path.startsWith("cddl-matrix/roadmap/fixtures/") || path.startsWith("draft/");
+  return !isRoadmapProjectionPath(path);
 }
 
 /** Mint one opaque whole-file write plan only after all supplied validation sets are green. */
@@ -68,7 +72,7 @@ export function createProjectionWritePlan(request: ProjectionWriteRequest): Proj
     issues.push(issue(request, "E-OUTPUT-TOML", "document.projection_path", "projection write cannot target TOML source bytes"));
   }
   if (forbiddenAuthorityPath(meta.projection_path)) {
-    issues.push(issue(request, "E-OUTPUT-PATH", "document.projection_path", "projection target is not an authorized whole-file Markdown path"));
+    issues.push(issue(request, "E-OUTPUT-PATH", "document.projection_path", "projection target must live in the gitignored draft/roadmaps/ render home"));
   }
   if (authorityValid && (request.projection_bytes === undefined || request.projection_bytes.byteLength === 0)) {
     issues.push(issue(request, "E-OUTPUT-WRITER", "projection", "projection write payload is empty"));

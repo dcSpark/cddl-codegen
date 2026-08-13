@@ -41,7 +41,9 @@ example/export*/
 # disposable like any other build artifact.
 /.ts-toolchain/
 
-# Scratch area for draft/investigation artifacts (not committed)
+# Scratch area for draft/investigation artifacts (not committed). Includes draft/roadmaps/ — the
+# generated human-review renders of cddl-matrix/roadmap.toml and tests/testing-roadmap.toml
+# (`project_roadmaps.ts --write`); the TOML sources are the only committed roadmap form.
 /draft/
 /.gate-cache/
 

@@ -131,7 +131,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.bool` | ✅ | bool | `bool.cddl` |
 | `prelude.bstr` | ✅ | bstr | `prelude.cddl` |
 | `prelude.bytes` | ✅ | bytes | `primitives.cddl` |
-| `prelude.cbor-any` | ➖ | cbor-any | the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/TESTING_ROADMAP.md` § North star). Pinned by `cbor_any_prelude_tag_rejects_gracefully_in_every_position`.  [`self-described STREAM marker`] |
+| `prelude.cbor-any` | ➖ | cbor-any | the self-describe tag `#6.55799(any)` marks a byte stream as CBOR — a property of the stream, not of a value a generated struct could hold — so it is rejected gracefully in every position; support is permanently excluded by ruling (`tests/testing-roadmap.toml` § North star). Pinned by `cbor_any_prelude_tag_rejects_gracefully_in_every_position`.  [`self-described STREAM marker`] |
 | `prelude.decfrac` | ✅ | decfrac | `prelude.cddl` |
 | `prelude.eb16` | ✅ | eb16 | `expected_conversion_tags.cddl` |
 | `prelude.eb64legacy` | ✅ | eb64legacy | `expected_conversion_tags.cddl` |

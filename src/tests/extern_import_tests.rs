@@ -1977,7 +1977,7 @@ fn extern_import_raw_bytes_trait_flag_survives_narrowing() {
 /// minted at all. Dropping the tag costs nothing measurable — a consumer cannot instantiate a
 /// param-less base, so the tag was inert there (probed: consumer output byte-identical with and
 /// without it). Projecting the PARAMS instead, so a consumer could instantiate a dep's generic
-/// extern, is the deferred alternative recorded in tests/TESTING_ROADMAP.md.
+/// extern, is the deferred alternative recorded in tests/testing-roadmap.toml.
 #[test]
 fn extern_import_flavored_generic_base_projects_without_the_tag() {
     let export = mint_export(

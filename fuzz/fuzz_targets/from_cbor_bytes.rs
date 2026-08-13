@@ -1,4 +1,4 @@
-//! Adversarial CBOR bytes into generated deserializers (TESTING_ROADMAP "adversarial CBOR" item).
+//! Adversarial CBOR bytes into generated deserializers (tests/testing-roadmap.toml "adversarial CBOR" item).
 //!
 //! Target: the preserve-encodings fixture's generated crate (`fuzz/generated/rust`, regenerate
 //! with ./generate.sh) — the richest deserialization surface (encoding-preserving paths, nested

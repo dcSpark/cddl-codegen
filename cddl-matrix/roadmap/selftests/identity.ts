@@ -23,6 +23,7 @@ import type {
 import type { RegistryView } from "../adapters/types.ts";
 import { observeMatchingIssue, observeSelfTestIssue } from "./observations.ts";
 import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
+import { PROJECTION_PATH_BY_ROADMAP } from "../projection_paths.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import {
   ROADMAP_ID_POLICY_V1,
@@ -1930,7 +1931,7 @@ function c5Sha(value: Uint8Array): string {
 }
 
 function c5Path(roadmap: RoadmapName): RepoPath {
-  return (roadmap === "matrix" ? "cddl-matrix/ROADMAP.md" : "tests/TESTING_ROADMAP.md") as RepoPath;
+  return PROJECTION_PATH_BY_ROADMAP[roadmap];
 }
 
 function c5SourcePath(roadmap: RoadmapName): RepoPath {
