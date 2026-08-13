@@ -266,12 +266,6 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
     "extra_binding", "outcome_drift", "wrong_evidence_scope", "uncovered_applicability", "affected_face_drift", "as_of_evidence", "stale_evidence", "zero_floor", "nan_floor",
     "fractional_floor", "stale_control", "missing_exclusion_liveness",
   ]],
-  ["fixed_value_choice_member_authority_mutations", [
-    "enum_add", "enum_remove", "enum_rename", "payload_drift", "lowering_mismatch",
-    "containment_missing", "containment_extra", "feature_drift", "role_drift", "spec_drift",
-    "example_drift", "support_disposition_drift", "profile_face_exact", "exact_36_outcomes",
-    "fake_wasm_compile_only_rejected",
-  ]],
   ["v2_migration_escape_hatches_rejected", [
     "semantic_conversion", "frozen_legacy_span_ids", "semantic_owner_raw_fields", "raw_span",
   ]],

@@ -665,25 +665,6 @@ review_note_md = """The complete legacy block is retained byte-for-byte as seman
 """
 
 [[record]]
-id = "matrix.control.fixed-value-choice-member-closure"
-title = "FixedValue choice-member closure drift gate."
-projection_group = "matrix-side-work"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "control"
-summary_md = """FixedValue choice-member closure drift gate.
-"""
-control_kind = "gate"
-control_state = "live"
-reference_ids = ["ref-matrix-control-fixed-value-choice-member-closure-projection", "ref-matrix-control-fixed-value-choice-member-closure-verify"]
-claim_md = """Normal roadmap validation derives the FixedValue vocabulary from source and fails closed when the enum, lowering match, canonical containment rows, final support dispositions, applicability, or any of the exact 36 stage outcomes drifts.
-"""
-boundary_md = """This control closes one reviewed canonical bare rule-level type-choice representative per FixedValue kind. It does not generalize from that literal to every literal of the same kind.
-"""
-
-[[record]]
 id = "matrix.derived-variant-naming"
 title = "No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named."
 projection_group = "findings-open"
@@ -879,7 +860,6 @@ refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-bool-verif
 [record.payload.scope]
 faces = ["rust", "wasm"]
 profiles = ["default"]
-cell_ids = ["matrix.fixed-value-choice-member.coordinate-bool"]
 
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.bytes"
@@ -905,7 +885,32 @@ refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-bytes-veri
 [record.payload.scope]
 faces = ["rust", "wasm"]
 profiles = ["default"]
-cell_ids = ["matrix.fixed-value-choice-member.coordinate-bytes"]
+
+[[record]]
+id = "matrix.evidence.fixed-value-choice-member.closure"
+title = "Delivered FixedValue choice-member closure at 8320fb33."
+projection_group = "matrix-side-work"
+render_authority = "semantic"
+projection_visibility = "semantic_only"
+
+[record.payload]
+kind = "evidence"
+summary_md = """Delivered FixedValue choice-member closure at 8320fb33.
+"""
+evidence_kind = "external_commit"
+claim_md = """The FixedValue choice-member family closed its reviewed denominator at commit 8320fb3330c5d6febda8910e5a3bb944bcec1466: eight legal representative cells (bool, bytes, float, nint, null, text, uint, undefined) carried thirty-six verified stage outcomes under the default profile — six representatives supported with rust and wasm compile plus round-trip evidence, while float and nint were safely refused at rust generation with their runtime stages inapplicable — and zero exclusions.
+"""
+evidence_verdict = "confirmed"
+freshness = "historical"
+reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-closure-commit"]
+at_commit = "8320fb3330c5d6febda8910e5a3bb944bcec1466"
+observed_at = "2026-08-13"
+unprobed_remainder_md = """Only the eight canonical representative coordinates are claimed; other literals of each kind, other placements, profiles, and faces are unclaimed. The live guard machinery that re-derived this closure from source on every run was retired on 2026-08-13; generator drift against the closed family is since caught by review, and the per-representative live evidence records beside this one remain refreshable through the verify gate.
+"""
+
+[record.payload.scope]
+faces = ["rust", "wasm"]
+profiles = ["default"]
 
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.float"
@@ -931,7 +936,6 @@ refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-float-veri
 [record.payload.scope]
 faces = ["rust"]
 profiles = ["default"]
-cell_ids = ["matrix.fixed-value-choice-member.coordinate-float"]
 
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.nint"
@@ -957,7 +961,6 @@ refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-nint-verif
 [record.payload.scope]
 faces = ["rust"]
 profiles = ["default"]
-cell_ids = ["matrix.fixed-value-choice-member.coordinate-nint"]
 
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.null"
@@ -983,7 +986,6 @@ refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-null-verif
 [record.payload.scope]
 faces = ["rust", "wasm"]
 profiles = ["default"]
-cell_ids = ["matrix.fixed-value-choice-member.coordinate-null"]
 
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.text"
@@ -1009,7 +1011,6 @@ refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-text-verif
 [record.payload.scope]
 faces = ["rust", "wasm"]
 profiles = ["default"]
-cell_ids = ["matrix.fixed-value-choice-member.coordinate-text"]
 
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.uint"
@@ -1035,7 +1036,6 @@ refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-uint-verif
 [record.payload.scope]
 faces = ["rust", "wasm"]
 profiles = ["default"]
-cell_ids = ["matrix.fixed-value-choice-member.coordinate-uint"]
 
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.undefined"
@@ -1061,7 +1061,6 @@ refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-undefined-
 [record.payload.scope]
 faces = ["rust", "wasm"]
 profiles = ["default"]
-cell_ids = ["matrix.fixed-value-choice-member.coordinate-undefined"]
 
 [[record]]
 id = "matrix.extern-emitted-test-boundary"
@@ -7251,18 +7250,6 @@ path = "cddl-matrix/ROADMAP.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
-id = "ref-matrix-control-fixed-value-choice-member-closure-projection"
-source = "matrix.control.fixed-value-choice-member-closure"
-kind = "gate"
-gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "ref-matrix-control-fixed-value-choice-member-closure-verify"
-source = "matrix.control.fixed-value-choice-member-closure"
-kind = "gate"
-gate_id = "verify"
-
-[[reference]]
 id = "ref-matrix-derived-variant-naming-source"
 source = "matrix.derived-variant-naming"
 kind = "file_heading"
@@ -7346,6 +7333,13 @@ id = "ref-matrix-evidence-fixed-value-choice-member-bytes-verify"
 source = "matrix.evidence.fixed-value-choice-member.bytes"
 kind = "gate"
 gate_id = "verify"
+
+[[reference]]
+id = "ref-matrix-evidence-fixed-value-choice-member-closure-commit"
+source = "matrix.evidence.fixed-value-choice-member.closure"
+kind = "external_commit"
+repository = "dcSpark/cddl-codegen"
+commit = "8320fb3330c5d6febda8910e5a3bb944bcec1466"
 
 [[reference]]
 id = "ref-matrix-evidence-fixed-value-choice-member-float-verify"

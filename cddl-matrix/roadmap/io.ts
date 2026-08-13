@@ -23,7 +23,6 @@ import { spawnSync } from "node:child_process";
 // out of check.ts's source text, where a reformat could silently drop rows.
 import { REGISTRY as CHECK_REGISTRY } from "../../check.ts";
 import type { RegistryView } from "./adapters/types.ts";
-import { decodeRoadmapSource } from "./decode/roadmap.ts";
 import {
   classifyRoadmapIoError,
   RoadmapFailure,
@@ -43,9 +42,6 @@ import {
   type TrackedTextInput,
 } from "./repository_facts.ts";
 import { extractRustTestSymbols } from "./rust_symbols.ts";
-import { extractFixedValueSourceFacts } from "./source_facts.ts";
-import { deriveFixedValueCurrentGuards, fixedValueGuardActivationState } from "./fixed_value_guards.ts";
-import { FIXED_VALUE_DELIVERY_BASE } from "./fixed_value_guards.ts";
 import { codePointSort } from "./kernel.ts";
 
 declare const scratchRepositoryHandleBrand: unique symbol;
@@ -899,62 +895,18 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
   const matrix = parseJson<{
     features?: readonly { id?: unknown }[];
     roles?: readonly { id?: unknown }[];
-    containment?: readonly { id?: unknown; role?: unknown; feature?: unknown; spec?: unknown; example?: unknown }[];
-    annotations?: { cddl_codegen?: readonly { id?: unknown; status?: unknown; evidence?: unknown; emission?: unknown }[] };
+    containment?: readonly { id?: unknown }[];
   }>(byPath, "cddl-matrix/matrix.json", {});
   const ids = (rows: readonly { id?: unknown }[] | undefined): readonly { id: string }[] =>
     Object.freeze((rows ?? []).flatMap((row) => typeof row.id === "string" ? [{ id: row.id }] : [])
       .sort((left, right) => codePointSort(left.id, right.id)));
-  const requiredText = (value: unknown, field: string, id: string): string => {
-    if (typeof value !== "string") throw new RoadmapFailure(issue("E-SCHEMA-TYPE", "cddl-matrix/matrix.json", `registry-facts.${id}.${field}`, "matrix authority fact must be a string", 1));
-    return value;
-  };
-  const containment = Object.freeze((matrix.containment ?? []).map((row) => {
-    const id = requiredText(row.id, "id", "containment");
-    return Object.freeze({
-      id,
-      role: requiredText(row.role, "role", id),
-      feature: requiredText(row.feature, "feature", id),
-      spec: requiredText(row.spec, "spec", id),
-      example: requiredText(row.example, "example", id),
-    });
-  }).sort((left, right) => codePointSort(left.id, right.id)));
-  const support = Object.freeze((matrix.annotations?.cddl_codegen ?? []).map((row) => {
-    const id = requiredText(row.id, "id", "support");
-    const emission = row.emission === undefined ? {} : row.emission;
-    if (typeof emission !== "object" || emission === null || Array.isArray(emission)) {
-      throw new RoadmapFailure(issue("E-SCHEMA-TYPE", "cddl-matrix/matrix.json", `registry-facts.${id}.emission`, "matrix emission authority fact must be a table", 1));
-    }
-    return Object.freeze({
-      id,
-      status: requiredText(row.status, "status", id),
-      evidence: requiredText(row.evidence, "evidence", id),
-      emission: Object.freeze(emission as Readonly<Record<string, { readonly status?: string; readonly evidence?: string }>>),
-    });
-  }).sort((left, right) => codePointSort(left.id, right.id)));
-  const rustTypeBytes = byPath.get("src/intermediate/rust_type.rs" as RepoPath);
-  const parsingBytes = byPath.get("src/parsing.rs" as RepoPath);
-  if ((rustTypeBytes === undefined) !== (parsingBytes === undefined)) {
-    throw new RoadmapFailure(issue("E-SOURCE-MISSING", "<registry-facts>", "fixed-value-source", "FixedValue authority sources must both be tracked", 1));
-  }
-  let fixedValueSource;
-  if (rustTypeBytes !== undefined && parsingBytes !== undefined) {
-    try {
-      fixedValueSource = extractFixedValueSourceFacts(UTF8.decode(rustTypeBytes), UTF8.decode(parsingBytes));
-    } catch (error) {
-      throw new RoadmapFailure(issue("E-SCHEMA-STATE", "src/intermediate/rust_type.rs", "fixed-value-source", error instanceof Error ? error.message : String(error), 1));
-    }
-  }
-  const registryWithoutGuards: RegistryView = Object.freeze({
+  return Object.freeze({
     revision,
     production_output_stage: outputInventory.stage,
     gates: Object.freeze(status.registry.gates.map((gate) => ({ id: gate.id, kind: gate.kind, stub: gate.kind === "stub" }))),
     matrix_features: ids(matrix.features),
     matrix_roles: ids(matrix.roles),
     matrix_cells: ids(matrix.containment),
-    ...(fixedValueSource === undefined ? {} : { fixed_value_source: fixedValueSource }),
-    matrix_containment: containment,
-    matrix_support: support,
     tracked_headings: headings.facts,
     test_symbols: testSymbols.facts,
     roadmap_citations: citations.facts,
@@ -964,36 +916,6 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
       codePointSort(left.kind === "slot" ? left.slot_id : "", right.kind === "slot" ? right.slot_id : "")
     )),
     matrix_status_inputs: status,
-  });
-  // Registry discovery is also used by isolated/scratch repositories whose tracked files are not
-  // roadmap sources. Their normal lifecycle loader owns schema diagnostics; guard discovery must
-  // remain an optional refinement rather than turning registry construction into a second decoder.
-  const optionalDecode = <T>(decode: () => T): T | undefined => {
-    try {
-      return decode();
-    } catch {
-      return undefined;
-    }
-  };
-  const matrixRoadmapBytes = byPath.get("cddl-matrix/roadmap.toml" as RepoPath);
-  const matrixRoadmap = matrixRoadmapBytes === undefined
-    ? undefined
-    : optionalDecode(() => decodeRoadmapSource(matrixRoadmapBytes, "cddl-matrix/roadmap.toml", "matrix", true));
-  const baselineRoadmapBytes = !fixedValueGuardActivationState(matrixRoadmap)
-    ? undefined
-    : readTracked(root, { kind: "commit", commit: FIXED_VALUE_DELIVERY_BASE }, "cddl-matrix/roadmap.toml" as RepoPath);
-  const baselineRoadmap = baselineRoadmapBytes === undefined
-    ? undefined
-    : decodeRoadmapSource(baselineRoadmapBytes, "cddl-matrix/roadmap.toml", "matrix", true);
-  const fixedValue = deriveFixedValueCurrentGuards(
-    matrixRoadmap,
-    baselineRoadmap,
-    registryWithoutGuards,
-  );
-  return Object.freeze({
-    ...registryWithoutGuards,
-    current_guards: fixedValue.guards,
-    ...(fixedValue.closure === undefined ? {} : { fixed_value_closure: fixedValue.closure }),
   });
 }
 

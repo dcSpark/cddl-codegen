@@ -7551,27 +7551,6 @@ priority_rationale_md = """The parent defect owns repair; this record owns the s
 """
 
 [[record]]
-id = "testing.proof-gap.roadmap-fixed-value-guard-validators"
-title = "Re-cover the roadmap tool's fixed-value guard validators."
-projection_group = "next-priority"
-render_authority = "semantic"
-projection_visibility = "semantic_only"
-
-[record.payload]
-kind = "work"
-summary_md = """Re-cover the roadmap tool's fixed-value guard validators.
-"""
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "false_pass_or_red"
-family_classification = "none_reviewed"
-acceptance_md = """Exercise `validateFixedValueCurrentGuardSet` and `retainedClosurePayloadsEqual` (cddl-matrix/roadmap/fixed_value_guards.ts) in the roadmap selftests on v2 documents, in both the passing and the firing direction — or decide to delete them. Their only tests were retired with the v0/v1 lifecycle arm, so today a regression in either would go unobserved.
-"""
-priority_rationale_md = """Both validators run on the live v2 path (activation is decided by FixedValue ID presence, not schema version), so an unexercised regression produces a silent wrong verdict on the live documents rather than a loud failure.
-"""
-
-[[record]]
 id = "testing.proof-gap.verify-ts-refuse-unknown-flag-silently-degrading-plain"
 title = "Regression gap for testing.verify-ts-refuse-unknown-flag-silently-degrading-plain."
 projection_group = "next-priority"

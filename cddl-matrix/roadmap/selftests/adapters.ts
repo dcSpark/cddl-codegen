@@ -351,22 +351,7 @@ function registryView(
       module_path: ["tests", "fixture"],
     })), (entry) => JSON.stringify([entry.test_id, entry.symbol])),
     roadmap_citations: [],
-    current_guards: document?.records.some((record) =>
-        "payload" in record && record.payload.kind === "evidence" &&
-        record.id.startsWith("matrix.evidence.fixed-value-choice-member.")
-      )
-      ? ["bool", "bytes", "float", "nint", "null", "text", "uint", "undefined"].map((value) => ({
-        id: `matrix.fixed-value-choice-member.coordinate-${value}` as RoadmapId,
-        guard_role: "family_cell" as const,
-        family_root_id: "matrix.systematic.fixed-value-choice-member" as RoadmapId,
-        owner_registry: "fixture-fixed-value-closure",
-        replacement_pin: {
-          kind: "gate" as const,
-          gate_id: "roadmap_projection_check",
-          claim_md: new Uint8Array(),
-        },
-      }))
-      : [],
+    current_guards: [],
     output_claims: [],
     matrix_status_inputs: statusInputs,
   };

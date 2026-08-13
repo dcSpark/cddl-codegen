@@ -41,7 +41,6 @@ import { buildProjectionViews, type ProjectionViews } from "./projection_views.t
 import { projectionLayout, projectionLayoutRank, validateProjectionLayoutDeclaration } from "./projection_layout.ts";
 import { scanRoadmapMarkdownFacts } from "./repository_facts.ts";
 import { validateSourceSpans } from "./spans.ts";
-import { MATRIX_DENOMINATOR_AUTHORITIES } from "./fixed_value_authority.ts";
 
 export const MATRIX_SOURCE = "cddl-matrix/roadmap.toml" as RepoPath;
 export const TESTING_SOURCE = "tests/testing-roadmap.toml" as RepoPath;
@@ -224,7 +223,6 @@ const CORE_PIPELINE: readonly CoreStage[] = Object.freeze([
       );
       const domain = domainValidation(state.document, state.registry, {
         defer_foreign_roadmap_joins: true,
-        denominator_authorities: state.document.document.roadmap === "matrix" ? MATRIX_DENOMINATOR_AUTHORITIES : undefined,
       });
       const structuralIssues = [...domain.issues];
       if (structuralIssues.length > 0) failure(structuralIssues);

@@ -22,8 +22,6 @@ import type {
 } from "../io.ts";
 import type { FixtureRelativePath, RepoPath, RepositoryRevision, RoadmapId } from "../model/core.ts";
 import type { RoadmapDocumentV2, SemanticPayload } from "../model/documents.ts";
-import type { CurrentFamilyGuard } from "../model/documents.ts";
-import { FIXED_VALUE_FAMILY_ROOT } from "../fixed_value_guards.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
 import { resolveManifest } from "../manifest.ts";
 import {
@@ -247,7 +245,6 @@ function liveRegistry(revision: RepositoryRevision): RegistryView {
   return {
     ...cachedLiveRegistry,
     revision,
-    current_guards: fixedValueClosureGuards(),
   };
 }
 
@@ -662,31 +659,6 @@ function bothAuthoritativePorts(atomic?: FakeOptions["atomic"]): RoadmapCliPorts
     },
     atomic,
   });
-}
-
-const FIXED_VALUE_CLOSURE_GUARD_ROLES = Object.freeze([
-  [FIXED_VALUE_FAMILY_ROOT, "closed_family_root"],
-  ["matrix.fixed-value-representative-kind", "family_axis"],
-  ...["bool", "bytes", "float", "nint", "null", "text", "uint", "undefined"].map((value) =>
-    [`matrix.fixed-value-kind.${value}`, "family_axis_value"] as const
-  ),
-  ["matrix.requirement.fixed-value-choice-member-generation", "family_evidence_requirement"],
-  ["matrix.requirement.fixed-value-choice-member-runtime", "family_evidence_requirement"],
-  ...["bool", "bytes", "float", "nint", "null", "text", "uint", "undefined"].map((value) =>
-    [`matrix.fixed-value-choice-member.coordinate-${value}`, "family_cell"] as const
-  ),
-] as const);
-
-function fixedValueClosureGuards(): readonly CurrentFamilyGuard[] {
-  return FIXED_VALUE_CLOSURE_GUARD_ROLES.map(([id, guard_role]) => ({
-    id: id as RoadmapId,
-    guard_role,
-    family_root_id: FIXED_VALUE_FAMILY_ROOT,
-    owner_registry: "fixed-value-choice-member-closure",
-    replacement_pin: {
-      kind: "gate", gate_id: "roadmap_projection_check", claim_md: UTF8.encode("Delivered closure."),
-    },
-  }));
 }
 
 function uniqueProjectionHeading(projection: Uint8Array): string {

@@ -1,5 +1,4 @@
 import type {
-  FullCommitId,
   FragmentId,
   LowercaseSlug,
   MarkerId,
@@ -221,15 +220,6 @@ export interface CurrentGenericGuard extends CurrentGuardBase {
 }
 
 export type CurrentGuard = CurrentFamilyGuard | CurrentGenericGuard;
-
-/** Reviewed delivered-closure facts derived from the exact baseline and current live authority. */
-export interface FixedValueClosureAuthorityFact {
-  baseline_commit: FullCommitId;
-  expected_guards: readonly { readonly id: RoadmapId; readonly guard_role: FamilyGuardRole }[];
-  retained_evidence_ids: readonly RoadmapId[];
-  legal_cell_count: number;
-  evidence_coordinate_count: number;
-}
 
 export interface ActiveRecordOwnerFact {
   owner_kind: "active_record";

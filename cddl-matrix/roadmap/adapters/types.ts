@@ -9,7 +9,6 @@ import type {
 } from "../model/core.ts";
 import type {
   CurrentGuard,
-  FixedValueClosureAuthorityFact,
   GeneratedSlot,
   Reference,
   RoadmapDocument,
@@ -49,32 +48,6 @@ export interface GateFact {
 export interface MatrixFeatureFact { id: string }
 export interface MatrixRoleFact { id: string }
 export interface MatrixCellFact { id: string }
-
-export interface RustEnumVariantFact {
-  readonly name: string;
-  readonly payload: string | null;
-}
-
-export interface FixedValueSourceFacts {
-  readonly variants: readonly RustEnumVariantFact[];
-  /** `FixedValue` constructor names reached by `type2_to_fixed_value`. */
-  readonly lowered_variants: readonly string[];
-}
-
-export interface MatrixContainmentFact {
-  readonly id: string;
-  readonly role: string;
-  readonly feature: string;
-  readonly spec: string;
-  readonly example: string;
-}
-
-export interface MatrixSupportFact {
-  readonly id: string;
-  readonly status: string;
-  readonly evidence: string;
-  readonly emission: Readonly<Record<string, { readonly status?: string; readonly evidence?: string }>>;
-}
 
 export interface FileHeadingFact {
   path: RepoPath;
@@ -141,14 +114,10 @@ export interface RegistryView {
   readonly matrix_features: readonly MatrixFeatureFact[];
   readonly matrix_roles: readonly MatrixRoleFact[];
   readonly matrix_cells: readonly MatrixCellFact[];
-  readonly fixed_value_source?: FixedValueSourceFacts;
-  readonly matrix_containment?: readonly MatrixContainmentFact[];
-  readonly matrix_support?: readonly MatrixSupportFact[];
   readonly tracked_headings: readonly FileHeadingFact[];
   readonly test_symbols: readonly TestSymbolFact[];
   readonly roadmap_citations: readonly RoadmapCitationFact[];
   readonly current_guards: readonly CurrentGuard[];
-  readonly fixed_value_closure?: FixedValueClosureAuthorityFact;
   readonly output_claims: readonly OutputClaim[];
   readonly matrix_status_inputs: MatrixStatusInputs;
 }
