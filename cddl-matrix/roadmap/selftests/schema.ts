@@ -27,19 +27,17 @@ import {
 import {
   decodeSharedSemanticPayload,
   SEMANTIC_ENUM_FIELDS,
-  SEMANTIC_V2_SCHEMA_ROWS,
   SHARED_SEMANTIC_SCHEMA_ROWS,
 } from "../decode/semantic.ts";
 import { decodeTestingPayload, TESTING_ENUM_FIELDS, TESTING_SCHEMA_ROWS } from "../decode/testing.ts";
 import { childLogicalPath, shieldTomlMarkdown } from "../decode/raw_markdown.ts";
-import { syntheticClosedDenominatorSource } from "./denominator.ts";
 
 const UTF8 = new TextEncoder();
 const text = (value: string): Uint8Array => UTF8.encode(value);
 const ZERO_HASH = "0".repeat(64);
 
 export const REQUIRED_SCHEMA_SELFTEST_CASE_IDS = [
-  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "missing_manifest", "empty_records_floor", "all_fields_identity", "v3_semantic_identity", "v2_unsupported", "v3_retired_keys_rejected", "signal_observable_arm_dependent", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "schema_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
+  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "missing_manifest", "empty_records_floor", "all_fields_identity", "v3_semantic_identity", "v2_unsupported", "v3_retired_keys_rejected", "signal_observable_arm_dependent", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "schema_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
 ] as const;
 
 export type RequiredSchemaSelfTestCaseId = (typeof REQUIRED_SCHEMA_SELFTEST_CASE_IDS)[number];
@@ -49,7 +47,6 @@ const ALL_SCHEMA_ROWS = [
   ...MANIFEST_SCHEMA_ROWS,
   ...REFERENCE_SCHEMA_ROWS,
   ...SHARED_SEMANTIC_SCHEMA_ROWS,
-  ...SEMANTIC_V2_SCHEMA_ROWS,
   ...MATRIX_SCHEMA_ROWS,
   ...TESTING_SCHEMA_ROWS,
 ] as const;
@@ -94,7 +91,6 @@ work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "cosmetic"
-family_classification = "none_reviewed"
 acceptance_md = """Accepted.
 """
 priority_rationale_md = """Normal.
@@ -121,7 +117,7 @@ function minimalDocument(): RoadmapDocumentV3 {
  * arms. Both subordinate kinds declare the one disposition their kind permits.
  */
 function subordinateRoadmap(): string {
-  return `[document]\nschema_version = 3\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\n\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\nbody_md = """S\n"""\n\n[[fragment]]\nfragment_id = "fragment"\nprojection_group = "fixture"\nbody_md = """F\n"""\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\nprojection_group = "fixture"\n\n[record.payload]\nkind = "work"\ndetail_md = """R\n"""\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "none_reviewed"\nacceptance_md = """Accepted.\n"""\npriority_rationale_md = """Normal.\n"""\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\nbody_md = """P\n"""\n\n[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n\n[[manifest.entry]]\nkind = "fragment"\nfragment_id = "fragment"\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "matrix.fixture-record"\n\n[[manifest.entry]]\nkind = "part"\npart_id = "part"\n`;
+  return `[document]\nschema_version = 3\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\n\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\nbody_md = """S\n"""\n\n[[fragment]]\nfragment_id = "fragment"\nprojection_group = "fixture"\nbody_md = """F\n"""\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\nprojection_group = "fixture"\n\n[record.payload]\nkind = "work"\ndetail_md = """R\n"""\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nacceptance_md = """Accepted.\n"""\npriority_rationale_md = """Normal.\n"""\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\nbody_md = """P\n"""\n\n[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n\n[[manifest.entry]]\nkind = "fragment"\nfragment_id = "fragment"\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "matrix.fixture-record"\n\n[[manifest.entry]]\nkind = "part"\npart_id = "part"\n`;
 }
 
 /**
@@ -129,7 +125,7 @@ function subordinateRoadmap(): string {
  * no manifest placement. This synthetic source is the exact-key corpus target for that row.
  */
 function pendingReviewRoadmap(): Uint8Array {
-  const record = `\n[[record]]\nid = "matrix.fixture-review-pending"\ntitle = "Pending review"\nprojection_group = "fixture"\n\n[record.payload]\nkind = "work"\nwork_state = "pending_review"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "pending"\nuncertainty_md = """Review required.\n"""\n`;
+  const record = `\n[[record]]\nid = "matrix.fixture-review-pending"\ntitle = "Pending review"\nprojection_group = "fixture"\n\n[record.payload]\nkind = "work"\nwork_state = "pending_review"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nuncertainty_md = """Review required.\n"""\n`;
   return text(subordinateRoadmap().replace("\n[[part]]", `${record}\n[[part]]`));
 }
 
@@ -148,8 +144,7 @@ function decodePayload(body: string, roadmap: RoadmapName): unknown {
   return decoded;
 }
 
-const READY = `kind = "work"\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "none_reviewed"\nacceptance_md = """Accepted."""\npriority_band = "normal"\npriority_rationale_md = """Normal."""\n`;
-const OBSERVED_FAMILY = `kind = "family"\nfamily_maturity = "observed_only"\ncampaign_state = "designing"\ngoal_md = """Goal."""\nboundary_md = """Boundary."""\nwork_ids = []\nobservation_reference_ids = ["observation"]\naffected_profiles = ["default"]\naffected_faces = ["rust"]\ncontrol_ids = []\ncompletion_owner_reference_id = "completion"\nretirement_owner_reference_id = "retirement"\n`;
+const READY = `kind = "work"\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nacceptance_md = """Accepted."""\npriority_band = "normal"\npriority_rationale_md = """Normal."""\n`;
 
 function predicateSignal(predicate: string): string {
   return `kind = "signal"\ntransition_kind = "promotion_trigger"\nobserver = "operator"\ndimension = "count"\nobservable = "fixture"\naction_on_fire_md = """Act."""\nevaluation = "unknown"\n\n[p.predicate]\n${predicate}`;
@@ -287,7 +282,6 @@ const SCHEMA_ROW_GROUPS: readonly { readonly name: SchemaGroupName; readonly row
   { name: "manifest", rows: MANIFEST_SCHEMA_ROWS },
   { name: "reference", rows: REFERENCE_SCHEMA_ROWS },
   { name: "semantic", rows: SHARED_SEMANTIC_SCHEMA_ROWS },
-  { name: "semantic", rows: SEMANTIC_V2_SCHEMA_ROWS },
   { name: "matrix", rows: MATRIX_SCHEMA_ROWS },
   { name: "testing", rows: TESTING_SCHEMA_ROWS },
 ];
@@ -306,12 +300,6 @@ const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
   "semantic:shared_semantic_kind": "kind",
   "semantic:decision_permanence": "permanence",
   "semantic:signal_evaluation": "evaluation",
-  "semantic:evidence_stage": "stages",
-  "semantic:family_campaign_state": "campaign_state",
-  "semantic:family_authority_kind": "authority_kind",
-  "semantic:family_cell_spec_legality": "spec_legality",
-  "semantic:family_exclusion_spec_legality": "spec_legality",
-  "semantic:family_cell_disposition": "cell_disposition",
   "matrix:matrix_semantic_kind": "kind",
   "matrix:policy_permanence": "permanence",
   "testing:testing_semantic_kind": "kind",
@@ -347,13 +335,6 @@ function productionFixtureSources(context: SelfTestContext): { fixtures: readonl
   fixtures.push({
     path: "synthetic/pending-review-matrix-v3.toml",
     bytes: pendingReviewRoadmap(),
-    kind: "roadmap",
-    roadmap: "matrix",
-    enum_groups: ["roadmap", "semantic", "matrix"],
-  });
-  fixtures.push({
-    path: "synthetic/closed-denominator-matrix-v3.toml",
-    bytes: syntheticClosedDenominatorSource(),
     kind: "roadmap",
     roadmap: "matrix",
     enum_groups: ["roadmap", "semantic", "matrix"],
@@ -884,18 +865,6 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     case "schema_duplicate_table_rejected": duplicateParseRejected(new TextDecoder().decode(minimalRoadmap()).replace("\n[[section]]", "\n[document]\n\n[[section]]")); return;
     case "schema_duplicate_nested_payload_rejected":
       duplicateParseRejected(new TextDecoder().decode(minimalRoadmap()).replace('\n[[manifest.entry]]\nkind = "section"', '\n[record.payload]\nkind = "work"\n\n[[manifest.entry]]\nkind = "section"')); return;
-    case "systematic_illegal_cell_rejected": expectFailure(() => decodePayload(`${OBSERVED_FAMILY}\n[[p.cell]]\nid = "matrix.fixture-cell"\nspec_legality = "illegal"\ncell_disposition = "unknown"\naffected_profiles = ["default"]\naffected_faces = ["rust"]\n\n[[p.cell.coordinate]]\naxis_id = "matrix.fixture-axis"\nvalue_id = "matrix.fixture-value"\n`, "matrix"), ["E-SCHEMA-ENUM"]); return;
-    case "systematic_illegal_coordinate_is_exclusion": {
-      const decoded = decodePayload(`${OBSERVED_FAMILY}\n[[p.exclusion]]\nid = "matrix.fixture-exclusion"\nspec_legality = "illegal"\nreason_md = """Illegal."""\nowner_reference_id = "owner"\nsource_reference_id = "source"\nliveness_reference_id = "liveness"\n\n[[p.exclusion.coordinate]]\naxis_id = "matrix.fixture-axis"\nvalue_id = "matrix.fixture-value"\n`, "matrix");
-      assert(decoded !== undefined, "illegal coordinate decodes only as exclusion"); return;
-    }
-    case "systematic_unmodelled_coordinate_not_cell": {
-      assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/matrix-v3.toml");
-      const mutated = replaceAfter(source, 'id = "matrix.fixture-coordinate-a"', 'spec_legality = "legal"', 'spec_legality = "unknown"');
-      expectFailure(() => decodeRoadmapSource(text(mutated), "<unmodelled-coordinate>", "matrix"), ["E-SCHEMA-ENUM"]);
-      return;
-    }
     case "schema_exact_keys_every_structural_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), [...ROADMAP_SCHEMA_ROWS, ...MANIFEST_SCHEMA_ROWS]);
@@ -906,12 +875,6 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     case "schema_shared_payload_exact_keys_every_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), SHARED_SEMANTIC_SCHEMA_ROWS);
-      canonicalRoadmapFixture(context, "all-fields/matrix-v3.toml", "matrix");
-      return;
-    }
-    case "schema_systematic_exact_keys_every_arm": {
-      assert(context !== undefined, `${id} requires fixture ports`);
-      assertRowMutationCoverage(fixtureMutationProof(context), SHARED_SEMANTIC_SCHEMA_ROWS.filter((row) => row.name.includes("family")));
       canonicalRoadmapFixture(context, "all-fields/matrix-v3.toml", "matrix");
       return;
     }
@@ -1044,7 +1007,6 @@ const SCHEMA_CASES: { readonly [K in RequiredSchemaSelfTestCaseId]: SchemaCaseSp
   schema_shared_payload_exact_keys_every_arm: { category: "schema", polarity: "positive" },
   schema_matrix_payload_exact_keys_every_arm: { category: "domain-matrix", polarity: "positive" },
   schema_testing_payload_exact_keys_every_arm: { category: "domain-testing", polarity: "positive" },
-  schema_systematic_exact_keys_every_arm: { category: "schema", polarity: "positive" },
   schema_reference_exact_keys_every_arm: { category: "schema", polarity: "positive" },
   schema_canonical_key_order_every_arm: { category: "schema", polarity: "positive" },
   schema_duplicate_assignment_rejected: { category: "schema", polarity: "negative" },
@@ -1052,9 +1014,6 @@ const SCHEMA_CASES: { readonly [K in RequiredSchemaSelfTestCaseId]: SchemaCaseSp
   schema_duplicate_nested_payload_rejected: { category: "schema", polarity: "negative" },
   noncanonical_comment: { category: "schema", polarity: "negative" },
   noncanonical_inline_table: { category: "schema", polarity: "negative" },
-  systematic_illegal_cell_rejected: { category: "schema", polarity: "negative" },
-  systematic_illegal_coordinate_is_exclusion: { category: "schema", polarity: "positive" },
-  systematic_unmodelled_coordinate_not_cell: { category: "schema", polarity: "negative" },
   schema_priority_band_closed_enum: { category: "schema", polarity: "positive" },
   schema_observed_at_civil_date: { category: "schema", polarity: "negative" },
   schema_held_permanent_rejected: { category: "schema", polarity: "negative" },
@@ -1095,10 +1054,8 @@ const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "schema_shared_payload_exact_keys_every_arm",
   "schema_matrix_payload_exact_keys_every_arm",
   "schema_testing_payload_exact_keys_every_arm",
-  "schema_systematic_exact_keys_every_arm",
   "schema_reference_exact_keys_every_arm",
   "schema_canonical_key_order_every_arm",
   "schema_priority_band_closed_enum",
-  "systematic_unmodelled_coordinate_not_cell",
 ]);
 

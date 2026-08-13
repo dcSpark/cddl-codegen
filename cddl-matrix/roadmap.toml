@@ -266,7 +266,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.anonymous-nested-map-demand"]
 
 [[record]]
@@ -411,7 +410,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "invalid_acceptance"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.refusal-spelling-catalog"]
 
 [[record]]
@@ -468,7 +466,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_id = "matrix.systematic.control-host-placement"
 transition_ids = ["matrix.trigger.control-host-placement-space"]
 
 [[record]]
@@ -509,7 +506,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.derived-variant-naming-demand"]
 
 [[record]]
@@ -546,7 +542,6 @@ work_state = "deferred"
 work_intent = "repair"
 work_kind = "regression_gap"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.duplicate-rejection-diagnostics"]
 
 [[record]]
@@ -600,7 +595,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "documentation_integrity"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.emission-narrowing-fixture-floor"]
 
 [[record]]
@@ -889,7 +883,6 @@ work_state = "ready"
 work_intent = "optimize"
 work_kind = "optimization"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 acceptance_md = """Map exact n*n homogeneous array occurrences to [T; n], retain TryFrom as the ergonomic construction door, keep fixed-byte representation outside this identity, and update every applicable Rust, wasm, JSON, component, cross-crate, matrix, and boundary-vector surface.
 """
 priority_band = "normal"
@@ -918,7 +911,6 @@ work_state = "waiting_external"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "valid_rejection"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.retirement.fixed-bytes.lowercase-base64-parser"]
 external_owner_reference_id = "ref-matrix-fixed-bytes-lowercase-base64-parser-upstream"
 
@@ -940,7 +932,6 @@ work_state = "ready"
 work_intent = "optimize"
 work_kind = "optimization"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 acceptance_md = """Map an exact bytes .size N value to [u8; N], retain TryFrom as the ergonomic entry point, and cover Rust, wasm, JSON, component, cross-crate, matrix, fixed-member, and recombination surfaces without changing fixed-array campaign identity.
 """
 priority_band = "normal"
@@ -974,7 +965,6 @@ work_state = "waiting_external"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.retirement.fixed-bytes.validator-corroboration"]
 external_owner_reference_id = "ref-matrix-fixed-bytes-validator-corroboration-upstream"
 
@@ -1117,7 +1107,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.float-table-key-demand"]
 
 [[record]]
@@ -1145,7 +1134,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_id = "matrix.systematic.role-feature-legality"
 transition_ids = ["matrix.trigger.grammar-derived-legality"]
 
 [[record]]
@@ -1166,7 +1154,6 @@ work_state = "ready"
 work_intent = "optimize"
 work_kind = "optimization"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 acceptance_md = """Represent bounded scalar and byte/text values with private-field newtypes and make TryFrom the construction door that replaces both constructor-time and deserializer-only value_bounds_check_line enforcement.
 """
 priority_band = "normal"
@@ -1201,7 +1188,6 @@ work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_id = "matrix.systematic.occurrence-cardinality"
 acceptance_md = """Define invariant-preserving carriers and construction doors for middle or non-final repetition and bounded heterogeneous final or open tails; honor RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
 """
 priority_band = "high"
@@ -1268,7 +1254,6 @@ work_state = "blocked"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_classification = "none_reviewed"
 blocker_md = """The required choice-of-bodies representation is not yet reviewed and cannot represent group //= bodies; consumer demand for the parent capability is not sufficient to unblock this implementation dependency.
 """
 transition_ids = ["matrix.predicate.incremental-group-choice-extension"]
@@ -1322,7 +1307,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.inline-group-choice-arm-demand"]
 
 [[record]]
@@ -1349,7 +1333,6 @@ work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_id = "matrix.systematic.occurrence-cardinality"
 acceptance_md = """Add an Option- or Vec-style synthesized carrier only for zero-permitting inline parenthesized-group markers, preserve exactly-once flattening, preserve the lower-bound-at-least-one keyed-map collapse and the working named-group remedy, and add positive plus refusal vectors that prevent silent narrowing.
 """
 priority_band = "low"
@@ -1440,7 +1423,6 @@ work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_id = "matrix.systematic.occurrence-cardinality"
 acceptance_md = """Add an invariant-preserving optional carrier for *, 0*n, and *n keyed struct-map fields without changing the deliberate exactly-one collapse for lower bounds of at least one, then cover every generated face, cross-crate projection, matrix classification, and spec-derived boundary vector.
 """
 priority_band = "high"
@@ -1497,7 +1479,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.multi-choice-group-demand"]
 
 [[record]]
@@ -1522,7 +1503,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.multifile-extern-shape-coverage"]
 
 [[record]]
@@ -1627,7 +1607,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "false_pass_or_red"
-family_id = "matrix.systematic.named-group-reference-grid"
 acceptance_md = """Enumerate every reviewed placement × modifier × representation/entry-kind coordinate named in the source; mint a matrix row for each; attach support evidence where the splice is conformant and exact graceful-refusal evidence where it is not; keep the axes explicitly observed-only rather than claiming grammar closure.
 """
 priority_band = "high"
@@ -1697,7 +1676,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_id = "matrix.systematic.nint-support"
 transition_ids = ["matrix.trigger.nint-capability-demand"]
 
 [[record]]
@@ -1729,7 +1707,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.nominal-custom-pair-demand"]
 
 [[record]]
@@ -1775,7 +1752,6 @@ work_state = "blocked"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "invalid_acceptance"
-family_classification = "none_reviewed"
 blocker_md = """No reviewed discriminator and residue proof yet separates all sound optional-adjacency classes under greedy non-backtracking matching; overlapping [? uint, uint] remains intentionally refused.
 """
 transition_ids = ["matrix.predicate.open-array-optional-adjacency"]
@@ -1801,7 +1777,6 @@ work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_id = "matrix.systematic.occurrence-cardinality"
 acceptance_md = """Define carriers and construction doors for bounded typed and catch-all rows in open-table and open-struct contexts, preserve every admitted cardinality, and cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
 """
 priority_band = "high"
@@ -1833,7 +1808,6 @@ work_state = "deferred"
 work_intent = "repair"
 work_kind = "regression_gap"
 risk = "invalid_acceptance"
-family_id = "matrix.systematic.occurrence-cardinality"
 transition_ids = ["matrix.trigger.open-table-min-one-hardening"]
 
 [[record]]
@@ -1938,7 +1912,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.per-value-encoding-reachability"]
 
 [[record]]
@@ -2543,7 +2516,6 @@ work_state = "deferred"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.root-reference-placement"]
 
 [[record]]
@@ -3137,132 +3109,6 @@ verification_md = """Create and file a durable report from the README-owned diff
 action_id = "file-report"
 action_md = """Create and file a durable report from the README-owned differential.
 """
-
-[[record]]
-id = "matrix.systematic.control-host-placement"
-title = "Observed control host-placement failures."
-projection_group = "expansion"
-
-[record.payload]
-kind = "family"
-family_maturity = "observed_only"
-campaign_state = "designing"
-goal_md = """Enumerate a supported control's occurrence × representation × operand-kind × carriage product once a second operator demonstrates multi-point breakage.
-"""
-boundary_md = """.default proves the product matters for one operator only; it does not close the supported-control denominator.
-"""
-work_ids = ["matrix.control-host-placement-space"]
-observation_reference_ids = ["ref-matrix-control-host-placement-space-source"]
-affected_profiles = ["default", "preserve"]
-affected_faces = ["component", "rust", "wasm"]
-control_ids = []
-completion_owner_reference_id = "ref-matrix-systematic-control-host-placement-completion"
-retirement_owner_reference_id = "ref-matrix-systematic-control-host-placement-retirement"
-
-[[record]]
-id = "matrix.systematic.named-group-reference-grid"
-title = "Observed named-group reference placement and modifier failures."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "family"
-family_maturity = "observed_only"
-campaign_state = "designing"
-goal_md = """Enumerate every reviewed placement × modifier × representation/entry-kind coordinate and attach a truthful support or refusal verdict.
-"""
-boundary_md = """The source enumerates the presently observed coordinates but does not prove that the grammar-derived axes are closed.
-"""
-work_ids = ["matrix.named-group-reference-grid"]
-observation_reference_ids = ["ref-matrix-named-group-reference-grid-source"]
-affected_profiles = ["default", "preserve"]
-affected_faces = ["component", "cross-crate", "json", "rust", "wasm"]
-control_ids = []
-completion_owner_reference_id = "ref-matrix-systematic-named-group-reference-grid-completion"
-retirement_owner_reference_id = "ref-matrix-systematic-named-group-reference-grid-retirement"
-
-[[record]]
-id = "matrix.systematic.nint-support"
-title = "Observed cross-role negative-integer support work."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "family"
-family_maturity = "observed_only"
-campaign_state = "designing"
-goal_md = """Treat nint support as one cross-cutting capability and move its role cells together while preserving the full CBOR range.
-"""
-boundary_md = """The current source establishes cross-role coupling but leaves the upstream CDDL literal-width dependency explicit.
-"""
-work_ids = ["matrix.nint-capability"]
-observation_reference_ids = ["ref-matrix-nint-capability-source"]
-affected_profiles = ["default", "preserve"]
-affected_faces = ["component", "cross-crate", "json", "rust", "wasm"]
-control_ids = []
-completion_owner_reference_id = "ref-matrix-systematic-nint-support-completion"
-retirement_owner_reference_id = "ref-matrix-systematic-nint-support-retirement"
-
-[[record]]
-id = "matrix.systematic.occurrence-cardinality"
-title = "Observed occurrence and cardinality carrier work."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "family"
-family_maturity = "observed_only"
-campaign_state = "designing"
-goal_md = """Represent every admitted occurrence count without silent narrowing and preserve greedy non-backtracking decode semantics across applicable faces.
-"""
-boundary_md = """Membership is limited to occurrence/cardinality carriers: heterogeneous array occurrences, bounded open-table rows, zero-permitting keyed fields, inline-group occurrences, and min-one open-table hardening. Atomic scalar bounds and fixed-byte representation are representation optimizations, not occurrence-family members.
-"""
-work_ids = ["matrix.heterogeneous-array.occurrence-bounds", "matrix.inline-group-occurrence-carrier", "matrix.keyed-struct-map.zero-permitting-fields", "matrix.open-table.bounded-rest-rows", "matrix.open-table.min-one-hardening"]
-observation_reference_ids = ["ref-matrix-heterogeneous-array-occurrence-bounds-source", "ref-matrix-inline-group-occurrence-carrier-source", "ref-matrix-keyed-struct-map-zero-permitting-fields-source", "ref-matrix-open-table-bounded-rest-rows-source", "ref-matrix-open-table-min-one-hardening-source"]
-affected_profiles = ["default", "preserve"]
-affected_faces = ["component", "cross-crate", "json", "rust", "wasm"]
-control_ids = []
-completion_owner_reference_id = "ref-matrix-systematic-occurrence-cardinality-completion"
-retirement_owner_reference_id = "ref-matrix-systematic-occurrence-cardinality-retirement"
-
-[[record]]
-id = "matrix.systematic.over-acceptance"
-title = "Observed certified over-acceptance vectors."
-projection_group = "pending-decisions"
-
-[record.payload]
-kind = "family"
-family_maturity = "observed_only"
-campaign_state = "designing"
-goal_md = """Keep the certified numerator queryable while the denominator ruling remains pending.
-"""
-boundary_md = """The source proves only the existing certified-vector numerator; it authorizes neither a grammar-superset nor a realistically-implementable denominator and therefore no completeness percentage.
-"""
-work_ids = []
-observation_reference_ids = ["ref-matrix-over-acceptance-ast-notes-source", "ref-matrix-over-acceptance-denominator-source"]
-affected_profiles = ["default", "preserve"]
-affected_faces = ["rust"]
-control_ids = []
-completion_owner_reference_id = "ref-matrix-systematic-over-acceptance-completion"
-retirement_owner_reference_id = "ref-matrix-systematic-over-acceptance-retirement"
-
-[[record]]
-id = "matrix.systematic.role-feature-legality"
-title = "Observed role × feature legality coverage."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "family"
-family_maturity = "observed_only"
-campaign_state = "designing"
-goal_md = """Replace the observed-set denominator with a grammar-derived legal role × feature relation.
-"""
-boundary_md = """Until the grammar derivation lands, blank legal cells can remain invisible and no completeness percentage is permitted.
-"""
-work_ids = ["matrix.grammar-derived-legality"]
-observation_reference_ids = ["ref-matrix-grammar-derived-legality-source"]
-affected_profiles = ["default", "preserve"]
-affected_faces = ["component", "cross-crate", "json", "rust", "wasm"]
-control_ids = []
-completion_owner_reference_id = "ref-matrix-systematic-role-feature-legality-completion"
-retirement_owner_reference_id = "ref-matrix-systematic-role-feature-legality-retirement"
 
 [[record]]
 id = "matrix.tag-map-key-upstream"
@@ -3966,7 +3812,6 @@ work_state = "deferred"
 work_intent = "repair"
 work_kind = "regression_gap"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 transition_ids = ["matrix.trigger.wasm-extern-wrapper-demand"]
 
 [[record]]
@@ -4866,11 +4711,6 @@ target = "matrix.retirement.signed-int-size-upstream"
 source = "matrix.string-key-mixed-rest-upstream"
 kind = "parent_of"
 target = "matrix.retirement.string-key-mixed-rest-upstream"
-
-[[relation]]
-source = "matrix.systematic.over-acceptance"
-kind = "depends_on"
-target = "matrix.over-acceptance-denominator"
 
 [[relation]]
 source = "matrix.tag-map-key-upstream"
@@ -5888,84 +5728,6 @@ source = "matrix.string-key-mixed-rest-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release permits zero rest entries for bytes- and tstr-keyed star rows in mixed maps while retaining required declared entries."
-
-[[reference]]
-id = "ref-matrix-systematic-control-host-placement-retirement"
-source = "matrix.systematic.control-host-placement"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Expansion (when relevant)"
-
-[[reference]]
-id = "ref-matrix-systematic-control-host-placement-completion"
-source = "matrix.systematic.control-host-placement"
-kind = "gate"
-gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "ref-matrix-systematic-named-group-reference-grid-retirement"
-source = "matrix.systematic.named-group-reference-grid"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Matrix-side work — the model and the projections it renders"
-
-[[reference]]
-id = "ref-matrix-systematic-named-group-reference-grid-completion"
-source = "matrix.systematic.named-group-reference-grid"
-kind = "gate"
-gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "ref-matrix-systematic-nint-support-retirement"
-source = "matrix.systematic.nint-support"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-systematic-nint-support-completion"
-source = "matrix.systematic.nint-support"
-kind = "gate"
-gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "ref-matrix-systematic-occurrence-cardinality-retirement"
-source = "matrix.systematic.occurrence-cardinality"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-systematic-occurrence-cardinality-completion"
-source = "matrix.systematic.occurrence-cardinality"
-kind = "gate"
-gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "ref-matrix-systematic-over-acceptance-retirement"
-source = "matrix.systematic.over-acceptance"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Pending decisions (need a human call)"
-
-[[reference]]
-id = "ref-matrix-systematic-over-acceptance-completion"
-source = "matrix.systematic.over-acceptance"
-kind = "gate"
-gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "ref-matrix-systematic-role-feature-legality-retirement"
-source = "matrix.systematic.role-feature-legality"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Matrix-side work — the model and the projections it renders"
-
-[[reference]]
-id = "ref-matrix-systematic-role-feature-legality-completion"
-source = "matrix.systematic.role-feature-legality"
-kind = "gate"
-gate_id = "roadmap_projection_check"
 
 [[reference]]
 id = "ref-matrix-tag-map-key-upstream-upstream"

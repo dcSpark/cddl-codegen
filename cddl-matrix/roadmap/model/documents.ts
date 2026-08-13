@@ -10,12 +10,10 @@ import type {
   SlotId,
 } from "./core.ts";
 import type { MatrixSemanticPayload } from "./matrix.ts";
-import type { FamilyPayload } from "./systematic.ts";
 import type { TestingSemanticPayload } from "./testing.ts";
 
 export type SemanticPayload =
   | SharedSemanticPayload
-  | FamilyPayload
   | MatrixSemanticPayload
   | TestingSemanticPayload;
 
@@ -138,14 +136,6 @@ export interface RoadmapDocumentV3 {
 
 export type RoadmapDocument = RoadmapDocumentV3;
 
-export type FamilyGuardRole =
-  | "closed_family_root"
-  | "family_axis"
-  | "family_axis_value"
-  | "family_evidence_requirement"
-  | "family_cell"
-  | "family_exclusion";
-
 export type ReplacementPin =
   | { kind: "gate"; gate_id: string; claim_md: Uint8Array }
   | { kind: "test_symbol"; test_id: string; symbol: string; claim_md: Uint8Array }
@@ -157,19 +147,10 @@ interface CurrentGuardBase {
   owner_registry: string;
 }
 
-/** Durable typed guard for a delivered systematic-family provider. */
-export interface CurrentFamilyGuard extends CurrentGuardBase {
-  guard_role: FamilyGuardRole;
-  family_root_id: RoadmapId;
-}
-
-/** Existing non-family guard registries remain structurally distinct. */
-export interface CurrentGenericGuard extends CurrentGuardBase {
+/** A retired provider's durable guard: the ID is claimed, and its replacement is pinned. */
+export interface CurrentGuard extends CurrentGuardBase {
   guard_role: "generic";
-  family_root_id?: never;
 }
-
-export type CurrentGuard = CurrentFamilyGuard | CurrentGenericGuard;
 
 export interface ActiveRecordOwnerFact {
   owner_kind: "active_record";

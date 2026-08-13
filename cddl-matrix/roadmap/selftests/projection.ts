@@ -528,7 +528,6 @@ function semanticFixture(
         work_intent: "repair",
         work_kind: "feature",
         risk: "cosmetic",
-        family_classification: "none_reviewed",
         evidence_ids: [asRoadmapId("matrix.fixture-evidence-a"), asRoadmapId("matrix.fixture-evidence-b")],
         acceptance_md: bytes("ACC"),
         priority_rationale_md: bytes("RATIONALE"),

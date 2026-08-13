@@ -10,7 +10,6 @@ import { IDENTITY_SELFTEST_CASES, REQUIRED_IDENTITY_SELFTEST_CASE_IDS } from "./
 import { ADAPTER_SELFTEST_CASES, REQUIRED_ADAPTER_SELFTEST_CASE_IDS } from "./selftests/adapters.ts";
 import { FIXTURE_SELFTEST_CASES, REQUIRED_FIXTURE_SELFTEST_CASE_IDS } from "./selftests/fixtures.ts";
 import { CLI_SELFTEST_CASES, REQUIRED_CLI_SELFTEST_CASE_IDS } from "./selftests/cli.ts";
-import { DENOMINATOR_SELFTEST_CASES, REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS } from "./selftests/denominator.ts";
 import { PROJECTION_VIEW_SELFTEST_CASES, REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_IDS } from "./selftests/projection_views.ts";
 
 export interface SingleFileFixtureCaseRow {
@@ -127,8 +126,7 @@ export type SelfTestCategory =
   | "io-harness"
   | "repository-facts"
   | "status-compat"
-  | "adapter-pipeline"
-  | "denominator";
+  | "adapter-pipeline";
 
 export const SELFTEST_CATEGORIES = Object.freeze([
   "codec",
@@ -146,7 +144,6 @@ export const SELFTEST_CATEGORIES = Object.freeze([
   "repository-facts",
   "status-compat",
   "adapter-pipeline",
-  "denominator",
 ] as const satisfies readonly SelfTestCategory[]);
 
 export interface ExpectedSelfTestIssue {
@@ -255,13 +252,6 @@ const REFERENCE_KIND_SUBCASES = [
 export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
   ["projection_views_layout_and_provenance", ["banner", "anchor", "curated_layout", "full_audit_separation", "fragment_scan", "fragment_duplicate", "fragment_malformed"]],
   ["projection_views_content_exactly_once", ["exact", "missing", "duplicate", "mismatched_bytes"]],
-  ["denominator_v2_synthetic_authority", [
-    "valid", "production_empty_registry", "full_pipeline_injected", "full_pipeline_empty_registry", "real_completed_render", "missing_axis_value", "derived_extra_axis_value",
-    "derived_extra_legal_cell", "authored_extra_cell", "legality_flip", "duplicate_coordinate",
-    "unknown_disposition", "disposition_drift", "loose_evidence", "missing_binding", "duplicate_binding",
-    "extra_binding", "outcome_drift", "wrong_evidence_scope", "uncovered_applicability", "affected_face_drift", "as_of_evidence", "stale_evidence", "zero_floor", "nan_floor",
-    "fractional_floor", "stale_control", "missing_exclusion_liveness",
-  ]],
   ["outputs_slot_cardinality", ["status_zero_open", "status_two_open", "status_zero_close", "status_two_close", "reversed", "crossed", "manifest_zero", "manifest_two_declarations", "manifest_two_placements"]],
   ["outputs_interval_overlap", ["same_interval", "partial_left", "partial_right", "contained", "whole_vs_slot", "same_producer_overlap", "adjacent"]],
   ["status_projector_before_after_target_byte_parity", ["roadmap", "matrix_readme", "tests_readme"]],
@@ -284,7 +274,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["cli_check_each_roadmap", ["matrix", "testing", "all"]],
   ["cli_write_each_single_roadmap", ["matrix", "testing"]],
   ["cli_query_each_view", ["summary", "references", "signals", "actionables",
-    "decisions", "families", "watches", "content", "output-owners"]],
+    "decisions", "watches", "content", "output-owners"]],
   ["dispatch_capability_narrowing", ["check_read_only", "query_read_only", "write_gets_atomic_replace", "format_gets_atomic_replace"]],
 ]);
 
@@ -294,7 +284,6 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
  */
 export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, ExpectedSelfTestIssue> =
   new Map<string, ExpectedSelfTestIssue>([
-  ["denominator_v2_production_empty_registry_rejected", { code: "E-SCHEMA-STATE", logical_path: "record[\"matrix.fixture-denominator\"].payload.family_maturity" }],
   ["codec_placeholder_path_mismatch", { code: "E-CODEC-PLACEHOLDER", logical_path: "row[1].value" }],
   ["codec_invalid_utf8", { code: "E-CODEC-UTF8", logical_path: "$" }],
   ["codec_crlf_rejected", { code: "E-CODEC-LINE-END", logical_path: "$" }],
@@ -337,8 +326,6 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["schema_duplicate_nested_payload_rejected", { code: "E-TOML-PARSE", logical_path: "$" }],
   ["noncanonical_comment", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["noncanonical_inline_table", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
-  ["systematic_illegal_cell_rejected", { code: "E-SCHEMA-ENUM", logical_path: "p.cell[0].spec_legality" }],
-  ["systematic_unmodelled_coordinate_not_cell", { code: "E-SCHEMA-ENUM", logical_path: "record[40].payload.cell[0].spec_legality" }],
   ["schema_observed_at_civil_date", { code: "E-SCHEMA-TYPE", logical_path: "p.observed_at" }],
   ["schema_held_permanent_rejected", { code: "E-SCHEMA-ENUM", logical_path: "p.permanence" }],
   ["schema_due_on_valid_through_postures", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "p.due_on" }],
@@ -444,7 +431,6 @@ export function createCompleteSelfTestRegistry(): SelfTestRegistry {
     { required: REQUIRED_ADAPTER_SELFTEST_CASE_IDS, cases: ADAPTER_SELFTEST_CASES },
     { required: REQUIRED_FIXTURE_SELFTEST_CASE_IDS, cases: FIXTURE_SELFTEST_CASES },
     { required: REQUIRED_CLI_SELFTEST_CASE_IDS, cases: CLI_SELFTEST_CASES },
-    { required: REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS, cases: DENOMINATOR_SELFTEST_CASES },
     { required: REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_IDS, cases: PROJECTION_VIEW_SELFTEST_CASES },
   ] as const;
   const cases: SelfTestCase[] = [];

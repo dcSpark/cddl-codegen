@@ -12,19 +12,6 @@ body_md = """# Testing all-fields fixture
 """
 
 [[record]]
-id = "testing.fixture-admission-bounded"
-title = "Bounded denominator admission"
-projection_group = "fixture"
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "bounded_denominator"
-claim_md = """A reviewed systematic family and live cost bound the denominator."""
-evidence_ids = ["testing.fixture-evidence-gate"]
-family_id = "testing.fixture-systematic-observed"
-cost_record_id = "testing.fixture-all-fields-semantic"
-
-[[record]]
 id = "testing.fixture-admission-independent"
 title = "Independent recurrence admission"
 projection_group = "fixture"
@@ -51,7 +38,7 @@ evidence_ids = ["testing.fixture-evidence-gate"]
 id = "testing.fixture-all-fields-raw"
 title = "All-fields raw owner"
 projection_group = "fixture"
-tags = ["coverage:admission_kind:bounded_denominator", "coverage:admission_kind:independent_recurrence", "coverage:admission_kind:silent_corruption", "coverage:cost_posture:historical_observation", "coverage:cost_posture:live_registry", "coverage:incident_posture:attributed", "coverage:incident_posture:historical", "coverage:incident_posture:live", "coverage:payload_kind:testing_cost", "coverage:payload_kind:testing_incident", "coverage:payload_kind:testing_operational_watch", "coverage:payload_kind:testing_system_admission", "coverage:watch_state:attributed", "coverage:watch_state:retire_pending", "coverage:watch_state:watching"]
+tags = ["coverage:admission_kind:independent_recurrence", "coverage:admission_kind:silent_corruption", "coverage:cost_posture:historical_observation", "coverage:cost_posture:live_registry", "coverage:incident_posture:attributed", "coverage:incident_posture:historical", "coverage:incident_posture:live", "coverage:payload_kind:testing_cost", "coverage:payload_kind:testing_incident", "coverage:payload_kind:testing_operational_watch", "coverage:payload_kind:testing_system_admission", "coverage:watch_state:attributed", "coverage:watch_state:retire_pending", "coverage:watch_state:watching"]
 
 [record.payload]
 kind = "work"
@@ -59,7 +46,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Reviewed acceptance for the ported fixture arm.
 """
 priority_rationale_md = """Fixture arm carries no live priority claim.
@@ -235,25 +221,6 @@ retirement_semantics_md = """Retire after the recurrence remains absent."""
 evaluation = "unknown"
 
 [[record]]
-id = "testing.fixture-systematic-observed"
-title = "Observed systematic family"
-projection_group = "fixture"
-
-[record.payload]
-kind = "family"
-family_maturity = "observed_only"
-campaign_state = "designing"
-goal_md = """Bound the synthetic testing denominator."""
-boundary_md = """Only this fixture is included."""
-work_ids = ["testing.fixture-task-ready"]
-observation_reference_ids = ["systematic-observation"]
-affected_profiles = ["default"]
-affected_faces = ["rust"]
-control_ids = ["testing.fixture-control-review"]
-completion_owner_reference_id = "systematic-completion"
-retirement_owner_reference_id = "systematic-retirement"
-
-[[record]]
 id = "testing.fixture-task-ready"
 title = "Ready missing-system task"
 projection_group = "fixture"
@@ -264,11 +231,10 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_id = "testing.fixture-systematic-observed"
-acceptance_md = """The bounded-denominator admission remains live."""
+acceptance_md = """The independent-recurrence admission remains live."""
 priority_band = "high"
 priority_rationale_md = """Silent failure makes this fixture task high priority."""
-admission_ids = ["testing.fixture-admission-bounded"]
+admission_ids = ["testing.fixture-admission-independent"]
 
 [[manifest.entry]]
 kind = "section"
@@ -332,23 +298,3 @@ id = "operational-retire-pin"
 source = "testing.fixture-operational-retire-pending"
 kind = "gate"
 gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "systematic-completion"
-source = "testing.fixture-systematic-observed"
-kind = "file_heading"
-path = "tests/README.md"
-heading = "Running everything"
-
-[[reference]]
-id = "systematic-observation"
-source = "testing.fixture-systematic-observed"
-kind = "gate"
-gate_id = "roadmap_projection_check"
-
-[[reference]]
-id = "systematic-retirement"
-source = "testing.fixture-systematic-observed"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::snapshot_tests::fixture_symbol"
-symbol = "tests::snapshot_tests::fixture_symbol"

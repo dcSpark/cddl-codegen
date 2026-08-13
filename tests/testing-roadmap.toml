@@ -303,7 +303,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.alloc-imports-nested-inline-modules-hand-carried-design"]
 transition_ids = ["testing.trigger.alloc-imports-nested-inline-modules-hand-carried-design"]
 
@@ -415,7 +414,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.armed-idle-harness-arms-empty-head-ledgers-zero"]
 transition_ids = ["testing.trigger.armed-idle-harness-arms-empty-head-ledgers-zero"]
 
@@ -448,7 +446,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.assert-hand-authored-json-schema-against-type-s"]
 
 [[record]]
@@ -477,7 +474,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.build-registration-class-reference-position-sweep-second-escape's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -532,7 +528,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.cargo-feature-generated-crate-s-dependency-change-what"]
 transition_ids = ["testing.trigger.cargo-feature-generated-crate-s-dependency-change-what"]
 
@@ -559,7 +554,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.cddl-module-directives-draft-ietf-cbor-cddl-modules"]
 
 [[record]]
@@ -592,7 +586,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.check-merged-d-ts-name-collisions-two-halves's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -670,7 +663,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.citation-resolves-naming-wrong-thing-invisible-citation-lint"]
 transition_ids = ["testing.trigger.citation-resolves-naming-wrong-thing-invisible-citation-lint"]
 
@@ -707,7 +699,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.comment-residue-false-matches-text-scans-over-emitted"]
 transition_ids = ["testing.trigger.comment-residue-false-matches-text-scans-over-emitted"]
 
@@ -782,7 +773,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.composing-registration-rows-across-generation-passes-share-output"]
 
 [[record]]
@@ -816,7 +806,6 @@ work_state = "deferred"
 work_intent = "repair"
 work_kind = "defect"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.config-run-s-convergence-warning-name-crate-already"]
 regression_gap_ids = ["testing.proof-gap.config-run-s-convergence-warning-name-crate-already"]
 
@@ -875,7 +864,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 transition_ids = ["testing.container-combinations.reopening-signal"]
 
 [[record]]
@@ -910,7 +898,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.containment-note-s-stated-reason-go-false-any"]
 transition_ids = ["testing.trigger.containment-note-s-stated-reason-go-false-any"]
 
@@ -935,7 +922,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.control-bytes-committed-source-files-proven-instance-machinery"]
 transition_ids = ["testing.trigger.control-bytes-committed-source-files-proven-instance-machinery"]
 
@@ -977,7 +963,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.corpus-c-style-enum-data-type-choice-arm's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -1015,7 +1000,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.corpus-preserve-pair-map-key-value-self-encoding's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -1046,7 +1030,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.corpus-wide-regen-over-prior-output-sweep-reaches"]
 transition_ids = ["testing.trigger.corpus-wide-regen-over-prior-output-sweep-reaches"]
 
@@ -1087,7 +1070,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.crate-generates-json-schema-document-aggregate-package"]
 
 [[record]]
@@ -1122,7 +1104,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.cross-version-preserve-vectors-beyond-std-alloc-rewrite"]
 
 [[record]]
@@ -1171,7 +1152,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.dependency-swap-pass-compile-parity-existing-gate-silently"]
 transition_ids = ["testing.trigger.dependency-swap-pass-compile-parity-existing-gate-silently"]
 
@@ -1199,7 +1179,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.dependency-version-range-resolution-untested-generated-crates-float"]
 
 [[record]]
@@ -1233,7 +1212,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.directive-dependent-emitter-edge-case-triggering-shape-hand"]
 transition_ids = ["testing.trigger.directive-dependent-emitter-edge-case-triggering-shape-hand"]
 
@@ -1289,7 +1267,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.directive-effect-round-trip-coherence-sweep-accepted-custom's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -1345,7 +1322,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.directive-s-documented-sentence-stay-true-consumer-visible"]
 transition_ids = ["testing.trigger.directive-s-documented-sentence-stay-true-consumer-visible"]
 
@@ -1464,7 +1440,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.documented-failure-shape-exercises-prose-cross-crate-int"]
 transition_ids = ["testing.trigger.documented-failure-shape-exercises-prose-cross-crate-int"]
 
@@ -1495,7 +1470,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.documented-flag-pairing-broken-fixture-stays-green-because"]
 transition_ids = ["testing.trigger.documented-flag-pairing-broken-fixture-stays-green-because"]
 
@@ -1525,7 +1499,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.doubled-doc-comment-markers-emitted-docs-proven-instance"]
 transition_ids = ["testing.trigger.doubled-doc-comment-markers-emitted-docs-proven-instance"]
 
@@ -1552,7 +1525,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.dsl-position-tests-string-level-design-green-emitted"]
 transition_ids = ["testing.trigger.dsl-position-tests-string-level-design-green-emitted"]
 
@@ -1602,7 +1574,6 @@ work_state = "armed"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.duplicates-dedicated-generic-collision-message"]
 transition_ids = ["testing.trigger.duplicates-dedicated-generic-collision-message"]
 
@@ -1630,7 +1601,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.duplicates-member-position-extension"]
 
 [[record]]
@@ -1655,7 +1625,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.duplicates-occurrence-aware-generic-identity"]
 
 [[record]]
@@ -1680,7 +1649,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.duplicates-same-shape-set-conversion"]
 
 [[record]]
@@ -1707,7 +1675,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.edn-text-notation-round-trip-edn-edn-draft"]
 
 [[record]]
@@ -1742,7 +1709,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.emission-branch-generated-output-fixture-exercises-invisible-gate"]
 transition_ids = ["testing.trigger.emission-branch-generated-output-fixture-exercises-invisible-gate"]
 
@@ -1779,7 +1745,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.emit-tests-gate-asserts-round-trip-green-cannot"]
 transition_ids = ["testing.trigger.emit-tests-gate-asserts-round-trip-green-cannot"]
 
@@ -1811,7 +1776,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.emitted-shape-lint-classes-outside-clippy-all-beyond"]
 transition_ids = ["testing.trigger.emitted-shape-lint-classes-outside-clippy-all-beyond"]
 
@@ -1855,7 +1819,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.emitter-drops-overloadable-parameter-building-fresh-config-invisible"]
 transition_ids = ["testing.trigger.emitter-drops-overloadable-parameter-building-fresh-config-invisible"]
 
@@ -1893,7 +1856,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.execution-binary-wrappers-true-last-documented-flag-value's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -1928,7 +1890,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.extend-recombination-member-kind-table-optional-fixed-shape"]
 transition_ids = ["testing.trigger.extend-recombination-member-kind-table-optional-fixed-shape"]
 
@@ -1968,7 +1929,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.extern-deps-wasm-boundary-surface-packaging-json-gen"]
 transition_ids = ["testing.trigger.extern-deps-wasm-boundary-surface-packaging-json-gen"]
 
@@ -2005,7 +1965,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.extern-interface-export-dialect-v2-candidates"]
 
 [[record]]
@@ -2068,7 +2027,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.extreme-value-boundary-correctness-generation-time-encode-paths"]
 transition_ids = ["testing.trigger.extreme-value-boundary-correctness-generation-time-encode-paths"]
 
@@ -2120,7 +2078,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.file-listing-json-schema-root-values-flag-per"]
 
 [[record]]
@@ -2163,7 +2120,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.finding-s-defect-side-attribution-recorded-narrative-plausibility"]
 transition_ids = ["testing.trigger.finding-s-defect-side-attribution-recorded-narrative-plausibility"]
 
@@ -2219,7 +2175,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.fixture-models-obsolete-user-contract-stays-green-real"]
 transition_ids = ["testing.trigger.fixture-models-obsolete-user-contract-stays-green-real"]
 
@@ -2268,7 +2223,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.fixture-s-verdict-accident-cargo-feature-unification-harness"]
 transition_ids = ["testing.trigger.fixture-s-verdict-accident-cargo-feature-unification-harness"]
 
@@ -2299,7 +2253,6 @@ work_state = "deferred"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.fixture-shape-evicted-over-known-defect-stale-guard"]
 
 [[record]]
@@ -2453,7 +2406,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.gate-cache-closure-audit-structurally-blind-gate-authored"]
 transition_ids = ["testing.trigger.gate-cache-closure-audit-structurally-blind-gate-authored"]
 
@@ -2492,7 +2444,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.gate-cache-all-hit-cost"]
 
 [[record]]
@@ -2516,7 +2467,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.gate-cache-closure-audit-traced-set-extension"]
 
 [[record]]
@@ -2536,7 +2486,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.gate-cache-coverage-extensions"]
 
 [[record]]
@@ -2611,7 +2560,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.gate-demands-premise-probed-against-gate-evidence-about's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The preserved Standing detail records that its second-instance trigger fired; the due system is now pickup work.
@@ -2650,7 +2598,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.gate-exists-registry-nowhere-tests-readme-md-hand"]
 transition_ids = ["testing.trigger.gate-exists-registry-nowhere-tests-readme-md-hand"]
 
@@ -2712,7 +2659,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.gate-script-health-cache-staleness-key-fresh-worktree"]
 transition_ids = ["testing.trigger.gate-script-health-cache-staleness-key-fresh-worktree"]
 
@@ -2761,7 +2707,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.generated-local-collision-general-mangling-remedy"]
 
 [[record]]
@@ -2786,7 +2731,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.generated-local-collision-scope-wide-probe"]
 transition_ids = ["testing.trigger.generated-local-collision-scope-wide-probe"]
 
@@ -2863,7 +2807,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "abort_or_panic"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.grammar-fuzzer-arbitrary-supported-ast"]
 
 [[record]]
@@ -2895,7 +2838,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.grammar-fuzzer-batch-masking-detector"]
 transition_ids = ["testing.trigger.grammar-fuzzer-batch-masking-detector"]
 
@@ -2949,7 +2891,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "abort_or_panic"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.grammar-fuzzer.embed-site-alias-roots's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -2971,7 +2912,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "abort_or_panic"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.grammar-fuzzer-real-world-corpus-differential"]
 
 [[record]]
@@ -4174,7 +4114,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.hand-enumerated-ban-pattern-list-authority-lives-gitignored"]
 transition_ids = ["testing.trigger.hand-enumerated-ban-pattern-list-authority-lives-gitignored"]
 
@@ -4212,7 +4151,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.hand-maintained-source-dependency-mapping-manifest-changeset-silently"]
 transition_ids = ["testing.trigger.hand-maintained-source-dependency-mapping-manifest-changeset-silently"]
 
@@ -4605,7 +4543,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.json2ts-artifact-doc-comments-naming-undefined"]
 
 [[record]]
@@ -4637,7 +4574,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.lint-doc-citations-accepts-docs-heading-durable-citation"]
 transition_ids = ["testing.trigger.lint-doc-citations-accepts-docs-heading-durable-citation"]
 
@@ -4687,7 +4623,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.lint-provocation-shapes-generated-code-clippy-clean-partially's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -4724,7 +4659,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -4764,7 +4698,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.logic-tool-emits-source-text-outside-layer-reasons"]
 transition_ids = ["testing.trigger.logic-tool-emits-source-text-outside-layer-reasons"]
 
@@ -4792,7 +4725,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.machine-readable-ownership-co-owned-features-std-list"]
 
 [[record]]
@@ -4854,7 +4786,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.make-fixture-comment-s-claimed-wire-bytes-executable"]
 transition_ids = ["testing.trigger.make-fixture-comment-s-claimed-wire-bytes-executable"]
 
@@ -4916,7 +4847,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.matrix-s-note-names-panic-site-aborts-nothing"]
 transition_ids = ["testing.trigger.matrix-s-note-names-panic-site-aborts-nothing"]
 
@@ -4962,7 +4892,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.mechanical-layers-two-review-owned-design-rules-tests"]
 transition_ids = ["testing.trigger.mechanical-layers-two-review-owned-design-rules-tests"]
 
@@ -5004,7 +4933,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.message-s-level-classification-review-owned-two-ways"]
 transition_ids = ["testing.trigger.message-s-level-classification-review-owned-two-ways"]
 
@@ -5057,7 +4985,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -5130,7 +5057,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.multifile-reference-position-coverage-two-position-keyed-escapes"]
 transition_ids = ["testing.trigger.multifile-reference-position-coverage-two-position-keyed-escapes"]
 
@@ -5204,7 +5130,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.nothing-asserts-how-many-times-rejection-message-emitted"]
 transition_ids = ["testing.trigger.nothing-asserts-how-many-times-rejection-message-emitted"]
 
@@ -5250,7 +5175,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.nothing-asserts-two-ir-sites-cannot-mint-same"]
 transition_ids = ["testing.trigger.nothing-asserts-two-ir-sites-cannot-mint-same"]
 
@@ -5280,7 +5204,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.observed-baseline-comments-beside-gate-floors-rot-silently"]
 transition_ids = ["testing.trigger.observed-baseline-comments-beside-gate-floors-rot-silently"]
 
@@ -5314,7 +5237,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.opt-rfc-faithful-total-cbor-json-rendering-json"]
 
 [[record]]
@@ -5387,7 +5309,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "abort_or_panic"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.panic-site-un-shadowing-converting-shallow-panic-graceful"]
 transition_ids = ["testing.trigger.panic-site-un-shadowing-converting-shallow-panic-graceful"]
 
@@ -5430,7 +5351,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "abort_or_panic"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.parallel-constructor-fixture-diversity-parser-over-external-input"]
 transition_ids = ["testing.trigger.parallel-constructor-fixture-diversity-parser-over-external-input"]
 
@@ -5469,7 +5389,6 @@ work_state = "ready"
 work_intent = "repair"
 work_kind = "defect"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.pin-toolchain-verify-ts-s-nested-cargo-scratch's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -5512,7 +5431,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -5681,7 +5599,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 transition_ids = ["testing.component-js-probe.reopening-signal"]
 
 [[record]]
@@ -5720,7 +5637,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.process-boundary-another-profile-escape"]
 
 [[record]]
@@ -5753,7 +5669,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.process-boundary-rustc-after-panic-fix"]
 transition_ids = ["testing.trigger.process-boundary-rustc-after-panic-fix"]
 
@@ -5793,7 +5708,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "abort_or_panic"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.process-boundary-rustfmt-pre-rustc"]
 transition_ids = ["testing.trigger.process-boundary-rustfmt-pre-rustc"]
 
@@ -5830,7 +5744,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.profile-driven-compile-gate-covers-compositions-profiles-specs"]
 transition_ids = ["testing.trigger.profile-driven-compile-gate-covers-compositions-profiles-specs"]
 
@@ -5863,7 +5776,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.project-json-gen-documents-run-test-fixture-writes"]
 
 [[record]]
@@ -5877,7 +5789,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 acceptance_md = """Add a red-first regression that runs the unchanged config twice and pins whether the convergence warning names the same crate on both runs.
 """
 priority_rationale_md = """The parent defect owns repair; this record owns the still-unexecuted regression gap without masquerading as defect evidence.
@@ -5894,7 +5805,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Add a red-first CLI regression proving an unknown flag is rejected instead of returning success or degrading to plain verify mode.
 """
 priority_rationale_md = """The parent defect owns repair; this record owns the still-unexecuted regression gap without masquerading as defect evidence.
@@ -6047,7 +5957,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.propagating-deliberately-unpublished-type-s-intent-json-ts"]
 
 [[record]]
@@ -6129,7 +6038,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.reason-keyed-rejection-evidence-reject-catalogs-proven-near"]
 transition_ids = ["testing.trigger.reason-keyed-rejection-evidence-reject-catalogs-proven-near"]
 
@@ -6164,7 +6072,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.referencing-context-measured-wrapping-deep-honored-base-shape"]
 transition_ids = ["testing.trigger.referencing-context-measured-wrapping-deep-honored-base-shape"]
 
@@ -6230,7 +6137,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.rejection-message-s-remedy-string-executable-claim-pin's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -6298,7 +6204,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.representation-changing-directive-goes-live-new-container-ship"]
 transition_ids = ["testing.trigger.representation-changing-directive-goes-live-new-container-ship"]
 
@@ -6384,7 +6289,6 @@ work_state = "blocked"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_classification = "none_reviewed"
 blocker_md = """The maintainer must reverse the 2026-08-04 no-fork-push ruling and reviewed commit a7ed0784e89689784ff78ed0e85c7434a3528937 must be published, pinned, and adopted.
 """
 transition_ids = ["testing.predicate.rule-trailing-conjunctive-unblock"]
@@ -6400,7 +6304,6 @@ work_state = "waiting_external"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_classification = "none_reviewed"
 transition_ids = ["testing.predicate.reviewed-fork-publication"]
 external_owner_reference_id = "ref-testing-rule-trailing-reviewed-fork-publication-commit"
 
@@ -6436,7 +6339,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.ruling-premise-gate-x-stays-green-must-probed"]
 transition_ids = ["testing.trigger.ruling-premise-gate-x-stays-green-must-probed"]
 
@@ -6466,7 +6368,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.run-local-values-gate-cache-key-material-proven"]
 transition_ids = ["testing.trigger.run-local-values-gate-cache-key-material-proven"]
 
@@ -6503,7 +6404,6 @@ work_state = "deferred"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "abort_or_panic"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.rustfmt-seam-error-leg-still-witness-needs-subprocess"]
 
 [[record]]
@@ -6558,7 +6458,6 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.same-named-generated-crates-silently-share-cargo-fingerprint's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -6606,7 +6505,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.schema-name-collision-loser-no-row-same-id"]
 transition_ids = ["testing.trigger.schema-name-collision-loser-no-row-same-id"]
 
@@ -6638,7 +6536,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.schema-name-cross-crate-same-id-collision"]
 transition_ids = ["testing.trigger.schema-name-cross-crate-same-id-collision"]
 
@@ -6667,7 +6564,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.schema-name.percent-encoded-ref's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The former independent part identifies the remaining multi-byte UTF-8 vector needed before the half-built decoder can safely become a build-failing guard; no admission trigger is inferred.
@@ -6737,7 +6633,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.schema-name-two-rowless-types-collide"]
 transition_ids = ["testing.trigger.schema-name-two-rowless-types-collide"]
 
@@ -9282,7 +9177,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "misleading_docs"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.stale-known-limitation-prose-surviving-fix-finding-ledgered"]
 transition_ids = ["testing.trigger.stale-known-limitation-prose-surviving-fix-finding-ledgered"]
 
@@ -9352,7 +9246,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.std-generated-crates"]
 
 [[record]]
@@ -9385,7 +9278,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.synthesized-name-referenced-never-minted-e0425-flavor"]
 transition_ids = ["testing.trigger.synthesized-name-referenced-never-minted-e0425-flavor"]
 
@@ -9418,7 +9310,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.synthetic-protocol-controls-component-probe-host-s-defensive's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -9439,7 +9330,6 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.tag-set-inline-anonymous-choice-boundary"]
 
 [[record]]
@@ -9523,7 +9413,6 @@ work_state = "blocked"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "resource_exhaustion"
-family_classification = "none_reviewed"
 blocker_md = """No committed, environment-scoped per-slot peak authority exists outside the disposable sampler ledgers.
 """
 transition_ids = ["testing.predicate.tier-memory-durable-measurements"]
@@ -9569,7 +9458,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "resource_exhaustion"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"]
 transition_ids = ["testing.trigger.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"]
 
@@ -9690,7 +9578,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.tree-wide-sweeps-over-gitignored-regeneration-targets-count"]
 transition_ids = ["testing.trigger.tree-wide-sweeps-over-gitignored-regeneration-targets-count"]
 
@@ -12068,7 +11955,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.twin-repo-implementations-semantic-drifting-apart-emission-spellings"]
 transition_ids = ["testing.trigger.twin-repo-implementations-semantic-drifting-apart-emission-spellings"]
 
@@ -12209,7 +12095,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.unused-imports-generated-crates-trait-import-class-name"]
 transition_ids = ["testing.trigger.unused-imports-generated-crates-trait-import-class-name"]
 
@@ -12244,7 +12129,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.value-anchor-rot-field-addition-delivery-grows-existing"]
 transition_ids = ["testing.trigger.value-anchor-rot-field-addition-delivery-grows-existing"]
 
@@ -12318,7 +12202,6 @@ work_state = "ready"
 work_intent = "repair"
 work_kind = "defect"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.verify-ts-refuse-unknown-flag-silently-degrading-plain's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -12360,7 +12243,6 @@ work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 control_ids = ["testing.guard.wac-composed-component-transpiled-jco-loses-cross-instance"]
 transition_ids = ["testing.trigger.wac-composed-component-transpiled-jco-loses-cross-instance"]
 
@@ -12401,7 +12283,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "false_pass_or_red"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.warm-up-refresh-dep-universe-lock-trust-fresh's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -12454,7 +12335,6 @@ work_state = "ready"
 work_intent = "add_regression"
 work_kind = "regression_gap"
 risk = "wrong_public_api"
-family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.wasm-face-s-door-vocabulary-hand-listed-mechanism's payload.detail_md; do not widen adjacent future work.
 """
 priority_rationale_md = """The source owner places this item in Next priority order.
@@ -12483,7 +12363,6 @@ work_state = "deferred"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 transition_ids = ["testing.trigger.wasm32-link-floor-deferred-reject-twin"]
 
 [[record]]
@@ -12514,7 +12393,6 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-family_classification = "none_reviewed"
 transition_ids = ["testing.workspace-wasip2.reopening-signal"]
 
 [[record]]

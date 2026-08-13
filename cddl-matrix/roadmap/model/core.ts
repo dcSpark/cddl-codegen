@@ -23,7 +23,6 @@ export type QueryView =
   | "signals"
   | "actionables"
   | "decisions"
-  | "families"
   | "watches"
   | "content"
   | "output-owners";
@@ -82,7 +81,6 @@ export type Risk =
   | "resource_exhaustion"
   | "cosmetic";
 export type PriorityBand = "critical" | "high" | "normal" | "low";
-export type FamilyClassification = "none_reviewed" | "pending";
 
 export interface SemanticPayloadBase {
   kind: string;
@@ -95,8 +93,6 @@ interface WorkBase extends SemanticPayloadBase {
   work_intent: WorkIntent;
   work_kind: WorkKind;
   risk: Risk;
-  family_id?: RoadmapId;
-  family_classification?: FamilyClassification;
   evidence_ids?: RoadmapId[];
   acceptance_md?: Uint8Array;
   control_ids?: RoadmapId[];
@@ -311,7 +307,6 @@ export interface EvidenceScope {
   toolchains?: string[];
   executors?: string[];
   tiers?: string[];
-  cell_ids?: RoadmapId[];
 }
 
 export interface EvidencePayload extends SemanticPayloadBase {

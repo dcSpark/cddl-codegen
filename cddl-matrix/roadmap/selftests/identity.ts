@@ -41,7 +41,6 @@ import {
   compareReferenceTargets,
   REFERENCE_KIND_REGISTRY,
   validateSemanticRoadmapJoins,
-  validateGuardedFamilyReopens,
   validateRoadmapReferences,
 } from "../references.ts";
 import {
@@ -323,7 +322,6 @@ const MATRIX_RECORD_IDS = [
   "matrix.fixture-raw-owner",
   "matrix.fixture-semantic-owner",
   ...suffixed("matrix.fixture-signal-", "abcdefghijk"),
-  ...suffixed("matrix.fixture-systematic-", "abcd"),
   ...suffixed("matrix.fixture-task-", "abcdefghij"),
   ...suffixed("matrix.fixture-upstream-", "abc"),
 ];
@@ -358,39 +356,11 @@ const MATRIX_RELATIONS_BY_TARGET: ExactGroups = {
 
 const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
   roadmap: "matrix",
-  providers: {
-    family_axis: suffixed("matrix.fixture-dimension-", "abcd"),
-    family_axis_value: [
-      "matrix.fixture-option-a-five",
-      "matrix.fixture-option-a-four",
-      "matrix.fixture-option-a-one",
-      "matrix.fixture-option-a-three",
-      "matrix.fixture-option-a-two",
-      "matrix.fixture-option-b-one",
-      "matrix.fixture-option-b-two",
-      "matrix.fixture-option-c-one",
-      "matrix.fixture-option-c-two",
-      "matrix.fixture-option-d-one",
-      "matrix.fixture-option-d-two",
-    ],
-    family_cell: [
-      "matrix.fixture-coordinate-a",
-      "matrix.fixture-coordinate-b",
-      "matrix.fixture-coordinate-bx",
-      "matrix.fixture-coordinate-c",
-      "matrix.fixture-coordinate-cx",
-      "matrix.fixture-coordinate-d",
-      "matrix.fixture-coordinate-dx",
-    ],
-    family_evidence_requirement: suffixed("matrix.fixture-requirement-", "abcd"),
-    family_exclusion: suffixed("matrix.fixture-exclusion-", "abcd"),
-    record: MATRIX_RECORD_IDS,
-  },
+  providers: { record: MATRIX_RECORD_IDS },
   payloads: {
     "semantic:control": suffixed("matrix.fixture-control-", "abcdefg"),
     "semantic:decision": suffixed("matrix.fixture-choice-", "abcd"),
     "semantic:evidence": suffixed("matrix.fixture-evidence-", "abcdefghijklm"),
-    "semantic:family": suffixed("matrix.fixture-systematic-", "abcd"),
     "semantic:matrix_external_closeout": suffixed("matrix.fixture-upstream-", "abc"),
     "semantic:matrix_policy": [
       ...suffixed("matrix.fixture-policy-", "abc"),
@@ -405,54 +375,36 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
   id_use_roles: {
     manifest_record: 1,
     parent_record: 1,
-    provider: 87,
+    provider: 53,
     reference_source: 12,
     reference_target: 1,
     relation_source: 10,
     relation_target: 10,
-    semantic_target: 65,
+    semantic_target: 28,
   },
   semantic_targets: {
-    "matrix.fixture-control-a": 6,
-    "matrix.fixture-coordinate-a": 1,
-    "matrix.fixture-dimension-a": 5,
-    "matrix.fixture-dimension-b": 2,
-    "matrix.fixture-dimension-c": 2,
-    "matrix.fixture-dimension-d": 2,
-    "matrix.fixture-evidence-a": 10,
+    "matrix.fixture-control-a": 2,
+    "matrix.fixture-evidence-a": 6,
     "matrix.fixture-evidence-b": 2,
     "matrix.fixture-evidence-c": 3,
     "matrix.fixture-evidence-d": 1,
-    "matrix.fixture-option-a-five": 1,
-    "matrix.fixture-option-a-four": 1,
-    "matrix.fixture-option-a-one": 1,
-    "matrix.fixture-option-a-three": 1,
-    "matrix.fixture-option-a-two": 1,
-    "matrix.fixture-option-b-one": 1,
-    "matrix.fixture-option-b-two": 1,
-    "matrix.fixture-option-c-one": 1,
-    "matrix.fixture-option-c-two": 1,
-    "matrix.fixture-option-d-one": 1,
-    "matrix.fixture-option-d-two": 1,
     "matrix.fixture-signal-b": 1,
     "matrix.fixture-signal-f": 4,
     "matrix.fixture-signal-h": 2,
     "matrix.fixture-signal-j": 4,
     "matrix.fixture-signal-k": 1,
-    "matrix.fixture-systematic-a": 1,
-    "matrix.fixture-task-a": 5,
     "matrix.fixture-task-b": 2,
   },
   reference_uses: {
     "ref-commit": 2,
-    "ref-consumer": 3,
-    "ref-feature": 2,
-    "ref-file": 24,
-    "ref-gate": 10,
+    "ref-consumer": 2,
+    "ref-feature": 1,
+    "ref-file": 12,
+    "ref-gate": 6,
     "ref-issue": 9,
     "ref-release": 1,
-    "ref-roadmap": 3,
-    "ref-spec": 26,
+    "ref-roadmap": 2,
+    "ref-spec": 3,
     "ref-test": 2,
   },
   aliases: [],
@@ -496,7 +448,6 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
 };
 
 const TESTING_RECORD_IDS = [
-  "testing.fixture-admission-bounded",
   "testing.fixture-admission-independent",
   "testing.fixture-admission-silent",
   "testing.fixture-all-fields-raw",
@@ -511,7 +462,6 @@ const TESTING_RECORD_IDS = [
   "testing.fixture-operational-retire-pending",
   "testing.fixture-operational-watching",
   "testing.fixture-signal-escalation",
-  "testing.fixture-systematic-observed",
   "testing.fixture-task-ready",
 ];
 
@@ -521,7 +471,6 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
   payloads: {
     "semantic:control": ["testing.fixture-control-review"],
     "semantic:evidence": ["testing.fixture-evidence-gate"],
-    "semantic:family": ["testing.fixture-systematic-observed"],
     "semantic:signal": ["testing.fixture-signal-escalation"],
     "semantic:testing_cost": [
       "testing.fixture-all-fields-semantic",
@@ -538,7 +487,6 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
       "testing.fixture-operational-watching",
     ],
     "semantic:testing_system_admission": [
-      "testing.fixture-admission-bounded",
       "testing.fixture-admission-independent",
       "testing.fixture-admission-silent",
     ],
@@ -548,20 +496,16 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     ],
   },
   id_use_roles: {
-    provider: 17,
-    reference_source: 12,
-    semantic_target: 18,
+    provider: 15,
+    reference_source: 9,
+    semantic_target: 12,
   },
   semantic_targets: {
-    "testing.fixture-admission-bounded": 1,
-    "testing.fixture-all-fields-semantic": 1,
-    "testing.fixture-control-review": 1,
-    "testing.fixture-evidence-gate": 7,
+    "testing.fixture-admission-independent": 1,
+    "testing.fixture-evidence-gate": 6,
     "testing.fixture-incident-attributed": 1,
     "testing.fixture-incident-live": 1,
     "testing.fixture-signal-escalation": 3,
-    "testing.fixture-systematic-observed": 2,
-    "testing.fixture-task-ready": 1,
   },
   reference_uses: {
     "control-review-heading": 1,
@@ -573,9 +517,6 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     "operational-retire-pin": 1,
     "operational-retire-rule": 1,
     "semantic-cost-gate": 1,
-    "systematic-completion": 1,
-    "systematic-observation": 1,
-    "systematic-retirement": 1,
   },
   aliases: [],
   subordinate: {
@@ -590,9 +531,6 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
       "operational-retire-pin",
       "operational-retire-rule",
       "semantic-cost-gate",
-      "systematic-completion",
-      "systematic-observation",
-      "systematic-retirement",
     ],
   },
   references_by_kind: {
@@ -602,16 +540,13 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
       "incident-historical-rule",
       "operational-attributed-rule",
       "operational-retire-rule",
-      "systematic-completion",
     ],
     gate: [
       "evidence-gate-target",
       "incident-historical-retirement",
       "operational-retire-pin",
       "semantic-cost-gate",
-      "systematic-observation",
     ],
-    test_symbol: ["systematic-retirement"],
   },
   relations: [],
   relations_by_source: {},
@@ -732,12 +667,6 @@ function assertFixtureIndexes(
     (provider) => provider.record.id,
     selectedPayloadRecordIds(expected, (_authority, kind) => kind === "evidence"),
     `${label} evidence-record index`,
-  );
-  assertIdentityMap(
-    indexes.family_records,
-    (provider) => provider.record.id,
-    selectedPayloadRecordIds(expected, (_authority, kind) => kind === "family"),
-    `${label} family-record index`,
   );
   assertExactCounts(
     countStrings(indexes.id_uses, (use) => use.role),
@@ -938,10 +867,10 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
     const semanticUse = result.indexes.id_uses.find((use) => use.role === "semantic_target");
     if (semanticUse !== undefined) {
       const target = result.indexes.first_class.get(semanticUse.id)!;
-      // A semantic join field closes over one of two universes: a provider kind (the axis/value
-      // sub-providers) or the owner record's payload kind. Move the target in both directions at
-      // once, so the fault injection reaches whichever policy the first collected use carries
-      // rather than depending on a structural role happening to cite the same ID.
+      // A semantic join field closes over the payload kind of the record its target belongs to.
+      // Repoint the target at a record of a different payload kind, so the fault injection
+      // reaches the join policy itself rather than depending on a structural role happening to
+      // cite the same ID.
       const ownerPayload = result.indexes.payload_records.get(target.owner_record_id);
       const foreignOwner = [...result.indexes.payload_records.values()].find((provider) =>
         provider.payload.kind !== ownerPayload?.payload.kind
@@ -953,7 +882,6 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
       const wrongKind = new Map(result.indexes.first_class);
       wrongKind.set(semanticUse.id, {
         ...target,
-        kind: target.kind === "record" ? "family_axis" : "record",
         owner_record_id: foreignOwner.record.id,
       } as typeof target);
       assert(
@@ -1104,7 +1032,6 @@ work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "cosmetic"
-family_classification = "none_reviewed"
 acceptance_md = """Accepted."""
 priority_rationale_md = """Normal."""
 `).join("");
@@ -1431,48 +1358,6 @@ function relationCase(id: JoinSelfTestCaseId): boolean {
   if (id === "relation_missing_endpoint") {
     const missing = brandedRoadmapId("matrix.fixture-missing");
     assert(observeMatchingIssue(validateRelations([{ source: a, kind: "related", target: missing }], firstClass), "E-RELATION-ENDPOINT") !== undefined, "missing endpoint must fail");
-    const familyRoot = brandedRoadmapId("matrix.fixture-closed-root");
-    const workDocument = c5Document("matrix", [c5FamilyWorkRecord(a, familyRoot)], [
-      { source: a, kind: "reopens", target: familyRoot },
-    ]);
-    const workIndexes = buildRoadmapIndexes(workDocument).indexes;
-    const rootGuard: CurrentGuard = {
-      ...c5Guard(familyRoot), guard_role: "closed_family_root", family_root_id: familyRoot,
-    };
-    const guardedUniverse = {
-      first_class: workIndexes.first_class,
-      payload_records: workIndexes.payload_records,
-      current_guards: [rootGuard],
-    };
-    const guardedJoinIssues = validateSemanticRoadmapJoins(workIndexes, guardedUniverse);
-    assert(guardedJoinIssues.length === 0,
-      `work family_id and reopens must pair on the same guarded root: ${JSON.stringify(guardedJoinIssues)}`);
-    assert(validateGuardedFamilyReopens(workIndexes.payload_records, [], [rootGuard]).some((entry) =>
-      entry.code === "E-REFERENCE-FORBIDDEN"
-    ), "guarded family_id without reopens must fail");
-    const childGuard: CurrentGuard = {
-      ...c5Guard(familyRoot), guard_role: "family_cell", family_root_id: familyRoot,
-    };
-    assert(validateRelations(workIndexes.relations, workIndexes.first_class, "<guard-child>", undefined, [childGuard])
-      .some((entry) => entry.code === "E-RELATION-ENDPOINT"), "child guards must not be reopening targets");
-    const evidenceDocument = c5Document("matrix", [c5FamilySupportRecords(familyRoot)[0]!]);
-    const evidenceIndexes = buildRoadmapIndexes(evidenceDocument).indexes;
-    const cellId = `${familyRoot}.fixture-point` as RoadmapId;
-    const cellGuard: CurrentGuard = {
-      ...c5Guard(cellId), guard_role: "family_cell", family_root_id: familyRoot,
-    };
-    assert(validateSemanticRoadmapJoins(evidenceIndexes, {
-      first_class: evidenceIndexes.first_class,
-      payload_records: evidenceIndexes.payload_records,
-      current_guards: [cellGuard],
-    }).length === 0, "evidence scope.cell_ids must resolve a family_cell guard");
-    const wrongCellRole: CurrentGuard = { ...cellGuard, guard_role: "family_axis_value" };
-    assert(validateSemanticRoadmapJoins(evidenceIndexes, {
-      first_class: evidenceIndexes.first_class,
-      payload_records: evidenceIndexes.payload_records,
-      current_guards: [wrongCellRole],
-    }).some((entry) => entry.code === "E-REFERENCE-FORBIDDEN"),
-    "evidence scope.cell_ids must reject a non-cell guard role");
     return true;
   }
   if (id === "relation_symmetric_duplicate") {
@@ -2106,44 +1991,10 @@ function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticA
       work_intent: "build_capability",
       work_kind: workKind,
       risk: "compile_failure",
-      family_classification: "none_reviewed",
       acceptance_md: bytes("acceptance"),
       priority_rationale_md: bytes("priority"),
     },
   };
-}
-
-function c5FamilyWorkRecord(id: RoadmapId, familyId: RoadmapId): SemanticAuthorityRecord {
-  const record = c5ReadyRecord(id);
-  assert(record.payload.kind === "work", "family work fixture must remain work");
-  const { family_classification: _classification, ...payload } = record.payload;
-  return { ...record, payload: { ...payload, family_id: familyId } };
-}
-
-function c5FamilySupportRecords(id: RoadmapId): readonly SemanticAuthorityRecord[] {
-  const evidenceId = `${id}.fixture-evidence` as RoadmapId;
-  const controlId = `${id}.fixture-control` as RoadmapId;
-  return [
-    {
-      id: evidenceId, title: "Family evidence", projection_group: "fixture" as never,
-      payload: {
-        kind: "evidence", evidence_kind: "gate",
-        claim_md: bytes("the fixture cell compiles"), evidence_verdict: "confirmed", freshness: "live",
-        reference_ids: [`ref-${id.replaceAll(".", "-")}-evidence-gate` as ReferenceId],
-        refresh_reference_id: `ref-${id.replaceAll(".", "-")}-evidence-gate` as ReferenceId,
-        unprobed_remainder_md: bytes("none"),
-        scope: { cell_ids: [`${id}.fixture-point` as RoadmapId], profiles: ["default"], faces: ["rust"] },
-      },
-    },
-    {
-      id: controlId, title: "Family control", projection_group: "fixture" as never,
-      payload: {
-        kind: "control", control_kind: "gate", control_state: "live",
-        reference_ids: [`ref-${id.replaceAll(".", "-")}-control-gate` as ReferenceId], claim_md: bytes("guards the fixture denominator"),
-        boundary_md: bytes("synthetic fixture only"),
-      },
-    },
-  ];
 }
 
 function c5Guard(id: RoadmapId, gateId = "roadmap_projection_check"): CurrentGuard {

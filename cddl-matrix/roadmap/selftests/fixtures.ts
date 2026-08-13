@@ -57,10 +57,7 @@ export type RequiredFixtureSelfTestCaseId =
 // The all-fields oracle is deliberately independent of fixture bytes. C2 supplies decoded fixture
 // tags to compareAllFieldsCoverageTags; it must not derive the expected universe from those tags.
 export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
-  admission_kind: ["bounded_denominator", "independent_recurrence", "silent_corruption"],
-  authority_kind: ["grammar", "registry", "reviewed_relation"],
-  campaign_state: ["closing", "designing", "enumerating"],
-  cell_disposition: ["deliberately_unsupported", "safely_refused", "supported", "unknown"],
+  admission_kind: ["independent_recurrence", "silent_corruption"],
   closeout_state: ["blocked", "due", "waiting"],
   comparator: ["eq", "ge", "gt", "le", "lt"],
   control_kind: [
@@ -91,18 +88,7 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "source_read",
     "spec_read",
   ],
-  evidence_stage: [
-    "compiled",
-    "constraint_enforced",
-    "executed",
-    "generated",
-    "independently_decoded",
-    "over_accepted",
-    "round_tripped",
-  ],
   evidence_verdict: ["confirmed", "falsified", "inapplicable", "proposed", "unknown"],
-  family_classification: ["none_reviewed"],
-  family_maturity: ["observed_only", "under_design"],
   freshness: ["as_of", "historical", "live", "stale"],
   incident_posture: ["attributed", "historical", "live"],
   manifest_kind: ["fragment", "generated_slot", "part", "record", "section"],
@@ -110,7 +96,6 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "control",
     "decision",
     "evidence",
-    "family",
     "matrix_external_closeout",
     "matrix_policy",
     "signal",
@@ -164,7 +149,6 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
   ],
   schema_version: ["3"],
   signal_evaluation: ["met", "stale", "unknown", "unmet"],
-  spec_legality: ["illegal", "legal"],
   transition_kind: [
     "cadence",
     "promotion_trigger",

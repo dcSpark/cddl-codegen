@@ -405,7 +405,7 @@ function testDecoderDispatch(bundle: AdapterFixtureBundle): void {
     exactTable(schema, path) { if (schema.name === "watching operational watch") testingRows.push(path); },
     enum() {},
   });
-  assert(JSON.stringify(testingRows) === JSON.stringify(["record[13].payload"]), "testing S1 domain arm did not dispatch exactly once at its frozen logical path");
+  assert(JSON.stringify(testingRows) === JSON.stringify(["record[12].payload"]), "testing S1 domain arm did not dispatch exactly once at its frozen logical path");
   assert(decodedTesting.document.schema_version === 3, "testing all-fields fixture is not v3");
   const testing = productionDocument(decodedTesting as RoadmapDocumentV3);
   const testingPayload = semanticPayload(testing.records.find((record) => record.id === "testing.fixture-operational-watching" as RoadmapId)!);
@@ -851,16 +851,6 @@ function expectedCanonicalFieldOrder(value: SemanticPayload): readonly string[] 
       add("claim_md", value.claim_md);
       add("boundary_md", value.boundary_md);
       break;
-    case "family":
-      add("goal_md", value.goal_md);
-      add("boundary_md", value.boundary_md);
-      if (value.family_maturity === "under_design") {
-        add("derivation_md", value.derivation_md);
-        add("legality_rule_md", value.legality_rule_md);
-        add("denominator_unknowns_md", value.denominator_unknowns_md);
-      }
-      value.exclusions.forEach((entry, index) => add(`exclusions[${index}].reason_md`, entry.reason_md));
-      break;
     case "matrix_external_closeout":
       add("current_upstream_state_md", value.current_upstream_state_md);
       if (value.closeout_state === "blocked") add("blocker_md", value.blocker_md);
@@ -1164,90 +1154,6 @@ function testDomainMutationTable(bundle: AdapterFixtureBundle): void {
         (payload) => {
           assert(payload.kind === "testing_system_admission" && payload.admission_kind === "independent_recurrence", "testing admission incident vector selected the wrong payload");
           return { ...payload, incident_ids: ["testing.fixture-evidence-gate" as RoadmapId] };
-        }),
-    },
-    {
-      name: "testing admission family wrong existing kind",
-      roadmap: "testing",
-      logical_path: testingPath("testing.fixture-admission-bounded", "family_id"),
-      issue_codes: ["E-REFERENCE-FORBIDDEN", "E-SCHEMA-STATE"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "testing_system_admission" && payload.admission_kind === "bounded_denominator",
-        (payload) => {
-          assert(payload.kind === "testing_system_admission" && payload.admission_kind === "bounded_denominator", "testing admission family vector selected the wrong payload");
-          return { ...payload, family_id: "testing.fixture-task-ready" as RoadmapId };
-        }),
-    },
-    {
-      name: "testing admission cost wrong existing kind",
-      roadmap: "testing",
-      logical_path: testingPath("testing.fixture-admission-bounded", "cost_record_id"),
-      issue_codes: ["E-REFERENCE-FORBIDDEN", "E-SCHEMA-STATE"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "testing_system_admission" && payload.admission_kind === "bounded_denominator",
-        (payload) => {
-          assert(payload.kind === "testing_system_admission" && payload.admission_kind === "bounded_denominator", "testing admission cost vector selected the wrong payload");
-          return { ...payload, cost_record_id: "testing.fixture-incident-live" as RoadmapId };
-        }),
-    },
-    {
-      name: "shared work family join wrong existing kind",
-      roadmap: "matrix",
-      logical_path: matrixPath("matrix.fixture-task-a", "family_id"),
-      issue_codes: ["E-REFERENCE-FORBIDDEN"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "work" && payload.work_state === "ready" && payload.work_kind === "defect",
-        (payload) => {
-          assert(payload.kind === "work" && payload.work_state === "ready", "shared family vector selected the wrong payload");
-          return { ...payload, family_id: "matrix.fixture-task-b" as RoadmapId };
-        }),
-    },
-    // The three cross-record family rules the retired ported-fixture pin used to prove, each as a
-    // targeted cause->effect vector over the now-valid fixture.
-    {
-      name: "family duplicate cell coordinate",
-      roadmap: "matrix",
-      logical_path: matrixPath("matrix.fixture-systematic-a", "cell"),
-      issue_codes: ["E-SCHEMA-STATE"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "family" && payload.family_maturity === "observed_only",
-        (payload) => {
-          assert(payload.kind === "family" && payload.cells.length >= 2, "family cell vector selected the wrong payload");
-          return {
-            ...payload,
-            cells: payload.cells.map((cell, index) => index === 1
-              ? { ...cell, coordinates: payload.cells[0]!.coordinates.map((coordinate) => ({ ...coordinate })) }
-              : cell),
-          };
-        }),
-    },
-    {
-      name: "family exclusion coordinate collides with cell",
-      roadmap: "matrix",
-      logical_path: matrixPath("matrix.fixture-systematic-a", "exclusion"),
-      issue_codes: ["E-SCHEMA-STATE"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "family" && payload.family_maturity === "observed_only",
-        (payload) => {
-          assert(payload.kind === "family" && payload.cells.length >= 1 && payload.exclusions.length >= 1, "family exclusion vector selected the wrong payload");
-          return {
-            ...payload,
-            exclusions: payload.exclusions.map((exclusion) =>
-              ({ ...exclusion, coordinates: payload.cells[0]!.coordinates.map((coordinate) => ({ ...coordinate })) })),
-          };
-        }),
-    },
-    {
-      name: "family work_ids bidirectional mismatch",
-      roadmap: "matrix",
-      logical_path: matrixPath("matrix.fixture-systematic-b", "work_ids"),
-      issue_codes: ["E-SCHEMA-STATE"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "family" && payload.family_maturity === "under_design" && payload.authority_kind === "grammar",
-        (payload) => {
-          assert(payload.kind === "family", "family work_ids vector selected the wrong payload");
-          // matrix.fixture-task-a is family a's work, so authoring it here breaks the join both ways.
-          return { ...payload, work_ids: ["matrix.fixture-task-a" as RoadmapId] };
         }),
     },
   ];

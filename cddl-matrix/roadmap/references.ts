@@ -18,7 +18,7 @@ import type {
 import { namespaceOf } from "./ids.ts";
 import type { RoadmapId } from "./model/core.ts";
 import type { Reference } from "./model/documents.ts";
-import type { CurrentGuard, FamilyGuardRole, Relation, SemanticPayload } from "./model/documents.ts";
+import type { CurrentGuard, Relation, SemanticPayload } from "./model/documents.ts";
 import { codePointSort } from "./kernel.ts";
 import { sortRoadmapIssues as sortIssues } from "./errors.ts";
 
@@ -35,56 +35,6 @@ export interface SemanticJoinUniverse {
   readonly first_class: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>;
   readonly payload_records: ReadonlyMap<RoadmapId, SemanticPayloadProviderFact>;
   readonly current_guards?: readonly CurrentGuard[];
-}
-
-export function validateGuardedFamilyReopens(
-  payloadRecords: ReadonlyMap<RoadmapId, SemanticPayloadProviderFact>,
-  relations: readonly Relation[],
-  currentGuards: readonly CurrentGuard[],
-  source = "<guarded-family-reopens>",
-): readonly RoadmapIssue[] {
-  const issues: RoadmapIssue[] = [];
-  const guards = new Map(currentGuards.map((guard) => [guard.id, guard]));
-  for (const provider of payloadRecords.values()) {
-    const payload = provider.payload;
-    if (payload.kind !== "work" || payload.family_id === undefined ||
-      guards.get(payload.family_id)?.guard_role !== "closed_family_root") continue;
-    const targets = relations.filter((relation) =>
-      relation.source === provider.record.id && relation.kind === "reopens"
-    ).map((relation) => relation.target);
-    if (targets.length !== 1 || targets[0] !== payload.family_id) {
-      issues.push(issue(
-        "E-REFERENCE-FORBIDDEN",
-        source,
-        `${provider.logical_path}.family_id`,
-        "work targeting a guarded family requires exactly one same-root outgoing reopens relation",
-      ));
-    }
-  }
-  for (const relation of relations.filter((candidate) => candidate.kind === "reopens")) {
-    const guard = guards.get(relation.target);
-    if (guard === undefined) continue;
-    const sourcePayload = payloadRecords.get(relation.source)?.payload;
-    if (guard.guard_role !== "closed_family_root" || sourcePayload?.kind !== "work" ||
-      sourcePayload.family_id !== relation.target) {
-      issues.push(issue(
-        "E-REFERENCE-FORBIDDEN",
-        source,
-        `relation.reopens[${JSON.stringify([relation.source, relation.target])}]`,
-        "guarded reopens must originate from work whose family_id targets the same closed-family root guard",
-      ));
-    }
-  }
-  return sortIssues(issues);
-}
-
-function guardedSemanticRole(
-  logicalPath: string,
-  sourcePayload: SemanticPayload | undefined,
-): FamilyGuardRole | undefined {
-  if (logicalPath.endsWith("scope.cell_ids")) return "family_cell";
-  if (logicalPath.endsWith("family_id") && sourcePayload?.kind === "work") return "closed_family_root";
-  return undefined;
 }
 
 export type AnyReferenceProvider = {
@@ -368,29 +318,6 @@ function allowedReferenceKinds(
   ) {
     return evidenceReferenceKinds(payload);
   }
-  if (payload.kind === "family") {
-    if (logicalPath.includes(".axis[") && logicalPath.endsWith("authority_reference_id")) return ["spec_passage"];
-    if (logicalPath.includes(".value[") && logicalPath.endsWith("source_reference_id")) return ["spec_passage"];
-    if (logicalPath.includes(".exclusion[") && logicalPath.endsWith("owner_reference_id")) return ["file_heading"];
-    if (logicalPath.includes(".exclusion[") && logicalPath.endsWith("source_reference_id")) return ["spec_passage"];
-    if (logicalPath.includes(".exclusion[") && logicalPath.endsWith("liveness_reference_id")) return ["gate"];
-    if (logicalPath.endsWith("authority_reference_id")) {
-      if (payload.family_maturity === "observed_only") return [];
-      return payload.authority_kind === "grammar"
-        ? ["spec_passage"]
-        : payload.authority_kind === "registry"
-        ? ["file_heading", "gate", "matrix_cell", "matrix_feature", "matrix_role"]
-        : ["roadmap"];
-    }
-    if (logicalPath.endsWith("legality_owner_reference_id")) return ["file_heading", "spec_passage"];
-    if (logicalPath.endsWith("drift_check_reference_id") || logicalPath.endsWith("mutation_test_reference_id")) {
-      return ["file_heading", "gate", "test_symbol"];
-    }
-    if (logicalPath.endsWith("observation_reference_ids")) return durableOwnerKinds;
-    if (logicalPath.endsWith("completion_owner_reference_id") || logicalPath.endsWith("retirement_owner_reference_id")) {
-      return durableOwnerKinds;
-    }
-  }
   if (payload.kind === "matrix_external_closeout" && logicalPath.endsWith("upstream_owner_reference_id")) {
     return ["external_commit", "external_issue", "external_release"];
   }
@@ -557,10 +484,6 @@ function semanticTargetExpectation(
   logicalPath: string,
   sourcePayload: SemanticPayloadProviderFact["payload"] | undefined,
 ): ExpectedSemanticTarget | undefined {
-  if (logicalPath.includes(".coordinate.axis_id")) return { provider_kind: "family_axis" };
-  if (logicalPath.includes(".coordinate.value_id")) return { provider_kind: "family_axis_value" };
-  if (logicalPath.endsWith("scope.cell_ids")) return { provider_kind: "family_cell" };
-  if (logicalPath.endsWith("family_id")) return { payload_kind: "family" };
   if (logicalPath.endsWith("control_ids")) {
     return sourcePayload?.kind === "work" && sourcePayload.work_state === "armed"
       ? { payload_kind: "control", control_state: "live" }
@@ -601,12 +524,9 @@ function semanticTargetExpectation(
   if (logicalPath.endsWith("work_ids") || logicalPath.endsWith("work_id")) return { payload_kind: "work" };
   if (logicalPath.endsWith("admission_ids")) return { payload_kind: "testing_system_admission" };
   if (logicalPath.endsWith("incident_ids")) return { payload_kind: "testing_incident" };
-  if (logicalPath.endsWith("cost_record_id")) return { payload_kind: "testing_cost" };
   if (logicalPath.endsWith("evidence_ids") || logicalPath.endsWith("current_evidence_ids") || logicalPath.endsWith("regression_evidence_ids")) {
     return { payload_kind: "evidence" };
   }
-  if (logicalPath.endsWith("evidence_binding.evidence_id")) return { payload_kind: "evidence" };
-  if (logicalPath.endsWith("evidence_binding.requirement_id")) return { provider_kind: "family_evidence_requirement" };
   return undefined;
 }
 
@@ -626,23 +546,9 @@ export function validateSemanticRoadmapJoins(
     const target = universe.first_class.get(use.id);
     if (target === undefined) {
       const guard = universe.current_guards?.find((candidate) => candidate.id === use.id);
-      const expectedGuardRole = use.role === "semantic_target"
-        ? guardedSemanticRole(use.logical_path, sourceProvider?.payload)
-        : undefined;
-      // Relation endpoint legality, including root-only guarded reopens, is owned by
-      // validateRelations. Do not diagnose the same guarded target as an unresolved payload join.
+      // Relation endpoint legality is owned by validateRelations. Do not diagnose the same
+      // guarded target as an unresolved payload join.
       if (guard !== undefined && /^relation\[\d+\]\.target$/u.test(use.logical_path)) continue;
-      if (guard !== undefined && expectedGuardRole !== undefined) {
-        if (guard.guard_role !== expectedGuardRole) {
-          issues.push(issue(
-            "E-REFERENCE-FORBIDDEN",
-            source,
-            use.logical_path,
-            `roadmap ID ${JSON.stringify(use.id)} resolves to guard role ${guard.guard_role ?? "untyped"}, expected ${expectedGuardRole}`,
-          ));
-        }
-        continue;
-      }
       if (deferredForeignTarget(use.id, deferForeignRoadmapJoins, universe.first_class)) continue;
       issues.push(issue(
         "E-REFERENCE-UNRESOLVED",
@@ -768,14 +674,6 @@ export function validateSemanticRoadmapJoins(
         ));
       }
     }
-  }
-  if (!deferGuardedReopenPairing) {
-    issues.push(...validateGuardedFamilyReopens(
-      indexes.payload_records,
-      indexes.relations,
-      universe.current_guards ?? [],
-      source,
-    ));
   }
   return sortIssues(issues);
 }

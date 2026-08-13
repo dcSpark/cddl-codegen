@@ -18,7 +18,6 @@ import type {
   SignalPayload,
   WorkPayload,
 } from "./model/core.ts";
-import type { FamilyPayload } from "./model/systematic.ts";
 import type { MatrixExternalCloseoutPayload, MatrixPolicyPayload } from "./model/matrix.ts";
 import type {
   TestingCostPayload,
@@ -60,8 +59,6 @@ function writeWork(writer: CanonicalTomlWriter, payload: WorkPayload): void {
   writer.string("work_intent", payload.work_intent);
   writer.string("work_kind", payload.work_kind);
   writer.string("risk", payload.risk);
-  if (payload.family_id !== undefined) writer.string("family_id", payload.family_id);
-  if (payload.family_classification !== undefined) writer.string("family_classification", payload.family_classification);
   optionalStrings(writer, "evidence_ids", payload.evidence_ids);
   switch (payload.work_state) {
     case "ready":
@@ -204,7 +201,6 @@ function writeEvidence(writer: CanonicalTomlWriter, payload: EvidencePayload, pr
   optionalStrings(writer, "toolchains", payload.scope.toolchains);
   optionalStrings(writer, "executors", payload.scope.executors);
   optionalStrings(writer, "tiers", payload.scope.tiers);
-  optionalStrings(writer, "cell_ids", payload.scope.cell_ids);
 }
 
 function writeControl(writer: CanonicalTomlWriter, payload: ControlPayload): void {
@@ -214,93 +210,6 @@ function writeControl(writer: CanonicalTomlWriter, payload: ControlPayload): voi
   writer.strings("reference_ids", payload.reference_ids, true);
   writer.markdown("claim_md", payload.claim_md);
   writer.markdown("boundary_md", payload.boundary_md);
-}
-
-function writeFamily(writer: CanonicalTomlWriter, payload: FamilyPayload, prefix: string): void {
-  semanticCommon(writer, payload);
-  writer.string("family_maturity", payload.family_maturity);
-  writer.string("campaign_state", payload.campaign_state);
-  writer.markdown("goal_md", payload.goal_md);
-  writer.markdown("boundary_md", payload.boundary_md);
-  writer.strings("work_ids", payload.work_ids, true);
-  if (payload.family_maturity === "observed_only") {
-    writer.strings("observation_reference_ids", payload.observation_reference_ids, true);
-  } else {
-    writer.string("authority_kind", payload.authority_kind);
-    writer.string("authority_reference_id", payload.authority_reference_id);
-    writer.markdown("derivation_md", payload.derivation_md);
-    writer.markdown("legality_rule_md", payload.legality_rule_md);
-    writer.string("legality_owner_reference_id", payload.legality_owner_reference_id);
-  }
-  writer.strings("affected_profiles", payload.affected_profiles, true);
-  writer.strings("affected_faces", payload.affected_faces, true);
-  writer.strings("control_ids", payload.control_ids, true);
-  writer.string("completion_owner_reference_id", payload.completion_owner_reference_id);
-  writer.string("retirement_owner_reference_id", payload.retirement_owner_reference_id);
-  if (payload.family_maturity === "under_design") optionalMarkdown(writer, "denominator_unknowns_md", payload.denominator_unknowns_md);
-  if (payload.family_maturity === "closed_denominator") {
-    writer.string("drift_check_reference_id", payload.drift_check_reference_id);
-    writer.string("mutation_test_reference_id", payload.mutation_test_reference_id);
-  }
-  for (const axis of sorted(payload.axes, (value) => value.id)) {
-    writer.arrayTable(`${prefix}.axis`);
-    writer.string("id", axis.id);
-    writer.string("label", axis.label);
-    writer.string("authority_reference_id", axis.authority_reference_id);
-    for (const value of sorted(axis.values, (entry) => entry.id)) {
-      writer.arrayTable(`${prefix}.axis.value`);
-      writer.string("id", value.id);
-      writer.string("label", value.label);
-      writer.string("source_reference_id", value.source_reference_id);
-    }
-  }
-  for (const requirement of sorted(payload.evidence_requirements, (value) => value.id)) {
-    writer.arrayTable(`${prefix}.evidence_requirement`);
-    writer.string("id", requirement.id);
-    writer.strings("profiles", requirement.profiles, true);
-    writer.strings("faces", requirement.faces, true);
-    writer.strings("stages", requirement.stages, true);
-  }
-  for (const cell of sorted(payload.cells, (value) => value.id)) {
-    writer.arrayTable(`${prefix}.cell`);
-    writer.string("id", cell.id);
-    writer.string("spec_legality", cell.spec_legality);
-    writer.string("cell_disposition", cell.cell_disposition);
-    writer.strings("affected_profiles", cell.affected_profiles, true);
-    writer.strings("affected_faces", cell.affected_faces, true);
-    optionalStrings(writer, "evidence_ids", cell.evidence_ids);
-    optionalString(writer, "work_id", cell.work_id);
-    for (const binding of sorted(cell.evidence_bindings ?? [], (value) =>
-      `${value.requirement_id}\0${value.profile}\0${value.face}\0${value.stage}\0${value.outcome}\0${value.evidence_id}`
-    )) {
-      writer.arrayTable(`${prefix}.cell.evidence_binding`);
-      writer.string("requirement_id", binding.requirement_id);
-      writer.string("profile", binding.profile);
-      writer.string("face", binding.face);
-      writer.string("stage", binding.stage);
-      writer.string("outcome", binding.outcome);
-      writer.string("evidence_id", binding.evidence_id);
-    }
-    for (const coordinate of sorted(cell.coordinates, (value) => value.axis_id)) {
-      writer.arrayTable(`${prefix}.cell.coordinate`);
-      writer.string("axis_id", coordinate.axis_id);
-      writer.string("value_id", coordinate.value_id);
-    }
-  }
-  for (const exclusion of sorted(payload.exclusions, (value) => value.id)) {
-    writer.arrayTable(`${prefix}.exclusion`);
-    writer.string("id", exclusion.id);
-    writer.string("spec_legality", exclusion.spec_legality);
-    writer.markdown("reason_md", exclusion.reason_md);
-    writer.string("owner_reference_id", exclusion.owner_reference_id);
-    writer.string("source_reference_id", exclusion.source_reference_id);
-    writer.string("liveness_reference_id", exclusion.liveness_reference_id);
-    for (const coordinate of sorted(exclusion.coordinates, (value) => value.axis_id)) {
-      writer.arrayTable(`${prefix}.exclusion.coordinate`);
-      writer.string("axis_id", coordinate.axis_id);
-      writer.string("value_id", coordinate.value_id);
-    }
-  }
 }
 
 function writeMatrixCloseout(
@@ -409,9 +318,6 @@ function writeTestingAdmission(writer: CanonicalTomlWriter, payload: TestingSyst
   writer.strings("evidence_ids", payload.evidence_ids, true);
   if (payload.admission_kind === "independent_recurrence") {
     writer.strings("incident_ids", payload.incident_ids, true);
-  } else if (payload.admission_kind === "bounded_denominator") {
-    writer.string("family_id", payload.family_id);
-    writer.string("cost_record_id", payload.cost_record_id);
   }
 }
 
@@ -426,7 +332,6 @@ function writeSemanticPayload(
     case "signal": writeSignal(writer, payload, prefix); break;
     case "evidence": writeEvidence(writer, payload, prefix); break;
     case "control": writeControl(writer, payload); break;
-    case "family": writeFamily(writer, payload, prefix); break;
     case "matrix_external_closeout": writeMatrixCloseout(writer, payload, prefix); break;
     case "matrix_policy": writeMatrixPolicy(writer, payload); break;
     case "testing_operational_watch": writeTestingWatch(writer, payload, prefix); break;

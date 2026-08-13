@@ -40,7 +40,6 @@ const QUERY_VIEWS = new Set<QueryView>([
   "signals",
   "actionables",
   "decisions",
-  "families",
   "watches",
   "content",
   "output-owners",

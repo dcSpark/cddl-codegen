@@ -21,33 +21,13 @@ import type {
   SemanticPayload,
   SemanticRecord,
 } from "./model/documents.ts";
-import type {
-  FamilyAxis,
-  FamilyAxisValue,
-  FamilyCell,
-  FamilyEvidenceRequirement,
-  FamilyExclusion,
-  FamilyPayload,
-} from "./model/systematic.ts";
 import { validateReferenceId, validateRoadmapId, validateSubordinateId } from "./ids.ts";
 import { codePointSort } from "./kernel.ts";
 import { sortRoadmapIssues as sortIssues } from "./errors.ts";
 
-export type FirstClassIdProviderKind =
-  | "record"
-  | "family_axis"
-  | "family_axis_value"
-  | "family_evidence_requirement"
-  | "family_cell"
-  | "family_exclusion";
+export type FirstClassIdProviderKind = "record";
 
-export type FirstClassIdProviderValue =
-  | RecordNode
-  | FamilyAxis
-  | FamilyAxisValue
-  | FamilyEvidenceRequirement
-  | FamilyCell
-  | FamilyExclusion;
+export type FirstClassIdProviderValue = RecordNode;
 
 export interface RoadmapIdProviderFact {
   readonly id: RoadmapId;
@@ -143,7 +123,6 @@ export interface RoadmapIndexes extends AdapterIndexes {
   readonly record_nodes: ReadonlyMap<RoadmapId, RecordNode>;
   readonly payload_records: ReadonlyMap<RoadmapId, SemanticPayloadProviderFact>;
   readonly evidence_records: ReadonlyMap<RoadmapId, SemanticPayloadProviderFact>;
-  readonly family_records: ReadonlyMap<RoadmapId, SemanticPayloadProviderFact>;
   readonly sections: ReadonlyMap<SectionId, Section>;
   readonly fragments: ReadonlyMap<FragmentId, Fragment>;
   readonly parts: ReadonlyMap<PartId, Part>;
@@ -258,7 +237,6 @@ function collectPayloadUses(
 
   switch (payload.kind) {
     case "work":
-      roadmap(payload.family_id, "family_id");
       roadmaps(payload.evidence_ids, "evidence_ids");
       roadmaps(payload.control_ids, "control_ids");
       roadmaps(payload.regression_evidence_ids, "regression_evidence_ids");
@@ -290,53 +268,9 @@ function collectPayloadUses(
     case "evidence":
       references(payload.reference_ids, "reference_ids");
       reference(payload.refresh_reference_id, "refresh_reference_id");
-      roadmaps(payload.scope.cell_ids, "scope.cell_ids");
       return;
     case "control":
       references(payload.reference_ids, "reference_ids");
-      return;
-    case "family":
-      roadmaps(payload.work_ids, "work_ids");
-      roadmaps(payload.control_ids, "control_ids");
-      reference(payload.completion_owner_reference_id, "completion_owner_reference_id");
-      reference(payload.retirement_owner_reference_id, "retirement_owner_reference_id");
-      if (payload.family_maturity === "observed_only") {
-        references(payload.observation_reference_ids, "observation_reference_ids");
-      } else {
-        reference(payload.authority_reference_id, "authority_reference_id");
-        reference(payload.legality_owner_reference_id, "legality_owner_reference_id");
-        if (payload.family_maturity === "closed_denominator") {
-          reference(payload.drift_check_reference_id, "drift_check_reference_id");
-          reference(payload.mutation_test_reference_id, "mutation_test_reference_id");
-        }
-      }
-      for (const axis of payload.axes) {
-        reference(axis.authority_reference_id, `axis[${quoted(axis.id)}].authority_reference_id`);
-        for (const value of axis.values) {
-          reference(value.source_reference_id, `axis[${quoted(axis.id)}].value[${quoted(value.id)}].source_reference_id`);
-        }
-      }
-      for (const cell of payload.cells) {
-        roadmaps(cell.evidence_ids, `cell[${quoted(cell.id)}].evidence_ids`);
-        for (const binding of cell.evidence_bindings ?? []) {
-          roadmap(binding.requirement_id, `cell[${quoted(cell.id)}].evidence_binding.requirement_id`);
-          roadmap(binding.evidence_id, `cell[${quoted(cell.id)}].evidence_binding.evidence_id`);
-        }
-        roadmap(cell.work_id, `cell[${quoted(cell.id)}].work_id`);
-        for (const coordinate of cell.coordinates) {
-          roadmap(coordinate.axis_id, `cell[${quoted(cell.id)}].coordinate.axis_id`);
-          roadmap(coordinate.value_id, `cell[${quoted(cell.id)}].coordinate.value_id`);
-        }
-      }
-      for (const exclusion of payload.exclusions) {
-        reference(exclusion.owner_reference_id, `exclusion[${quoted(exclusion.id)}].owner_reference_id`);
-        reference(exclusion.source_reference_id, `exclusion[${quoted(exclusion.id)}].source_reference_id`);
-        reference(exclusion.liveness_reference_id, `exclusion[${quoted(exclusion.id)}].liveness_reference_id`);
-        for (const coordinate of exclusion.coordinates) {
-          roadmap(coordinate.axis_id, `exclusion[${quoted(exclusion.id)}].coordinate.axis_id`);
-          roadmap(coordinate.value_id, `exclusion[${quoted(exclusion.id)}].coordinate.value_id`);
-        }
-      }
       return;
     case "matrix_external_closeout":
       reference(payload.upstream_owner_reference_id, "upstream_owner_reference_id");
@@ -386,60 +320,8 @@ function collectPayloadUses(
       roadmaps(payload.evidence_ids, "evidence_ids");
       if (payload.admission_kind === "independent_recurrence") {
         roadmaps(payload.incident_ids, "incident_ids");
-      } else if (payload.admission_kind === "bounded_denominator") {
-        roadmap(payload.family_id, "family_id");
-        roadmap(payload.cost_record_id, "cost_record_id");
       }
       return;
-  }
-}
-
-function collectFamilyProviders(
-  provider: SemanticPayloadProviderFact,
-  namespace: RoadmapName,
-  out: RoadmapIdProviderFact[],
-): void {
-  if (provider.payload.kind !== "family") return;
-  const family = provider.payload as FamilyPayload;
-  const owner = provider.record.id;
-  const add = (
-    kind: Exclude<FirstClassIdProviderKind, "record">,
-    id: RoadmapId,
-    path: string,
-    value: Exclude<FirstClassIdProviderValue, RecordNode>,
-  ): void => {
-    out.push({ id, namespace, kind, owner_record_id: owner, logical_path: path, value });
-  };
-  for (const axis of family.axes) {
-    const axisPath = `${provider.logical_path}.axis[${quoted(axis.id)}]`;
-    add("family_axis", axis.id, axisPath, axis);
-    for (const value of axis.values) {
-      add(
-        "family_axis_value",
-        value.id,
-        `${axisPath}.value[${quoted(value.id)}]`,
-        value,
-      );
-    }
-  }
-  for (const requirement of family.evidence_requirements) {
-    add(
-      "family_evidence_requirement",
-      requirement.id,
-      `${provider.logical_path}.evidence_requirement[${quoted(requirement.id)}]`,
-      requirement,
-    );
-  }
-  for (const cell of family.cells) {
-    add("family_cell", cell.id, `${provider.logical_path}.cell[${quoted(cell.id)}]`, cell);
-  }
-  for (const exclusion of family.exclusions) {
-    add(
-      "family_exclusion",
-      exclusion.id,
-      `${provider.logical_path}.exclusion[${quoted(exclusion.id)}]`,
-      exclusion,
-    );
   }
 }
 
@@ -588,7 +470,6 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
     addAlias("record", record.id, record.legacy_aliases, path);
     const payload = semanticPayload(record);
     payloadProviders.push(payload);
-    collectFamilyProviders(payload, namespace, idProviders);
     collectPayloadUses(payload, roadmapIdUses, referenceIdUses);
   }
 
@@ -741,10 +622,6 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
     payload_records: mapValues(payloadRecords, (provider) => provider.record.id),
     evidence_records: mapValues(
       payloadRecords.filter((provider) => provider.payload.kind === "evidence"),
-      (provider) => provider.record.id,
-    ),
-    family_records: mapValues(
-      payloadRecords.filter((provider) => provider.payload.kind === "family"),
       (provider) => provider.record.id,
     ),
     sections: mapValues(sections, (value) => value.section_id),

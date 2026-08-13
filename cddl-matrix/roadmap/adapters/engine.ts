@@ -8,7 +8,6 @@
  */
 import type { IssueCollector, RoadmapIssue } from "../errors.ts";
 import { sortRoadmapIssues as sortIssues } from "../errors.ts";
-import { EMPTY_DENOMINATOR_AUTHORITIES, validateSystematicFamilies, type DenominatorAuthorityRegistry } from "../denominator.ts";
 import { buildRoadmapIndexes, type RoadmapIndexes, type SemanticPayloadProviderFact } from "../indexes.ts";
 import { namespaceOf } from "../ids.ts";
 import { concatenate } from "../kernel.ts";
@@ -143,18 +142,6 @@ export function canonicalSemanticMarkdownFields(
       add("claim_md", value.claim_md);
       add("boundary_md", value.boundary_md);
       break;
-    case "family":
-      add("goal_md", value.goal_md);
-      add("boundary_md", value.boundary_md);
-      if (value.family_maturity !== "observed_only") {
-        add("derivation_md", value.derivation_md);
-        add("legality_rule_md", value.legality_rule_md);
-      }
-      if (value.family_maturity === "under_design") {
-        add("denominator_unknowns_md", value.denominator_unknowns_md);
-      }
-      value.exclusions.forEach((entry, index) => add(`exclusions[${index}].reason_md`, entry.reason_md));
-      break;
     case "matrix_external_closeout":
       add("current_upstream_state_md", value.current_upstream_state_md);
       if (value.closeout_state === "blocked") add("blocker_md", value.blocker_md);
@@ -270,7 +257,6 @@ export interface DecodedRoadmapValidationOptions {
   readonly universe?: SemanticJoinUniverse;
   readonly defer_foreign_roadmap_joins?: boolean;
   readonly observer?: DecodedRoadmapValidationObserver;
-  readonly denominator_authorities?: DenominatorAuthorityRegistry;
 }
 
 export interface DecodedRoadmapValidationResult {
@@ -336,12 +322,6 @@ export function validateDecodedRoadmapDocument(
     defer_foreign_roadmap_joins: deferredNamespace,
   }));
   issues.push(...validateRelations(indexes.relations, universe.first_class, source, deferredNamespace, view.current_guards));
-  issues.push(...validateSystematicFamilies(
-    indexes,
-    view,
-    options.denominator_authorities ?? EMPTY_DENOMINATOR_AUTHORITIES,
-    source,
-  ));
   for (const provider of indexes.payload_records.values()) {
     validateDomainPayload(provider, domainIndexes, collector, source);
     options.observer?.domainPayloadValidated(provider);

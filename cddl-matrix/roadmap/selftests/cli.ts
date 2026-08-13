@@ -84,7 +84,7 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "query_as_of_does_not_select_git_revision",
   "cli_production_port_factory_smoke",
   "dispatch_capability_narrowing",
-  "cli_summary_open_family_lower_bound_only",
+  "cli_dashboard_views_operationally_complete",
 ] as const;
 
 export type RequiredCliSelfTestCaseId = (typeof REQUIRED_CLI_SELFTEST_CASE_IDS)[number];
@@ -347,7 +347,6 @@ function withCrossRoadmapTestingExternTarget(source: Uint8Array): Uint8Array {
         work_intent: "build_system",
         work_kind: "infrastructure",
         risk: "compile_failure",
-        family_classification: "none_reviewed",
         acceptance_md: UTF8.encode("The combined cross-roadmap universe resolves this exact target."),
         priority_rationale_md: UTF8.encode("Fixture-only counterpart for the live matrix delegation."),
       },
@@ -608,14 +607,14 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
     }
     case "cli_query_each_view": {
       for (const view of ["summary", "references", "signals", "actionables", "decisions",
-        "families", "watches", "content", "output-owners"]) {
+        "watches", "content", "output-owners"]) {
         expectFailure(
           ["--roadmap", "testing", "--query", view],
           expectedIssue("E-SOURCE-MISSING", "tests/testing-roadmap.toml", "$", "declared source is missing", 1),
         );
       }
       return pass("positive", ["summary", "references", "signals",
-        "actionables", "decisions", "families", "watches", "content", "output-owners"]);
+        "actionables", "decisions", "watches", "content", "output-owners"]);
     }
     case "cli_no_args_rejected": expectFailure([], cliIssue("E-CLI-MODE", 0, "exactly one primary mode is required"), fakePorts(), true); return pass("negative");
     case "cli_unknown_option": expectFailure(["--wat"], cliIssue("E-CLI-UNKNOWN-OPTION", 0, 'unknown option "--wat"'), fakePorts(), true); return pass("negative");
@@ -717,21 +716,15 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
 
 function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
   switch (id) {
-    case "cli_summary_open_family_lower_bound_only": {
+    case "cli_dashboard_views_operationally_complete": {
       const result = run(["--roadmap", "matrix", "--query", "summary", "--json"], bothAuthoritativePorts());
       assert(result.exit_code === 0 && result.stderr.byteLength === 0, `live matrix summary failed: ${text(result.stderr)}`);
       const payload = JSON.parse(text(result.stdout));
-      const families = payload.roadmaps?.find((row: { roadmap: string }) => row.roadmap === "matrix")?.families;
-      assert(Array.isArray(families) && families.length === 6, `live summary did not expose exactly 6 active matrix families: ${JSON.stringify(payload)}`);
-      for (const family of families as readonly Record<string, unknown>[]) {
-        assert(family.denominator_maturity === "observed_only", `live family is unexpectedly closable: ${JSON.stringify(family)}`);
-        assert(typeof family.observed_lower_bound === "number", `open family omitted observed_lower_bound: ${JSON.stringify(family)}`);
-        for (const forbidden of ["legal_total", "percentage", "completion", "completion_percentage", "percent_complete"]) {
-          assert(!(forbidden in family), `open family fabricated ${forbidden}: ${JSON.stringify(family)}`);
-        }
-      }
+      const matrixSummary = payload.roadmaps?.find((row: { roadmap: string }) => row.roadmap === "matrix");
+      assert(typeof matrixSummary?.record_count === "number" && matrixSummary.schema_version === 3,
+        `live matrix summary did not expose its record inventory: ${JSON.stringify(payload)}`);
       const dashboards = new Map<string, Record<string, unknown>>();
-      for (const view of ["signals", "actionables", "decisions", "families", "watches", "content"] as const) {
+      for (const view of ["signals", "actionables", "decisions", "watches", "content"] as const) {
         const first = run(["--roadmap", "all", "--query", view, "--json"], bothAuthoritativePorts());
         const second = run(["--roadmap", "all", "--query", view, "--json"], bothAuthoritativePorts());
         assert(first.exit_code === 0 && second.exit_code === 0 && first.stderr.byteLength === 0 &&
@@ -789,7 +782,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           projection_group: syntheticTesting.sections[0]!.section_id,
           payload: { kind: "work",
             work_state: "delegated", work_intent: "build_capability", work_kind: "feature",
-            risk: "cosmetic", family_classification: "none_reviewed",
+            risk: "cosmetic",
             return_condition_md: UTF8.encode("Return when the delegated owner completes the fixture.") },
         },
         {
@@ -826,15 +819,6 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         syntheticActionables.costs.length === 1 && syntheticActionables.costs[0].cost_posture === "live_registry" &&
         !("consequence" in syntheticActionables.costs[0]),
       "delegated ownership or cost/effort separation is absent from the actionable dashboard");
-      const familyDashboard = dashboards.get("families")!.families as readonly Record<string, unknown>[];
-      assert(familyDashboard.length === 6 && familyDashboard.every((family) =>
-        family.denominator_maturity === "observed_only" && typeof family.observed_lower_bound === "number" &&
-        typeof family.explicit_unknown === "number" && family.unmodelled_population === "unknown_open_denominator" &&
-        family.denominator_authority === "observed_only" && Array.isArray(family.observation_reference_ids) &&
-        Array.isArray(family.exclusions) &&
-        !["legal_total", "percentage", "completion", "completion_percentage", "percent_complete",
-          "unknown_or_unmodelled"].some((field) => field in family)),
-      "open-family dashboard fabricated a denominator/percentage or conflated explicit unknowns with unmodelled space");
       const watches = dashboards.get("watches")!;
       const liveWatches = watches.live as readonly Record<string, unknown>[];
       const history = watches.attributed_history as readonly Record<string, unknown>[];

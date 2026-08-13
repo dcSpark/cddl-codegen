@@ -130,23 +130,12 @@ export function validateRelations(
         `relation source ${JSON.stringify(relation.source)} is not an active first-class ID`,
       ));
     }
-    const targetGuard = guards.get(relation.target);
-    const guardedReopen = relation.kind === "reopens" &&
-      targetGuard?.guard_role === "closed_family_root";
-    if (!firstClass.has(relation.target) && !guardedReopen && !deferredForeign(relation.target)) {
+    if (!firstClass.has(relation.target) && !deferredForeign(relation.target)) {
       issues.push(issue(
         "E-RELATION-ENDPOINT",
         source,
         `${path}.target`,
         `relation target ${JSON.stringify(relation.target)} is not an active first-class ID`,
-      ));
-    }
-    if (relation.kind === "reopens" && targetGuard !== undefined && !guardedReopen) {
-      issues.push(issue(
-        "E-RELATION-ENDPOINT",
-        source,
-        `${path}.target`,
-        `reopens target guard ${JSON.stringify(relation.target)} must be a closed-family root`,
       ));
     }
     const key = relationKey(relation);

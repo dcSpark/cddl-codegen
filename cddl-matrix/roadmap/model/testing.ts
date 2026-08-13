@@ -95,7 +95,7 @@ export type TestingCostPayload = LiveRegistryTestingCost | HistoricalObservation
 
 interface TestingSystemAdmissionBase extends SemanticPayloadBase {
   kind: "testing_system_admission";
-  admission_kind: "silent_corruption" | "independent_recurrence" | "bounded_denominator";
+  admission_kind: "silent_corruption" | "independent_recurrence";
   claim_md: Uint8Array;
   evidence_ids: RoadmapId[];
 }
@@ -109,16 +109,9 @@ export interface IndependentRecurrenceAdmission extends TestingSystemAdmissionBa
   incident_ids: RoadmapId[];
 }
 
-export interface BoundedDenominatorAdmission extends TestingSystemAdmissionBase {
-  admission_kind: "bounded_denominator";
-  family_id: RoadmapId;
-  cost_record_id: RoadmapId;
-}
-
 export type TestingSystemAdmissionPayload =
   | SilentCorruptionAdmission
-  | IndependentRecurrenceAdmission
-  | BoundedDenominatorAdmission;
+  | IndependentRecurrenceAdmission;
 
 export type TestingSemanticPayload =
   | TestingOperationalWatchPayload

@@ -68,18 +68,6 @@ export function validateTestingPayloadFact(
         out,
       );
     }
-  } else if (payload.admission_kind === "bounded_denominator") {
-    requirePayloadKind(provider, source, indexes, payload.family_id, "family_id", (target) => target.kind === "family", "a systematic family", out);
-    requirePayloadKind(
-      provider,
-      source,
-      indexes,
-      payload.cost_record_id,
-      "cost_record_id",
-      (target) => target.kind === "testing_cost",
-      "a testing cost record",
-      out,
-    );
   }
 }
 

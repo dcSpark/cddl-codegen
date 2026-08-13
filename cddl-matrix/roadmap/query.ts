@@ -70,17 +70,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
           roadmap: item.document.document.roadmap,
           schema_version: item.document.document.schema_version,
           record_count: item.document.records.length,
-          families: item.document.records.flatMap((record) => {
-            const payload = record.payload;
-            if (payload.kind !== "family") return [];
-            return [{
-              id: record.id,
-              denominator_maturity: payload.family_maturity,
-              ...(payload.family_maturity === "closed_denominator"
-                ? { legal_total: payload.cells.length }
-                : { observed_lower_bound: payload.cells.length }),
-            }];
-          }),
           projection_byte_length: item.projection.byteLength,
           projection_sha256: sha256(item.projection),
         })),
@@ -141,7 +130,7 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
           admission_basis: payload.work_kind !== "missing_system"
             ? "not_applicable"
             : (payload.admission_ids?.length ?? 0) > 0 ? "admitted" : "missing",
-          admission_basis_ids: payload.admission_ids ?? [], family_id: payload.family_id ?? null,
+          admission_basis_ids: payload.admission_ids ?? [],
           ...(payload.work_state === "ready" ? { priority_band: payload.priority_band ?? "unbanded",
             priority_rationale_md: payload.priority_rationale_md }
           : payload.work_state === "blocked" ? { blocker_md: payload.blocker_md,
@@ -218,36 +207,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
             authority_reference_id: payload.authority_reference_id }) }]);
       return { evaluation_as_of, decisions: groupQueryRows(rows, (row) => String(row.decision_state)) };
     }
-    case "families":
-      return { evaluation_as_of, families: payloadRows.flatMap(({ roadmap, id, payload }) => {
-        if (payload.kind !== "family") return [];
-        const dispositions = Object.fromEntries([
-          "supported", "safely_refused", "deliberately_unsupported", "unknown",
-        ].map((disposition) => [disposition,
-          payload.cells.filter((cell) => cell.cell_disposition === disposition).length]));
-        return [{ roadmap, id, denominator_maturity: payload.family_maturity,
-          campaign_state: payload.campaign_state,
-          ...(payload.family_maturity === "closed_denominator"
-            ? { legal_total: payload.cells.length }
-            : { observed_lower_bound: payload.cells.length }),
-          exclusions: payload.exclusions, dispositions,
-          explicit_unknown: payload.cells.filter((cell) => cell.cell_disposition === "unknown").length,
-          unmodelled_population: payload.family_maturity === "closed_denominator" ? 0 : "unknown_open_denominator",
-          closure_owner_reference_id: payload.completion_owner_reference_id,
-          ...(payload.family_maturity === "observed_only"
-            ? { denominator_authority: "observed_only",
-              observation_reference_ids: payload.observation_reference_ids }
-            : { denominator_authority: payload.authority_kind,
-              authority_reference_id: payload.authority_reference_id,
-              derivation_md: payload.derivation_md, legality_rule_md: payload.legality_rule_md,
-              legality_owner_reference_id: payload.legality_owner_reference_id,
-              denominator_unknowns_md: payload.family_maturity === "under_design"
-                ? payload.denominator_unknowns_md ?? null : null,
-              ...(payload.family_maturity === "closed_denominator"
-                ? { drift_check_reference_id: payload.drift_check_reference_id,
-                  mutation_test_reference_id: payload.mutation_test_reference_id }
-                : {}) }) }];
-      }) };
     case "watches":
       return { evaluation_as_of,
         live: payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {

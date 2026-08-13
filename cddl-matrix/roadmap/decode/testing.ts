@@ -34,7 +34,7 @@ export const TESTING_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "watch_state", values: ["watching", "attributed", "retire_pending"] },
   { name: "incident_posture", values: ["live", "attributed", "historical"] },
   { name: "cost_posture", values: ["live_registry", "historical_observation"] },
-  { name: "admission_kind", values: ["silent_corruption", "independent_recurrence", "bounded_denominator"] },
+  { name: "admission_kind", values: ["silent_corruption", "independent_recurrence"] },
 ] as const;
 
 export const TESTING_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
@@ -47,9 +47,8 @@ export const TESTING_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
   { name: "historical testing incident", required: ["kind", "incident_posture", "signature_md", "evidence_ids", "attribution_md", "operating_rule_reference_id", "retirement_reference_id"], optional: ["detail_md"] },
   { name: "live registry testing cost", required: ["kind", "cost_posture", "unit", "scope_md", "gate_reference_id"], optional: ["detail_md"], forbidden: ["value_min", "value_max", "observed_at", "environment_md", "evidence_ids", "valid_through"] },
   { name: "historical testing cost", required: ["kind", "cost_posture", "unit", "scope_md", "value_min", "value_max", "observed_at", "environment_md", "evidence_ids"], optional: ["detail_md"], forbidden: ["gate_reference_id", "valid_through"] },
-  { name: "silent-corruption admission", required: ["kind", "admission_kind", "claim_md", "evidence_ids"], optional: ["detail_md"], forbidden: ["incident_ids", "family_id", "cost_record_id"] },
-  { name: "independent-recurrence admission", required: ["kind", "admission_kind", "claim_md", "evidence_ids", "incident_ids"], optional: ["detail_md"], forbidden: ["family_id", "cost_record_id"] },
-  { name: "bounded-denominator admission", required: ["kind", "admission_kind", "claim_md", "evidence_ids", "family_id", "cost_record_id"], optional: ["detail_md"], forbidden: ["incident_ids"] },
+  { name: "silent-corruption admission", required: ["kind", "admission_kind", "claim_md", "evidence_ids"], optional: ["detail_md"], forbidden: ["incident_ids"] },
+  { name: "independent-recurrence admission", required: ["kind", "admission_kind", "claim_md", "evidence_ids", "incident_ids"], optional: ["detail_md"] },
 ] as const;
 
 function common(
@@ -134,17 +133,14 @@ function decodeCost(ctx: DecodeContext, raw: unknown, path: string): TestingCost
 }
 
 function decodeAdmission(ctx: DecodeContext, raw: unknown, path: string): TestingSystemAdmissionPayload {
-  const pre = expectExactTable(ctx, raw, path, { name: "testing admission discriminator", required: ["kind", "admission_kind"], optional: ["detail_md", "claim_md", "evidence_ids", "incident_ids", "family_id", "cost_record_id"] });
-  const kind = expectEnum(ctx, requiredValue(pre, "admission_kind"), ["silent_corruption", "independent_recurrence", "bounded_denominator"] as const, p(path, "admission_kind"));
-  const table = expectExactTable(ctx, raw, path, TESTING_SCHEMA_ROWS[kind === "silent_corruption" ? 9 : kind === "independent_recurrence" ? 10 : 11]);
+  const pre = expectExactTable(ctx, raw, path, { name: "testing admission discriminator", required: ["kind", "admission_kind"], optional: ["detail_md", "claim_md", "evidence_ids", "incident_ids"] });
+  const kind = expectEnum(ctx, requiredValue(pre, "admission_kind"), ["silent_corruption", "independent_recurrence"] as const, p(path, "admission_kind"));
+  const table = expectExactTable(ctx, raw, path, TESTING_SCHEMA_ROWS[kind === "silent_corruption" ? 9 : 10]);
   const base = { kind: "testing_system_admission" as const, ...common(ctx, table, path), admission_kind: kind, claim_md: expectMarkdown(ctx, requiredValue(table, "claim_md"), p(path, "claim_md")), evidence_ids: expectRoadmapIdSet(ctx, requiredValue(table, "evidence_ids"), p(path, "evidence_ids"), true) };
   if (kind === "silent_corruption") return { ...base, admission_kind: kind };
-  if (kind === "independent_recurrence") {
-    const incident_ids = expectRoadmapIdSet(ctx, requiredValue(table, "incident_ids"), p(path, "incident_ids"), true);
-    if (incident_ids.length < 2) schemaFail(ctx, "E-SCHEMA-FLOOR", p(path, "incident_ids"), "independent recurrence requires two distinct incidents");
-    return { ...base, admission_kind: kind, incident_ids };
-  }
-  return { ...base, admission_kind: kind, family_id: expectRoadmapId(ctx, requiredValue(table, "family_id"), p(path, "family_id")), cost_record_id: expectRoadmapId(ctx, requiredValue(table, "cost_record_id"), p(path, "cost_record_id")) };
+  const incident_ids = expectRoadmapIdSet(ctx, requiredValue(table, "incident_ids"), p(path, "incident_ids"), true);
+  if (incident_ids.length < 2) schemaFail(ctx, "E-SCHEMA-FLOOR", p(path, "incident_ids"), "independent recurrence requires two distinct incidents");
+  return { ...base, admission_kind: kind, incident_ids };
 }
 
 export function decodeTestingPayload(
