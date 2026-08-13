@@ -2092,8 +2092,53 @@
             "status": "supported"
           }
         },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.null.fixed-kind",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.true.fixed-kind",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 4 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.choice-member.prelude.true.same_major_brute",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.prelude.undefined.fixed-kind",
         "status": "supported"
       },
       {
@@ -2177,8 +2222,63 @@
             "status": "supported"
           }
         },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.bytes.fixed-kind",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 2 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.choice-member.type2.value.fixed_null",
+        "status": "supported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.float.fixed-kind",
+        "status": "unsupported"
+      },
+      {
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.nint.fixed-kind",
+        "status": "unsupported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.text.fixed-kind",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.value.uint.fixed-kind",
         "status": "supported"
       },
       {
@@ -3250,106 +3350,6 @@
         "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.top-level.type2.unwrap",
         "status": "unsupported"
-      },
-      {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok",
-        "id": "contain.choice-member.prelude.null.fixed-kind",
-        "status": "supported"
-      },
-      {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
-        "id": "contain.choice-member.prelude.true.fixed-kind",
-        "status": "supported"
-      },
-      {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
-        "id": "contain.choice-member.prelude.undefined.fixed-kind",
-        "status": "supported"
-      },
-      {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
-        "id": "contain.choice-member.type2.value.bytes.fixed-kind",
-        "status": "supported"
-      },
-      {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
-        "id": "contain.choice-member.type2.value.float.fixed-kind",
-        "status": "unsupported"
-      },
-      {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
-        "id": "contain.choice-member.type2.value.nint.fixed-kind",
-        "status": "unsupported"
-      },
-      {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
-        "id": "contain.choice-member.type2.value.text.fixed-kind",
-        "status": "supported"
-      },
-      {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
-        "id": "contain.choice-member.type2.value.uint.fixed-kind",
-        "status": "supported"
       },
       {
         "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
