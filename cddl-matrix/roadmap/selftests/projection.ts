@@ -147,6 +147,7 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "outputs_overlapping_slots",
   "outputs_path_escape",
   "outputs_empty_inventory",
+  "outputs_legacy_status_inventory_no_whole_file_claim",
   "outputs_matrix_handoff_collision",
   "outputs_projection_path_floor",
   "outputs_slot_cardinality",
@@ -2371,6 +2372,52 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       executed.push(label);
     }
     return pass("negative", executed);
+  }
+  if (id === "outputs_legacy_status_inventory_no_whole_file_claim") {
+    // The production status-header inventory is slot-only by construction, so it can never mint the
+    // whole-file authority a projection write needs — proven against the ACTUAL claim list, not a
+    // fixture of it. The carrier is an ordinary authoritative v2 document: the refusal is a property
+    // of the inventory, not of the document's authority.
+    if (LEGACY_STATUS_OUTPUT_CLAIMS.some((value) =>
+      value.kind === "whole_file" || value.producer === "roadmap-projector"
+    )) fail("legacy status production inventory unexpectedly contains a whole-file/projector claim");
+    const claimsByPath = new Map<RepoPath, Extract<OutputClaim, { kind: "slot" }>[]>();
+    for (const value of LEGACY_STATUS_OUTPUT_CLAIMS) {
+      if (value.kind !== "slot") fail("legacy status inventory contains a non-slot claim");
+      const values = claimsByPath.get(value.path) ?? [];
+      values.push(value);
+      claimsByPath.set(value.path, values);
+    }
+    const targets = new Map<RepoPath, Uint8Array>();
+    for (const [targetPath, targetClaims] of claimsByPath) {
+      targets.set(targetPath, bytes(targetClaims.map((value) =>
+        `<!-- gen:sh:${value.slot_id} -->value<!-- /gen:sh:${value.slot_id} -->`
+      ).join("\n")));
+    }
+    const resolution = resolveOutputClaims({
+      registry: LEGACY_STATUS_OUTPUT_REGISTRY,
+      claims: LEGACY_STATUS_OUTPUT_CLAIMS,
+      targets,
+    });
+    if (resolution.issues.length !== 0 || resolution.authority === undefined) {
+      fail("actual legacy production status inventory did not resolve");
+    }
+    const document = semanticFixture("exact").document;
+    const result = createProjectionWritePlan({
+      write_coordinate: "projection",
+      roadmap: "matrix",
+      document,
+      projection_bytes: bytes("projection"),
+      output_authority: resolution.authority,
+      validation_issues: [],
+    });
+    if (result.ok) fail("slot-only status inventory minted a projection write plan");
+    requireExactIssue(result.issues, "E-OUTPUT-AUTHORITY", "output_claims");
+    if (!result.issues.some((value) =>
+      value.logical_path === "output_claims" &&
+      value.message.includes("lacks an opaque validated whole-file authority")
+    )) fail("actual legacy status inventory did not prove the projection has no whole-file claim");
+    return pass("negative");
   }
   if (
     id === "outputs_projection_path_floor" ||

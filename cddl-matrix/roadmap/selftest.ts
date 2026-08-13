@@ -405,6 +405,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["outputs_overlapping_slots", { code: "E-OUTPUT-CLAIM", logical_path: "overlap[0,1]" }],
   ["outputs_path_escape", { code: "E-OUTPUT-PATH", logical_path: "claims[0]" }],
   ["outputs_empty_inventory", { code: "E-OUTPUT-CLAIM", logical_path: "claims" }],
+  ["outputs_legacy_status_inventory_no_whole_file_claim", { code: "E-OUTPUT-AUTHORITY", logical_path: "output_claims" }],
   ["outputs_production_stage_required", { code: "E-OUTPUT-CLAIM", logical_path: "stage" }],
   ["outputs_matrix_handoff_collision", { code: "E-OUTPUT-CLAIM", logical_path: "overlap[0,4]" }],
   ["outputs_projection_path_floor", { code: "E-OUTPUT-AUTHORITY", logical_path: "output_claims.scope" }],
