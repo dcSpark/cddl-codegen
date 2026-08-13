@@ -9,6 +9,7 @@ import type { RepoPath } from "../model/core.ts";
 import type { RoadmapDocumentV2 } from "../model/documents.ts";
 import { renderValidatedChunks } from "../render.ts";
 import { buildExpectedChunks, validateCompletedChunks } from "../render_ir.ts";
+import { deepFreeze } from "./frozen.ts";
 
 const UTF8 = new TextEncoder();
 const TESTING_SOURCE_PATH = "tests/testing-roadmap.toml" as RepoPath;
@@ -18,7 +19,16 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+/**
+ * Memoized once per process: the input is the imported committed source text, content-stable
+ * within a run, so re-decoding (which also re-composes to prove byte-canonicality) on every call
+ * only re-derives the same value. The shared document is deep-frozen so accidental in-place
+ * mutation by one case fails loudly instead of leaking into later cases.
+ */
+let memoizedTestingDocument: RoadmapDocumentV2 | undefined;
+
 export function liveTestingV2Document(): RoadmapDocumentV2 {
+  if (memoizedTestingDocument !== undefined) return memoizedTestingDocument;
   const decoded = decodeRoadmapSource(
     UTF8.encode(liveTestingSourceText),
     TESTING_SOURCE_PATH,
@@ -33,7 +43,8 @@ export function liveTestingV2Document(): RoadmapDocumentV2 {
       decoded.document.projection_path === TESTING_PROJECTION_PATH,
     "committed testing self-test source does not declare the live production paths",
   );
-  return decoded as RoadmapDocumentV2;
+  memoizedTestingDocument = deepFreeze(decoded as RoadmapDocumentV2);
+  return memoizedTestingDocument;
 }
 
 export function liveTestingLegacyV2Document(): RoadmapDocumentV2 {
@@ -57,8 +68,15 @@ export function liveTestingProjection(): Uint8Array {
   return UTF8.encode(liveTestingProjectionText);
 }
 
+/**
+ * Memoized like the document above (pure function of the memoized document); callers get a fresh
+ * copy of the bytes so no caller can mutate another's view.
+ */
+let memoizedLegacyProjection: Uint8Array | undefined;
+
 /** The pre-anchor-layout projection, rendered from the live source without the anchor layout. */
 export function liveTestingLegacyProjection(): Uint8Array {
+  if (memoizedLegacyProjection !== undefined) return new Uint8Array(memoizedLegacyProjection);
   const document = liveTestingV2Document();
   const placement = resolveManifest(document);
   const completed = buildExpectedChunks(document, placement.ops, {
@@ -80,7 +98,8 @@ export function liveTestingLegacyProjection(): Uint8Array {
       sha256(projection) === "6e90f1fb06011cefa546d861da0a6525ff1af6fc81bbe51c9ed5f035578b53af",
     "rendered testing legacy projection escaped its frozen length/digest",
   );
-  return projection;
+  memoizedLegacyProjection = projection;
+  return new Uint8Array(memoizedLegacyProjection);
 }
 
 function sha256(value: Uint8Array): string {
