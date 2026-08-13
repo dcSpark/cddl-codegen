@@ -94,6 +94,16 @@ export function validateRoadmapId(
   return accepted(value as RoadmapId);
 }
 
+/**
+ * Namespace of an ID by its declared prefix — undefined for any string carrying neither prefix.
+ * This is the tree's one namespace classifier: it never invents a namespace for an unknown ID
+ * (a fallback arm that answered "testing" would silently misclassify garbage). Callers needing
+ * full grammar/reserved-token validation use validateRoadmapId first.
+ */
+export function namespaceOf(id: RoadmapId): RoadmapName | undefined {
+  return id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
+}
+
 export function validateSubordinateId(value: string): IdValidationResult<string> {
   return subordinateIdPattern.test(value)
     ? accepted(value)

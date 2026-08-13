@@ -13,7 +13,7 @@ import type {
   RoadmapIdProviderFact,
   SemanticPayloadProviderFact,
 } from "./indexes.ts";
-import { validateRoadmapId } from "./ids.ts";
+import { namespaceOf, validateRoadmapId } from "./ids.ts";
 import type { RepoPath, RoadmapId } from "./model/core.ts";
 import type { Reference } from "./model/documents.ts";
 import type { CurrentGuard, FamilyGuardRole, Relation, SemanticPayload } from "./model/documents.ts";
@@ -443,9 +443,7 @@ function allowedReferenceKinds(
   return [];
 }
 
-function roadmapNamespace(id: RoadmapId): "matrix" | "testing" | undefined {
-  return id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
-}
+const roadmapNamespace = namespaceOf;
 
 function deferredForeignTarget(
   id: RoadmapId,

@@ -1,6 +1,6 @@
 import type { RoadmapIssue } from "./errors.ts";
 import type { DocumentIdentityInputs, RoadmapIdProviderFact } from "./indexes.ts";
-import { validateRoadmapId } from "./ids.ts";
+import { namespaceOf, validateRoadmapId } from "./ids.ts";
 import type { RoadmapId, RoadmapName } from "./model/core.ts";
 import type { CurrentGuard } from "./model/documents.ts";
 import { isImmutableByteView } from "./render_ir.ts";
@@ -88,10 +88,9 @@ function claimSort(left: GlobalOwnerClaim, right: GlobalOwnerClaim): number {
   return 0;
 }
 
-function namespaceOf(id: RoadmapId): RoadmapName | undefined {
-  const result = validateRoadmapId(id);
-  if (!result.ok) return undefined;
-  return id.startsWith("matrix.") ? "matrix" : "testing";
+/** Namespace of a fully policy-valid ID; undefined when grammar/reserved-token validation fails. */
+function validatedNamespaceOf(id: RoadmapId): RoadmapName | undefined {
+  return validateRoadmapId(id).ok ? namespaceOf(id) : undefined;
 }
 
 /** Normalize the global first-class/guard domain after document-local indexing. */
@@ -132,7 +131,7 @@ export function validateGlobalIdentity(
     }
   }
   for (const guard of inputs.current_guards ?? []) {
-    const namespace = namespaceOf(guard.id);
+    const namespace = validatedNamespaceOf(guard.id);
     if (namespace === undefined) {
       const result = validateRoadmapId(guard.id);
       if (!result.ok) issues.push(issue(result.code, `guard[${JSON.stringify(guard.id)}]`, result.message));
@@ -148,7 +147,7 @@ export function validateGlobalIdentity(
         ));
         continue;
       }
-      const familyNamespace = namespaceOf(guard.family_root_id);
+      const familyNamespace = validatedNamespaceOf(guard.family_root_id);
       if (familyNamespace !== namespace ||
         (guard.guard_role === "closed_family_root") !== (guard.family_root_id === guard.id)) {
         issues.push(issue(

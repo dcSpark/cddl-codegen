@@ -8,6 +8,7 @@ import {
 } from "./debt.ts";
 import type { RoadmapIssue } from "./errors.ts";
 import type { GlobalIdentityResult, GlobalOwnerClaim } from "./identity.ts";
+import { namespaceOf } from "./ids.ts";
 import type { FullCommitId, RoadmapId, RoadmapName } from "./model/core.ts";
 import type { Reference, RoadmapDocument, RoadmapDocumentV2 } from "./model/documents.ts";
 import type { CompletedRenderIr } from "./render_ir.ts";
@@ -98,9 +99,6 @@ function validCommit(value: string): boolean {
   return /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(value);
 }
 
-function namespaceOf(id: RoadmapId): RoadmapName {
-  return id.startsWith("matrix.") ? "matrix" : "testing";
-}
 
 function ownerKind(claim: GlobalOwnerClaim): string {
   return claim.owner_kind;

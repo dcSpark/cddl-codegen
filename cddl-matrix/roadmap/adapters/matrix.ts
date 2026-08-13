@@ -27,6 +27,7 @@ import type {
   RoadmapAdapter,
 } from "./types.ts";
 import { MATRIX_SLOT_FLOORS } from "./matrix_slot_floors.ts";
+import { namespaceOf } from "../ids.ts";
 import { concatenate } from "../kernel.ts";
 import { sortRoadmapIssues as sortIssues } from "../errors.ts";
 
@@ -94,7 +95,7 @@ function requirePayloadKind(
   const target = payloadAt(indexes, id);
   const deferred = (indexes as Indexes & { readonly deferred_foreign_roadmap_joins?: RoadmapName })
     .deferred_foreign_roadmap_joins;
-  const targetNamespace = id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
+  const targetNamespace = namespaceOf(id);
   if (target === undefined && deferred !== undefined && targetNamespace !== undefined &&
     targetNamespace !== deferred) return;
   if (target === undefined || !predicate(target)) {

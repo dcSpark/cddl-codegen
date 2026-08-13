@@ -4,6 +4,7 @@ import type { RoadmapId } from "./model/core.ts";
 import type { RoadmapName } from "./model/core.ts";
 import type { Relation, RelationKind } from "./model/documents.ts";
 import type { CurrentGuard } from "./model/documents.ts";
+import { namespaceOf } from "./ids.ts";
 import { codePointSort } from "./kernel.ts";
 
 const CYCLIC_KINDS = Object.freeze([
@@ -115,7 +116,7 @@ export function validateRelations(
   const exact = new Map<string, number>();
   const symmetric = new Map<string, Relation[]>();
   const deferredForeign = (id: RoadmapId): boolean => {
-    const namespace = id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
+    const namespace = namespaceOf(id);
     return deferForeignRoadmapJoins !== undefined && namespace !== undefined &&
       namespace !== deferForeignRoadmapJoins && !firstClass.has(id);
   };
