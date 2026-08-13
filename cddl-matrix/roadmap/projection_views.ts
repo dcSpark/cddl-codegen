@@ -364,7 +364,7 @@ function layoutPieces(document: RoadmapDocument, completed: CompletedRenderIr, i
     // The testing layout transforms key on the live document's section vocabulary. Each applies
     // exactly where its section exists (a synthetic document without one simply has nothing to
     // transform); more than one owner of a transform's section is still a hard error, and the
-    // committed-projection drift comparison owns the live document's byte outcome.
+    // live layout assertions in the projection-views selftest own the rendered byte outcome.
     const nextSections = pieces.filter((piece) => piece.owner.kind === "section" && piece.owner.id === "next-priority");
     const standingSections = pieces.filter((piece) => piece.owner.kind === "section" && piece.owner.id === "standing-system");
     if (nextSections.length > 1) issues.push(issue(document, "projection.layout.next-priority",

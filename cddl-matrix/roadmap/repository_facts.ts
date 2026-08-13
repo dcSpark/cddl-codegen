@@ -233,7 +233,7 @@ function validateMarkdownViewText(
 /**
  * Scan one immutable roadmap Markdown view without materializing its conceptual whole-file bytes.
  * This is the projection-path counterpart of scanRoadmapCitations. Its provenance is the expected
- * projection bytes the decoded source just built, never the committed projection.
+ * projection bytes the decoded source just built, never any prior on-disk render.
  */
 export function scanRoadmapMarkdownFacts(
   source: RepoPath,

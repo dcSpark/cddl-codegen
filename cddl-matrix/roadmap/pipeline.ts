@@ -188,7 +188,7 @@ const CORE_PIPELINE: readonly CoreStage[] = Object.freeze([
   },
   {
     // Authoritative references to the roadmap projection resolve against the projection this
-    // decoded source just built. The committed projection is prior output and therefore cannot be
+    // decoded source just built. Any prior on-disk render is prior output and therefore cannot be
     // an input to domain validation. Build/slot resolution deliberately precedes this scan because
     // expected bytes are its authority; neither depends on a successful domain verdict.
     name: "domain-validation",
