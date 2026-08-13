@@ -62,7 +62,9 @@ import {
 import { buildProjectionViews, type ProjectionViews } from "./projection_views.ts";
 import { projectionLayout, projectionLayoutRank, validateProjectionLayoutDeclaration } from "./projection_layout.ts";
 import { scanRoadmapMarkdownFacts } from "./references.ts";
-import { runSelfTests } from "./selftest.ts";
+// Type-only: the selftest runner VALUE is injected by the entry point through
+// RoadmapCliDispatchServices, so this module has no runtime edge into the selftest tree.
+import type { runSelfTests } from "./selftest.ts";
 import { validateSourceSpans } from "./spans.ts";
 import { validateTransaction } from "./transaction.ts";
 import { applyProjectionWritePlan, createProjectionWritePlan } from "./write_plan.ts";
@@ -844,10 +846,6 @@ export interface RoadmapCliDispatchServices {
   readonly run_selftests: typeof runSelfTests;
 }
 
-const DEFAULT_DISPATCH_SERVICES: RoadmapCliDispatchServices = Object.freeze({
-  run_selftests: runSelfTests,
-});
-
 function dispatchRoadmapCliRequest(
   request: CliRequest,
   ports: RoadmapCliPorts,
@@ -884,7 +882,7 @@ function dispatchRoadmapCliRequest(
 export function runRoadmapCli(
   argv: readonly string[],
   ports: RoadmapCliPorts,
-  services: RoadmapCliDispatchServices = DEFAULT_DISPATCH_SERVICES,
+  services: RoadmapCliDispatchServices,
 ): RoadmapCliResult {
   try {
     return dispatchRoadmapCliRequest(parseRoadmapCli(argv), ports, services);

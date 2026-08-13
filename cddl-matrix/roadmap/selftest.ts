@@ -504,8 +504,6 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ]);
 
 export function createCompleteSelfTestRegistry(): SelfTestRegistry {
-  // This list is deliberately constructed at call time. selftests/cli.ts exercises the public
-  // service façade, so eager reads here would observe its ESM bindings during cycle initialization.
   const families = [
     { required: REQUIRED_CODEC_SELFTEST_CASE_IDS, cases: CODEC_SELFTEST_CASES },
     { required: REQUIRED_SCHEMA_SELFTEST_CASE_IDS, cases: SCHEMA_SELFTEST_CASES },

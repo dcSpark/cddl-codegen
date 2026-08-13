@@ -1456,7 +1456,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           throw new Error("invalid argv must not initialize ports");
         },
       });
-      const invalid = runRoadmapCli(["--wat"], invalidPorts);
+      const invalid = runRoadmapCli(["--wat"], invalidPorts, fakeSelftestServices);
       assert(
         invalid.exit_code === 2 && invalidAnchorReads === 0 &&
           text(invalid.stderr) === `FAIL [E-CLI-UNKNOWN-OPTION] <cli>#argv[0]: unknown option \"--wat\"\nFAILED: 1 issue(s)\n${ROADMAP_CLI_USAGE}`,
