@@ -16,6 +16,13 @@ import type {
   SemanticPayloadProviderFact,
 } from "./indexes.ts";
 import { namespaceOf } from "./ids.ts";
+import {
+  EXTERNAL_OWNER_REFERENCE_KINDS,
+  armOfPayload,
+  type AllowedReferenceKinds,
+  type PayloadArm,
+  type PayloadField,
+} from "./payload_descriptors.ts";
 import type { RoadmapId } from "./model/core.ts";
 import type { Reference } from "./model/documents.ts";
 import type { CurrentGuard, Relation, SemanticPayload } from "./model/documents.ts";
@@ -251,95 +258,86 @@ export function compareReferenceTargets(left: Reference, right: Reference): numb
 
 type ReferenceKind = Reference["kind"];
 
-const durableOwnerKinds = Object.freeze([
-  "consumer_report", "external_commit", "external_issue", "external_release", "file_heading",
-  "gate", "matrix_feature", "matrix_role", "roadmap", "spec_passage", "test_symbol",
-] as const satisfies readonly ReferenceKind[]);
+const externalOwnerKinds = EXTERNAL_OWNER_REFERENCE_KINDS;
 
-const externalOwnerKinds = Object.freeze([
-  "consumer_report", "external_commit", "external_issue", "external_release",
-] as const satisfies readonly ReferenceKind[]);
-
-const authoritativeReferenceKinds = Object.freeze([
-  "file_heading", "gate", "matrix_feature", "roadmap", "spec_passage",
-] as const satisfies readonly ReferenceKind[]);
-
-function evidenceReferenceKinds(
-  payload: Extract<SemanticPayloadProviderFact["payload"], { kind: "evidence" }>,
-): readonly ReferenceKind[] {
-  switch (payload.evidence_kind) {
-    case "regression_pin": return ["gate", "test_symbol"];
-    case "gate": return ["gate"];
-    case "harness_free_repro": return durableOwnerKinds;
-    case "committed_vector": return ["file_heading", "test_symbol"];
-    case "execution_probe": return durableOwnerKinds;
-    case "registry_enumeration": return ["file_heading", "gate", "matrix_cell", "matrix_feature", "matrix_role"];
-    case "source_read": return ["file_heading"];
-    case "spec_read": return ["spec_passage"];
-    case "consumer_report": return ["consumer_report"];
-    case "incident": return ["file_heading", "roadmap"];
-    case "external_issue": return ["external_issue"];
-    case "external_commit": return ["external_commit"];
-    case "decision": return ["roadmap"];
+/**
+ * Resolve a citing field's descriptor by its path relative to the payload root
+ * (`reference_ids`, `predicate.evidence_ids`, `branch["slug"].prune_reference_ids`).
+ */
+function findFieldDescriptor(
+  arm: PayloadArm,
+  relative: string,
+  accepts: (value: PayloadField["value"]) => boolean,
+): PayloadField | undefined {
+  const direct = arm.fields.find((entry) => entry.name === relative && accepts(entry.value));
+  if (direct !== undefined) return direct;
+  const bracket = relative.indexOf("[");
+  const dot = relative.indexOf(".");
+  let head: string;
+  let rest: string;
+  if (bracket !== -1 && (dot === -1 || bracket < dot)) {
+    const close = relative.indexOf("].");
+    if (close === -1) return undefined;
+    head = relative.slice(0, bracket);
+    rest = relative.slice(close + 2);
+  } else {
+    if (dot === -1) return undefined;
+    head = relative.slice(0, dot);
+    rest = relative.slice(dot + 1);
   }
+  const parent = arm.fields.find((entry) =>
+    entry.name === head && (entry.value.t === "table" || entry.value.t === "array_table")
+  );
+  if (parent === undefined || (parent.value.t !== "table" && parent.value.t !== "array_table")) {
+    return undefined;
+  }
+  for (const groupArm of parent.value.group.arms) {
+    const found = findFieldDescriptor(groupArm, rest, accepts);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+function armOfPayloadOrUndefined(
+  payload: SemanticPayloadProviderFact["payload"],
+): PayloadArm | undefined {
+  try {
+    return armOfPayload(payload);
+  } catch {
+    // A synthetic or mutated payload outside every closed arm falls back to suffix policy.
+    return undefined;
+  }
+}
+
+function resolveAllowedKinds(
+  allowed: AllowedReferenceKinds,
+  payload: SemanticPayloadProviderFact["payload"],
+): readonly ReferenceKind[] {
+  if (Array.isArray(allowed)) return allowed as readonly ReferenceKind[];
+  const byField = allowed as Exclude<AllowedReferenceKinds, readonly ReferenceKind[]>;
+  const discriminant = (payload as unknown as Record<string, unknown>)[byField.by];
+  return typeof discriminant === "string" ? byField.map[discriminant] ?? [] : [];
 }
 
 function allowedReferenceKinds(
   payload: SemanticPayloadProviderFact["payload"],
-  logicalPath: string,
+  relative: string,
 ): readonly ReferenceKind[] {
-  if (payload.kind === "work" && logicalPath.endsWith("external_owner_reference_id")) {
-    return externalOwnerKinds;
-  }
-  if (payload.kind === "decision" && logicalPath.endsWith("authority_reference_id")) {
-    return authoritativeReferenceKinds;
-  }
-  if (payload.kind === "signal") {
-    if (logicalPath.endsWith("external_owner_reference_id")) return externalOwnerKinds;
-    if (
-      logicalPath.endsWith("owner_reference_id") ||
-      logicalPath.endsWith("last_completion_reference_id")
-    ) return durableOwnerKinds;
-  }
-  if (payload.kind === "control" && logicalPath.endsWith("reference_ids")) {
-    switch (payload.control_kind) {
-      case "gate": return ["gate"];
-      case "test": return ["matrix_cell", "test_symbol"];
-      case "fixture": return ["file_heading", "test_symbol"];
-      case "review_rule": return ["file_heading"];
-      case "consumer_ci": return ["consumer_report", "gate"];
-      case "upstream_issue": return ["external_issue"];
-      case "operator_procedure": return ["file_heading"];
+  const arm = armOfPayloadOrUndefined(payload);
+  if (arm !== undefined) {
+    const descriptor = findFieldDescriptor(
+      arm,
+      relative,
+      (value) => value.t === "reference_id" || value.t === "reference_id_set",
+    );
+    if (descriptor !== undefined) {
+      const spec = descriptor.value;
+      if (spec.t === "reference_id" || spec.t === "reference_id_set") {
+        return resolveAllowedKinds(spec.allowed, payload);
+      }
     }
   }
-  if (
-    payload.kind === "evidence" &&
-    (logicalPath.endsWith("reference_ids") || logicalPath.endsWith("refresh_reference_id"))
-  ) {
-    return evidenceReferenceKinds(payload);
-  }
-  if (payload.kind === "matrix_external_closeout" && logicalPath.endsWith("upstream_owner_reference_id")) {
-    return ["external_commit", "external_issue", "external_release"];
-  }
-  if (
-    payload.kind === "matrix_external_closeout" &&
-    logicalPath.endsWith("prune_reference_ids")
-  ) {
-    return ["external_commit", "external_issue", "external_release"];
-  }
-  if (payload.kind === "matrix_policy" && logicalPath.endsWith("authority_reference_id")) {
-    return authoritativeReferenceKinds;
-  }
-  if (payload.kind === "testing_cost" && logicalPath.endsWith("gate_reference_id")) return ["gate"];
-  if (
-    (payload.kind === "testing_operational_watch" || payload.kind === "testing_incident") &&
-    logicalPath.endsWith("operating_rule_reference_id")
-  ) return ["file_heading", "gate"];
-  if (
-    (payload.kind === "testing_operational_watch" || payload.kind === "testing_incident") &&
-    logicalPath.endsWith("retirement_reference_id")
-  ) return ["file_heading", "gate", "test_symbol"];
-  if (logicalPath.endsWith("external_owner_reference_id")) {
+  if (relative.endsWith("external_owner_reference_id")) {
     return externalOwnerKinds;
   }
   return [];
@@ -433,7 +431,10 @@ export function validateRoadmapReferences(
       use.logical_path.startsWith(`${provider.logical_path}.`)
     );
     if (consumer !== undefined) {
-      const allowed = allowedReferenceKinds(consumer.payload, use.logical_path);
+      const allowed = allowedReferenceKinds(
+        consumer.payload,
+        use.logical_path.slice(consumer.logical_path.length + 1),
+      );
       if (!allowed.includes(reference.kind)) {
         issues.push(issue(
           "E-REFERENCE-FORBIDDEN",
@@ -480,15 +481,39 @@ type ExpectedSemanticTarget =
       readonly control_state?: "live";
     };
 
+/**
+ * Join policy for a roadmap-ID citing field.  When the use resolves to a descriptor field on the
+ * source payload's arm, the policy is that field's declared target; otherwise the closed suffix
+ * fallback below answers for synthetic uses that sit under no descriptor field.
+ */
 function semanticTargetExpectation(
   logicalPath: string,
   sourcePayload: SemanticPayloadProviderFact["payload"] | undefined,
+  relative?: string,
 ): ExpectedSemanticTarget | undefined {
-  if (logicalPath.endsWith("control_ids")) {
-    return sourcePayload?.kind === "work" && sourcePayload.work_state === "armed"
-      ? { payload_kind: "control", control_state: "live" }
-      : { payload_kind: "control" };
+  if (sourcePayload !== undefined && relative !== undefined) {
+    const arm = armOfPayloadOrUndefined(sourcePayload);
+    if (arm !== undefined) {
+      const descriptor = findFieldDescriptor(
+        arm,
+        relative,
+        (value) => value.t === "roadmap_id" || value.t === "roadmap_id_set",
+      );
+      if (descriptor !== undefined) {
+        const spec = descriptor.value;
+        if (spec.t === "roadmap_id" || spec.t === "roadmap_id_set") {
+          const target = spec.target;
+          return {
+            payload_kind: target.payload_kind,
+            ...(target.work_kind === undefined ? {} : { work_kind: target.work_kind }),
+            ...(target.transition_kinds === undefined ? {} : { transition_kinds: target.transition_kinds }),
+            ...(target.control_state === undefined ? {} : { control_state: target.control_state }),
+          };
+        }
+      }
+    }
   }
+  if (logicalPath.endsWith("control_ids")) return { payload_kind: "control" };
   if (logicalPath.endsWith("cadence_transition_id")) {
     return { payload_kind: "signal", transition_kinds: ["cadence"] };
   }
@@ -499,25 +524,6 @@ function semanticTargetExpectation(
     return { payload_kind: "signal", transition_kinds: ["watch_escalation"] };
   }
   if (logicalPath.endsWith("transition_ids")) {
-    if (sourcePayload?.kind === "work") {
-      if (sourcePayload.work_state === "blocked") return { payload_kind: "signal", transition_kinds: ["unblock_predicate"] };
-      if (sourcePayload.work_state === "armed") return { payload_kind: "signal", transition_kinds: ["promotion_trigger"] };
-      if (sourcePayload.work_state === "deferred") return { payload_kind: "signal", transition_kinds: ["reopening_signal"] };
-      if (sourcePayload.work_state === "waiting_external") {
-        return { payload_kind: "signal", transition_kinds: ["retirement_predicate", "unblock_predicate"] };
-      }
-    }
-    if (sourcePayload?.kind === "decision") {
-      return {
-        payload_kind: "signal",
-        transition_kinds: sourcePayload.decision_state === "pending"
-          ? ["unblock_predicate"]
-          : ["reopening_signal"],
-      };
-    }
-    if (sourcePayload?.kind === "matrix_external_closeout") {
-      return { payload_kind: "signal", transition_kinds: ["retirement_predicate"] };
-    }
     return { payload_kind: "signal", transition_kinds: [] };
   }
   if (logicalPath.endsWith("regression_gap_ids")) return { payload_kind: "work", work_kind: "regression_gap" };
@@ -571,7 +577,13 @@ export function validateSemanticRoadmapJoins(
       continue;
     }
     if (use.role !== "semantic_target") continue;
-    const expected = semanticTargetExpectation(use.logical_path, sourceProvider?.payload);
+    const expected = semanticTargetExpectation(
+      use.logical_path,
+      sourceProvider?.payload,
+      sourceProvider === undefined
+        ? undefined
+        : use.logical_path.slice(sourceProvider.logical_path.length + 1),
+    );
     if (expected === undefined) {
       issues.push(issue(
         "E-REFERENCE-FORBIDDEN",
