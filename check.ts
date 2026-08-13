@@ -1531,7 +1531,7 @@ export const REGISTRY: Gate[] = [
   { id: "roadmap_projection_check", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "project_roadmaps.ts", "--roadmap", "all", "--check"], cwd: MATRIX,
     script: "project_roadmaps.ts",
-    desc: "roadmap schema/source-accounting/parity/identity/target-writer gate (pure committed files, no cargo/network)" },
+    desc: "roadmap selftests + schema/identity/reference/section validation, canonical-TOML equality and projection drift for both roadmaps (pure committed files, no cargo/network)" },
   // --- THE SUB-SECOND NO-CARGO FILE-SCANNER CLASS, promoted from `local` into `fast` (CI) ---
   // Eight gates: `lint_doc_citations`, `project_decode_conformance`, `project_recombination_check`,
   // the four `query_q*` gates and `project_status_headers`. Maintainer call, 2026-08-03 — the same
@@ -1540,8 +1540,8 @@ export const REGISTRY: Gate[] = [
   // wall, against a proven cost of the split (a HEAD commit shipped CI-green with three of these
   // red locally, surfacing one per session behind fail-fast).
   // `roadmap_projection_check` is a separately approved ninth member (maintainer call,
-  // 2026-08-11): it has the same pure committed-file shape, and protects both roadmap shadows
-  // before either source becomes authoritative.
+  // 2026-08-11): it has the same pure committed-file shape, and it is what keeps both generated
+  // roadmap projections from drifting off their authoritative TOML sources.
   //
   // THE CLASS BOUNDARY, so the next gate addition can answer for itself whether it belongs here:
   // pure reads of COMMITTED files, no cargo, no network, no `cddl-matrix/node_modules`, no `draft/`
