@@ -107,10 +107,52 @@ function pushScalar(out: number[], scalar: number): void {
   out.push(...UTF8.encode(String.fromCodePoint(scalar)));
 }
 
+function closingQuoteRun(token: Uint8Array, quote: number): number {
+  let run = 0;
+  for (let index = token.length - 1; index >= 3 && token[index] === quote; index -= 1) run += 1;
+  return run;
+}
+
 /**
- * Independently decode a TOML multiline-basic token. Bun's decoded control escapes are never used.
- * This accepts TOML's delimiter-newline trim and 4/5-quote closing forms so canonical composition
- * can diagnose alternate spellings; noncanonical escapes themselves fail here.
+ * Independently decode a TOML multiline-literal token: the body is carried verbatim, with TOML's
+ * delimiter-newline trim applied and no escape processing at all. TOML's `mll-char` admits TAB and
+ * `newline` as the only control scalars a literal body may hold, and a literal has no escapes with
+ * which to spell the others, so any other one is rejected here rather than silently accepted.
+ */
+function decodeLiteralMarkdownToken(
+  token: Uint8Array,
+  source: string,
+  span: { start_byte: number; end_byte: number },
+): Uint8Array {
+  const trailingQuotes = closingQuoteRun(token, 0x27);
+  if (trailingQuotes < 3 || trailingQuotes > 5) {
+    fail("E-CODEC-TOKEN", source, "$", "multiline literal closing quote run must contain three through five quotes", span);
+  }
+  const contentEnd = token.length - 3;
+  let index = 3;
+  if (index < contentEnd && token[index] === 0x0a) index += 1;
+  const out: number[] = [];
+  while (index < contentEnd) {
+    const byte = token[index];
+    if (byte < 0x20 ? byte !== 0x09 && byte !== 0x0a : byte === 0x7f) {
+      fail("E-CODEC-SCALAR", source, "$", "raw control scalar is forbidden in a Markdown token", {
+        start_byte: span.start_byte + index,
+        end_byte: span.start_byte + index + 1,
+      });
+    }
+    out.push(byte);
+    index += 1;
+  }
+  const decoded = Uint8Array.from(out);
+  decodeFatalUtf8Lf(decoded, source);
+  return decoded;
+}
+
+/**
+ * Independently decode a TOML multiline Markdown token in either canonical quote form. Bun's
+ * decoded control escapes are never used. This accepts TOML's delimiter-newline trim and 4/5-quote
+ * closing forms so canonical composition can diagnose alternate spellings; noncanonical escapes
+ * themselves fail here.
  */
 export function decodeMarkdownToken(
   token: Uint8Array,
@@ -118,14 +160,14 @@ export function decodeMarkdownToken(
   span: { start_byte: number; end_byte: number },
 ): Uint8Array {
   decodeFatalUtf8Lf(token, source);
+  if (token.length >= 6 && token[0] === 0x27 && token[1] === 0x27 && token[2] === 0x27) {
+    return decodeLiteralMarkdownToken(token, source, span);
+  }
   if (token.length < 6 || token[0] !== 0x22 || token[1] !== 0x22 || token[2] !== 0x22) {
-    fail("E-CODEC-TOKEN", source, "$", "Markdown token is not a multiline basic string", span);
+    fail("E-CODEC-TOKEN", source, "$", "Markdown token is not a multiline string", span);
   }
 
-  let trailingQuotes = 0;
-  for (let index = token.length - 1; index >= 3 && token[index] === 0x22; index -= 1) {
-    trailingQuotes += 1;
-  }
+  const trailingQuotes = closingQuoteRun(token, 0x22);
   if (trailingQuotes < 3 || trailingQuotes > 5) {
     fail("E-CODEC-TOKEN", source, "$", "multiline basic closing quote run must contain three through five quotes", span);
   }

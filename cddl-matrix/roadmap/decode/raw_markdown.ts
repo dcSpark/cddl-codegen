@@ -160,6 +160,32 @@ function scanMultilineBasic(bytes: Uint8Array, source: string, start: number): n
   });
 }
 
+function pushToken(bytes: Uint8Array, tokens: MutableToken[], start: number, end: number): void {
+  const raw = bytes.slice(start, end);
+  const id = tokens.length;
+  const digest = sha256(raw);
+  const probe = 0;
+  const placeholder = `__ROADMAP_MD_${digest}_${id}_${probe}__`;
+  const physical_lf_count = countByte(bytes, start, end, 0x0a);
+  tokens.push({
+    id,
+    start_byte: start,
+    end_byte: end,
+    raw,
+    physical_lf_count,
+    digest,
+    probe,
+    placeholder,
+    placeholder_value: placeholder + "\n".repeat(physical_lf_count),
+  });
+}
+
+/**
+ * Shield every MULTILINE string token, in both quote forms: since the D7 flip a canonical Markdown
+ * value is a multiline literal (`'''`) unless its content forces the basic fallback (`"""`), and
+ * no other field spells its value across lines. Single-line strings of either form are ordinary
+ * scalars and stay with Bun.
+ */
 function scanTokens(bytes: Uint8Array, source: string): MutableToken[] {
   const tokens: MutableToken[] = [];
   for (let index = 0; index < bytes.length; ) {
@@ -169,26 +195,9 @@ function scanTokens(bytes: Uint8Array, source: string): MutableToken[] {
       continue;
     }
     if (byte === 0x22) {
-      const run = quoteRun(bytes, index, 0x22);
-      if (run >= 3) {
+      if (quoteRun(bytes, index, 0x22) >= 3) {
         const end = scanMultilineBasic(bytes, source, index);
-        const raw = bytes.slice(index, end);
-        const id = tokens.length;
-        const digest = sha256(raw);
-        const probe = 0;
-        const placeholder = `__ROADMAP_MD_${digest}_${id}_${probe}__`;
-        const physical_lf_count = countByte(bytes, index, end, 0x0a);
-        tokens.push({
-          id,
-          start_byte: index,
-          end_byte: end,
-          raw,
-          physical_lf_count,
-          digest,
-          probe,
-          placeholder,
-          placeholder_value: placeholder + "\n".repeat(physical_lf_count),
-        });
+        pushToken(bytes, tokens, index, end);
         index = end;
         continue;
       }
@@ -196,8 +205,13 @@ function scanTokens(bytes: Uint8Array, source: string): MutableToken[] {
       continue;
     }
     if (byte === 0x27) {
-      const run = quoteRun(bytes, index, 0x27);
-      index = run >= 3 ? scanMultilineLiteral(bytes, source, index) : scanSingleLiteral(bytes, source, index);
+      if (quoteRun(bytes, index, 0x27) >= 3) {
+        const end = scanMultilineLiteral(bytes, source, index);
+        pushToken(bytes, tokens, index, end);
+        index = end;
+        continue;
+      }
+      index = scanSingleLiteral(bytes, source, index);
       continue;
     }
     index += 1;
@@ -289,7 +303,7 @@ export class MarkdownBindings {
 
   expectMarkdown(value: unknown, logicalPath: string): Uint8Array {
     if (typeof value !== "string") {
-      wireFail(this.source, "E-CODEC-PLACEHOLDER", logicalPath, "Markdown field is not a shielded multiline basic token");
+      wireFail(this.source, "E-CODEC-PLACEHOLDER", logicalPath, "Markdown field is not a shielded multiline Markdown token");
     }
     const token = this.#byPlaceholder.get(value);
     if (token === undefined) {
@@ -327,7 +341,7 @@ export class MarkdownBindings {
         this.source,
         "E-CODEC-PLACEHOLDER",
         token.logical_path!,
-        "multiline basic token was not consumed by exact schema decoding",
+        "multiline Markdown token was not consumed by exact schema decoding",
         { start_byte: token.start_byte, end_byte: token.end_byte },
       );
     }

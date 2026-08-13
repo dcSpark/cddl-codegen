@@ -726,7 +726,9 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       assert(context !== undefined, `${id} requires fixture ports`); allFieldsCoverage(context); return;
     case "noncanonical_comment": expectFailure(() => decodeRoadmapSource(text(`# comment\n${new TextDecoder().decode(minimalRoadmap())}`), "<comment>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
     case "noncanonical_inline_table": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap()).replace('entries = [\n  "matrix.fixture-minimal",\n]', 'entries = ["matrix.fixture-minimal"]\nslots = { status = { binding = "fixture-status" } }')), "<inline-table>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
-    case "noncanonical_literal_string": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap()).replace('body_md = """S\n"""', "body_md = '''S\n'''")), "<literal>", "matrix"), ["E-CODEC-PLACEHOLDER"]); return;
+    // Both quote forms are shielded and decode alike, so the alternate spelling is refused by
+    // the canonical-bytes comparison rather than by the placeholder binding.
+    case "noncanonical_literal_string": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap()).replace('body_md = """S\n"""', "body_md = '''S\n'''")), "<literal>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
     case "noncanonical_set_order": {
       expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap()).replace('title = "Fixture"', 'title = "Fixture"\nlegacy_aliases = ["z", "a"]')), "<set-order>", "matrix"), ["E-TOML-NONCANONICAL"]);
       return;

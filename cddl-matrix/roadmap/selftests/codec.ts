@@ -37,15 +37,16 @@ export const REQUIRED_CODEC_SELFTEST_CASE_IDS = [
   "codec_alternate_string_form_rejected",
   "codec_nonleading_lf_is_physical",
   "codec_toml_terminal_newline",
-  "codec_shields_every_multiline_basic_token",
+  "codec_shields_every_multiline_token",
   "codec_comment_delimiter_ignored",
   "codec_basic_and_literal_delimiter_ignored",
-  "codec_multiline_literal_delimiter_ignored",
+  "codec_multiline_literal_shielded",
   "codec_quoted_and_dotted_key_binding",
   "codec_array_of_tables_index_binding",
   "codec_false_placeholder_plain_string",
   "codec_false_placeholder_escaped_string",
   "codec_placeholder_all_tokens_consumed",
+  "codec_literal_raw_control_rejected",
   "codec_quote_runs_three_four_five",
 ] as const;
 
@@ -135,9 +136,10 @@ const tests: Record<RequiredCodecSelfTestCaseId, () => void> = {
   codec_placeholder_line_count: () => {
     const source = `# comment """\nplain = '"""'\nmultiline = '''"""\n'''\n[[row]]\n"quoted.key" = """a\nb\n"""\n[[row]]\nvalue = """z"""`;
     const bindings = shieldTomlMarkdown(text(source), "<line-count>");
-    assert(bindings.tokens.length === 2, "only multiline-basic tokens shielded");
-    assert(bindings.tokens[0].physical_lf_count === 2, "physical LFs retained");
-    assert(bindings.tokens[1].physical_lf_count === 0, "no-LF token retained");
+    assert(bindings.tokens.length === 3, "every multiline token shielded, single-line ones not");
+    assert(bindings.tokens[0].physical_lf_count === 1, "multiline literal LFs retained");
+    assert(bindings.tokens[1].physical_lf_count === 2, "physical LFs retained");
+    assert(bindings.tokens[2].physical_lf_count === 0, "no-LF token retained");
   },
   codec_placeholder_path_mismatch: () => {
     const bindings = shieldTomlMarkdown(text('[[row]]\nvalue = """x"""\n'), "<path-mismatch>");
@@ -177,13 +179,22 @@ const tests: Record<RequiredCodecSelfTestCaseId, () => void> = {
     assert(encoded === '"""a\nb"""', "nonleading LF must remain physical");
   },
   codec_toml_terminal_newline: () => assert(`value = ${encodeMarkdownString(text("x"))}\n`.endsWith("\n"), "canonical TOML terminal LF"),
-  codec_shields_every_multiline_basic_token: () => {
-    const bindings = shieldTomlMarkdown(text('unknown = """x"""\nknown = """y"""\n'), "<all-token>");
-    assert(bindings.tokens.length === 2, "scanner shields unknown and known tokens alike");
+  codec_shields_every_multiline_token: () => {
+    const bindings = shieldTomlMarkdown(text("unknown = '''x'''\nknown = '''y'''\nfallback = \"\"\"z'''\"\"\"\n"), "<all-token>");
+    assert(bindings.tokens.length === 3, "scanner shields unknown, known and fallback-spelled tokens alike");
   },
   codec_comment_delimiter_ignored: () => assert(shieldTomlMarkdown(text('# """not a token"""\nvalue = "x"\n'), "<comment>").tokens.length === 0, "comment delimiter ignored"),
   codec_basic_and_literal_delimiter_ignored: () => assert(shieldTomlMarkdown(text('a = "\\\"\\\"\\\""\nb = \'"""\'\n'), "<single>").tokens.length === 0, "single-line contexts ignored"),
-  codec_multiline_literal_delimiter_ignored: () => assert(shieldTomlMarkdown(text("value = '''\"\"\"\n'''\n"), "<literal>").tokens.length === 0, "multiline literal context ignored"),
+  codec_multiline_literal_shielded: () => {
+    const bindings = shieldTomlMarkdown(text("value = '''\"\"\"\n'''\n"), "<literal>");
+    assert(bindings.tokens.length === 1, "multiline literal token shielded");
+    assert(bindings.parsed !== null && typeof bindings.parsed === "object", "root");
+    assertBytes(
+      bindings.expectMarkdown(Object.getOwnPropertyDescriptor(bindings.parsed, "value")?.value, "value"),
+      text('"""\n'),
+      "basic delimiters inside a literal token are content",
+    );
+  },
   codec_quoted_and_dotted_key_binding: () => {
     const bindings = shieldTomlMarkdown(text('["quoted.key"]\ndotted.value = """x"""\n'), "<keys>");
     const expected = '$["quoted.key"].dotted.value';
@@ -211,6 +222,8 @@ const tests: Record<RequiredCodecSelfTestCaseId, () => void> = {
     bindings.expectMarkdown(Object.getOwnPropertyDescriptor(bindings.parsed, "a")?.value, "a");
     expectCode(() => bindings.assertAllConsumed(), "E-CODEC-PLACEHOLDER", "b");
   },
+  codec_literal_raw_control_rejected: () =>
+    expectCode(() => one("value = '''a\u0000b'''\n"), "E-CODEC-SCALAR"),
   codec_quote_runs_three_four_five: () => {
     assertBytes(decodeMarkdownToken(text('""""""'), "<quotes>", { start_byte: 0, end_byte: 6 }), text(""), "empty three-quote close");
     assertBytes(decodeMarkdownToken(text('"""x"""'), "<quotes>", { start_byte: 0, end_byte: 7 }), text("x"), "three quotes");
@@ -247,10 +260,10 @@ const POSITIVE_CODEC_CASE_IDS: readonly RequiredCodecSelfTestCaseId[] = [
   "codec_unicode_no_normalization",
   "codec_nonleading_lf_is_physical",
   "codec_toml_terminal_newline",
-  "codec_shields_every_multiline_basic_token",
+  "codec_shields_every_multiline_token",
   "codec_comment_delimiter_ignored",
   "codec_basic_and_literal_delimiter_ignored",
-  "codec_multiline_literal_delimiter_ignored",
+  "codec_multiline_literal_shielded",
   "codec_quoted_and_dotted_key_binding",
   "codec_array_of_tables_index_binding",
   "codec_false_placeholder_plain_string",
@@ -267,6 +280,7 @@ const NEGATIVE_CODEC_CASE_IDS: readonly RequiredCodecSelfTestCaseId[] = [
   "codec_malformed_token_rejected",
   "codec_alternate_string_form_rejected",
   "codec_placeholder_all_tokens_consumed",
+  "codec_literal_raw_control_rejected",
 ];
 
 const CODEC_CASE_POLARITY = new Map<RequiredCodecSelfTestCaseId, "positive" | "negative">([
