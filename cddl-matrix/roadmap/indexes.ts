@@ -22,6 +22,12 @@ import type {
   SemanticRecord,
 } from "./model/documents.ts";
 import { validateReferenceId, validateRoadmapId, validateSubordinateId } from "./ids.ts";
+import {
+  armOfGroupValue,
+  armOfPayload,
+  fieldProperty,
+  type PayloadArm,
+} from "./payload_descriptors.ts";
 import { codePointSort } from "./kernel.ts";
 import { sortRoadmapIssues as sortIssues } from "./errors.ts";
 
@@ -216,113 +222,59 @@ function semanticPayload(record: RecordNode): SemanticPayloadProviderFact {
   };
 }
 
+/**
+ * Every roadmap-ID and reference-ID citation a payload can carry derives from the descriptor
+ * table: the arm walk visits ID-valued fields in place (nested tables prefixed by wire key, array
+ * tables by the element's own ID field), so the use inventory can never disagree with the schema.
+ */
 function collectPayloadUses(
   provider: SemanticPayloadProviderFact,
   roadmapIdUses: RoadmapIdUseFact[],
   referenceIdUses: ReferenceIdUseFact[],
 ): void {
   const { payload, logical_path: path } = provider;
-  const roadmap = (id: RoadmapId | undefined, field: string): void => {
-    if (id !== undefined) roadmapIdUses.push({ id, logical_path: `${path}.${field}`, role: "semantic_target" });
+  const walk = (value: object, arm: PayloadArm, prefix: string): void => {
+    for (const field of arm.fields) {
+      const spec = field.value;
+      const fieldValue = (value as Record<string, unknown>)[fieldProperty(field)];
+      if (fieldValue === undefined) continue;
+      const label = `${path}.${prefix}${field.name}`;
+      switch (spec.t) {
+        case "roadmap_id":
+          roadmapIdUses.push({ id: fieldValue as RoadmapId, logical_path: label, role: "semantic_target" });
+          break;
+        case "roadmap_id_set":
+          for (const id of fieldValue as readonly RoadmapId[]) {
+            roadmapIdUses.push({ id, logical_path: label, role: "semantic_target" });
+          }
+          break;
+        case "reference_id":
+          referenceIdUses.push({ id: fieldValue as ReferenceId, logical_path: label });
+          break;
+        case "reference_id_set":
+          for (const id of fieldValue as readonly ReferenceId[]) {
+            referenceIdUses.push({ id, logical_path: label });
+          }
+          break;
+        case "table":
+          walk(fieldValue as object, armOfGroupValue(spec.group, fieldValue), `${prefix}${field.name}.`);
+          break;
+        case "array_table":
+          if (spec.flatten !== undefined) break;
+          for (const element of fieldValue as readonly object[]) {
+            walk(
+              element,
+              armOfGroupValue(spec.group, element),
+              `${prefix}${field.name}[${quoted(String((element as Record<string, unknown>)[spec.id_field]))}].`,
+            );
+          }
+          break;
+        default:
+          break;
+      }
+    }
   };
-  const roadmaps = (ids: readonly RoadmapId[] | undefined, field: string): void => {
-    for (const id of ids ?? []) roadmap(id, field);
-  };
-  const reference = (id: ReferenceId | undefined, field: string): void => {
-    if (id !== undefined) referenceIdUses.push({ id, logical_path: `${path}.${field}` });
-  };
-  const references = (ids: readonly ReferenceId[] | undefined, field: string): void => {
-    for (const id of ids ?? []) reference(id, field);
-  };
-
-  switch (payload.kind) {
-    case "work":
-      roadmaps(payload.evidence_ids, "evidence_ids");
-      roadmaps(payload.control_ids, "control_ids");
-      roadmaps(payload.regression_evidence_ids, "regression_evidence_ids");
-      roadmaps(payload.regression_gap_ids, "regression_gap_ids");
-      roadmaps(payload.admission_ids, "admission_ids");
-      if ("transition_ids" in payload) roadmaps(payload.transition_ids, "transition_ids");
-      if (payload.work_state === "waiting_external") {
-        reference(payload.external_owner_reference_id, "external_owner_reference_id");
-      }
-      return;
-    case "decision":
-      if ("transition_ids" in payload) roadmaps(payload.transition_ids, "transition_ids");
-      if (payload.decision_state === "decided") {
-        reference(payload.authority_reference_id, "authority_reference_id");
-      }
-      return;
-    case "signal":
-      if (payload.transition_kind === "promotion_trigger" || payload.transition_kind === "reopening_signal") {
-          roadmaps(payload.predicate.evidence_ids ?? [], "predicate.evidence_ids");
-      } else if (payload.transition_kind === "retirement_predicate") {
-        reference(payload.external_owner_reference_id, "external_owner_reference_id");
-      } else if (payload.transition_kind === "unblock_predicate" || payload.transition_kind === "cadence") {
-        reference(payload.owner_reference_id, "owner_reference_id");
-        if (payload.transition_kind === "cadence") {
-          reference(payload.last_completion_reference_id, "last_completion_reference_id");
-        }
-      }
-      return;
-    case "evidence":
-      references(payload.reference_ids, "reference_ids");
-      reference(payload.refresh_reference_id, "refresh_reference_id");
-      return;
-    case "control":
-      references(payload.reference_ids, "reference_ids");
-      return;
-    case "matrix_external_closeout":
-      reference(payload.upstream_owner_reference_id, "upstream_owner_reference_id");
-      roadmaps(payload.transition_ids, "transition_ids");
-      references(payload.prune_reference_ids, "prune_reference_ids");
-      for (const branch of payload.branches) {
-        references(branch.prune_reference_ids, `branch[${quoted(branch.branch_id)}].prune_reference_ids`);
-      }
-      return;
-    case "matrix_policy":
-      reference(payload.authority_reference_id, "authority_reference_id");
-      roadmap(
-        payload.policy_kind === "maintenance_protocol"
-          ? payload.cadence_transition_id
-          : payload.reopening_transition_id,
-        payload.policy_kind === "maintenance_protocol"
-          ? "cadence_transition_id"
-          : "reopening_transition_id",
-      );
-      return;
-    case "testing_operational_watch":
-      roadmap(payload.escalation_transition_id, "escalation_transition_id");
-      if (payload.watch_state !== "watching") {
-        reference(payload.operating_rule_reference_id, "operating_rule_reference_id");
-      }
-      if (payload.watch_state === "retire_pending") {
-        reference(payload.retirement_reference_id, "retirement_reference_id");
-      }
-      return;
-    case "testing_incident":
-      roadmaps(payload.evidence_ids, "evidence_ids");
-      if (payload.incident_posture !== "live") {
-        reference(payload.operating_rule_reference_id, "operating_rule_reference_id");
-      }
-      if (payload.incident_posture === "historical") {
-        reference(payload.retirement_reference_id, "retirement_reference_id");
-      }
-      return;
-    case "testing_cost":
-      if (payload.cost_posture === "live_registry") {
-        reference(payload.gate_reference_id, "gate_reference_id");
-      } else {
-        roadmaps(payload.evidence_ids, "evidence_ids");
-      }
-      return;
-    case "testing_system_admission":
-      roadmaps(payload.evidence_ids, "evidence_ids");
-      if (payload.admission_kind === "independent_recurrence") {
-        roadmaps(payload.incident_ids, "incident_ids");
-      }
-      return;
-  }
+  walk(payload, armOfPayload(payload), "");
 }
 
 function providerSort(left: RoadmapIdProviderFact, right: RoadmapIdProviderFact): number {
