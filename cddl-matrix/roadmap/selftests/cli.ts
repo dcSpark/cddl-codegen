@@ -2,11 +2,12 @@ import type { RegistryView } from "../adapters/types.ts";
 import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
 import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import { ROADMAP_CLI_USAGE } from "../cli.ts";
-import { burndownStableSetDelta } from "../burndown.ts";
+import { buildBurndownFourReport, burndownStableSetDelta } from "../burndown.ts";
 import { composeRoadmapDocument } from "../compose.ts";
 import { composeCampaignDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import { decodeCampaignSource } from "../decode/campaign.ts";
+import { decodeRetiredSource } from "../decode/retired.ts";
 import liveCampaignText from "../../../roadmap-campaign.toml" with { type: "text" };
 import liveRetiredText from "../../../roadmap-retired-ids.toml" with { type: "text" };
 import { RoadmapFailure } from "../errors.ts";
@@ -82,6 +83,7 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_write_authoritative_matrix",
   "cli_write_authoritative_testing",
   "cli_query_each_view",
+  "query_burndown_four_missing_cost_bound_rejected",
   "cli_format_declared_source",
   "cli_no_args_rejected",
   "cli_unknown_option",
@@ -1892,7 +1894,8 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
       assert(burndown.cohort.stable_set_delta.stable === true &&
         burndown.cohort.current_items.length === 7 &&
         burndown.cohort.current_items.every((item: any) =>
-          item.work_state === "ready" && item.admission_status === "not_applicable"
+          item.work_state === "ready" && item.admission_status === "not_applicable" &&
+          item.structured_cost.status === "bounded"
         ) &&
         burndown.retired_family.current.guarded === true &&
         burndown.retired_family.current.total_guard_count === 20 &&
@@ -1900,15 +1903,48 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
         burndown.retired_family.deltas.active_items === -1 &&
         burndown.retired_family.deltas.active_cells === -8 &&
         burndown.retired_family.deltas.active_evidence_coordinates === -36 &&
+        burndown.retired_family.verification_cost_envelope.status === "bounded" &&
+        burndown.retired_family.verification_cost_envelope.legal_cell_count === 8 &&
+        burndown.retired_family.verification_cost_envelope.evidence_coordinate_count === 36 &&
+        burndown.retired_family.verification_cost_envelope.typed_guard_count === 20 &&
+        burndown.retired_family.verification_cost_envelope.retained_evidence_count === 8 &&
         burndown.active_open_families.every((family: any) =>
           Number.isInteger(family.observed_lower_bound) && !("percentage" in family)
         ) &&
-        burndown.structured_costs.status === "unknown" &&
-        burndown.structured_costs.reason === "unrecorded",
+        burndown.structured_costs.status === "bounded" &&
+        burndown.structured_costs.implementation_unit_count === 9 &&
+        burndown.structured_costs.validation_unit_count === 13 &&
+        burndown.structured_costs.total_unit_count === 22 &&
+        burndown.structured_costs.missing_selection_ids.length === 0,
       "end-to-end burndown query omitted a cohort/family/delta/lower-bound/admission/cost contract");
 
       const decodedCampaignDocument = decodeCampaignSource(
         UTF8.encode(liveCampaignText), "roadmap-campaign.toml", true,
+      );
+      const directPorts = burndownQueryPorts();
+      const directFacts = {
+        campaign: decodedCampaignDocument,
+        retired: decodeRetiredSource(UTF8.encode(liveRetiredText), "roadmap-retired-ids.toml", true),
+        registry: directPorts.read.registryView({ kind: "worktree" } as const),
+        documents: [liveMatrixV2Document(), liveTestingV2Document()],
+      };
+      const defensivelyUnboundedCampaign = {
+        ...decodedCampaignDocument,
+        selections: decodedCampaignDocument.selections.map((selection, index) =>
+          index === 0 ? { ...selection, cost_bound: undefined } : selection
+        ),
+      };
+      const defensivelyUnbounded = buildBurndownFourReport(directFacts, {
+        ...directFacts,
+        campaign: defensivelyUnboundedCampaign,
+      }) as any;
+      assert(
+        defensivelyUnbounded.structured_costs.status === "missing" &&
+          defensivelyUnbounded.structured_costs.missing_selection_ids.length === 1 &&
+          defensivelyUnbounded.structured_costs.missing_selection_ids[0] ===
+            decodedCampaignDocument.selections[0]!.item_id &&
+          defensivelyUnbounded.cohort.current_items[0].structured_cost.status === "missing",
+        "burndown report must expose a missing structured cost defensively before lifecycle validation",
       );
       const missingCohort = composeCampaignDocument({
         ...decodedCampaignDocument,
@@ -1987,7 +2023,11 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
       const changedDeltaReport = queryBurndown(burndownQueryPorts({ closure: changedClosure }));
       assert(changedDeltaReport.retired_family.current.retained_evidence_count === 7 &&
         changedDeltaReport.retired_family.deltas.active_cells === -9 &&
-        changedDeltaReport.retired_family.deltas.active_evidence_coordinates === -37,
+        changedDeltaReport.retired_family.deltas.active_evidence_coordinates === -37 &&
+        changedDeltaReport.retired_family.verification_cost_envelope.legal_cell_count === 9 &&
+        changedDeltaReport.retired_family.verification_cost_envelope.evidence_coordinate_count === 37 &&
+        changedDeltaReport.retired_family.verification_cost_envelope.typed_guard_count === 20 &&
+        changedDeltaReport.retired_family.verification_cost_envelope.retained_evidence_count === 7,
       "end-to-end burndown query must derive exact retained evidence membership and cell/evidence deltas from authority facts");
       return pass("positive", ["summary", "debt", "references", "campaign", "burndown", "signals",
         "actionables", "decisions", "families", "watches", "content", "output-owners"]);
@@ -2241,6 +2281,29 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         issue.code === "E-CAMPAIGN-TARGET" && issue.logical_path === `record[${JSON.stringify(recordId)}]`
       ), `${id} accepted mutated record title plus matching reservation source_title`);
       observeSelfTestIssue({ code: "E-CAMPAIGN-TARGET", logical_path: `record[${JSON.stringify(recordId)}]` });
+      return pass("negative");
+    }
+    case "query_burndown_four_missing_cost_bound_rejected": {
+      const campaign = decodeCampaignSource(
+        UTF8.encode(liveCampaignText), "roadmap-campaign.toml" as RepoPath, true,
+      );
+      const missingBound = composeCampaignDocument({
+        ...campaign,
+        selections: campaign.selections.map((selection, index) =>
+          index === 0 ? { ...selection, cost_bound: undefined } : selection
+        ),
+      });
+      const result = run(
+        ["--roadmap", "all", "--check"],
+        burndownQueryPorts({ campaign: missingBound }),
+      );
+      const diagnostic = "FAIL [E-CAMPAIGN-STATE] roadmap-campaign.toml#selection[0].cost_bound: " +
+        "burndown-four selection requires one reviewed structured cost bound\n";
+      assert(
+        result.exit_code === 1 && result.stdout.byteLength === 0 && text(result.stderr).includes(diagnostic),
+        `normal all-roadmap check did not enforce the reviewed bound: ${text(result.stderr)}`,
+      );
+      observeSelfTestIssue({ code: "E-CAMPAIGN-STATE", logical_path: "selection[0].cost_bound" });
       return pass("negative");
     }
     case "query_debt_duplicate_campaign_selection_rejected":

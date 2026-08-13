@@ -3503,6 +3503,40 @@ function c5CampaignCase(id: C5SelfTestCaseId): boolean {
         base: candidate.campaign, candidate: invalid,
         base_document: candidate.campaign_document!, candidate_document: invalidDocument, against: C5_BASE,
       }), "E-CAMPAIGN-TRANSITION", "state transition cannot rewrite invariant selection fields");
+      const reviewedBound: NonNullable<CampaignDocumentV1["selections"][number]["cost_bound"]> = {
+        posture: "reviewed_scope",
+        implementation_units: ["fixture-implementation" as CampaignDocumentV1["selections"][number]["priority_class"]],
+        validation_units: ["fixture-validation" as CampaignDocumentV1["selections"][number]["priority_class"]],
+        assumption_md: bytes("reviewed scope"),
+      };
+      const boundedDocument = c5Campaign("authoritative", "legacy_markdown", [], [{
+        ...progress,
+        cost_bound: reviewedBound,
+      }]);
+      const bounded = validateCampaign({
+        campaign: boundedDocument,
+        roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document: matrixDocument }),
+      });
+      assert(validateCampaignTransition({
+        base: candidate.campaign, candidate: bounded,
+        base_document: candidate.campaign_document!, candidate_document: boundedDocument, against: C5_BASE,
+      }).length === 0, "historical selection may gain its first reviewed cost bound");
+      assertIssue(validateCampaignTransition({
+        base: bounded, candidate: candidate.campaign,
+        base_document: boundedDocument, candidate_document: candidate.campaign_document!, against: C5_BASE,
+      }), "E-CAMPAIGN-TRANSITION", "reviewed cost bound may not disappear");
+      const changedBoundDocument = c5Campaign("authoritative", "legacy_markdown", [], [{
+        ...progress,
+        cost_bound: { ...reviewedBound, assumption_md: bytes("changed scope") },
+      }]);
+      const changedBound = validateCampaign({
+        campaign: changedBoundDocument,
+        roadmaps: c5Snapshots({ markdown: bytes("matrix\n"), document: matrixDocument }),
+      });
+      assertIssue(validateCampaignTransition({
+        base: bounded, candidate: changedBound,
+        base_document: boundedDocument, candidate_document: changedBoundDocument, against: C5_BASE,
+      }), "E-CAMPAIGN-TRANSITION", "reviewed cost bound may not change");
       return true;
     }
     case "campaign_deselect_keeps_reservation":

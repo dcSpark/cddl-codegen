@@ -435,6 +435,7 @@ const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
   "testing:testing_semantic_kind": "kind",
   "campaign:reservation_roadmap_path": "roadmap_path",
   "campaign:selection_target_kind": "target_kind",
+  "campaign:campaign_cost_posture": "posture",
   "retired:replacement_kind": "kind",
 };
 
@@ -978,6 +979,39 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       for (const path of ["all-fields/campaign-pre-cutover.toml", "all-fields/campaign-matrix-cutover.toml", "all-fields/campaign-both-cut-over.toml"]) {
         const bytes = readFixture(context, path); assert(bytesEqual(composeCampaignDocument(decodeCampaignSource(bytes, path)), bytes), path);
       }
+      const bounded = fixtureText(context, "all-fields/campaign-both-cut-over.toml");
+      expectFailure(
+        () => decodeCampaignSource(text(bounded.replace(
+          'implementation_units = ["fixture-implementation"]',
+          "implementation_units = []",
+        )), "<empty-campaign-cost-set>"),
+        ["E-SCHEMA-FLOOR"],
+        "selection[1].cost_bound.implementation_units",
+      );
+      expectFailure(
+        () => decodeCampaignSource(text(bounded.replace(
+          'implementation_units = ["fixture-implementation"]',
+          'implementation_units = ["fixture-implementation", "fixture-implementation"]',
+        )), "<duplicate-campaign-cost-set>"),
+        ["E-SCHEMA-TYPE"],
+        "selection[1].cost_bound.implementation_units",
+      );
+      expectFailure(
+        () => decodeCampaignSource(text(bounded.replace(
+          'validation_units = ["fixture-validation"]',
+          'validation_units = ["fixture-implementation"]',
+        )), "<overlapping-campaign-cost-sets>"),
+        ["E-SCHEMA-STATE"],
+        "selection[1].cost_bound.validation_units",
+      );
+      expectFailure(
+        () => decodeCampaignSource(text(bounded.replace(
+          'assumption_md = """The fixture bounds one reviewed implementation unit and one validation unit."""',
+          'assumption_md = """"""',
+        )), "<empty-campaign-cost-assumption>"),
+        ["E-SCHEMA-FLOOR"],
+        "selection[1].cost_bound.assumption_md",
+      );
       return;
     }
     case "retired_all_fields_identity": { assert(context !== undefined, `${id} requires fixture ports`); const path = "all-fields/retired-ids-v1.toml"; const bytes = readFixture(context, path); assert(bytesEqual(composeRetiredIdsDocument(decodeRetiredSource(bytes, path)), bytes), path); return; }

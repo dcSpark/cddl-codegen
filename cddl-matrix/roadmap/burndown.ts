@@ -46,6 +46,23 @@ function selectedIds(campaign: CampaignDocumentV1, cycle?: string): readonly Roa
   ).map((selection) => selection.item_id).sort());
 }
 
+const UTF8 = new TextDecoder("utf-8", { fatal: true });
+
+function structuredCostOf(selection: CampaignDocumentV1["selections"][number] | undefined) {
+  const bound = selection?.cost_bound;
+  if (bound === undefined) return Object.freeze({ status: "missing" });
+  return Object.freeze({
+    status: "bounded",
+    posture: bound.posture,
+    implementation_units: Object.freeze([...bound.implementation_units]),
+    validation_units: Object.freeze([...bound.validation_units]),
+    implementation_unit_count: bound.implementation_units.length,
+    validation_unit_count: bound.validation_units.length,
+    total_unit_count: bound.implementation_units.length + bound.validation_units.length,
+    assumption_md: UTF8.decode(bound.assumption_md),
+  });
+}
+
 export function burndownStableSetDelta(expected: readonly RoadmapId[], actual: readonly RoadmapId[]) {
   const expectedSet = new Set(expected);
   const actualSet = new Set(actual);
@@ -68,6 +85,12 @@ export function buildBurndownFourReport(
   const baselineById = new Map(baselineRows.map((row) => [row.id, row.payload]));
   const currentById = new Map(currentRows.map((row) => [row.id, row.payload]));
   const currentCycle = selectedIds(current.campaign, "burndown-four");
+  const currentCycleSelections = current.campaign.selections.filter((selection) =>
+    selection.cycle === "burndown-four"
+  ).sort((left, right) => left.item_id < right.item_id ? -1 : left.item_id > right.item_id ? 1 : 0);
+  const currentCycleSelectionById = new Map(currentCycleSelections.map((selection) =>
+    [selection.item_id, selection]
+  ));
   const baselineSelected = selectedIds(baseline.campaign);
   const currentTombstones = new Set(current.retired.entries.map((entry) => entry.id));
   const authority = current.registry.fixed_value_closure;
@@ -104,9 +127,23 @@ export function buildBurndownFourReport(
       admission_status: work?.work_kind !== "missing_system"
         ? "not_applicable"
         : (work.admission_ids?.length ?? 0) > 0 ? "admitted" : "missing",
-      structured_cost_status: "unrecorded",
+      structured_cost: structuredCostOf(currentCycleSelectionById.get(id)),
     });
   });
+  const boundedCosts = currentCycleSelections.flatMap((selection) =>
+    selection.cost_bound === undefined ? [] : [selection.cost_bound]
+  );
+  const missingCostSelectionIds = currentCycleSelections.filter((selection) =>
+    selection.cost_bound === undefined
+  ).map((selection) => selection.item_id);
+  const implementationUnitCount = boundedCosts.reduce(
+    (count, bound) => count + bound.implementation_units.length,
+    0,
+  );
+  const validationUnitCount = boundedCosts.reduce(
+    (count, bound) => count + bound.validation_units.length,
+    0,
+  );
   const openFamilies = currentRows.flatMap((row) =>
     row.payload.kind === "family" && row.payload.family_maturity !== "closed_denominator"
       ? [{ id: row.id, observed_lower_bound: row.payload.cells.length }]
@@ -148,8 +185,21 @@ export function buildBurndownFourReport(
           : -authority.evidence_coordinate_count,
       }),
       same_family_reopening_rows: Object.freeze(reopeningRows),
+      verification_cost_envelope: Object.freeze({
+        status: "bounded",
+        legal_cell_count: authority.legal_cell_count,
+        evidence_coordinate_count: authority.evidence_coordinate_count,
+        typed_guard_count: guards.length,
+        retained_evidence_count: retainedEvidenceCount,
+      }),
     }),
     active_open_families: Object.freeze(openFamilies),
-    structured_costs: Object.freeze({ status: "unknown", reason: "unrecorded" }),
+    structured_costs: Object.freeze({
+      status: missingCostSelectionIds.length === 0 ? "bounded" : "missing",
+      implementation_unit_count: implementationUnitCount,
+      validation_unit_count: validationUnitCount,
+      total_unit_count: implementationUnitCount + validationUnitCount,
+      missing_selection_ids: Object.freeze(missingCostSelectionIds),
+    }),
   });
 }

@@ -22,3 +22,9 @@ cycle = "fixture-cycle"
 remaining_scope_md = """Complete the active testing work."""
 assignee = "fixture-owner"
 pickup_commit = "1111111111111111111111111111111111111111"
+
+[selection.cost_bound]
+posture = "reviewed_scope"
+implementation_units = ["fixture-implementation"]
+validation_units = ["fixture-validation"]
+assumption_md = """The fixture bounds one reviewed implementation unit and one validation unit."""

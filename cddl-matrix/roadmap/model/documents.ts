@@ -1,6 +1,7 @@
 import type {
   FullCommitId,
   FragmentId,
+  LowercaseSlug,
   MarkerId,
   PartId,
   ReferenceId,
@@ -329,12 +330,20 @@ export interface CampaignSelectionV1 {
   item_id: RoadmapId;
   target_kind: "active_id" | "legacy_markdown_reservation";
   selected_state: "selected" | "in_progress";
-  priority_class: import("./core.ts").LowercaseSlug;
+  priority_class: LowercaseSlug;
   selection_reason_md: Uint8Array;
-  cycle: import("./core.ts").LowercaseSlug;
+  cycle: LowercaseSlug;
   remaining_scope_md: Uint8Array;
   assignee?: string;
   pickup_commit?: FullCommitId;
+  cost_bound?: CampaignSelectionCostBoundV1;
+}
+
+export interface CampaignSelectionCostBoundV1 {
+  posture: "reviewed_scope";
+  implementation_units: LowercaseSlug[];
+  validation_units: LowercaseSlug[];
+  assumption_md: Uint8Array;
 }
 
 export interface RetiredIdsDocumentV1 {

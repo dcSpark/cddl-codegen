@@ -1,12 +1,14 @@
 import { bytesEqual, RoadmapWireError } from "../markdown_codec.ts";
 import type {
   CampaignDocumentV1,
+  CampaignSelectionCostBoundV1,
   CampaignSelectionV1,
   LegacyMarkdownReservationV1,
 } from "../model/documents.ts";
 import { composeCampaignDocument } from "../compose.ts";
 import {
   childLogicalPath as p,
+  canonicalSet,
   expectArrayOf,
   expectEnum,
   expectExactTable,
@@ -36,14 +38,16 @@ export const CAMPAIGN_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "reservation_roadmap_path", values: ["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADMAP.md"] },
   { name: "selection_target_kind", values: ["active_id", "legacy_markdown_reservation"] },
   { name: "selected_state", values: ["selected", "in_progress"] },
+  { name: "campaign_cost_posture", values: ["reviewed_scope"] },
 ] as const;
 
 export const CAMPAIGN_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
   { name: "campaign root", required: ["campaign"], optional: ["legacy_markdown_reservation", "selection"] },
   { name: "campaign document", required: ["schema_version", "matrix_authority", "testing_authority"] },
   { name: "legacy Markdown reservation", required: ["id", "work_kind", "roadmap_path", "source_title", "source_start_byte", "source_end_byte", "source_sha256", "whole_source_sha256"] },
-  { name: "selected campaign item", required: ["item_id", "target_kind", "selected_state", "priority_class", "selection_reason_md", "cycle", "remaining_scope_md"], optional: ["assignee"], forbidden: ["pickup_commit", "roadmap_path", "source_title", "source_start_byte", "source_end_byte", "source_sha256", "whole_source_sha256"] },
-  { name: "in-progress campaign item", required: ["item_id", "target_kind", "selected_state", "priority_class", "selection_reason_md", "cycle", "remaining_scope_md", "assignee", "pickup_commit"], forbidden: ["roadmap_path", "source_title", "source_start_byte", "source_end_byte", "source_sha256", "whole_source_sha256"] },
+  { name: "selected campaign item", required: ["item_id", "target_kind", "selected_state", "priority_class", "selection_reason_md", "cycle", "remaining_scope_md"], optional: ["assignee", "cost_bound"], forbidden: ["pickup_commit", "roadmap_path", "source_title", "source_start_byte", "source_end_byte", "source_sha256", "whole_source_sha256"] },
+  { name: "in-progress campaign item", required: ["item_id", "target_kind", "selected_state", "priority_class", "selection_reason_md", "cycle", "remaining_scope_md", "assignee", "pickup_commit"], optional: ["cost_bound"], forbidden: ["roadmap_path", "source_title", "source_start_byte", "source_end_byte", "source_sha256", "whole_source_sha256"] },
+  { name: "campaign selection cost bound", required: ["posture", "implementation_units", "validation_units", "assumption_md"] },
 ] as const;
 
 const WORK_KINDS = ["defect", "regression_gap", "coverage_cell", "missing_system", "feature", "optimization", "documentation_integrity", "infrastructure"] as const;
@@ -76,11 +80,48 @@ function decodeReservation(ctx: DecodeContext, raw: unknown, path: string): Lega
   };
 }
 
+function decodeCostBound(ctx: DecodeContext, raw: unknown, path: string): CampaignSelectionCostBoundV1 {
+  const table = expectExactTable(ctx, raw, path, CAMPAIGN_SCHEMA_ROWS[5]);
+  const implementationUnits = canonicalSet(
+    ctx,
+    expectArrayOf(ctx, requiredValue(table, "implementation_units"), p(path, "implementation_units"),
+      (entry, entryPath) => expectLowercaseSlug(ctx, entry, entryPath)),
+    p(path, "implementation_units"),
+    true,
+  );
+  const validationUnits = canonicalSet(
+    ctx,
+    expectArrayOf(ctx, requiredValue(table, "validation_units"), p(path, "validation_units"),
+      (entry, entryPath) => expectLowercaseSlug(ctx, entry, entryPath)),
+    p(path, "validation_units"),
+    true,
+  );
+  const implementationSet = new Set(implementationUnits);
+  if (validationUnits.some((unit) => implementationSet.has(unit))) {
+    schemaFail(
+      ctx,
+      "E-SCHEMA-STATE",
+      p(path, "validation_units"),
+      "implementation_units and validation_units must be disjoint",
+    );
+  }
+  const assumption = expectMarkdown(ctx, requiredValue(table, "assumption_md"), p(path, "assumption_md"));
+  if (assumption.byteLength === 0) {
+    schemaFail(ctx, "E-SCHEMA-FLOOR", p(path, "assumption_md"), "reviewed cost-bound assumption must be nonempty");
+  }
+  return {
+    posture: expectEnum(ctx, requiredValue(table, "posture"), ["reviewed_scope"] as const, p(path, "posture")),
+    implementation_units: implementationUnits,
+    validation_units: validationUnits,
+    assumption_md: assumption,
+  };
+}
+
 function decodeSelection(ctx: DecodeContext, raw: unknown, path: string): CampaignSelectionV1 {
   const pre = expectExactTable(ctx, raw, path, {
     name: "campaign selection discriminator",
     required: ["item_id", "target_kind", "selected_state"],
-    optional: ["priority_class", "selection_reason_md", "cycle", "remaining_scope_md", "assignee", "pickup_commit", "roadmap_path", "source_title", "source_start_byte", "source_end_byte", "source_sha256", "whole_source_sha256"],
+    optional: ["priority_class", "selection_reason_md", "cycle", "remaining_scope_md", "assignee", "pickup_commit", "cost_bound", "roadmap_path", "source_title", "source_start_byte", "source_end_byte", "source_sha256", "whole_source_sha256"],
   });
   const state = expectEnum(ctx, requiredValue(pre, "selected_state"), ["selected", "in_progress"] as const, p(path, "selected_state"));
   const table = expectExactTable(ctx, raw, path, CAMPAIGN_SCHEMA_ROWS[state === "selected" ? 3 : 4]);
@@ -95,6 +136,9 @@ function decodeSelection(ctx: DecodeContext, raw: unknown, path: string): Campai
     ...(hasOwn(table, "assignee") ? { assignee: expectString(ctx, optionalValue(table, "assignee"), p(path, "assignee")) } : {}),
     ...(state === "in_progress"
       ? { pickup_commit: expectFullCommitId(ctx, requiredValue(table, "pickup_commit"), p(path, "pickup_commit")) }
+      : {}),
+    ...(hasOwn(table, "cost_bound")
+      ? { cost_bound: decodeCostBound(ctx, optionalValue(table, "cost_bound"), p(path, "cost_bound")) }
       : {}),
   };
 }

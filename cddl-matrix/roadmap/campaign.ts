@@ -536,6 +536,13 @@ export function validateCampaign(inputs: CampaignValidationInputs): CampaignVali
       continue;
     }
     selections.set(selection.item_id, selection);
+    if (selection.cycle === "burndown-four" && selection.cost_bound === undefined) {
+      issues.push(issue(
+        "E-CAMPAIGN-STATE",
+        `${path}.cost_bound`,
+        "burndown-four selection requires one reviewed structured cost bound",
+      ));
+    }
     const reservation = reservations.get(selection.item_id);
     if (selection.target_kind === "active_id") {
       if (!active.has(selection.item_id) || reservation !== undefined) {
@@ -659,6 +666,18 @@ export interface CampaignTransitionInputs {
   readonly against: FullCommitId;
 }
 
+function campaignCostBoundsEqual(
+  left: NonNullable<CampaignSelectionV1["cost_bound"]>,
+  right: NonNullable<CampaignSelectionV1["cost_bound"]>,
+): boolean {
+  return left.posture === right.posture &&
+    left.implementation_units.length === right.implementation_units.length &&
+    left.implementation_units.every((unit, index) => unit === right.implementation_units[index]) &&
+    left.validation_units.length === right.validation_units.length &&
+    left.validation_units.every((unit, index) => unit === right.validation_units[index]) &&
+    bytesEqual(left.assumption_md, right.assumption_md);
+}
+
 /** Validate campaign-only transitions. Lifecycle removals remain transaction.ts's responsibility. */
 export function validateCampaignTransition(inputs: CampaignTransitionInputs): readonly RoadmapIssue[] {
   const baseAuthorityIssues = validateCampaignAuthorityTuple(inputs.base_document.campaign);
@@ -680,7 +699,9 @@ export function validateCampaignTransition(inputs: CampaignTransitionInputs): re
     if (
       baseSelection.priority_class !== candidate.priority_class || baseSelection.cycle !== candidate.cycle ||
       !bytesEqual(baseSelection.selection_reason_md, candidate.selection_reason_md) ||
-      !bytesEqual(baseSelection.remaining_scope_md, candidate.remaining_scope_md)
+      !bytesEqual(baseSelection.remaining_scope_md, candidate.remaining_scope_md) ||
+      (baseSelection.cost_bound !== undefined &&
+        (candidate.cost_bound === undefined || !campaignCostBoundsEqual(baseSelection.cost_bound, candidate.cost_bound)))
     ) {
       issues.push(issue("E-CAMPAIGN-TRANSITION", `selection[${JSON.stringify(id)}]`, "state transition may not silently rewrite campaign selection identity fields"));
     }

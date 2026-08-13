@@ -467,6 +467,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["truncated_span_read", { code: "E-SPAN-BOUNDS", logical_path: "source_span[1].end_byte" }],
   ["campaign_missing_root", { code: "E-SCHEMA-MISSING-KEY", logical_path: "campaign" }],
   ["campaign_impossible_authority_tuple_rejected", { code: "E-SCHEMA-STATE", logical_path: "campaign.testing_authority" }],
+  ["query_burndown_four_missing_cost_bound_rejected", { code: "E-CAMPAIGN-STATE", logical_path: "selection[0].cost_bound" }],
   ["retired_missing_root", { code: "E-SCHEMA-MISSING-KEY", logical_path: "retired_ids" }],
   ["noncanonical_literal_string", { code: "E-CODEC-PLACEHOLDER", logical_path: "section[0].source_block_md" }],
   ["noncanonical_table_order", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],

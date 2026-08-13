@@ -716,6 +716,13 @@ export function composeCampaignDocument(document: CampaignDocumentV1): Uint8Arra
     writer.markdown("remaining_scope_md", selection.remaining_scope_md);
     optionalString(writer, "assignee", selection.assignee);
     optionalString(writer, "pickup_commit", selection.pickup_commit);
+    if (selection.cost_bound !== undefined) {
+      writer.table("selection.cost_bound");
+      writer.string("posture", selection.cost_bound.posture);
+      writer.strings("implementation_units", selection.cost_bound.implementation_units, true);
+      writer.strings("validation_units", selection.cost_bound.validation_units, true);
+      writer.markdown("assumption_md", selection.cost_bound.assumption_md);
+    }
   }
   return writer.finish();
 }
