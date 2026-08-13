@@ -997,7 +997,20 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
   });
 }
 
+/**
+ * A registry view reads EVERY tracked file of a revision, so building it costs roughly a second on
+ * this repository; a production `--check` over both roadmaps asks for the same worktree view three
+ * times. The cache below is per ports object and keyed by the revision the view describes, which is
+ * exactly the identity of its content: a commit is immutable, and the worktree entry is dropped the
+ * moment this same port writes to it. Determinism is unaffected -- a memoized view is byte-for-byte
+ * the view a rebuild would produce.
+ */
+function revisionCacheKey(revision: RepositoryRevision): string {
+  return revision.kind === "worktree" ? "worktree" : `commit:${revision.commit}`;
+}
+
 function makeRepositoryPorts(root: string): RoadmapWritePorts {
+  const registryViews = new Map<string, RegistryView>();
   return Object.freeze({
     readDeclared: (path: RepoPath) => readTracked(root, { kind: "worktree" }, path),
     readDeclaredAtCommit: (commit: FullCommitId, path: RepoPath) => {
@@ -1008,9 +1021,17 @@ function makeRepositoryPorts(root: string): RoadmapWritePorts {
     resolveFullCommit: (candidate: string) => resolveCommit(root, candidate),
     registryView: (revision: RepositoryRevision) => {
       if (revision.kind === "commit") resolveCommit(root, revision.commit);
-      return buildRegistryView(root, revision);
+      const key = revisionCacheKey(revision);
+      const cached = registryViews.get(key);
+      if (cached !== undefined) return cached;
+      const view = buildRegistryView(root, revision);
+      registryViews.set(key, view);
+      return view;
     },
-    atomicReplace: (target: RepoPath, bytes: Uint8Array) => atomicReplaceAt(root, target, bytes),
+    atomicReplace: (target: RepoPath, bytes: Uint8Array) => {
+      registryViews.delete("worktree");
+      return atomicReplaceAt(root, target, bytes);
+    },
   });
 }
 
