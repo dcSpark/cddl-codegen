@@ -942,15 +942,11 @@
     },
     {
       "gate": "roadmap_projection_check",
-      "warm_ms": 79000,
+      "warm_ms": 55000,
       "n": 20,
       "measured": "2026-08-13",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-12",
-          "warm_ms": 49000
-        },
         {
           "date": "2026-08-13",
           "warm_ms": 64000
@@ -966,6 +962,10 @@
         {
           "date": "2026-08-13",
           "warm_ms": 79000
+        },
+        {
+          "date": "2026-08-13",
+          "warm_ms": 55000
         }
       ]
     },
