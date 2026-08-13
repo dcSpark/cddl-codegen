@@ -93,9 +93,12 @@ export function liveTestingLegacyProjection(): Uint8Array {
   ];
   assert(issues.length === 0, `live testing legacy projection failed rendering: ${JSON.stringify(issues)}`);
   const projection = renderValidatedChunks(completed.chunks, issues, completed.expected_bytes);
+  // Derived, not hand-maintained: the live TOML's own frozen_source_* fields are the single
+  // authored pin for these bytes, and production `--check` already enforces them against the same
+  // render via the span validator (E-SOURCE-DIGEST / E-SPAN-COVERAGE).
   assert(
-    projection.byteLength === 306_388 &&
-      sha256(projection) === "6e90f1fb06011cefa546d861da0a6525ff1af6fc81bbe51c9ed5f035578b53af",
+    projection.byteLength === document.document.frozen_source_byte_length &&
+      sha256(projection) === document.document.frozen_source_sha256,
     "rendered testing legacy projection escaped its frozen length/digest",
   );
   memoizedLegacyProjection = projection;
