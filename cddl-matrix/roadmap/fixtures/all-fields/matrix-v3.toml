@@ -88,7 +88,6 @@ check_procedure_md = '''Nested unblock check procedure.
 '''
 due_action_md = '''Nested unblock due action.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixture-choice-b"
@@ -108,7 +107,6 @@ observer = "fixture-observer"
 dimension = "fixture-dimension"
 action_on_fire_md = '''Nested event trigger action.
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -149,7 +147,6 @@ observer = "fixture-observer"
 dimension = "fixture-dimension"
 action_on_fire_md = '''Nested event trigger action.
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -279,7 +276,6 @@ body_md = '''Evidence a: regression_pin.
 evidence_kind = "regression_pin"
 claim_md = '''The regression_pin evidence arm is represented.
 '''
-evidence_verdict = "proposed"
 freshness = "live"
 reference_ids = ["ref-gate"]
 unprobed_remainder_md = '''No unprobed scope remains in the declared synthetic view.
@@ -306,7 +302,6 @@ body_md = '''Evidence b: gate.
 evidence_kind = "gate"
 claim_md = '''The gate evidence arm is represented.
 '''
-evidence_verdict = "confirmed"
 freshness = "as_of"
 reference_ids = ["ref-gate"]
 at_commit = "0123456789abcdef0123456789abcdef01234567"
@@ -331,7 +326,6 @@ body_md = '''Evidence c: harness_free_repro.
 evidence_kind = "harness_free_repro"
 claim_md = '''The harness_free_repro evidence arm is represented.
 '''
-evidence_verdict = "falsified"
 freshness = "historical"
 reference_ids = ["ref-gate"]
 command_md = '''bun run fixture-repro
@@ -359,7 +353,6 @@ body_md = '''Evidence d: committed_vector.
 evidence_kind = "committed_vector"
 claim_md = '''The committed_vector evidence arm is represented.
 '''
-evidence_verdict = "unknown"
 freshness = "stale"
 reference_ids = ["ref-file", "ref-test"]
 at_commit = "0123456789abcdef0123456789abcdef01234567"
@@ -383,7 +376,6 @@ body_md = '''Evidence e: execution_probe.
 evidence_kind = "execution_probe"
 claim_md = '''The execution_probe evidence arm is represented.
 '''
-evidence_verdict = "inapplicable"
 freshness = "as_of"
 reference_ids = ["ref-gate"]
 command_md = '''bun run fixture-probe
@@ -411,7 +403,6 @@ body_md = '''Evidence f: registry_enumeration.
 evidence_kind = "registry_enumeration"
 claim_md = '''The registry_enumeration evidence arm is represented.
 '''
-evidence_verdict = "proposed"
 freshness = "as_of"
 reference_ids = ["ref-feature", "ref-file"]
 at_commit = "0123456789abcdef0123456789abcdef01234567"
@@ -436,7 +427,6 @@ body_md = '''Evidence g: source_read.
 evidence_kind = "source_read"
 claim_md = '''The source_read evidence arm is represented.
 '''
-evidence_verdict = "confirmed"
 freshness = "historical"
 reference_ids = ["ref-file"]
 at_commit = "0123456789abcdef0123456789abcdef01234567"
@@ -460,7 +450,6 @@ body_md = '''Evidence h: spec_read.
 evidence_kind = "spec_read"
 claim_md = '''The spec_read evidence arm is represented.
 '''
-evidence_verdict = "falsified"
 freshness = "stale"
 reference_ids = ["ref-spec"]
 at_commit = "0123456789abcdef0123456789abcdef01234567"
@@ -484,7 +473,6 @@ body_md = '''Evidence i: consumer_report.
 evidence_kind = "consumer_report"
 claim_md = '''The consumer_report evidence arm is represented.
 '''
-evidence_verdict = "unknown"
 freshness = "as_of"
 reference_ids = ["ref-consumer"]
 at_commit = "0123456789abcdef0123456789abcdef01234567"
@@ -508,7 +496,6 @@ body_md = '''Evidence j: incident.
 evidence_kind = "incident"
 claim_md = '''The incident evidence arm is represented.
 '''
-evidence_verdict = "inapplicable"
 freshness = "as_of"
 reference_ids = ["ref-file"]
 at_commit = "0123456789abcdef0123456789abcdef01234567"
@@ -532,7 +519,6 @@ body_md = '''Evidence k: external_issue.
 evidence_kind = "external_issue"
 claim_md = '''The external_issue evidence arm is represented.
 '''
-evidence_verdict = "proposed"
 freshness = "historical"
 reference_ids = ["ref-issue"]
 at_commit = "0123456789abcdef0123456789abcdef01234567"
@@ -556,7 +542,6 @@ body_md = '''Evidence l: external_commit.
 evidence_kind = "external_commit"
 claim_md = '''The external_commit evidence arm is represented.
 '''
-evidence_verdict = "confirmed"
 freshness = "stale"
 reference_ids = ["ref-commit"]
 at_commit = "0123456789abcdef0123456789abcdef01234567"
@@ -580,7 +565,6 @@ body_md = '''Evidence m: decision.
 evidence_kind = "decision"
 claim_md = '''The decision evidence arm is represented.
 '''
-evidence_verdict = "falsified"
 freshness = "live"
 reference_ids = ["ref-roadmap"]
 unprobed_remainder_md = '''Only this declared evidence arm is claimed.
@@ -615,7 +599,6 @@ missed_action_md = '''Nested cadence missed action.
 last_completion_reference_id = "ref-issue"
 due_on = "2026-08-12"
 as_of = "2026-08-11"
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixture-policy-b"
@@ -651,7 +634,6 @@ dimension = "fixture-dimension"
 observable = "fixture-observable"
 action_on_fire_md = '''Nested quantitative trigger action.
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "quantitative"
@@ -665,7 +647,7 @@ as_of = "2026-08-11"
 [[record]]
 id = "matrix.fixture-raw-owner"
 title = "Raw authority sentinel"
-tags = ["coverage:closeout_state:blocked", "coverage:closeout_state:due", "coverage:closeout_state:waiting", "coverage:comparator:eq", "coverage:comparator:ge", "coverage:comparator:gt", "coverage:comparator:le", "coverage:comparator:lt", "coverage:control_kind:consumer_ci", "coverage:control_kind:fixture", "coverage:control_kind:gate", "coverage:control_kind:operator_procedure", "coverage:control_kind:review_rule", "coverage:control_kind:test", "coverage:control_kind:upstream_issue", "coverage:control_state:live", "coverage:control_state:proposed", "coverage:control_state:stale", "coverage:decision_arm:decided_permanent", "coverage:decision_arm:decided_reopenable", "coverage:decision_arm:held_reopenable", "coverage:decision_arm:pending", "coverage:decision_state:decided", "coverage:decision_state:held", "coverage:decision_state:pending", "coverage:evidence_kind:committed_vector", "coverage:evidence_kind:consumer_report", "coverage:evidence_kind:decision", "coverage:evidence_kind:execution_probe", "coverage:evidence_kind:external_commit", "coverage:evidence_kind:external_issue", "coverage:evidence_kind:gate", "coverage:evidence_kind:harness_free_repro", "coverage:evidence_kind:incident", "coverage:evidence_kind:registry_enumeration", "coverage:evidence_kind:regression_pin", "coverage:evidence_kind:source_read", "coverage:evidence_kind:spec_read", "coverage:evidence_verdict:confirmed", "coverage:evidence_verdict:falsified", "coverage:evidence_verdict:inapplicable", "coverage:evidence_verdict:proposed", "coverage:evidence_verdict:unknown", "coverage:freshness:as_of", "coverage:freshness:historical", "coverage:freshness:live", "coverage:freshness:stale", "coverage:payload_kind:control", "coverage:payload_kind:decision", "coverage:payload_kind:evidence", "coverage:payload_kind:matrix_external_closeout", "coverage:payload_kind:matrix_policy", "coverage:payload_kind:work", "coverage:permanence:permanent", "coverage:permanence:reopenable", "coverage:policy_kind:boundary", "coverage:policy_kind:maintenance_protocol", "coverage:predicate_kind:event", "coverage:predicate_kind:manual", "coverage:predicate_kind:quantitative", "coverage:priority_band:critical", "coverage:priority_band:high", "coverage:priority_band:low", "coverage:priority_band:normal", "coverage:reference_kind:consumer_report", "coverage:reference_kind:external_commit", "coverage:reference_kind:external_issue", "coverage:reference_kind:external_release", "coverage:reference_kind:file_heading", "coverage:reference_kind:gate", "coverage:reference_kind:matrix_cell", "coverage:reference_kind:matrix_feature", "coverage:reference_kind:matrix_role", "coverage:reference_kind:roadmap", "coverage:reference_kind:spec_passage", "coverage:reference_kind:test_symbol", "coverage:relation_kind:blocked_by", "coverage:relation_kind:complements", "coverage:relation_kind:delegates_to", "coverage:relation_kind:depends_on", "coverage:relation_kind:overlaps", "coverage:relation_kind:parent_of", "coverage:relation_kind:related", "coverage:relation_kind:reopens", "coverage:relation_kind:split_from", "coverage:relation_kind:supersedes", "coverage:render_node_kind:part", "coverage:render_node_kind:record", "coverage:render_node_kind:section", "coverage:risk:abort_or_panic", "coverage:risk:compile_failure", "coverage:risk:cosmetic", "coverage:risk:false_pass_or_red", "coverage:risk:invalid_acceptance", "coverage:risk:misleading_docs", "coverage:risk:resource_exhaustion", "coverage:risk:silent_wrong_bytes", "coverage:risk:valid_rejection", "coverage:risk:wrong_public_api", "coverage:schema_version:3", "coverage:transition_evaluation:met", "coverage:transition_evaluation:stale", "coverage:transition_evaluation:unknown", "coverage:transition_evaluation:unmet", "coverage:transition_kind:cadence", "coverage:transition_kind:promotion_trigger", "coverage:transition_kind:reopening_signal", "coverage:transition_kind:retirement_predicate", "coverage:transition_kind:unblock_predicate", "coverage:work_intent:add_regression", "coverage:work_intent:build_capability", "coverage:work_intent:build_system", "coverage:work_intent:change_documentation", "coverage:work_intent:establish_honest_refusal", "coverage:work_intent:optimize", "coverage:work_intent:repair", "coverage:work_kind:coverage_cell", "coverage:work_kind:defect", "coverage:work_kind:documentation_integrity", "coverage:work_kind:feature", "coverage:work_kind:infrastructure", "coverage:work_kind:missing_system", "coverage:work_kind:optimization", "coverage:work_kind:regression_gap", "coverage:work_state:armed", "coverage:work_state:blocked", "coverage:work_state:deferred", "coverage:work_state:delegated", "coverage:work_state:ready", "coverage:work_state:waiting_external"]
+tags = ["coverage:closeout_state:blocked", "coverage:closeout_state:due", "coverage:closeout_state:waiting", "coverage:comparator:eq", "coverage:comparator:ge", "coverage:comparator:gt", "coverage:comparator:le", "coverage:comparator:lt", "coverage:control_kind:consumer_ci", "coverage:control_kind:fixture", "coverage:control_kind:gate", "coverage:control_kind:operator_procedure", "coverage:control_kind:review_rule", "coverage:control_kind:test", "coverage:control_kind:upstream_issue", "coverage:control_state:live", "coverage:control_state:proposed", "coverage:control_state:stale", "coverage:decision_arm:decided_permanent", "coverage:decision_arm:decided_reopenable", "coverage:decision_arm:held_reopenable", "coverage:decision_arm:pending", "coverage:decision_state:decided", "coverage:decision_state:held", "coverage:decision_state:pending", "coverage:evidence_kind:committed_vector", "coverage:evidence_kind:consumer_report", "coverage:evidence_kind:decision", "coverage:evidence_kind:execution_probe", "coverage:evidence_kind:external_commit", "coverage:evidence_kind:external_issue", "coverage:evidence_kind:gate", "coverage:evidence_kind:harness_free_repro", "coverage:evidence_kind:incident", "coverage:evidence_kind:registry_enumeration", "coverage:evidence_kind:regression_pin", "coverage:evidence_kind:source_read", "coverage:evidence_kind:spec_read", "coverage:freshness:as_of", "coverage:freshness:historical", "coverage:freshness:live", "coverage:freshness:stale", "coverage:payload_kind:control", "coverage:payload_kind:decision", "coverage:payload_kind:evidence", "coverage:payload_kind:matrix_external_closeout", "coverage:payload_kind:matrix_policy", "coverage:payload_kind:work", "coverage:permanence:permanent", "coverage:permanence:reopenable", "coverage:policy_kind:boundary", "coverage:policy_kind:maintenance_protocol", "coverage:predicate_kind:event", "coverage:predicate_kind:manual", "coverage:predicate_kind:quantitative", "coverage:priority_band:critical", "coverage:priority_band:high", "coverage:priority_band:low", "coverage:priority_band:normal", "coverage:reference_kind:consumer_report", "coverage:reference_kind:external_commit", "coverage:reference_kind:external_issue", "coverage:reference_kind:external_release", "coverage:reference_kind:file_heading", "coverage:reference_kind:gate", "coverage:reference_kind:matrix_cell", "coverage:reference_kind:matrix_feature", "coverage:reference_kind:matrix_role", "coverage:reference_kind:roadmap", "coverage:reference_kind:spec_passage", "coverage:reference_kind:test_symbol", "coverage:relation_kind:blocked_by", "coverage:relation_kind:complements", "coverage:relation_kind:delegates_to", "coverage:relation_kind:depends_on", "coverage:relation_kind:overlaps", "coverage:relation_kind:parent_of", "coverage:relation_kind:related", "coverage:relation_kind:reopens", "coverage:relation_kind:split_from", "coverage:relation_kind:supersedes", "coverage:render_node_kind:part", "coverage:render_node_kind:record", "coverage:render_node_kind:section", "coverage:risk:abort_or_panic", "coverage:risk:compile_failure", "coverage:risk:cosmetic", "coverage:risk:false_pass_or_red", "coverage:risk:invalid_acceptance", "coverage:risk:misleading_docs", "coverage:risk:resource_exhaustion", "coverage:risk:silent_wrong_bytes", "coverage:risk:valid_rejection", "coverage:risk:wrong_public_api", "coverage:schema_version:3", "coverage:transition_kind:cadence", "coverage:transition_kind:promotion_trigger", "coverage:transition_kind:reopening_signal", "coverage:transition_kind:retirement_predicate", "coverage:transition_kind:unblock_predicate", "coverage:work_intent:add_regression", "coverage:work_intent:build_capability", "coverage:work_intent:build_system", "coverage:work_intent:change_documentation", "coverage:work_intent:establish_honest_refusal", "coverage:work_intent:optimize", "coverage:work_intent:repair", "coverage:work_kind:coverage_cell", "coverage:work_kind:defect", "coverage:work_kind:documentation_integrity", "coverage:work_kind:feature", "coverage:work_kind:infrastructure", "coverage:work_kind:missing_system", "coverage:work_kind:optimization", "coverage:work_kind:regression_gap", "coverage:work_state:armed", "coverage:work_state:blocked", "coverage:work_state:deferred", "coverage:work_state:delegated", "coverage:work_state:ready", "coverage:work_state:waiting_external"]
 
 [record.payload]
 kind = "work"
@@ -741,7 +723,6 @@ dimension = "fixture-dimension"
 observable = "fixture-measurement"
 action_on_fire_md = '''Promote the associated work.
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "quantitative"
@@ -777,7 +758,6 @@ dimension = "fixture-dimension"
 observable = "fixture-measurement"
 action_on_fire_md = '''Promote the associated work.
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "quantitative"
@@ -813,7 +793,6 @@ dimension = "fixture-dimension"
 observable = "fixture-measurement"
 action_on_fire_md = '''Promote the associated work.
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "quantitative"
@@ -848,7 +827,6 @@ check_procedure_md = '''Nested unblock check procedure.
 '''
 due_action_md = '''Nested unblock due action.
 '''
-evaluation = "stale"
 
 [[record]]
 id = "matrix.fixture-task-f"
@@ -870,7 +848,6 @@ dimension = "fixture-dimension"
 observable = "fixture-observable"
 action_on_fire_md = '''Nested manual trigger action.
 '''
-evaluation = "unknown"
 
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
@@ -889,7 +866,6 @@ missed_action_md = '''Escalate a missed review.
 last_completion_reference_id = "ref-commit"
 due_on = "2026-08-12"
 as_of = "2026-08-11"
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixture-task-g"
@@ -911,7 +887,6 @@ observer = "fixture-observer"
 dimension = "fixture-event"
 action_on_fire_md = '''Reopen the held decision.
 '''
-evaluation = "unmet"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -941,7 +916,6 @@ verification_md = '''Nested retirement verification.
 '''
 due_action_md = '''Nested retirement due action.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixture-task-i"
@@ -984,7 +958,6 @@ dimension = "fixture-dimension"
 observable = "fixture-measurement"
 action_on_fire_md = '''Promote the associated work.
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "quantitative"
@@ -1020,7 +993,6 @@ verification_md = '''Nested retirement verification.
 '''
 due_action_md = '''Nested retirement due action.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "action-a-one"
@@ -1067,7 +1039,6 @@ verification_md = '''Nested retirement verification.
 '''
 due_action_md = '''Nested retirement due action.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "action-b-one"
@@ -1115,7 +1086,6 @@ verification_md = '''Nested retirement verification.
 '''
 due_action_md = '''Nested retirement due action.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "action-c-one"

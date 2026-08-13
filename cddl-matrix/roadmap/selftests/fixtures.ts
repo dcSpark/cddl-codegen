@@ -88,7 +88,6 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "source_read",
     "spec_read",
   ],
-  evidence_verdict: ["confirmed", "falsified", "inapplicable", "proposed", "unknown"],
   freshness: ["as_of", "historical", "live", "stale"],
   incident_posture: ["attributed", "historical", "live"],
   payload_kind: [
@@ -147,7 +146,6 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "wrong_public_api",
   ],
   schema_version: ["3"],
-  transition_evaluation: ["met", "stale", "unknown", "unmet"],
   transition_kind: [
     "cadence",
     "promotion_trigger",

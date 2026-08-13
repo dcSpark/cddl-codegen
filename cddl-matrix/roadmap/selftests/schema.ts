@@ -36,7 +36,7 @@ const text = (value: string): Uint8Array => UTF8.encode(value);
 const ZERO_HASH = "0".repeat(64);
 
 export const REQUIRED_SCHEMA_SELFTEST_CASE_IDS = [
-  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "missing_section_entries", "empty_records_floor", "all_fields_identity", "v3_semantic_identity", "v2_unsupported", "v3_retired_keys_rejected", "transition_observable_arm_dependent", "noncanonical_basic_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_transition_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "schema_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
+  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "missing_section_entries", "empty_records_floor", "all_fields_identity", "v3_semantic_identity", "v2_unsupported", "v3_retired_keys_rejected", "transition_observable_arm_dependent", "noncanonical_basic_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "schema_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
 ] as const;
 
 export type RequiredSchemaSelfTestCaseId = (typeof REQUIRED_SCHEMA_SELFTEST_CASE_IDS)[number];
@@ -140,7 +140,7 @@ const READY = `kind = "work"\nwork_state = "ready"\nwork_intent = "build_capabil
 
 /** An armed work carrying the nested promotion trigger — the only remaining trigger packaging. */
 function predicateTransition(predicate: string): string {
-  return `kind = "work"\nwork_state = "armed"\nwork_intent = "optimize"\nwork_kind = "optimization"\nrisk = "cosmetic"\ncontrol_ids = ["matrix.fixture-control"]\n\n[p.promotion_trigger]\nobserver = "operator"\ndimension = "count"\nobservable = "fixture"\naction_on_fire_md = """Act."""\nevaluation = "unknown"\n\n[p.promotion_trigger.predicate]\n${predicate}`;
+  return `kind = "work"\nwork_state = "armed"\nwork_intent = "optimize"\nwork_kind = "optimization"\nrisk = "cosmetic"\ncontrol_ids = ["matrix.fixture-control"]\n\n[p.promotion_trigger]\nobserver = "operator"\ndimension = "count"\nobservable = "fixture"\naction_on_fire_md = """Act."""\n\n[p.promotion_trigger.predicate]\n${predicate}`;
 }
 
 const FIXTURE_ROOT = "cddl-matrix/roadmap/fixtures" as RepoPath;
@@ -290,7 +290,6 @@ const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
   [["roadmap", "reference_kind"].join(":")]: "kind",
   "semantic:shared_semantic_kind": "kind",
   "semantic:decision_permanence": "permanence",
-  "semantic:transition_evaluation": "evaluation",
   "matrix:matrix_semantic_kind": "kind",
   "matrix:policy_permanence": "permanence",
   "testing:testing_semantic_kind": "kind",
@@ -776,7 +775,7 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       return;
     }
     case "transition_observable_arm_dependent": {
-      const eventTransition = `kind = "work"\nwork_state = "armed"\nwork_intent = "optimize"\nwork_kind = "optimization"\nrisk = "cosmetic"\ncontrol_ids = ["matrix.fixture-control"]\n\n[p.promotion_trigger]\nobserver = "operator"\ndimension = "count"\naction_on_fire_md = """Act."""\nevaluation = "unknown"\n\n[p.promotion_trigger.predicate]\npredicate_kind = "event"\nevent_md = """Event."""\nevidence_ids = ["matrix.fixture-evidence"]\n`;
+      const eventTransition = `kind = "work"\nwork_state = "armed"\nwork_intent = "optimize"\nwork_kind = "optimization"\nrisk = "cosmetic"\ncontrol_ids = ["matrix.fixture-control"]\n\n[p.promotion_trigger]\nobserver = "operator"\ndimension = "count"\naction_on_fire_md = """Act."""\n\n[p.promotion_trigger.predicate]\npredicate_kind = "event"\nevent_md = """Event."""\nevidence_ids = ["matrix.fixture-evidence"]\n`;
       const decodedEvent = decodePayload(eventTransition, "matrix");
       assert(decodedEvent !== undefined, "event-condition trigger decodes without a trigger-level observable");
       expectFailure(() => decodePayload(eventTransition.replace('dimension = "count"', 'dimension = "count"\nobservable = "fixture"'), "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"], "p.promotion_trigger.observable");
@@ -790,7 +789,7 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     }
     case "domain_defect_regression_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "defect"'), "matrix"), ["E-SCHEMA-STATE"]); return;
     case "domain_missing_system_admission_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "missing_system"'), "testing"), ["E-SCHEMA-STATE"]); return;
-    case "schema_held_permanent_rejected": expectFailure(() => decodePayload('kind = "decision"\ndecision_state = "held"\nrationale_md = """R."""\npermanence = "permanent"\n\n[p.reopening_signal]\nobserver = "operator"\ndimension = "count"\naction_on_fire_md = """Act."""\nevaluation = "unknown"\n\n[p.reopening_signal.predicate]\npredicate_kind = "event"\nevent_md = """Event."""\n', "matrix"), ["E-SCHEMA-ENUM"]); return;
+    case "schema_held_permanent_rejected": expectFailure(() => decodePayload('kind = "decision"\ndecision_state = "held"\nrationale_md = """R."""\npermanence = "permanent"\n\n[p.reopening_signal]\nobserver = "operator"\ndimension = "count"\naction_on_fire_md = """Act."""\n\n[p.reopening_signal.predicate]\npredicate_kind = "event"\nevent_md = """Event."""\n', "matrix"), ["E-SCHEMA-ENUM"]); return;
     case "domain_quantitative_scope_unit_required": expectFailure(() => decodePayload(predicateTransition('predicate_kind = "quantitative"\ncomparator = "ge"\nthreshold = 2\nmeasurement = 1\nas_of = "2026-08-11"\n'), "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;
     case "domain_manual_not_auto_boolean": {
       const decoded = decodePayload(predicateTransition('predicate_kind = "manual"\nreview_procedure_md = """Review."""\nevidence_ids = ["matrix.fixture-evidence"]\n'), "matrix");
@@ -802,30 +801,12 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       expectFailure(() => decodePayload(READY.replace('priority_rationale_md = """Normal."""', 'priority_rationale_md = """"""'), "matrix"), ["E-SCHEMA-FLOOR"], "p.priority_rationale_md");
       return;
     }
-    case "domain_fired_transition_not_parked": {
-      // Deferred work's reopening signal is nested (Phase 4 fold); a deferred record whose nested
-      // signal already reads "met" is parking a fired transition.
-      assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/matrix-v3.toml");
-      const mutated = replaceAfter(source, 'id = "matrix.fixture-task-g"', 'evaluation = "unmet"', 'evaluation = "met"');
-      expectFailure(() => decodeRoadmapSource(text(mutated), "<fired-transition>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-g.reopening_signal");
-      return;
-    }
-    case "domain_already_met_transition_rejected": {
-      // The nested form of the same rule: an armed work's nested promotion trigger whose
-      // evaluation already reads "met" cannot be parked.
-      assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/matrix-v3.toml");
-      const mutated = replaceAfter(source, "[record.payload.promotion_trigger]", 'evaluation = "unknown"', 'evaluation = "met"');
-      expectFailure(() => decodeRoadmapSource(text(mutated), "<already-met-transition>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-f.promotion_trigger");
-      return;
-    }
     case "domain_stale_unknown_visible": {
-      const decoded = decodePayload('kind = "evidence"\nevidence_kind = "source_read"\nclaim_md = """Claim."""\nevidence_verdict = "unknown"\nfreshness = "stale"\nreference_ids = ["source"]\nobserved_at = "2026-08-11"\nenvironment_md = """Env."""\nunprobed_remainder_md = """Remainder."""\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix");
+      const decoded = decodePayload('kind = "evidence"\nevidence_kind = "source_read"\nclaim_md = """Claim."""\nfreshness = "stale"\nreference_ids = ["source"]\nobserved_at = "2026-08-11"\nenvironment_md = """Env."""\nunprobed_remainder_md = """Remainder."""\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix");
       assert(decoded !== undefined, "stale/unknown is visible semantic state"); return;
     }
-    case "evidence_point_requires_provenance": expectFailure(() => decodePayload('kind = "evidence"\nevidence_kind = "source_read"\nclaim_md = """Claim."""\nevidence_verdict = "confirmed"\nfreshness = "as_of"\nreference_ids = ["source"]\nobserved_at = "2026-08-11"\nunprobed_remainder_md = """Remainder."""\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix"), ["E-SCHEMA-STATE"]); return;
-    case "evidence_negative_requires_enumeration": expectFailure(() => decodePayload('kind = "evidence"\nevidence_kind = "registry_enumeration"\nclaim_md = """None found."""\nevidence_verdict = "confirmed"\nfreshness = "live"\nreference_ids = ["registry"]\nunprobed_remainder_md = """None."""\nrefresh_reference_id = "refresh"\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix"), ["E-SCHEMA-STATE"]); return;
+    case "evidence_point_requires_provenance": expectFailure(() => decodePayload('kind = "evidence"\nevidence_kind = "source_read"\nclaim_md = """Claim."""\nfreshness = "as_of"\nreference_ids = ["source"]\nobserved_at = "2026-08-11"\nunprobed_remainder_md = """Remainder."""\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix"), ["E-SCHEMA-STATE"]); return;
+    case "evidence_negative_requires_enumeration": expectFailure(() => decodePayload('kind = "evidence"\nevidence_kind = "registry_enumeration"\nclaim_md = """None found."""\nfreshness = "live"\nreference_ids = ["registry"]\nunprobed_remainder_md = """None."""\nrefresh_reference_id = "refresh"\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix"), ["E-SCHEMA-STATE"]); return;
     case "evidence_generator_requires_harness_free": {
       assert(context !== undefined, `${id} requires fixture ports`);
       const source = fixtureText(context, "all-fields/matrix-v3.toml");
@@ -898,8 +879,8 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       return;
     }
     case "schema_due_on_valid_through_postures": {
-      expectFailure(() => decodePayload('kind = "work"\nwork_state = "blocked"\nwork_intent = "repair"\nwork_kind = "feature"\nrisk = "cosmetic"\nblocker_md = """No."""\n\n[p.unblock_predicate]\nowner_reference_id = "owner"\nevent_md = """Event."""\ncheck_procedure_md = """Check."""\ndue_action_md = """Act."""\ndue_on = "2026-08-11"\nevaluation = "unknown"\n', "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]);
-      expectFailure(() => decodePayload('kind = "evidence"\nevidence_kind = "source_read"\nclaim_md = """Claim."""\nevidence_verdict = "confirmed"\nfreshness = "historical"\nreference_ids = ["source"]\nobserved_at = "2026-08-11"\nvalid_through = "2026-08-12"\nenvironment_md = """Env."""\nunprobed_remainder_md = """None."""\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix"), ["E-SCHEMA-FORBIDDEN-KEY", "E-SCHEMA-STATE"]);
+      expectFailure(() => decodePayload('kind = "work"\nwork_state = "blocked"\nwork_intent = "repair"\nwork_kind = "feature"\nrisk = "cosmetic"\nblocker_md = """No."""\n\n[p.unblock_predicate]\nowner_reference_id = "owner"\nevent_md = """Event."""\ncheck_procedure_md = """Check."""\ndue_action_md = """Act."""\ndue_on = "2026-08-11"\n', "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]);
+      expectFailure(() => decodePayload('kind = "evidence"\nevidence_kind = "source_read"\nclaim_md = """Claim."""\nfreshness = "historical"\nreference_ids = ["source"]\nobserved_at = "2026-08-11"\nvalid_through = "2026-08-12"\nenvironment_md = """Env."""\nunprobed_remainder_md = """None."""\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix"), ["E-SCHEMA-FORBIDDEN-KEY", "E-SCHEMA-STATE"]);
       return;
     }
     case "schema_canonical_key_order_every_arm": {
@@ -982,8 +963,6 @@ const SCHEMA_CASES: { readonly [K in RequiredSchemaSelfTestCaseId]: SchemaCaseSp
   domain_transition_each_kind: { category: "schema", polarity: "positive" },
   domain_quantitative_scope_unit_required: { category: "schema", polarity: "negative" },
   domain_manual_not_auto_boolean: { category: "schema", polarity: "positive" },
-  domain_fired_transition_not_parked: { category: "schema", polarity: "negative" },
-  domain_already_met_transition_rejected: { category: "schema", polarity: "negative" },
   domain_stale_unknown_visible: { category: "schema", polarity: "positive" },
   evidence_point_requires_provenance: { category: "schema", polarity: "negative" },
   evidence_negative_requires_enumeration: { category: "schema", polarity: "negative" },
@@ -1032,8 +1011,6 @@ const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "domain_matrix_all_tags",
   "domain_testing_all_tags",
   "domain_transition_each_kind",
-  "domain_fired_transition_not_parked",
-  "domain_already_met_transition_rejected",
   "evidence_generator_requires_harness_free",
   "evidence_timing_join_structural",
   "evidence_draft_log_rejected",

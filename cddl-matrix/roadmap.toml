@@ -320,7 +320,6 @@ observer = "adopting tool owner"
 dimension = "annotation consumers"
 action_on_fire_md = '''add its annotation file and adapter
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -357,7 +356,6 @@ observer = "affected spec owner"
 dimension = "required map hoists"
 action_on_fire_md = '''add the anonymous map door
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -390,7 +388,6 @@ verification_md = '''Probe sole, preceded-sibling, exactly-once, bounded, zero-o
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.bignum-key-tag-upstream"
@@ -419,7 +416,6 @@ verification_md = '''Run bignint-key-empty-map-accepts and bignint-wrong-tag-rej
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.catalog-build.refusal-spelling"
@@ -437,7 +433,6 @@ observer = "refusal-fix owner"
 dimension = "guards with ordering bypass history"
 action_on_fire_md = '''add the mechanical reject-catalog leg
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -503,7 +498,6 @@ observer = "control-fix owner"
 dimension = "controls with proven multi-point breakage"
 action_on_fire_md = '''enumerate that operator's full product
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -554,7 +548,6 @@ observer = "affected crate owner"
 dimension = "hand-authored arm names"
 action_on_fire_md = '''review a public naming convention
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -601,7 +594,6 @@ observer = "spec fixer"
 dimension = "unreadable rejection output"
 action_on_fire_md = '''identify sites and deduplicate visits/pairs
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -640,7 +632,6 @@ checklist_md = '''Declare directory-input execution coverage or a reasoned singl
 '''
 missed_action_md = '''Reject a silently omitted input mode.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.emission-narrowing-fixture-floor"
@@ -673,7 +664,6 @@ observer = "golden-vector author"
 dimension = "duplicate asserted-byte authoring"
 action_on_fire_md = '''add an emission model or name the narrow type
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -689,7 +679,6 @@ kind = "evidence"
 evidence_kind = "gate"
 claim_md = '''For `t = true / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
 '''
-evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify"]
 unprobed_remainder_md = '''No other boolean spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
@@ -709,7 +698,6 @@ kind = "evidence"
 evidence_kind = "gate"
 claim_md = '''For `t = h'CAFE' / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
 '''
-evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n2"]
 unprobed_remainder_md = '''No other byte-string spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
@@ -729,7 +717,6 @@ kind = "evidence"
 evidence_kind = "external_commit"
 claim_md = '''The FixedValue choice-member family closed its reviewed denominator at commit 8320fb3330c5d6febda8910e5a3bb944bcec1466: eight legal representative cells (bool, bytes, float, nint, null, text, uint, undefined) carried thirty-six verified stage outcomes under the default profile — six representatives supported with rust and wasm compile plus round-trip evidence, while float and nint were safely refused at rust generation with their runtime stages inapplicable — and zero exclusions.
 '''
-evidence_verdict = "confirmed"
 freshness = "historical"
 reference_ids = ["commit-dcspark-cddl-codegen"]
 at_commit = "8320fb3330c5d6febda8910e5a3bb944bcec1466"
@@ -750,7 +737,6 @@ kind = "evidence"
 evidence_kind = "gate"
 claim_md = '''For `t = 1.5 / tstr` under the default profile, Rust generation safely refuses with exit 1; Rust compilation and Rust round-trip are therefore inapplicable.
 '''
-evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n3"]
 unprobed_remainder_md = '''No other float spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
@@ -770,7 +756,6 @@ kind = "evidence"
 evidence_kind = "gate"
 claim_md = '''For `t = -1 / null / tstr` under the default profile, Rust generation safely refuses with exit 1; Rust compilation and Rust round-trip are therefore inapplicable.
 '''
-evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n4"]
 unprobed_remainder_md = '''No other negative-integer spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
@@ -790,7 +775,6 @@ kind = "evidence"
 evidence_kind = "gate"
 claim_md = '''For `t = null / tstr / uint` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
 '''
-evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n5"]
 unprobed_remainder_md = '''No other null placement, profile, or face is claimed; this is the canonical representative coordinate only.
@@ -810,7 +794,6 @@ kind = "evidence"
 evidence_kind = "gate"
 claim_md = '''For `t = "x" / uint` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
 '''
-evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n6"]
 unprobed_remainder_md = '''No other text literal, placement, profile, or face is claimed; in particular the keyword-minting literal `"self"` remains a separately pinned refusal.
@@ -830,7 +813,6 @@ kind = "evidence"
 evidence_kind = "gate"
 claim_md = '''For `t = 5 / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
 '''
-evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n7"]
 unprobed_remainder_md = '''No other unsigned-integer spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
@@ -850,7 +832,6 @@ kind = "evidence"
 evidence_kind = "gate"
 claim_md = '''For `t = undefined / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
 '''
-evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n8"]
 unprobed_remainder_md = '''No other undefined placement, profile, or face is claimed; this is the canonical representative coordinate only.
@@ -898,7 +879,6 @@ observer = "extern/raw-bytes consumer"
 dimension = "demand or missed wasm defect"
 action_on_fire_md = '''review hint feature
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -951,7 +931,6 @@ observer = "matrix query consumer"
 dimension = "vendor-sentinel query demand"
 action_on_fire_md = '''model only demanded seam data
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -1014,7 +993,6 @@ verification_md = '''Probe h'cafe', b64'yv4=', h'CAFE', and a raw UTF-8 control 
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixed-bytes.static-representation"
@@ -1075,7 +1053,6 @@ verification_md = '''Run bun run verify.ts --mint-decode-foreign --only=value.by
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixed-map-key-kinds"
@@ -1136,7 +1113,6 @@ verification_md = '''Run float-key-accepts and null-key-rejects against occurren
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.float-prelude-name-upstream"
@@ -1175,7 +1151,6 @@ verification_md = '''File the report; on a distinguishing fix, drop rust from af
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -1237,7 +1212,6 @@ observer = "affected consumer"
 dimension = "immutable wire formats with float keys"
 action_on_fire_md = '''design an ordered-float key
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -1275,7 +1249,6 @@ observer = "consumer reporter"
 dimension = "blank legal role×feature cells"
 action_on_fire_md = '''derive the grammar denominator
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -1360,7 +1333,6 @@ verification_md = '''File the report; probe both statement orders at root and th
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -1417,7 +1389,6 @@ check_procedure_md = '''Confirm a durable design and acceptance owner exists and
 '''
 due_action_md = '''Delete the current refusal arm, generalize group-choice merging, flip assigng.extend, and re-mint the affected decode rows.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.inline-cbor-containment-boundary"
@@ -1449,7 +1420,6 @@ observer = "matrix query consumer"
 dimension = "nested-cbor row demand"
 action_on_fire_md = '''add the row if it adds discrimination
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -1483,7 +1453,6 @@ observer = "affected spec owner"
 dimension = "required group names"
 action_on_fire_md = '''mint the inline arm struct
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -1585,7 +1554,6 @@ checklist_md = '''Enumerate the row and its violation vector before accepting gr
 '''
 missed_action_md = '''Block the row when enforcement is unclassified.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.keyed-struct-map.zero-permitting-fields"
@@ -1671,7 +1639,6 @@ observer = "affected spec owner"
 dimension = "repeated hand expansion"
 action_on_fire_md = '''design a choice of bodies
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -1706,7 +1673,6 @@ observer = "multi-scope consumer"
 dimension = "scopes crossed by extern surface"
 action_on_fire_md = '''enumerate demanded shapes
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -1854,7 +1820,6 @@ verification_md = '''Create and file a durable report; re-mint c_style_enum_map_
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -1896,7 +1861,6 @@ observer = "affected spec owner"
 dimension = "full-range nint constructs in an uncontrolled spec"
 action_on_fire_md = '''design runtime/emitted type and resolve upstream literal width
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -1938,7 +1902,6 @@ observer = "affected crate owner"
 dimension = "handwritten standalone wrappers"
 action_on_fire_md = '''design opt-in nominalization
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -1970,7 +1933,6 @@ verification_md = '''Re-probe and re-mint the inclusive and exclusive int, nint,
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.open-array.optional-adjacency"
@@ -2006,7 +1968,6 @@ check_procedure_md = '''Verify that proof against RFC greedy non-backtracking ex
 '''
 due_action_md = '''Implement and vector only the proven adjacency classes; retain graceful refusal for every unresolved overlap.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.open-table.bounded-rest-rows"
@@ -2065,7 +2026,6 @@ observer = "affected consumer"
 dimension = "empty typed row reaching wire/cross-crate boundary"
 action_on_fire_md = '''adopt NonEmptyMap/PairMap across faces
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -2102,7 +2062,6 @@ verification_md = '''Run optional-entry-empty-map-accepts and closed-map-unexpec
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "adjacent-map-matching"
@@ -2161,7 +2120,6 @@ check_procedure_md = '''Confirm the ruling cites a durable authority and states 
 '''
 due_action_md = '''Update matrix.systematic.over-acceptance from the ruling, including its axes or explicit denominator unknowns, without changing certified numerator vectors.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.per-value-encoding-reachability"
@@ -2195,7 +2153,6 @@ observer = "golden-vector author"
 dimension = "actionable-column overstatement"
 action_on_fire_md = '''add per-value reachability
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -2234,7 +2191,6 @@ checklist_md = '''Run the four exact tells in the supporting parts and inspect e
 '''
 missed_action_md = '''Fail pickup when a discovered hole has no durable owner.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.prelude-number-float-upstream"
@@ -2270,7 +2226,6 @@ verification_md = '''Run prelude-number-float-accepts and prelude-number-tstr-re
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "ruby-calendar-date"
@@ -2328,7 +2283,6 @@ checklist_md = '''Bump the pinned source filename, URL, and checksum together an
 '''
 missed_action_md = '''Refuse the update when the source set and declared profile disagree.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.radix-literal-upstream"
@@ -2360,7 +2314,6 @@ verification_md = '''Probe lower/uppercase hexadecimal and binary literals in va
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "ruby-radix-positions"
@@ -2430,7 +2383,6 @@ checklist_md = '''Review trigger ordering, placement, aliases, and alternate spe
 '''
 missed_action_md = '''Block the change when an equivalent spelling bypasses or contradicts the guard.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.root-reference-placement"
@@ -2463,7 +2415,6 @@ observer = "affected consumer"
 dimension = "root-position dangling imports"
 action_on_fire_md = '''add named/alias root rows
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -2501,7 +2452,6 @@ verification_md = '''Create and file a durable ruby report; after a release remo
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -2541,7 +2491,6 @@ verification_md = '''Create and file the validator fix/report; after a release i
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -2596,7 +2545,6 @@ verification_md = '''Create and file a durable report from the README-owned diff
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -2635,7 +2583,6 @@ verification_md = '''Create and file the durable report; then probe the tagged k
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -2669,7 +2616,6 @@ observer = "matrix consumer"
 dimension = "tag-semantic consumers"
 action_on_fire_md = '''enumerate only the demanded tag semantics
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -2711,7 +2657,6 @@ verification_md = '''File the report; on an 81cbf4 fix remove that exact exempti
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "acceptance-ruled-correct"
@@ -2782,7 +2727,6 @@ verification_md = '''Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne,
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.undefined-ciborium-upstream"
@@ -2815,7 +2759,6 @@ verification_md = '''Confirm reference_codec_differential_self_check fails stale
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.undefined-validator-upstream"
@@ -2850,7 +2793,6 @@ verification_md = '''Require exact f7 acceptance, remove only fixed_singletons/u
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
-evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "signature-only-change"
@@ -2902,7 +2844,6 @@ observer = "generated-crate consumer"
 dimension = "unused wrapper obligations"
 action_on_fire_md = '''make reachability-conditional emission
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
@@ -2934,7 +2875,6 @@ observer = "macro-mode consumer"
 dimension = "behavioral defects past compile verdict"
 action_on_fire_md = '''revisit only that boundary
 '''
-evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"

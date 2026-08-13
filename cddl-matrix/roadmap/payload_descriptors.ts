@@ -111,10 +111,8 @@ export const WORK_INTENTS = ["repair", "add_regression", "build_capability", "bu
 export const WORK_KINDS = ["defect", "regression_gap", "coverage_cell", "missing_system", "feature", "optimization", "documentation_integrity", "infrastructure"] as const;
 export const RISKS = ["silent_wrong_bytes", "invalid_acceptance", "valid_rejection", "wrong_public_api", "compile_failure", "abort_or_panic", "false_pass_or_red", "misleading_docs", "resource_exhaustion", "cosmetic"] as const;
 export const PRIORITIES = ["critical", "high", "normal", "low"] as const;
-export const EVALUATIONS = ["met", "unmet", "unknown", "stale"] as const;
 export const COMPARATORS = ["lt", "le", "eq", "ge", "gt"] as const;
 export const EVIDENCE_KINDS = ["regression_pin", "gate", "harness_free_repro", "committed_vector", "execution_probe", "registry_enumeration", "source_read", "spec_read", "consumer_report", "incident", "external_issue", "external_commit", "decision"] as const;
-export const EVIDENCE_VERDICTS = ["proposed", "confirmed", "falsified", "unknown", "inapplicable"] as const;
 export const FRESHNESS = ["live", "as_of", "historical", "stale"] as const;
 export const CONTROL_KINDS = ["gate", "test", "fixture", "review_rule", "consumer_ci", "upstream_issue", "operator_procedure"] as const;
 export const CONTROL_STATES = ["live", "proposed", "stale"] as const;
@@ -328,7 +326,6 @@ const NESTED_TRANSITION_GROUP_ARMS: readonly PayloadArm[] = [
     str("observer"),
     str("dimension"),
     md("action_on_fire_md"),
-    en("evaluation", EVALUATIONS),
     field("predicate", "required", { t: "table", group: TRANSITION_PREDICATE_GROUP }),
   ], ["observable"]),
   arm("nested authored-condition trigger", [["predicate.predicate_kind", ["quantitative", "manual"]]], [
@@ -336,7 +333,6 @@ const NESTED_TRANSITION_GROUP_ARMS: readonly PayloadArm[] = [
     str("dimension"),
     str("observable"),
     md("action_on_fire_md"),
-    en("evaluation", EVALUATIONS),
     field("predicate", "required", { t: "table", group: TRANSITION_PREDICATE_GROUP }),
   ]),
 ];
@@ -358,7 +354,6 @@ export const NESTED_UNBLOCK_GROUP: NestedGroup = Object.freeze({
       md("event_md"),
       md("check_procedure_md"),
       md("due_action_md"),
-      en("evaluation", EVALUATIONS),
     ]),
   ],
 });
@@ -371,7 +366,6 @@ export const NESTED_WATCH_ESCALATION_GROUP: NestedGroup = Object.freeze({
       md("response_md"),
       md("escalation_action_md"),
       md("retirement_semantics_md"),
-      en("evaluation", EVALUATIONS),
     ]),
   ],
 });
@@ -383,7 +377,6 @@ export const NESTED_RETIREMENT_GROUP: NestedGroup = Object.freeze({
       md("external_predicate_md"),
       md("verification_md"),
       md("due_action_md"),
-      en("evaluation", EVALUATIONS),
     ]),
   ],
 });
@@ -399,7 +392,6 @@ export const NESTED_CADENCE_GROUP: NestedGroup = Object.freeze({
       refId("last_completion_reference_id", DURABLE_OWNER_REFERENCE_KINDS, "optional", { absent: "null" }),
       date("due_on", "optional", { absent: "null" }),
       date("as_of", "optional", { rename: "authored_as_of", absent: "null" }),
-      en("evaluation", EVALUATIONS),
     ]),
   ],
 });
@@ -533,7 +525,6 @@ const EVIDENCE_ARM_LIST: readonly PayloadArm[] = [
     body(),
     en("evidence_kind", EVIDENCE_KINDS),
     md("claim_md"),
-    en("evidence_verdict", EVIDENCE_VERDICTS),
     en("freshness", FRESHNESS),
     refSet("reference_ids", EVIDENCE_ALLOWED, "required", true),
     md("command_md", "optional"),

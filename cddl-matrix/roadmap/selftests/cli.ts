@@ -382,7 +382,6 @@ control_ids = ["testing.fixture-small-control"]
 observer = "operator"
 dimension = "count"
 action_on_fire_md = '''Act on the fixture trigger.'''
-evaluation = "unknown"
 
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "event"
@@ -395,7 +394,6 @@ period_or_event_md = '''Review on the fixture date.'''
 checklist_md = '''Check the decoded cadence.'''
 missed_action_md = '''Escalate the missed fixture cadence.'''
 due_on = "2025-01-01"
-evaluation = "unknown"
 
 [[record]]
 id = "testing.fixture-small-control"
@@ -414,7 +412,6 @@ kind = "evidence"
 body_md = '''Semantic testing detail.'''
 evidence_kind = "external_commit"
 claim_md = '''The fixture commit is point-in-time evidence.'''
-evidence_verdict = "confirmed"
 freshness = "as_of"
 reference_ids = ["temporal-owner"]
 at_commit = "1111111111111111111111111111111111111111"

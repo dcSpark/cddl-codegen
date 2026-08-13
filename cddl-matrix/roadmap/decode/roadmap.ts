@@ -277,13 +277,6 @@ function assertDecodedDomainJoins(ctx: DecodeContext, doc: RoadmapDocumentV3): v
   for (const record of doc.records) {
     const payload = payloads.get(record.id);
     if (payload?.kind === "work") {
-      // A parked state cannot carry a nested transition whose evaluation already reads met.
-      for (const field of ["promotion_trigger", "reopening_signal", "unblock_predicate", "retirement_predicate"] as const) {
-        const nested = (payload as unknown as Record<string, { evaluation?: string } | undefined>)[field];
-        if (nested !== undefined && nested.evaluation === "met") {
-          schemaFail(ctx, "E-SCHEMA-STATE", `record.${record.id}.${field}`, `work cannot park already-fired nested ${field}`);
-        }
-      }
       if (payload.work_kind === "defect") {
         const evidenceIds = [...(payload.evidence_ids ?? []), ...(payload.regression_evidence_ids ?? [])];
         const evidence = evidenceIds.map((id) => payloads.get(id));

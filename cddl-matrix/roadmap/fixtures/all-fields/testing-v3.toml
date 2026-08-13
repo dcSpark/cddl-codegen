@@ -127,7 +127,6 @@ body_md = '''Live gate evidence.
 '''
 evidence_kind = "gate"
 claim_md = '''A non-stub synthetic gate protects this fixture.'''
-evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["evidence-gate-target"]
 unprobed_remainder_md = '''No production roadmap is probed.'''
@@ -203,7 +202,6 @@ escalation_action_md = '''Nested escalation action.
 '''
 retirement_semantics_md = '''Nested retirement semantics.
 '''
-evaluation = "unknown"
 
 [[record.payload.capture_step]]
 step_id = "capture"
@@ -236,7 +234,6 @@ escalation_action_md = '''Nested escalation action.
 '''
 retirement_semantics_md = '''Nested retirement semantics.
 '''
-evaluation = "unknown"
 
 [[record.payload.capture_step]]
 step_id = "capture"
@@ -263,7 +260,6 @@ capture_procedure_md = '''Capture the exact fixture output.'''
 response_md = '''Attribute or quarantine the recurrence.'''
 escalation_action_md = '''Promote the watch to active repair work.'''
 retirement_semantics_md = '''Retire after the recurrence remains absent.'''
-evaluation = "met"
 
 [[record.payload.capture_step]]
 step_id = "capture"

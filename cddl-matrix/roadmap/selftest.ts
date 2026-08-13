@@ -315,8 +315,6 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["domain_defect_regression_required", { code: "E-SCHEMA-STATE", logical_path: "p" }],
   ["domain_missing_system_admission_required", { code: "E-SCHEMA-STATE", logical_path: "p" }],
   ["domain_quantitative_scope_unit_required", { code: "E-SCHEMA-MISSING-KEY", logical_path: "p.promotion_trigger.predicate.unit" }],
-  ["domain_fired_transition_not_parked", { code: "E-SCHEMA-STATE", logical_path: "record.matrix.fixture-task-g.reopening_signal" }],
-  ["domain_already_met_transition_rejected", { code: "E-SCHEMA-STATE", logical_path: "record.matrix.fixture-task-f.promotion_trigger" }],
   ["evidence_point_requires_provenance", { code: "E-SCHEMA-STATE", logical_path: "p" }],
   ["evidence_negative_requires_enumeration", { code: "E-SCHEMA-STATE", logical_path: "p.enumerated_registry" }],
   ["evidence_generator_requires_harness_free", { code: "E-SCHEMA-STATE", logical_path: "record.matrix.fixture-task-a.evidence_ids" }],

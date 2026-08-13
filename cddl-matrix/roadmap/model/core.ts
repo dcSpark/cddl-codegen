@@ -190,7 +190,6 @@ export interface DecidedDecision extends SemanticPayloadBase {
 
 export type DecisionPayload = PendingDecision | HeldDecision | DecidedDecision;
 
-export type TransitionEvaluation = "met" | "unmet" | "unknown" | "stale";
 export type Comparator = "lt" | "le" | "eq" | "ge" | "gt";
 
 export interface QuantitativePredicate {
@@ -236,7 +235,6 @@ export interface NestedTransition {
    */
   observable?: string;
   action_on_fire_md: Uint8Array;
-  evaluation: TransitionEvaluation;
   predicate: TransitionPredicate;
 }
 
@@ -245,7 +243,6 @@ export interface NestedUnblockPredicate {
   event_md: Uint8Array;
   check_procedure_md: Uint8Array;
   due_action_md: Uint8Array;
-  evaluation: TransitionEvaluation;
 }
 
 export interface NestedWatchEscalation {
@@ -254,7 +251,6 @@ export interface NestedWatchEscalation {
   response_md: Uint8Array;
   escalation_action_md: Uint8Array;
   retirement_semantics_md: Uint8Array;
-  evaluation: TransitionEvaluation;
 }
 
 export interface NestedRetirementPredicate {
@@ -262,7 +258,6 @@ export interface NestedRetirementPredicate {
   external_predicate_md: Uint8Array;
   verification_md: Uint8Array;
   due_action_md: Uint8Array;
-  evaluation: TransitionEvaluation;
 }
 
 export interface NestedCadenceTransition {
@@ -274,7 +269,6 @@ export interface NestedCadenceTransition {
   last_completion_reference_id?: ReferenceId;
   due_on?: CivilDate;
   as_of?: CivilDate;
-  evaluation: TransitionEvaluation;
 }
 
 export type EvidenceKind =
@@ -291,7 +285,6 @@ export type EvidenceKind =
   | "external_issue"
   | "external_commit"
   | "decision";
-export type EvidenceVerdict = "proposed" | "confirmed" | "falsified" | "unknown" | "inapplicable";
 export type Freshness = "live" | "as_of" | "historical" | "stale";
 
 export interface EvidenceScope {
@@ -309,7 +302,6 @@ export interface EvidencePayload extends SemanticPayloadBase {
   kind: "evidence";
   evidence_kind: EvidenceKind;
   claim_md: Uint8Array;
-  evidence_verdict: EvidenceVerdict;
   freshness: Freshness;
   reference_ids: ReferenceId[];
   command_md?: Uint8Array;

@@ -169,7 +169,7 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
             roadmap, id,
             transition_kind: "evidence_freshness",
             evaluation: evaluateTemporalPayload(payload, asOf),
-            evidence_kind: payload.evidence_kind, evidence_verdict: payload.evidence_verdict,
+            evidence_kind: payload.evidence_kind,
             freshness: payload.freshness, reference_ids: payload.reference_ids,
             observed_at: payload.observed_at ?? null, valid_through: payload.valid_through ?? null,
             scope: payload.scope, claim_md: payload.claim_md,
@@ -222,7 +222,7 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
           // The unblock predicate now lives nested on the owner (Packet 3A-2); the exact list is
           // its one nested entry rather than a citation join over standalone transition records.
           const nested = "unblock_predicate" in row
-            ? row.unblock_predicate as { evaluation: string; event_md: Uint8Array; check_procedure_md: Uint8Array; due_action_md: Uint8Array; owner_reference_id: string }
+            ? row.unblock_predicate as { event_md: Uint8Array; check_procedure_md: Uint8Array; due_action_md: Uint8Array; owner_reference_id: string }
             : undefined;
           return { ...row,
             owner_group: row.work_state === "waiting_external"
@@ -230,7 +230,7 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
               : row.work_state === "delegated" ? delegationTargets.join(",") : "blocked_internal",
             delegation_targets: delegationTargets,
             exact_unblock_predicates: nested === undefined ? [] : [{
-              transition_kind: "unblock_predicate", evaluation: nested.evaluation,
+              transition_kind: "unblock_predicate",
               event_md: nested.event_md, check_procedure_md: nested.check_procedure_md,
               due_action_md: nested.due_action_md, owner_reference_id: nested.owner_reference_id,
             }] };
