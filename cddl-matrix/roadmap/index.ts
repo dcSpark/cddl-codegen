@@ -5,8 +5,11 @@ import { parseRoadmapCli, ROADMAP_CLI_USAGE, RoadmapCliParseError } from "./cli.
 import { composeCanonicalDocument } from "./compose.ts";
 import {
   deriveMigrationDebt,
+  migrationCompletionAudit,
   migrationDebtReport,
   migrationProgressReport,
+  validateMigrationCompletion,
+  MIGRATION_COMPLETION_STATE,
   type MigrationDebt,
 } from "./debt.ts";
 import { decodeRoadmapSource } from "./decode/roadmap.ts";
@@ -59,12 +62,6 @@ import {
 import { buildProjectionViews, type ProjectionViews } from "./projection_views.ts";
 import { projectionLayout, projectionLayoutRank, validateProjectionLayoutDeclaration } from "./projection_layout.ts";
 import { scanRoadmapMarkdownFacts } from "./references.ts";
-import {
-  semanticConversionCompletionAudit,
-  semanticConversionState,
-  validateSemanticConversionCompletion,
-  validateSemanticConversionDeclaration,
-} from "./semantic_conversion.ts";
 import { runSelfTests } from "./selftest.ts";
 import { validateSourceSpans } from "./spans.ts";
 import { validateTransaction } from "./transaction.ts";
@@ -155,15 +152,11 @@ function decodeAt(name: RoadmapName, reader: RevisionReader): { document: Roadma
   const source = new Uint8Array(reader.read(path));
   strictSource(source, path);
   const document = decodeRoadmapSource(source, path, name, true);
-  const declarationIssues = validateSemanticConversionDeclaration(
-    document,
-    reader.revision.kind === "commit",
-  );
   const layoutIssues = validateProjectionLayoutDeclaration(
     document,
     reader.revision.kind === "commit",
   );
-  if (declarationIssues.length > 0 || layoutIssues.length > 0) failure([...declarationIssues, ...layoutIssues]);
+  if (layoutIssues.length > 0) failure(layoutIssues);
   return { document, source };
 }
 
@@ -210,17 +203,15 @@ function prepareDecodedRoadmapCore(
   );
   if (projectionViews.issues.length > 0) failure(projectionViews.issues);
   validateProjectionAnchors(document, projectionViews.full);
-  // Authoritative v1 references to the roadmap projection resolve against the projection this
+  // Authoritative references to the roadmap projection resolve against the projection this
   // decoded source just built. The committed projection is prior output and therefore cannot be
   // an input to domain validation. Build/slot resolution deliberately precedes this scan because
   // expected bytes are its authority; neither depends on a successful domain verdict.
-  const validationRegistry = document.document.schema_version !== 0 && document.document.authority === "authoritative"
-    ? registryWithRoadmapMarkdownFact(
-      registry,
-      adapter.projection_path,
-      createImmutableByteView(projectionViews.full),
-    )
-    : registry;
+  const validationRegistry = registryWithRoadmapMarkdownFact(
+    registry,
+    adapter.projection_path,
+    createImmutableByteView(projectionViews.full),
+  );
   const domain = domainValidation(document, validationRegistry, {
     defer_foreign_roadmap_joins: true,
     denominator_authorities: document.document.roadmap === "matrix" ? MATRIX_DENOMINATOR_AUTHORITIES : undefined,
@@ -231,7 +222,7 @@ function prepareDecodedRoadmapCore(
   const spanIssues = validateSourceSpans({ document, completed });
   if (spanIssues.length > 0) failure(spanIssues);
   const debt = deriveMigrationDebt(document, completed);
-  const completionIssues = validateSemanticConversionCompletion(document, debt, completed);
+  const completionIssues = validateMigrationCompletion(document, debt, completed);
   if (completionIssues.length > 0) failure(completionIssues);
   const productionOutput = validateProductionOutputRegistry(
     registry.output_claims,
@@ -241,20 +232,12 @@ function prepareDecodedRoadmapCore(
   const projectionIsOwned = productionOutput.claims.some((claim) =>
     claim.kind === "whole_file" && claim.path === document.document.projection_path
   );
-  if (document.document.authority === "authoritative" && !projectionIsOwned) {
+  if (!projectionIsOwned) {
     failure([issue(
       "E-OUTPUT-AUTHORITY",
       document.document.source_path,
       "document.authority",
       "authoritative roadmap requires its same-revision production whole-file projection claim",
-    )]);
-  }
-  if (document.document.authority === "shadow" && projectionIsOwned) {
-    failure([issue(
-      "E-OUTPUT-AUTHORITY",
-      document.document.source_path,
-      "document.authority",
-      "shadow roadmap forbids an authoritative whole-file projection claim",
     )]);
   }
   return Object.freeze({
@@ -284,7 +267,7 @@ function roadmapReceipt(prepared: FinalizedRoadmap): string {
   const projectionOwner = prepared.registry.output_claims.find((claim) =>
     claim.kind === "whole_file" && claim.path === prepared.document.document.projection_path
   )?.producer ?? "unclaimed";
-  const completion = semanticConversionCompletionAudit(
+  const completion = migrationCompletionAudit(
     prepared.document,
     prepared.debt,
     prepared.completed,
@@ -376,8 +359,7 @@ function groupQueryRows<T extends Record<string, unknown>>(
 function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf: AsOfDate | undefined): unknown {
   const evaluation_as_of = asOf ?? null;
   const payloadRows = prepared.flatMap((item) => item.document.records.flatMap((record) => {
-    const payload = "payload" in record ? record.payload : "semantic_shadow" in record ? record.semantic_shadow : undefined;
-    return payload === undefined ? [] : [{ roadmap: item.document.document.roadmap, id: record.id, payload }];
+    return [{ roadmap: item.document.document.roadmap, id: record.id, payload: record.payload }];
   })).sort((left, right) => left.roadmap < right.roadmap ? -1 : left.roadmap > right.roadmap ? 1 :
     left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
   switch (view) {
@@ -388,11 +370,11 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
           roadmap: item.document.document.roadmap,
           schema_version: item.document.document.schema_version,
           authority: item.document.document.authority,
-          semantic_conversion: semanticConversionState(item.document),
+          semantic_conversion: MIGRATION_COMPLETION_STATE,
           record_count: item.document.records.length,
           families: item.document.records.flatMap((record) => {
-            const payload = "payload" in record ? record.payload : "semantic_shadow" in record ? record.semantic_shadow : undefined;
-            if (payload?.kind !== "family") return [];
+            const payload = record.payload;
+            if (payload.kind !== "family") return [];
             return [{
               id: record.id,
               denominator_maturity: payload.family_maturity,
@@ -408,14 +390,14 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
     case "debt":
       return { evaluation_as_of, roadmaps: prepared.map((item) => ({
         roadmap: item.document.document.roadmap,
-        semantic_conversion: semanticConversionCompletionAudit(item.document, item.debt, item.completed),
+        semantic_conversion: migrationCompletionAudit(item.document, item.debt, item.completed),
         ...migrationDebtReport(item.debt),
         migration_progress: migrationProgressReport(item.document, item.debt, item.completed),
       })) };
     case "references":
       return { evaluation_as_of, roadmaps: prepared.map((item) => ({
         roadmap: item.document.document.roadmap,
-        references: "references" in item.document ? item.document.references : [],
+        references: item.document.references,
       })) };
     case "signals": {
       const rows = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {
@@ -502,7 +484,7 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
       const armed = rows.filter((row) => row.work_state === "armed");
       const signalsById = new Map(payloadRows.flatMap(({ id, payload }) => payload.kind === "signal"
         ? [[String(id), payload] as const] : []));
-      const relations = prepared.flatMap((item) => "relations" in item.document ? item.document.relations : []);
+      const relations = prepared.flatMap((item) => item.document.relations);
       const blockedOrOwned = rows.filter((row) => ["blocked", "waiting_external", "delegated"].includes(String(row.work_state)))
         .map((row) => {
           const transitionIds = "unblock_transition_ids" in row
@@ -756,10 +738,7 @@ function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResul
   if (path === MATRIX_SOURCE || path === TESTING_SOURCE) {
     const name: RoadmapName = path === MATRIX_SOURCE ? "matrix" : "testing";
     document = decodeRoadmapSource(source, path, name, false);
-    const declarationIssues = [
-      ...validateSemanticConversionDeclaration(document, false),
-      ...validateProjectionLayoutDeclaration(document, false),
-    ];
+    const declarationIssues = validateProjectionLayoutDeclaration(document, false);
     if (declarationIssues.length > 0) failure(declarationIssues);
     prepareDecodedRoadmapCore(name, document, ports.registryView({ kind: "worktree" }));
   } else failure([issue("E-CLI-FORMAT-TARGET", "<cli>", "format_source", "format target is not declared", 2)]);

@@ -5,7 +5,7 @@ import type {
   GeneratedSlot,
   ManifestEntry,
   RoadmapDocument,
-  SemanticAuthorityRecordV1,
+  SemanticAuthorityRecord,
   SemanticPayload,
 } from "./model/documents.ts";
 import type { SpanId } from "./model/core.ts";
@@ -48,7 +48,7 @@ export interface CompletedSlotResolution {
 }
 
 export interface RenderIrServices {
-  renderSemanticRecord(record: SemanticAuthorityRecordV1, fields: FieldConsumer): Uint8Array;
+  renderSemanticRecord(record: SemanticAuthorityRecord, fields: FieldConsumer): Uint8Array;
   resolveGeneratedSlot(slot: GeneratedSlot): GeneratedSlotResolution | undefined;
 }
 

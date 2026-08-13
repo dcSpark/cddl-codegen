@@ -508,16 +508,9 @@ function executeFixtureCase(id: RequiredFixtureSelfTestCaseId, context: SelfTest
       return decodeRoadmapSource(context.ports.fixtures.readFixtureFile(FIXTURE_ROOT, path), path, roadmap, true);
     });
     const represented = new Set<string>(decoded.flatMap((document) =>
-      document.document.schema_version === 2
-        ? (document as RoadmapDocumentV2).references.map((reference) => reference.kind)
-        : []
+      document.references.map((reference) => reference.kind)
     ));
-    // `unresolved_migration` is unrepresentable in a v2 document (StableReference excludes it), so
-    // the committed corpus can only cover the remaining kinds. The kind itself leaves
-    // REFERENCE_KIND_REGISTRY when the v0/v1 machinery is deleted, at which point this filter goes.
-    const missing = REFERENCE_KIND_REGISTRY
-      .filter((kind) => kind !== "unresolved_migration")
-      .filter((kind) => !represented.has(kind));
+    const missing = REFERENCE_KIND_REGISTRY.filter((kind) => !represented.has(kind));
     assert(missing.length === 0, `reference-provider fixture members are empty for ${missing.join(", ")}`);
   } else if (id === "selftest_case_ids_unique") {
     const ids = context.registry.cases.map((testCase) => testCase.id);

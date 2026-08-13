@@ -1,7 +1,7 @@
 import { RoadmapWireError, bytesEqual, encodeMarkdownString } from "../markdown_codec.ts";
 import type { RoadmapIssue } from "../errors.ts";
 import type { RepoPath, RoadmapName } from "../model/core.ts";
-import type { RoadmapDocumentV1, RoadmapDocumentV2 } from "../model/documents.ts";
+import type { RoadmapDocumentV2 } from "../model/documents.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import { compareAllFieldsCoverageTags } from "./fixtures.ts";
 import { observeSelfTestIssue } from "./observations.ts";
@@ -21,8 +21,8 @@ import {
   MANIFEST_SCHEMA_ROWS,
   REFERENCE_SCHEMA_ROWS,
   ROADMAP_ENUM_FIELDS,
+  ROADMAP_ROW,
   ROADMAP_SCHEMA_ROWS,
-  ROADMAP_V2_SCHEMA_ROWS,
 } from "../decode/roadmap.ts";
 import {
   decodeSharedSemanticPayload,
@@ -33,24 +33,19 @@ import {
 import { decodeTestingPayload, TESTING_ENUM_FIELDS, TESTING_SCHEMA_ROWS } from "../decode/testing.ts";
 import { childLogicalPath, shieldTomlMarkdown } from "../decode/raw_markdown.ts";
 import { syntheticClosedDenominatorV2Source } from "./denominator.ts";
-import {
-  semanticConversionState,
-  validateSemanticConversionDeclaration,
-} from "../semantic_conversion.ts";
 
 const UTF8 = new TextEncoder();
 const text = (value: string): Uint8Array => UTF8.encode(value);
 const ZERO_HASH = "0".repeat(64);
 
 export const REQUIRED_SCHEMA_SELFTEST_CASE_IDS = [
-  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "v0_missing_manifest", "v0_empty_records_floor", "truncated_span_read", "v0_all_fields_identity", "v1_all_fields_identity", "v2_semantic_identity", "v2_migration_escape_hatches_rejected", "v2_intrinsic_completion", "v2_unresolved_migration_reference_rejected", "v3_unsupported", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "v0_rejects_semantics", "v0_rejects_authoritative", "v1_raw_requires_frozen_span", "v1_new_raw_rejected", "v1_semantic_forbids_raw", "schema_lifecycle_raw_omission_historical", "schema_lifecycle_raw_review_arms", "schema_lifecycle_semantic_requires_reviewed", "schema_lifecycle_cross_kind_rejected", "schema_lifecycle_v0_forbidden", "schema_projection_visibility_document_arm", "schema_projection_visibility_semantic_only_arm", "schema_projection_visibility_forbidden_nonsemantic_arms", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "domain_closed_denominator_rejected", "schema_v0_exact_keys_every_table", "schema_v1_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
+  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "missing_manifest", "empty_records_floor", "truncated_span_read", "all_fields_identity", "v2_semantic_identity", "v2_migration_escape_hatches_rejected", "v3_unsupported", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "schema_lifecycle_semantic_requires_reviewed", "schema_lifecycle_cross_kind_rejected", "schema_projection_visibility_document_arm", "schema_projection_visibility_semantic_only_arm", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "schema_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
 ] as const;
 
 export type RequiredSchemaSelfTestCaseId = (typeof REQUIRED_SCHEMA_SELFTEST_CASE_IDS)[number];
 
 const ALL_SCHEMA_ROWS = [
   ...ROADMAP_SCHEMA_ROWS,
-  ...ROADMAP_V2_SCHEMA_ROWS,
   ...MANIFEST_SCHEMA_ROWS,
   ...REFERENCE_SCHEMA_ROWS,
   ...SHARED_SEMANTIC_SCHEMA_ROWS,
@@ -71,14 +66,6 @@ function expectFailure(run: () => unknown, codes: readonly string[], path?: stri
     return error;
   }
   throw new Error(`expected ${codes.join("|")}`);
-}
-
-function minimalRoadmap(version: 0 | 1, roadmap: RoadmapName = "matrix"): Uint8Array {
-  const id = `${roadmap}.fixture-minimal`;
-  const authority = version === 0 ? "shadow" : "authoritative";
-  const frozen = version === 1 ? 'frozen_legacy_span_ids = ["record", "section"]\n' : "";
-  const render = version === 1 ? 'render_authority = "raw"\n' : "";
-  return text(`[document]\nschema_version = ${version}\nauthority = "${authority}"\nroadmap = "${roadmap}"\nsource_path = "fixture/${roadmap}.toml"\nprojection_path = "fixture/${roadmap}.md"\nfrozen_source_sha256 = "${ZERO_HASH}"\nfrozen_source_byte_length = 2\nfrozen_source_line_count = 1\nfrozen_source_eof = "lf"\n${frozen}\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\n${render}source_block_md = """S\n"""\nspan_ids = ["section"]\n\n[[record]]\nid = "${id}"\ntitle = "Fixture record"\nprojection_group = "fixture"\n${render}source_block_md = """R\n"""\nspan_ids = ["record"]\n\n[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "${id}"\n\n[[source_span]]\nid = "section"\nstart_byte = 0\nend_byte = 1\nsha256 = "${ZERO_HASH}"\nsource_kind = "section"\nowner_id = "fixture"\nowner_field = "source_block_md"\nmigration_status = "raw"\n\n[[source_span]]\nid = "record"\nstart_byte = 1\nend_byte = 2\nsha256 = "${ZERO_HASH}"\nsource_kind = "record"\nowner_id = "${id}"\nowner_field = "source_block_md"\nmigration_status = "raw"\n`);
 }
 
 function minimalV2Roadmap(): Uint8Array {
@@ -171,55 +158,33 @@ function minimalV2Document(): RoadmapDocumentV2 {
 }
 
 function semanticRecordRoadmap(visibility: "document" | "semantic_only"): string {
-  const source = new TextDecoder().decode(minimalRoadmap(1));
-  const record = `[[record]]\nid = "matrix.fixture-minimal"\ntitle = "Fixture record"\nprojection_group = "fixture"\nrender_authority = "raw"\nsource_block_md = """R\n"""\nspan_ids = ["record"]`;
-  const semantic = `[[record]]\nid = "matrix.fixture-minimal"\ntitle = "Fixture record"\nprojection_group = "fixture"\nrender_authority = "semantic"\nprojection_visibility = "${visibility}"\n\n[record.payload]\nkind = "work"\nsummary_md = """R\n"""\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "none_reviewed"\nacceptance_md = """Accepted.\n"""\npriority_rationale_md = """Normal.\n"""${visibility === "document" ? `\n\n[[record.source_replacement]]\nspan_id = "record"\nreplacement_field = "payload.summary_md"\nreview_note_md = """Reviewed.\n"""` : ""}`;
-  const converted = source.replace(record, semantic)
-    .replace('frozen_legacy_span_ids = ["record", "section"]', 'frozen_legacy_span_ids = ["section"]')
-    .replace('owner_field = "source_block_md"\nmigration_status = "raw"\n', 'owner_field = "source_block_md"\nmigration_status = "raw"\n')
-    .replace('owner_id = "matrix.fixture-minimal"\nowner_field = "source_block_md"\nmigration_status = "raw"', `owner_id = "matrix.fixture-minimal"\nowner_field = "payload.summary_md"\nmigration_status = "replaced"`);
-  return visibility === "semantic_only"
-    ? converted
-      .replace('\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "matrix.fixture-minimal"', "")
-      .replace(/\n\n\[\[source_span\]\]\nid = "record"[\s\S]*$/u, "\n")
-    : converted;
+  const source = new TextDecoder().decode(minimalV2Roadmap());
+  if (visibility === "document") return source;
+  return source
+    .replace('projection_visibility = "document"', 'projection_visibility = "semantic_only"')
+    .replace(/\n\n\[\[record\.source_replacement\]\][\s\S]*?review_note_md = """Reviewed record\.\n"""/u, "")
+    .replace('\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "matrix.fixture-minimal"', "")
+    .replace(/\n\n\[\[source_span\]\]\nid = "record"[\s\S]*$/u, "\n");
 }
 
-function subordinateRoadmap(
-  version: 0 | 1,
-  fragment: "raw_omitted" | "raw_pending" | "raw_reviewed" | "raw_independent" | "semantic_reviewed",
-  part: "raw_omitted" | "raw_pending" | "raw_reviewed" | "raw_independent" | "semantic_reviewed",
-): string {
-  const authority = version === 0 ? "shadow" : "authoritative";
-  const rawFragment = fragment !== "semantic_reviewed";
-  const rawPart = part !== "semantic_reviewed";
-  const disposition = (kind: "fragment" | "part", arm: typeof fragment | typeof part): string => {
-    if (version === 0 || arm === "raw_omitted") return "";
-    if (arm === "raw_pending") return 'lifecycle_disposition = "pending_review"\n';
-    if (arm === "raw_independent") return 'lifecycle_disposition = "independent_record"\n';
-    return `lifecycle_disposition = "${kind === "fragment" ? "document_prose" : "parent_supporting_prose"}"\n`;
-  };
-  const frozen = version === 1
-    ? `frozen_legacy_span_ids = [${[
-      rawFragment ? '"fragment"' : undefined,
-      rawPart ? '"part"' : undefined,
-      '"record"',
-      '"section"',
-    ].filter((value) => value !== undefined).join(", ")}]\n`
-    : "";
-  const render = (semantic: boolean): string => version === 1
-    ? `render_authority = "${semantic ? "semantic" : "raw"}"\n`
-    : "";
-  const fragmentBody = rawFragment
-    ? `source_block_md = """F\n"""\nspan_ids = ["fragment"]`
-    : `body_md = """F\n"""\n\n[[fragment.source_replacement]]\nspan_id = "fragment"\nreplacement_field = "body_md"\nreview_note_md = """Reviewed fragment.\n"""`;
-  const partBody = rawPart
-    ? `source_block_md = """P\n"""\nspan_ids = ["part"]`
-    : `body_md = """P\n"""\n\n[[part.source_replacement]]\nspan_id = "part"\nreplacement_field = "body_md"\nreview_note_md = """Reviewed part.\n"""`;
-  return `[document]\nschema_version = ${version}\nauthority = "${authority}"\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\nfrozen_source_sha256 = "${ZERO_HASH}"\nfrozen_source_byte_length = 4\nfrozen_source_line_count = 1\nfrozen_source_eof = "none"\n${frozen}\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\n${render(false)}source_block_md = """S\n"""\nspan_ids = ["section"]\n\n[[fragment]]\nfragment_id = "fragment"\nprojection_group = "fixture"\n${render(!rawFragment)}${disposition("fragment", fragment)}${fragmentBody}\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\nprojection_group = "fixture"\n${render(false)}source_block_md = """R\n"""\nspan_ids = ["record"]\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\n${render(!rawPart)}${disposition("part", part)}${partBody}\n\n[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n\n[[manifest.entry]]\nkind = "fragment"\nfragment_id = "fragment"\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "matrix.fixture-record"\n\n[[manifest.entry]]\nkind = "part"\npart_id = "part"\n\n[[source_span]]\nid = "section"\nstart_byte = 0\nend_byte = 1\nsha256 = "${ZERO_HASH}"\nsource_kind = "section"\nowner_id = "fixture"\nowner_field = "source_block_md"\nmigration_status = "raw"\n\n[[source_span]]\nid = "fragment"\nstart_byte = 1\nend_byte = 2\nsha256 = "${ZERO_HASH}"\nsource_kind = "fragment"\nowner_id = "fragment"\nowner_field = "${rawFragment ? "source_block_md" : "body_md"}"\nmigration_status = "${rawFragment ? "raw" : "replaced"}"\n\n[[source_span]]\nid = "record"\nstart_byte = 2\nend_byte = 3\nsha256 = "${ZERO_HASH}"\nsource_kind = "record"\nowner_id = "matrix.fixture-record"\nowner_field = "source_block_md"\nmigration_status = "raw"\n\n[[source_span]]\nid = "part"\nstart_byte = 3\nend_byte = 4\nsha256 = "${ZERO_HASH}"\nsource_kind = "part"\nowner_id = "part"\nowner_field = "${rawPart ? "source_block_md" : "body_md"}"\nmigration_status = "${rawPart ? "raw" : "replaced"}\"\n`;
+/**
+ * A semantic document carrying the subordinate owner kinds, used by the lifecycle-disposition
+ * arms. Both subordinate kinds declare the one disposition their kind permits.
+ */
+function subordinateRoadmap(): string {
+  return `[document]\nschema_version = 2\nauthority = "authoritative"\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\nfrozen_source_sha256 = "${ZERO_HASH}"\nfrozen_source_byte_length = 4\nfrozen_source_line_count = 1\nfrozen_source_eof = "none"\nprojection_layout = "legacy_v1"\n\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\nrender_authority = "semantic"\nbody_md = """S\n"""\n\n[[section.source_replacement]]\nspan_id = "section"\nreplacement_field = "body_md"\nreview_note_md = """Reviewed section.\n"""\n\n[[fragment]]\nfragment_id = "fragment"\nprojection_group = "fixture"\nrender_authority = "semantic"\nlifecycle_disposition = "document_prose"\nbody_md = """F\n"""\n\n[[fragment.source_replacement]]\nspan_id = "fragment"\nreplacement_field = "body_md"\nreview_note_md = """Reviewed fragment.\n"""\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\nprojection_group = "fixture"\nrender_authority = "semantic"\nprojection_visibility = "document"\n\n[record.payload]\nkind = "work"\nsummary_md = """R\n"""\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "none_reviewed"\nacceptance_md = """Accepted.\n"""\npriority_rationale_md = """Normal.\n"""\n\n[[record.source_replacement]]\nspan_id = "record"\nreplacement_field = "payload.summary_md"\nreview_note_md = """Reviewed record.\n"""\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\nrender_authority = "semantic"\nlifecycle_disposition = "parent_supporting_prose"\nbody_md = """P\n"""\n\n[[part.source_replacement]]\nspan_id = "part"\nreplacement_field = "body_md"\nreview_note_md = """Reviewed part.\n"""\n\n[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n\n[[manifest.entry]]\nkind = "fragment"\nfragment_id = "fragment"\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "matrix.fixture-record"\n\n[[manifest.entry]]\nkind = "part"\npart_id = "part"\n\n[[source_span]]\nid = "section"\nstart_byte = 0\nend_byte = 1\nsha256 = "${ZERO_HASH}"\nsource_kind = "section"\nowner_id = "fixture"\nowner_field = "body_md"\nmigration_status = "replaced"\n\n[[source_span]]\nid = "fragment"\nstart_byte = 1\nend_byte = 2\nsha256 = "${ZERO_HASH}"\nsource_kind = "fragment"\nowner_id = "fragment"\nowner_field = "body_md"\nmigration_status = "replaced"\n\n[[source_span]]\nid = "record"\nstart_byte = 2\nend_byte = 3\nsha256 = "${ZERO_HASH}"\nsource_kind = "record"\nowner_id = "matrix.fixture-record"\nowner_field = "payload.summary_md"\nmigration_status = "replaced"\n\n[[source_span]]\nid = "part"\nstart_byte = 3\nend_byte = 4\nsha256 = "${ZERO_HASH}"\nsource_kind = "part"\nowner_id = "part"\nowner_field = "body_md"\nmigration_status = "replaced"\n`;
 }
 
-function decodePayload(body: string, roadmap: RoadmapName, position: "shadow" | "authority" = "shadow"): unknown {
+/**
+ * At v2 the pending-review posture is authored on a semantic-only authority record: there is no
+ * frozen shadow to carry it. This synthetic source is the exact-key corpus target for that row.
+ */
+function pendingReviewRoadmap(): Uint8Array {
+  const record = `\n[[record]]\nid = "matrix.fixture-review-pending"\ntitle = "Pending review"\nprojection_group = "fixture"\nrender_authority = "semantic"\nprojection_visibility = "semantic_only"\n\n[record.payload]\nkind = "work"\nsummary_md = """Pending.\n"""\nwork_state = "pending_review"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "pending"\nuncertainty_md = """Review required.\n"""\n`;
+  return text(subordinateRoadmap().replace("\n[[part]]", `${record}\n[[part]]`));
+}
+
+function decodePayload(body: string, roadmap: RoadmapName): unknown {
   const bindings = shieldTomlMarkdown(text(`[p]\n${body}`), "<payload>");
   const ctx: DecodeContext = { source: bindings.source, bindings };
   const root = expectExactTable(ctx, bindings.parsed, "$", { name: "payload root", required: ["p"] });
@@ -227,7 +192,7 @@ function decodePayload(body: string, roadmap: RoadmapName, position: "shadow" | 
   const pre = expectExactTable(ctx, raw, "p", { name: "payload kind", required: ["kind"], optional: raw !== null && typeof raw === "object" && !Array.isArray(raw) ? Object.keys(raw).filter((key) => key !== "kind") : [] });
   const kind = requiredValue(pre, "kind");
   assert(typeof kind === "string", "payload kind string");
-  const shared = decodeSharedSemanticPayload(ctx, raw, "p", position);
+  const shared = decodeSharedSemanticPayload(ctx, raw, "p");
   const decoded = shared ?? (roadmap === "matrix" ? decodeMatrixPayload(ctx, raw, "p", kind) : decodeTestingPayload(ctx, raw, "p", kind));
   if (decoded === undefined) schemaFail(ctx, "E-SCHEMA-ENUM", "p.kind", `unknown ${roadmap} payload kind`);
   bindings.assertAllConsumed();
@@ -265,14 +230,9 @@ function fixtureIdentity(context: SelfTestContext): void {
     const doc = decodeRoadmapSource(bytes, path, roadmap);
     assert(bytesEqual(composeRoadmapDocument(doc), bytes), `${path} canonical identity`);
   }
-  // The v0/v1 structural corpus is synthetic: no committed fixture carries those arms any more.
-  for (const [label, bytes] of [
-    ["synthetic/structural-matrix-v0.toml", structuralRoadmap(0)],
-    ["synthetic/structural-matrix-v1.toml", structuralRoadmap(1)],
-  ] as const) {
-    const doc = decodeRoadmapSource(bytes, label, "matrix", false);
-    assert(bytesEqual(composeRoadmapDocument(doc), bytes), `${label} canonical identity`);
-  }
+  const subordinate = text(subordinateRoadmap());
+  const subordinateDoc = decodeRoadmapSource(subordinate, "synthetic/subordinate-matrix-v2.toml", "matrix", false);
+  assert(bytesEqual(composeRoadmapDocument(subordinateDoc), subordinate), "synthetic subordinate canonical identity");
 }
 
 function allFieldsCoverage(context: SelfTestContext): void {
@@ -303,7 +263,7 @@ function canonicalRoadmapFixture(
   context: SelfTestContext,
   relative: string,
   roadmap: RoadmapName,
-): RoadmapDocumentV1 | ReturnType<typeof decodeRoadmapSource> {
+): ReturnType<typeof decodeRoadmapSource> {
   const decoded = decodeRoadmapSource(readFixture(context, relative), relative, roadmap, false);
   const canonical = composeRoadmapDocument(decoded);
   const reparsed = decodeRoadmapSource(canonical, `${relative}#canonical`, roadmap);
@@ -375,7 +335,6 @@ interface FixtureMutationProof {
 
 const SCHEMA_ROW_GROUPS: readonly { readonly name: SchemaGroupName; readonly rows: readonly ExactSchemaRow[] }[] = [
   { name: "roadmap", rows: ROADMAP_SCHEMA_ROWS },
-  { name: "roadmap", rows: ROADMAP_V2_SCHEMA_ROWS },
   { name: "manifest", rows: MANIFEST_SCHEMA_ROWS },
   { name: "reference", rows: REFERENCE_SCHEMA_ROWS },
   { name: "semantic", rows: SHARED_SEMANTIC_SCHEMA_ROWS },
@@ -392,8 +351,6 @@ const ENUM_FIELD_GROUPS: readonly { readonly name: EnumGroupName; readonly field
 ];
 
 const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
-  [["roadmap", "authority_v0"].join(":")]: "authority",
-  [["roadmap", "authority_v1"].join(":")]: "authority",
   [["roadmap", "fragment_lifecycle_disposition"].join(":")]: "lifecycle_disposition",
   [["roadmap", "part_lifecycle_disposition"].join(":")]: "lifecycle_disposition",
   [["roadmap", "manifest_kind"].join(":")]: "kind",
@@ -412,32 +369,6 @@ const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
   "matrix:policy_permanence": "permanence",
   "testing:testing_semantic_kind": "kind",
 };
-
-/**
- * Synthetic v0/v1 structural corpus. The committed fixture corpus is v2-only, so the v0 and v1
- * schema arms (raw sections, fragments, legacy markers, records and parts) are exercised against
- * documents built here. These go away with the v0/v1 decode arms themselves.
- */
-function structuralRoadmap(version: 0 | 1): Uint8Array {
-  const source = subordinateRoadmap(version, "raw_omitted", "raw_omitted");
-  const render = version === 1 ? 'render_authority = "raw"\n' : "";
-  const marker = `\n[[legacy_marker]]\nmarker_id = "marker"\nlegacy_aliases = ["marker-alias"]\n${render}source_block_md = """M\n"""\nspan_ids = ["section"]\n`;
-  const anchor = "\n[[record]]";
-  assert(source.includes(anchor), "structural fixture injection point");
-  const withMarker = source.replace(anchor, `${marker}${anchor}`);
-  if (version === 0) return text(withMarker);
-  // A raw record carrying a pending-review shadow payload: the only home of the shadow-authority
-  // work arm now that no committed fixture is pre-v2.
-  const shadowRecord = `\n[[record]]\nid = "matrix.fixture-pending"\ntitle = "Pending"\nprojection_group = "fixture"\nrender_authority = "raw"\nsource_block_md = """P\n"""\nspan_ids = ["record"]\n\n[record.semantic_shadow]\nkind = "work"\nsummary_md = """Pending."""\nwork_state = "pending_review"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "pending"\nuncertainty_md = """Review."""\n`;
-  // The v1 arm also carries the migration-only optional document key and the unresolved-migration
-  // reference arm; neither is representable in a v2 document.
-  const reference = `\n[[reference]]\nid = "ref-migration"\nsource = "matrix.fixture-record"\nkind = "unresolved_migration"\nlocal_reference = "legacy structural fixture line"\nuncertainty_md = """The synthetic migration reference intentionally remains unresolved.\n"""\nexpires_at = "campaign-cutover"\n`;
-  // Records compose in code-point ID order, so the pending record precedes matrix.fixture-record.
-  const recordAnchor = '\n[[record]]\nid = "matrix.fixture-record"';
-  assert(withMarker.includes(recordAnchor), "structural v1 shadow-record injection point");
-  const withShadow = withMarker.replace(recordAnchor, `${shadowRecord}${recordAnchor}`);
-  return text(`${withShadow.replace('frozen_source_eof = "none"\n', 'frozen_source_eof = "none"\nsemantic_conversion = "converting"\n')}${reference}`);
-}
 
 function productionFixtureSources(context: SelfTestContext): { fixtures: readonly FixtureSource[]; reads: number } {
   const fixtures: FixtureSource[] = [];
@@ -467,21 +398,19 @@ function productionFixtureSources(context: SelfTestContext): { fixtures: readonl
     enum_groups: ["roadmap", "semantic", "matrix"],
   });
   fixtures.push({
+    path: "synthetic/pending-review-matrix-v2.toml",
+    bytes: pendingReviewRoadmap(),
+    kind: "roadmap",
+    roadmap: "matrix",
+    enum_groups: ["roadmap", "semantic", "matrix"],
+  });
+  fixtures.push({
     path: "synthetic/closed-denominator-matrix-v2.toml",
     bytes: syntheticClosedDenominatorV2Source(),
     kind: "roadmap",
     roadmap: "matrix",
     enum_groups: ["roadmap", "semantic", "matrix"],
   });
-  for (const version of [0, 1] as const) {
-    fixtures.push({
-      path: `synthetic/structural-matrix-v${version}.toml`,
-      bytes: structuralRoadmap(version),
-      kind: "roadmap",
-      roadmap: "matrix",
-      enum_groups: ["roadmap", "semantic", "matrix"],
-    });
-  }
   return { fixtures, reads };
 }
 
@@ -849,8 +778,8 @@ function duplicateParseRejected(source: string): void {
 
 function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): void {
   switch (id) {
-    case "strict_unknown_top": expectFailure(() => decodeRoadmapSource(text(`unknown = 1\n\n${new TextDecoder().decode(minimalRoadmap(0))}`), "<unknown-top>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY"], "unknown"); return;
-    case "strict_unknown_nested_record": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('span_ids = ["record"]', 'span_ids = ["record"]\nunknown = 1')), "<unknown-record>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]); return;
+    case "strict_unknown_top": expectFailure(() => decodeRoadmapSource(text(`unknown = 1\n\n${new TextDecoder().decode(minimalV2Roadmap())}`), "<unknown-top>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY"], "unknown"); return;
+    case "strict_unknown_nested_record": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalV2Roadmap()).replace('projection_visibility = "document"', 'projection_visibility = "document"\nunknown = 1')), "<unknown-record>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]); return;
     case "strict_unknown_every_table": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), ALL_SCHEMA_ROWS);
@@ -875,23 +804,23 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     case "strict_missing_discriminator": expectFailure(() => decodePayload('summary_md = """Missing."""\n', "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;
     case "strict_generic_state_rejected": expectFailure(() => decodePayload(`${READY}state = "ready"\n`, "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]); return;
     case "strict_generic_disposition_rejected": expectFailure(() => decodePayload(`${READY}disposition = "ready"\n`, "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]); return;
-    case "v0_missing_manifest": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace(/\n\[\[manifest\.entry\]\][\s\S]*?(?=\n\[\[source_span\]\])/, "")), "<missing-manifest>", "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;
-    case "v0_empty_records_floor": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace(/\n\[\[record\]\][\s\S]*?(?=\n\[\[manifest\.entry\]\])/, "")), "<empty-records>", "matrix"), ["E-SCHEMA-MISSING-KEY", "E-SCHEMA-FLOOR"]); return;
-    case "truncated_span_read": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace("start_byte = 1\nend_byte = 2", "start_byte = 1\nend_byte = 3")), "<truncated-span>", "matrix"), ["E-SPAN-BOUNDS"], "source_span[1].end_byte"); return;
-    case "v0_all_fields_identity": case "v1_all_fields_identity":
+    case "missing_manifest": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalV2Roadmap()).replace(/\n\[\[manifest\.entry\]\][\s\S]*?(?=\n\[\[source_span\]\])/, "")), "<missing-manifest>", "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;
+    case "empty_records_floor": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalV2Roadmap()).replace(/\n\[\[record\]\][\s\S]*?(?=\n\[\[manifest\.entry\]\])/, "")), "<empty-records>", "matrix"), ["E-SCHEMA-MISSING-KEY", "E-SCHEMA-FLOOR"]); return;
+    case "truncated_span_read": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalV2Roadmap()).replace("start_byte = 1\nend_byte = 2", "start_byte = 1\nend_byte = 3")), "<truncated-span>", "matrix"), ["E-SPAN-BOUNDS"], "source_span[1].end_byte"); return;
+    case "all_fields_identity":
       assert(context !== undefined, `${id} requires fixture ports`); fixtureIdentity(context); return;
     case "domain_matrix_all_tags": case "domain_testing_all_tags":
       assert(context !== undefined, `${id} requires fixture ports`); allFieldsCoverage(context); return;
-    case "noncanonical_comment": expectFailure(() => decodeRoadmapSource(text(`# comment\n${new TextDecoder().decode(minimalRoadmap(0))}`), "<comment>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
-    case "noncanonical_inline_table": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n', '[manifest]\nentry = [{ kind = "section", section_id = "fixture" }]\n\n')), "<inline-table>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
-    case "noncanonical_literal_string": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('source_block_md = """S\n"""', "source_block_md = '''S\n'''")), "<literal>", "matrix"), ["E-CODEC-PLACEHOLDER"]); return;
+    case "noncanonical_comment": expectFailure(() => decodeRoadmapSource(text(`# comment\n${new TextDecoder().decode(minimalV2Roadmap())}`), "<comment>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
+    case "noncanonical_inline_table": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalV2Roadmap()).replace('[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n', '[manifest]\nentry = [{ kind = "section", section_id = "fixture" }]\n\n')), "<inline-table>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
+    case "noncanonical_literal_string": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalV2Roadmap()).replace('body_md = """S\n"""', "body_md = '''S\n'''")), "<literal>", "matrix"), ["E-CODEC-PLACEHOLDER"]); return;
     case "noncanonical_set_order": {
-      expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('title = "Fixture"', 'title = "Fixture"\nlegacy_aliases = ["z", "a"]')), "<set-order>", "matrix"), ["E-TOML-NONCANONICAL"]);
-      expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('span_ids = ["record"]', 'span_ids = ["record", "record"]')), "<duplicate-set>", "matrix"), ["E-SCHEMA-TYPE"], "record[0].span_ids");
+      expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalV2Roadmap()).replace('title = "Fixture"', 'title = "Fixture"\nlegacy_aliases = ["z", "a"]')), "<set-order>", "matrix"), ["E-TOML-NONCANONICAL"]);
+      expectFailure(() => decodeRoadmapSource(text(subordinateRoadmap().replace('span_id = "section"', 'span_id = "section"\nspan_ids = ["section", "section"]')), "<duplicate-set>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY", "E-SCHEMA-TYPE"]);
       return;
     }
     case "noncanonical_table_order": {
-      const source = new TextDecoder().decode(minimalRoadmap(0));
+      const source = new TextDecoder().decode(minimalV2Roadmap());
       const section = source.match(/\n\[\[section\]\][\s\S]*?(?=\n\[\[record\]\])/)?.[0];
       const record = source.match(/\n\[\[record\]\][\s\S]*?(?=\n\[\[manifest\.entry\]\])/)?.[0];
       assert(section !== undefined && record !== undefined, "canonical fixture blocks");
@@ -899,10 +828,7 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       expectFailure(() => decodeRoadmapSource(text(swapped), "<table-order>", "matrix"), ["E-TOML-NONCANONICAL"]);
       return;
     }
-    case "toml_terminal_newline": assert(composeRoadmapDocument(decodeRoadmapSource(minimalRoadmap(0), "<terminal>", "matrix")).at(-1) === 0x0a, "one TOML terminal LF"); return;
-    case "v0_rejects_authoritative": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('authority = "shadow"', 'authority = "authoritative"')), "<v0-authority>", "matrix"), ["E-SCHEMA-ENUM"]); return;
-    case "v0_rejects_semantics": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('title = "Fixture record"', 'title = "Fixture record"\nrender_authority = "raw"')), "<v0-semantic>", "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"]); return;
-    case "v1_raw_requires_frozen_span": case "v1_new_raw_rejected": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(1)).replace('frozen_legacy_span_ids = ["record", "section"]', 'frozen_legacy_span_ids = ["section"]')), "<v1-raw>", "matrix"), ["E-SCHEMA-STATE"]); return;
+    case "toml_terminal_newline": assert(composeRoadmapDocument(decodeRoadmapSource(minimalV2Roadmap(), "<terminal>", "matrix")).at(-1) === 0x0a, "one TOML terminal LF"); return;
     case "v2_semantic_identity": {
       const decoded = minimalV2Document();
       const composed = composeRoadmapDocument(decoded);
@@ -914,13 +840,10 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     }
     case "v2_migration_escape_hatches_rejected": {
       const canonical = new TextDecoder().decode(minimalV2Roadmap());
-      const semantic = minimalV2Document();
       const reject = (name: string, source: string, codes: readonly string[]): void => {
         const error = expectFailure(() => decodeRoadmapSource(text(source), `<v2-${name}>`, "matrix"), codes);
         assert(error.issue.logical_path.length > 0, `${name} rejection omitted its logical coordinate`);
       };
-      const rejectDocument = (name: string, document: RoadmapDocumentV2): void =>
-        reject(name, new TextDecoder().decode(composeRoadmapDocument(document)), ["E-SCHEMA-STATE"]);
       reject(
         "semantic-conversion",
         canonical.replace('authority = "authoritative"\n', 'authority = "authoritative"\nsemantic_conversion = "complete"\n'),
@@ -932,54 +855,6 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
         ["E-SCHEMA-FORBIDDEN-KEY"],
       );
       reject(
-        "raw-section",
-        canonical.replace(
-          'render_authority = "semantic"\nbody_md = """S\n"""\n\n[[section.source_replacement]]\nspan_id = "section"\nreplacement_field = "body_md"\nreview_note_md = """Reviewed section.\n"""',
-          'render_authority = "raw"\nsource_block_md = """S\n"""\nspan_ids = ["section"]',
-        ),
-        ["E-SCHEMA-STATE"],
-      );
-      reject(
-        "raw-record",
-        canonical.replace(
-          'render_authority = "semantic"\nprojection_visibility = "document"\n\n[record.payload]',
-          'render_authority = "raw"\nsource_block_md = """R\n"""\nspan_ids = ["record"]\n\n[record.semantic_shadow]',
-        ).replace(/\n\n\[\[record\.source_replacement\]\][\s\S]*?review_note_md = """Reviewed record\.\n"""/u, ""),
-        ["E-SCHEMA-STATE"],
-      );
-      rejectDocument("raw-fragment", {
-        ...semantic,
-        fragments: [{
-          fragment_id: "raw-fragment",
-          projection_group: "fixture",
-          render_authority: "raw",
-          lifecycle_disposition: "document_prose",
-          source_block_md: text("F\n"),
-          span_ids: ["section"],
-        }],
-      } as unknown as RoadmapDocumentV2);
-      rejectDocument("raw-legacy-marker", {
-        ...semantic,
-        legacy_markers: [{
-          marker_id: "raw-marker",
-          legacy_aliases: ["Raw marker"],
-          render_authority: "raw",
-          source_block_md: text("M\n"),
-          span_ids: ["section"],
-        }],
-      } as unknown as RoadmapDocumentV2);
-      rejectDocument("raw-part", {
-        ...semantic,
-        parts: [{
-          part_id: "raw-part",
-          parent_record_id: "matrix.fixture-minimal",
-          render_authority: "raw",
-          lifecycle_disposition: "parent_supporting_prose",
-          source_block_md: text("P\n"),
-          span_ids: ["section"],
-        }],
-      } as unknown as RoadmapDocumentV2);
-      reject(
         "semantic-owner-raw-fields",
         canonical.replace('body_md = """S\n"""', 'body_md = """S\n"""\nsource_block_md = """S\n"""\nspan_ids = ["section"]'),
         ["E-SCHEMA-UNKNOWN-KEY", "E-SCHEMA-FORBIDDEN-KEY"],
@@ -988,41 +863,6 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
         "raw-span",
         canonical.replace('migration_status = "replaced"', 'migration_status = "raw"'),
         ["E-SCHEMA-STATE"],
-      );
-      return;
-    }
-    case "v2_intrinsic_completion": {
-      const document = minimalV2Document();
-      const state = semanticConversionState(document);
-      assert(state.declared === "intrinsic" && state.effective === "complete", "schema v2 completion is not intrinsic");
-      assert(validateSemanticConversionDeclaration(document, false).length === 0, "schema v2 intrinsic completion failed declaration validation");
-      const forged = {
-        ...document,
-        document: { ...document.document, semantic_conversion: "complete" },
-      } as RoadmapDocumentV2;
-      const issues = validateSemanticConversionDeclaration(forged, false);
-      assert(
-        issues.length === 1 && issues[0]!.code === "E-SCHEMA-STATE" &&
-          issues[0]!.logical_path === "document.semantic_conversion",
-        "schema v2 accepted a programmatic migration declaration",
-      );
-      return;
-    }
-    case "v2_unresolved_migration_reference_rejected": {
-      const source = `${new TextDecoder().decode(minimalV2Roadmap())}
-[[reference]]
-id = "legacy-debt"
-source = "matrix.fixture-minimal"
-kind = "unresolved_migration"
-local_reference = "legacy raw owner"
-uncertainty_md = """This migration reference must not survive v2.
-"""
-expires_at = "2026-08-12"
-`;
-      expectFailure(
-        () => decodeRoadmapSource(text(source), "<v2-unresolved-migration>", "matrix"),
-        ["E-SCHEMA-STATE"],
-        "reference[0].kind",
       );
       return;
     }
@@ -1037,40 +877,9 @@ expires_at = "2026-08-12"
         "document.schema_version",
       );
       return;
-    case "v1_semantic_forbids_raw": {
-      expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(1)).replace('render_authority = "raw"\nsource_block_md = """R', 'render_authority = "semantic"\nsource_block_md = """R')), "<semantic-raw>", "matrix"), ["E-SCHEMA-FORBIDDEN-KEY", "E-SCHEMA-UNKNOWN-KEY"]);
-      return;
-    }
-    case "schema_lifecycle_raw_omission_historical": {
-      const source = subordinateRoadmap(1, "raw_omitted", "raw_omitted");
-      const decoded = decodeRoadmapSource(text(source), "<historical-lifecycle-omission>", "matrix");
-      assert(
-        decoded.document.schema_version === 1 &&
-          decoded.fragments[0] !== undefined && "render_authority" in decoded.fragments[0] &&
-          decoded.fragments[0].render_authority === "raw" && decoded.fragments[0].lifecycle_disposition === undefined &&
-          decoded.parts[0] !== undefined && "render_authority" in decoded.parts[0] &&
-          decoded.parts[0].render_authority === "raw" && decoded.parts[0].lifecycle_disposition === undefined,
-        "historical v1 lifecycle omission did not remain loadable and explicit in the model",
-      );
-      return;
-    }
-    case "schema_lifecycle_raw_review_arms": {
-      for (const [fragment, part] of [
-        ["raw_pending", "raw_pending"],
-        ["raw_reviewed", "raw_reviewed"],
-        ["raw_independent", "raw_independent"],
-      ] as const) {
-        const source = subordinateRoadmap(1, fragment, part);
-        const decoded = decodeRoadmapSource(text(source), `<raw-lifecycle-${fragment}>`, "matrix");
-        assert(bytesEqual(composeRoadmapDocument(decoded), text(source)), `${fragment} raw lifecycle arm lost canonical identity`);
-      }
-      return;
-    }
     case "schema_lifecycle_semantic_requires_reviewed": {
-      const fragment = subordinateRoadmap(1, "semantic_reviewed", "raw_reviewed");
-      const part = subordinateRoadmap(1, "raw_reviewed", "semantic_reviewed");
-      decodeRoadmapSource(text(fragment), "<semantic-fragment-reviewed>", "matrix");
-      decodeRoadmapSource(text(part), "<semantic-part-reviewed>", "matrix");
+      const fragment = subordinateRoadmap();
+      decodeRoadmapSource(text(fragment), "<semantic-subordinate-reviewed>", "matrix", false);
       for (const disposition of [undefined, "pending_review", "independent_record"] as const) {
         const mutated = disposition === undefined
           ? fragment.replace('lifecycle_disposition = "document_prose"\n', "")
@@ -1084,49 +893,32 @@ expires_at = "2026-08-12"
       return;
     }
     case "schema_lifecycle_cross_kind_rejected": {
-      const fragment = subordinateRoadmap(1, "raw_reviewed", "raw_reviewed")
+      const fragment = subordinateRoadmap()
         .replace('lifecycle_disposition = "document_prose"', 'lifecycle_disposition = "parent_supporting_prose"');
       expectFailure(() => decodeRoadmapSource(text(fragment), "<fragment-part-disposition>", "matrix"), ["E-SCHEMA-ENUM"], "fragment[0].lifecycle_disposition");
-      const part = subordinateRoadmap(1, "raw_reviewed", "raw_reviewed")
+      const part = subordinateRoadmap()
         .replace('lifecycle_disposition = "parent_supporting_prose"', 'lifecycle_disposition = "document_prose"');
       expectFailure(() => decodeRoadmapSource(text(part), "<part-fragment-disposition>", "matrix"), ["E-SCHEMA-ENUM"], "part[0].lifecycle_disposition");
-      return;
-    }
-    case "schema_lifecycle_v0_forbidden": {
-      const v0 = subordinateRoadmap(0, "raw_omitted", "raw_omitted")
-        .replace('fragment_id = "fragment"\n', 'fragment_id = "fragment"\nlifecycle_disposition = "document_prose"\n');
-      expectFailure(() => decodeRoadmapSource(text(v0), "<v0-lifecycle>", "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"], "fragment[0].lifecycle_disposition");
       return;
     }
     case "schema_projection_visibility_document_arm": {
       const document = semanticRecordRoadmap("document");
       decodeRoadmapSource(text(document), "<semantic-document>", "matrix");
       expectFailure(() => decodeRoadmapSource(text(document.replace('projection_visibility = "document"\n', "")), "<missing-visibility>", "matrix"), ["E-SCHEMA-MISSING-KEY"]);
-      expectFailure(() => decodeRoadmapSource(text(document.replace(/\n\n\[\[record\.source_replacement\]\][\s\S]*?review_note_md = """Reviewed\.\n"""/u, "")), "<document-no-replacement>", "matrix"), ["E-SCHEMA-STATE"]);
+      expectFailure(() => decodeRoadmapSource(text(document.replace(/\n\n\[\[record\.source_replacement\]\][\s\S]*?review_note_md = """Reviewed record\.\n"""/u, "")), "<document-no-replacement>", "matrix"), ["E-SCHEMA-STATE"]);
       return;
     }
     case "schema_projection_visibility_semantic_only_arm": {
       const semanticOnly = semanticRecordRoadmap("semantic_only");
       const semanticOnlyDocument = decodeRoadmapSource(text(semanticOnly), "<semantic-only>", "matrix");
       const semanticOnlyRoundTrip = decodeRoadmapSource(composeRoadmapDocument(semanticOnlyDocument), "<semantic-only-round-trip>", "matrix");
-      assert(semanticOnlyRoundTrip.document.schema_version === 1 && semanticOnlyRoundTrip.records.some((record) => "projection_visibility" in record && record.projection_visibility === "semantic_only"), "semantic-only visibility did not compose/decode round-trip");
-      expectFailure(() => decodeRoadmapSource(text(semanticOnly.replace('[record.payload]', '[[record.source_replacement]]\nspan_id = "record"\nreplacement_field = "payload.summary_md"\nreview_note_md = """No.\n"""\n\n[record.payload]')), "<semantic-only-replacement>", "matrix"), ["E-SCHEMA-STATE"]);
+      assert(semanticOnlyRoundTrip.records.some((record) => record.projection_visibility === "semantic_only"), "semantic-only visibility did not compose/decode round-trip");
+      expectFailure(() => decodeRoadmapSource(text(`${semanticOnly}\n[[record.source_replacement]]\nspan_id = "section"\nreplacement_field = "payload.summary_md"\nreview_note_md = """No.\n"""\n`), "<semantic-only-replacement>", "matrix"), ["E-SCHEMA-STATE"]);
       expectFailure(() => decodeRoadmapSource(text(semanticOnly + '\n[[source_span]]\nid = "semantic-only-span"\nstart_byte = 1\nend_byte = 2\nsha256 = "' + ZERO_HASH + '"\nsource_kind = "record"\nowner_id = "matrix.fixture-minimal"\nowner_field = "payload.summary_md"\nmigration_status = "replaced"\n'), "<semantic-only-span>", "matrix"), ["E-SCHEMA-STATE"]);
       return;
     }
-    case "schema_projection_visibility_forbidden_nonsemantic_arms": {
-      for (const [version, misplaced] of [[1, new TextDecoder().decode(minimalRoadmap(1))], [0, new TextDecoder().decode(minimalRoadmap(0))]] as const) {
-        expectFailure(() => decodeRoadmapSource(text(misplaced.replace('source_block_md = """R', 'projection_visibility = "document"\nsource_block_md = """R')), `<misplaced-visibility-v${version}>`, "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"]);
-      }
-      const shadowMisplaced = new TextDecoder().decode(minimalRoadmap(1)).replace(
-        'span_ids = ["record"]',
-        'span_ids = ["record"]\n\n[record.semantic_shadow]\nkind = "decision"\nsummary_md = """Shadow.\n"""\nprojection_visibility = "semantic_only"\ndecision_state = "pending"\nquestion_md = """Question.\n"""',
-      );
-      expectFailure(() => decodeRoadmapSource(text(shadowMisplaced), "<misplaced-shadow-visibility>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]);
-      return;
-    }
-    case "domain_defect_regression_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "defect"'), "matrix", "authority"), ["E-SCHEMA-STATE"]); return;
-    case "domain_missing_system_admission_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "missing_system"'), "testing", "authority"), ["E-SCHEMA-STATE"]); return;
+    case "domain_defect_regression_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "defect"'), "matrix"), ["E-SCHEMA-STATE"]); return;
+    case "domain_missing_system_admission_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "missing_system"'), "testing"), ["E-SCHEMA-STATE"]); return;
     case "schema_held_permanent_rejected": expectFailure(() => decodePayload('kind = "decision"\nsummary_md = """Held."""\ndecision_state = "held"\nrationale_md = """R."""\npermanence = "permanent"\ntransition_ids = ["matrix.fixture-signal"]\n', "matrix"), ["E-SCHEMA-ENUM"]); return;
     case "domain_quantitative_scope_unit_required": expectFailure(() => decodePayload(predicateSignal('predicate_kind = "quantitative"\ncomparator = "ge"\nthreshold = 2\nmeasurement = 1\nas_of = "2026-08-11"\n'), "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;
     case "domain_manual_not_auto_boolean": {
@@ -1134,9 +926,9 @@ expires_at = "2026-08-12"
       assert(decoded !== undefined, "manual predicate remains authored"); return;
     }
     case "domain_state_required_forbidden": {
-      expectFailure(() => decodePayload(`${READY}blocker_md = """No."""\n`, "matrix", "authority"), ["E-SCHEMA-FORBIDDEN-KEY"]);
-      expectFailure(() => decodePayload(READY.replace('acceptance_md = """Accepted."""', 'acceptance_md = """"""'), "matrix", "authority"), ["E-SCHEMA-FLOOR"], "p.acceptance_md");
-      expectFailure(() => decodePayload(READY.replace('priority_rationale_md = """Normal."""', 'priority_rationale_md = """"""'), "matrix", "authority"), ["E-SCHEMA-FLOOR"], "p.priority_rationale_md");
+      expectFailure(() => decodePayload(`${READY}blocker_md = """No."""\n`, "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"]);
+      expectFailure(() => decodePayload(READY.replace('acceptance_md = """Accepted."""', 'acceptance_md = """"""'), "matrix"), ["E-SCHEMA-FLOOR"], "p.acceptance_md");
+      expectFailure(() => decodePayload(READY.replace('priority_rationale_md = """Normal."""', 'priority_rationale_md = """"""'), "matrix"), ["E-SCHEMA-FLOOR"], "p.priority_rationale_md");
       return;
     }
     case "domain_fired_transition_not_parked": {
@@ -1181,13 +973,10 @@ expires_at = "2026-08-12"
       return;
     }
     case "schema_observed_at_civil_date": expectFailure(() => decodePayload('kind = "testing_cost"\nsummary_md = """Cost."""\ncost_posture = "historical_observation"\nunit = "ms"\nscope_md = """Scope."""\nvalue_min = 1\nvalue_max = 2\nobserved_at = "2025-02-29"\nenvironment_md = """Env."""\nevidence_ids = ["testing.fixture-evidence"]\n', "testing"), ["E-SCHEMA-TYPE"]); return;
-    case "schema_duplicate_assignment_rejected": duplicateParseRejected(new TextDecoder().decode(minimalRoadmap(0)).replace("schema_version = 0", "schema_version = 0\nschema_version = 0")); return;
-    case "schema_duplicate_table_rejected": duplicateParseRejected(new TextDecoder().decode(minimalRoadmap(0)).replace("\n[[section]]", "\n[document]\n\n[[section]]")); return;
-    case "schema_duplicate_nested_payload_rejected": {
-      const shadow = '\n[record.semantic_shadow]\nkind = "work"\nsummary_md = """Pending."""\nwork_state = "pending_review"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "pending"\nuncertainty_md = """Review."""\n\n[record.semantic_shadow]\n';
-      duplicateParseRejected(new TextDecoder().decode(minimalRoadmap(1)).replace("\n[[manifest.entry]]", `${shadow}\n[[manifest.entry]]`)); return;
-    }
-    case "domain_closed_denominator_rejected": expectFailure(() => decodePayload('kind = "family"\nsummary_md = """F."""\nfamily_maturity = "closed_denominator"\n', "matrix"), ["E-SCHEMA-ENUM"]); return;
+    case "schema_duplicate_assignment_rejected": duplicateParseRejected(new TextDecoder().decode(minimalV2Roadmap()).replace("schema_version = 2", "schema_version = 2\nschema_version = 2")); return;
+    case "schema_duplicate_table_rejected": duplicateParseRejected(new TextDecoder().decode(minimalV2Roadmap()).replace("\n[[section]]", "\n[document]\n\n[[section]]")); return;
+    case "schema_duplicate_nested_payload_rejected":
+      duplicateParseRejected(new TextDecoder().decode(minimalV2Roadmap()).replace('\n[[record.source_replacement]]', '\n[record.payload]\nkind = "work"\n\n[[record.source_replacement]]')); return;
     case "systematic_illegal_cell_rejected": expectFailure(() => decodePayload(`${OBSERVED_FAMILY}\n[[p.cell]]\nid = "matrix.fixture-cell"\nspec_legality = "illegal"\ncell_disposition = "unknown"\naffected_profiles = ["default"]\naffected_faces = ["rust"]\n\n[[p.cell.coordinate]]\naxis_id = "matrix.fixture-axis"\nvalue_id = "matrix.fixture-value"\n`, "matrix"), ["E-SCHEMA-ENUM"]); return;
     case "systematic_illegal_coordinate_is_exclusion": {
       const decoded = decodePayload(`${OBSERVED_FAMILY}\n[[p.exclusion]]\nid = "matrix.fixture-exclusion"\nspec_legality = "illegal"\nreason_md = """Illegal."""\nowner_reference_id = "owner"\nsource_reference_id = "source"\nliveness_reference_id = "liveness"\n\n[[p.exclusion.coordinate]]\naxis_id = "matrix.fixture-axis"\nvalue_id = "matrix.fixture-value"\n`, "matrix");
@@ -1200,14 +989,9 @@ expires_at = "2026-08-12"
       expectFailure(() => decodeRoadmapSource(text(mutated), "<unmodelled-coordinate>", "matrix"), ["E-SCHEMA-ENUM"]);
       return;
     }
-    case "schema_v0_exact_keys_every_table": {
+    case "schema_exact_keys_every_structural_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
-      assertRowMutationCoverage(fixtureMutationProof(context), [...ROADMAP_SCHEMA_ROWS.filter((_, index) => [0, 2, 4, 7, 10, 13, 17, 20, 21, 22, 23].includes(index)), ...MANIFEST_SCHEMA_ROWS]);
-      return;
-    }
-    case "schema_v1_exact_keys_every_structural_arm": {
-      assert(context !== undefined, `${id} requires fixture ports`);
-      assertRowMutationCoverage(fixtureMutationProof(context), [...ROADMAP_SCHEMA_ROWS.filter((_, index) => [1, 3, 5, 6, 8, 9, 11, 12, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25].includes(index)), ...MANIFEST_SCHEMA_ROWS]);
+      assertRowMutationCoverage(fixtureMutationProof(context), [...ROADMAP_SCHEMA_ROWS, ...MANIFEST_SCHEMA_ROWS]);
       canonicalRoadmapFixture(context, "all-fields/matrix-v2.toml", "matrix");
       canonicalRoadmapFixture(context, "all-fields/testing-v2.toml", "testing");
       return;
@@ -1245,14 +1029,14 @@ expires_at = "2026-08-12"
       return;
     }
     case "strict_unknown_reference": {
-      const base = new TextDecoder().decode(minimalRoadmap(1));
+      const base = new TextDecoder().decode(minimalV2Roadmap());
       expectFailure(() => decodeRoadmapSource(text(`${base}\n[[reference]]\nid = "fixture"\nsource = "matrix.fixture-minimal"\nkind = "gate"\ngate_id = "fixture"\nunknown = 1\n`), "<unknown-reference>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY"], "reference[0].unknown");
       expectFailure(() => decodeRoadmapSource(text(`${base}\n[[reference]]\nid = "fixture-1"\nsource = "matrix.fixture-minimal"\nkind = "gate"\ngate_id = "fixture"\n`), "<reference-id-grammar>", "matrix"), ["E-ID-GRAMMAR"], "reference[0].id");
       return;
     }
     case "schema_reference_exact_keys_every_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
-      assertRowMutationCoverage(fixtureMutationProof(context), [ROADMAP_SCHEMA_ROWS[25], ...REFERENCE_SCHEMA_ROWS]);
+      assertRowMutationCoverage(fixtureMutationProof(context), [ROADMAP_ROW.reference_discriminator, ...REFERENCE_SCHEMA_ROWS]);
       canonicalRoadmapFixture(context, "all-fields/matrix-v2.toml", "matrix");
       return;
     }
@@ -1262,7 +1046,7 @@ expires_at = "2026-08-12"
       return;
     }
     case "schema_canonical_key_order_every_arm": {
-      assert(new TextDecoder().decode(composeRoadmapDocument(decodeRoadmapSource(minimalRoadmap(0), "<order>", "matrix"))) === new TextDecoder().decode(minimalRoadmap(0)), "canonical key order");
+      assert(new TextDecoder().decode(composeRoadmapDocument(decodeRoadmapSource(minimalV2Roadmap(), "<order>", "matrix"))) === new TextDecoder().decode(minimalV2Roadmap()), "canonical key order");
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), ALL_SCHEMA_ROWS);
       for (const [path, roadmap] of [
@@ -1300,21 +1084,16 @@ function failure(id: string, error: unknown): RoadmapIssue {
 }
 
 const POSITIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
-  "v0_all_fields_identity",
-  "v1_all_fields_identity",
+  "all_fields_identity",
   "v2_semantic_identity",
   "v2_migration_escape_hatches_rejected",
-  "v2_intrinsic_completion",
   "toml_terminal_newline",
-  "schema_lifecycle_raw_omission_historical",
-  "schema_lifecycle_raw_review_arms",
   "domain_matrix_all_tags",
   "domain_testing_all_tags",
   "domain_transition_each_kind",
   "domain_manual_not_auto_boolean",
   "domain_stale_unknown_visible",
-  "schema_v0_exact_keys_every_table",
-  "schema_v1_exact_keys_every_structural_arm",
+  "schema_exact_keys_every_structural_arm",
   "schema_shared_payload_exact_keys_every_arm",
   "schema_matrix_payload_exact_keys_every_arm",
   "schema_testing_payload_exact_keys_every_arm",
@@ -1336,25 +1115,17 @@ const NEGATIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "strict_missing_discriminator",
   "strict_generic_state_rejected",
   "strict_generic_disposition_rejected",
-  "v0_missing_manifest",
-  "v0_empty_records_floor",
+  "missing_manifest",
+  "empty_records_floor",
   "truncated_span_read",
   "noncanonical_literal_string",
   "noncanonical_table_order",
   "noncanonical_set_order",
-  "v0_rejects_semantics",
-  "v0_rejects_authoritative",
-  "v1_raw_requires_frozen_span",
-  "v1_new_raw_rejected",
-  "v1_semantic_forbids_raw",
-  "v2_unresolved_migration_reference_rejected",
   "v3_unsupported",
   "schema_lifecycle_semantic_requires_reviewed",
   "schema_lifecycle_cross_kind_rejected",
-  "schema_lifecycle_v0_forbidden",
   "schema_projection_visibility_document_arm",
   "schema_projection_visibility_semantic_only_arm",
-  "schema_projection_visibility_forbidden_nonsemantic_arms",
   "domain_state_required_forbidden",
   "domain_defect_regression_required",
   "domain_missing_system_admission_required",
@@ -1366,7 +1137,6 @@ const NEGATIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "evidence_generator_requires_harness_free",
   "evidence_timing_join_structural",
   "evidence_draft_log_rejected",
-  "domain_closed_denominator_rejected",
   "schema_duplicate_assignment_rejected",
   "schema_duplicate_table_rejected",
   "schema_duplicate_nested_payload_rejected",
@@ -1393,9 +1163,7 @@ export const SCHEMA_SELFTEST_CASES: readonly SelfTestCase[] = REQUIRED_SCHEMA_SE
     ? "domain-matrix" as const
     : id === "domain_defect_regression_required" || id.includes("testing")
     ? "domain-testing" as const
-    : id.includes("v0")
-    ? "schema-v0" as const
-    : "schema-v1" as const,
+    : "schema" as const,
   run(context): SelfTestResult {
     const polarity = SCHEMA_CASE_POLARITY.get(id)!;
     try {
@@ -1404,10 +1172,7 @@ export const SCHEMA_SELFTEST_CASES: readonly SelfTestCase[] = REQUIRED_SCHEMA_SE
         ok: true,
         polarity,
         ...(id === "v2_migration_escape_hatches_rejected"
-          ? { subcases: [
-            "semantic_conversion", "frozen_legacy_span_ids", "raw_section", "raw_fragment",
-            "raw_legacy_marker", "raw_record", "raw_part", "semantic_owner_raw_fields", "raw_span",
-          ] }
+          ? { subcases: ["semantic_conversion", "frozen_legacy_span_ids", "semantic_owner_raw_fields", "raw_span"] }
           : {}),
       };
     }
@@ -1417,8 +1182,7 @@ export const SCHEMA_SELFTEST_CASES: readonly SelfTestCase[] = REQUIRED_SCHEMA_SE
 
 const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "strict_unknown_every_table",
-  "v0_all_fields_identity",
-  "v1_all_fields_identity",
+  "all_fields_identity",
   "domain_matrix_all_tags",
   "domain_testing_all_tags",
   "domain_transition_each_kind",
@@ -1427,8 +1191,7 @@ const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "evidence_generator_requires_harness_free",
   "evidence_timing_join_structural",
   "evidence_draft_log_rejected",
-  "schema_v0_exact_keys_every_table",
-  "schema_v1_exact_keys_every_structural_arm",
+  "schema_exact_keys_every_structural_arm",
   "schema_shared_payload_exact_keys_every_arm",
   "schema_matrix_payload_exact_keys_every_arm",
   "schema_testing_payload_exact_keys_every_arm",

@@ -44,7 +44,6 @@ function ownerKey(kind: ManifestEntry["kind"], id: string): string {
 
 function replacementMap(document: RoadmapDocument): ReadonlyMap<string, readonly SourceReplacement[]> {
   const result = new Map<string, SourceReplacement[]>();
-  if (document.document.schema_version === 0) return result;
   const add = (kind: ManifestEntry["kind"], id: string, value: object): void => {
     if (!("source_replacements" in value) || !Array.isArray(value.source_replacements)) return;
     for (const replacement of value.source_replacements as SourceReplacement[]) {
@@ -90,38 +89,27 @@ interface SemanticSpanOwner {
 }
 
 function semanticSpanOwners(document: RoadmapDocument): readonly SemanticSpanOwner[] {
-  if (document.document.schema_version === 0) return [];
   const result: SemanticSpanOwner[] = [];
-  for (const value of document.sections) {
-    if ("render_authority" in value && value.render_authority === "semantic") result.push({
-      kind: "section", id: value.section_id, expected_field: "body_md",
-      projection_visibility: "document", source_replacements: value.source_replacements,
-    });
-  }
-  for (const value of document.fragments) {
-    if ("render_authority" in value && value.render_authority === "semantic") result.push({
-      kind: "fragment", id: value.fragment_id, expected_field: "body_md",
-      projection_visibility: "document", source_replacements: value.source_replacements,
-    });
-  }
-  for (const value of document.legacy_markers) {
-    if ("render_authority" in value && value.render_authority === "semantic") result.push({
-      kind: "legacy_marker", id: value.marker_id, expected_field: "marker_md",
-      projection_visibility: "document", source_replacements: value.source_replacements,
-    });
-  }
-  for (const value of document.records) {
-    if ("render_authority" in value && value.render_authority === "semantic") result.push({
-      kind: "record", id: value.id, projection_visibility: value.projection_visibility,
-      source_replacements: value.source_replacements,
-    });
-  }
-  for (const value of document.parts) {
-    if ("render_authority" in value && value.render_authority === "semantic") result.push({
-      kind: "part", id: value.part_id, expected_field: "body_md",
-      projection_visibility: "document", source_replacements: value.source_replacements,
-    });
-  }
+  for (const value of document.sections) result.push({
+    kind: "section", id: value.section_id, expected_field: "body_md",
+    projection_visibility: "document", source_replacements: value.source_replacements,
+  });
+  for (const value of document.fragments) result.push({
+    kind: "fragment", id: value.fragment_id, expected_field: "body_md",
+    projection_visibility: "document", source_replacements: value.source_replacements,
+  });
+  for (const value of document.legacy_markers) result.push({
+    kind: "legacy_marker", id: value.marker_id, expected_field: "marker_md",
+    projection_visibility: "document", source_replacements: value.source_replacements,
+  });
+  for (const value of document.records) result.push({
+    kind: "record", id: value.id, projection_visibility: value.projection_visibility,
+    source_replacements: value.source_replacements,
+  });
+  for (const value of document.parts) result.push({
+    kind: "part", id: value.part_id, expected_field: "body_md",
+    projection_visibility: "document", source_replacements: value.source_replacements,
+  });
   return Object.freeze(result);
 }
 

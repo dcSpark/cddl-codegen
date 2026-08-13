@@ -33,21 +33,6 @@ export interface FrozenSourceMeta {
   frozen_source_eof: "lf" | "none";
 }
 
-export interface DocumentMetaV0 extends FrozenSourceMeta {
-  schema_version: 0;
-  authority: "shadow";
-  roadmap: RoadmapName;
-}
-
-export interface DocumentMetaV1 extends FrozenSourceMeta {
-  schema_version: 1;
-  authority: "authoritative";
-  roadmap: RoadmapName;
-  /** Historical v1 commit sources may omit; current worktree sources must declare it. */
-  semantic_conversion?: "converting" | "complete";
-  frozen_legacy_span_ids: SpanId[];
-}
-
 /** Stable semantic wire format. Migration state is intrinsic and has no authored escape hatch. */
 export interface DocumentMetaV2 extends FrozenSourceMeta {
   schema_version: 2;
@@ -57,22 +42,7 @@ export interface DocumentMetaV2 extends FrozenSourceMeta {
   projection_layout?: "legacy_v1" | "anchors_v1" | "standing_v1" | "unnumbered_v1" | "curated_v1";
 }
 
-interface RawOwner {
-  source_block_md: Uint8Array;
-  span_ids: SpanId[];
-}
-
-export interface RawSectionV0 extends RawOwner {
-  section_id: SectionId;
-  title: string;
-  legacy_aliases?: string[];
-}
-
-export interface RawSectionV1 extends RawSectionV0 {
-  render_authority: "raw";
-}
-
-export interface SemanticSectionV1 {
+export interface SemanticSection {
   section_id: SectionId;
   title: string;
   legacy_aliases?: string[];
@@ -81,19 +51,7 @@ export interface SemanticSectionV1 {
   source_replacements: SourceReplacement[];
 }
 
-export interface RawFragmentV0 extends RawOwner {
-  fragment_id: FragmentId;
-  projection_group: SectionId;
-  title?: string;
-  legacy_aliases?: string[];
-}
-
-export interface RawFragmentV1 extends RawFragmentV0 {
-  render_authority: "raw";
-  lifecycle_disposition?: "pending_review" | "document_prose" | "independent_record";
-}
-
-export interface SemanticFragmentV1 {
+export interface SemanticFragment {
   fragment_id: FragmentId;
   projection_group: SectionId;
   title?: string;
@@ -104,16 +62,7 @@ export interface SemanticFragmentV1 {
   source_replacements: SourceReplacement[];
 }
 
-export interface RawLegacyMarkerV0 extends RawOwner {
-  marker_id: MarkerId;
-  legacy_aliases: string[];
-}
-
-export interface RawLegacyMarkerV1 extends RawLegacyMarkerV0 {
-  render_authority: "raw";
-}
-
-export interface SemanticLegacyMarkerV1 {
+export interface SemanticLegacyMarker {
   marker_id: MarkerId;
   legacy_aliases: string[];
   render_authority: "semantic";
@@ -129,20 +78,13 @@ export interface CommonEnvelope {
   tags?: string[];
 }
 
-export interface RawRecordV0 extends CommonEnvelope, RawOwner {}
-
-export interface RawAuthorityRecordV1 extends CommonEnvelope, RawOwner {
-  render_authority: "raw";
-  semantic_shadow?: SemanticPayload;
-}
-
 export interface SourceReplacement {
   span_id: SpanId;
   replacement_field: string;
   review_note_md: Uint8Array;
 }
 
-export interface SemanticAuthorityRecordV1<P extends SemanticPayload = SemanticPayload>
+export interface SemanticAuthorityRecord<P extends SemanticPayload = SemanticPayload>
   extends CommonEnvelope {
   render_authority: "semantic";
   projection_visibility: "document" | "semantic_only";
@@ -150,18 +92,7 @@ export interface SemanticAuthorityRecordV1<P extends SemanticPayload = SemanticP
   source_replacements: SourceReplacement[];
 }
 
-export interface RawPartV0 extends RawOwner {
-  part_id: PartId;
-  parent_record_id: RoadmapId;
-  title?: string;
-}
-
-export interface RawPartV1 extends RawPartV0 {
-  render_authority: "raw";
-  lifecycle_disposition?: "pending_review" | "parent_supporting_prose" | "independent_record";
-}
-
-export interface SemanticPartV1 {
+export interface SemanticPart {
   part_id: PartId;
   parent_record_id: RoadmapId;
   title?: string;
@@ -171,23 +102,13 @@ export interface SemanticPartV1 {
   source_replacements: SourceReplacement[];
 }
 
-export type RawSection = RawSectionV0 | RawSectionV1;
-export type SemanticSection = SemanticSectionV1;
-export type Section = RawSection | SemanticSection;
-export type RawFragment = RawFragmentV0 | RawFragmentV1;
-export type SemanticFragment = SemanticFragmentV1;
-export type Fragment = RawFragment | SemanticFragment;
-export type RawLegacyMarker = RawLegacyMarkerV0 | RawLegacyMarkerV1;
-export type SemanticLegacyMarker = SemanticLegacyMarkerV1;
-export type LegacyMarker = RawLegacyMarker | SemanticLegacyMarker;
-export type RecordNode = RawRecordV0 | RawAuthorityRecordV1 | SemanticAuthorityRecordV1;
-export type RawPart = RawPartV0 | RawPartV1;
-export type RawAuthorityPartV1 = RawPartV1;
-export type SemanticPart = SemanticPartV1;
-export type SemanticAuthorityPartV1 = SemanticPartV1;
-export type Part = RawPart | SemanticPart;
+export type Section = SemanticSection;
+export type Fragment = SemanticFragment;
+export type LegacyMarker = SemanticLegacyMarker;
+export type RecordNode = SemanticAuthorityRecord;
+export type Part = SemanticPart;
 export type SemanticRecord<P extends SemanticPayload = SemanticPayload> =
-  SemanticAuthorityRecordV1<P>;
+  SemanticAuthorityRecord<P>;
 
 export interface GeneratedSlot {
   slot_id: SlotId;
@@ -250,36 +171,15 @@ export type Reference =
   | (ReferenceBase & { kind: "external_issue"; repository: string; issue: string })
   | (ReferenceBase & { kind: "external_commit"; repository: string; commit: string })
   | (ReferenceBase & { kind: "external_release"; project: string; release: string })
-  | (ReferenceBase & { kind: "consumer_report"; consumer: string; report_reference: string })
-  | (ReferenceBase & {
-      kind: "unresolved_migration";
-      local_reference: string;
-      uncertainty_md: Uint8Array;
-      expires_at: string;
-    });
+  | (ReferenceBase & { kind: "consumer_report"; consumer: string; report_reference: string });
 
-/** References permitted after migration state becomes intrinsic in schema v2. */
-export type StableReference = Exclude<Reference, { kind: "unresolved_migration" }>;
-
-export interface RoadmapDocumentV0 {
-  document: DocumentMetaV0;
-  sections: RawSectionV0[];
-  fragments: RawFragmentV0[];
-  legacy_markers: RawLegacyMarkerV0[];
-  records: RawRecordV0[];
-  parts: RawPartV0[];
-  generated_slots: GeneratedSlot[];
-  manifest: ManifestEntry[];
-  spans: SourceSpan[];
-}
-
-export interface RoadmapDocumentV1 {
-  document: DocumentMetaV1;
-  sections: (RawSectionV1 | SemanticSectionV1)[];
-  fragments: (RawFragmentV1 | SemanticFragmentV1)[];
-  legacy_markers: (RawLegacyMarkerV1 | SemanticLegacyMarkerV1)[];
-  records: (RawAuthorityRecordV1 | SemanticAuthorityRecordV1)[];
-  parts: (RawPartV1 | SemanticPartV1)[];
+export interface RoadmapDocumentV2 {
+  document: DocumentMetaV2;
+  sections: SemanticSection[];
+  fragments: SemanticFragment[];
+  legacy_markers: SemanticLegacyMarker[];
+  records: SemanticAuthorityRecord[];
+  parts: SemanticPart[];
   generated_slots: GeneratedSlot[];
   manifest: ManifestEntry[];
   spans: SourceSpan[];
@@ -287,22 +187,7 @@ export interface RoadmapDocumentV1 {
   references: Reference[];
 }
 
-export interface RoadmapDocumentV2 {
-  document: DocumentMetaV2;
-  sections: SemanticSectionV1[];
-  fragments: SemanticFragmentV1[];
-  legacy_markers: SemanticLegacyMarkerV1[];
-  records: SemanticAuthorityRecordV1[];
-  parts: SemanticPartV1[];
-  generated_slots: GeneratedSlot[];
-  manifest: ManifestEntry[];
-  spans: SourceSpan[];
-  relations: Relation[];
-  references: StableReference[];
-}
-
-export type AuthoritativeRoadmapDocument = RoadmapDocumentV1 | RoadmapDocumentV2;
-export type RoadmapDocument = RoadmapDocumentV0 | AuthoritativeRoadmapDocument;
+export type RoadmapDocument = RoadmapDocumentV2;
 
 export type ReplacementPin =
   | { kind: "gate"; gate_id: string; claim_md: Uint8Array }
@@ -350,7 +235,7 @@ export interface ActiveRecordOwnerFact {
   owner_kind: "active_record";
   id: RoadmapId;
   namespace: RoadmapName;
-  record: RawAuthorityRecordV1 | SemanticAuthorityRecordV1;
+  record: SemanticAuthorityRecord;
 }
 
 export interface CurrentGuardOwnerFact {

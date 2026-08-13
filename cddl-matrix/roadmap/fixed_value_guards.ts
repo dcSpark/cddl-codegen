@@ -22,9 +22,7 @@ export const FIXED_VALUE_DELIVERY_BASE =
 export const FIXED_VALUE_CONTROL = rid("matrix.control.fixed-value-choice-member-closure");
 
 function payloadOf(record: RoadmapDocument["records"][number] | undefined): SemanticPayload | undefined {
-  if (record === undefined) return undefined;
-  if ("payload" in record) return record.payload;
-  return "semantic_shadow" in record ? record.semantic_shadow : undefined;
+  return record?.payload;
 }
 
 /**
@@ -33,7 +31,7 @@ function payloadOf(record: RoadmapDocument["records"][number] | undefined): Sema
  * authoritative document, which is decidable from that document alone.
  */
 function activationState(document: RoadmapDocument | undefined): boolean {
-  if (document === undefined || document.document.schema_version === 0) return false;
+  if (document === undefined) return false;
   const ids = new Set(document.records.map((record) => record.id));
   return !ids.has(FIXED_VALUE_FAMILY_ROOT) && !ids.has(FIXED_VALUE_WORK);
 }
@@ -66,9 +64,6 @@ export function deriveFixedValueClosureAuthority(
   current: RoadmapDocument,
   registry: RegistryView,
 ): FixedValueClosureAuthorityFact {
-  if (baseline.document.schema_version === 0 || current.document.schema_version === 0) {
-    return closureError("authoritative baseline and current roadmap documents are required");
-  }
   const baselineIndexes = buildRoadmapIndexes(baseline);
   if (baselineIndexes.issues.length > 0) return closureError("baseline roadmap indexes are invalid");
   const familyProvider = baselineIndexes.indexes.family_records.get(FIXED_VALUE_FAMILY_ROOT);

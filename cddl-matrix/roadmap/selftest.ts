@@ -10,10 +10,6 @@ import { IDENTITY_SELFTEST_CASES, REQUIRED_IDENTITY_SELFTEST_CASE_IDS } from "./
 import { ADAPTER_SELFTEST_CASES, REQUIRED_ADAPTER_SELFTEST_CASE_IDS } from "./selftests/adapters.ts";
 import { FIXTURE_SELFTEST_CASES, REQUIRED_FIXTURE_SELFTEST_CASE_IDS } from "./selftests/fixtures.ts";
 import { CLI_SELFTEST_CASES, REQUIRED_CLI_SELFTEST_CASE_IDS } from "./selftests/cli.ts";
-import {
-  REQUIRED_SEMANTIC_CONVERSION_SELFTEST_CASE_IDS,
-  SEMANTIC_CONVERSION_SELFTEST_CASES,
-} from "./selftests/semantic_conversion.ts";
 import { DENOMINATOR_SELFTEST_CASES, REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS } from "./selftests/denominator.ts";
 import { PROJECTION_VIEW_SELFTEST_CASES, REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_IDS } from "./selftests/projection_views.ts";
 
@@ -24,7 +20,7 @@ export interface SingleFileFixtureCaseRow {
   input: FixtureRelativePath;
   expected?: FixtureRelativePath;
   adapter: "codec" | "matrix" | "testing";
-  schema_version?: 0 | 1 | 2;
+  schema_version?: 2;
   projection_eof?: "lf" | "none";
 }
 
@@ -118,8 +114,7 @@ export interface StatusCompatibilityInputsWire {
 
 export type SelfTestCategory =
   | "codec"
-  | "schema-v0"
-  | "schema-v1"
+  | "schema"
   | "domain-matrix"
   | "domain-testing"
   | "manifest-render"
@@ -139,8 +134,7 @@ export type SelfTestCategory =
 
 export const SELFTEST_CATEGORIES = Object.freeze([
   "codec",
-  "schema-v0",
-  "schema-v1",
+  "schema",
   "domain-matrix",
   "domain-testing",
   "manifest-render",
@@ -258,20 +252,13 @@ export const SELFTEST_CATEGORY_FLOORS: ReadonlyMap<SelfTestCategory, SelfTestCat
 const REFERENCE_KIND_SUBCASES = [
   "roadmap", "matrix_feature", "matrix_role", "matrix_cell", "gate", "test_symbol",
   "file_heading", "spec_passage", "external_issue", "external_commit", "external_release",
-  "consumer_report", "unresolved_migration",
+  "consumer_report",
 ] as const;
 
 /** Frozen named reviewer vectors. A case absent from this map must report no subcases. */
 export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
   ["projection_views_layout_and_provenance", ["banner", "anchor", "layout_stages", "full_audit_separation", "span_provenance", "span_missing", "span_duplicate", "fragment_scan", "fragment_duplicate", "fragment_malformed"]],
   ["projection_views_content_exactly_once", ["exact", "missing", "duplicate", "mismatched_bytes"]],
-  ["debt_semantic_promotion_rejection_matrix", [
-    "raw_unclassified", "payload_markdown_bytes", "payload_array_order", "missing_replacement",
-    "duplicate_replacement", "fresh_replacement_span", "missing_span", "duplicate_span", "extra_span",
-    "start_coordinate", "end_coordinate", "digest", "source_kind", "owner_id", "wrong_replacement_field",
-    "wrong_status", "incomplete_consumption", "rendered_byte_drift", "retained_frozen", "base_unfrozen",
-    "candidate_only_raw", "existing_visibility_change",
-  ]],
   ["denominator_v2_synthetic_authority", [
     "valid", "production_empty_registry", "full_pipeline_injected", "full_pipeline_empty_registry", "real_completed_render", "missing_axis_value", "derived_extra_axis_value",
     "derived_extra_legal_cell", "authored_extra_cell", "legality_flip", "duplicate_coordinate",
@@ -286,61 +273,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
     "fake_wasm_compile_only_rejected",
   ]],
   ["v2_migration_escape_hatches_rejected", [
-    "semantic_conversion", "frozen_legacy_span_ids", "raw_section", "raw_fragment",
-    "raw_legacy_marker", "raw_record", "raw_part", "semantic_owner_raw_fields", "raw_span",
-  ]],
-  ["debt_semantic_promotion_capability_mutation_rejected", [
-    "payload_after_mint", "completed_content_after_mint", "completed_clone_after_mint", "expected_bytes_after_mint",
-  ]],
-  ["debt_structural_promotion_exact", ["section", "fragment", "part", "aggregate_count"]],
-  ["debt_structural_promotion_rejections", [
-    "fragment_pending", "fragment_independent", "part_pending", "part_independent", "legacy_marker",
-    "body_bytes", "title", "legacy_aliases", "projection_group", "parent_record", "missing_replacement",
-    "duplicate_replacement", "wrong_replacement_field", "empty_review_note", "span_coordinate", "span_digest",
-    "span_kind", "span_owner", "span_owner_field", "span_status", "extra_owner_span", "retained_frozen",
-    "base_unfrozen", "manifest_index", "missing_base_completed", "missing_candidate_completed",
-    "missing_segment", "expected_byte_drift", "debt_join",
-  ]],
-  ["debt_structural_promotion_capability_replay", [
-    "body_after_mint", "metadata_after_mint", "disposition_after_mint", "review_note_after_mint",
-    "manifest_after_mint", "relations_after_mint", "references_after_mint", "frozen_after_mint",
-    "document_clone", "completed_clone", "expected_bytes_after_mint",
-  ]],
-  ["debt_structural_promotion_composes", ["record_shadow", "structural", "semantic_only_addition"]],
-  ["debt_part_to_record_promotion_exact", [
-    "deterministic_id", "manifest_slot", "parent_relation", "byte_span_frozen_debt", "blocker_delta_four",
-  ]],
-  ["debt_part_to_record_promotion_rejections", [
-    "supporting_part", "pending_part", "omitted_disposition", "wrong_record_id", "invalid_deterministic_id",
-    "base_record_collision", "base_systematic_collision", "candidate_systematic_collision", "duplicate_base_part",
-    "duplicate_candidate_record", "candidate_part_retained", "missing_title", "title_drift",
-    "projection_group_drift", "candidate_parent_group_move", "missing_parent_relation",
-    "duplicate_parent_relation", "wrong_parent_direction", "manifest_missing", "manifest_duplicate",
-    "manifest_wrong_index", "missing_replacement", "duplicate_replacement", "wrong_replacement_field",
-    "empty_review_note", "detail_byte_drift", "missing_base_completed", "missing_candidate_completed",
-    "base_chunk_owner_field", "candidate_chunk_owner_field", "missing_segment", "expected_byte_drift",
-    "span_missing", "span_duplicate", "span_coordinate",
-    "span_digest", "span_kind", "span_owner", "span_field", "span_status", "extra_owner_span",
-    "retained_frozen", "base_unfrozen", "part_debt_join", "span_debt_join", "frozen_debt_join",
-    "lifecycle_debt_join", "independent_growth", "unmatched_visible_record",
-  ]],
-  ["debt_part_to_record_promotion_capability_replay", [
-    "base_part", "candidate_payload", "candidate_detail", "manifest", "relation", "span", "frozen",
-    "base_debt", "candidate_debt", "base_document_clone", "candidate_document_clone",
-    "base_completed_clone", "candidate_completed_clone", "completed_chunk", "expected_bytes",
-  ]],
-  ["debt_part_to_record_promotion_composes", [
-    "part_to_record", "record_shadow", "same_kind", "semantic_only", "aggregate_count",
-  ]],
-  ["debt_part_adoption_exact", [
-    "curated_id", "replacement_span_join", "parent_relation_join", "stable_semantics_graph", "exact_slot_bytes",
-  ]],
-  ["debt_part_adoption_rejections", [
-    "base_not_semantic_only", "payload_drift", "title_drift", "aliases_drift", "tags_drift",
-    "missing_replacement", "duplicate_replacement", "wrong_replacement_span", "wrong_replacement_field",
-    "ambiguous_part_span", "candidate_part_retained", "missing_parent_relation", "wrong_parent_relation",
-    "relation_graph_drift", "reference_graph_drift", "manifest_missing", "manifest_wrong_index",
-    "span_owner_drift", "frozen_span_retained", "projected_bytes_drift",
+    "semantic_conversion", "frozen_legacy_span_ids", "semantic_owner_raw_fields", "raw_span",
   ]],
   ["render_structural_exact_field_binding_all_kinds", [
     "section", "fragment", "legacy_marker", "record", "part", "semantic_only_zero_segments",
@@ -357,7 +290,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["status_projector_before_after_target_byte_parity", ["roadmap", "matrix_readme", "tests_readme"]],
   ["status_projector_before_after_mode_parity", ["default", "check", "write", "write_and_check_write_wins", "unrelated_arg_default"]],
   ["status_projector_before_after_message_parity", ["write_missing_marker", "check_missing_open", "check_missing_close", "check_stale_inner", "derivation_vacuity"]],
-  ["exit_authority_stage_mismatch_one", ["authoritative_without_claim", "shadow_with_claim"]],
+  ["exit_authority_stage_mismatch_one", ["authoritative_without_claim"]],
   ["cli_authoritative_fresh_projection_reference_provenance", [
     "fresh_resolves", "drifted_prior_rejects", "missing_rejects",
   ]],
@@ -403,24 +336,16 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["strict_missing_discriminator", { code: "E-SCHEMA-MISSING-KEY", logical_path: "p.kind" }],
   ["strict_generic_state_rejected", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "p.state" }],
   ["strict_generic_disposition_rejected", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "p.disposition" }],
-  ["v0_missing_manifest", { code: "E-SCHEMA-MISSING-KEY", logical_path: "manifest" }],
-  ["v0_empty_records_floor", { code: "E-SCHEMA-MISSING-KEY", logical_path: "record" }],
+  ["missing_manifest", { code: "E-SCHEMA-MISSING-KEY", logical_path: "manifest" }],
+  ["empty_records_floor", { code: "E-SCHEMA-MISSING-KEY", logical_path: "record" }],
   ["truncated_span_read", { code: "E-SPAN-BOUNDS", logical_path: "source_span[1].end_byte" }],
-  ["noncanonical_literal_string", { code: "E-CODEC-PLACEHOLDER", logical_path: "section[0].source_block_md" }],
+  ["noncanonical_literal_string", { code: "E-CODEC-PLACEHOLDER", logical_path: "section[0].body_md" }],
   ["noncanonical_table_order", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["noncanonical_set_order", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
-  ["v0_rejects_semantics", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "record[0].render_authority" }],
-  ["v0_rejects_authoritative", { code: "E-SCHEMA-ENUM", logical_path: "document.authority" }],
-  ["v1_raw_requires_frozen_span", { code: "E-SCHEMA-STATE", logical_path: "document.frozen_legacy_span_ids" }],
-  ["v1_new_raw_rejected", { code: "E-SCHEMA-STATE", logical_path: "document.frozen_legacy_span_ids" }],
-  ["v1_semantic_forbids_raw", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "record[0].source_block_md" }],
   ["schema_lifecycle_semantic_requires_reviewed", { code: "E-SCHEMA-MISSING-KEY", logical_path: "fragment[0].lifecycle_disposition" }],
   ["schema_lifecycle_cross_kind_rejected", { code: "E-SCHEMA-ENUM", logical_path: "fragment[0].lifecycle_disposition" }],
-  ["schema_lifecycle_v0_forbidden", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "fragment[0].lifecycle_disposition" }],
   ["schema_projection_visibility_document_arm", { code: "E-SCHEMA-MISSING-KEY", logical_path: "record[0].projection_visibility" }],
   ["schema_projection_visibility_semantic_only_arm", { code: "E-SCHEMA-STATE", logical_path: "record[0].source_replacement" }],
-  ["schema_projection_visibility_forbidden_nonsemantic_arms", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "record[0].projection_visibility" }],
-  ["v2_unresolved_migration_reference_rejected", { code: "E-SCHEMA-STATE", logical_path: "reference[0].kind" }],
   ["v3_unsupported", { code: "E-SCHEMA-VERSION", logical_path: "document.schema_version" }],
   ["domain_state_required_forbidden", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "p.blocker_md" }],
   ["domain_defect_regression_required", { code: "E-SCHEMA-STATE", logical_path: "p" }],
@@ -433,10 +358,9 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["evidence_generator_requires_harness_free", { code: "E-SCHEMA-STATE", logical_path: "record.matrix.fixture-task-a.evidence_ids" }],
   ["evidence_timing_join_structural", { code: "E-SCHEMA-STATE", logical_path: "record.testing.fixture-cost-historical.evidence_ids" }],
   ["evidence_draft_log_rejected", { code: "E-REFERENCE-FORBIDDEN", logical_path: "reference[4].path" }],
-  ["domain_closed_denominator_rejected", { code: "E-SCHEMA-ENUM", logical_path: "p.family_maturity" }],
   ["schema_duplicate_assignment_rejected", { code: "E-TOML-PARSE", logical_path: "$" }],
   ["schema_duplicate_table_rejected", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
-  ["schema_duplicate_nested_payload_rejected", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
+  ["schema_duplicate_nested_payload_rejected", { code: "E-TOML-PARSE", logical_path: "$" }],
   ["noncanonical_comment", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["noncanonical_inline_table", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["systematic_illegal_cell_rejected", { code: "E-SCHEMA-ENUM", logical_path: "p.cell[0].spec_legality" }],
@@ -463,29 +387,12 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["span_empty_vacuity", { code: "E-SPAN-EMPTY", logical_path: "source_span" }],
   ["span_partial_prefix_rejected", { code: "E-SPAN-COVERAGE", logical_path: "source_span" }],
   ["span_source_change_digest_rejected", { code: "E-SOURCE-DIGEST", logical_path: "document.frozen_source_sha256" }],
-  ["debt_semantic_to_raw_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "owners.[\"matrix\",\"record\",\"matrix.fixture-work\",\"source_block_md\"]" }],
-  ["debt_new_key_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "owners.[\"matrix\",\"record\",\"matrix.fixture-work\",\"payload.summary_md\"]" }],
-  ["debt_swap_same_count_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "owners.[\"matrix\",\"record\",\"matrix.fixture-work\",\"payload.summary_md\"]" }],
   ["debt_independent_set_growth_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"transition\"]" }],
-  ["debt_category_hiding_rejected", { code: "E-DEBT-CATEGORY-HIDE", logical_path: "independent.[\"matrix\",\"unresolved_references\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"transition\"]" }],
-  ["debt_frozen_set_growth_rejected", { code: "E-DEBT-FROZEN-SET", logical_path: "frozen_legacy_spans" }],
-  ["debt_v1_v0_rejected", { code: "E-DEBT-BASE-MISMATCH", logical_path: "document.schema_version" }],
+  ["debt_category_hiding_rejected", { code: "E-DEBT-CATEGORY-HIDE", logical_path: "independent.[\"matrix\",\"unmodelled_coordinates\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"transition\"]" }],
   ["debt_unrelated_base_rejected", { code: "E-DEBT-BASE-MISMATCH", logical_path: "document" }],
-  ["debt_semantic_promotion_payload_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
-  ["debt_semantic_promotion_span_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
-  ["debt_semantic_promotion_visibility_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
-  ["debt_candidate_only_document_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-semantic-only-addition\"]" }],
-  ["debt_semantic_promotion_rejection_matrix", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
-  ["debt_semantic_promotion_swapped_segment_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"]" }],
-  ["debt_semantic_promotion_capability_mutation_rejected", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
-  ["debt_structural_promotion_rejections", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "fragment[\"fragment\"]" }],
-  ["debt_structural_promotion_capability_replay", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
-  ["debt_part_to_record_promotion_rejections", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "part_to_record[\"matrix.part\"]" }],
-  ["debt_part_to_record_promotion_capability_replay", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
-  ["debt_part_adoption_rejections", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "part_to_record[\"matrix.curated-adoption\"]" }],
   ["render_zero_chunks_rejected", { code: "E-SELFTEST-CASE", logical_path: "render_zero_chunks_rejected" }],
   ["render_semantic_consumption_once", { code: "E-FIELD-CONSUMPTION", logical_path: "record[\"matrix.fixture-work\"]" }],
-  ["render_semantic_only_identity_debt", { code: "E-DEBT-BASE-MISMATCH", logical_path: "transition_facts" }],
+  ["render_semantic_only_identity_debt", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"].projection_visibility" }],
   ["render_semantic_only_span_prohibition", { code: "E-SPAN-OWNER", logical_path: "source_span[\"span-summary\"]" }],
   ["render_semantic_exact_field_binding_swapped_labels", { code: "E-SPAN-OWNER", logical_path: "source_span[\"span-summary\"]" }],
   ["render_semantic_exact_field_binding_partial", { code: "E-SPAN-OWNER", logical_path: "source_span[\"span-summary\"]" }],
@@ -499,29 +406,15 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["outputs_path_escape", { code: "E-OUTPUT-PATH", logical_path: "claims[0]" }],
   ["outputs_empty_inventory", { code: "E-OUTPUT-CLAIM", logical_path: "claims" }],
   ["outputs_production_stage_required", { code: "E-OUTPUT-CLAIM", logical_path: "stage" }],
-  ["outputs_shadow_no_claim", { code: "E-OUTPUT-AUTHORITY", logical_path: "document.authority" }],
   ["outputs_matrix_handoff_collision", { code: "E-OUTPUT-CLAIM", logical_path: "overlap[0,4]" }],
   ["outputs_projection_path_floor", { code: "E-OUTPUT-AUTHORITY", logical_path: "output_claims.scope" }],
   ["outputs_slot_cardinality", { code: "E-OUTPUT-SLOT", logical_path: "slot[\"status-slot\"]" }],
   ["write_projection_rejects_toml", { code: "E-OUTPUT-TOML", logical_path: "document.projection_path" }],
   ["write_projection_rejects_authority_files", { code: "E-OUTPUT-PATH", logical_path: "document.projection_path" }],
-  ["write_shadow_rejected", { code: "E-OUTPUT-AUTHORITY", logical_path: "output_claims.scope" }],
   ["write_all_rejected", { code: "E-OUTPUT-AUTHORITY", logical_path: "output_claims.scope" }],
   ["format_source_single_explicit", { code: "E-OUTPUT-AUTHORITY", logical_path: "output_claims.scope" }],
   ["atomic_write_failure_preserves_target", { code: "E-SELFTEST-CASE", logical_path: "atomic_write_failure_preserves_target" }],
   ["debt_owner_field_rename_requires_witness", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "owners.[\"matrix\",\"record\",\"matrix.fixture-work\",\"payload.summary_md\"]" }],
-  ["debt_new_raw_span_rejected", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "owners.[\"matrix\",\"source_span\",\"span-new\",\"coverage\"]" }],
-  ["debt_cutover_revealed_v1_v1_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"payload.work_state\"]" }],
-  ["debt_cutover_revealed_v1_v0_rejected", { code: "E-DEBT-BASE-MISMATCH", logical_path: "document.schema_version" }],
-  ["debt_cutover_revealed_wrong_category_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"unrendered_fields\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"payload.work_state\"]" }],
-  ["debt_cutover_revealed_wrong_subject_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"payload.not_the_pending_coordinate\"]" }],
-  ["debt_cutover_revealed_wrong_owner_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"section\",\"heading\",\"source_block_md\",\"payload.work_state\"]" }],
-  ["debt_cutover_revealed_missing_record_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"record\",\"matrix.fixture-missing\",\"source_block_md\",\"payload.work_state\"]" }],
-  ["debt_cutover_revealed_no_shadow_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"payload.work_state\"]" }],
-  ["debt_cutover_revealed_nonwork_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"payload.work_state\"]" }],
-  ["debt_cutover_revealed_state_mismatch_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"payload.work_state\"]" }],
-  ["debt_cutover_revealed_classification_mismatch_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"pending_family_classifications\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"payload.family_classification\"]" }],
-  ["debt_cutover_revealed_category_hide_rejected", { code: "E-DEBT-CATEGORY-HIDE", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"payload.work_state\"]" }],
   ["render_chunks_precede_consumption_validation", { code: "E-FIELD-CONSUMPTION", logical_path: "record[\"matrix.fixture-work\"]" }],
   ["render_chunks_precede_span_validation", { code: "E-SPAN-EMPTY", logical_path: "source_span" }],
   ["render_slots_resolved_before_slot_validation", { code: "E-OUTPUT-SLOT", logical_path: "generated_slot[\"status-slot\"]" }],
@@ -555,7 +448,6 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["against_forged_debt_transition_facts_ignored", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-lifecycle\"]" }],
   ["against_per_roadmap_candidate_global_collision_rejected", { code: "E-OWNER-DUPLICATE", logical_path: "owner[\"matrix.fixture-lifecycle\"]" }],
   ["against_per_roadmap_absent_selected_source_rejected", { code: "E-TRANSACTION-BASE", logical_path: "matrix" }],
-  ["against_per_roadmap_shadow_selected_source_rejected", { code: "E-TRANSACTION-BASE", logical_path: "matrix" }],
   ["against_per_roadmap_owner_change_requires_all", { code: "E-TRANSACTION-OWNER", logical_path: "owner[\"matrix.fixture-lifecycle\"]" }],
   ["fixture_registry_missing_file", { code: "E-FIXTURE-REGISTRY", logical_path: "fixture-registry.missing" }],
   ["fixture_registry_unlisted_file", { code: "E-FIXTURE-REGISTRY", logical_path: "fixture-registry.unlisted" }],
@@ -603,7 +495,6 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["cli_against_nonhex_git_format_no_usage", { code: "E-GIT-BASE-FORMAT", logical_path: "against" }],
   ["cli_against_unresolved_git_lookup_no_usage", { code: "E-GIT-BASE-LOOKUP", logical_path: "against" }],
   ["cli_against_incompatible_precedes_bad_format", { code: "E-CLI-AGAINST", logical_path: "argv[3]" }],
-  ["cli_against_v2_scoped_promotion_rejected", { code: "E-TRANSACTION-BASE", logical_path: "matrix" }],
   ["cli_as_of_invalid_leap_day", { code: "E-CLI-AS-OF", logical_path: "argv[4]" }],
   ["cli_as_of_year_zero_rejected", { code: "E-CLI-AS-OF", logical_path: "argv[4]" }],
   ["cli_as_of_short_component_rejected", { code: "E-CLI-AS-OF", logical_path: "argv[4]" }],
@@ -622,10 +513,6 @@ export function createCompleteSelfTestRegistry(): SelfTestRegistry {
     { required: REQUIRED_ADAPTER_SELFTEST_CASE_IDS, cases: ADAPTER_SELFTEST_CASES },
     { required: REQUIRED_FIXTURE_SELFTEST_CASE_IDS, cases: FIXTURE_SELFTEST_CASES },
     { required: REQUIRED_CLI_SELFTEST_CASE_IDS, cases: CLI_SELFTEST_CASES },
-    {
-      required: REQUIRED_SEMANTIC_CONVERSION_SELFTEST_CASE_IDS,
-      cases: SEMANTIC_CONVERSION_SELFTEST_CASES,
-    },
     { required: REQUIRED_DENOMINATOR_SELFTEST_CASE_IDS, cases: DENOMINATOR_SELFTEST_CASES },
     { required: REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_IDS, cases: PROJECTION_VIEW_SELFTEST_CASES },
   ] as const;

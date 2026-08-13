@@ -110,7 +110,6 @@ function replacementFields(
 }
 
 function authoredFields(document: RoadmapDocument): readonly AuthoredField[] {
-  if (document.document.schema_version === 0) return [];
   const fields: AuthoredField[] = [];
   const structural = (ownerKind: "section" | "fragment" | "legacy_marker" | "part", ownerId: string,
     value: object): void => {
@@ -126,12 +125,11 @@ function authoredFields(document: RoadmapDocument): readonly AuthoredField[] {
   document.legacy_markers.forEach((value) => structural("legacy_marker", value.marker_id, value));
   document.parts.forEach((value) => structural("part", value.part_id, value));
   for (const record of document.records) {
-    if (!("render_authority" in record) || record.render_authority !== "semantic") continue;
     markdownFields(record.payload, "payload", (path, bytes) => fields.push({ owner_kind: "record",
       owner_id: record.id, logical_path: path, bytes }));
     replacementFields("record", record.id, record.source_replacements, fields);
   }
-  if ("relations" in document) document.relations.forEach((relation, index) => {
+  document.relations.forEach((relation, index) => {
     if (relation.note_md !== undefined) fields.push({ owner_kind: "relation",
       owner_id: `${relation.source}:${relation.kind}:${relation.target}:${index}`,
       logical_path: "note_md", bytes: relation.note_md });
@@ -165,7 +163,6 @@ export function validateContentReachability(
   full: Uint8Array,
   audit: Uint8Array,
 ): readonly RoadmapIssue[] {
-  if (document.document.schema_version === 0) return Object.freeze([]);
   const expected = new Map(authoredFields(document).map((field) => [key(field), field]));
   const counts = new Map<string, number>();
   const ranges: Record<ProjectionContentView, { start: number; end: number; coordinate: string }[]> = {
@@ -311,7 +308,7 @@ const OPERATIONAL_BUCKET_FLOORS: Readonly<Record<OperationalClass, number>> = Ob
 });
 function operationalClass(document: RoadmapDocument, ownerId: string): OperationalClass {
   const record = document.records.find((candidate) => String(candidate.id) === ownerId);
-  if (record === undefined || !("render_authority" in record) || record.render_authority !== "semantic") return "systems";
+  if (record === undefined) return "systems";
   const payload = record.payload;
   if (payload.kind === "testing_operational_watch") return payload.watch_state === "watching" ? "live" : "history";
   if (payload.kind === "testing_incident") return payload.incident_posture === "live" ? "live" : "history";
@@ -467,9 +464,6 @@ export function buildProjectionViews(
   legacyProjection: Uint8Array,
 ): ProjectionViews {
   const provenance = legacySpanProvenance(document);
-  if (document.document.schema_version === 0) return Object.freeze({ full: new Uint8Array(legacyProjection),
-    audit: new Uint8Array(), content_reachability: Object.freeze([]),
-    legacy_span_provenance: provenance, issues: Object.freeze([]) });
   const issues: RoadmapIssue[] = [];
   const fields = authoredFields(document);
   const fieldsByKey = new Map(fields.map((field) => [key(field), field]));

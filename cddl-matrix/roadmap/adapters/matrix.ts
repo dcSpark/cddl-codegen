@@ -6,8 +6,6 @@ import type { RepoPath, RoadmapId, RoadmapName, SlotId } from "../model/core.ts"
 import type {
   Reference,
   RoadmapDocument,
-  RoadmapDocumentV0,
-  RoadmapDocumentV1,
   SemanticPayload,
   SemanticRecord,
 } from "../model/documents.ts";
@@ -18,7 +16,6 @@ import {
   validateSemanticRoadmapJoins,
   type ReferenceProviderLike,
   type SemanticJoinUniverse,
-  type UnresolvedMigrationAuthority,
 } from "../references.ts";
 import { validateRelations } from "../relations.ts";
 import type {
@@ -29,39 +26,10 @@ import type {
   RegistryView,
   RoadmapAdapter,
 } from "./types.ts";
-import {
-  MATRIX_V0_PART_FLOORS,
-  MATRIX_V0_RECORD_FLOORS,
-  MATRIX_V0_SLOT_FLOORS,
-  MATRIX_V0_STRUCTURE_SHA256,
-} from "./matrix_v0_floors.ts";
+import { MATRIX_SLOT_FLOORS } from "./matrix_slot_floors.ts";
 
 const MATRIX_SOURCE_PATH = "cddl-matrix/roadmap.toml" as RepoPath;
 const MATRIX_PROJECTION_PATH = "cddl-matrix/ROADMAP.md" as RepoPath;
-const MATRIX_PICKUP = Object.freeze({
-  sha256: "a5a90541a3d96d64107242653ae10d829fbf3d579223c1b9f4a5a5672819655f",
-  byte_length: 84_590,
-  line_count: 994,
-  eof: "lf" as const,
-});
-
-const MATRIX_V0_COUNTS = Object.freeze({
-  sections: 9,
-  fragments: 5,
-  legacy_markers: 0,
-  records: MATRIX_V0_RECORD_FLOORS.length,
-  parts: MATRIX_V0_PART_FLOORS.length,
-  generated_slots: 4,
-  manifest: 90,
-  spans: 90,
-});
-
-const MATRIX_REVIEWED_ALIASES = Object.freeze([
-  ["matrix.matching-semantics-boundary" as RoadmapId, ["F8"]],
-  ["matrix.interaction-tuples-boundary" as RoadmapId, ["F9"]],
-  ["matrix.over-acceptance-ast-notes" as RoadmapId, ["F10", "F11"]],
-] as const);
-
 const SLOT_BINDINGS = Object.freeze([
   ["constraint" as SlotId, "status_header_markers:roadmap-constraint"],
   ["counts" as SlotId, "status_header_markers:roadmap-counts"],
@@ -85,229 +53,17 @@ function issue(
   };
 }
 
-function floorIssue(
-  doc: RoadmapDocument,
-  out: IssueCollector,
-  logicalPath: string,
-  message: string,
-): void {
-  out.add({
-    code: "E-SCHEMA-FLOOR",
-    source: doc.document.source_path,
-    logical_path: logicalPath,
-    message,
-    exit: 1,
-  });
-}
-
-function isLiveMatrixV0(doc: RoadmapDocument): doc is RoadmapDocumentV0 {
-  return doc.document.schema_version === 0 &&
-    doc.document.source_path === MATRIX_SOURCE_PATH &&
-    doc.document.projection_path === MATRIX_PROJECTION_PATH;
-}
-
-function manifestIdentity(entry: RoadmapDocumentV0["manifest"][number]): readonly string[] {
-  switch (entry.kind) {
-    case "section": return [entry.kind, entry.section_id];
-    case "fragment": return [entry.kind, entry.fragment_id];
-    case "legacy_marker": return [entry.kind, entry.marker_id];
-    case "record": return [entry.kind, entry.record_id];
-    case "part": return [entry.kind, entry.part_id];
-    case "generated_slot": return [entry.kind, entry.slot_id];
-  }
-}
-
-function matrixV0StructureSha256(doc: RoadmapDocumentV0): string {
-  const owners: unknown[][] = [
-    ...doc.sections.map((value) => [
-      "section", value.section_id, value.title, value.legacy_aliases ?? [], value.span_ids,
-    ]),
-    ...doc.fragments.map((value) => [
-      "fragment", value.fragment_id, value.projection_group, value.title ?? null,
-      value.legacy_aliases ?? [], value.span_ids,
-    ]),
-    ...doc.legacy_markers.map((value) => [
-      "legacy_marker", value.marker_id, value.legacy_aliases, value.span_ids,
-    ]),
-    ...doc.records.map((value) => [
-      "record", value.id, value.title, value.projection_group, value.legacy_aliases ?? [], value.span_ids,
-    ]),
-    ...doc.parts.map((value) => [
-      "part", value.part_id, value.parent_record_id, value.title ?? null, value.span_ids,
-    ]),
-    ...doc.generated_slots.map((value) => [
-      "generated_slot", value.slot_id, value.binding, value.span_ids,
-    ]),
-  ];
-  owners.sort((left, right) => String(left[1]) < String(right[1]) ? -1 : String(left[1]) > String(right[1]) ? 1 : 0);
-  const spans = [...doc.spans].sort((left, right) =>
-    left.start_byte - right.start_byte || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
-  ).map((value) => [
-    value.id, value.start_byte, value.end_byte, value.sha256, value.source_kind,
-    value.owner_id, value.owner_field, value.migration_status,
-  ]);
-  const encoded = new TextEncoder().encode(JSON.stringify({
-    owners,
-    manifest: doc.manifest.map(manifestIdentity),
-    spans,
-  }));
-  return new Bun.CryptoHasher("sha256").update(encoded).digest("hex");
-}
-
-function exactSpanBinding(
-  doc: RoadmapDocument,
-  spanIds: readonly string[],
-  sourceKind: "record" | "part" | "generated_slot",
-  ownerId: string,
-  floor: readonly [string, number, number, string],
-): boolean {
-  const [spanId, start, end, digest] = floor;
-  if (spanIds.length !== 1 || spanIds[0] !== spanId) return false;
-  const span = doc.spans.find((entry) => entry.id === spanId);
-  return span !== undefined && span.source_kind === sourceKind && span.owner_id === ownerId &&
-    span.owner_field === (sourceKind === "generated_slot" ? "generated" : "source_block_md") &&
-    span.migration_status === (sourceKind === "generated_slot" ? "generated" : "raw") &&
-    span.start_byte === start && span.end_byte === end && span.sha256 === digest;
-}
-
-function validateLiveMatrixV0Floors(doc: RoadmapDocument, out: IssueCollector): void {
-  if (!isLiveMatrixV0(doc)) return;
-  const metadata = [
-    ["document.frozen_source_sha256", doc.document.frozen_source_sha256, MATRIX_PICKUP.sha256],
-    ["document.frozen_source_byte_length", doc.document.frozen_source_byte_length, MATRIX_PICKUP.byte_length],
-    ["document.frozen_source_line_count", doc.document.frozen_source_line_count, MATRIX_PICKUP.line_count],
-    ["document.frozen_source_eof", doc.document.frozen_source_eof, MATRIX_PICKUP.eof],
-  ] as const;
-  for (const [logicalPath, actual, expected] of metadata) {
-    if (actual !== expected) {
-      floorIssue(doc, out, logicalPath, `matrix v0 pickup floor must be ${JSON.stringify(expected)}`);
-    }
-  }
-
-  const counts = [
-    ["section", doc.sections.length, MATRIX_V0_COUNTS.sections],
-    ["fragment", doc.fragments.length, MATRIX_V0_COUNTS.fragments],
-    ["legacy_marker", doc.legacy_markers.length, MATRIX_V0_COUNTS.legacy_markers],
-    ["record", doc.records.length, MATRIX_V0_COUNTS.records],
-    ["part", doc.parts.length, MATRIX_V0_COUNTS.parts],
-    ["generated_slot", doc.generated_slots.length, MATRIX_V0_COUNTS.generated_slots],
-    ["manifest", doc.manifest.length, MATRIX_V0_COUNTS.manifest],
-    ["source_span", doc.spans.length, MATRIX_V0_COUNTS.spans],
-  ] as const;
-  for (const [logicalPath, actual, expected] of counts) {
-    if (actual !== expected) {
-      floorIssue(doc, out, logicalPath, `matrix v0 requires exactly ${expected} ${logicalPath} entries`);
-    }
-  }
-
-  const records = new Map(doc.records.map((record) => [record.id, record]));
-  for (const [id, title, spanId, start, end, digest] of MATRIX_V0_RECORD_FLOORS) {
-    const record = records.get(id);
-    if (record?.title !== title) {
-      floorIssue(
-        doc,
-        out,
-        `record[${JSON.stringify(id)}].title`,
-        `matrix v0 identity requires exact title ${JSON.stringify(title)}`,
-      );
-    }
-    if (record === undefined || !("span_ids" in record) || !exactSpanBinding(
-      doc,
-      record.span_ids,
-      "record",
-      id,
-      [spanId, start, end, digest],
-    )) {
-      floorIssue(
-        doc,
-        out,
-        `record[${JSON.stringify(id)}].span_ids`,
-        `matrix v0 identity requires exact span ${spanId} at [${start},${end}) with digest ${digest}`,
-      );
-    }
-  }
-
-  const parts = new Map(doc.parts.map((part) => [part.part_id, part]));
-  for (const [id, parentId, title, spanId, start, end, digest] of MATRIX_V0_PART_FLOORS) {
-    const part = parts.get(id);
-    if (part?.parent_record_id !== parentId || part.title !== title) {
-      floorIssue(
-        doc,
-        out,
-        `part[${JSON.stringify(id)}]`,
-        `matrix v0 part requires parent ${parentId} and exact title ${JSON.stringify(title)}`,
-      );
-    }
-    if (part === undefined || !("span_ids" in part) || !exactSpanBinding(
-      doc,
-      part.span_ids,
-      "part",
-      id,
-      [spanId, start, end, digest],
-    )) {
-      floorIssue(
-        doc,
-        out,
-        `part[${JSON.stringify(id)}].span_ids`,
-        `matrix v0 part requires exact boundary ${spanId} at [${start},${end}) with digest ${digest}`,
-      );
-    }
-  }
-
-  const slots = new Map(doc.generated_slots.map((slot) => [slot.slot_id, slot]));
-  for (const [id, binding, spanId, start, end, digest] of MATRIX_V0_SLOT_FLOORS) {
-    const slot = slots.get(id);
-    if (slot?.binding !== binding || !exactSpanBinding(
-      doc,
-      slot?.span_ids ?? [],
-      "generated_slot",
-      id,
-      [spanId, start, end, digest],
-    )) {
-      floorIssue(
-        doc,
-        out,
-        `generated_slot[${JSON.stringify(id)}]`,
-        `matrix v0 inline slot requires ${binding} and exact span ${spanId} at [${start},${end})`,
-      );
-    }
-  }
-  for (const [id, aliases] of MATRIX_REVIEWED_ALIASES) {
-    const actual = records.get(id)?.legacy_aliases ?? [];
-    if (JSON.stringify(actual) !== JSON.stringify(aliases)) {
-      floorIssue(
-        doc,
-        out,
-        `record[${JSON.stringify(id)}].legacy_aliases`,
-        `reviewed aliases must be ${JSON.stringify(aliases)}`,
-      );
-    }
-  }
-  if (matrixV0StructureSha256(doc) !== MATRIX_V0_STRUCTURE_SHA256) {
-    floorIssue(doc, out, "matrix_v0.structure", "matrix v0 owner classification, identities, manifest, or span ledger differs from the reviewed pickup");
-  }
-}
-
-function isExactLiveMatrixV0Shape(doc: RoadmapDocument): boolean {
-  if (!isLiveMatrixV0(doc)) return false;
-  const issues: RoadmapIssue[] = [];
-  validateLiveMatrixV0Floors(doc, { issues, add: (entry) => issues.push(entry) });
-  return issues.length === 0;
-}
-
 function usesLiveMatrixInlineSlots(doc: RoadmapDocument): boolean {
-  if (doc.document.schema_version === 0) return false;
-  const authorityDoc = doc;
   if (
-    authorityDoc.document.source_path !== MATRIX_SOURCE_PATH ||
-    authorityDoc.document.projection_path !== MATRIX_PROJECTION_PATH ||
-    authorityDoc.generated_slots.length !== MATRIX_V0_SLOT_FLOORS.length
+    doc.document.source_path !== MATRIX_SOURCE_PATH ||
+    doc.document.projection_path !== MATRIX_PROJECTION_PATH ||
+    doc.generated_slots.length !== MATRIX_SLOT_FLOORS.length
   ) return false;
-  const slots = new Map(authorityDoc.generated_slots.map((slot) => [slot.slot_id, slot]));
-  return slots.size === MATRIX_V0_SLOT_FLOORS.length && MATRIX_V0_SLOT_FLOORS.every(
+  const slots = new Map(doc.generated_slots.map((slot) => [slot.slot_id, slot]));
+  return slots.size === MATRIX_SLOT_FLOORS.length && MATRIX_SLOT_FLOORS.every(
     ([slotId, binding, spanId, start, end]) => {
       const slot = slots.get(slotId);
-      const span = authorityDoc.spans.find((entry) => entry.id === spanId);
+      const span = doc.spans.find((entry) => entry.id === spanId);
       return slot?.binding === binding && slot.span_ids.length === 1 &&
         slot.span_ids[0] === spanId && span?.source_kind === "generated_slot" &&
         span.owner_id === slotId && span.owner_field === "generated" &&
@@ -530,16 +286,15 @@ function matrixSlotResolvers(
   if (facts.validation_problems.length > 0) {
     throw new Error(`matrix status inputs fail anti-vacuity: ${facts.validation_problems.join("; ")}`);
   }
-  const inlineProductionSlots = isExactLiveMatrixV0Shape(document) ||
-    usesLiveMatrixInlineSlots(document);
+  const inlineProductionSlots = usesLiveMatrixInlineSlots(document);
   const payloads = new Map<string, Uint8Array>(
     renderMatrixStatusPayloads(facts)
       .filter((payload) => payload.path === MATRIX_PROJECTION_PATH)
       .map((payload) => {
         if (inlineProductionSlots) {
-          // The live roadmap slots own only inline marker interiors in the exact v0 shadow and in
-          // v1 documents retaining the frozen production slot contract. Owner authority, joins,
-          // and migration progress do not change the surrounding raw layout owned by other nodes.
+          // The live roadmap slots own only inline marker interiors while the document retains the
+          // frozen production slot contract. Owner authority and joins do not change the
+          // surrounding layout owned by other nodes.
           return [`status_header_markers:${payload.slot_id}`, payload.bytes] as const;
         }
         // Compatibility fixtures model a slot as a complete standalone projection line.
@@ -661,7 +416,6 @@ export interface DecodedRoadmapValidationObserver {
 export interface DecodedRoadmapValidationOptions {
   readonly universe?: SemanticJoinUniverse;
   readonly defer_foreign_roadmap_joins?: boolean;
-  readonly unresolved_migration_authority?: UnresolvedMigrationAuthority;
   readonly observer?: DecodedRoadmapValidationObserver;
   readonly denominator_authorities?: DenominatorAuthorityRegistry;
 }
@@ -737,17 +491,14 @@ export function validateDecodedRoadmapDocument(
     providers: referenceProviders,
     first_class: universe.first_class,
     defer_foreign_roadmap_joins: deferredNamespace,
-    unresolved_migration_authority: options.unresolved_migration_authority,
   }));
   issues.push(...validateRelations(indexes.relations, universe.first_class, source, deferredNamespace, view.current_guards));
-  if (document.document.schema_version === 2) {
-    issues.push(...validateSystematicFamilies(
-      indexes,
-      view,
-      options.denominator_authorities ?? EMPTY_DENOMINATOR_AUTHORITIES,
-      source,
-    ));
-  }
+  issues.push(...validateSystematicFamilies(
+    indexes,
+    view,
+    options.denominator_authorities ?? EMPTY_DENOMINATOR_AUTHORITIES,
+    source,
+  ));
   for (const provider of indexes.payload_records.values()) {
     validateDomainPayload(provider, domainIndexes, collector, source);
     options.observer?.domainPayloadValidated(provider);
@@ -776,7 +527,6 @@ export const MATRIX_ADAPTER: RoadmapAdapter<SemanticPayload> = Object.freeze({
     return matrixSlotResolvers(view, document);
   },
   validateFloors(doc: RoadmapDocument, out: IssueCollector) {
-    validateLiveMatrixV0Floors(doc, out);
     if (doc.document.roadmap !== "matrix") {
       out.add({
         code: "E-SCHEMA-FLOOR",

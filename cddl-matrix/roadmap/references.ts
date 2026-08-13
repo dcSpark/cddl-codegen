@@ -50,7 +50,6 @@ export interface RoadmapMarkdownRepositoryFacts {
 
 export interface ReferenceValidationOptions {
   readonly source?: string;
-  readonly unresolved_migration_authority?: UnresolvedMigrationAuthority;
   readonly providers?: readonly ReferenceProviderLike[];
   /** Global first-class view; defaults to the selected document for single-roadmap validation. */
   readonly first_class?: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>;
@@ -125,27 +124,6 @@ export interface ReferenceProviderRegistry {
   readonly issues: readonly RoadmapIssue[];
 }
 
-declare const unresolvedMigrationAuthorityBrand: unique symbol;
-export interface UnresolvedMigrationAuthority {
-  readonly [unresolvedMigrationAuthorityBrand]: true;
-}
-
-export interface UnresolvedMigrationDebtFact {
-  readonly reference_id: Reference["id"];
-  readonly source: RoadmapId;
-  readonly local_reference: string;
-  readonly expires_at: string;
-  readonly shadow_record_ids: readonly RoadmapId[];
-}
-
-export interface UnresolvedMigrationAuthorityResult {
-  readonly authority?: UnresolvedMigrationAuthority;
-  readonly debt: readonly UnresolvedMigrationDebtFact[];
-  readonly issues: readonly RoadmapIssue[];
-}
-
-const unresolvedAuthorityFacts = new WeakMap<object, ReadonlySet<string>>();
-
 function provider<K extends Reference["kind"]>(
   kind: K,
   resolveReference: (
@@ -207,7 +185,6 @@ function structuralProvider<K extends Reference["kind"]>(
  */
 export function createCoreReferenceProviders(
   firstClass: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>,
-  unresolvedMigrationAuthority?: UnresolvedMigrationAuthority,
 ): readonly AnyReferenceProvider[] {
   const providers: AnyReferenceProvider[] = [
     provider("roadmap", (reference) => {
@@ -257,14 +234,6 @@ export function createCoreReferenceProviders(
       [reference.project, reference.release]),
     structuralProvider("consumer_report", (reference) =>
       [reference.consumer, reference.report_reference]),
-    provider("unresolved_migration", (reference) => {
-        const authorized = unresolvedMigrationAuthority === undefined
-          ? undefined
-          : unresolvedAuthorityFacts.get(unresolvedMigrationAuthority);
-        return authorized?.has(unresolvedReferenceKey(reference)) === true
-          ? resolved(`unresolved_migration:${reference.local_reference}:${reference.expires_at}`)
-          : unresolved("forbidden: unresolved migration reference lacks derived frozen-shadow enumeration authority");
-    }),
   ];
   return Object.freeze(providers.sort((left, right) => codePointSort(left.kind, right.kind)));
 }
@@ -282,7 +251,6 @@ export const REFERENCE_KIND_REGISTRY = Object.freeze([
   "external_commit",
   "external_release",
   "consumer_report",
-  "unresolved_migration",
 ] as const satisfies readonly Reference["kind"][]);
 
 export function collectReferenceProviders(
@@ -292,13 +260,11 @@ export function collectReferenceProviders(
 export function collectReferenceProviders(
   firstClass: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>,
   injected: readonly ReferenceProviderLike[],
-  unresolvedMigrationAuthority?: UnresolvedMigrationAuthority,
   source?: string,
 ): ReferenceProviderRegistry;
 export function collectReferenceProviders(
   claimsOrFirstClass: readonly ReferenceProviderLike[] | ReadonlyMap<RoadmapId, RoadmapIdProviderFact>,
   injectedOrSource: readonly ReferenceProviderLike[] | string = [],
-  unresolvedMigrationAuthority?: UnresolvedMigrationAuthority,
   explicitSource?: string,
 ): ReferenceProviderRegistry {
   let claims: readonly ReferenceProviderLike[];
@@ -306,10 +272,7 @@ export function collectReferenceProviders(
     claims = claimsOrFirstClass as readonly ReferenceProviderLike[];
   } else {
     claims = [
-      ...createCoreReferenceProviders(
-        claimsOrFirstClass as ReadonlyMap<RoadmapId, RoadmapIdProviderFact>,
-        unresolvedMigrationAuthority,
-      ),
+      ...createCoreReferenceProviders(claimsOrFirstClass as ReadonlyMap<RoadmapId, RoadmapIdProviderFact>),
       ...injectedOrSource as readonly ReferenceProviderLike[],
     ];
   }
@@ -355,7 +318,6 @@ export function referenceTargetTuple(reference: Reference): readonly string[] {
     case "external_commit": return [reference.repository, reference.commit];
     case "external_release": return [reference.project, reference.release];
     case "consumer_report": return [reference.consumer, reference.report_reference];
-    case "unresolved_migration": return [reference.local_reference, reference.expires_at];
   }
 }
 
@@ -492,10 +454,6 @@ function allowedReferenceKinds(
   return [];
 }
 
-function unresolvedReferenceKey(reference: Extract<Reference, { kind: "unresolved_migration" }>): string {
-  return JSON.stringify([reference.id, reference.source, reference.local_reference, reference.expires_at]);
-}
-
 function roadmapNamespace(id: RoadmapId): "matrix" | "testing" | undefined {
   return id.startsWith("matrix.") ? "matrix" : id.startsWith("testing.") ? "testing" : undefined;
 }
@@ -509,56 +467,6 @@ function deferredForeignTarget(
   return local !== undefined && target !== undefined && target !== local && !firstClass.has(id);
 }
 
-/**
- * Derive the only authority capable of resolving enumerated migration placeholders. The authority
- * is bound in a private WeakMap to this index's exact unresolved tuples and cannot be caller-minted.
- */
-export function deriveUnresolvedMigrationAuthority(
-  indexes: RoadmapIndexes,
-  source = `<roadmap:${indexes.roadmap}>`,
-): UnresolvedMigrationAuthorityResult {
-  const unresolvedReferences = [...indexes.references.values()].filter(
-    (reference): reference is Extract<Reference, { kind: "unresolved_migration" }> =>
-      reference.kind === "unresolved_migration",
-  ).sort(compareReferenceTargets);
-  const shadowRecordIds = [...indexes.payload_records.values()]
-    .filter((provider) => provider.authority === "semantic_shadow")
-    .map((provider) => provider.record.id)
-    .sort(codePointSort);
-  const referencedIds = new Set(indexes.reference_id_uses.map((use) => use.id));
-  const issues: RoadmapIssue[] = [];
-  const debt: UnresolvedMigrationDebtFact[] = unresolvedReferences.map((reference) => ({
-    reference_id: reference.id,
-    source: reference.source,
-    local_reference: reference.local_reference,
-    expires_at: reference.expires_at,
-    shadow_record_ids: Object.freeze([...shadowRecordIds]),
-  }));
-  if (unresolvedReferences.length === 0) return { debt: Object.freeze(debt), issues: [] };
-  if (shadowRecordIds.length === 0) {
-    issues.push(issue(
-      "E-REFERENCE-FORBIDDEN",
-      source,
-      "reference.unresolved_migration",
-      "unresolved migration references require at least one decoded semantic_shadow migration owner",
-    ));
-  }
-  for (const reference of unresolvedReferences) {
-    if (referencedIds.has(reference.id)) {
-      issues.push(issue(
-        "E-REFERENCE-FORBIDDEN",
-        source,
-        `reference[${JSON.stringify(reference.id)}]`,
-        "unresolved migration reference must remain enumerated debt and cannot be consumed by semantic authority",
-      ));
-    }
-  }
-  if (issues.length > 0) return { debt: Object.freeze(debt), issues: sortIssues(issues) };
-  const authority = Object.freeze({}) as UnresolvedMigrationAuthority;
-  unresolvedAuthorityFacts.set(authority, new Set(unresolvedReferences.map(unresolvedReferenceKey)));
-  return { authority, debt: Object.freeze(debt), issues: [] };
-}
-
 export function validateRoadmapReferences(
   indexes: RoadmapIndexes,
   view: RegistryView,
@@ -569,7 +477,7 @@ export function validateRoadmapReferences(
   const firstClass = options.first_class ?? indexes.first_class;
   const providerRegistry = collectReferenceProviders(
     [
-      ...createCoreReferenceProviders(firstClass, options.unresolved_migration_authority),
+      ...createCoreReferenceProviders(firstClass),
       ...options.providers ?? [],
     ],
     source,
@@ -1088,9 +996,8 @@ function validateMarkdownViewText(
 
 /**
  * Scan one immutable roadmap Markdown view without materializing its conceptual whole-file bytes.
- * This is the projection-path counterpart of scanRoadmapCitations. Its caller selects provenance
- * by lifecycle stage: authoritative Markdown input for legacy/shadow, or expected projection bytes
- * for authoritative v1.
+ * This is the projection-path counterpart of scanRoadmapCitations. Its provenance is the expected
+ * projection bytes the decoded source just built, never the committed projection.
  */
 export function scanRoadmapMarkdownFacts(
   source: RepoPath,

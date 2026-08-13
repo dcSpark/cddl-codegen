@@ -4,7 +4,7 @@ import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import { buildRoadmapIndexes } from "../indexes.ts";
 import type { ReferenceId, RepoPath, RoadmapId, SectionId } from "../model/core.ts";
-import type { RoadmapDocumentV2, SemanticAuthorityRecordV1, SemanticPayload } from "../model/documents.ts";
+import type { RoadmapDocumentV2, SemanticAuthorityRecord, SemanticPayload } from "../model/documents.ts";
 import type { FamilyPayload } from "../model/systematic.ts";
 import { resolveManifest } from "../manifest.ts";
 import { buildExpectedChunks, validateCompletedChunks } from "../render_ir.ts";
@@ -37,7 +37,7 @@ const CELL_IDS = [
 ] as const;
 const EXCLUSION = id("matrix.fixture-denominator-exclusion-group-optional");
 
-function record(recordId: RoadmapId, payload: SemanticPayload): SemanticAuthorityRecordV1 {
+function record(recordId: RoadmapId, payload: SemanticPayload): SemanticAuthorityRecord {
   return { id: recordId, title: recordId, projection_group: "fixture" as SectionId, render_authority: "semantic", projection_visibility: "semantic_only", payload, source_replacements: [] };
 }
 
@@ -79,7 +79,7 @@ function family(): FamilyPayload {
 
 function fixture(): { document: RoadmapDocumentV2; adapter: DenominatorAuthorityAdapter; view: RegistryView } {
   const payload = family();
-  const records: SemanticAuthorityRecordV1[] = [
+  const records: SemanticAuthorityRecord[] = [
     record(FAMILY, payload),
     record(WORK, { kind: "work", summary_md: b("Work"), work_state: "ready", work_intent: "build_system", work_kind: "coverage_cell", risk: "false_pass_or_red", family_id: FAMILY, acceptance_md: b("Accepted."), priority_rationale_md: b("Now.") }),
     record(CONTROL, { kind: "control", summary_md: b("Control"), control_kind: "gate", control_state: "live", reference_ids: [ref("ref-control-pin")], claim_md: b("Runs."), boundary_md: b("Synthetic.") }),

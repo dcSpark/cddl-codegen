@@ -454,14 +454,6 @@ function writeReplacements(
   }
 }
 
-function writeRawFields(
-  writer: CanonicalTomlWriter,
-  owner: { source_block_md: Uint8Array; span_ids: readonly string[] },
-): void {
-  writer.markdown("source_block_md", owner.source_block_md);
-  writer.strings("span_ids", owner.span_ids, true);
-}
-
 function writeGeneratedSlot(writer: CanonicalTomlWriter, slot: GeneratedSlot): void {
   writer.arrayTable("generated_slot");
   writer.string("slot_id", slot.slot_id);
@@ -508,7 +500,6 @@ function referenceTuple(reference: Reference): string {
     case "external_commit": return `${reference.repository}\0${reference.commit}`;
     case "external_release": return `${reference.project}\0${reference.release}`;
     case "consumer_report": return `${reference.consumer}\0${reference.report_reference}`;
-    case "unresolved_migration": return `${reference.local_reference}\0${reference.expires_at}`;
   }
 }
 
@@ -530,11 +521,6 @@ function writeReference(writer: CanonicalTomlWriter, reference: Reference): void
     case "external_commit": writer.string("repository", reference.repository); writer.string("commit", reference.commit); break;
     case "external_release": writer.string("project", reference.project); writer.string("release", reference.release); break;
     case "consumer_report": writer.string("consumer", reference.consumer); writer.string("report_reference", reference.report_reference); break;
-    case "unresolved_migration":
-      writer.string("local_reference", reference.local_reference);
-      writer.markdown("uncertainty_md", reference.uncertainty_md);
-      writer.string("expires_at", reference.expires_at);
-      break;
   }
 }
 
@@ -551,12 +537,7 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
   writer.integer("frozen_source_byte_length", meta.frozen_source_byte_length);
   writer.integer("frozen_source_line_count", meta.frozen_source_line_count);
   writer.string("frozen_source_eof", meta.frozen_source_eof);
-  if (meta.schema_version === 1) {
-    optionalString(writer, "semantic_conversion", meta.semantic_conversion);
-    writer.strings("frozen_legacy_span_ids", meta.frozen_legacy_span_ids, true);
-  } else if (meta.schema_version === 2) {
-    optionalString(writer, "projection_layout", meta.projection_layout);
-  }
+  optionalString(writer, "projection_layout", meta.projection_layout);
 
   const sections: readonly Section[] = document.sections;
   for (const section of sorted(sections, (value) => value.section_id)) {
@@ -564,16 +545,9 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.string("section_id", section.section_id);
     writer.string("title", section.title);
     optionalStrings(writer, "legacy_aliases", section.legacy_aliases);
-    if (!("render_authority" in section)) {
-      writeRawFields(writer, section);
-    } else if (section.render_authority === "raw") {
-      writer.string("render_authority", section.render_authority);
-      writeRawFields(writer, section);
-    } else {
-      writer.string("render_authority", section.render_authority);
-      writer.markdown("body_md", section.body_md);
-      writeReplacements(writer, "section", section.source_replacements);
-    }
+    writer.string("render_authority", section.render_authority);
+    writer.markdown("body_md", section.body_md);
+    writeReplacements(writer, "section", section.source_replacements);
   }
 
   const fragments: readonly Fragment[] = document.fragments;
@@ -583,18 +557,10 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.string("projection_group", fragment.projection_group);
     optionalString(writer, "title", fragment.title);
     optionalStrings(writer, "legacy_aliases", fragment.legacy_aliases);
-    if (!("render_authority" in fragment)) {
-      writeRawFields(writer, fragment);
-    } else if (fragment.render_authority === "raw") {
-      writer.string("render_authority", fragment.render_authority);
-      optionalString(writer, "lifecycle_disposition", fragment.lifecycle_disposition);
-      writeRawFields(writer, fragment);
-    } else {
-      writer.string("render_authority", fragment.render_authority);
-      writer.string("lifecycle_disposition", fragment.lifecycle_disposition);
-      writer.markdown("body_md", fragment.body_md);
-      writeReplacements(writer, "fragment", fragment.source_replacements);
-    }
+    writer.string("render_authority", fragment.render_authority);
+    writer.string("lifecycle_disposition", fragment.lifecycle_disposition);
+    writer.markdown("body_md", fragment.body_md);
+    writeReplacements(writer, "fragment", fragment.source_replacements);
   }
 
   const markers: readonly LegacyMarker[] = document.legacy_markers;
@@ -602,16 +568,9 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.arrayTable("legacy_marker");
     writer.string("marker_id", marker.marker_id);
     writer.strings("legacy_aliases", marker.legacy_aliases, true);
-    if (!("render_authority" in marker)) {
-      writeRawFields(writer, marker);
-    } else if (marker.render_authority === "raw") {
-      writer.string("render_authority", marker.render_authority);
-      writeRawFields(writer, marker);
-    } else {
-      writer.string("render_authority", marker.render_authority);
-      writer.markdown("marker_md", marker.marker_md);
-      writeReplacements(writer, "legacy_marker", marker.source_replacements);
-    }
+    writer.string("render_authority", marker.render_authority);
+    writer.markdown("marker_md", marker.marker_md);
+    writeReplacements(writer, "legacy_marker", marker.source_replacements);
   }
 
   const records: readonly RecordNode[] = document.records;
@@ -622,23 +581,11 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.string("projection_group", record.projection_group);
     optionalStrings(writer, "legacy_aliases", record.legacy_aliases);
     optionalStrings(writer, "tags", record.tags);
-    if (!("render_authority" in record)) {
-      writeRawFields(writer, record);
-      continue;
-    }
     writer.string("render_authority", record.render_authority);
-    if (record.render_authority === "raw") {
-      writeRawFields(writer, record);
-      if (record.semantic_shadow !== undefined) {
-        writer.table("record.semantic_shadow");
-        writeSemanticPayload(writer, record.semantic_shadow, "record.semantic_shadow");
-      }
-    } else {
-      writer.string("projection_visibility", record.projection_visibility);
-      writer.table("record.payload");
-      writeSemanticPayload(writer, record.payload, "record.payload");
-      writeReplacements(writer, "record", record.source_replacements);
-    }
+    writer.string("projection_visibility", record.projection_visibility);
+    writer.table("record.payload");
+    writeSemanticPayload(writer, record.payload, "record.payload");
+    writeReplacements(writer, "record", record.source_replacements);
   }
 
   const parts: readonly Part[] = document.parts;
@@ -647,24 +594,16 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.string("part_id", part.part_id);
     writer.string("parent_record_id", part.parent_record_id);
     optionalString(writer, "title", part.title);
-    if (!("render_authority" in part)) {
-      writeRawFields(writer, part);
-    } else if (part.render_authority === "raw") {
-      writer.string("render_authority", part.render_authority);
-      optionalString(writer, "lifecycle_disposition", part.lifecycle_disposition);
-      writeRawFields(writer, part);
-    } else {
-      writer.string("render_authority", part.render_authority);
-      writer.string("lifecycle_disposition", part.lifecycle_disposition);
-      writer.markdown("body_md", part.body_md);
-      writeReplacements(writer, "part", part.source_replacements);
-    }
+    writer.string("render_authority", part.render_authority);
+    writer.string("lifecycle_disposition", part.lifecycle_disposition);
+    writer.markdown("body_md", part.body_md);
+    writeReplacements(writer, "part", part.source_replacements);
   }
 
   for (const slot of sorted(document.generated_slots, (value) => value.slot_id)) writeGeneratedSlot(writer, slot);
   for (const entry of document.manifest) writeManifestEntry(writer, entry);
   for (const span of [...document.spans].sort((left, right) => left.start_byte - right.start_byte)) writeSpan(writer, span);
-  if ("relations" in document) {
+  {
     const relations = [...document.relations].sort((left, right) =>
       compare(`${left.source}\0${left.kind}\0${left.target}`, `${right.source}\0${right.kind}\0${right.target}`),
     );

@@ -125,7 +125,7 @@ export interface ReferenceIdUseFact {
 export interface SemanticPayloadProviderFact {
   readonly record: RecordNode;
   readonly payload: SemanticPayload;
-  readonly authority: "semantic" | "semantic_shadow";
+  readonly authority: "semantic";
   readonly logical_path: string;
 }
 
@@ -251,24 +251,13 @@ function valuesByString<T>(
   ));
 }
 
-function semanticPayload(record: RecordNode): SemanticPayloadProviderFact | undefined {
-  if (!("render_authority" in record)) return undefined;
-  if (record.render_authority === "semantic") {
-    return {
-      record,
-      payload: record.payload,
-      authority: "semantic",
-      logical_path: `${recordPath(record.id)}.payload`,
-    };
-  }
-  return record.semantic_shadow === undefined
-    ? undefined
-    : {
-      record,
-      payload: record.semantic_shadow,
-      authority: "semantic_shadow",
-      logical_path: `${recordPath(record.id)}.semantic_shadow`,
-    };
+function semanticPayload(record: RecordNode): SemanticPayloadProviderFact {
+  return {
+    record,
+    payload: record.payload,
+    authority: "semantic",
+    logical_path: `${recordPath(record.id)}.payload`,
+  };
 }
 
 function collectPayloadUses(
@@ -642,14 +631,12 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
     });
     addAlias("record", record.id, record.legacy_aliases, path);
     const payload = semanticPayload(record);
-    if (payload !== undefined) {
-      payloadProviders.push(payload);
-      collectFamilyProviders(payload, namespace, idProviders);
-      collectPayloadUses(payload, roadmapIdUses, referenceIdUses);
-    }
+    payloadProviders.push(payload);
+    collectFamilyProviders(payload, namespace, idProviders);
+    collectPayloadUses(payload, roadmapIdUses, referenceIdUses);
   }
 
-  if ("references" in document) {
+  {
     for (const reference of references) {
       const path = `reference[${quoted(reference.id)}]`;
       addSubordinate("reference", reference.id, path, reference);

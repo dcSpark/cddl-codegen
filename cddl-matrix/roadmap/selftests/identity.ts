@@ -17,9 +17,8 @@ import type {
   Reference,
   Relation,
   RoadmapDocument,
-  RoadmapDocumentV0,
-  RoadmapDocumentV1,
-  SemanticAuthorityRecordV1,
+  RoadmapDocumentV2,
+  SemanticAuthorityRecord,
 } from "../model/documents.ts";
 import type { RegistryView } from "../adapters/types.ts";
 import { observeMatchingIssue, observeSelfTestIssue } from "./observations.ts";
@@ -40,7 +39,6 @@ import {
   createCoreReferenceProviders,
   collectReferenceProviders,
   compareReferenceTargets,
-  deriveUnresolvedMigrationAuthority,
   extractRustTestSymbols,
   gateFact,
   headingFact,
@@ -59,7 +57,9 @@ import {
 } from "../identity.ts";
 import { validateTransaction } from "../transaction.ts";
 import { debtOwnerIndex, type MigrationDebt } from "../debt.ts";
-import { createExpectedByteView, type RenderChunk } from "../render_ir.ts";
+import { buildExpectedChunks, createExpectedByteView, type CompletedRenderIr, type RenderChunk } from "../render_ir.ts";
+import { resolveManifest } from "../manifest.ts";
+import { renderCanonicalSemanticRecord } from "../adapters/matrix.ts";
 
 export const IDENTITY_ROADMAP_FIXTURE_PATHS = Object.freeze([
   "all-fields/matrix-v2.toml",
@@ -149,12 +149,11 @@ export const REQUIRED_IDENTITY_SELFTEST_CASE_IDS = [
   "test_symbol_fact_duplicate_id_rejected",
   "test_symbol_fact_base_revision_isolated",
   "transaction_single_roadmap_owner_removal_rejected",
-  "against_matrix_v1_debt_allowed",
-  "against_testing_v1_debt_allowed",
+  "against_matrix_scoped_debt_allowed",
+  "against_testing_scoped_debt_allowed",
   "against_per_roadmap_does_not_load_other_base",
   "against_per_roadmap_candidate_global_collision_rejected",
   "against_per_roadmap_absent_selected_source_rejected",
-  "against_per_roadmap_shadow_selected_source_rejected",
   "against_per_roadmap_owner_change_requires_all",
   "against_forged_debt_transition_facts_ignored",
 ] as const;
@@ -923,30 +922,17 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
     globalInputs.push(result.indexes.identity_inputs);
     const references = [...result.indexes.references.values()].sort(compareReferenceTargets);
     if (path === "all-fields/matrix-v2.toml") {
-      // `unresolved_migration` is unrepresentable in a v2 document, so the committed template set
-      // covers the registry minus that one kind. The `- 1` goes away with the kind itself when the
-      // v0/v1 machinery is deleted.
       assert(
-        new Set(references.map((reference) => reference.kind)).size === REFERENCE_KIND_REGISTRY.length - 1,
+        new Set(references.map((reference) => reference.kind)).size === REFERENCE_KIND_REGISTRY.length,
         "matrix all-fields must provide one committed template for every Reference kind",
       );
       committedReferenceTemplates = Object.freeze([...references]);
     }
     const registry = registryViewForReferences(references);
-    const unresolvedAuthority = deriveUnresolvedMigrationAuthority(result.indexes, path);
-    assert(
-      unresolvedAuthority.issues.length === 0,
-      `${path} unresolved-migration authority derivation must succeed: ${JSON.stringify(unresolvedAuthority.issues)}`,
-    );
-    assert(
-      unresolvedAuthority.debt.length === 0,
-      `${path} unresolved-migration debt enumeration must be exact`,
-    );
     assert(
       validateRoadmapReferences(result.indexes, registry, {
         source: path,
         providers: MATRIX_ADAPTER.referenceProviders(registry),
-        unresolved_migration_authority: unresolvedAuthority.authority,
       }).length === 0,
       `${path} references must resolve through the actual adapter providers and matching repository facts`,
     );
@@ -960,8 +946,7 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
     );
     if (path.startsWith("all-fields/")) {
       assert(committedReferenceTemplates !== undefined, "matrix reference templates must precede all field-use mutations");
-      const candidates = committedReferenceTemplates
-        .filter((reference) => reference.kind !== "unresolved_migration")
+      const candidates = [...committedReferenceTemplates]
         .sort((left, right) => codePointSort(left.kind, right.kind));
       let mutationCount = 0;
       for (const use of result.indexes.reference_id_uses) {
@@ -983,7 +968,6 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
           const providerRegistry = collectReferenceProviders(
             mutated.first_class,
             adapterProviders,
-            unresolvedAuthority.authority,
             path,
           );
           assert(providerRegistry.issues.length === 0, `${path} mutation provider composition must remain valid`);
@@ -993,7 +977,6 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
           const mutationIssues = validateRoadmapReferences(mutated, mutatedRegistry, {
             source: path,
             providers: adapterProviders,
-            unresolved_migration_authority: unresolvedAuthority.authority,
           });
           if (mutationIssues.some((value) =>
             value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path === use.logical_path
@@ -1162,8 +1145,24 @@ id = "${id}"
 title = "Record ${index}"
 projection_group = "fixture"
 legacy_aliases = ["Legacy ${String.fromCharCode(90 - index)}"]
-source_block_md = """R"""
-span_ids = ["span-record-${String.fromCharCode(97 + index)}"]
+render_authority = "semantic"
+projection_visibility = "document"
+
+[record.payload]
+kind = "work"
+summary_md = """R"""
+work_state = "ready"
+work_intent = "build_capability"
+work_kind = "feature"
+risk = "cosmetic"
+family_classification = "none_reviewed"
+acceptance_md = """Accepted."""
+priority_rationale_md = """Normal."""
+
+[[record.source_replacement]]
+span_id = "span-record-${String.fromCharCode(97 + index)}"
+replacement_field = "payload.summary_md"
+review_note_md = """Reviewed record."""
 `).join("");
   const manifest = recordIds.map((id) => `
 [[manifest.entry]]
@@ -1178,12 +1177,12 @@ end_byte = ${index + 2}
 sha256 = "${"0".repeat(64)}"
 source_kind = "record"
 owner_id = "${id}"
-owner_field = "source_block_md"
-migration_status = "raw"
+owner_field = "payload.summary_md"
+migration_status = "replaced"
 `).join("");
   return decodeRoadmapSource(bytes(`[document]
-schema_version = 0
-authority = "shadow"
+schema_version = 2
+authority = "authoritative"
 roadmap = "${roadmap}"
 source_path = "cddl-matrix/ROADMAP.md"
 projection_path = "cddl-matrix/ROADMAP.md"
@@ -1191,13 +1190,19 @@ frozen_source_sha256 = "${"0".repeat(64)}"
 frozen_source_byte_length = ${sourceLength}
 frozen_source_line_count = 1
 frozen_source_eof = "none"
+projection_layout = "legacy_v1"
 
 [[section]]
 section_id = "fixture"
 title = "Fixture"
 legacy_aliases = ["Legacy Section"]
-source_block_md = """S"""
-span_ids = ["span-section"]
+render_authority = "semantic"
+body_md = """S"""
+
+[[section.source_replacement]]
+span_id = "span-section"
+replacement_field = "body_md"
+review_note_md = """Reviewed section."""
 ${records}
 [manifest]
 [[manifest.entry]]
@@ -1211,8 +1216,8 @@ end_byte = 1
 sha256 = "${"0".repeat(64)}"
 source_kind = "section"
 owner_id = "fixture"
-owner_field = "source_block_md"
-migration_status = "raw"
+owner_field = "body_md"
+migration_status = "replaced"
 ${spans}`), "<identity-selftest>", roadmap, false);
 }
 
@@ -1360,10 +1365,6 @@ function sampleReferences(source: RoadmapId): readonly Reference[] {
     },
     { id: ref("release"), source, kind: "external_release", project: "upstream", release: "v1" },
     { id: ref("consumer"), source, kind: "consumer_report", consumer: "cml", report_reference: "r1" },
-    {
-      id: ref("migration"), source, kind: "unresolved_migration", local_reference: "legacy line",
-      uncertainty_md: bytes("unknown"), expires_at: "cutover",
-    },
   ];
 }
 
@@ -1380,7 +1381,7 @@ function referenceProviderCase(id: JoinSelfTestCaseId): boolean {
     references: new Map(allReferences.map((reference) => [reference.id, reference])),
     reference_id_uses: [{
       id: gateReference.id,
-      logical_path: `record[${JSON.stringify(consumer)}].semantic_shadow.reference_ids`,
+      logical_path: `record[${JSON.stringify(consumer)}].payload.reference_ids`,
     }],
     payload_records: new Map([[consumer, {
       record: base.record_nodes.get(consumer)!,
@@ -1393,18 +1394,12 @@ function referenceProviderCase(id: JoinSelfTestCaseId): boolean {
         claim_md: bytes("claim\n"),
         boundary_md: bytes("boundary\n"),
       },
-      authority: "semantic_shadow",
-      logical_path: `record[${JSON.stringify(consumer)}].semantic_shadow`,
+      authority: "semantic",
+      logical_path: `record[${JSON.stringify(consumer)}].payload`,
     }]]),
-  } as RoadmapIndexes;
-  const unresolvedAuthority = deriveUnresolvedMigrationAuthority(joined);
-  assert(
-    unresolvedAuthority.issues.length === 0 && unresolvedAuthority.authority !== undefined &&
-      unresolvedAuthority.debt.length === 1,
-    "synthetic semantic-shadow debt must derive non-mintable unresolved authority",
-  );
+  } as unknown as RoadmapIndexes;
   const providerClaims = Object.freeze([
-    ...createCoreReferenceProviders(joined.first_class, unresolvedAuthority.authority),
+    ...createCoreReferenceProviders(joined.first_class),
     ...MATRIX_ADAPTER.referenceProviders(view),
   ].sort((left, right) => codePointSort(left.kind, right.kind)));
   const providers = collectReferenceProviders(providerClaims);
@@ -1429,7 +1424,6 @@ function referenceProviderCase(id: JoinSelfTestCaseId): boolean {
       assert(
         validateRoadmapReferences(joined, view, {
           providers: MATRIX_ADAPTER.referenceProviders(view),
-          unresolved_migration_authority: unresolvedAuthority.authority,
         }).length === 0,
         "a typed semantic ReferenceId may consume another record's shared declaration",
       );
@@ -1440,7 +1434,6 @@ function referenceProviderCase(id: JoinSelfTestCaseId): boolean {
       assert(
         validateRoadmapReferences(missingUse, view, {
           providers: MATRIX_ADAPTER.referenceProviders(view),
-          unresolved_migration_authority: unresolvedAuthority.authority,
         }).some((value) => value.code === "E-REFERENCE-UNRESOLVED"),
         "well-formed missing ReferenceId uses must be retained until join validation",
       );
@@ -1451,7 +1444,6 @@ function referenceProviderCase(id: JoinSelfTestCaseId): boolean {
       const referenceFaultSignature = (uses: typeof missingUses): string => JSON.stringify(
         validateRoadmapReferences({ ...joined, reference_id_uses: uses } as RoadmapIndexes, view, {
           providers: MATRIX_ADAPTER.referenceProviders(view),
-          unresolved_migration_authority: unresolvedAuthority.authority,
         }),
       );
       assert(
@@ -1529,7 +1521,7 @@ function relationCase(id: JoinSelfTestCaseId): boolean {
     const missing = brandedRoadmapId("matrix.fixture-missing");
     assert(observeMatchingIssue(validateRelations([{ source: a, kind: "related", target: missing }], firstClass), "E-RELATION-ENDPOINT") !== undefined, "missing endpoint must fail");
     const familyRoot = brandedRoadmapId("matrix.fixture-closed-root");
-    const workDocument = c5V1("matrix", [c5FamilyWorkRecord(a, familyRoot)], [
+    const workDocument = c5Document("matrix", [c5FamilyWorkRecord(a, familyRoot)], [
       { source: a, kind: "reopens", target: familyRoot },
     ]);
     const workIndexes = buildRoadmapIndexes(workDocument).indexes;
@@ -1552,7 +1544,7 @@ function relationCase(id: JoinSelfTestCaseId): boolean {
     };
     assert(validateRelations(workIndexes.relations, workIndexes.first_class, "<guard-child>", undefined, [childGuard])
       .some((entry) => entry.code === "E-RELATION-ENDPOINT"), "child guards must not be reopening targets");
-    const evidenceDocument = c5V1("matrix", [c5FamilySupportRecords(familyRoot)[0]!]);
+    const evidenceDocument = c5Document("matrix", [c5FamilySupportRecords(familyRoot)[0]!]);
     const evidenceIndexes = buildRoadmapIndexes(evidenceDocument).indexes;
     const cellId = `${familyRoot}.fixture-point` as RoadmapId;
     const cellGuard: CurrentGuard = {
@@ -2193,50 +2185,11 @@ function c5SourcePath(roadmap: RoadmapName): RepoPath {
   return `fixture/${roadmap}.toml` as RepoPath;
 }
 
-function c5LegacySource(): Uint8Array {
-  return bytes("## Lifecycle\nlegacy body\n");
-}
-
-function c5V0(roadmap: RoadmapName, markdown: Uint8Array, id?: RoadmapId): RoadmapDocumentV0 {
-  const records: RoadmapDocumentV0["records"] = id === undefined ? [] : [{
-    id,
-    title: "Lifecycle",
-    projection_group: "fixture" as RoadmapDocumentV0["records"][number]["projection_group"],
-    source_block_md: markdown.slice(),
-    span_ids: ["lifecycle" as RoadmapDocumentV0["spans"][number]["id"]],
-  }];
-  return {
-    document: {
-      schema_version: 0,
-      authority: "shadow",
-      roadmap,
-      source_path: c5SourcePath(roadmap),
-      projection_path: c5Path(roadmap),
-      frozen_source_sha256: c5Sha(markdown),
-      frozen_source_byte_length: markdown.byteLength,
-      frozen_source_line_count: [...markdown].filter((value) => value === 10).length,
-      frozen_source_eof: markdown.at(-1) === 10 ? "lf" : "none",
-    },
-    sections: [], fragments: [], legacy_markers: [], records, parts: [], generated_slots: [],
-    manifest: id === undefined ? [] : [{ kind: "record", record_id: id }],
-    spans: id === undefined ? [] : [{
-      id: "lifecycle" as RoadmapDocumentV0["spans"][number]["id"],
-      start_byte: 0,
-      end_byte: markdown.byteLength,
-      sha256: c5Sha(markdown),
-      source_kind: "record",
-      owner_id: id,
-      owner_field: "source_block_md",
-      migration_status: "raw",
-    }],
-  };
-}
-
-function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticAuthorityRecordV1 {
+function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticAuthorityRecord {
   return {
     id,
     title: "Lifecycle",
-    projection_group: "fixture" as RoadmapDocumentV1["records"][number]["projection_group"],
+    projection_group: "fixture" as RoadmapDocumentV2["records"][number]["projection_group"],
     render_authority: "semantic",
     projection_visibility: "semantic_only",
     payload: {
@@ -2254,14 +2207,14 @@ function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticA
   };
 }
 
-function c5FamilyWorkRecord(id: RoadmapId, familyId: RoadmapId): SemanticAuthorityRecordV1 {
+function c5FamilyWorkRecord(id: RoadmapId, familyId: RoadmapId): SemanticAuthorityRecord {
   const record = c5ReadyRecord(id);
   assert(record.payload.kind === "work", "family work fixture must remain work");
   const { family_classification: _classification, ...payload } = record.payload;
   return { ...record, payload: { ...payload, family_id: familyId } };
 }
 
-function c5FamilySupportRecords(id: RoadmapId): readonly SemanticAuthorityRecordV1[] {
+function c5FamilySupportRecords(id: RoadmapId): readonly SemanticAuthorityRecord[] {
   const evidenceId = `${id}.fixture-evidence` as RoadmapId;
   const controlId = `${id}.fixture-control` as RoadmapId;
   return [
@@ -2300,16 +2253,16 @@ function c5Guard(id: RoadmapId, gateId = "roadmap_projection_check"): CurrentGua
   };
 }
 
-function c5V1(
+function c5Document(
   roadmap: RoadmapName,
-  records: readonly RoadmapDocumentV1["records"][number][] = [],
+  records: readonly RoadmapDocumentV2["records"][number][] = [],
   relations: readonly Relation[] = [],
   references: readonly Reference[] = [],
-): RoadmapDocumentV1 {
+): RoadmapDocumentV2 {
   const markdown = bytes(`${roadmap}\n`);
   return {
     document: {
-      schema_version: 1,
+      schema_version: 2,
       authority: "authoritative",
       roadmap,
       source_path: c5SourcePath(roadmap),
@@ -2318,17 +2271,28 @@ function c5V1(
       frozen_source_byte_length: markdown.byteLength,
       frozen_source_line_count: 1,
       frozen_source_eof: "lf",
-      frozen_legacy_span_ids: [],
     },
     sections: [], fragments: [], legacy_markers: [], records: [...records], parts: [],
     generated_slots: [],
     manifest: records.flatMap((record) =>
-      "projection_visibility" in record && record.projection_visibility === "semantic_only"
+      record.projection_visibility === "semantic_only"
         ? []
         : [{ kind: "record" as const, record_id: record.id }]
     ),
     spans: [], relations: [...relations], references: [...references],
   };
+}
+
+/**
+ * Intrinsic v2 migration completion is audited against a complete candidate render IR, so every
+ * scoped transaction vector supplies one for its synthetic document.
+ */
+function c5Completed(document: RoadmapDocumentV2): CompletedRenderIr {
+  const placement = resolveManifest(document);
+  return buildExpectedChunks(document, placement.ops, {
+    renderSemanticRecord: renderCanonicalSemanticRecord,
+    resolveGeneratedSlot: (slot) => ({ binding: slot.binding, bytes: new Uint8Array() }),
+  });
 }
 
 function c5Registry(
@@ -2339,14 +2303,13 @@ function c5Registry(
 }
 
 function c5EmptyDebt(): MigrationDebt {
-  return { owners: new Map(), independent: new Map(), frozen_legacy_spans: new Map() };
+  return { owners: new Map(), independent: new Map() };
 }
 
 function c5Debt(document: RoadmapDocument): MigrationDebt {
-  const owners = new Map<string, { key: Parameters<typeof debtOwnerIndex>[0]; state: "raw_unclassified" | "raw_with_semantic_shadow" | "semantic" }>();
-  const frozen = new Map<string, Parameters<typeof debtOwnerIndex>[0]>();
-  const add = (key: Parameters<typeof debtOwnerIndex>[0], state: "raw_unclassified" | "raw_with_semantic_shadow" | "semantic"): void => {
-    owners.set(debtOwnerIndex(key), { key, state });
+  const owners = new Map<string, { key: Parameters<typeof debtOwnerIndex>[0]; state: "semantic" }>();
+  const add = (key: Parameters<typeof debtOwnerIndex>[0]): void => {
+    owners.set(debtOwnerIndex(key), { key, state: "semantic" });
   };
   const collectMarkdown = (value: unknown, path: string, out: string[]): void => {
     if (value instanceof Uint8Array) {
@@ -2364,47 +2327,24 @@ function c5Debt(document: RoadmapDocument): MigrationDebt {
     }
   };
   for (const record of document.records) {
-    if ("source_block_md" in record) {
-      add({
-        roadmap: document.document.roadmap,
-        owner_kind: "record",
-        owner_id: record.id,
-        owner_field: "source_block_md",
-      }, "semantic_shadow" in record && record.semantic_shadow !== undefined
-        ? "raw_with_semantic_shadow"
-        : "raw_unclassified");
-    } else {
-      const fields: string[] = [];
-      collectMarkdown(record.payload, "payload", fields);
-      for (const field of fields.sort()) add({
-        roadmap: document.document.roadmap,
-        owner_kind: "record",
-        owner_id: record.id,
-        owner_field: field,
-      }, "semantic");
-    }
+    const fields: string[] = [];
+    collectMarkdown(record.payload, "payload", fields);
+    for (const field of fields.sort()) add({
+      roadmap: document.document.roadmap,
+      owner_kind: "record",
+      owner_id: record.id,
+      owner_field: field,
+    });
   }
   for (const span of document.spans) {
-    const key: Parameters<typeof debtOwnerIndex>[0] = {
+    add({
       roadmap: document.document.roadmap,
       owner_kind: "source_span",
       owner_id: span.id,
       owner_field: "coverage",
-    };
-    const ownerRecord = span.source_kind === "record"
-      ? document.records.find((record) => record.id === span.owner_id)
-      : undefined;
-    add(key, span.migration_status === "raw"
-      ? ownerRecord !== undefined && "semantic_shadow" in ownerRecord && ownerRecord.semantic_shadow !== undefined
-        ? "raw_with_semantic_shadow"
-        : "raw_unclassified"
-      : "semantic");
-    const frozenIds = document.document.schema_version === 0
-      ? document.spans.filter((value) => value.migration_status === "raw").map((value) => value.id)
-      : document.document.schema_version === 1 ? document.document.frozen_legacy_span_ids : [];
-    if (frozenIds.includes(span.id)) frozen.set(debtOwnerIndex(key), key);
+    });
   }
-  return { owners, independent: new Map(), frozen_legacy_spans: frozen };
+  return { owners, independent: new Map() };
 }
 
 function assertIssue(values: readonly { code: string; logical_path?: string }[], code: string, message: string): void {
@@ -2418,8 +2358,8 @@ function assertIssue(values: readonly { code: string; logical_path?: string }[],
 /** The one transaction obligation that a single-roadmap scope must refuse outright. */
 function c5TransactionCase(id: C5SelfTestCaseId): boolean {
   if (!id.startsWith("transaction_")) return false;
-  const active = c5V1("matrix", [c5ReadyRecord(C5_ID)]);
-  const empty = c5V1("matrix");
+  const active = c5Document("matrix", [c5ReadyRecord(C5_ID)]);
+  const empty = c5Document("matrix");
   switch (id) {
     case "transaction_single_roadmap_owner_removal_rejected": {
       const baseIdentity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(active).indexes.identity_inputs] });
@@ -2430,7 +2370,7 @@ function c5TransactionCase(id: C5SelfTestCaseId): boolean {
           document: active, debt: c5Debt(active), identity: baseIdentity,
           registry: c5Registry({ kind: "commit", commit: C5_BASE }),
         }),
-        candidate_document: empty, candidate_debt: c5Debt(empty),
+        candidate_document: empty, candidate_debt: c5Debt(empty), candidate_completed: c5Completed(empty),
         candidate_registry: c5Registry({ kind: "worktree" }),
         candidate_global_identity: candidateIdentity,
       });
@@ -2447,7 +2387,7 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
   if (!id.startsWith("against_")) return false;
   const roadmap: RoadmapName = id.includes("testing") ? "testing" : "matrix";
   const activeId = roadmap === "matrix" ? C5_ID : C5_TESTING_ID;
-  const document = c5V1(roadmap, [c5ReadyRecord(activeId)]);
+  const document = c5Document(roadmap, [c5ReadyRecord(activeId)]);
   const identity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(document).indexes.identity_inputs] });
   const baseFacts = {
     document,
@@ -2461,12 +2401,13 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
     load_base: () => baseFacts,
     candidate_document: document,
     candidate_debt: c5Debt(document),
+    candidate_completed: c5Completed(document),
     candidate_registry: c5Registry({ kind: "worktree" }),
     candidate_global_identity: identity,
   });
   switch (id) {
-    case "against_matrix_v1_debt_allowed":
-    case "against_testing_v1_debt_allowed":
+    case "against_matrix_scoped_debt_allowed":
+    case "against_testing_scoped_debt_allowed":
       assert(scoped().issues.length === 0, `${id} selected-only authoritative debt comparison must pass without another base roadmap`);
       return true;
     case "against_per_roadmap_does_not_load_other_base": {
@@ -2484,7 +2425,7 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
           loaded.push(selected);
           return byRoadmap[selected];
         },
-        candidate_document: document, candidate_debt: c5Debt(document),
+        candidate_document: document, candidate_debt: c5Debt(document), candidate_completed: c5Completed(document),
         candidate_registry: c5Registry({ kind: "worktree" }), candidate_global_identity: identity,
       });
       assert(result.issues.length === 0 && loaded.length === 1 && loaded[0] === roadmap, "selected scope must call only the selected pure base loader once");
@@ -2502,30 +2443,29 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
       });
       const result = validateTransaction({
         scope: roadmap, against: C5_BASE, load_base: () => baseFacts, candidate_document: document,
-        candidate_debt: c5Debt(document), candidate_registry: c5Registry({ kind: "worktree" }),
+        candidate_debt: c5Debt(document), candidate_completed: c5Completed(document),
+        candidate_registry: c5Registry({ kind: "worktree" }),
         candidate_global_identity: collision,
       });
       assertIssue(result.issues, "E-OWNER-DUPLICATE", "candidate global collision must fail selected scope");
       return true;
     }
-    case "against_per_roadmap_absent_selected_source_rejected":
-    case "against_per_roadmap_shadow_selected_source_rejected": {
-      const shadow = c5V0(roadmap, c5LegacySource(), activeId);
+    case "against_per_roadmap_absent_selected_source_rejected": {
       const result = validateTransaction({
         scope: roadmap, against: C5_BASE,
         load_base: () => baseFacts,
-        candidate_document: id.includes("shadow") ? shadow : undefined,
-        candidate_debt: id.includes("shadow") ? c5Debt(shadow) : c5EmptyDebt(),
+        candidate_debt: c5EmptyDebt(),
         candidate_registry: c5Registry({ kind: "worktree" }),
         candidate_global_identity: validateGlobalIdentity({ documents: [] }),
       });
-      assertIssue(result.issues, "E-TRANSACTION-BASE", "selected scope requires authoritative-v1 source");
+      assertIssue(result.issues, "E-TRANSACTION-BASE", "selected scope requires an authoritative source");
       return true;
     }
     case "against_per_roadmap_owner_change_requires_all": {
       const result = validateTransaction({
-        scope: roadmap, against: C5_BASE, load_base: () => baseFacts, candidate_document: c5V1(roadmap),
-        candidate_debt: c5Debt(c5V1(roadmap)), candidate_registry: c5Registry({ kind: "worktree" }),
+        scope: roadmap, against: C5_BASE, load_base: () => baseFacts, candidate_document: c5Document(roadmap),
+        candidate_debt: c5Debt(c5Document(roadmap)), candidate_completed: c5Completed(c5Document(roadmap)),
+        candidate_registry: c5Registry({ kind: "worktree" }),
         candidate_global_identity: validateGlobalIdentity({ documents: [] }),
       });
       assertIssue(result.issues, "E-TRANSACTION-OWNER", "owner change requires all scope");
@@ -2534,17 +2474,14 @@ function c5AgainstCase(id: C5SelfTestCaseId): boolean {
     case "against_forged_debt_transition_facts_ignored": {
       const rawId = activeId;
       const semantic = c5ReadyRecord(rawId);
-      const raw: RoadmapDocumentV1["records"][number] = {
-        id: rawId,
-        title: semantic.title,
-        projection_group: semantic.projection_group,
-        render_authority: "raw",
-        source_block_md: bytes("summary"),
-        span_ids: [],
-        semantic_shadow: semantic.payload,
+      // A candidate-only record that claims document visibility is exactly the owner transition no
+      // caller-shaped fact may authorize.
+      const documentVisible: RoadmapDocumentV2["records"][number] = {
+        ...semantic,
+        projection_visibility: "document",
       };
-      const baseDocument = c5V1(roadmap, [raw]);
-      const candidateDocument = c5V1(roadmap, [semantic]);
+      const baseDocument = c5Document(roadmap);
+      const candidateDocument = c5Document(roadmap, [documentVisible]);
       const baseIdentity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(baseDocument).indexes.identity_inputs] });
       const candidateIdentity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(candidateDocument).indexes.identity_inputs] });
       const forged = {
@@ -2665,8 +2602,8 @@ const JOIN_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(JOIN_CASE_IDS
 
 /** Every surviving C5 case is a single-roadmap (`--roadmap <name>`) transaction proof. */
 const POSITIVE_C5_CASES = new Set<C5SelfTestCaseId>([
-  "against_matrix_v1_debt_allowed",
-  "against_testing_v1_debt_allowed",
+  "against_matrix_scoped_debt_allowed",
+  "against_testing_scoped_debt_allowed",
   "against_per_roadmap_does_not_load_other_base",
 ]);
 

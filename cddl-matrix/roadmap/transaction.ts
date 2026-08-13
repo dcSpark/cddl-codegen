@@ -2,7 +2,8 @@ import type { RegistryView } from "./adapters/types.ts";
 import { composeRoadmapDocument } from "./compose.ts";
 import {
   compareMigrationDebt,
-  validateSemanticConversionFacts,
+  validateMigrationCompletion,
+  validateRecordOwnerTransition,
   type MigrationDebt,
 } from "./debt.ts";
 import type { RoadmapIssue } from "./errors.ts";
@@ -10,11 +11,6 @@ import type { GlobalIdentityResult, GlobalOwnerClaim } from "./identity.ts";
 import type { FullCommitId, RoadmapId, RoadmapName } from "./model/core.ts";
 import type { Reference, RoadmapDocument, RoadmapDocumentV2 } from "./model/documents.ts";
 import type { CompletedRenderIr } from "./render_ir.ts";
-import {
-  semanticConversionState,
-  validateSemanticConversionCompletion,
-  validateSemanticConversionTransition,
-} from "./semantic_conversion.ts";
 import { projectionLayout, projectionLayoutRank, validateProjectionLayoutTransition } from "./projection_layout.ts";
 
 const codePointSort = (left: string, right: string): number =>
@@ -137,17 +133,11 @@ function validateScoped(inputs: ScopedRoadmapTransactionInputs): TransactionVali
   }
   if (
     base.document === undefined || inputs.candidate_document === undefined ||
-    base.document.document.schema_version === 0 || inputs.candidate_document.document.schema_version === 0 ||
-    base.document.document.schema_version !== inputs.candidate_document.document.schema_version ||
     base.document.document.roadmap !== inputs.scope ||
     inputs.candidate_document.document.roadmap !== inputs.scope
   ) {
-    issues.push(issue("E-TRANSACTION-BASE", inputs.scope, "single-roadmap comparison requires matching authoritative schema versions; v2 promotion is global"));
+    issues.push(issue("E-TRANSACTION-BASE", inputs.scope, "single-roadmap comparison requires both sides to be the selected authoritative roadmap"));
   } else {
-    issues.push(...validateSemanticConversionTransition(
-      base.document,
-      inputs.candidate_document,
-    ));
     issues.push(...validateProjectionLayoutTransition(base.document, inputs.candidate_document));
     if (projectionLayoutRank(projectionLayout(inputs.candidate_document)) >
       projectionLayoutRank(projectionLayout(base.document)) &&
@@ -159,34 +149,28 @@ function validateScoped(inputs: ScopedRoadmapTransactionInputs): TransactionVali
         "projection-layout promotion must be one adjacent projection-only stage; only standing_v1 to unnumbered_v1 permits exact Next-heading reference retargets over byte-identical render IR",
       ));
     }
-    if (semanticConversionState(inputs.candidate_document).effective === "complete") {
-      if (inputs.candidate_completed === undefined) {
-        issues.push(issue(
-          "E-TRANSACTION-BASE",
-          `${inputs.scope}.completed_render_ir`,
-          "semantic_conversion = complete requires a complete candidate render IR audit",
-        ));
-      } else {
-        issues.push(...validateSemanticConversionCompletion(
-          inputs.candidate_document,
-          inputs.candidate_debt,
-          inputs.candidate_completed,
-        ));
-      }
+    if (inputs.candidate_completed === undefined) {
+      issues.push(issue(
+        "E-TRANSACTION-BASE",
+        `${inputs.scope}.completed_render_ir`,
+        "intrinsic migration completion requires a complete candidate render IR audit",
+      ));
+    } else {
+      issues.push(...validateMigrationCompletion(
+        inputs.candidate_document,
+        inputs.candidate_debt,
+        inputs.candidate_completed,
+      ));
     }
-    const transition = validateSemanticConversionFacts(base.debt, inputs.candidate_debt, {
+    issues.push(...validateRecordOwnerTransition({
       base_document: base.document,
       candidate_document: inputs.candidate_document,
-      ...(base.completed === undefined ? {} : { base_completed: base.completed }),
-      ...(inputs.candidate_completed === undefined ? {} : { candidate_completed: inputs.candidate_completed }),
-    });
-    if (!transition.ok) issues.push(...transition.issues);
+    }));
     issues.push(...compareMigrationDebt(base.debt, inputs.candidate_debt, {
       base_document: base.document,
       candidate_document: inputs.candidate_document,
       ...(base.completed === undefined ? {} : { base_completed: base.completed }),
       ...(inputs.candidate_completed === undefined ? {} : { candidate_completed: inputs.candidate_completed }),
-      ...(transition.ok && transition.facts !== undefined ? { transition_facts: transition.facts } : {}),
     }));
   }
   issues.push(...inputs.candidate_global_identity.issues);

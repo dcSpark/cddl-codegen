@@ -1,32 +1,18 @@
 import { bytesEqual, RoadmapWireError } from "../markdown_codec.ts";
 import type {
-  DocumentMetaV0,
-  DocumentMetaV1,
   DocumentMetaV2,
   GeneratedSlot,
   ManifestEntry,
-  RawAuthorityRecordV1,
-  RawFragmentV0,
-  RawFragmentV1,
-  RawLegacyMarkerV0,
-  RawLegacyMarkerV1,
-  RawPartV0,
-  RawPartV1,
-  RawRecordV0,
-  RawSectionV0,
-  RawSectionV1,
   Reference,
   Relation,
   RoadmapDocument,
-  RoadmapDocumentV0,
-  RoadmapDocumentV1,
   RoadmapDocumentV2,
-  SemanticAuthorityRecordV1,
-  SemanticFragmentV1,
-  SemanticLegacyMarkerV1,
-  SemanticPartV1,
+  SemanticAuthorityRecord,
+  SemanticFragment,
+  SemanticLegacyMarker,
+  SemanticPart,
   SemanticPayload,
-  SemanticSectionV1,
+  SemanticSection,
   SourceReplacement,
   SourceSpan,
 } from "../model/documents.ts";
@@ -69,66 +55,53 @@ import {
   type SchemaDecodeTrace,
 } from "./primitives.ts";
 import { shieldTomlMarkdown, type MarkdownBindings } from "./raw_markdown.ts";
-import { decodeSharedSemanticPayload, type SemanticDecodePosition } from "./semantic.ts";
+import { decodeSharedSemanticPayload } from "./semantic.ts";
 import { decodeTestingPayload } from "./testing.ts";
 
 const STRUCTURAL_KINDS = ["section", "fragment", "legacy_marker", "record", "part", "generated_slot"] as const;
 
 export const ROADMAP_ENUM_FIELDS: readonly EnumSchemaField[] = [
-  { name: "schema_version", values: ["0", "1", "2"] },
-  { name: "authority_v0", values: ["shadow"] },
-  { name: "authority_v1", values: ["authoritative"] },
+  { name: "schema_version", values: ["2"] },
+  { name: "authority", values: ["authoritative"] },
   { name: "roadmap", values: ["matrix", "testing"] },
   { name: "frozen_source_eof", values: ["lf", "none"] },
-  { name: "semantic_conversion", values: ["converting", "complete"] },
   { name: "projection_layout", values: ["legacy_v1", "anchors_v1", "standing_v1", "unnumbered_v1", "curated_v1"] },
-  { name: "render_authority", values: ["raw", "semantic"] },
-  { name: "fragment_lifecycle_disposition", values: ["pending_review", "document_prose", "independent_record"] },
-  { name: "part_lifecycle_disposition", values: ["pending_review", "parent_supporting_prose", "independent_record"] },
+  { name: "render_authority", values: ["semantic"] },
+  { name: "fragment_lifecycle_disposition", values: ["document_prose"] },
+  { name: "part_lifecycle_disposition", values: ["parent_supporting_prose"] },
   { name: "projection_visibility", values: ["document", "semantic_only"] },
   { name: "manifest_kind", values: STRUCTURAL_KINDS },
   { name: "source_kind", values: STRUCTURAL_KINDS },
   { name: "migration_status", values: ["raw", "replaced", "generated"] },
   { name: "relation_kind", values: ["parent_of", "depends_on", "blocked_by", "supersedes", "split_from", "reopens", "overlaps", "complements", "related", "delegates_to"] },
-  { name: "reference_kind", values: ["roadmap", "matrix_feature", "matrix_role", "matrix_cell", "gate", "test_symbol", "file_heading", "spec_passage", "external_issue", "external_commit", "external_release", "consumer_report", "unresolved_migration"] },
+  { name: "reference_kind", values: ["roadmap", "matrix_feature", "matrix_role", "matrix_cell", "gate", "test_symbol", "file_heading", "spec_passage", "external_issue", "external_commit", "external_release", "consumer_report"] },
 ] as const;
 
 const RAW_KEYS = ["source_block_md", "span_ids"] as const;
 const REPLACEMENT_CHILD = ["source_replacement"] as const;
 
-export const ROADMAP_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
-  { name: "roadmap v0 root", required: ["document", "section", "record", "manifest", "source_span"], optional: ["fragment", "legacy_marker", "part", "generated_slot"], forbidden: ["relation", "reference"] },
-  { name: "roadmap v1 root", required: ["document", "section", "record", "manifest", "source_span"], optional: ["fragment", "legacy_marker", "part", "generated_slot", "relation", "reference"] },
-  { name: "roadmap v0 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof"], forbidden: ["semantic_conversion", "frozen_legacy_span_ids"] },
-  { name: "roadmap v1 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof", "frozen_legacy_span_ids"], optional: ["semantic_conversion"] },
-  { name: "v0 section", required: ["section_id", "title", ...RAW_KEYS], optional: ["legacy_aliases"], forbidden: ["render_authority", "body_md", "source_replacement"] },
-  { name: "v1 raw section", required: ["section_id", "title", "render_authority", ...RAW_KEYS], optional: ["legacy_aliases"], forbidden: ["body_md", "source_replacement"] },
-  { name: "v1 semantic section", required: ["section_id", "title", "render_authority", "body_md"], optional: ["legacy_aliases", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids"] },
-  { name: "v0 fragment", required: ["fragment_id", "projection_group", ...RAW_KEYS], optional: ["title", "legacy_aliases"], forbidden: ["render_authority", "lifecycle_disposition", "body_md", "source_replacement"] },
-  { name: "v1 raw fragment", required: ["fragment_id", "projection_group", "render_authority", ...RAW_KEYS], optional: ["title", "legacy_aliases", "lifecycle_disposition"], forbidden: ["body_md", "source_replacement"] },
-  { name: "v1 semantic fragment", required: ["fragment_id", "projection_group", "render_authority", "lifecycle_disposition", "body_md"], optional: ["title", "legacy_aliases", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids"] },
-  { name: "v0 legacy marker", required: ["marker_id", "legacy_aliases", ...RAW_KEYS], forbidden: ["render_authority", "marker_md", "source_replacement"] },
-  { name: "v1 raw legacy marker", required: ["marker_id", "legacy_aliases", "render_authority", ...RAW_KEYS], forbidden: ["marker_md", "source_replacement"] },
-  { name: "v1 semantic legacy marker", required: ["marker_id", "legacy_aliases", "render_authority", "marker_md"], optional: REPLACEMENT_CHILD, forbidden: ["source_block_md", "span_ids"] },
-  { name: "v0 record", required: ["id", "title", "projection_group", ...RAW_KEYS], optional: ["legacy_aliases", "tags"], forbidden: ["render_authority", "projection_visibility", "semantic_shadow", "payload", "source_replacement"] },
-  { name: "v1 raw record", required: ["id", "title", "projection_group", "render_authority", ...RAW_KEYS], optional: ["legacy_aliases", "tags", "semantic_shadow"], forbidden: ["projection_visibility", "payload", "source_replacement"] },
-  { name: "v1 semantic record", required: ["id", "title", "projection_group", "render_authority", "projection_visibility", "payload"], optional: ["legacy_aliases", "tags", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids", "semantic_shadow"] },
-  { name: "source replacement", required: ["span_id", "replacement_field", "review_note_md"] },
-  { name: "v0 part", required: ["part_id", "parent_record_id", ...RAW_KEYS], optional: ["title"], forbidden: ["render_authority", "lifecycle_disposition", "body_md", "source_replacement"] },
-  { name: "v1 raw part", required: ["part_id", "parent_record_id", "render_authority", ...RAW_KEYS], optional: ["title", "lifecycle_disposition"], forbidden: ["body_md", "source_replacement"] },
-  { name: "v1 semantic part", required: ["part_id", "parent_record_id", "render_authority", "lifecycle_disposition", "body_md"], optional: ["title", ...REPLACEMENT_CHILD], forbidden: ["source_block_md", "span_ids"] },
-  { name: "generated slot", required: ["slot_id", "binding", "span_ids"] },
-  { name: "manifest table", required: ["entry"] },
-  { name: "manifest entry", required: ["kind"], optional: ["section_id", "fragment_id", "marker_id", "record_id", "part_id", "slot_id"] },
-  { name: "source span", required: ["id", "start_byte", "end_byte", "sha256", "source_kind", "owner_id", "owner_field", "migration_status"] },
-  { name: "relation", required: ["source", "kind", "target"], optional: ["note_md"] },
-  { name: "reference discriminator", required: ["id", "source", "kind"], optional: ["target_id", "feature_id", "role_id", "cell_id", "gate_id", "test_id", "symbol", "path", "heading", "document", "passage", "repository", "issue", "commit", "project", "release", "consumer", "report_reference", "local_reference", "uncertainty_md", "expires_at"] },
-] as const;
+/**
+ * The exact-key rows of the sole supported wire schema, addressed by name. Positional indexing is
+ * deliberately absent: a row list that is edited by hand cannot safely be addressed by offset.
+ */
+export const ROADMAP_ROW = {
+  root: { name: "roadmap v2 root", required: ["document", "section", "record", "manifest", "source_span"], optional: ["fragment", "legacy_marker", "part", "generated_slot", "relation", "reference"] },
+  document: { name: "roadmap v2 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof"], optional: ["projection_layout"], forbidden: ["semantic_conversion", "frozen_legacy_span_ids"] },
+  section: { name: "semantic section", required: ["section_id", "title", "render_authority", "body_md"], optional: ["legacy_aliases", ...REPLACEMENT_CHILD], forbidden: [...RAW_KEYS] },
+  fragment: { name: "semantic fragment", required: ["fragment_id", "projection_group", "render_authority", "lifecycle_disposition", "body_md"], optional: ["title", "legacy_aliases", ...REPLACEMENT_CHILD], forbidden: [...RAW_KEYS] },
+  legacy_marker: { name: "semantic legacy marker", required: ["marker_id", "legacy_aliases", "render_authority", "marker_md"], optional: [...REPLACEMENT_CHILD], forbidden: [...RAW_KEYS] },
+  record: { name: "semantic record", required: ["id", "title", "projection_group", "render_authority", "projection_visibility", "payload"], optional: ["legacy_aliases", "tags", ...REPLACEMENT_CHILD], forbidden: [...RAW_KEYS, "semantic_shadow"] },
+  source_replacement: { name: "source replacement", required: ["span_id", "replacement_field", "review_note_md"] },
+  part: { name: "semantic part", required: ["part_id", "parent_record_id", "render_authority", "lifecycle_disposition", "body_md"], optional: ["title", ...REPLACEMENT_CHILD], forbidden: [...RAW_KEYS] },
+  generated_slot: { name: "generated slot", required: ["slot_id", "binding", "span_ids"] },
+  manifest_table: { name: "manifest table", required: ["entry"] },
+  manifest_entry: { name: "manifest entry", required: ["kind"], optional: ["section_id", "fragment_id", "marker_id", "record_id", "part_id", "slot_id"] },
+  source_span: { name: "source span", required: ["id", "start_byte", "end_byte", "sha256", "source_kind", "owner_id", "owner_field", "migration_status"] },
+  relation: { name: "relation", required: ["source", "kind", "target"], optional: ["note_md"] },
+  reference_discriminator: { name: "reference discriminator", required: ["id", "source", "kind"], optional: ["target_id", "feature_id", "role_id", "cell_id", "gate_id", "test_id", "symbol", "path", "heading", "document", "passage", "repository", "issue", "commit", "project", "release", "consumer", "report_reference"] },
+} as const satisfies Readonly<Record<string, ExactSchemaRow>>;
 
-export const ROADMAP_V2_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
-  { name: "roadmap v2 root", required: ["document", "section", "record", "manifest", "source_span"], optional: ["fragment", "legacy_marker", "part", "generated_slot", "relation", "reference"] },
-  { name: "roadmap v2 document", required: ["schema_version", "authority", "roadmap", "source_path", "projection_path", "frozen_source_sha256", "frozen_source_byte_length", "frozen_source_line_count", "frozen_source_eof"], optional: ["projection_layout"], forbidden: ["semantic_conversion", "frozen_legacy_span_ids"] },
-] as const;
+export const ROADMAP_SCHEMA_ROWS: readonly ExactSchemaRow[] = Object.values(ROADMAP_ROW);
 
 const REFERENCE_REMAINING: Readonly<Record<Reference["kind"], readonly string[]>> = {
   roadmap: ["target_id"],
@@ -143,7 +116,6 @@ const REFERENCE_REMAINING: Readonly<Record<Reference["kind"], readonly string[]>
   external_commit: ["repository", "commit"],
   external_release: ["project", "release"],
   consumer_report: ["consumer", "report_reference"],
-  unresolved_migration: ["local_reference", "uncertainty_md", "expires_at"],
 };
 
 const MANIFEST_TARGET: Readonly<Record<(typeof STRUCTURAL_KINDS)[number], string>> = {
@@ -186,7 +158,6 @@ function referenceTuple(reference: Reference): string {
     case "external_commit": return `${reference.repository}\0${reference.commit}`;
     case "external_release": return `${reference.project}\0${reference.release}`;
     case "consumer_report": return `${reference.consumer}\0${reference.report_reference}`;
-    case "unresolved_migration": return `${reference.local_reference}\0${reference.expires_at}`;
   }
 }
 
@@ -211,15 +182,8 @@ function spans(ctx: DecodeContext, table: object, path: string): SpanId[] {
   );
 }
 
-function rawBytes(ctx: DecodeContext, table: object, path: string): { source_block_md: Uint8Array; span_ids: SpanId[] } {
-  return {
-    source_block_md: expectMarkdown(ctx, requiredValue(table, "source_block_md"), p(path, "source_block_md")),
-    span_ids: spans(ctx, table, path),
-  };
-}
-
 function decodeReplacement(ctx: DecodeContext, raw: unknown, path: string): SourceReplacement {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[16]);
+  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.source_replacement);
   const field = expectString(ctx, requiredValue(table, "replacement_field"), p(path, "replacement_field"));
   if (!/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*|\[[0-9]+\])*$/.test(field)) {
     schemaFail(ctx, "E-SCHEMA-TYPE", p(path, "replacement_field"), "replacement field does not match the closed path grammar");
@@ -243,8 +207,6 @@ function decodeSemanticPayload(
   raw: unknown,
   path: string,
   roadmap: RoadmapName,
-  position: SemanticDecodePosition,
-  schemaVersion: 1 | 2 = 1,
 ): SemanticPayload {
   const pre = expectExactTable(ctx, raw, path, {
     name: "semantic payload discriminator",
@@ -252,7 +214,7 @@ function decodeSemanticPayload(
     optional: raw !== null && typeof raw === "object" && !Array.isArray(raw) ? Object.keys(raw).filter((key) => key !== "kind") : [],
   });
   const kind = expectString(ctx, requiredValue(pre, "kind"), p(path, "kind"));
-  const shared = decodeSharedSemanticPayload(ctx, raw, path, position, schemaVersion);
+  const shared = decodeSharedSemanticPayload(ctx, raw, path);
   if (shared !== undefined) return shared;
   const domain = roadmap === "matrix"
     ? decodeMatrixPayload(ctx, raw, path, kind)
@@ -263,7 +225,7 @@ function decodeSemanticPayload(
   return domain;
 }
 
-function decodeDocumentMeta(ctx: DecodeContext, raw: unknown): DocumentMetaV0 | DocumentMetaV1 | DocumentMetaV2 {
+function decodeDocumentMeta(ctx: DecodeContext, raw: unknown): DocumentMetaV2 {
   const pre = expectExactTable(ctx, raw, "document", {
     name: "document discriminator",
     required: ["schema_version"],
@@ -273,104 +235,68 @@ function decodeDocumentMeta(ctx: DecodeContext, raw: unknown): DocumentMetaV0 | 
   if (typeof versionRaw !== "number" || !Number.isSafeInteger(versionRaw)) {
     schemaFail(ctx, "E-SCHEMA-TYPE", "document.schema_version", "schema_version must be an integer");
   }
-  if (versionRaw !== 0 && versionRaw !== 1 && versionRaw !== 2) {
-    schemaFail(ctx, "E-SCHEMA-VERSION", "document.schema_version", "roadmap schema_version must be 0, 1, or 2");
+  if (versionRaw !== 2) {
+    schemaFail(ctx, "E-SCHEMA-VERSION", "document.schema_version", "roadmap schema_version must be 2");
   }
-  const table = expectExactTable(ctx, raw, "document", versionRaw === 2 ? ROADMAP_V2_SCHEMA_ROWS[1] : ROADMAP_SCHEMA_ROWS[versionRaw === 0 ? 2 : 3]);
-  const common = {
+  const table = expectExactTable(ctx, raw, "document", ROADMAP_ROW.document);
+  return {
+    schema_version: 2,
+    authority: expectEnum(ctx, requiredValue(table, "authority"), ["authoritative"] as const, "document.authority"),
+    roadmap: expectEnum(ctx, requiredValue(table, "roadmap"), ["matrix", "testing"] as const, "document.roadmap"),
     source_path: expectRepoPath(ctx, requiredValue(table, "source_path"), "document.source_path"),
     projection_path: expectRepoPath(ctx, requiredValue(table, "projection_path"), "document.projection_path"),
     frozen_source_sha256: expectSha256(ctx, requiredValue(table, "frozen_source_sha256"), "document.frozen_source_sha256"),
     frozen_source_byte_length: expectSafeInteger(ctx, requiredValue(table, "frozen_source_byte_length"), "document.frozen_source_byte_length"),
     frozen_source_line_count: expectSafeInteger(ctx, requiredValue(table, "frozen_source_line_count"), "document.frozen_source_line_count"),
     frozen_source_eof: expectEnum(ctx, requiredValue(table, "frozen_source_eof"), ["lf", "none"] as const, "document.frozen_source_eof"),
-  };
-  const roadmap = expectEnum(ctx, requiredValue(table, "roadmap"), ["matrix", "testing"] as const, "document.roadmap");
-  if (versionRaw === 0) {
-    return { schema_version: 0, authority: expectEnum(ctx, requiredValue(table, "authority"), ["shadow"] as const, "document.authority"), roadmap, ...common };
-  }
-  if (versionRaw === 2) {
-    return {
-      schema_version: 2,
-      authority: expectEnum(ctx, requiredValue(table, "authority"), ["authoritative"] as const, "document.authority"),
-      roadmap,
-      ...common,
-      ...(hasOwn(table, "projection_layout")
-        ? { projection_layout: expectEnum(ctx, optionalValue(table, "projection_layout"),
-          ["legacy_v1", "anchors_v1", "standing_v1", "unnumbered_v1", "curated_v1"] as const,
-          "document.projection_layout") }
-        : {}),
-    };
-  }
-  return {
-    schema_version: 1,
-    authority: expectEnum(ctx, requiredValue(table, "authority"), ["authoritative"] as const, "document.authority"),
-    roadmap,
-    ...common,
-    ...(hasOwn(table, "semantic_conversion")
-      ? { semantic_conversion: expectEnum(ctx, optionalValue(table, "semantic_conversion"), ["converting", "complete"] as const, "document.semantic_conversion") }
+    ...(hasOwn(table, "projection_layout")
+      ? { projection_layout: expectEnum(ctx, optionalValue(table, "projection_layout"),
+        ["legacy_v1", "anchors_v1", "standing_v1", "unnumbered_v1", "curated_v1"] as const,
+        "document.projection_layout") }
       : {}),
-    frozen_legacy_span_ids: canonicalSet(
-      ctx,
-      expectArrayOf(ctx, requiredValue(table, "frozen_legacy_span_ids"), "document.frozen_legacy_span_ids", (entry, entryPath) => expectSubordinateId(ctx, entry, entryPath) as SpanId),
-      "document.frozen_legacy_span_ids",
-    ),
   };
 }
 
-function decodeV0Section(ctx: DecodeContext, raw: unknown, path: string): RawSectionV0 {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[4]);
-  return { section_id: expectSubordinateId(ctx, requiredValue(table, "section_id"), p(path, "section_id")) as SectionId, title: expectString(ctx, requiredValue(table, "title"), p(path, "title")), ...aliases(ctx, table, path), ...rawBytes(ctx, table, path) } as RawSectionV0;
+/** Every owner declares the semantic render authority; the wire has no other arm. */
+function renderAuthority(ctx: DecodeContext, table: object, path: string): "semantic" {
+  return expectEnum(ctx, requiredValue(table, "render_authority"), ["semantic"] as const, p(path, "render_authority"));
 }
 
-function decodeV1Section(ctx: DecodeContext, raw: unknown, path: string): RawSectionV1 | SemanticSectionV1 {
-  const pre = expectExactTable(ctx, raw, path, { name: "v1 section discriminator", required: ["section_id", "title", "render_authority"], optional: ["legacy_aliases", "source_block_md", "span_ids", "body_md", "source_replacement"] });
-  const authority = expectEnum(ctx, requiredValue(pre, "render_authority"), ["raw", "semantic"] as const, p(path, "render_authority"));
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[authority === "raw" ? 5 : 6]);
-  const base = { section_id: expectSubordinateId(ctx, requiredValue(table, "section_id"), p(path, "section_id")) as SectionId, title: expectString(ctx, requiredValue(table, "title"), p(path, "title")), ...aliases(ctx, table, path), render_authority: authority };
-  return authority === "raw" ? { ...base, render_authority: authority, ...rawBytes(ctx, table, path) } : { ...base, render_authority: authority, body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")), source_replacements: replacements(ctx, table, path) };
-}
-
-function decodeV0Fragment(ctx: DecodeContext, raw: unknown, path: string): RawFragmentV0 {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[7]);
-  return { fragment_id: expectSubordinateId(ctx, requiredValue(table, "fragment_id"), p(path, "fragment_id")) as FragmentId, projection_group: expectSubordinateId(ctx, requiredValue(table, "projection_group"), p(path, "projection_group")) as SectionId, ...title(ctx, table, path), ...aliases(ctx, table, path), ...rawBytes(ctx, table, path) } as RawFragmentV0;
-}
-
-function decodeV1Fragment(ctx: DecodeContext, raw: unknown, path: string): RawFragmentV1 | SemanticFragmentV1 {
-  const pre = expectExactTable(ctx, raw, path, { name: "v1 fragment discriminator", required: ["fragment_id", "projection_group", "render_authority"], optional: ["title", "legacy_aliases", "lifecycle_disposition", "source_block_md", "span_ids", "body_md", "source_replacement"] });
-  const authority = expectEnum(ctx, requiredValue(pre, "render_authority"), ["raw", "semantic"] as const, p(path, "render_authority"));
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[authority === "raw" ? 8 : 9]);
-  const base = { fragment_id: expectSubordinateId(ctx, requiredValue(table, "fragment_id"), p(path, "fragment_id")) as FragmentId, projection_group: expectSubordinateId(ctx, requiredValue(table, "projection_group"), p(path, "projection_group")) as SectionId, ...title(ctx, table, path), ...aliases(ctx, table, path), render_authority: authority };
-  if (authority === "raw") {
-    return {
-      ...base,
-      render_authority: authority,
-      ...(hasOwn(table, "lifecycle_disposition")
-        ? { lifecycle_disposition: expectEnum(ctx, optionalValue(table, "lifecycle_disposition"), ["pending_review", "document_prose", "independent_record"] as const, p(path, "lifecycle_disposition")) }
-        : {}),
-      ...rawBytes(ctx, table, path),
-    };
-  }
+function decodeSection(ctx: DecodeContext, raw: unknown, path: string): SemanticSection {
+  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.section);
   return {
-    ...base,
-    render_authority: authority,
+    section_id: expectSubordinateId(ctx, requiredValue(table, "section_id"), p(path, "section_id")) as SectionId,
+    title: expectString(ctx, requiredValue(table, "title"), p(path, "title")),
+    ...aliases(ctx, table, path),
+    render_authority: renderAuthority(ctx, table, path),
+    body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")),
+    source_replacements: replacements(ctx, table, path),
+  };
+}
+
+function decodeFragment(ctx: DecodeContext, raw: unknown, path: string): SemanticFragment {
+  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.fragment);
+  return {
+    fragment_id: expectSubordinateId(ctx, requiredValue(table, "fragment_id"), p(path, "fragment_id")) as FragmentId,
+    projection_group: expectSubordinateId(ctx, requiredValue(table, "projection_group"), p(path, "projection_group")) as SectionId,
+    ...title(ctx, table, path),
+    ...aliases(ctx, table, path),
+    render_authority: renderAuthority(ctx, table, path),
     lifecycle_disposition: expectEnum(ctx, requiredValue(table, "lifecycle_disposition"), ["document_prose"] as const, p(path, "lifecycle_disposition")),
     body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")),
     source_replacements: replacements(ctx, table, path),
   };
 }
 
-function decodeV0Marker(ctx: DecodeContext, raw: unknown, path: string): RawLegacyMarkerV0 {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[10]);
-  return { marker_id: expectSubordinateId(ctx, requiredValue(table, "marker_id"), p(path, "marker_id")) as MarkerId, legacy_aliases: expectStringSet(ctx, requiredValue(table, "legacy_aliases"), p(path, "legacy_aliases"), true), ...rawBytes(ctx, table, path) };
-}
-
-function decodeV1Marker(ctx: DecodeContext, raw: unknown, path: string): RawLegacyMarkerV1 | SemanticLegacyMarkerV1 {
-  const pre = expectExactTable(ctx, raw, path, { name: "v1 legacy marker discriminator", required: ["marker_id", "legacy_aliases", "render_authority"], optional: ["source_block_md", "span_ids", "marker_md", "source_replacement"] });
-  const authority = expectEnum(ctx, requiredValue(pre, "render_authority"), ["raw", "semantic"] as const, p(path, "render_authority"));
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[authority === "raw" ? 11 : 12]);
-  const base = { marker_id: expectSubordinateId(ctx, requiredValue(table, "marker_id"), p(path, "marker_id")) as MarkerId, legacy_aliases: expectStringSet(ctx, requiredValue(table, "legacy_aliases"), p(path, "legacy_aliases"), true), render_authority: authority };
-  return authority === "raw" ? { ...base, render_authority: authority, ...rawBytes(ctx, table, path) } : { ...base, render_authority: authority, marker_md: expectMarkdown(ctx, requiredValue(table, "marker_md"), p(path, "marker_md")), source_replacements: replacements(ctx, table, path) };
+function decodeMarker(ctx: DecodeContext, raw: unknown, path: string): SemanticLegacyMarker {
+  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.legacy_marker);
+  return {
+    marker_id: expectSubordinateId(ctx, requiredValue(table, "marker_id"), p(path, "marker_id")) as MarkerId,
+    legacy_aliases: expectStringSet(ctx, requiredValue(table, "legacy_aliases"), p(path, "legacy_aliases"), true),
+    render_authority: renderAuthority(ctx, table, path),
+    marker_md: expectMarkdown(ctx, requiredValue(table, "marker_md"), p(path, "marker_md")),
+    source_replacements: replacements(ctx, table, path),
+  };
 }
 
 function envelope(ctx: DecodeContext, table: object, path: string, roadmap: RoadmapName): object {
@@ -383,24 +309,8 @@ function envelope(ctx: DecodeContext, table: object, path: string, roadmap: Road
   };
 }
 
-function decodeV0Record(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): RawRecordV0 {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[13]);
-  return { ...envelope(ctx, table, path, roadmap), ...rawBytes(ctx, table, path) } as RawRecordV0;
-}
-
-function decodeV1Record(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName, schemaVersion: 1 | 2 = 1): RawAuthorityRecordV1 | SemanticAuthorityRecordV1 {
-  const pre = expectExactTable(ctx, raw, path, { name: "v1 record discriminator", required: ["id", "title", "projection_group", "render_authority"], optional: ["projection_visibility", "legacy_aliases", "tags", "source_block_md", "span_ids", "semantic_shadow", "payload", "source_replacement"] });
-  const authority = expectEnum(ctx, requiredValue(pre, "render_authority"), ["raw", "semantic"] as const, p(path, "render_authority"));
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[authority === "raw" ? 14 : 15]);
-  const base = { ...envelope(ctx, table, path, roadmap), render_authority: authority };
-  if (authority === "raw") {
-    return {
-      ...base,
-      render_authority: authority,
-      ...rawBytes(ctx, table, path),
-      ...(hasOwn(table, "semantic_shadow") ? { semantic_shadow: decodeSemanticPayload(ctx, optionalValue(table, "semantic_shadow"), p(path, "semantic_shadow"), roadmap, "shadow") } : {}),
-    } as RawAuthorityRecordV1;
-  }
+function decodeRecord(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): SemanticAuthorityRecord {
+  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.record);
   const projectionVisibility = expectEnum(
     ctx,
     requiredValue(table, "projection_visibility"),
@@ -415,37 +325,21 @@ function decodeV1Record(ctx: DecodeContext, raw: unknown, path: string, roadmap:
     schemaFail(ctx, "E-SCHEMA-STATE", p(path, "source_replacement"), "semantic-only record forbids source replacements");
   }
   return {
-    ...base,
-    render_authority: authority,
+    ...envelope(ctx, table, path, roadmap),
+    render_authority: renderAuthority(ctx, table, path),
     projection_visibility: projectionVisibility,
-    payload: decodeSemanticPayload(ctx, requiredValue(table, "payload"), p(path, "payload"), roadmap, "authority", schemaVersion),
+    payload: decodeSemanticPayload(ctx, requiredValue(table, "payload"), p(path, "payload"), roadmap),
     source_replacements: sourceReplacements,
-  } as SemanticAuthorityRecordV1;
+  } as SemanticAuthorityRecord;
 }
 
-function decodeV0Part(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): RawPartV0 {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[17]);
-  return { part_id: expectSubordinateId(ctx, requiredValue(table, "part_id"), p(path, "part_id")) as PartId, parent_record_id: expectRoadmapId(ctx, requiredValue(table, "parent_record_id"), p(path, "parent_record_id"), roadmap), ...title(ctx, table, path), ...rawBytes(ctx, table, path) } as RawPartV0;
-}
-
-function decodeV1Part(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): RawPartV1 | SemanticPartV1 {
-  const pre = expectExactTable(ctx, raw, path, { name: "v1 part discriminator", required: ["part_id", "parent_record_id", "render_authority"], optional: ["title", "lifecycle_disposition", "source_block_md", "span_ids", "body_md", "source_replacement"] });
-  const authority = expectEnum(ctx, requiredValue(pre, "render_authority"), ["raw", "semantic"] as const, p(path, "render_authority"));
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[authority === "raw" ? 18 : 19]);
-  const base = { part_id: expectSubordinateId(ctx, requiredValue(table, "part_id"), p(path, "part_id")) as PartId, parent_record_id: expectRoadmapId(ctx, requiredValue(table, "parent_record_id"), p(path, "parent_record_id"), roadmap), ...title(ctx, table, path), render_authority: authority };
-  if (authority === "raw") {
-    return {
-      ...base,
-      render_authority: authority,
-      ...(hasOwn(table, "lifecycle_disposition")
-        ? { lifecycle_disposition: expectEnum(ctx, optionalValue(table, "lifecycle_disposition"), ["pending_review", "parent_supporting_prose", "independent_record"] as const, p(path, "lifecycle_disposition")) }
-        : {}),
-      ...rawBytes(ctx, table, path),
-    };
-  }
+function decodePart(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): SemanticPart {
+  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.part);
   return {
-    ...base,
-    render_authority: authority,
+    part_id: expectSubordinateId(ctx, requiredValue(table, "part_id"), p(path, "part_id")) as PartId,
+    parent_record_id: expectRoadmapId(ctx, requiredValue(table, "parent_record_id"), p(path, "parent_record_id"), roadmap),
+    ...title(ctx, table, path),
+    render_authority: renderAuthority(ctx, table, path),
     lifecycle_disposition: expectEnum(ctx, requiredValue(table, "lifecycle_disposition"), ["parent_supporting_prose"] as const, p(path, "lifecycle_disposition")),
     body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")),
     source_replacements: replacements(ctx, table, path),
@@ -453,14 +347,14 @@ function decodeV1Part(ctx: DecodeContext, raw: unknown, path: string, roadmap: R
 }
 
 function decodeSlot(ctx: DecodeContext, raw: unknown, path: string): GeneratedSlot {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[20]);
+  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.generated_slot);
   return { slot_id: expectSubordinateId(ctx, requiredValue(table, "slot_id"), p(path, "slot_id")) as SlotId, binding: expectString(ctx, requiredValue(table, "binding"), p(path, "binding")), span_ids: spans(ctx, table, path) };
 }
 
 function decodeManifest(ctx: DecodeContext, raw: unknown): ManifestEntry[] {
-  const table = expectExactTable(ctx, raw, "manifest", ROADMAP_SCHEMA_ROWS[21]);
+  const table = expectExactTable(ctx, raw, "manifest", ROADMAP_ROW.manifest_table);
   return expectNonemptyArray(ctx, expectArrayOf(ctx, requiredValue(table, "entry"), "manifest.entry", (entry, path) => {
-    const row = expectExactTable(ctx, entry, path, ROADMAP_SCHEMA_ROWS[22]);
+    const row = expectExactTable(ctx, entry, path, ROADMAP_ROW.manifest_entry);
     const kind = expectEnum(ctx, requiredValue(row, "kind"), STRUCTURAL_KINDS, p(path, "kind"));
     const target = MANIFEST_TARGET[kind];
     const exact = expectExactTable(ctx, entry, path, MANIFEST_SCHEMA_ROWS[STRUCTURAL_KINDS.indexOf(kind)]);
@@ -476,17 +370,17 @@ function decodeManifest(ctx: DecodeContext, raw: unknown): ManifestEntry[] {
 }
 
 function decodeSourceSpan(ctx: DecodeContext, raw: unknown, path: string): SourceSpan {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[23]);
+  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.source_span);
   return { id: expectSubordinateId(ctx, requiredValue(table, "id"), p(path, "id")) as SpanId, start_byte: expectSafeInteger(ctx, requiredValue(table, "start_byte"), p(path, "start_byte")), end_byte: expectSafeInteger(ctx, requiredValue(table, "end_byte"), p(path, "end_byte")), sha256: expectSha256(ctx, requiredValue(table, "sha256"), p(path, "sha256")), source_kind: expectEnum(ctx, requiredValue(table, "source_kind"), STRUCTURAL_KINDS, p(path, "source_kind")), owner_id: expectString(ctx, requiredValue(table, "owner_id"), p(path, "owner_id")), owner_field: expectString(ctx, requiredValue(table, "owner_field"), p(path, "owner_field")), migration_status: expectEnum(ctx, requiredValue(table, "migration_status"), ["raw", "replaced", "generated"] as const, p(path, "migration_status")) };
 }
 
 function decodeRelation(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): Relation {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[24]);
+  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.relation);
   return { source: expectRoadmapId(ctx, requiredValue(table, "source"), p(path, "source"), roadmap), kind: expectEnum(ctx, requiredValue(table, "kind"), ["parent_of", "depends_on", "blocked_by", "supersedes", "split_from", "reopens", "overlaps", "complements", "related", "delegates_to"] as const, p(path, "kind")), target: expectRoadmapId(ctx, requiredValue(table, "target"), p(path, "target")), ...(hasOwn(table, "note_md") ? { note_md: expectMarkdown(ctx, optionalValue(table, "note_md"), p(path, "note_md")) } : {}) };
 }
 
 function decodeReference(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): Reference {
-  const pre = expectExactTable(ctx, raw, path, ROADMAP_SCHEMA_ROWS[25]);
+  const pre = expectExactTable(ctx, raw, path, ROADMAP_ROW.reference_discriminator);
   const kind = expectEnum(ctx, requiredValue(pre, "kind"), Object.keys(REFERENCE_REMAINING) as Reference["kind"][], p(path, "kind"));
   const referenceKinds = Object.keys(REFERENCE_REMAINING) as Reference["kind"][];
   const table = expectExactTable(ctx, raw, path, REFERENCE_SCHEMA_ROWS[referenceKinds.indexOf(kind)]!);
@@ -511,7 +405,6 @@ function decodeReference(ctx: DecodeContext, raw: unknown, path: string, roadmap
     case "external_commit": return { ...base, kind, repository: string("repository"), commit: string("commit") };
     case "external_release": return { ...base, kind, project: string("project"), release: string("release") };
     case "consumer_report": return { ...base, kind, consumer: string("consumer"), report_reference: string("report_reference") };
-    case "unresolved_migration": return { ...base, kind, local_reference: string("local_reference"), uncertainty_md: expectMarkdown(ctx, requiredValue(table, "uncertainty_md"), p(path, "uncertainty_md")), expires_at: string("expires_at") };
   }
 }
 
@@ -519,22 +412,6 @@ function optionalRows<T>(ctx: DecodeContext, root: object, key: string, decode: 
   return hasOwn(root, key)
     ? expectArrayOf(ctx, optionalValue(root, key), key, (entry, entryPath) => decode(entry, entryPath))
     : [];
-}
-
-function assertFrozenRawSpans(ctx: DecodeContext, doc: RoadmapDocumentV1): void {
-  const frozen = new Set(doc.document.frozen_legacy_span_ids);
-  const rawOwners = [
-    ...doc.sections.filter((owner): owner is RawSectionV1 => owner.render_authority === "raw"),
-    ...doc.fragments.filter((owner): owner is RawFragmentV1 => owner.render_authority === "raw"),
-    ...doc.legacy_markers.filter((owner): owner is RawLegacyMarkerV1 => owner.render_authority === "raw"),
-    ...doc.records.filter((owner): owner is RawAuthorityRecordV1 => owner.render_authority === "raw"),
-    ...doc.parts.filter((owner): owner is RawPartV1 => owner.render_authority === "raw"),
-  ];
-  for (const owner of rawOwners) {
-    for (const span of owner.span_ids) {
-      if (!frozen.has(span)) schemaFail(ctx, "E-SCHEMA-STATE", "document.frozen_legacy_span_ids", `raw v1 span ${span} is not frozen legacy source`);
-    }
-  }
 }
 
 function assertSpanBounds(ctx: DecodeContext, doc: RoadmapDocument): void {
@@ -549,12 +426,8 @@ function assertSpanBounds(ctx: DecodeContext, doc: RoadmapDocument): void {
   }
 }
 
-function assertDecodedDomainJoins(ctx: DecodeContext, doc: RoadmapDocumentV1 | RoadmapDocumentV2): void {
-  const payloads = new Map<string, SemanticPayload>();
-  for (const record of doc.records) {
-    const payload = record.render_authority === "semantic" ? record.payload : record.semantic_shadow;
-    if (payload !== undefined) payloads.set(record.id, payload);
-  }
+function assertDecodedDomainJoins(ctx: DecodeContext, doc: RoadmapDocumentV2): void {
+  const payloads = new Map<string, SemanticPayload>(doc.records.map((record) => [record.id, record.payload]));
 
   for (const record of doc.records) {
     const payload = payloads.get(record.id);
@@ -593,77 +466,40 @@ export function decodeRoadmapFromBindings(
   const rootPre = expectExactTable(ctx, bindings.parsed, "$", { name: "roadmap root discriminator", required: ["document"], optional: ["section", "fragment", "legacy_marker", "record", "part", "generated_slot", "manifest", "source_span", "relation", "reference"] });
   const meta = decodeDocumentMeta(ctx, requiredValue(rootPre, "document"));
   if (expectedRoadmap !== undefined && meta.roadmap !== expectedRoadmap) schemaFail(ctx, "E-ID-NAMESPACE", "document.roadmap", `expected ${expectedRoadmap} roadmap source`);
-  const root = expectExactTable(ctx, bindings.parsed, "$", meta.schema_version === 2 ? ROADMAP_V2_SCHEMA_ROWS[0] : ROADMAP_SCHEMA_ROWS[meta.schema_version]);
+  const root = expectExactTable(ctx, bindings.parsed, "$", ROADMAP_ROW.root);
   const roadmap = meta.roadmap;
-  if (meta.schema_version === 0) {
-    const doc: RoadmapDocumentV0 = {
-      document: meta,
-      sections: sortBy(optionalRows(ctx, root, "section", (raw, path) => decodeV0Section(ctx, raw, path)), (value) => value.section_id),
-      fragments: sortBy(optionalRows(ctx, root, "fragment", (raw, path) => decodeV0Fragment(ctx, raw, path)), (value) => value.fragment_id),
-      legacy_markers: sortBy(optionalRows(ctx, root, "legacy_marker", (raw, path) => decodeV0Marker(ctx, raw, path)), (value) => value.marker_id),
-      records: sortBy(optionalRows(ctx, root, "record", (raw, path) => decodeV0Record(ctx, raw, path, roadmap)), (value) => value.id),
-      parts: sortBy(optionalRows(ctx, root, "part", (raw, path) => decodeV0Part(ctx, raw, path, roadmap)), (value) => value.part_id),
-      generated_slots: sortBy(optionalRows(ctx, root, "generated_slot", (raw, path) => decodeSlot(ctx, raw, path)), (value) => value.slot_id),
-      manifest: decodeManifest(ctx, requiredValue(root, "manifest")),
-      spans: optionalRows(ctx, root, "source_span", (raw, path) => decodeSourceSpan(ctx, raw, path)).sort((left, right) => left.start_byte - right.start_byte),
-    };
-    if (doc.sections.length === 0 || doc.records.length === 0 || doc.spans.length === 0) schemaFail(ctx, "E-SCHEMA-FLOOR", "$", "roadmap requires at least one section, record, manifest entry, and source span");
-    assertSpanBounds(ctx, doc);
-    bindings.assertAllConsumed();
-    return doc;
-  }
-  const relations = sortBy(
-    optionalRows(ctx, root, "relation", (raw, path) => decodeRelation(ctx, raw, path, roadmap)),
-    (relation) => `${relation.source}\0${relation.kind}\0${relation.target}`,
-  );
-  const references = sortBy(
-    optionalRows(ctx, root, "reference", (raw, path) => decodeReference(ctx, raw, path, roadmap)),
-    (reference) => `${reference.source}\0${reference.kind}\0${referenceTuple(reference)}`,
-  );
-  const authoritative = {
+  const doc: RoadmapDocumentV2 = {
     document: meta,
-    sections: sortBy(optionalRows(ctx, root, "section", (raw, path) => decodeV1Section(ctx, raw, path)), (value) => value.section_id),
-    fragments: sortBy(optionalRows(ctx, root, "fragment", (raw, path) => decodeV1Fragment(ctx, raw, path)), (value) => value.fragment_id),
-    legacy_markers: sortBy(optionalRows(ctx, root, "legacy_marker", (raw, path) => decodeV1Marker(ctx, raw, path)), (value) => value.marker_id),
-    records: sortBy(optionalRows(ctx, root, "record", (raw, path) => decodeV1Record(ctx, raw, path, roadmap, meta.schema_version)), (value) => value.id),
-    parts: sortBy(optionalRows(ctx, root, "part", (raw, path) => decodeV1Part(ctx, raw, path, roadmap)), (value) => value.part_id),
+    sections: sortBy(optionalRows(ctx, root, "section", (raw, path) => decodeSection(ctx, raw, path)), (value) => value.section_id),
+    fragments: sortBy(optionalRows(ctx, root, "fragment", (raw, path) => decodeFragment(ctx, raw, path)), (value) => value.fragment_id),
+    legacy_markers: sortBy(optionalRows(ctx, root, "legacy_marker", (raw, path) => decodeMarker(ctx, raw, path)), (value) => value.marker_id),
+    records: sortBy(optionalRows(ctx, root, "record", (raw, path) => decodeRecord(ctx, raw, path, roadmap)), (value) => value.id),
+    parts: sortBy(optionalRows(ctx, root, "part", (raw, path) => decodePart(ctx, raw, path, roadmap)), (value) => value.part_id),
     generated_slots: sortBy(optionalRows(ctx, root, "generated_slot", (raw, path) => decodeSlot(ctx, raw, path)), (value) => value.slot_id),
     manifest: decodeManifest(ctx, requiredValue(root, "manifest")),
     spans: optionalRows(ctx, root, "source_span", (raw, path) => decodeSourceSpan(ctx, raw, path)).sort((left, right) => left.start_byte - right.start_byte),
-    relations,
-    references,
+    relations: sortBy(
+      optionalRows(ctx, root, "relation", (raw, path) => decodeRelation(ctx, raw, path, roadmap)),
+      (relation) => `${relation.source}\0${relation.kind}\0${relation.target}`,
+    ),
+    references: sortBy(
+      optionalRows(ctx, root, "reference", (raw, path) => decodeReference(ctx, raw, path, roadmap)),
+      (reference) => `${reference.source}\0${reference.kind}\0${referenceTuple(reference)}`,
+    ),
   };
-  if (meta.schema_version === 2) {
-    const rawOwner = [
-      ...authoritative.sections,
-      ...authoritative.fragments,
-      ...authoritative.legacy_markers,
-      ...authoritative.records,
-      ...authoritative.parts,
-    ].find((owner) => "render_authority" in owner && owner.render_authority !== "semantic");
-    if (rawOwner !== undefined) {
-      schemaFail(ctx, "E-SCHEMA-STATE", "$", "roadmap schema v2 permits semantic owners only");
-    }
-    if (authoritative.spans.some((span) => span.migration_status === "raw")) {
-      schemaFail(ctx, "E-SCHEMA-STATE", "source_span.migration_status", "roadmap schema v2 forbids raw migration spans");
-    }
-    const unresolvedReferenceIndex = authoritative.references.findIndex((reference) => reference.kind === "unresolved_migration");
-    if (unresolvedReferenceIndex >= 0) {
-      schemaFail(ctx, "E-SCHEMA-STATE", `reference[${unresolvedReferenceIndex}].kind`, "roadmap schema v2 forbids unresolved migration references");
-    }
+  if (doc.spans.some((span) => span.migration_status === "raw")) {
+    schemaFail(ctx, "E-SCHEMA-STATE", "source_span.migration_status", "roadmap schema v2 forbids raw migration spans");
   }
-  const doc = authoritative as RoadmapDocumentV1 | RoadmapDocumentV2;
   if (doc.sections.length === 0 || doc.records.length === 0 || doc.spans.length === 0) schemaFail(ctx, "E-SCHEMA-FLOOR", "$", "roadmap requires at least one section, record, manifest entry, and source span");
   for (const record of doc.records) {
     if (
-      record.render_authority === "semantic" && record.projection_visibility === "semantic_only" &&
+      record.projection_visibility === "semantic_only" &&
       doc.spans.some((span) => span.source_kind === "record" && span.owner_id === record.id)
     ) {
       schemaFail(ctx, "E-SCHEMA-STATE", `record.${record.id}.projection_visibility`, "semantic-only record forbids source spans");
     }
   }
   assertSpanBounds(ctx, doc);
-  if (doc.document.schema_version === 1) assertFrozenRawSpans(ctx, doc as RoadmapDocumentV1);
   assertDecodedDomainJoins(ctx, doc);
   bindings.assertAllConsumed();
   return doc;
