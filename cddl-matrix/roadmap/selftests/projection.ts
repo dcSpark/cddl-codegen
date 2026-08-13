@@ -2834,20 +2834,3 @@ function projectionFixtureBundleFromPorts(ports: RoadmapSelfTestPorts): Projecti
   ])));
 }
 
-export function runProjectionSelfTests(
-  fixtureBundle?: ProjectionFixtureBundle,
-): { readonly executed: number; readonly skipped: number } {
-  let executed = 0;
-  for (const id of REQUIRED_PROJECTION_SELFTEST_CASE_IDS) {
-    if (FIXTURE_REQUIRED_CASES.has(id) && fixtureBundle === undefined) continue;
-    const result = runNamedCase(id, fixtureBundle);
-    if (!result.ok) fail(`${id}: returned a failed result`);
-    executed++;
-  }
-  return { executed, skipped: REQUIRED_PROJECTION_SELFTEST_CASE_IDS.length - executed };
-}
-
-if (import.meta.main) {
-  const receipt = runProjectionSelfTests();
-  console.log(`projection selftests: ${receipt.executed} case(s) passed, ${receipt.skipped} fixture-backed case(s) skipped`);
-}

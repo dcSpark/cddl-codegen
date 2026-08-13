@@ -290,13 +290,3 @@ export const CODEC_SELFTEST_CASES: readonly SelfTestCase[] = REQUIRED_CODEC_SELF
     }
   },
 }));
-
-export function runCodecDirectSelfTests(): { executed: number; counts: Readonly<Record<string, number>> } {
-  const counts: Record<string, number> = {};
-  for (const id of REQUIRED_CODEC_SELFTEST_CASE_IDS) {
-    tests[id]();
-    counts[id] = (counts[id] ?? 0) + 1;
-  }
-  assert(Object.keys(counts).length === REQUIRED_CODEC_SELFTEST_CASE_IDS.length && Object.values(counts).every((count) => count === 1), "each codec case must run exactly once");
-  return { executed: REQUIRED_CODEC_SELFTEST_CASE_IDS.length, counts };
-}

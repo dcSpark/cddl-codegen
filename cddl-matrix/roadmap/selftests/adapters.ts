@@ -1428,10 +1428,3 @@ export const ADAPTER_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
     },
   })),
 );
-
-export function runAdapterDirectSelfTests(
-  bundle: AdapterFixtureBundle,
-): { readonly executed: 7; readonly subcases: readonly ["matrix", "testing"] } {
-  for (const id of REQUIRED_ADAPTER_SELFTEST_CASE_IDS) execute(id, bundle);
-  return { executed: 7, subcases: ADAPTER_SELFTEST_SUBCASES };
-}

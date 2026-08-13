@@ -1,7 +1,6 @@
 // @ts-expect-error Bun's text loader supports the live Markdown pickup; TypeScript has no .md declaration.
 import liveMatrixProjectionText from "../../ROADMAP.md" with { type: "text" };
 import liveMatrixSourceText from "../../roadmap.toml" with { type: "text" };
-import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import type { RepoPath } from "../model/core.ts";
 import type { RoadmapDocumentV2 } from "../model/documents.ts";
@@ -40,11 +39,6 @@ export function liveMatrixV2Document(): RoadmapDocumentV2 {
   );
   memoizedMatrixDocument = deepFreeze(decoded as RoadmapDocumentV2);
   return memoizedMatrixDocument;
-}
-
-export function liveMatrixLegacyV2Document(): RoadmapDocumentV2 {
-  const decoded = liveMatrixV2Document();
-  return { ...decoded, document: { ...decoded.document, projection_layout: "legacy_v1" } };
 }
 
 export function liveMatrixAuthoritativeSource(): Uint8Array {

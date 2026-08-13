@@ -2674,12 +2674,3 @@ export const IDENTITY_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
   })), ...JOIN_SELFTEST_CASES, ...C5_SELFTEST_CASES],
 );
 
-export function runIdentitySelfTests(
-  fixtureBundle: IdentityFixtureBundle,
-  _context: SelfTestContext,
-): { readonly executed: number } {
-  for (const id of PERMANENT_ID_SELFTEST_CASE_IDS) execute(id, fixtureBundle);
-  for (const id of JOIN_CASE_IDS) executeJoin(id);
-  for (const id of C5_CASE_IDS) executeC5(id);
-  return { executed: REQUIRED_IDENTITY_SELFTEST_CASE_IDS.length };
-}

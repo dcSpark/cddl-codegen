@@ -1202,16 +1202,3 @@ const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "systematic_unmodelled_coordinate_not_cell",
 ]);
 
-export function runSchemaDirectSelfTests(context?: SelfTestContext): { executed: number; counts: Readonly<Record<string, number>>; fixture_mutations?: SchemaFixtureMutationReceipt } {
-  const counts: Record<string, number> = {};
-  for (const id of REQUIRED_SCHEMA_SELFTEST_CASE_IDS) {
-    if (context === undefined && FIXTURE_REQUIRED_SCHEMA_CASE_IDS.has(id)) continue;
-    execute(id, context);
-    counts[id] = (counts[id] ?? 0) + 1;
-  }
-  const expected = context === undefined ? REQUIRED_SCHEMA_SELFTEST_CASE_IDS.length - FIXTURE_REQUIRED_SCHEMA_CASE_IDS.size : REQUIRED_SCHEMA_SELFTEST_CASE_IDS.length;
-  assert(Object.keys(counts).length === expected && Object.values(counts).every((count) => count === 1), "each executed schema case must run exactly once");
-  return context === undefined
-    ? { executed: expected, counts }
-    : { executed: expected, counts, fixture_mutations: fixtureMutationProof(context).receipt };
-}

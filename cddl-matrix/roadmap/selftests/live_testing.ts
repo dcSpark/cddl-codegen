@@ -2,7 +2,6 @@
 import liveTestingProjectionText from "../../../tests/TESTING_ROADMAP.md" with { type: "text" };
 import liveTestingSourceText from "../../../tests/testing-roadmap.toml" with { type: "text" };
 import { TESTING_ADAPTER } from "../adapters/testing.ts";
-import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import { resolveManifest } from "../manifest.ts";
 import type { RepoPath } from "../model/core.ts";
@@ -45,18 +44,6 @@ export function liveTestingV2Document(): RoadmapDocumentV2 {
   );
   memoizedTestingDocument = deepFreeze(decoded as RoadmapDocumentV2);
   return memoizedTestingDocument;
-}
-
-export function liveTestingLegacyV2Document(): RoadmapDocumentV2 {
-  const decoded = liveTestingV2Document();
-  return {
-    ...decoded,
-    document: { ...decoded.document, projection_layout: "legacy_v1" },
-    references: decoded.references.map((reference) => reference.kind === "file_heading" &&
-        reference.path === TESTING_PROJECTION_PATH && reference.heading === "Next work"
-      ? { ...reference, heading: "Next work items, in priority order" }
-      : reference),
-  };
 }
 
 export function liveTestingAuthoritativeSource(): Uint8Array {
