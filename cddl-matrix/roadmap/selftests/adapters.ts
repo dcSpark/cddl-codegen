@@ -906,8 +906,8 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
   for (const [roadmap, sourcePath, expectedPath, adapter, statusInputs, expectedLength] of [
     ["matrix", "positive/small-matrix-v3.toml", "positive/small-matrix-v3.expected.md", MATRIX_ADAPTER, statusCompatibilityInputs(), 48],
     ["testing", "positive/small-testing-v3.toml", "positive/small-testing-v3.expected.md", TESTING_ADAPTER, statusCompatibilityInputs(), 49],
-    ["matrix", "all-fields/matrix-v3.toml", "all-fields/matrix-v3.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 1388],
-    ["testing", "all-fields/testing-v3.toml", "all-fields/testing-v3.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 427],
+    ["matrix", "all-fields/matrix-v3.toml", "all-fields/matrix-v3.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 1436],
+    ["testing", "all-fields/testing-v3.toml", "all-fields/testing-v3.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 475],
   ] as const) {
     const document = decoded(bundle, sourcePath, roadmap);
     const snapshots = markdownSnapshots(document);

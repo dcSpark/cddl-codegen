@@ -899,6 +899,8 @@ title = "Work arm g"
 kind = "work"
 body_md = '''Work g: deferred.
 '''
+signal_md = '''Reopening signal: the fixture observable fires.
+'''
 work_state = "deferred"
 work_intent = "change_documentation"
 work_kind = "documentation_integrity"

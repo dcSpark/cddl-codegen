@@ -12,6 +12,7 @@ Work j: ready.
 Work i: delegated.
 Work h: waiting_external.
 Work g: deferred.
+Reopening signal: the fixture observable fires.
 Work f: armed.
 Work e: blocked.
 Work d: ready.

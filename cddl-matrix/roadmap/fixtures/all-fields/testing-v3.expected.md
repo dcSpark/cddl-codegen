@@ -2,6 +2,7 @@
 
 Ready missing-system task.
 Watching operational watch.
+Reopening signal: the fixture escalation fires.
 Retire-pending operational watch.
 Attributed operational watch.
 Live incident.

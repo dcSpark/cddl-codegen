@@ -250,6 +250,8 @@ title = "Watching operational watch"
 kind = "testing_operational_watch"
 body_md = '''Watching operational watch.
 '''
+signal_md = '''Reopening signal: the fixture escalation fires.
+'''
 watch_state = "watching"
 signature_md = '''Synthetic watching signature.'''
 response_md = '''Capture the failure before responding.'''
