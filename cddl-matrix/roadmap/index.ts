@@ -45,6 +45,7 @@ import {
   type FinalizedRoadmap,
   type ValidatedRoadmapCore,
 } from "./pipeline.ts";
+import { garbageCollectUncitedReferences } from "./references.ts";
 import { queryText, queryValue, stableJsonValue } from "./query.ts";
 // Type-only: the selftest runner VALUE is injected by the entry point through
 // RoadmapCliDispatchServices, so this module has no runtime edge into the selftest tree.
@@ -130,14 +131,18 @@ function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResul
   const source = new Uint8Array(ports.readDeclared(path));
   strictSource(source, path);
   let document: RoadmapDocument;
+  let collected = 0;
   if (path === MATRIX_SOURCE || path === TESTING_SOURCE) {
     const name: RoadmapName = path === MATRIX_SOURCE ? "matrix" : "testing";
-    document = decodeRoadmapSource(source, path, name, false);
+    const decoded = decodeRoadmapSource(source, path, name, false);
+    const swept = garbageCollectUncitedReferences(decoded);
+    document = swept.document;
+    collected = swept.collected.length;
     prepareDecodedRoadmapCore(name, document, ports.registryView({ kind: "worktree" }));
   } else failure([issue("E-CLI-FORMAT-TARGET", "<cli>", "format_source", "format target is not declared", 2)]);
   const canonical = composeCanonicalDocument(document);
   ports.atomicReplace(path, canonical);
-  return success(`FORMAT OK source=${path} bytes=${canonical.byteLength} sha256=${sha256(canonical)}\n`);
+  return success(`FORMAT OK source=${path} bytes=${canonical.byteLength} sha256=${sha256(canonical)} collected_references=${collected}\n`);
 }
 
 function writeRoadmap(name: RoadmapName, ports: RoadmapWritePorts): RoadmapCliResult {

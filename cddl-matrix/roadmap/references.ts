@@ -10,10 +10,11 @@ import type {
   Resolution,
 } from "./adapters/types.ts";
 import type { RoadmapIssue } from "./errors.ts";
-import type {
-  RoadmapIndexes,
-  RoadmapIdProviderFact,
-  SemanticPayloadProviderFact,
+import {
+  buildRoadmapIndexes,
+  type RoadmapIndexes,
+  type RoadmapIdProviderFact,
+  type SemanticPayloadProviderFact,
 } from "./indexes.ts";
 import { namespaceOf } from "./ids.ts";
 import {
@@ -23,8 +24,8 @@ import {
   type PayloadArm,
   type PayloadField,
 } from "./payload_descriptors.ts";
-import type { RoadmapId } from "./model/core.ts";
-import type { Reference } from "./model/documents.ts";
+import type { ReferenceId, RoadmapId } from "./model/core.ts";
+import type { Reference, RoadmapDocument } from "./model/documents.ts";
 import type { CurrentGuard, Relation, SemanticPayload } from "./model/documents.ts";
 import { codePointSort } from "./kernel.ts";
 import { sortRoadmapIssues as sortIssues } from "./errors.ts";
@@ -352,6 +353,32 @@ function deferredForeignTarget(
 ): boolean {
   const target = roadmapNamespace(id);
   return local !== undefined && target !== undefined && target !== local && !firstClass.has(id);
+}
+
+/**
+ * Reference rows nothing cites are garbage: they carry no claim any record makes, and the
+ * migration left 131 of them behind. `--format-source` collects them, so a hand edit that drops
+ * the last citation of a reference does not leave the row for a reader to interpret. Collection
+ * runs BEFORE validation, so residue pointing at a target that has since disappeared is collected
+ * rather than blocking the format run.
+ */
+export function garbageCollectUncitedReferences(
+  document: RoadmapDocument,
+): { readonly document: RoadmapDocument; readonly collected: readonly ReferenceId[] } {
+  const cited = new Set(
+    buildRoadmapIndexes(document).indexes.reference_id_uses.map((use) => String(use.id)),
+  );
+  const collected = document.references
+    .filter((reference) => !cited.has(String(reference.id)))
+    .map((reference) => reference.id);
+  if (collected.length === 0) return { document, collected: Object.freeze([]) };
+  return {
+    document: {
+      ...document,
+      references: document.references.filter((reference) => cited.has(String(reference.id))),
+    },
+    collected: Object.freeze(collected),
+  };
 }
 
 export function validateRoadmapReferences(

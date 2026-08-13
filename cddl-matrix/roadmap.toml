@@ -310,7 +310,7 @@ detail_md = """- **More tools:** the master is implementation-agnostic; add `ann
   consumer adopts it.
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-additional-tool-annotations-source"
+authority_reference_id = "roadmap-expansion-when-relevant"
 rationale_md = """The master stays implementation-agnostic; add an annotations/<tool>.toml adapter only when another tool actually adopts it.
 """
 permanence = "reopenable"
@@ -375,14 +375,14 @@ detail_md = """- When a release ships the `773b723` array-sequence fix and the `
   `reason` provenance).
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-array-sequence-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit"
 current_upstream_state_md = """The behavior is fixed on local-fixes at 773b723; no fresh release-and-pin check has been performed.
 """
 verification_md = """Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-array-sequence-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit"
 external_predicate_md = """A published release contains commit 773b723 behavior and this repository's Cargo pin can return from local-fixes to that release.
 """
 verification_md = """Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
@@ -404,14 +404,14 @@ detail_md = """- When a release ships the `c2ebf9f` bignum map-key/value-tag fix
   wording).
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-bignum-key-tag-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n2"
 current_upstream_state_md = """The fix and test suite are on local-fixes; no fresh published-release check has been performed.
 """
 verification_md = """Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-bignum-key-tag-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n2"
 external_predicate_md = """A published release contains commit c2ebf9f behavior for bignum map keys and value tags.
 """
 verification_md = """Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
@@ -456,7 +456,7 @@ detail_md = """- **`cbor-any` is a decided permanent exclusion, not a candidate 
   decision.
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-cbor-any-boundary-source"
+authority_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the"
 rationale_md = """cbor-any's self-describe tag is a complete-stream property rather than an ordinary generated value; retain the role-neutral graceful refusal unless a new explicit maintainer decision supersedes this boundary.
 """
 permanence = "permanent"
@@ -623,12 +623,12 @@ detail_md = """- **Third honesty axis — flag-gated EMISSION SURFACES × input 
   single-file-only with the reason. Postures already settled, each with the pin that holds it:
 """
 policy_kind = "maintenance_protocol"
-authority_reference_id = "ref-matrix-emission-input-mode-honesty-source"
+authority_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining"
 protocol_md = """Every flag-gated emitted surface must declare directory-input execution coverage or a reasoned single-file posture; directory input containing one file is not multifile coverage.
 """
 
 [record.payload.cadence]
-owner_reference_id = "ref-matrix-emission-input-mode-honesty-source"
+owner_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining"
 event_source = "flag-surface changes"
 period_or_event_md = """Run for every new flag-gated emission surface.
 """
@@ -687,10 +687,10 @@ claim_md = """For `t = true / tstr` under the default profile, Rust generation, 
 """
 evidence_verdict = "confirmed"
 freshness = "live"
-reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-bool-verify"]
+reference_ids = ["gate-verify"]
 unprobed_remainder_md = """No other boolean spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
 """
-refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-bool-verify"
+refresh_reference_id = "gate-verify"
 
 [record.payload.scope]
 faces = ["rust", "wasm"]
@@ -707,10 +707,10 @@ claim_md = """For `t = h'CAFE' / tstr` under the default profile, Rust generatio
 """
 evidence_verdict = "confirmed"
 freshness = "live"
-reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-bytes-verify"]
+reference_ids = ["gate-verify-n2"]
 unprobed_remainder_md = """No other byte-string spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
 """
-refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-bytes-verify"
+refresh_reference_id = "gate-verify-n2"
 
 [record.payload.scope]
 faces = ["rust", "wasm"]
@@ -727,7 +727,7 @@ claim_md = """The FixedValue choice-member family closed its reviewed denominato
 """
 evidence_verdict = "confirmed"
 freshness = "historical"
-reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-closure-commit"]
+reference_ids = ["commit-dcspark-cddl-codegen"]
 at_commit = "8320fb3330c5d6febda8910e5a3bb944bcec1466"
 observed_at = "2026-08-13"
 unprobed_remainder_md = """Only the eight canonical representative coordinates are claimed; other literals of each kind, other placements, profiles, and faces are unclaimed. The live guard machinery that re-derived this closure from source on every run was retired on 2026-08-13; generator drift against the closed family is since caught by review, and the per-representative live evidence records beside this one remain refreshable through the verify gate.
@@ -748,10 +748,10 @@ claim_md = """For `t = 1.5 / tstr` under the default profile, Rust generation sa
 """
 evidence_verdict = "confirmed"
 freshness = "live"
-reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-float-verify"]
+reference_ids = ["gate-verify-n3"]
 unprobed_remainder_md = """No other float spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
 """
-refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-float-verify"
+refresh_reference_id = "gate-verify-n3"
 
 [record.payload.scope]
 faces = ["rust"]
@@ -768,10 +768,10 @@ claim_md = """For `t = -1 / null / tstr` under the default profile, Rust generat
 """
 evidence_verdict = "confirmed"
 freshness = "live"
-reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-nint-verify"]
+reference_ids = ["gate-verify-n4"]
 unprobed_remainder_md = """No other negative-integer spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
 """
-refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-nint-verify"
+refresh_reference_id = "gate-verify-n4"
 
 [record.payload.scope]
 faces = ["rust"]
@@ -788,10 +788,10 @@ claim_md = """For `t = null / tstr / uint` under the default profile, Rust gener
 """
 evidence_verdict = "confirmed"
 freshness = "live"
-reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-null-verify"]
+reference_ids = ["gate-verify-n5"]
 unprobed_remainder_md = """No other null placement, profile, or face is claimed; this is the canonical representative coordinate only.
 """
-refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-null-verify"
+refresh_reference_id = "gate-verify-n5"
 
 [record.payload.scope]
 faces = ["rust", "wasm"]
@@ -808,10 +808,10 @@ claim_md = """For `t = \"x\" / uint` under the default profile, Rust generation,
 """
 evidence_verdict = "confirmed"
 freshness = "live"
-reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-text-verify"]
+reference_ids = ["gate-verify-n6"]
 unprobed_remainder_md = """No other text literal, placement, profile, or face is claimed; in particular the keyword-minting literal `\"self\"` remains a separately pinned refusal.
 """
-refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-text-verify"
+refresh_reference_id = "gate-verify-n6"
 
 [record.payload.scope]
 faces = ["rust", "wasm"]
@@ -828,10 +828,10 @@ claim_md = """For `t = 5 / tstr` under the default profile, Rust generation, Rus
 """
 evidence_verdict = "confirmed"
 freshness = "live"
-reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-uint-verify"]
+reference_ids = ["gate-verify-n7"]
 unprobed_remainder_md = """No other unsigned-integer spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
 """
-refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-uint-verify"
+refresh_reference_id = "gate-verify-n7"
 
 [record.payload.scope]
 faces = ["rust", "wasm"]
@@ -848,10 +848,10 @@ claim_md = """For `t = undefined / tstr` under the default profile, Rust generat
 """
 evidence_verdict = "confirmed"
 freshness = "live"
-reference_ids = ["ref-matrix-evidence-fixed-value-choice-member-undefined-verify"]
+reference_ids = ["gate-verify-n8"]
 unprobed_remainder_md = """No other undefined placement, profile, or face is claimed; this is the canonical representative coordinate only.
 """
-refresh_reference_id = "ref-matrix-evidence-fixed-value-choice-member-undefined-verify"
+refresh_reference_id = "gate-verify-n8"
 
 [record.payload.scope]
 faces = ["rust", "wasm"]
@@ -883,7 +883,7 @@ detail_md = """- **Behavioral emitted-test cells for extern / raw-bytes ctor arg
   consumer-reported wasm-boundary defect on such a ctor arg that the compile verdict passed.
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-extern-emitted-test-boundary-source"
+authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked"
 rationale_md = """Extern and raw-bytes execution needs consumer-owned valid-byte knowledge; retain compile coverage plus existing hand tests until a consumer supplies that knowledge or reports a missed defect.
 """
 permanence = "reopenable"
@@ -914,7 +914,7 @@ detail_md = """- **Corpus/matrix extern EXECUTION, and the multifile matrix's st
   Two deliberate holes are left, each with an owner rather than a plan here:
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-extern-execution-multifile-source"
+authority_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n2"
 rationale_md = """The matrix owns extern and raw-bytes compile-state coverage; execution lifecycle belongs to testing.extern-deps-wasm-boundary-surface-packaging-json-gen, while multifile extern-shape breadth has its own child work record.
 """
 permanence = "permanent"
@@ -935,7 +935,7 @@ detail_md = """- **Extern-interface seam sentinels** — the `; _CDDL_CODEGEN_EX
   a concrete matrix consumer query that needs vendor-sentinel rows.
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-extern-interface-sentinel-boundary-source"
+authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n2"
 rationale_md = """Do not model vendor-sentinel extern-interface data without a concrete matrix query that needs it; the strict parser tests remain the current seam control.
 """
 permanence = "reopenable"
@@ -998,10 +998,10 @@ work_state = "waiting_external"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "valid_rejection"
-external_owner_reference_id = "ref-matrix-fixed-bytes-lowercase-base64-parser-upstream"
+external_owner_reference_id = "release-rust-cddl-parser-one-published-parser-release"
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-fixed-bytes-lowercase-base64-parser-upstream"
+external_owner_reference_id = "release-rust-cddl-parser-one-published-parser-release"
 external_predicate_md = """One published parser release accepts both h'cafe' and b64'yv4=' and lowers them to the same bytes as h'CAFE'.
 """
 verification_md = """Probe h'cafe', b64'yv4=', h'CAFE', and a raw UTF-8 control in the same release, exercise every already-supported fixed-value surface, and update feature/docs/projections/vectors only if lowered bytes agree.
@@ -1059,10 +1059,10 @@ work_state = "waiting_external"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "false_pass_or_red"
-external_owner_reference_id = "ref-matrix-fixed-bytes-validator-corroboration-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-validates-h-cafe"
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-fixed-bytes-validator-corroboration-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-validates-h-cafe"
 external_predicate_md = """A published release validates h'CAFE' and raw UTF-8 fixed-byte rules without panic and renders arbitrary B16ByteString bytes without a UTF-8 assumption.
 """
 verification_md = """Run bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes,contain.choice-member.type2.value.bytes.fixed-kind; require normal two-oracle and constraint evidence; run fixed-member and recombination regressions before pruning gap 17 or simplifying diagnostics.
@@ -1098,7 +1098,7 @@ detail_md = """- Bytes/nint/float fixed map keys are **rejected gracefully** —
 """
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-matrix-fixed-map-key-kinds-arrow-test", "ref-matrix-fixed-map-key-kinds-float-arm-cell", "ref-matrix-fixed-map-key-kinds-float-multi-cell", "ref-matrix-fixed-map-key-kinds-float-single-cell", "ref-matrix-fixed-map-key-kinds-nint-arm-cell", "ref-matrix-fixed-map-key-kinds-nint-multi-cell", "ref-matrix-fixed-map-key-kinds-nint-single-cell"]
+reference_ids = ["cell-contain-group-choice-arm-memberkey-value-float-map", "cell-contain-group-choice-arm-memberkey-value-nint-map", "cell-contain-map-key-memberkey-value-float-colon-multi", "cell-contain-map-key-memberkey-value-float-colon-single", "cell-contain-map-key-memberkey-value-nint-colon-multi", "cell-contain-map-key-memberkey-value-nint-colon-single", "test-fixed-key-arrow-single-entry-routes-to-record-path"]
 claim_md = """Struct-map fixed keys are allowlisted to uint and text; byte, nint, float, and special fixed keys refuse gracefully, and nint/float group-choice-arm spellings are pinned without widening the record-key representation.
 """
 boundary_md = """This control owns current enforcement only. Nint feature work belongs to matrix.nint-capability and float-key feature work belongs to matrix.float-table-key-domain.
@@ -1116,14 +1116,14 @@ detail_md = """- When a release ships the `707c038` float-key/null member-key fi
   probes' provenance wording).
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-float-key-null-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n3"
 current_upstream_state_md = """The fix is on local-fixes; no fresh published-release check has been performed.
 """
 verification_md = """Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-float-key-null-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n3"
 external_predicate_md = """A published release contains commit 707c038 behavior matching float keys and rejecting null keys.
 """
 verification_md = """Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
@@ -1155,14 +1155,14 @@ detail_md = """- When the rust oracle starts distinguishing the float prelude na
   says exactly what moves.
 """
 closeout_state = "due"
-upstream_owner_reference_id = "ref-matrix-float-prelude-name-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-ruling-or-release"
 current_upstream_state_md = """A paste-ready report is committed at cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md, but no issue is filed.
 """
 verification_md = """File the report; on a distinguishing fix, drop rust from affected exemptions and re-mint the five constrained float rows; on the opposite ruling, execute the report's reversal branch.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-float-prelude-name-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-ruling-or-release"
 external_predicate_md = """A published ruling or release distinguishes the six float prelude names, or explicitly rules that the current common set is correct.
 """
 verification_md = """File the report; on a distinguishing fix, drop rust from affected exemptions and re-mint the five constrained float rows; on the opposite ruling, execute the report's reversal branch.
@@ -1338,14 +1338,14 @@ legacy_aliases = ["README gap #15"]
 [record.payload]
 kind = "matrix_external_closeout"
 closeout_state = "due"
-upstream_owner_reference_id = "ref-matrix-incremental-extension-reference-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-accumulates-the"
 current_upstream_state_md = """The report cddl-matrix/upstream-reports/rust-cddl-incremental-extension-reference-resolution.md is committed but no issue is filed.
 """
 verification_md = """File the report; probe both statement orders at root and through r = extended; require uint and text arms through the reference; re-enable ordinary rust corroboration for assignt_extend while retaining the ruby extension-first branch until ruby separately passes.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-incremental-extension-reference-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-accumulates-the"
 external_predicate_md = """A published release accumulates the base = arm and every /= arm when the rule is referenced, for both statement orders.
 """
 verification_md = """File the report; probe both statement orders at root and through r = extended; require uint and text arms through the reference; re-enable ordinary rust corroboration for assignt_extend while retaining the ruby extension-first branch until ruby separately passes.
@@ -1401,7 +1401,7 @@ blocker_md = """The required choice-of-bodies representation is not yet reviewed
 """
 
 [record.payload.unblock_predicate]
-owner_reference_id = "ref-matrix-multi-choice-group-rule-source"
+owner_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n3"
 event_md = """The choice-of-bodies design is reviewed and can represent group //= bodies without flattening their alternatives.
 """
 check_procedure_md = """Confirm a durable design and acceptance owner exists and matrix.multi-choice-group-rule is no longer blocked for that capability.
@@ -1430,7 +1430,7 @@ detail_md = """- **A containment-matrix row for the INLINE nested `.cbor` self-c
 
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-inline-cbor-containment-boundary-source"
+authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n3"
 rationale_md = """Do not add nested-CBOR containment rows unless a concrete query demonstrates additional discrimination beyond the existing corpus, decode, and recombination controls.
 """
 permanence = "reopenable"
@@ -1521,7 +1521,7 @@ detail_md = """- **F9 — interaction tuples** (A-in-B-in-role-C-with-operator-D
   query (Q7) only.
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-interaction-tuples-boundary-source"
+authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n4"
 rationale_md = """F9 remains the Q7 stretch query and does not become a matrix denominator or implementation campaign.
 """
 permanence = "permanent"
@@ -1563,12 +1563,12 @@ detail_md = """- **Intra-alternative variation rows (the enforcement-blind-spot 
   class cannot return through a shape nobody enumerated).
 """
 policy_kind = "maintenance_protocol"
-authority_reference_id = "ref-matrix-intra-alternative-variations-source"
+authority_reference_id = "roadmap-expansion-when-relevant-n2"
 protocol_md = """A newly discovered intra-alternative value or dispatch axis must be represented by a row and a truthful violation vector before the affected surface is accepted as green.
 """
 
 [record.payload.cadence]
-owner_reference_id = "ref-matrix-intra-alternative-variations-source"
+owner_reference_id = "roadmap-expansion-when-relevant-n2"
 event_source = "matrix row authoring"
 period_or_event_md = """Run whenever a new intra-alternative value or dispatch axis is added.
 """
@@ -1618,7 +1618,7 @@ detail_md = """- **F8 — matching semantics** (prioritized-choice ordering, gre
   validation concern, not a cddl-codegen serialization concern.
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-matching-semantics-boundary-source"
+authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n5"
 rationale_md = """F8 remains a validation and matching-semantics question rather than a serialization-support matrix axis.
 """
 permanence = "permanent"
@@ -1829,14 +1829,14 @@ detail_md = """- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice 
   change), and prune README gap #11 + that draft.
 """
 closeout_state = "due"
-upstream_owner_reference_id = "ref-matrix-named-rule-map-key-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-resolves-named"
 current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue has been filed, and the repository has not been queried.
 """
 verification_md = """Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-named-rule-map-key-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-resolves-named"
 external_predicate_md = """A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions.
 """
 verification_md = """Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
@@ -1944,14 +1944,14 @@ detail_md = """- When a release ships the `885c61c` non-uint-endpoint range fix 
   fix-provenance notes in README gap #3 and the rangeop vectors' `reason` provenance.
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-non-uint-range-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n4"
 current_upstream_state_md = """The behavior is fixed on local-fixes at 885c61c; no fresh published-release check has been performed.
 """
 verification_md = """Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-non-uint-range-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n4"
 external_predicate_md = """A published release contains commit 885c61c behavior for integer-sign and float range endpoints.
 """
 verification_md = """Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
@@ -1987,7 +1987,7 @@ blocker_md = """No reviewed discriminator and residue proof yet separates all so
 """
 
 [record.payload.unblock_predicate]
-owner_reference_id = "ref-matrix-open-array-optional-adjacency-source"
+owner_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n4"
 event_md = """A reviewed discriminator and residue proof exists for a specific optional adjacency.
 """
 check_procedure_md = """Verify that proof against RFC greedy non-backtracking examples, including the overlapping [? uint, uint] refusal control.
@@ -2075,14 +2075,14 @@ detail_md = """- When a release ships the `3d56d8e` optional-entry/closed-map/JS
   when convenient.
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-optional-closed-map-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n5"
 current_upstream_state_md = """The combined fix is on local-fixes; three adjacent future issues remain independent; no fresh release check has been performed.
 """
 verification_md = """Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-optional-closed-map-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n5"
 external_predicate_md = """A published release contains commit 3d56d8e behavior for optional entries, closed maps, and JSON type-domain keys.
 """
 verification_md = """Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
@@ -2114,7 +2114,7 @@ kind = "matrix_policy"
 detail_md = """- **F10 / F11** — note-only (over-acceptance denominator; AST cross-check is weak corroboration).
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-over-acceptance-ast-notes-source"
+authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n6"
 rationale_md = """F10 and F11 remain note-only AST corroboration; they neither certify over-acceptance nor define its denominator.
 """
 permanence = "permanent"
@@ -2141,7 +2141,7 @@ question_md = """Should over-acceptance completeness use the grammar's full supe
 """
 
 [record.payload.unblock_predicate]
-owner_reference_id = "ref-matrix-over-acceptance-denominator-source"
+owner_reference_id = "roadmap-pending-decisions-need-a-human-call"
 event_md = """A maintainer records either the grammar superset or the realistically implementable construct set as the reporting denominator.
 """
 check_procedure_md = """Confirm the ruling cites a durable authority and states how completeness, exclusions, and future vectors are reported.
@@ -2207,12 +2207,12 @@ detail_md = """- **Keep EVERY matrix axis honest (periodic).** Grid coverage equ
   \"is this list complete?\":
 """
 policy_kind = "maintenance_protocol"
-authority_reference_id = "ref-matrix-periodic-coverage-honesty-source"
+authority_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining-n2"
 protocol_md = """At periodic review and every new boundary shape, inspect fix reach, steering comments, consumer hand patches, and exclusion comments; every discovered hole must gain a durable owner.
 """
 
 [record.payload.cadence]
-owner_reference_id = "ref-matrix-periodic-coverage-honesty-source"
+owner_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining-n2"
 event_source = "matrix and generator coverage review"
 period_or_event_md = """Run at periodic review and whenever a boundary position, shape, or mode is added.
 """
@@ -2242,14 +2242,14 @@ detail_md = """- When a release ships the `90f66ff` prelude-`number` float fix (
   candidate-upstream-report disposition, not yet filed.
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-prelude-number-float-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n6"
 current_upstream_state_md = """The prelude-number fix is on local-fixes; adjacent tag-leniency and ruby calendar-date observations are unfiled and independent.
 """
 verification_md = """Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-prelude-number-float-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n6"
 external_predicate_md = """A published release contains commit 90f66ff behavior accepting floats for prelude number while preserving non-number rejection.
 """
 verification_md = """Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
@@ -2301,12 +2301,12 @@ detail_md = """- **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + t
   declared target profile if it updates its `cddl` dependency.
 """
 policy_kind = "maintenance_protocol"
-authority_reference_id = "ref-matrix-profile-version-scope-source"
+authority_reference_id = "roadmap-expansion-when-relevant-n3"
 protocol_md = """Pin the target profile's source filename, URL, and checksum as one reviewed unit, and re-review the module stance whenever the profile or cddl dependency changes.
 """
 
 [record.payload.cadence]
-owner_reference_id = "ref-matrix-profile-version-scope-source"
+owner_reference_id = "roadmap-expansion-when-relevant-n3"
 event_source = "target-profile and cddl-dependency revisions"
 period_or_event_md = """Run on every target-profile or cddl-dependency update.
 """
@@ -2332,14 +2332,14 @@ detail_md = """- When a release ships the `2c7548e` radix-literal lexer fix (ups
   (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-radix-literal-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n7"
 current_upstream_state_md = """The parser fix is on local-fixes at 2c7548e; WG issue 33 and ruby non-value-position deviations remain independent; no fresh release check has been performed.
 """
 verification_md = """Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-radix-literal-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n7"
 external_predicate_md = """A published release contains commit 2c7548e behavior for RFC radix integers in every uint_value position.
 """
 verification_md = """Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
@@ -2402,12 +2402,12 @@ detail_md = """- **A REFUSED construct's spelling space — a refusal probed on 
 
 """
 policy_kind = "maintenance_protocol"
-authority_reference_id = "ref-matrix-refusal-spelling-space-source"
+authority_reference_id = "roadmap-expansion-when-relevant-n4"
 protocol_md = """For every graceful-refusal guard, review ordering, placement, and alternate spellings in the closing change; keep the mechanical trigger-space catalog as separate deferred work.
 """
 
 [record.payload.cadence]
-owner_reference_id = "ref-matrix-refusal-spelling-space-source"
+owner_reference_id = "roadmap-expansion-when-relevant-n4"
 event_source = "graceful-refusal guard changes"
 period_or_event_md = """Run in every change that adds or changes a graceful-refusal guard.
 """
@@ -2471,14 +2471,14 @@ detail_md = """- When a ruby `cddl` gem release parses inline/composite type2 co
   (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
 """
 closeout_state = "due"
-upstream_owner_reference_id = "ref-matrix-ruby-inline-controller-upstream-upstream"
+upstream_owner_reference_id = "release-ruby-cddl-a-published-gem-parses-inline"
 current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue is named, and the repository has not been queried.
 """
 verification_md = """Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-ruby-inline-controller-upstream-upstream"
+external_owner_reference_id = "release-ruby-cddl-a-published-gem-parses-inline"
 external_predicate_md = """A published gem parses inline/composite type2 controller arguments such as bytes .cbor [coords].
 """
 verification_md = """Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
@@ -2511,14 +2511,14 @@ detail_md = """- `.size` on a signed `int` — semantics CLARIFIED by the RFC au
   text, cite it in the `current_capacities.mdx` note.
 """
 closeout_state = "due"
-upstream_owner_reference_id = "ref-matrix-signed-int-size-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-validates-int-size"
 current_upstream_state_md = """WG issue 32 clarifies semantics, but the validator fix/report and erratum are not complete; no fresh upstream query has been performed.
 """
 verification_md = """Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-signed-int-size-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-validates-int-size"
 external_predicate_md = """A published release validates int .size N as the uint arm's window with nint values as per-value non-matches, and durable spec text records the clarification.
 """
 verification_md = """Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
@@ -2566,14 +2566,14 @@ legacy_aliases = ["README gap #13"]
 [record.payload]
 kind = "matrix_external_closeout"
 closeout_state = "due"
-upstream_owner_reference_id = "ref-matrix-string-key-mixed-rest-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-permits-zero-rest"
 current_upstream_state_md = """README gap 13 contains the durable conclusion, but no durable report or upstream issue has been filed and the repository has not been queried.
 """
 verification_md = """Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-string-key-mixed-rest-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-permits-zero-rest"
 external_predicate_md = """A published release permits zero rest entries for bytes- and tstr-keyed star rows in mixed maps while retaining required declared entries.
 """
 verification_md = """Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
@@ -2605,14 +2605,14 @@ in the same change so the row's evidence picks up the corroboration clause, and 
 plus that draft.
 """
 closeout_state = "due"
-upstream_owner_reference_id = "ref-matrix-tag-map-key-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-validates-tag"
 current_upstream_state_md = """The diagnosis is complete but no durable upstream report or issue has been filed; the repository has not been queried.
 """
 verification_md = """Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-tag-map-key-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-validates-tag"
 external_predicate_md = """A published release validates TAG-typed map keys at entry-key position and the tagged-key row can mint nonempty two-oracle vectors.
 """
 verification_md = """Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
@@ -2642,7 +2642,7 @@ detail_md = """- **Tag registry — deliberately not pinned or enumerated.** cdd
 
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-tag-registry-boundary-readme"
+authority_reference_id = "readme-what-is-a-feature"
 rationale_md = """Tag numbers remain parameters rather than separate feature rows because cddl-codegen is tag-parametric; enumerate tag semantics only when a consumer needs behavior keyed by a tag number.
 """
 permanence = "reopenable"
@@ -2680,14 +2680,14 @@ detail_md = """- File the prepared typed-tag report for README gap #14:
 
 """
 closeout_state = "due"
-upstream_owner_reference_id = "ref-matrix-typed-tag-report-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-ruling-or-release-rejects"
 current_upstream_state_md = """The paste-ready report cddl-matrix/upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md is committed but no issue is filed.
 """
 verification_md = """File the report; on an 81cbf4 fix remove that exact exemption, re-mint contain.group-choice-arm.type2.tag.fixed_array, run probe/fold, and prune gap 14; do not treat an 81ccf5-only change as closure.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-typed-tag-report-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-ruling-or-release-rejects"
 external_predicate_md = """A published ruling or release rejects wrong fixed payload 81cbf4 for the declared typed tag, or explicitly rules that acceptance correct.
 """
 verification_md = """File the report; on an 81cbf4 fix remove that exact exemption, re-mint contain.group-choice-arm.type2.tag.fixed_array, run probe/fold, and prune gap 14; do not treat an 81ccf5-only change as closure.
@@ -2751,14 +2751,14 @@ detail_md = """- When a rust `cddl` release ships the uint-target control-op fix
   README gap #1's fix-provenance notes.
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-uint-control-operator-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-the"
 current_upstream_state_md = """The fix is submitted upstream; no fresh published-release check has been performed.
 """
 verification_md = """Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-uint-control-operator-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-contains-the"
 external_predicate_md = """A published release contains the submitted uint-target numeric, size, and bits control-operator enforcement fix.
 """
 verification_md = """Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
@@ -2784,14 +2784,14 @@ detail_md = """- When ciborium's generic value decoder preserves CBOR `undefined
 
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-undefined-ciborium-upstream-upstream"
+upstream_owner_reference_id = "release-ciborium-a-published-release-exposes-cbor"
 current_upstream_state_md = """The current generic decoder collapses f7 to Null; no fresh release check has been performed.
 """
 verification_md = """Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-undefined-ciborium-upstream-upstream"
+external_owner_reference_id = "release-ciborium-a-published-release-exposes-cbor"
 external_predicate_md = """A published release exposes CBOR undefined as a distinct generic Value variant rather than Null.
 """
 verification_md = """Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
@@ -2819,14 +2819,14 @@ detail_md = """- When the pinned rust `cddl` validator accepts `validate_cbor_fr
   new exact probe; never promote this one-rule gap to fixture-level `RUST_ORACLE_SKIP`.
 """
 closeout_state = "waiting"
-upstream_owner_reference_id = "ref-matrix-undefined-validator-upstream-upstream"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-accepts-validate"
 current_upstream_state_md = """The pinned validator rejects f7 as Null; no fresh published-release check has been performed.
 """
 verification_md = """Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
 """
 
 [record.payload.retirement_predicate]
-external_owner_reference_id = "ref-matrix-undefined-validator-upstream-upstream"
+external_owner_reference_id = "release-rust-cddl-a-published-release-accepts-validate"
 external_predicate_md = """A published release accepts validate_cbor_from_slice(\"x = undefined\", &[0xf7], None) with RFC 8949 undefined semantics.
 """
 verification_md = """Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
@@ -2905,7 +2905,7 @@ detail_md = """- **Behavioral wasm-surface rows for the `--wasm-*-macro` modes**
   that the compile verdict passed.
 """
 policy_kind = "boundary"
-authority_reference_id = "ref-matrix-wasm-macro-behavior-boundary-source"
+authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n7"
 rationale_md = """Macro modes replace the wrapper method surface with fixture-supplied bodies, so the matrix judges generator compile behavior and skips behavioral claims until a consumer reports a defect that passed compilation.
 """
 permanence = "reopenable"
@@ -3118,966 +3118,371 @@ kind = "complements"
 target = "matrix.undefined-validator-upstream"
 
 [[reference]]
-id = "ref-matrix-additional-tool-annotations-source"
+id = "roadmap-expansion-when-relevant"
 source = "matrix.additional-tool-annotations"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
-id = "ref-matrix-anonymous-nested-map-source"
-source = "matrix.anonymous-nested-map"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-anonymous-nested-map-test-symbol-hbd5658cf60d612f4fe439985da30fa76ec0ec2e2c006a02c7ce137e89fe0a3a4"
-source = "matrix.anonymous-nested-map"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::inline_map_member_rejects_gracefully"
-symbol = "tests::robustness_tests::inline_map_member_rejects_gracefully"
-
-[[reference]]
-id = "ref-matrix-array-sequence-upstream-upstream"
+id = "release-rust-cddl-a-published-release-contains-commit"
 source = "matrix.array-sequence-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release contains commit 773b723 behavior and this repository's Cargo pin can return from local-fixes to that release."
 
 [[reference]]
-id = "ref-matrix-array-sequence-upstream-source"
-source = "matrix.array-sequence-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-bignum-key-tag-upstream-upstream"
+id = "release-rust-cddl-a-published-release-contains-commit-n2"
 source = "matrix.bignum-key-tag-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release contains commit c2ebf9f behavior for bignum map keys and value tags."
 
 [[reference]]
-id = "ref-matrix-bignum-key-tag-upstream-source"
-source = "matrix.bignum-key-tag-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-catalog-build-refusal-spelling-source"
-source = "matrix.catalog-build.refusal-spelling"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Expansion (when relevant)"
-
-[[reference]]
-id = "ref-matrix-cbor-any-boundary-source"
+id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the"
 source = "matrix.cbor-any-boundary"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
 
 [[reference]]
-id = "ref-matrix-control-host-placement-space-source"
-source = "matrix.control-host-placement-space"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Expansion (when relevant)"
-
-[[reference]]
-id = "ref-matrix-derived-variant-naming-source"
-source = "matrix.derived-variant-naming"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-derived-variant-naming-matrix-cell-hc171298bef4859105f334767ea623ba1b87386cb835bc8749ae6a37db7470cc6"
-source = "matrix.derived-variant-naming"
-kind = "matrix_cell"
-cell_id = "contain.array-element.value.number.float"
-
-[[reference]]
-id = "ref-matrix-derived-variant-naming-matrix-cell-h15b9a22bd739df4f14b9d78ab9375d717fa9f98c6a27009c1a196306a0b53f2d"
-source = "matrix.derived-variant-naming"
-kind = "matrix_cell"
-cell_id = "contain.group-choice-arm.type2.value.float_array"
-
-[[reference]]
-id = "ref-matrix-derived-variant-naming-test-symbol-h63091a2b531d6c95cdece4ddace95ecada66fe944cd00a504bd140f8505f2c31"
-source = "matrix.derived-variant-naming"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites"
-symbol = "tests::robustness_tests::lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites"
-
-[[reference]]
-id = "ref-matrix-duplicate-rejection-diagnostics-source"
-source = "matrix.duplicate-rejection-diagnostics"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-emission-input-mode-honesty-source"
+id = "roadmap-wasm-abi-multifile-placement-matrices-remaining"
 source = "matrix.emission-input-mode-honesty"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "wasm-ABI & multifile placement matrices — remaining work"
 
 [[reference]]
-id = "ref-matrix-emission-input-mode-honesty-gate-h3dfbd1ef1869048599d2a3ef6415d96aac6048a4f256e4f2151abf93326e0c3b"
-source = "matrix.emission-input-mode-honesty"
-kind = "gate"
-gate_id = "multifile_matrix_roundtrips"
-
-[[reference]]
-id = "ref-matrix-emission-input-mode-honesty-test-symbol-he768d3e666d11705c92c2ca657bde3c00788d0763a07f481151234d05efd230d"
-source = "matrix.emission-input-mode-honesty"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::emit_tests_multifile_scope_imports"
-symbol = "tests::integration_tests::emit_tests_multifile_scope_imports"
-
-[[reference]]
-id = "ref-matrix-emission-input-mode-honesty-test-symbol-h610ee835471268dd11cd237d5978435b87ea3dba10868a92d605740004d4fa66"
-source = "matrix.emission-input-mode-honesty"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::multifile_matrix_roundtrips"
-symbol = "tests::integration_tests::multifile_matrix_roundtrips"
-
-[[reference]]
-id = "ref-matrix-emission-narrowing-fixture-floor-source"
-source = "matrix.emission-narrowing-fixture-floor"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Matrix-side work — the model and the projections it renders"
-
-[[reference]]
-id = "ref-matrix-emission-narrowing-fixture-floor-matrix-feature-h2ad8572a3f687ed4008b6de60eb09536e0d3bb34b4b824c80ed343e95ac804ae"
-source = "matrix.emission-narrowing-fixture-floor"
-kind = "matrix_feature"
-feature_id = "prelude.float16"
-
-[[reference]]
-id = "ref-matrix-evidence-fixed-value-choice-member-bool-verify"
+id = "gate-verify"
 source = "matrix.evidence.fixed-value-choice-member.bool"
 kind = "gate"
 gate_id = "verify"
 
 [[reference]]
-id = "ref-matrix-evidence-fixed-value-choice-member-bytes-verify"
+id = "gate-verify-n2"
 source = "matrix.evidence.fixed-value-choice-member.bytes"
 kind = "gate"
 gate_id = "verify"
 
 [[reference]]
-id = "ref-matrix-evidence-fixed-value-choice-member-closure-commit"
+id = "commit-dcspark-cddl-codegen"
 source = "matrix.evidence.fixed-value-choice-member.closure"
 kind = "external_commit"
 repository = "dcSpark/cddl-codegen"
 commit = "8320fb3330c5d6febda8910e5a3bb944bcec1466"
 
 [[reference]]
-id = "ref-matrix-evidence-fixed-value-choice-member-float-verify"
+id = "gate-verify-n3"
 source = "matrix.evidence.fixed-value-choice-member.float"
 kind = "gate"
 gate_id = "verify"
 
 [[reference]]
-id = "ref-matrix-evidence-fixed-value-choice-member-nint-verify"
+id = "gate-verify-n4"
 source = "matrix.evidence.fixed-value-choice-member.nint"
 kind = "gate"
 gate_id = "verify"
 
 [[reference]]
-id = "ref-matrix-evidence-fixed-value-choice-member-null-verify"
+id = "gate-verify-n5"
 source = "matrix.evidence.fixed-value-choice-member.null"
 kind = "gate"
 gate_id = "verify"
 
 [[reference]]
-id = "ref-matrix-evidence-fixed-value-choice-member-text-verify"
+id = "gate-verify-n6"
 source = "matrix.evidence.fixed-value-choice-member.text"
 kind = "gate"
 gate_id = "verify"
 
 [[reference]]
-id = "ref-matrix-evidence-fixed-value-choice-member-uint-verify"
+id = "gate-verify-n7"
 source = "matrix.evidence.fixed-value-choice-member.uint"
 kind = "gate"
 gate_id = "verify"
 
 [[reference]]
-id = "ref-matrix-evidence-fixed-value-choice-member-undefined-verify"
+id = "gate-verify-n8"
 source = "matrix.evidence.fixed-value-choice-member.undefined"
 kind = "gate"
 gate_id = "verify"
 
 [[reference]]
-id = "ref-matrix-extern-emitted-test-boundary-source"
+id = "roadmap-explicitly-out-of-scope-decided-not-overlooked"
 source = "matrix.extern-emitted-test-boundary"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
-id = "ref-matrix-extern-execution-multifile-source"
+id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n2"
 source = "matrix.extern-execution-multifile"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
 
 [[reference]]
-id = "ref-matrix-extern-interface-sentinel-boundary-source"
+id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n2"
 source = "matrix.extern-interface-sentinel-boundary"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
-id = "ref-matrix-extern-interface-sentinel-boundary-test-symbol-he632fa4406dbe1fab1da893128bab891aa4e1cff2e070f07c934137b2fceb4fc"
-source = "matrix.extern-interface-sentinel-boundary"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::extern_import_tests::extern_import_unknown_annotation_hard_errors"
-symbol = "tests::extern_import_tests::extern_import_unknown_annotation_hard_errors"
-
-[[reference]]
-id = "ref-matrix-extern-interface-sentinel-boundary-test-symbol-h84cd3459c7b88caf1980e18759ffe0146615cd15a065a7120df20de04f3eb624"
-source = "matrix.extern-interface-sentinel-boundary"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::extern_import_tests::extern_import_unknown_version_hard_errors"
-symbol = "tests::extern_import_tests::extern_import_unknown_version_hard_errors"
-
-[[reference]]
-id = "ref-matrix-fixed-array-static-representation-source"
-source = "matrix.fixed-array.static-representation"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-fixed-bytes-lowercase-base64-parser-upstream"
+id = "release-rust-cddl-parser-one-published-parser-release"
 source = "matrix.fixed-bytes.lowercase-base64-parser"
 kind = "external_release"
 project = "rust cddl parser"
 release = "One published parser release accepts both h'cafe' and b64'yv4=' and lowers them to the same bytes as h'CAFE'."
 
 [[reference]]
-id = "ref-matrix-fixed-bytes-lowercase-base64-parser-source"
-source = "matrix.fixed-bytes.lowercase-base64-parser"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-fixed-bytes-lowercase-base64-parser-matrix-feature-h08813dd88a43b58e591943cf0a6424b22bb2a2503496d5b1d7ffae099891e271"
-source = "matrix.fixed-bytes.lowercase-base64-parser"
-kind = "matrix_feature"
-feature_id = "value.bytes"
-
-[[reference]]
-id = "ref-matrix-fixed-bytes-static-representation-source"
-source = "matrix.fixed-bytes.static-representation"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-fixed-bytes-validator-corroboration-upstream"
+id = "release-rust-cddl-a-published-release-validates-h-cafe"
 source = "matrix.fixed-bytes.validator-corroboration"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release validates h'CAFE' and raw UTF-8 fixed-byte rules without panic and renders arbitrary B16ByteString bytes without a UTF-8 assumption."
 
 [[reference]]
-id = "ref-matrix-fixed-bytes-validator-corroboration-source"
-source = "matrix.fixed-bytes.validator-corroboration"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-fixed-map-key-kinds-source"
-source = "matrix.fixed-map-key-kinds"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-fixed-map-key-kinds-float-arm-cell"
+id = "cell-contain-group-choice-arm-memberkey-value-float-map"
 source = "matrix.fixed-map-key-kinds"
 kind = "matrix_cell"
 cell_id = "contain.group-choice-arm.memberkey.value.float_map"
 
 [[reference]]
-id = "ref-matrix-fixed-map-key-kinds-nint-arm-cell"
+id = "cell-contain-group-choice-arm-memberkey-value-nint-map"
 source = "matrix.fixed-map-key-kinds"
 kind = "matrix_cell"
 cell_id = "contain.group-choice-arm.memberkey.value.nint_map"
 
 [[reference]]
-id = "ref-matrix-fixed-map-key-kinds-float-multi-cell"
+id = "cell-contain-map-key-memberkey-value-float-colon-multi"
 source = "matrix.fixed-map-key-kinds"
 kind = "matrix_cell"
 cell_id = "contain.map-key.memberkey.value.float_colon_multi"
 
 [[reference]]
-id = "ref-matrix-fixed-map-key-kinds-float-single-cell"
+id = "cell-contain-map-key-memberkey-value-float-colon-single"
 source = "matrix.fixed-map-key-kinds"
 kind = "matrix_cell"
 cell_id = "contain.map-key.memberkey.value.float_colon_single"
 
 [[reference]]
-id = "ref-matrix-fixed-map-key-kinds-nint-multi-cell"
+id = "cell-contain-map-key-memberkey-value-nint-colon-multi"
 source = "matrix.fixed-map-key-kinds"
 kind = "matrix_cell"
 cell_id = "contain.map-key.memberkey.value.nint_colon_multi"
 
 [[reference]]
-id = "ref-matrix-fixed-map-key-kinds-nint-single-cell"
+id = "cell-contain-map-key-memberkey-value-nint-colon-single"
 source = "matrix.fixed-map-key-kinds"
 kind = "matrix_cell"
 cell_id = "contain.map-key.memberkey.value.nint_colon_single"
 
 [[reference]]
-id = "ref-matrix-fixed-map-key-kinds-arrow-test"
+id = "test-fixed-key-arrow-single-entry-routes-to-record-path"
 source = "matrix.fixed-map-key-kinds"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::robustness_tests::fixed_key_arrow_single_entry_routes_to_record_path"
 symbol = "tests::robustness_tests::fixed_key_arrow_single_entry_routes_to_record_path"
 
 [[reference]]
-id = "ref-matrix-float-key-null-upstream-upstream"
+id = "release-rust-cddl-a-published-release-contains-commit-n3"
 source = "matrix.float-key-null-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release contains commit 707c038 behavior matching float keys and rejecting null keys."
 
 [[reference]]
-id = "ref-matrix-float-key-null-upstream-source"
-source = "matrix.float-key-null-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-float-prelude-name-upstream-upstream"
+id = "release-rust-cddl-a-published-ruling-or-release"
 source = "matrix.float-prelude-name-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published ruling or release distinguishes the six float prelude names, or explicitly rules that the current common set is correct."
 
 [[reference]]
-id = "ref-matrix-float-prelude-name-upstream-source"
-source = "matrix.float-prelude-name-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-float-table-key-domain-source"
-source = "matrix.float-table-key-domain"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-grammar-derived-legality-source"
-source = "matrix.grammar-derived-legality"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Matrix-side work — the model and the projections it renders"
-
-[[reference]]
-id = "ref-matrix-heterogeneous-array-atomic-bounds-handover-source"
-source = "matrix.heterogeneous-array.atomic-bounds-handover"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-heterogeneous-array-occurrence-bounds-source"
-source = "matrix.heterogeneous-array.occurrence-bounds"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-heterogeneous-array-occurrence-bounds-test-symbol-hfd67d7b05d4c4781bcee5d05b84e193526d4175f16e87317e1b26021553b510a"
-source = "matrix.heterogeneous-array.occurrence-bounds"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::occurrence_on_array_record_field_rejects_gracefully"
-symbol = "tests::robustness_tests::occurrence_on_array_record_field_rejects_gracefully"
-
-[[reference]]
-id = "ref-matrix-incremental-extension-reference-upstream-upstream"
+id = "release-rust-cddl-a-published-release-accumulates-the"
 source = "matrix.incremental-extension-reference-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release accumulates the base = arm and every /= arm when the rule is referenced, for both statement orders."
 
 [[reference]]
-id = "ref-matrix-incremental-group-choice-extension-source"
-source = "matrix.incremental-group-choice-extension"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-incremental-group-choice-extension-matrix-feature-h5b083d4924ca3e4d8bd4f787e398081a08bbee414f5c04c3405237e8e8d7c2f0"
-source = "matrix.incremental-group-choice-extension"
-kind = "matrix_feature"
-feature_id = "assigng.extend"
-
-[[reference]]
-id = "ref-matrix-incremental-group-choice-extension-test-symbol-hc308529dce23517c4388ea99a62241309f2a01ffc5e61bb563d44076e78efb20"
-source = "matrix.incremental-group-choice-extension"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::incremental_choice_extension_rejects_gracefully"
-symbol = "tests::robustness_tests::incremental_choice_extension_rejects_gracefully"
-
-[[reference]]
-id = "ref-matrix-incremental-group-choice-extension-test-symbol-h3435f4481ae75f3e6dcf22d401d1ddeddb1bc1a537880e7c754a2befbe7322bd"
-source = "matrix.incremental-group-choice-extension"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::incremental_type_choice_extension_equals_the_folded_spelling"
-symbol = "tests::robustness_tests::incremental_type_choice_extension_equals_the_folded_spelling"
-
-[[reference]]
-id = "ref-matrix-inline-cbor-containment-boundary-source"
+id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n3"
 source = "matrix.inline-cbor-containment-boundary"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
-id = "ref-matrix-inline-group-choice-arm-source"
-source = "matrix.inline-group-choice-arm"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-inline-group-choice-arm-test-symbol-h54db0c4ff165bd4d0658d345b1c86709baf26fe4ac5cee446887679a939fec27"
-source = "matrix.inline-group-choice-arm"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::inline_group_choice_arm_rejects_gracefully"
-symbol = "tests::robustness_tests::inline_group_choice_arm_rejects_gracefully"
-
-[[reference]]
-id = "ref-matrix-inline-group-occurrence-carrier-source"
-source = "matrix.inline-group-occurrence-carrier"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-interaction-tuples-boundary-source"
+id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n4"
 source = "matrix.interaction-tuples-boundary"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
-id = "ref-matrix-intra-alternative-variations-source"
+id = "roadmap-expansion-when-relevant-n2"
 source = "matrix.intra-alternative-variations"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
-id = "ref-matrix-intra-alternative-variations-matrix-cell-h69411725956c41c8b40e1e28b2615941e6e8c79f55688d0c9845dc29615539c4"
-source = "matrix.intra-alternative-variations"
-kind = "matrix_cell"
-cell_id = "contain.group-choice-arm.grpent.member.record_array"
-
-[[reference]]
-id = "ref-matrix-intra-alternative-variations-matrix-cell-hfcc1cb76f6e6d346dceee54436e6c6ae5ab2ecc8b76a051311a365477b4e7902"
-source = "matrix.intra-alternative-variations"
-kind = "matrix_cell"
-cell_id = "contain.group-choice-arm.grpent.member.record_array_tagged"
-
-[[reference]]
-id = "ref-matrix-intra-alternative-variations-matrix-feature-h5c7cca55a6c3a48cdef0aa5c63f2c6bb8b27590a6123d6f1220636e24983c433"
-source = "matrix.intra-alternative-variations"
-kind = "matrix_feature"
-feature_id = "ctl.size.uint"
-
-[[reference]]
-id = "ref-matrix-keyed-struct-map-zero-permitting-fields-source"
-source = "matrix.keyed-struct-map.zero-permitting-fields"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-matching-semantics-boundary-source"
+id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n5"
 source = "matrix.matching-semantics-boundary"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
-id = "ref-matrix-multi-choice-group-rule-source"
+id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n3"
 source = "matrix.multi-choice-group-rule"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
 
 [[reference]]
-id = "ref-matrix-multi-choice-group-rule-test-symbol-he33428087a5520d55ccb58f1a14551acdbe8ab392c7debf1b5d71f857adc4176"
-source = "matrix.multi-choice-group-rule"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::multi_choice_group_rule_body_rejects_gracefully_at_every_placement"
-symbol = "tests::robustness_tests::multi_choice_group_rule_body_rejects_gracefully_at_every_placement"
-
-[[reference]]
-id = "ref-matrix-multifile-extern-shape-coverage-source"
-source = "matrix.multifile.extern-shape-coverage"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-multifile-extern-shape-coverage-test-symbol-hf56c41fd40492d55461f131282a45332d6dbcf25870414ace33425828a1011dd"
-source = "matrix.multifile.extern-shape-coverage"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::facade_composition_compiles"
-symbol = "tests::integration_tests::facade_composition_compiles"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-source"
-source = "matrix.named-group-reference-grid"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Matrix-side work — the model and the projections it renders"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-matrix-cell-h66b63f5c90c9b74b67d625cf9b0582fa5f419d9ddd74d89c1c475ba0cdade9bf"
-source = "matrix.named-group-reference-grid"
-kind = "matrix_cell"
-cell_id = "contain.occurrence-target.grpent.groupname"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-matrix-feature-h426e62421b1731e35d01427c8bfdd08407d12969182f7d932a4c953146e1b002"
-source = "matrix.named-group-reference-grid"
-kind = "matrix_feature"
-feature_id = "grpent.groupname"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-test-symbol-hc0ea16d066113657e4f74b2e107785e7d359de131c092a7db32916fdcb993bbe"
-source = "matrix.named-group-reference-grid"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::alias_to_plain_group_in_array_positions_matches_the_direct_reference"
-symbol = "tests::robustness_tests::alias_to_plain_group_in_array_positions_matches_the_direct_reference"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-test-symbol-h2fac391264aa9f0344a6f58b97a375b787755e2a6efe8bcb4fce486b21f059ae"
-source = "matrix.named-group-reference-grid"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::occurrence_on_single_entry_group_choice_arm_rejects_gracefully"
-symbol = "tests::robustness_tests::occurrence_on_single_entry_group_choice_arm_rejects_gracefully"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-test-symbol-h37cdcfd8cf26f01c01b77dc890ef3669627c791b6a6f04ec1a38932e9ab65747"
-source = "matrix.named-group-reference-grid"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::optional_plain_group_array_field_rejects_gracefully_at_every_spelling"
-symbol = "tests::robustness_tests::optional_plain_group_array_field_rejects_gracefully_at_every_spelling"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-test-symbol-hdc9c132fe885ee33dbe61c1b4b1e2eead4cb9344df5373a5f72497c46d70d007"
-source = "matrix.named-group-reference-grid"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::plain_group_array_rest_tail_rejects_gracefully_at_every_spelling"
-symbol = "tests::robustness_tests::plain_group_array_rest_tail_rejects_gracefully_at_every_spelling"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-test-symbol-h8e06933acb7ac03ae8f8782491cfdf0f11fd7fa04531453e98bc085e9309e1fa"
-source = "matrix.named-group-reference-grid"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::plain_group_keyed_map_member_rejects_gracefully_at_every_spelling"
-symbol = "tests::robustness_tests::plain_group_keyed_map_member_rejects_gracefully_at_every_spelling"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-test-symbol-h6bbc213f263309e2fe8d423df6b297fbc53a13502481046f3eefab24c18408f0"
-source = "matrix.named-group-reference-grid"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::plain_group_map_rest_row_rejects_gracefully_at_every_spelling"
-symbol = "tests::robustness_tests::plain_group_map_rest_row_rejects_gracefully_at_every_spelling"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-test-symbol-h0773615ee176063632b922229cc2999c4ee1fa0b3cecd6a14fa8687264002b26"
-source = "matrix.named-group-reference-grid"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::plain_group_table_domain_rejects_gracefully_at_both_spellings"
-symbol = "tests::robustness_tests::plain_group_table_domain_rejects_gracefully_at_both_spellings"
-
-[[reference]]
-id = "ref-matrix-named-group-reference-grid-test-symbol-h58fa46057585c114a5d3083c7ce2ac318ad3a9d3b9b74de3e5778c6be6ad7268"
-source = "matrix.named-group-reference-grid"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::plain_group_type_choice_arm_rejects_gracefully_at_every_spelling"
-symbol = "tests::robustness_tests::plain_group_type_choice_arm_rejects_gracefully_at_every_spelling"
-
-[[reference]]
-id = "ref-matrix-named-rule-map-key-upstream-upstream"
+id = "release-rust-cddl-a-published-release-resolves-named"
 source = "matrix.named-rule-map-key-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions."
 
 [[reference]]
-id = "ref-matrix-named-rule-map-key-upstream-source"
-source = "matrix.named-rule-map-key-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-nint-capability-source"
-source = "matrix.nint-capability"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-nominal-custom-pair-wrapper-source"
-source = "matrix.nominal-custom-pair-wrapper"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-non-uint-range-upstream-upstream"
+id = "release-rust-cddl-a-published-release-contains-commit-n4"
 source = "matrix.non-uint-range-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release contains commit 885c61c behavior for integer-sign and float range endpoints."
 
 [[reference]]
-id = "ref-matrix-non-uint-range-upstream-source"
-source = "matrix.non-uint-range-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-open-array-optional-adjacency-source"
+id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n4"
 source = "matrix.open-array.optional-adjacency"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
 
 [[reference]]
-id = "ref-matrix-open-table-bounded-rest-rows-source"
-source = "matrix.open-table.bounded-rest-rows"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-open-table-min-one-hardening-source"
-source = "matrix.open-table.min-one-hardening"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-optional-closed-map-upstream-upstream"
+id = "release-rust-cddl-a-published-release-contains-commit-n5"
 source = "matrix.optional-closed-map-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release contains commit 3d56d8e behavior for optional entries, closed maps, and JSON type-domain keys."
 
 [[reference]]
-id = "ref-matrix-optional-closed-map-upstream-source"
-source = "matrix.optional-closed-map-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-over-acceptance-ast-notes-source"
+id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n6"
 source = "matrix.over-acceptance-ast-notes"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Explicitly out of scope (decided, not overlooked)"
 
 [[reference]]
-id = "ref-matrix-over-acceptance-denominator-source"
+id = "roadmap-pending-decisions-need-a-human-call"
 source = "matrix.over-acceptance-denominator"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Pending decisions (need a human call)"
 
 [[reference]]
-id = "ref-matrix-per-value-encoding-reachability-source"
-source = "matrix.per-value-encoding-reachability"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Matrix-side work — the model and the projections it renders"
-
-[[reference]]
-id = "ref-matrix-periodic-coverage-honesty-source"
+id = "roadmap-wasm-abi-multifile-placement-matrices-remaining-n2"
 source = "matrix.periodic-coverage-honesty"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "wasm-ABI & multifile placement matrices — remaining work"
 
 [[reference]]
-id = "ref-matrix-prelude-number-float-upstream-upstream"
+id = "release-rust-cddl-a-published-release-contains-commit-n6"
 source = "matrix.prelude-number-float-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release contains commit 90f66ff behavior accepting floats for prelude number while preserving non-number rejection."
 
 [[reference]]
-id = "ref-matrix-prelude-number-float-upstream-source"
-source = "matrix.prelude-number-float-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-profile-version-scope-source"
+id = "roadmap-expansion-when-relevant-n3"
 source = "matrix.profile-version-scope"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
-id = "ref-matrix-profile-version-scope-test-symbol-h009c89f836e71a35cdbd501c616416f0ee8071151a6efd8eed873e2bedf892a9"
-source = "matrix.profile-version-scope"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::dotted_rule_name_rejects_gracefully"
-symbol = "tests::robustness_tests::dotted_rule_name_rejects_gracefully"
-
-[[reference]]
-id = "ref-matrix-profile-version-scope-test-symbol-h61d60e6bdbd3cebc13aeb7e9c9c98b6509150204cdcf662f9eb31f38664e9d75"
-source = "matrix.profile-version-scope"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::module_directive_import_aborts"
-symbol = "tests::robustness_tests::module_directive_import_aborts"
-
-[[reference]]
-id = "ref-matrix-profile-version-scope-test-symbol-h13e0cec18598816e4613691cf41e9bcf059dd0c57c02d4d76a491167754fb314"
-source = "matrix.profile-version-scope"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::module_directive_include_aborts"
-symbol = "tests::robustness_tests::module_directive_include_aborts"
-
-[[reference]]
-id = "ref-matrix-radix-literal-upstream-upstream"
+id = "release-rust-cddl-a-published-release-contains-commit-n7"
 source = "matrix.radix-literal-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release contains commit 2c7548e behavior for RFC radix integers in every uint_value position."
 
 [[reference]]
-id = "ref-matrix-radix-literal-upstream-source"
-source = "matrix.radix-literal-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-refusal-spelling-space-source"
+id = "roadmap-expansion-when-relevant-n4"
 source = "matrix.refusal-spelling-space"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"
 heading = "Expansion (when relevant)"
 
 [[reference]]
-id = "ref-matrix-refusal-spelling-space-test-symbol-hc308529dce23517c4388ea99a62241309f2a01ffc5e61bb563d44076e78efb20"
-source = "matrix.refusal-spelling-space"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::incremental_choice_extension_rejects_gracefully"
-symbol = "tests::robustness_tests::incremental_choice_extension_rejects_gracefully"
-
-[[reference]]
-id = "ref-matrix-root-reference-placement-source"
-source = "matrix.root-reference-placement"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "wasm-ABI & multifile placement matrices — remaining work"
-
-[[reference]]
-id = "ref-matrix-ruby-inline-controller-upstream-upstream"
+id = "release-ruby-cddl-a-published-gem-parses-inline"
 source = "matrix.ruby-inline-controller-upstream"
 kind = "external_release"
 project = "ruby cddl"
 release = "A published gem parses inline/composite type2 controller arguments such as bytes .cbor [coords]."
 
 [[reference]]
-id = "ref-matrix-ruby-inline-controller-upstream-source"
-source = "matrix.ruby-inline-controller-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-ruby-inline-controller-upstream-gate-h37ab533528d556b009ac69218a69697c710696fb842eb297066a3281cd648a3e"
-source = "matrix.ruby-inline-controller-upstream"
-kind = "gate"
-gate_id = "ir_conformance_corpus"
-
-[[reference]]
-id = "ref-matrix-ruby-inline-controller-upstream-test-symbol-h142abf10bbca135b2dbc334b5018462188b09168c9fee41df9137699cf432db8"
-source = "matrix.ruby-inline-controller-upstream"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::ir_conformance_corpus"
-symbol = "tests::integration_tests::ir_conformance_corpus"
-
-[[reference]]
-id = "ref-matrix-signed-int-size-upstream-upstream"
+id = "release-rust-cddl-a-published-release-validates-int-size"
 source = "matrix.signed-int-size-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release validates int .size N as the uint arm's window with nint values as per-value non-matches, and durable spec text records the clarification."
 
 [[reference]]
-id = "ref-matrix-signed-int-size-upstream-source"
-source = "matrix.signed-int-size-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-signed-int-size-upstream-test-symbol-hdfd2d17fd17c7c18dcf412d66cb31f3673211f7db6676f344be4d86b8b2999ef"
-source = "matrix.signed-int-size-upstream"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::size_on_signed_int_rejects_gracefully"
-symbol = "tests::robustness_tests::size_on_signed_int_rejects_gracefully"
-
-[[reference]]
-id = "ref-matrix-string-key-mixed-rest-upstream-upstream"
+id = "release-rust-cddl-a-published-release-permits-zero-rest"
 source = "matrix.string-key-mixed-rest-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release permits zero rest entries for bytes- and tstr-keyed star rows in mixed maps while retaining required declared entries."
 
 [[reference]]
-id = "ref-matrix-tag-map-key-upstream-upstream"
+id = "release-rust-cddl-a-published-release-validates-tag"
 source = "matrix.tag-map-key-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release validates TAG-typed map keys at entry-key position and the tagged-key row can mint nonempty two-oracle vectors."
 
 [[reference]]
-id = "ref-matrix-tag-map-key-upstream-source"
-source = "matrix.tag-map-key-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-tag-registry-boundary-readme"
+id = "readme-what-is-a-feature"
 source = "matrix.tag-registry-boundary"
 kind = "file_heading"
 path = "cddl-matrix/README.md"
 heading = "What is a feature?"
 
 [[reference]]
-id = "ref-matrix-tag-registry-boundary-source"
-source = "matrix.tag-registry-boundary"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Matrix-side work — the model and the projections it renders"
-
-[[reference]]
-id = "ref-matrix-tag-registry-boundary-matrix-feature-hb1e1c03cf6dc46c3e4355782d3ee9a5199f53e09932227b5279824c73a34665f"
-source = "matrix.tag-registry-boundary"
-kind = "matrix_feature"
-feature_id = "type2.tag"
-
-[[reference]]
-id = "ref-matrix-typed-tag-report-upstream-upstream"
+id = "release-rust-cddl-a-published-ruling-or-release-rejects"
 source = "matrix.typed-tag-report-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published ruling or release rejects wrong fixed payload 81cbf4 for the declared typed tag, or explicitly rules that acceptance correct."
 
 [[reference]]
-id = "ref-matrix-typed-tag-report-upstream-source"
-source = "matrix.typed-tag-report-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-uint-control-operator-upstream-upstream"
+id = "release-rust-cddl-a-published-release-contains-the"
 source = "matrix.uint-control-operator-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release contains the submitted uint-target numeric, size, and bits control-operator enforcement fix."
 
 [[reference]]
-id = "ref-matrix-uint-control-operator-upstream-source"
-source = "matrix.uint-control-operator-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-undefined-ciborium-upstream-upstream"
+id = "release-ciborium-a-published-release-exposes-cbor"
 source = "matrix.undefined-ciborium-upstream"
 kind = "external_release"
 project = "ciborium"
 release = "A published release exposes CBOR undefined as a distinct generic Value variant rather than Null."
 
 [[reference]]
-id = "ref-matrix-undefined-ciborium-upstream-source"
-source = "matrix.undefined-ciborium-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-undefined-ciborium-upstream-test-symbol-h0635259bd29ab695dd637dba1fbf6f0017c064c5680ce01495e8de83821f6860"
-source = "matrix.undefined-ciborium-upstream"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::reference_codec_differential_self_check"
-symbol = "tests::integration_tests::reference_codec_differential_self_check"
-
-[[reference]]
-id = "ref-matrix-undefined-validator-upstream-upstream"
+id = "release-rust-cddl-a-published-release-accepts-validate"
 source = "matrix.undefined-validator-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release accepts validate_cbor_from_slice(\"x = undefined\", &[0xf7], None) with RFC 8949 undefined semantics."
 
 [[reference]]
-id = "ref-matrix-undefined-validator-upstream-source"
-source = "matrix.undefined-validator-upstream"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Upstream close-outs (waiting on external releases)"
-
-[[reference]]
-id = "ref-matrix-undefined-validator-upstream-gate-h37ab533528d556b009ac69218a69697c710696fb842eb297066a3281cd648a3e"
-source = "matrix.undefined-validator-upstream"
-kind = "gate"
-gate_id = "ir_conformance_corpus"
-
-[[reference]]
-id = "ref-matrix-undefined-validator-upstream-test-symbol-h142abf10bbca135b2dbc334b5018462188b09168c9fee41df9137699cf432db8"
-source = "matrix.undefined-validator-upstream"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::ir_conformance_corpus"
-symbol = "tests::integration_tests::ir_conformance_corpus"
-
-[[reference]]
-id = "ref-matrix-wasm-extern-wrapper-demand-source"
-source = "matrix.wasm-extern-wrapper-demand"
-kind = "file_heading"
-path = "cddl-matrix/ROADMAP.md"
-heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-
-[[reference]]
-id = "ref-matrix-wasm-macro-behavior-boundary-source"
+id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n7"
 source = "matrix.wasm-macro-behavior-boundary"
 kind = "file_heading"
 path = "cddl-matrix/ROADMAP.md"

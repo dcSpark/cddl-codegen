@@ -46,6 +46,7 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_write_authoritative_testing",
   "cli_query_each_view",
   "cli_format_declared_source",
+  "cli_format_collects_uncited_references",
   "cli_no_args_rejected",
   "cli_unknown_option",
   "cli_missing_value",
@@ -830,6 +831,32 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         Array.isArray(roadmap.authored_content) && (roadmap.authored_content as readonly Record<string, unknown>[])
           .every((entry) => !("markdown" in entry) && "transformation" in entry && "output_sha256" in entry)),
       "content dashboard does not expose audit-only prose plus metadata-only exact reachability");
+      return pass("positive");
+    }
+    case "cli_format_collects_uncited_references": {
+      // The planted row is deliberately UNRESOLVABLE: if collection did not precede validation,
+      // the format run would fail on the missing gate instead of sweeping the row away.
+      const planted = '\n[[reference]]\nid = "uncited-residue"\nsource = "testing.fixture-small-semantic"\n' +
+        'kind = "gate"\ngate_id = "gate-that-does-not-exist"\n';
+      const generic = validGenericAllPorts(context);
+      const target = "tests/testing-roadmap.toml" as RepoPath;
+      let written: Uint8Array | undefined;
+      const ports = fakePorts({
+        read: (path) => path === target
+          ? UTF8.encode(`${new TextDecoder().decode(generic.read.readDeclared(path))}${planted}`)
+          : generic.read.readDeclared(path),
+        registry: generic.read.registryView,
+        atomic: (_path, bytes) => { written = bytes; },
+      });
+      const result = run(["--format-source", target], ports);
+      const stdout = text(result.stdout);
+      assert(result.exit_code === 0 && stdout.includes("collected_references=1"),
+        `uncited reference was not collected: ${stdout}`);
+      assert(written !== undefined && !new TextDecoder().decode(written).includes("uncited-residue"),
+        "collected reference survived into the formatted source");
+      const clean = run(["--format-source", target], validTestingPorts(context, () => {}));
+      assert(text(clean.stdout).includes("collected_references=0"),
+        "a source with no residue reported a collection");
       return pass("positive");
     }
     case "cli_format_declared_source":

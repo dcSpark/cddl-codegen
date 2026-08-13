@@ -353,7 +353,7 @@ detail_md = """- **Add a PROFILE axis to the wrapper-participation grid only whe
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.add-profile-wrapper-participation-grid-participation-differs-across.
 """
-authority_reference_id = "ref-testing-add-profile-wrapper-participation-grid-participation-differs-across-authority"
+authority_reference_id = "testing-guard-add-profile-wrapper-participation-grid"
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
@@ -539,7 +539,7 @@ detail_md = """- **The arm-position axis's classifier is a compile-time forcing 
 """
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-arm-position-s-classifier-compile-time-forcing-function-gate-he00a841db53ba7a7564c502924f7598afeaf955962ec6bc5d5081a220a841f21"]
+reference_ids = ["gate-no-silent-directive"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.arm-position-s-classifier-compile-time-forcing-function's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -870,7 +870,7 @@ detail_md = """- **Checking `[runtime] flavor-from`'s safety condition rather th
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.checking-runtime-flavor-s-safety-condition-rather-stating.
 """
-authority_reference_id = "ref-testing-checking-runtime-flavor-s-safety-condition-rather-stating-authority"
+authority_reference_id = "testing-guard-checking-runtime-flavor-s-safety-condition"
 permanence = "permanent"
 
 [[record]]
@@ -986,7 +986,7 @@ detail_md = """- **The complete `cargo-mutants` sweep will never be run.** The c
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.complete-cargo-mutants-sweep-will-never-run.
 """
-authority_reference_id = "ref-testing-complete-cargo-mutants-sweep-will-never-run-authority"
+authority_reference_id = "testing-guard-complete-cargo-mutants-sweep-will-never"
 permanence = "permanent"
 
 [[record]]
@@ -1795,7 +1795,7 @@ detail_md = """- **A docs-vs-behavior conformance harness for `comment_dsl.mdx` 
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx.
 """
-authority_reference_id = "ref-testing-docs-vs-behavior-conformance-harness-comment-dsl-mdx-authority"
+authority_reference_id = "testing-guard-docs-vs-behavior-conformance-harness"
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
@@ -1992,7 +1992,7 @@ detail_md = """2. **Duplicates-policy residuals.** Both `@duplicates` flavors ar
 """
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-duplicates-policy-residuals-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n7"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.duplicates-policy-residuals's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -2379,7 +2379,7 @@ detail_md = """- **Exclusion-record reasons are informational, not interchange.*
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.exclusion-reasons-informational-interchange.
 """
-authority_reference_id = "ref-testing-exclusion-reasons-informational-interchange-authority"
+authority_reference_id = "readme-extern-interface-export-extern-import-the-machine"
 permanence = "permanent"
 
 [[record]]
@@ -2561,7 +2561,7 @@ detail_md = """- **The extern-interface export is a public interchange format.**
 """
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-extern-interface-export-public-interchange-format-file-heading-hcd398e660853cc36a8775a2364f8f7dcdd7f9c1a4fee1a20a98b392f5dcdc1ce"]
+reference_ids = ["readme-extern-interface-export-extern-import-the-machine-n2"]
 claim_md = """The extern-interface versioning and strict-reader contract in the referenced durable documentation remains authoritative.
 """
 boundary_md = """This control owns the public interchange-format boundary and does not imply delivery of a new dialect.
@@ -2637,7 +2637,7 @@ detail_md = """- **A failing snapshot test surfaces ONE mismatch per test run �
 """
 control_kind = "operator_procedure"
 control_state = "live"
-reference_ids = ["ref-testing-failing-snapshot-test-surfaces-mismatch-per-test-run-file-heading-hdfda06d801b21d0d5d207c3f6d65dfb210bc07372c22ac4db084fd65eefa1c3c"]
+reference_ids = ["readme-blessing-changes"]
 claim_md = """The operator procedure in testing.failing-snapshot-test-surfaces-mismatch-per-test-run's preserved detail remains authoritative.
 """
 boundary_md = """This procedure owns its exact operating surface and does not infer adjacent lifecycle work.
@@ -2918,7 +2918,7 @@ detail_md = """- **A no-flag `cddl-codegen` invocation is a WASM run — the `wa
 """
 control_kind = "operator_procedure"
 control_state = "live"
-reference_ids = ["ref-testing-flag-cddl-codegen-invocation-wasm-run-wasm-flag-file-heading-h759f2d7eb8a0852ae365a6dccd08e73b4522e560bc3c7e8c7801b2377f6a959c"]
+reference_ids = ["agents-build-verify"]
 claim_md = """The operator procedure in testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag's preserved detail remains authoritative.
 """
 boundary_md = """This procedure owns its exact operating surface and does not infer adjacent lifecycle work.
@@ -3006,7 +3006,7 @@ detail_md = """- **Full `2^N` flag powerset / PICT pairwise** — the curated na
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.full-n-flag-powerset-pict-pairwise.
 """
-authority_reference_id = "ref-testing-full-n-flag-powerset-pict-pairwise-authority"
+authority_reference_id = "testing-guard-full-n-flag-powerset-pict-pairwise"
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
@@ -3082,7 +3082,7 @@ detail_md = """- **Gate-cache residual costs.** The nested-cargo gates (`feature
 """
 control_kind = "operator_procedure"
 control_state = "live"
-reference_ids = ["ref-testing-gate-cache-costs-file-heading-hd2498b1dbcaca730bce673b3f6bff5a3a73caa75e63e4868b1df30dd358f795c"]
+reference_ids = ["readme-the-gate-cache-memoize-and-skip-for-nested-cargo"]
 claim_md = """The operator procedure in testing.gate-cache-costs's preserved detail remains authoritative.
 """
 boundary_md = """This procedure owns its exact operating surface and does not infer adjacent lifecycle work.
@@ -3325,7 +3325,7 @@ detail_md = """- **A gate's own stdout can print a column-0 `RESULT: PASS (...)`
 """
 control_kind = "operator_procedure"
 control_state = "live"
-reference_ids = ["ref-testing-gate-s-own-stdout-print-column-result-pass-file-heading-h759f2d7eb8a0852ae365a6dccd08e73b4522e560bc3c7e8c7801b2377f6a959c"]
+reference_ids = ["agents-build-verify-n2"]
 claim_md = """The operator procedure in testing.gate-s-own-stdout-print-column-result-pass's preserved detail remains authoritative.
 """
 boundary_md = """This procedure owns its exact operating surface and does not infer adjacent lifecycle work.
@@ -3394,7 +3394,7 @@ detail_md = """8. **The generated-local collision class is refused, not mangled 
 """
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-generated-local-collision-class-refused-mangled-refusal-s-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n14"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.generated-local-collision-class-refused-mangled-refusal-s's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3496,7 +3496,7 @@ detail_md = """- **A generic RAW-BYTES base is refused, where a generic EXTERN b
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.generic-raw-bytes-base-refused-generic-extern-base.
 """
-authority_reference_id = "ref-testing-generic-raw-bytes-base-refused-generic-extern-base-authority"
+authority_reference_id = "testing-guard-generic-raw-bytes-base-refused-generic"
 permanence = "permanent"
 
 [[record]]
@@ -3517,7 +3517,7 @@ detail_md = """1. **Grammar-fuzzer escalations.** The lazy-first shape-recombina
 """
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-grammar-fuzzer-escalations-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n17"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.grammar-fuzzer-escalations's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3685,7 +3685,7 @@ title = "Current control for testing.add-profile-wrapper-participation-grid-part
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-add-profile-wrapper-participation-grid-participation-differs-across-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.add-profile-wrapper-participation-grid-participation-differs-across's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3699,7 +3699,7 @@ title = "Current control for testing.alloc-imports-nested-inline-modules-hand-ca
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-alloc-imports-nested-inline-modules-hand-carried-design-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n2"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.alloc-imports-nested-inline-modules-hand-carried-design's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3713,7 +3713,7 @@ title = "Current control for testing.armed-idle-harness-arms-empty-head-ledgers-
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-armed-idle-harness-arms-empty-head-ledgers-zero-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"]
+reference_ids = ["gate-lint-doc-citations"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.armed-idle-harness-arms-empty-head-ledgers-zero's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3727,7 +3727,7 @@ title = "Current control for testing.cargo-feature-generated-crate-s-dependency-
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-cargo-feature-generated-crate-s-dependency-change-what-test-symbol-ha4c9663bd6e6a90fce72f489a54d11a70788c1b746766d7e0d016ba6b004788d"]
+reference_ids = ["test-json-arbitrary-precision"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.cargo-feature-generated-crate-s-dependency-change-what's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3741,7 +3741,7 @@ title = "Current control for testing.checking-runtime-flavor-s-safety-condition-
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-checking-runtime-flavor-s-safety-condition-rather-stating-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.checking-runtime-flavor-s-safety-condition-rather-stating's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3755,7 +3755,7 @@ title = "Current control for testing.citation-resolves-naming-wrong-thing-invisi
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-citation-resolves-naming-wrong-thing-invisible-citation-lint-test-symbol-hffa7bf63970bb6799e6e97c59cb4cd4406606d343959edae1718ba9e2e0b8adf"]
+reference_ids = ["test-known-panic-classes-cite-fixtures-that-produce-them"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.citation-resolves-naming-wrong-thing-invisible-citation-lint's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3769,7 +3769,7 @@ title = "Current control for testing.comment-residue-false-matches-text-scans-ov
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-comment-residue-false-matches-text-scans-over-emitted-test-symbol-hc73eeb7dc4e0a05361f26c1616137125d0276df00a81387f23f0f1e9d87cdd5c"]
+reference_ids = ["test-extern-reexport-diagnostic-skips-replace-deleted"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.comment-residue-false-matches-text-scans-over-emitted's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3783,7 +3783,7 @@ title = "Current control for testing.complete-cargo-mutants-sweep-will-never-run
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-complete-cargo-mutants-sweep-will-never-run-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n2"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.complete-cargo-mutants-sweep-will-never-run's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3797,7 +3797,7 @@ title = "Current control for testing.containment-note-s-stated-reason-go-false-a
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-containment-note-s-stated-reason-go-false-any-gate-h6a27f79888f19ab92549180ecdcdf05a24145020e97ee6233a1528a47d151786"]
+reference_ids = ["gate-project-corpus"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.containment-note-s-stated-reason-go-false-any's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3811,7 +3811,7 @@ title = "Current control for testing.control-bytes-committed-source-files-proven
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-control-bytes-committed-source-files-proven-instance-machinery-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797", "ref-testing-control-bytes-committed-source-files-proven-instance-machinery-gate-ha6b9f717f086d7bc829bcf9c7b9f53ffa31fd91a125917ab3510ddada4d8954c"]
+reference_ids = ["gate-lint-doc-citations-n2", "gate-matrix-typecheck"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.control-bytes-committed-source-files-proven-instance-machinery's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3825,7 +3825,7 @@ title = "Current control for testing.corpus-wide-regen-over-prior-output-sweep-r
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-corpus-wide-regen-over-prior-output-sweep-reaches-gate-hf08fa6f837ebd524c01449e86c1865d65b0025a02ada385d347479b8c08b15c8"]
+reference_ids = ["gate-regen-over-prior-output-corpus"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.corpus-wide-regen-over-prior-output-sweep-reaches's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3839,7 +3839,7 @@ title = "Current control for testing.dependency-swap-pass-compile-parity-existin
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-dependency-swap-pass-compile-parity-existing-gate-silently-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n3"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.dependency-swap-pass-compile-parity-existing-gate-silently's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3853,7 +3853,7 @@ title = "Current control for testing.directive-dependent-emitter-edge-case-trigg
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-directive-dependent-emitter-edge-case-triggering-shape-hand-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n4"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.directive-dependent-emitter-edge-case-triggering-shape-hand's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3867,7 +3867,7 @@ title = "Current control for testing.directive-s-documented-sentence-stay-true-c
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-directive-s-documented-sentence-stay-true-consumer-visible-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n5"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.directive-s-documented-sentence-stay-true-consumer-visible's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3881,7 +3881,7 @@ title = "Current control for testing.docs-vs-behavior-conformance-harness-commen
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-docs-vs-behavior-conformance-harness-comment-dsl-mdx-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n3"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3895,7 +3895,7 @@ title = "Current control for testing.documented-failure-shape-exercises-prose-cr
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-documented-failure-shape-exercises-prose-cross-crate-int-test-symbol-h4c5e041e97a704e70c4a95276f741dd0e153a6e8cab36dea83486c0d206018f8", "ref-testing-documented-failure-shape-exercises-prose-cross-crate-int-test-symbol-h8e57dd2c7c817395d3ecbe80f5de769676ca735f3c57392108c2b5e3bff80b56"]
+reference_ids = ["test-extern-deps", "test-int-key-via-common-import-override-sidecar"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.documented-failure-shape-exercises-prose-cross-crate-int's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3909,7 +3909,7 @@ title = "Current control for testing.documented-flag-pairing-broken-fixture-stay
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-documented-flag-pairing-broken-fixture-stays-green-because-test-symbol-h567379bcd8f6b431087b7c8a5a70ec1c1dc112624da15e371ac4d0117dcd009f", "ref-testing-documented-flag-pairing-broken-fixture-stays-green-because-test-symbol-hc64f92382996eb99ea23f2c1b7c6a03857d28d5348d758322267f30a93056c52"]
+reference_ids = ["test-common-override-wasm-int", "test-extern-deps-wasm"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.documented-flag-pairing-broken-fixture-stays-green-because's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3923,7 +3923,7 @@ title = "Current control for testing.doubled-doc-comment-markers-emitted-docs-pr
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-doubled-doc-comment-markers-emitted-docs-proven-instance-test-symbol-haf7edde0b79ace73f9b150c48055de3ca3348b998530b48a7b91250a394d3404"]
+reference_ids = ["test-generated-code-clippy-clean"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.doubled-doc-comment-markers-emitted-docs-proven-instance's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3937,7 +3937,7 @@ title = "Current control for testing.dsl-position-tests-string-level-design-gree
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-dsl-position-tests-string-level-design-green-emitted-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n6"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.dsl-position-tests-string-level-design-green-emitted's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3951,7 +3951,7 @@ title = "Current control for testing.duplicates.dedicated-generic-collision-mess
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-duplicates-dedicated-generic-collision-message-test-symbol-h5fad85f77abba604c3e768d2d77129d2a6a626795833b7048bb3e2e7d906dbc2"]
+reference_ids = ["test-inline-n258-nominal-name-collision-is-rejected"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.duplicates.dedicated-generic-collision-message's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3965,7 +3965,7 @@ title = "Current control for testing.emission-branch-generated-output-fixture-ex
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-emission-branch-generated-output-fixture-exercises-invisible-gate-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n8"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.emission-branch-generated-output-fixture-exercises-invisible-gate's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3979,7 +3979,7 @@ title = "Current control for testing.emit-tests-gate-asserts-round-trip-green-ca
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-emit-tests-gate-asserts-round-trip-green-cannot-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n9"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.emit-tests-gate-asserts-round-trip-green-cannot's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -3993,7 +3993,7 @@ title = "Current control for testing.emitted-shape-lint-classes-outside-clippy-a
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-emitted-shape-lint-classes-outside-clippy-all-beyond-test-symbol-haf7edde0b79ace73f9b150c48055de3ca3348b998530b48a7b91250a394d3404"]
+reference_ids = ["test-generated-code-clippy-clean-n2"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.emitted-shape-lint-classes-outside-clippy-all-beyond's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4007,7 +4007,7 @@ title = "Current control for testing.emitter-drops-overloadable-parameter-buildi
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-emitter-drops-overloadable-parameter-building-fresh-config-invisible-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n10"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4021,7 +4021,7 @@ title = "Current control for testing.exclusion-reasons-informational-interchange
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-exclusion-reasons-informational-interchange-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"]
+reference_ids = ["testing-roadmap-operational-watches"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.exclusion-reasons-informational-interchange's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4035,7 +4035,7 @@ title = "Current control for testing.extend-recombination-member-kind-table-opti
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-extend-recombination-member-kind-table-optional-fixed-shape-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n11"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.extend-recombination-member-kind-table-optional-fixed-shape's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4049,7 +4049,7 @@ title = "Current control for testing.extern-deps-wasm-boundary-surface-packaging
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-extern-deps-wasm-boundary-surface-packaging-json-gen-test-symbol-hb167df3b741e441b329e40b4e266b72eeb0270c3ff37a9648b2578cb2c2fe932"]
+reference_ids = ["test-extern-wrapper-index-defers-to-dep"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.extern-deps-wasm-boundary-surface-packaging-json-gen's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4063,7 +4063,7 @@ title = "Current control for testing.extreme-value-boundary-correctness-generati
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-extreme-value-boundary-correctness-generation-time-encode-paths-test-symbol-h03a2d4aca6fd0b7322c8b06e51166f2dd358e81b0f0599b08bc930dafaba33f2"]
+reference_ids = ["test-i64-min-fixed-value-emits-width-correct-nint"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.extreme-value-boundary-correctness-generation-time-encode-paths's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4077,7 +4077,7 @@ title = "Current control for testing.finding-s-defect-side-attribution-recorded-
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-finding-s-defect-side-attribution-recorded-narrative-plausibility-gate-hfd5262ebb003d28f8005bf974fa55f6ad2a0d8edd3503b7c105f5136a214c75a"]
+reference_ids = ["gate-corpus-decode-replay"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.finding-s-defect-side-attribution-recorded-narrative-plausibility's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4091,7 +4091,7 @@ title = "Current control for testing.fixture-models-obsolete-user-contract-stays
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-fixture-models-obsolete-user-contract-stays-green-real-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n12"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.fixture-models-obsolete-user-contract-stays-green-real's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4105,7 +4105,7 @@ title = "Current control for testing.fixture-s-verdict-accident-cargo-feature-un
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-fixture-s-verdict-accident-cargo-feature-unification-harness-test-symbol-h6f14a1dfc8b23912c26f6e2155cb0f7aa7b2090605380a02d393bf82074e2b57", "ref-testing-fixture-s-verdict-accident-cargo-feature-unification-harness-test-symbol-h92e6ce8d56c91219e54fcbeae835cfb71d8d3167d5ec16c6e3ba5ce03e1ea23f", "ref-testing-fixture-s-verdict-accident-cargo-feature-unification-harness-test-symbol-hbdd271db5c0070ba70095dc3db0323b4ebffefd1fb2125040e83e6cfcebfdf4a"]
+reference_ids = ["test-core-no-wasm", "test-core-with-wasm", "test-emit-wasm-tests-execute"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.fixture-s-verdict-accident-cargo-feature-unification-harness's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4119,7 +4119,7 @@ title = "Current control for testing.full-n-flag-powerset-pict-pairwise."
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-full-n-flag-powerset-pict-pairwise-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n4"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.full-n-flag-powerset-pict-pairwise's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4133,7 +4133,7 @@ title = "Current control for testing.gate-cache-closure-audit-structurally-blind
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-gate-cache-closure-audit-structurally-blind-gate-authored-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n13"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.gate-cache-closure-audit-structurally-blind-gate-authored's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4147,7 +4147,7 @@ title = "Current control for testing.gate-exists-registry-nowhere-tests-readme-m
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-gate-exists-registry-nowhere-tests-readme-md-hand-gate-h14a4d326b3ff7b16ea5befdfb6772cbfa23f666cb1d531fc5d54e68ec6398e80"]
+reference_ids = ["gate-pin-cold-fetch"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.gate-exists-registry-nowhere-tests-readme-md-hand's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4161,7 +4161,7 @@ title = "Current control for testing.gate-script-health-cache-staleness-key-fres
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-gate-script-health-cache-staleness-key-fresh-worktree-gate-he58fbd1649112b6357870774f10623684918928b7d10e5a2207e0389b4c867b7"]
+reference_ids = ["gate-fuzz-compile-rot"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.gate-script-health-cache-staleness-key-fresh-worktree's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4175,7 +4175,7 @@ title = "Current control for testing.generated-local-collision.scope-wide-probe.
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-generated-local-collision-scope-wide-probe-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n15"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.generated-local-collision.scope-wide-probe's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4189,7 +4189,7 @@ title = "Current control for testing.generic-raw-bytes-base-refused-generic-exte
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-generic-raw-bytes-base-refused-generic-extern-base-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n16"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.generic-raw-bytes-base-refused-generic-extern-base's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4203,7 +4203,7 @@ title = "Current control for testing.grammar-fuzzer.batch-masking-detector."
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-grammar-fuzzer-batch-masking-detector-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n18"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.grammar-fuzzer.batch-masking-detector's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4217,7 +4217,7 @@ title = "Current control for testing.hand-enumerated-ban-pattern-list-authority-
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-hand-enumerated-ban-pattern-list-authority-lives-gitignored-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"]
+reference_ids = ["gate-lint-doc-citations-n3"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4231,7 +4231,7 @@ title = "Current control for testing.hand-maintained-source-dependency-mapping-m
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-hand-maintained-source-dependency-mapping-manifest-changeset-silently-test-symbol-h6c1e0d91bc6033d6e72fba524afbf91d1927393e2d0f847e632d618ea16128bf"]
+reference_ids = ["test-export-static-crate-writes-composed-runtime-and"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4245,7 +4245,7 @@ title = "Current control for testing.lint-doc-citations-accepts-docs-heading-dur
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-lint-doc-citations-accepts-docs-heading-durable-citation-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"]
+reference_ids = ["gate-lint-doc-citations-n4"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.lint-doc-citations-accepts-docs-heading-durable-citation's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4259,7 +4259,7 @@ title = "Current control for testing.logic-tool-emits-source-text-outside-layer-
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-logic-tool-emits-source-text-outside-layer-reasons-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n39"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.logic-tool-emits-source-text-outside-layer-reasons's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4273,7 +4273,7 @@ title = "Current control for testing.make-fixture-comment-s-claimed-wire-bytes-e
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-make-fixture-comment-s-claimed-wire-bytes-executable-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n40"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.make-fixture-comment-s-claimed-wire-bytes-executable's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4287,7 +4287,7 @@ title = "Current control for testing.making-type-choice-path-reject-duplicated-e
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-making-type-choice-path-reject-duplicated-explicit-name-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n5"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.making-type-choice-path-reject-duplicated-explicit-name's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4301,7 +4301,7 @@ title = "Current control for testing.matrix-s-note-names-panic-site-aborts-nothi
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-matrix-s-note-names-panic-site-aborts-nothing-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n41"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.matrix-s-note-names-panic-site-aborts-nothing's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4315,7 +4315,7 @@ title = "Current control for testing.mechanical-layers-two-review-owned-design-r
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-mechanical-layers-two-review-owned-design-rules-tests-test-symbol-h7252c51ca49273b5edf62a95a88ca8f30b01aa234d9593848a5b35cb2465dd52", "ref-testing-mechanical-layers-two-review-owned-design-rules-tests-test-symbol-hc749902b18315a9d1f12a307c7c9a1196f35ee12722b7211043985cfe3fe37ca"]
+reference_ids = ["test-corpus-occurrence-bounds-enforced", "test-corpus-special-map-key-supported"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.mechanical-layers-two-review-owned-design-rules-tests's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4329,7 +4329,7 @@ title = "Current control for testing.message-s-level-classification-review-owned
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-message-s-level-classification-review-owned-two-ways-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n42"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.message-s-level-classification-review-owned-two-ways's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4343,7 +4343,7 @@ title = "Current control for testing.msrv-declaration-os-matrix-generated-code."
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-msrv-declaration-os-matrix-generated-code-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n6"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.msrv-declaration-os-matrix-generated-code's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4357,7 +4357,7 @@ title = "Current control for testing.multifile-reference-position-coverage-two-p
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-multifile-reference-position-coverage-two-position-keyed-escapes-test-symbol-h1b01a70d4040ac15d5c5b342c3e8dc49b26e0d3d15ab75531aa65fd7ac058804", "ref-testing-multifile-reference-position-coverage-two-position-keyed-escapes-test-symbol-hb058dd1eca57bc8a79f91a36dadd3ca901e2f81888e20775ea28346855b517a6"]
+reference_ids = ["test-extern-generic-scoped", "test-extern-generic-scoped-alias-imports"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.multifile-reference-position-coverage-two-position-keyed-escapes's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4371,7 +4371,7 @@ title = "Current control for testing.nothing-asserts-how-many-times-rejection-me
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-nothing-asserts-how-many-times-rejection-message-emitted-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n43"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.nothing-asserts-how-many-times-rejection-message-emitted's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4385,7 +4385,7 @@ title = "Current control for testing.nothing-asserts-two-ir-sites-cannot-mint-sa
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-nothing-asserts-two-ir-sites-cannot-mint-same-test-symbol-h765c81ec81d1528831b49117e4f4c56dbe06beaf882ed56d779ae14c83a5d7f9", "ref-testing-nothing-asserts-two-ir-sites-cannot-mint-same-test-symbol-hc2a3331e11cd1132a1b4075f798bdb40f6559713ca231f7c9b6a28fa598a0e3d", "ref-testing-nothing-asserts-two-ir-sites-cannot-mint-same-test-symbol-hcf12fb74615c93111e6709469e4256b6a5177a805e60d22c6e675fe9a586d6ab"]
+reference_ids = ["test-embeddable-group-choice-arm-may-share-a-rule-name", "test-group-choice-arm-ident-collision-rejects-gracefully", "test-identical-group-choice-arms-in-different-rules"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.nothing-asserts-two-ir-sites-cannot-mint-same's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4399,7 +4399,7 @@ title = "Current control for testing.observed-baseline-comments-beside-gate-floo
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-observed-baseline-comments-beside-gate-floors-rot-silently-gate-hfd5262ebb003d28f8005bf974fa55f6ad2a0d8edd3503b7c105f5136a214c75a"]
+reference_ids = ["gate-corpus-decode-replay-n2"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.observed-baseline-comments-beside-gate-floors-rot-silently's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4413,7 +4413,7 @@ title = "Current control for testing.orphan-fixture-directory-meta-test."
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-orphan-fixture-directory-meta-test-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n7"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.orphan-fixture-directory-meta-test's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4427,7 +4427,7 @@ title = "Current control for testing.ownership-journal-making-dropped-std-forwar
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-ownership-journal-making-dropped-std-forward-dep-converge-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n8"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.ownership-journal-making-dropped-std-forward-dep-converge's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4441,7 +4441,7 @@ title = "Current control for testing.panic-site-un-shadowing-converting-shallow-
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-panic-site-un-shadowing-converting-shallow-panic-graceful-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n44"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.panic-site-un-shadowing-converting-shallow-panic-graceful's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4455,7 +4455,7 @@ title = "Current control for testing.parallel-constructor-fixture-diversity-pars
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-parallel-constructor-fixture-diversity-parser-over-external-input-test-symbol-h0a539c7624cba85a03789079dcbb8396196ccfc603cd7cb8c4fa78a9af03fc2b"]
+reference_ids = ["test-workspace-requests-alias-elements-host"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.parallel-constructor-fixture-diversity-parser-over-external-input's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4469,7 +4469,7 @@ title = "Current control for testing.process-boundary.rustc-after-panic-fix."
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-process-boundary-rustc-after-panic-fix-test-symbol-h1535d59c68ee2febd35ce88ec92365a843838940dda4648495494e28a4a9180d", "ref-testing-process-boundary-rustc-after-panic-fix-test-symbol-h9b42afc58e18471a0a4f1d2ffa1b7c48302bfae88f89740b52be6f1922e8e179"]
+reference_ids = ["test-recursive-collection-ref", "test-recursive-collection-ref-preserve"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.process-boundary.rustc-after-panic-fix's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4483,7 +4483,7 @@ title = "Current control for testing.process-boundary.rustfmt-pre-rustc."
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-process-boundary-rustfmt-pre-rustc-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n45"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.process-boundary.rustfmt-pre-rustc's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4497,7 +4497,7 @@ title = "Current control for testing.profile-driven-compile-gate-covers-composit
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-profile-driven-compile-gate-covers-compositions-profiles-specs-gate-h27130094b630c9c61596568004d5fabd3d8420f7fad801b2c98c52c1c412b72c"]
+reference_ids = ["gate-no-std-check"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.profile-driven-compile-gate-covers-compositions-profiles-specs's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4511,7 +4511,7 @@ title = "Current control for testing.reason-keyed-rejection-evidence-reject-cata
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-reason-keyed-rejection-evidence-reject-catalogs-proven-near-test-symbol-h2530dd33835f16e026c5d69809e5c1a38b20bee1cd27a5ee3514dce5bcdba173"]
+reference_ids = ["test-fixture-bare-decode-rejects-hold-at-their-ratchet"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4525,7 +4525,7 @@ title = "Current control for testing.referencing-context-measured-wrapping-deep-
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-referencing-context-measured-wrapping-deep-honored-base-shape-test-symbol-hdf54feb89788ee827c0fa1a14327f84c1b89c8d44f94ff33911f27e63f2a6253"]
+reference_ids = ["test-directive-referencing-context-sweep"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.referencing-context-measured-wrapping-deep-honored-base-shape's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4539,7 +4539,7 @@ title = "Current control for testing.representation-changing-directive-goes-live
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-representation-changing-directive-goes-live-new-container-ship-test-symbol-h8fb1437d51762065bee21742c2489192a5e89006867fe660038c9f29c5b1229f"]
+reference_ids = ["test-extern-import-flavored-generic-base-projects"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.representation-changing-directive-goes-live-new-container-ship's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4553,7 +4553,7 @@ title = "Current control for testing.restructuring-features-std-tool-owned-sub-f
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-restructuring-features-std-tool-owned-sub-feature-cddl-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n10"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.restructuring-features-std-tool-owned-sub-feature-cddl's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4567,7 +4567,7 @@ title = "Current control for testing.ruling-premise-gate-x-stays-green-must-prob
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-ruling-premise-gate-x-stays-green-must-probed-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n51"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.ruling-premise-gate-x-stays-green-must-probed's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4581,7 +4581,7 @@ title = "Current control for testing.run-local-values-gate-cache-key-material-pr
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-run-local-values-gate-cache-key-material-proven-gate-h21dded476e33c8fff7c34a5c9b5adedd959977716912b4e5ca82c6189426aa45"]
+reference_ids = ["gate-verify-cache-transparency"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.run-local-values-gate-cache-key-material-proven's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4595,7 +4595,7 @@ title = "Current control for testing.schema-name.collision-loser-no-row-same-id.
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-schema-name-collision-loser-no-row-same-id-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n53"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.schema-name.collision-loser-no-row-same-id's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4609,7 +4609,7 @@ title = "Current control for testing.schema-name.cross-crate-same-id-collision."
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-schema-name-cross-crate-same-id-collision-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n54"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.schema-name.cross-crate-same-id-collision's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4623,7 +4623,7 @@ title = "Current control for testing.schema-name.two-rowless-types-collide."
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-schema-name-two-rowless-types-collide-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n55"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.schema-name.two-rowless-types-collide's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4637,7 +4637,7 @@ title = "Current control for testing.stale-known-limitation-prose-surviving-fix-
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-stale-known-limitation-prose-surviving-fix-finding-ledgered-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"]
+reference_ids = ["gate-lint-doc-citations-n5"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.stale-known-limitation-prose-surviving-fix-finding-ledgered's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4651,7 +4651,7 @@ title = "Current control for testing.synthesized-name-referenced-never-minted-e0
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-synthesized-name-referenced-never-minted-e0425-flavor-test-symbol-hf32dc18af1b80049eaeceee59c2af22af5f31da3ff3353fe26b6ba5c0de46eb9"]
+reference_ids = ["test-synthesized-name-interaction-sweep"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.synthesized-name-referenced-never-minted-e0425-flavor's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4665,7 +4665,7 @@ title = "Current control for testing.tag-set.non-idiom-generic-boundary."
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-tag-set-non-idiom-generic-boundary-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"]
+reference_ids = ["testing-roadmap-deferred-features-build-when-a-real"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.tag-set.non-idiom-generic-boundary's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4679,7 +4679,7 @@ title = "Current control for testing.tier-s-disk-bandwidth-unmeasured-anything-s
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-tier-s-disk-bandwidth-unmeasured-anything-scratch-floor-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"]
+reference_ids = ["testing-roadmap-operational-watches-n2"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4693,7 +4693,7 @@ title = "Current control for testing.tree-wide-sweeps-over-gitignored-regenerati
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-tree-wide-sweeps-over-gitignored-regeneration-targets-count-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n57"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4707,7 +4707,7 @@ title = "Current control for testing.twin-repo-implementations-semantic-drifting
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-twin-repo-implementations-semantic-drifting-apart-emission-spellings-gate-h6a27f79888f19ab92549180ecdcdf05a24145020e97ee6233a1528a47d151786"]
+reference_ids = ["gate-project-corpus-n2"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4721,7 +4721,7 @@ title = "Current control for testing.unused-imports-generated-crates-trait-impor
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-h4c5e041e97a704e70c4a95276f741dd0e153a6e8cab36dea83486c0d206018f8", "ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-h787d2bf07c1dae413f902528cf38ac20971ed846b263b6b5e3a58b2920d1abbc", "ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-h7e78d3856f7562dfcfd3c5ebf1df8d403b1ef99cbbdc960b64e689499bbbf6b2", "ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-ha47702162c05a22c06c0676347a748cb80857be1127f1cac35ec718cfcd11649", "ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-haf7edde0b79ace73f9b150c48055de3ca3348b998530b48a7b91250a394d3404"]
+reference_ids = ["test-extern-deps-n2", "test-generated-code-clippy-clean-n3", "test-workspace-requests-cohosted-keys-list-no-self", "test-workspace-requests-hosts-borrowed-wrappers", "test-workspace-requests-hosts-cross-scope-elements"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.unused-imports-generated-crates-trait-import-class-name's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4735,7 +4735,7 @@ title = "Current control for testing.value-anchor-rot-field-addition-delivery-gr
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-value-anchor-rot-field-addition-delivery-grows-existing-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n59"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.value-anchor-rot-field-addition-delivery-grows-existing's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4749,7 +4749,7 @@ title = "Current control for testing.wac-composed-component-transpiled-jco-loses
 kind = "control"
 control_kind = "gate"
 control_state = "live"
-reference_ids = ["ref-testing-wac-composed-component-transpiled-jco-loses-cross-instance-gate-hc8c9ea0a21b96b2f9e6b028ca524ff1535227e2dbb5c9ab52a8e7f9c3e30eec1", "ref-testing-wac-composed-component-transpiled-jco-loses-cross-instance-gate-hf2e5bf53c50997692623794ce66965b548397ac6f3cfba48d34d3000ed57b7b4"]
+reference_ids = ["gate-component-compose", "gate-component-jco"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.wac-composed-component-transpiled-jco-loses-cross-instance's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4763,7 +4763,7 @@ title = "Current control for testing.wrapper-name-user-set-name-synthesized-coll
 kind = "control"
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-wrapper-name-user-set-name-synthesized-collection-wrapper-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n16"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.wrapper-name-user-set-name-synthesized-collection-wrapper's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4873,7 +4873,7 @@ signature_md = """A twice-aliased set-idiom binding escaped the hand coverage.
 evidence_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n19"
 
 [[record]]
 id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
@@ -4886,7 +4886,7 @@ claim_md = """A twice-aliased set-idiom binding escaped the hand coverage.
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-one-proof-roadmap-h3de9048b09ce092e475d6691816189c52c2beadbd980bb250ed2977a5f213ef6"]
+reference_ids = ["testing-build-registration-class-reference-position", "testing-roadmap-next-work-n20"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -4907,7 +4907,7 @@ signature_md = """An alias-first recursive collection escaped the hand coverage.
 evidence_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n21"
 
 [[record]]
 id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
@@ -4920,7 +4920,7 @@ claim_md = """An alias-first recursive collection escaped the hand coverage.
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-two-proof-roadmap-h3de9048b09ce092e475d6691816189c52c2beadbd980bb250ed2977a5f213ef6"]
+reference_ids = ["testing-build-registration-class-reference-position-n2", "testing-roadmap-next-work-n22"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -4941,7 +4941,7 @@ signature_md = """The no-json-schema-export premise was probed against fast proj
 evidence_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n23"
 
 [[record]]
 id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
@@ -4954,7 +4954,7 @@ claim_md = """The no-json-schema-export premise was probed against fast project_
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-one-proof-roadmap-haebfad78df120de969e13b0169c8754aad4ad4047945530b40fecd9afd40b9b4"]
+reference_ids = ["testing-gate-demands-premise-probed-against-gate", "testing-roadmap-next-work-n24"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -4976,7 +4976,7 @@ signature_md = """A fast-only delegation missed the local-tier fixture-registry 
 evidence_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n25"
 
 [[record]]
 id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
@@ -4989,7 +4989,7 @@ claim_md = """A fast-only delegation missed the local-tier fixture-registry test
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-two-proof-roadmap-haebfad78df120de969e13b0169c8754aad4ad4047945530b40fecd9afd40b9b4"]
+reference_ids = ["testing-gate-demands-premise-probed-against-gate-n2", "testing-roadmap-next-work-n26"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -5011,7 +5011,7 @@ signature_md = """The constrained-int cbor-payload alias was standalone-green an
 evidence_ids = ["testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n27"
 
 [[record]]
 id = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof"
@@ -5024,7 +5024,7 @@ claim_md = """The constrained-int cbor-payload alias was standalone-green and em
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-one-proof-roadmap-h1838240ada66525dd1b6a047c12fd480acf9eb4d7ffecadafaa3fd7dc251d94a"]
+reference_ids = ["testing-grammar-fuzzer-embed-site-alias-roots", "testing-roadmap-next-work-n28"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -5046,7 +5046,7 @@ signature_md = """The inline-table cbor alias owned serializer was standalone-gr
 evidence_ids = ["testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n29"
 
 [[record]]
 id = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"
@@ -5059,7 +5059,7 @@ claim_md = """The inline-table cbor alias owned serializer was standalone-green 
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-two-proof-roadmap-h1838240ada66525dd1b6a047c12fd480acf9eb4d7ffecadafaa3fd7dc251d94a"]
+reference_ids = ["testing-grammar-fuzzer-embed-site-alias-roots-n2", "testing-roadmap-next-work-n30"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -5081,7 +5081,7 @@ signature_md = """Fixed float/nint choice arms and the anonymous nested choice m
 evidence_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n31"
 
 [[record]]
 id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
@@ -5094,7 +5094,7 @@ claim_md = """Fixed float/nint choice arms and the anonymous nested choice minte
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-one-proof-roadmap-he7e71a780510c173364f6ac7c53e176b29906556230f49338bec3ae2f32a3ba7"]
+reference_ids = ["testing-minted-identifier-spellability-floor-identifier", "testing-roadmap-next-work-n32"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -5115,7 +5115,7 @@ signature_md = """A fixed-text arm camel-cased self into the Rust keyword Self.
 evidence_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n33"
 
 [[record]]
 id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
@@ -5128,7 +5128,7 @@ claim_md = """A fixed-text arm camel-cased self into the Rust keyword Self.
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-two-proof-roadmap-he7e71a780510c173364f6ac7c53e176b29906556230f49338bec3ae2f32a3ba7"]
+reference_ids = ["testing-minted-identifier-spellability-floor-identifier-n2", "testing-roadmap-next-work-n34"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -5149,7 +5149,7 @@ signature_md = """The anonymous tagged-group remedy was dead for one triggering 
 evidence_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n35"
 
 [[record]]
 id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
@@ -5162,7 +5162,7 @@ claim_md = """The anonymous tagged-group remedy was dead for one triggering cons
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-one-proof-roadmap-hb77e87c983491a2898906b45e06411cb6c5670c21100469699b1ee7436661fa2"]
+reference_ids = ["testing-rejection-message-s-remedy-string-executable", "testing-roadmap-next-work-n36"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -5183,7 +5183,7 @@ signature_md = """The bare fixed-table-value refusal retained a stale named-rule
 evidence_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"]
 attribution_md = """The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
 """
-operating_rule_reference_id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+operating_rule_reference_id = "testing-roadmap-next-work-n37"
 
 [[record]]
 id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
@@ -5196,7 +5196,7 @@ claim_md = """The bare fixed-table-value refusal retained a stale named-rule rem
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-two-proof-roadmap-hb77e87c983491a2898906b45e06411cb6c5670c21100469699b1ee7436661fa2"]
+reference_ids = ["testing-rejection-message-s-remedy-string-executable-n2", "testing-roadmap-next-work-n38"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -5485,7 +5485,7 @@ question_md = """May the convenience CBOR-bytes door panic, or must it return a 
 """
 
 [record.payload.unblock_predicate]
-owner_reference_id = "ref-testing-predicate-convenience-cbor-bytes-ruling-owner"
+owner_reference_id = "testing-maintainer-ruling-force-convenience-cbor-bytes"
 event_md = """A maintainer records whether the convenience CBOR-bytes door is panic-permitted or fallible.
 """
 check_procedure_md = """Require a durable ruling that names the public API and compatibility consequence; code behavior alone is not authority.
@@ -5564,7 +5564,7 @@ detail_md = """- **Making the TYPE-CHOICE path reject a duplicated explicit `@na
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.making-type-choice-path-reject-duplicated-explicit-name.
 """
-authority_reference_id = "ref-testing-making-type-choice-path-reject-duplicated-explicit-name-authority"
+authority_reference_id = "testing-guard-making-type-choice-path-reject-duplicated"
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
@@ -5796,7 +5796,7 @@ detail_md = """- **MSRV declaration / OS matrix for GENERATED code.** The templa
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.msrv-declaration-os-matrix-generated-code.
 """
-authority_reference_id = "ref-testing-msrv-declaration-os-matrix-generated-code-authority"
+authority_reference_id = "testing-guard-msrv-declaration-os-matrix-generated-code"
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
@@ -6108,7 +6108,7 @@ detail_md = """- **An orphan-fixture-directory meta-test** (assert every `tests/
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.orphan-fixture-directory-meta-test.
 """
-authority_reference_id = "ref-testing-orphan-fixture-directory-meta-test-authority"
+authority_reference_id = "testing-guard-orphan-fixture-directory-meta-test"
 permanence = "permanent"
 
 [[record]]
@@ -6132,7 +6132,7 @@ detail_md = """- **An ownership journal making a dropped `--std-forward-dep` con
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.ownership-journal-making-dropped-std-forward-dep-converge.
 """
-authority_reference_id = "ref-testing-ownership-journal-making-dropped-std-forward-dep-converge-authority"
+authority_reference_id = "testing-guard-ownership-journal-making-dropped-std"
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
@@ -6375,7 +6375,7 @@ question_md = """Should generated Rust formatting adopt prettyplease's stable, n
 """
 
 [record.payload.unblock_predicate]
-owner_reference_id = "ref-testing-predicate-prettyplease-formatting-ruling-owner"
+owner_reference_id = "testing-prettyplease-shelling-rustfmt"
 event_md = """A maintainer records one of the two formatting rulings and explicitly disposes of rustfmt#5703, both over-width controls, overlay token stability, and snapshot migration.
 """
 check_procedure_md = """Read the durable ruling and verify every named constraint has an explicit disposition; an implementation experiment or source read is not a ruling.
@@ -6695,7 +6695,7 @@ claim_md = """The preserved owner detail records a shipped or reproducible false
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-proof-directive-effect-round-trip-coherence-sweep-accepted-custom-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-proof-directive-effect-round-trip-coherence-sweep-accepted-custom-roadmap-he5a254293d69634a726bd77c7d1cde49fee2f6fe57c270aa5dbf876d38328506"]
+reference_ids = ["testing-directive-effect-round-trip-coherence-sweep", "testing-roadmap-next-work-n46"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -6715,7 +6715,7 @@ claim_md = """A scratch no-std check fails under the unpinned default toolchain 
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-proof-pin-toolchain-verify-ts-s-nested-cargo-scratch-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-proof-pin-toolchain-verify-ts-s-nested-cargo-scratch-roadmap-h41c11e8c7262400c23266ecfc4c28e30a1b59b83cb62b8035737fcfac96b55aa"]
+reference_ids = ["testing-pin-toolchain-verify-ts-s-nested-cargo-scratch", "testing-roadmap-next-work-n47"]
 command_md = """From a plain shell whose cwd is a scratch tree, run cargo -V and rustc -vV; then run the same probes with RUSTUP_TOOLCHAIN set to the channel parsed from rust-toolchain.toml. Separately spawn cargo -V from a repository cargo-test child after changing its cwd to scratch.
 """
 result_md = """The Bun/plain-shell scratch child resolved default stable 1.97.1 while the repository pin was 1.96.1; the cargo-test child inherited RUSTUP_TOOLCHAIN and resolved the pin.
@@ -6742,7 +6742,7 @@ claim_md = """The preserved owner detail records a shipped or reproducible false
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-proof-positional-diversity-fold-preserve-fixture-corpus-authoring-gives-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-proof-positional-diversity-fold-preserve-fixture-corpus-authoring-gives-roadmap-h8a6dd47dcf615a826f4736b9dee803dae68cf5cddfe34f9ba6d47f3e5d9216c7"]
+reference_ids = ["testing-positional-diversity-fold-preserve-fixture", "testing-roadmap-next-work-n48"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -6762,7 +6762,7 @@ claim_md = """The preserved owner detail records a shipped or reproducible false
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-proof-same-named-generated-crates-silently-share-cargo-fingerprint-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-proof-same-named-generated-crates-silently-share-cargo-fingerprint-roadmap-h19b0d970320ceb3f498f1f90cf31f7068da61668d960ddabc101ed40cc62a3cb"]
+reference_ids = ["testing-roadmap-next-work-n49", "testing-same-named-generated-crates-silently-share-cargo"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = """The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -6782,7 +6782,7 @@ claim_md = """Fresh dependency resolution must update the warm-up universe and l
 """
 evidence_verdict = "confirmed"
 freshness = "as_of"
-reference_ids = ["ref-testing-proof-warm-up-refresh-dep-universe-lock-trust-fresh-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d", "ref-testing-proof-warm-up-refresh-dep-universe-lock-trust-fresh-roadmap-hfaf405b8952df1839f312626a996776d1cc6524cf548ffe70bb4d9130e59005e"]
+reference_ids = ["testing-roadmap-next-work-n50", "testing-warm-up-refresh-dep-universe-lock-trust-fresh"]
 command_md = """Run the offline-forced tier path after the locked warm-up fetch while the oracle-fingerprint scratch manifest resolves fresh against the newly published zerocopy-derive 0.8.56.
 """
 result_md = """The fresh scratch resolve requested zerocopy-derive 0.8.56, absent from the lock-trusting warmed cache, and failed offline; the cache contained .52 through .55.
@@ -6851,7 +6851,7 @@ detail_md = """- **`quickcheck` alongside `proptest`; `goldenfile`/`expect-test`
 """
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"]
+reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n9"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -7159,7 +7159,7 @@ detail_md = """- **Restructuring `features.std` into a tool-owned sub-feature (a
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.restructuring-features-std-tool-owned-sub-feature-cddl.
 """
-authority_reference_id = "ref-testing-restructuring-features-std-tool-owned-sub-feature-cddl-authority"
+authority_reference_id = "testing-guard-restructuring-features-std-tool-owned-sub"
 permanence = "permanent"
 
 [[record]]
@@ -7213,7 +7213,7 @@ blocker_md = """The maintainer must reverse the 2026-08-04 no-fork-push ruling a
 """
 
 [record.payload.unblock_predicate]
-owner_reference_id = "ref-testing-predicate-rule-trailing-conjunctive-unblock-owner"
+owner_reference_id = "testing-rule-trailing-directive-classification"
 event_md = """A maintainer explicitly reverses the 2026-08-04 no-fork-push ruling and commit a7ed0784e89689784ff78ed0e85c7434a3528937 is publicly fetchable, pinned, and adopted.
 """
 check_procedure_md = """Verify fresh durable evidence that the maintainer explicitly reversed the 2026-08-04 no-fork-push ruling, the reviewed commit is publicly fetchable and exactly pinned, and all current refusal controls remain live.
@@ -7232,10 +7232,10 @@ work_state = "waiting_external"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-external_owner_reference_id = "ref-testing-rule-trailing-reviewed-fork-publication-commit"
+external_owner_reference_id = "commit-dcspark-cddl"
 
 [record.payload.unblock_predicate]
-owner_reference_id = "ref-testing-predicate-reviewed-fork-publication-owner"
+owner_reference_id = "testing-rule-trailing-reviewed-fork-publication"
 event_md = """Commit a7ed0784e89689784ff78ed0e85c7434a3528937 is publicly fetchable, pinned, and adopted.
 """
 check_procedure_md = """Verify public fetchability, exact dependency pin adoption, reviewed commit identity, and all current refusal controls.
@@ -7448,7 +7448,7 @@ detail_md = """- **The schema document's name injectivity is enforced ROW-side, 
 """
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-schema-document-s-name-injectivity-enforced-row-side-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n52"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.schema-document-s-name-injectivity-enforced-row-side's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -7979,7 +7979,7 @@ detail_md = """  - *Non-idiom choice-BODIED generic defs are refused, not suppor
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.tag-set.non-idiom-generic-boundary.
 """
-authority_reference_id = "ref-testing-tag-set-non-idiom-generic-boundary-authority"
+authority_reference_id = "testing-guard-tag-set-non-idiom-generic-boundary"
 permanence = "permanent"
 
 [[record]]
@@ -8017,7 +8017,7 @@ detail_md = """- **Three defect classes that no IN-PROCESS test can see, sharing
 """
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-three-defect-classes-process-test-see-sharing-remedy-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n56"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.three-defect-classes-process-test-see-sharing-remedy's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -8043,7 +8043,7 @@ blocker_md = """No committed, environment-scoped per-slot peak authority exists 
 """
 
 [record.payload.unblock_predicate]
-owner_reference_id = "ref-testing-predicate-tier-memory-durable-measurements-owner"
+owner_reference_id = "testing-tier-memory-spend-measurements"
 event_md = """A committed, environment-scoped per-slot peak authority exists outside the disposable sampler ledgers and contains enough reviewed real-tier observations to bound a slot.
 """
 check_procedure_md = """Verify the authority is committed, records environment and tier scope, excludes draft/memory-peaks.jsonl as evidence, and supports re-deriving both the 4 GiB slot constant and one-permit nested bound.
@@ -8116,7 +8116,7 @@ kind = "decision"
 decision_state = "decided"
 rationale_md = """Coverage instrumentation of generated code does not establish semantic correctness and has no reviewed bounded denominator here.
 """
-authority_reference_id = "ref-testing-tooling-generated-coverage-instrumentation-declined-heading"
+authority_reference_id = "testing-roadmap-declined-decided-with-a-reopening-signal-n11"
 permanence = "permanent"
 
 [[record]]
@@ -8128,7 +8128,7 @@ kind = "decision"
 decision_state = "decided"
 rationale_md = """Goldenfile and expect-test would create a second corpus engine while the incumbent snapshot and hand-vector corpora are simpler and broader.
 """
-authority_reference_id = "ref-testing-tooling-goldenfile-expect-test-corpus-declined-heading"
+authority_reference_id = "testing-roadmap-declined-decided-with-a-reopening-signal-n12"
 permanence = "permanent"
 
 [[record]]
@@ -8140,7 +8140,7 @@ kind = "decision"
 decision_state = "decided"
 rationale_md = """No-panic linting does not replace the existing input-robustness panic/refusal catalog and its exact site-bearing vectors.
 """
-authority_reference_id = "ref-testing-tooling-no-panic-lints-declined-heading"
+authority_reference_id = "testing-roadmap-declined-decided-with-a-reopening-signal-n13"
 permanence = "permanent"
 
 [[record]]
@@ -8152,7 +8152,7 @@ kind = "decision"
 decision_state = "decided"
 rationale_md = """Quickcheck duplicates the incumbent proptest mechanism without adding a distinct admitted failure class.
 """
-authority_reference_id = "ref-testing-tooling-quickcheck-parallel-corpus-declined-heading"
+authority_reference_id = "testing-roadmap-declined-decided-with-a-reopening-signal-n14"
 permanence = "permanent"
 
 [[record]]
@@ -8164,7 +8164,7 @@ kind = "decision"
 decision_state = "decided"
 rationale_md = """Trybuild is narrower than the existing generated-crate cargo check and execution corpus for whole-crate pass behavior.
 """
-authority_reference_id = "ref-testing-tooling-trybuild-whole-crate-declined-heading"
+authority_reference_id = "testing-roadmap-declined-decided-with-a-reopening-signal-n15"
 permanence = "permanent"
 
 [[record]]
@@ -8183,7 +8183,7 @@ detail_md = """- **Transparent tag-set idiom — recognized-shape boundary (REQU
 """
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-transparent-tag-set-idiom-recognized-shape-boundary-request-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"]
+reference_ids = ["testing-roadmap-deferred-features-build-when-a-real-n2"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.transparent-tag-set-idiom-recognized-shape-boundary-request's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -8250,7 +8250,7 @@ detail_md = """  - *On the next `comment_ast` grammar change of ANY form (not ju
     which is why this trigger has correctly not fired yet.
 """
 transition_kind = "cadence"
-owner_reference_id = "ref-testing-twin-implementation-comment-ast-change-cadence-parent"
+owner_reference_id = "testing-twin-repo-implementations-semantic-drifting"
 event_source = "comment_ast grammar authority"
 period_or_event_md = """Run on the next comment_ast grammar change of any form, including argument grammar with no directive-set delta.
 """
@@ -8275,7 +8275,7 @@ detail_md = """  - *Its own reviewed change, never a drive-by:* unify the zero-m
 """
 control_kind = "review_rule"
 control_state = "live"
-reference_ids = ["ref-testing-twin-implementation-own-reviewed-change-rule-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"]
+reference_ids = ["testing-roadmap-next-work-n58"]
 claim_md = """The current controls, proven instance, and standing rule are the exact claims in testing.twin-implementation.own-reviewed-change-rule's preserved detail.
 """
 boundary_md = """This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -8930,7 +8930,7 @@ detail_md = """- **`@wrapper_name` — a user-set name for a synthesized collect
 decision_state = "decided"
 rationale_md = """The decided boundary and its reasons are the exact preserved detail of testing.wrapper-name-user-set-name-synthesized-collection-wrapper.
 """
-authority_reference_id = "ref-testing-wrapper-name-user-set-name-synthesized-collection-wrapper-authority"
+authority_reference_id = "testing-guard-wrapper-name-user-set-name-synthesized"
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
@@ -10087,1456 +10087,1160 @@ kind = "parent_of"
 target = "testing.guard.wrapper-name-user-set-name-synthesized-collection-wrapper"
 
 [[reference]]
-id = "ref-testing-add-profile-wrapper-participation-grid-participation-differs-across-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work"
 source = "testing.add-profile-wrapper-participation-grid-participation-differs-across"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-add-profile-wrapper-participation-grid-participation-differs-across-authority"
+id = "testing-guard-add-profile-wrapper-participation-grid"
 source = "testing.add-profile-wrapper-participation-grid-participation-differs-across"
 kind = "roadmap"
 target_id = "testing.guard.add-profile-wrapper-participation-grid-participation-differs-across"
 
 [[reference]]
-id = "ref-testing-add-profile-wrapper-participation-grid-participation-differs-across-test-symbol-hf32dc18af1b80049eaeceee59c2af22af5f31da3ff3353fe26b6ba5c0de46eb9"
-source = "testing.add-profile-wrapper-participation-grid-participation-differs-across"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::synthesized_name_interaction_sweep"
-symbol = "tests::integration_tests::synthesized_name_interaction_sweep"
-
-[[reference]]
-id = "ref-testing-alloc-imports-nested-inline-modules-hand-carried-design-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n2"
 source = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-arm-position-s-classifier-compile-time-forcing-function-gate-he00a841db53ba7a7564c502924f7598afeaf955962ec6bc5d5081a220a841f21"
+id = "gate-no-silent-directive"
 source = "testing.arm-position-s-classifier-compile-time-forcing-function"
 kind = "gate"
 gate_id = "no_silent_directive"
 
 [[reference]]
-id = "ref-testing-armed-idle-harness-arms-empty-head-ledgers-zero-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"
+id = "gate-lint-doc-citations"
 source = "testing.armed-idle-harness-arms-empty-head-ledgers-zero"
 kind = "gate"
 gate_id = "lint_doc_citations"
 
 [[reference]]
-id = "ref-testing-cargo-feature-generated-crate-s-dependency-change-what-test-symbol-ha4c9663bd6e6a90fce72f489a54d11a70788c1b746766d7e0d016ba6b004788d"
+id = "test-json-arbitrary-precision"
 source = "testing.cargo-feature-generated-crate-s-dependency-change-what"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::json_arbitrary_precision"
 symbol = "tests::integration_tests::json_arbitrary_precision"
 
 [[reference]]
-id = "ref-testing-checking-runtime-flavor-s-safety-condition-rather-stating-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal"
 source = "testing.checking-runtime-flavor-s-safety-condition-rather-stating"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-checking-runtime-flavor-s-safety-condition-rather-stating-authority"
+id = "testing-guard-checking-runtime-flavor-s-safety-condition"
 source = "testing.checking-runtime-flavor-s-safety-condition-rather-stating"
 kind = "roadmap"
 target_id = "testing.guard.checking-runtime-flavor-s-safety-condition-rather-stating"
 
 [[reference]]
-id = "ref-testing-checking-runtime-flavor-s-safety-condition-rather-stating-test-symbol-h05d8997762838fa1d4b8618122858a8c3744bce5677cb56be2137a7679d59db9"
-source = "testing.checking-runtime-flavor-s-safety-condition-rather-stating"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::config_tests::a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against"
-symbol = "tests::config_tests::a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against"
-
-[[reference]]
-id = "ref-testing-citation-resolves-naming-wrong-thing-invisible-citation-lint-test-symbol-hffa7bf63970bb6799e6e97c59cb4cd4406606d343959edae1718ba9e2e0b8adf"
+id = "test-known-panic-classes-cite-fixtures-that-produce-them"
 source = "testing.citation-resolves-naming-wrong-thing-invisible-citation-lint"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::recombination_tests::known_panic_classes_cite_fixtures_that_produce_them"
 symbol = "tests::recombination_tests::known_panic_classes_cite_fixtures_that_produce_them"
 
 [[reference]]
-id = "ref-testing-comment-residue-false-matches-text-scans-over-emitted-test-symbol-hc73eeb7dc4e0a05361f26c1616137125d0276df00a81387f23f0f1e9d87cdd5c"
+id = "test-extern-reexport-diagnostic-skips-replace-deleted"
 source = "testing.comment-residue-false-matches-text-scans-over-emitted"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_reexport_diagnostic_skips_replace_deleted_glue"
 symbol = "tests::integration_tests::extern_reexport_diagnostic_skips_replace_deleted_glue"
 
 [[reference]]
-id = "ref-testing-complete-cargo-mutants-sweep-will-never-run-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n2"
 source = "testing.complete-cargo-mutants-sweep-will-never-run"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-complete-cargo-mutants-sweep-will-never-run-authority"
+id = "testing-guard-complete-cargo-mutants-sweep-will-never"
 source = "testing.complete-cargo-mutants-sweep-will-never-run"
 kind = "roadmap"
 target_id = "testing.guard.complete-cargo-mutants-sweep-will-never-run"
 
 [[reference]]
-id = "ref-testing-containment-note-s-stated-reason-go-false-any-gate-h6a27f79888f19ab92549180ecdcdf05a24145020e97ee6233a1528a47d151786"
+id = "gate-project-corpus"
 source = "testing.containment-note-s-stated-reason-go-false-any"
 kind = "gate"
 gate_id = "project_corpus"
 
 [[reference]]
-id = "ref-testing-control-bytes-committed-source-files-proven-instance-machinery-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"
+id = "gate-lint-doc-citations-n2"
 source = "testing.control-bytes-committed-source-files-proven-instance-machinery"
 kind = "gate"
 gate_id = "lint_doc_citations"
 
 [[reference]]
-id = "ref-testing-control-bytes-committed-source-files-proven-instance-machinery-gate-ha6b9f717f086d7bc829bcf9c7b9f53ffa31fd91a125917ab3510ddada4d8954c"
+id = "gate-matrix-typecheck"
 source = "testing.control-bytes-committed-source-files-proven-instance-machinery"
 kind = "gate"
 gate_id = "matrix_typecheck"
 
 [[reference]]
-id = "ref-testing-corpus-wide-regen-over-prior-output-sweep-reaches-gate-hf08fa6f837ebd524c01449e86c1865d65b0025a02ada385d347479b8c08b15c8"
+id = "gate-regen-over-prior-output-corpus"
 source = "testing.corpus-wide-regen-over-prior-output-sweep-reaches"
 kind = "gate"
 gate_id = "regen_over_prior_output_corpus"
 
 [[reference]]
-id = "ref-testing-corpus-wide-regen-over-prior-output-sweep-reaches-test-symbol-hd90de09305bdc040a05e6672173d293c15f94e889c250c4942893b9d82e946a5"
-source = "testing.corpus-wide-regen-over-prior-output-sweep-reaches"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::json"
-symbol = "tests::integration_tests::json"
-
-[[reference]]
-id = "ref-testing-corpus-wide-regen-over-prior-output-sweep-reaches-test-symbol-h39e7182f9385a5e34742d617292e95331a15f02bba7282a59e86fc253a10fd50"
-source = "testing.corpus-wide-regen-over-prior-output-sweep-reaches"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::regen_over_prior_tests::regen_over_prior_output_corpus"
-symbol = "tests::regen_over_prior_tests::regen_over_prior_output_corpus"
-
-[[reference]]
-id = "ref-testing-dependency-swap-pass-compile-parity-existing-gate-silently-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n3"
 source = "testing.dependency-swap-pass-compile-parity-existing-gate-silently"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-directive-dependent-emitter-edge-case-triggering-shape-hand-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n4"
 source = "testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-directive-s-documented-sentence-stay-true-consumer-visible-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n5"
 source = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-docs-vs-behavior-conformance-harness-comment-dsl-mdx-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n3"
 source = "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-docs-vs-behavior-conformance-harness-comment-dsl-mdx-gate-h92f92e21b9beaff9ef57cc420e20e24f55a08e91f74047acb1b5d950b15b3231"
-source = "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
-kind = "gate"
-gate_id = "fuzz_bounded_run"
-
-[[reference]]
-id = "ref-testing-docs-vs-behavior-conformance-harness-comment-dsl-mdx-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"
-source = "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
-kind = "gate"
-gate_id = "lint_doc_citations"
-
-[[reference]]
-id = "ref-testing-docs-vs-behavior-conformance-harness-comment-dsl-mdx-authority"
+id = "testing-guard-docs-vs-behavior-conformance-harness"
 source = "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
 kind = "roadmap"
 target_id = "testing.guard.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
 
 [[reference]]
-id = "ref-testing-documented-failure-shape-exercises-prose-cross-crate-int-test-symbol-h4c5e041e97a704e70c4a95276f741dd0e153a6e8cab36dea83486c0d206018f8"
+id = "test-extern-deps"
 source = "testing.documented-failure-shape-exercises-prose-cross-crate-int"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_deps"
 symbol = "tests::integration_tests::extern_deps"
 
 [[reference]]
-id = "ref-testing-documented-failure-shape-exercises-prose-cross-crate-int-test-symbol-h8e57dd2c7c817395d3ecbe80f5de769676ca735f3c57392108c2b5e3bff80b56"
+id = "test-int-key-via-common-import-override-sidecar"
 source = "testing.documented-failure-shape-exercises-prose-cross-crate-int"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::int_key_via_common_import_override_sidecar"
 symbol = "tests::integration_tests::int_key_via_common_import_override_sidecar"
 
 [[reference]]
-id = "ref-testing-documented-flag-pairing-broken-fixture-stays-green-because-test-symbol-hc64f92382996eb99ea23f2c1b7c6a03857d28d5348d758322267f30a93056c52"
+id = "test-common-override-wasm-int"
 source = "testing.documented-flag-pairing-broken-fixture-stays-green-because"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::common_override_wasm_int"
 symbol = "tests::integration_tests::common_override_wasm_int"
 
 [[reference]]
-id = "ref-testing-documented-flag-pairing-broken-fixture-stays-green-because-test-symbol-h567379bcd8f6b431087b7c8a5a70ec1c1dc112624da15e371ac4d0117dcd009f"
+id = "test-extern-deps-wasm"
 source = "testing.documented-flag-pairing-broken-fixture-stays-green-because"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_deps_wasm"
 symbol = "tests::integration_tests::extern_deps_wasm"
 
 [[reference]]
-id = "ref-testing-doubled-doc-comment-markers-emitted-docs-proven-instance-test-symbol-haf7edde0b79ace73f9b150c48055de3ca3348b998530b48a7b91250a394d3404"
+id = "test-generated-code-clippy-clean"
 source = "testing.doubled-doc-comment-markers-emitted-docs-proven-instance"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::generated_code_clippy_clean"
 symbol = "tests::integration_tests::generated_code_clippy_clean"
 
 [[reference]]
-id = "ref-testing-dsl-position-tests-string-level-design-green-emitted-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n6"
 source = "testing.dsl-position-tests-string-level-design-green-emitted"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-duplicates-policy-residuals-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n7"
 source = "testing.duplicates-policy-residuals"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-duplicates-dedicated-generic-collision-message-test-symbol-h5fad85f77abba604c3e768d2d77129d2a6a626795833b7048bb3e2e7d906dbc2"
+id = "test-inline-n258-nominal-name-collision-is-rejected"
 source = "testing.duplicates.dedicated-generic-collision-message"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::robustness_tests::inline_258_nominal_name_collision_is_rejected"
 symbol = "tests::robustness_tests::inline_258_nominal_name_collision_is_rejected"
 
 [[reference]]
-id = "ref-testing-emission-branch-generated-output-fixture-exercises-invisible-gate-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n8"
 source = "testing.emission-branch-generated-output-fixture-exercises-invisible-gate"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-emit-tests-gate-asserts-round-trip-green-cannot-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n9"
 source = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-emitted-shape-lint-classes-outside-clippy-all-beyond-test-symbol-haf7edde0b79ace73f9b150c48055de3ca3348b998530b48a7b91250a394d3404"
+id = "test-generated-code-clippy-clean-n2"
 source = "testing.emitted-shape-lint-classes-outside-clippy-all-beyond"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::generated_code_clippy_clean"
 symbol = "tests::integration_tests::generated_code_clippy_clean"
 
 [[reference]]
-id = "ref-testing-emitter-drops-overloadable-parameter-building-fresh-config-invisible-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n10"
 source = "testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-exclusion-reasons-informational-interchange-authority"
+id = "readme-extern-interface-export-extern-import-the-machine"
 source = "testing.exclusion-reasons-informational-interchange"
 kind = "file_heading"
 path = "tests/README.md"
 heading = "Extern-interface export & `--extern-import` (the machine-generated stub channel)"
 
 [[reference]]
-id = "ref-testing-exclusion-reasons-informational-interchange-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"
+id = "testing-roadmap-operational-watches"
 source = "testing.exclusion-reasons-informational-interchange"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Operational watches"
 
 [[reference]]
-id = "ref-testing-extend-recombination-member-kind-table-optional-fixed-shape-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n11"
 source = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-extern-deps-wasm-boundary-surface-packaging-json-gen-test-symbol-hb167df3b741e441b329e40b4e266b72eeb0270c3ff37a9648b2578cb2c2fe932"
+id = "test-extern-wrapper-index-defers-to-dep"
 source = "testing.extern-deps-wasm-boundary-surface-packaging-json-gen"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_wrapper_index_defers_to_dep"
 symbol = "tests::integration_tests::extern_wrapper_index_defers_to_dep"
 
 [[reference]]
-id = "ref-testing-extern-interface-export-public-interchange-format-file-heading-hcd398e660853cc36a8775a2364f8f7dcdd7f9c1a4fee1a20a98b392f5dcdc1ce"
+id = "readme-extern-interface-export-extern-import-the-machine-n2"
 source = "testing.extern-interface-export-public-interchange-format"
 kind = "file_heading"
 path = "tests/README.md"
 heading = "Extern-interface export & `--extern-import` (the machine-generated stub channel)"
 
 [[reference]]
-id = "ref-testing-extreme-value-boundary-correctness-generation-time-encode-paths-test-symbol-h03a2d4aca6fd0b7322c8b06e51166f2dd358e81b0f0599b08bc930dafaba33f2"
+id = "test-i64-min-fixed-value-emits-width-correct-nint"
 source = "testing.extreme-value-boundary-correctness-generation-time-encode-paths"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::robustness_tests::i64_min_fixed_value_emits_width_correct_nint"
 symbol = "tests::robustness_tests::i64_min_fixed_value_emits_width_correct_nint"
 
 [[reference]]
-id = "ref-testing-failing-snapshot-test-surfaces-mismatch-per-test-run-file-heading-hdfda06d801b21d0d5d207c3f6d65dfb210bc07372c22ac4db084fd65eefa1c3c"
+id = "readme-blessing-changes"
 source = "testing.failing-snapshot-test-surfaces-mismatch-per-test-run"
 kind = "file_heading"
 path = "tests/README.md"
 heading = "Blessing changes"
 
 [[reference]]
-id = "ref-testing-finding-s-defect-side-attribution-recorded-narrative-plausibility-gate-hfd5262ebb003d28f8005bf974fa55f6ad2a0d8edd3503b7c105f5136a214c75a"
+id = "gate-corpus-decode-replay"
 source = "testing.finding-s-defect-side-attribution-recorded-narrative-plausibility"
 kind = "gate"
 gate_id = "corpus_decode_replay"
 
 [[reference]]
-id = "ref-testing-finding-s-defect-side-attribution-recorded-narrative-plausibility-test-symbol-h91ab61cdff6159c5294eec8058119963c8dae390181e7e6add05fc2fca12d304"
-source = "testing.finding-s-defect-side-attribution-recorded-narrative-plausibility"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::corpus_decode_replay"
-symbol = "tests::integration_tests::corpus_decode_replay"
-
-[[reference]]
-id = "ref-testing-fixture-models-obsolete-user-contract-stays-green-real-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n12"
 source = "testing.fixture-models-obsolete-user-contract-stays-green-real"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-fixture-s-verdict-accident-cargo-feature-unification-harness-test-symbol-h92e6ce8d56c91219e54fcbeae835cfb71d8d3167d5ec16c6e3ba5ce03e1ea23f"
+id = "test-core-no-wasm"
 source = "testing.fixture-s-verdict-accident-cargo-feature-unification-harness"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::core_no_wasm"
 symbol = "tests::integration_tests::core_no_wasm"
 
 [[reference]]
-id = "ref-testing-fixture-s-verdict-accident-cargo-feature-unification-harness-test-symbol-h6f14a1dfc8b23912c26f6e2155cb0f7aa7b2090605380a02d393bf82074e2b57"
+id = "test-core-with-wasm"
 source = "testing.fixture-s-verdict-accident-cargo-feature-unification-harness"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::core_with_wasm"
 symbol = "tests::integration_tests::core_with_wasm"
 
 [[reference]]
-id = "ref-testing-fixture-s-verdict-accident-cargo-feature-unification-harness-test-symbol-hbdd271db5c0070ba70095dc3db0323b4ebffefd1fb2125040e83e6cfcebfdf4a"
+id = "test-emit-wasm-tests-execute"
 source = "testing.fixture-s-verdict-accident-cargo-feature-unification-harness"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::emit_wasm_tests_execute"
 symbol = "tests::integration_tests::emit_wasm_tests_execute"
 
 [[reference]]
-id = "ref-testing-flag-cddl-codegen-invocation-wasm-run-wasm-flag-file-heading-h759f2d7eb8a0852ae365a6dccd08e73b4522e560bc3c7e8c7801b2377f6a959c"
+id = "agents-build-verify"
 source = "testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag"
 kind = "file_heading"
 path = "AGENTS.md"
 heading = "Build & verify"
 
 [[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n4"
 source = "testing.full-n-flag-powerset-pict-pairwise"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-authority"
+id = "testing-guard-full-n-flag-powerset-pict-pairwise"
 source = "testing.full-n-flag-powerset-pict-pairwise"
 kind = "roadmap"
 target_id = "testing.guard.full-n-flag-powerset-pict-pairwise"
 
 [[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-hc64f92382996eb99ea23f2c1b7c6a03857d28d5348d758322267f30a93056c52"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::common_override_wasm_int"
-symbol = "tests::integration_tests::common_override_wasm_int"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-h4c5e041e97a704e70c4a95276f741dd0e153a6e8cab36dea83486c0d206018f8"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_deps"
-symbol = "tests::integration_tests::extern_deps"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-h567379bcd8f6b431087b7c8a5a70ec1c1dc112624da15e371ac4d0117dcd009f"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_deps_wasm"
-symbol = "tests::integration_tests::extern_deps_wasm"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-hb2fb1160880f2ab60ccb9ef98d1df3d215214446bc8672faeb24ca12e2f4112e"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_wrapper_index_is_validated_under_wasm_false"
-symbol = "tests::integration_tests::extern_wrapper_index_is_validated_under_wasm_false"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-hce0a1eaefb48776b0356a7bad6b95514b5e4424505e6a89b2cd030b70ad97d49"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::flag_value_rejects_canonical_without_preserve"
-symbol = "tests::integration_tests::flag_value_rejects_canonical_without_preserve"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-h27b1fb699c3672796b1c337160835effb6cfdeccb9c9c4afb25e50c0179d562a"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::flag_value_smoke"
-symbol = "tests::integration_tests::flag_value_smoke"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-haf7edde0b79ace73f9b150c48055de3ca3348b998530b48a7b91250a394d3404"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::generated_code_clippy_clean"
-symbol = "tests::integration_tests::generated_code_clippy_clean"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-h8e57dd2c7c817395d3ecbe80f5de769676ca735f3c57392108c2b5e3bff80b56"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::int_key_via_common_import_override_sidecar"
-symbol = "tests::integration_tests::int_key_via_common_import_override_sidecar"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-ha6c46315f3b84ad9e802fa7c2cbd19bacf51aa069d05c1f2e1275c978dded1d9"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::no_annotate_reframed_emissions_round_trip_non_canonical_wire_byte_exactly"
-symbol = "tests::integration_tests::no_annotate_reframed_emissions_round_trip_non_canonical_wire_byte_exactly"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-h3af84f0e3bdd04e013152b176a35d32bac3eb03b14c54d0c3ad13cb2abad1a0a"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::preserve_no_annotate_fixed_members_generate"
-symbol = "tests::integration_tests::preserve_no_annotate_fixed_members_generate"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-hf518dee8ab7eed2edd275a09f1d6e85c5fd039a93616ac2a03d0e1d1ad14694f"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::wasm_cbor_json_api_macro_compiles"
-symbol = "tests::integration_tests::wasm_cbor_json_api_macro_compiles"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-h8c6f99ea75155b7d703b49c3624efd8392dcf2cd33477d09fd91fa661714261a"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::workspace_dep_unknown_is_rejected_under_wasm_false"
-symbol = "tests::integration_tests::workspace_dep_unknown_is_rejected_under_wasm_false"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-h837ddd6c8ecedbc6520aa975cd91f47ecfe56e314d8959bc1bb633b0596ce5b0"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::workspace_key_requests_derive_effect_and_hard_errors"
-symbol = "tests::integration_tests::workspace_key_requests_derive_effect_and_hard_errors"
-
-[[reference]]
-id = "ref-testing-full-n-flag-powerset-pict-pairwise-test-symbol-h7da4c620f0a0af074e621837c5735a552e525cf626e7722cc560fbcb2fe21580"
-source = "testing.full-n-flag-powerset-pict-pairwise"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::snapshot_tests::deserialize_converts_error_at_most_once"
-symbol = "tests::snapshot_tests::deserialize_converts_error_at_most_once"
-
-[[reference]]
-id = "ref-testing-gate-cache-closure-audit-structurally-blind-gate-authored-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n13"
 source = "testing.gate-cache-closure-audit-structurally-blind-gate-authored"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-gate-cache-costs-file-heading-hd2498b1dbcaca730bce673b3f6bff5a3a73caa75e63e4868b1df30dd358f795c"
+id = "readme-the-gate-cache-memoize-and-skip-for-nested-cargo"
 source = "testing.gate-cache-costs"
 kind = "file_heading"
 path = "tests/README.md"
 heading = "The gate cache (memoize-and-skip for nested cargo)"
 
 [[reference]]
-id = "ref-testing-gate-exists-registry-nowhere-tests-readme-md-hand-gate-h14a4d326b3ff7b16ea5befdfb6772cbfa23f666cb1d531fc5d54e68ec6398e80"
+id = "gate-pin-cold-fetch"
 source = "testing.gate-exists-registry-nowhere-tests-readme-md-hand"
 kind = "gate"
 gate_id = "pin_cold_fetch"
 
 [[reference]]
-id = "ref-testing-gate-s-own-stdout-print-column-result-pass-file-heading-h759f2d7eb8a0852ae365a6dccd08e73b4522e560bc3c7e8c7801b2377f6a959c"
+id = "agents-build-verify-n2"
 source = "testing.gate-s-own-stdout-print-column-result-pass"
 kind = "file_heading"
 path = "AGENTS.md"
 heading = "Build & verify"
 
 [[reference]]
-id = "ref-testing-gate-script-health-cache-staleness-key-fresh-worktree-gate-he58fbd1649112b6357870774f10623684918928b7d10e5a2207e0389b4c867b7"
+id = "gate-fuzz-compile-rot"
 source = "testing.gate-script-health-cache-staleness-key-fresh-worktree"
 kind = "gate"
 gate_id = "fuzz_compile_rot"
 
 [[reference]]
-id = "ref-testing-generated-local-collision-class-refused-mangled-refusal-s-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n14"
 source = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-generated-local-collision-class-refused-mangled-refusal-s-gate-h2b903aaf6a1fad0f077b632e4203c5e0b49c8bd1ccb14d4444c25f8ec125a1c7"
-source = "testing.generated-local-collision-class-refused-mangled-refusal-s"
-kind = "gate"
-gate_id = "generated_local_out_of_scope_crates_compile"
-
-[[reference]]
-id = "ref-testing-generated-local-collision-class-refused-mangled-refusal-s-test-symbol-h10c0edddf5fff5d5d4d6d4d97122c0b49b0c3a2be9cb1baae7222283ad6a74eb"
-source = "testing.generated-local-collision-class-refused-mangled-refusal-s"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::identifier_hazard_tests::generated_local_out_of_scope_crates_compile"
-symbol = "tests::identifier_hazard_tests::generated_local_out_of_scope_crates_compile"
-
-[[reference]]
-id = "ref-testing-generated-local-collision-scope-wide-probe-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n15"
 source = "testing.generated-local-collision.scope-wide-probe"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-generic-raw-bytes-base-refused-generic-extern-base-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n16"
 source = "testing.generic-raw-bytes-base-refused-generic-extern-base"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-generic-raw-bytes-base-refused-generic-extern-base-matrix-feature-h46bcbd72e0a2997098ddc4ce0a183fdac58742246edacf5f544944555e975bed"
-source = "testing.generic-raw-bytes-base-refused-generic-extern-base"
-kind = "matrix_feature"
-feature_id = "ext.extern.generic"
-
-[[reference]]
-id = "ref-testing-generic-raw-bytes-base-refused-generic-extern-base-matrix-feature-h037c3812dd78e531990735304c89c4f28b18d3b4605b60c99b815678c2ac7cc8"
-source = "testing.generic-raw-bytes-base-refused-generic-extern-base"
-kind = "matrix_feature"
-feature_id = "ext.extern.generic_instance"
-
-[[reference]]
-id = "ref-testing-generic-raw-bytes-base-refused-generic-extern-base-matrix-feature-h8e8a4ec65b1327790726a0fa31ad3af8341e461ef600e8d656b079796217709d"
-source = "testing.generic-raw-bytes-base-refused-generic-extern-base"
-kind = "matrix_feature"
-feature_id = "ext.raw_bytes.generic"
-
-[[reference]]
-id = "ref-testing-generic-raw-bytes-base-refused-generic-extern-base-authority"
+id = "testing-guard-generic-raw-bytes-base-refused-generic"
 source = "testing.generic-raw-bytes-base-refused-generic-extern-base"
 kind = "roadmap"
 target_id = "testing.guard.generic-raw-bytes-base-refused-generic-extern-base"
 
 [[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n17"
 source = "testing.grammar-fuzzer-escalations"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-gate-hbcc978d64228d9aa31f694c0db8dd8725546f574db1fe2d6bf146fd4552212bd"
-source = "testing.grammar-fuzzer-escalations"
-kind = "gate"
-gate_id = "recombination_crates_execute"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-gate-hbd8567161363be69fcdbb3bd57d1b002a372f2394f258f624de8314de5131b54"
-source = "testing.grammar-fuzzer-escalations"
-kind = "gate"
-gate_id = "recombination_json_crates_execute"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-gate-h8a50e2502eeca655ec7ce4c9628abf496ee41f1554caca0ae11b18ddf7cc840e"
-source = "testing.grammar-fuzzer-escalations"
-kind = "gate"
-gate_id = "recombination_preserve_crates_execute"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-gate-h89d35505cd400602aee174c279a4d15bca40d4ed17317da9265106c0f86580c0"
-source = "testing.grammar-fuzzer-escalations"
-kind = "gate"
-gate_id = "recombination_wasm_crates_check"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-test-symbol-h9014886f8bce9de42e2cdd3ccee1b2fe66cd150e840f85a654b5292208c9dddb"
-source = "testing.grammar-fuzzer-escalations"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::recombination_tests::ledger_key_shape_floor"
-symbol = "tests::recombination_tests::ledger_key_shape_floor"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-test-symbol-h852d294085f3656d35b4acff7e3f89b48dd40529f2a072621d41d591a3aae658"
-source = "testing.grammar-fuzzer-escalations"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::recombination_tests::recombination_crates_execute"
-symbol = "tests::recombination_tests::recombination_crates_execute"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-test-symbol-h225a7426b5c7fe2ea1afe6b04f3fb52beb5e4507ee8b5d0bd469817fd9f75afc"
-source = "testing.grammar-fuzzer-escalations"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::recombination_tests::recombination_generation_sweep"
-symbol = "tests::recombination_tests::recombination_generation_sweep"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-test-symbol-hfa78fa7a01247373d294c50af853916bafb19e37307642fb56e99ad1e6fdb916"
-source = "testing.grammar-fuzzer-escalations"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::recombination_tests::recombination_json_crates_execute"
-symbol = "tests::recombination_tests::recombination_json_crates_execute"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-test-symbol-hc9703fd922465db49fb1fcaf4ff6eedf18caa39d97ab7a67a7c291df695cf2d5"
-source = "testing.grammar-fuzzer-escalations"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::recombination_tests::recombination_preserve_crates_execute"
-symbol = "tests::recombination_tests::recombination_preserve_crates_execute"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-escalations-test-symbol-hce171f02ce1af922e066e0fb8ac15c93bbef451bdc878ae4c5389958f4b33991"
-source = "testing.grammar-fuzzer-escalations"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::recombination_tests::recombination_wasm_crates_check"
-symbol = "tests::recombination_tests::recombination_wasm_crates_check"
-
-[[reference]]
-id = "ref-testing-grammar-fuzzer-batch-masking-detector-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n18"
 source = "testing.grammar-fuzzer.batch-masking-detector"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-hand-enumerated-ban-pattern-list-authority-lives-gitignored-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"
+id = "gate-lint-doc-citations-n3"
 source = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 kind = "gate"
 gate_id = "lint_doc_citations"
 
 [[reference]]
-id = "ref-testing-hand-maintained-source-dependency-mapping-manifest-changeset-silently-test-symbol-h6c1e0d91bc6033d6e72fba524afbf91d1927393e2d0f847e632d618ea16128bf"
+id = "test-export-static-crate-writes-composed-runtime-and"
 source = "testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::export_static_crate_writes_composed_runtime_and_manifest"
 symbol = "tests::integration_tests::export_static_crate_writes_composed_runtime_and_manifest"
 
 [[reference]]
-id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n19"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n20"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-one-proof-roadmap-h3de9048b09ce092e475d6691816189c52c2beadbd980bb250ed2977a5f213ef6"
+id = "testing-build-registration-class-reference-position"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
 kind = "roadmap"
 target_id = "testing.build-registration-class-reference-position-sweep-second-escape"
 
 [[reference]]
-id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n21"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n22"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-build-registration-class-reference-position-sweep-second-escape-two-proof-roadmap-h3de9048b09ce092e475d6691816189c52c2beadbd980bb250ed2977a5f213ef6"
+id = "testing-build-registration-class-reference-position-n2"
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
 kind = "roadmap"
 target_id = "testing.build-registration-class-reference-position-sweep-second-escape"
 
 [[reference]]
-id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n23"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n24"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-one-proof-roadmap-haebfad78df120de969e13b0169c8754aad4ad4047945530b40fecd9afd40b9b4"
+id = "testing-gate-demands-premise-probed-against-gate"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
 kind = "roadmap"
 target_id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
 
 [[reference]]
-id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n25"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n26"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-gate-demands-premise-probed-against-gate-evidence-about-two-proof-roadmap-haebfad78df120de969e13b0169c8754aad4ad4047945530b40fecd9afd40b9b4"
+id = "testing-gate-demands-premise-probed-against-gate-n2"
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
 kind = "roadmap"
 target_id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
 
 [[reference]]
-id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n27"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n28"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-one-proof-roadmap-h1838240ada66525dd1b6a047c12fd480acf9eb4d7ffecadafaa3fd7dc251d94a"
+id = "testing-grammar-fuzzer-embed-site-alias-roots"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof"
 kind = "roadmap"
 target_id = "testing.grammar-fuzzer.embed-site-alias-roots"
 
 [[reference]]
-id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n29"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n30"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-grammar-fuzzer-embed-site-alias-roots-two-proof-roadmap-h1838240ada66525dd1b6a047c12fd480acf9eb4d7ffecadafaa3fd7dc251d94a"
+id = "testing-grammar-fuzzer-embed-site-alias-roots-n2"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"
 kind = "roadmap"
 target_id = "testing.grammar-fuzzer.embed-site-alias-roots"
 
 [[reference]]
-id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n31"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n32"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-one-proof-roadmap-he7e71a780510c173364f6ac7c53e176b29906556230f49338bec3ae2f32a3ba7"
+id = "testing-minted-identifier-spellability-floor-identifier"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
 kind = "roadmap"
 target_id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
 
 [[reference]]
-id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n33"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n34"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-minted-identifier-spellability-floor-identifier-generator-emits-verbatim-two-proof-roadmap-he7e71a780510c173364f6ac7c53e176b29906556230f49338bec3ae2f32a3ba7"
+id = "testing-minted-identifier-spellability-floor-identifier-n2"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
 kind = "roadmap"
 target_id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
 
 [[reference]]
-id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-one-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n35"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-one-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n36"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-one-proof-roadmap-hb77e87c983491a2898906b45e06411cb6c5670c21100469699b1ee7436661fa2"
+id = "testing-rejection-message-s-remedy-string-executable"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
 kind = "roadmap"
 target_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 
 [[reference]]
-id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-two-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n37"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-two-proof-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n38"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-incident-observation-rejection-message-s-remedy-string-executable-claim-pin-two-proof-roadmap-hb77e87c983491a2898906b45e06411cb6c5670c21100469699b1ee7436661fa2"
+id = "testing-rejection-message-s-remedy-string-executable-n2"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
 kind = "roadmap"
 target_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 
 [[reference]]
-id = "ref-testing-lint-doc-citations-accepts-docs-heading-durable-citation-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"
+id = "gate-lint-doc-citations-n4"
 source = "testing.lint-doc-citations-accepts-docs-heading-durable-citation"
 kind = "gate"
 gate_id = "lint_doc_citations"
 
 [[reference]]
-id = "ref-testing-logic-tool-emits-source-text-outside-layer-reasons-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n39"
 source = "testing.logic-tool-emits-source-text-outside-layer-reasons"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-predicate-convenience-cbor-bytes-ruling-owner"
+id = "testing-maintainer-ruling-force-convenience-cbor-bytes"
 source = "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns"
 kind = "roadmap"
 target_id = "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns"
 
 [[reference]]
-id = "ref-testing-make-fixture-comment-s-claimed-wire-bytes-executable-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n40"
 source = "testing.make-fixture-comment-s-claimed-wire-bytes-executable"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-making-type-choice-path-reject-duplicated-explicit-name-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n5"
 source = "testing.making-type-choice-path-reject-duplicated-explicit-name"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-making-type-choice-path-reject-duplicated-explicit-name-authority"
+id = "testing-guard-making-type-choice-path-reject-duplicated"
 source = "testing.making-type-choice-path-reject-duplicated-explicit-name"
 kind = "roadmap"
 target_id = "testing.guard.making-type-choice-path-reject-duplicated-explicit-name"
 
 [[reference]]
-id = "ref-testing-matrix-s-note-names-panic-site-aborts-nothing-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n41"
 source = "testing.matrix-s-note-names-panic-site-aborts-nothing"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-mechanical-layers-two-review-owned-design-rules-tests-test-symbol-h7252c51ca49273b5edf62a95a88ca8f30b01aa234d9593848a5b35cb2465dd52"
+id = "test-corpus-occurrence-bounds-enforced"
 source = "testing.mechanical-layers-two-review-owned-design-rules-tests"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::corpus_occurrence_bounds_enforced"
 symbol = "tests::integration_tests::corpus_occurrence_bounds_enforced"
 
 [[reference]]
-id = "ref-testing-mechanical-layers-two-review-owned-design-rules-tests-test-symbol-hc749902b18315a9d1f12a307c7c9a1196f35ee12722b7211043985cfe3fe37ca"
+id = "test-corpus-special-map-key-supported"
 source = "testing.mechanical-layers-two-review-owned-design-rules-tests"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::corpus_special_map_key_supported"
 symbol = "tests::integration_tests::corpus_special_map_key_supported"
 
 [[reference]]
-id = "ref-testing-message-s-level-classification-review-owned-two-ways-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n42"
 source = "testing.message-s-level-classification-review-owned-two-ways"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-msrv-declaration-os-matrix-generated-code-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n6"
 source = "testing.msrv-declaration-os-matrix-generated-code"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-msrv-declaration-os-matrix-generated-code-authority"
+id = "testing-guard-msrv-declaration-os-matrix-generated-code"
 source = "testing.msrv-declaration-os-matrix-generated-code"
 kind = "roadmap"
 target_id = "testing.guard.msrv-declaration-os-matrix-generated-code"
 
 [[reference]]
-id = "ref-testing-multifile-reference-position-coverage-two-position-keyed-escapes-test-symbol-h1b01a70d4040ac15d5c5b342c3e8dc49b26e0d3d15ab75531aa65fd7ac058804"
+id = "test-extern-generic-scoped"
 source = "testing.multifile-reference-position-coverage-two-position-keyed-escapes"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_generic_scoped"
 symbol = "tests::integration_tests::extern_generic_scoped"
 
 [[reference]]
-id = "ref-testing-multifile-reference-position-coverage-two-position-keyed-escapes-test-symbol-hb058dd1eca57bc8a79f91a36dadd3ca901e2f81888e20775ea28346855b517a6"
+id = "test-extern-generic-scoped-alias-imports"
 source = "testing.multifile-reference-position-coverage-two-position-keyed-escapes"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::snapshot_tests::extern_generic_scoped_alias_imports"
 symbol = "tests::snapshot_tests::extern_generic_scoped_alias_imports"
 
 [[reference]]
-id = "ref-testing-nothing-asserts-how-many-times-rejection-message-emitted-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n43"
 source = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-nothing-asserts-two-ir-sites-cannot-mint-same-test-symbol-hcf12fb74615c93111e6709469e4256b6a5177a805e60d22c6e675fe9a586d6ab"
+id = "test-embeddable-group-choice-arm-may-share-a-rule-name"
 source = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::robustness_tests::embeddable_group_choice_arm_may_share_a_rule_name"
 symbol = "tests::robustness_tests::embeddable_group_choice_arm_may_share_a_rule_name"
 
 [[reference]]
-id = "ref-testing-nothing-asserts-two-ir-sites-cannot-mint-same-test-symbol-hc2a3331e11cd1132a1b4075f798bdb40f6559713ca231f7c9b6a28fa598a0e3d"
+id = "test-group-choice-arm-ident-collision-rejects-gracefully"
 source = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::robustness_tests::group_choice_arm_ident_collision_rejects_gracefully"
 symbol = "tests::robustness_tests::group_choice_arm_ident_collision_rejects_gracefully"
 
 [[reference]]
-id = "ref-testing-nothing-asserts-two-ir-sites-cannot-mint-same-test-symbol-h765c81ec81d1528831b49117e4f4c56dbe06beaf882ed56d779ae14c83a5d7f9"
+id = "test-identical-group-choice-arms-in-different-rules"
 source = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::robustness_tests::identical_group_choice_arms_in_different_rules_share_one_struct"
 symbol = "tests::robustness_tests::identical_group_choice_arms_in_different_rules_share_one_struct"
 
 [[reference]]
-id = "ref-testing-observed-baseline-comments-beside-gate-floors-rot-silently-gate-hfd5262ebb003d28f8005bf974fa55f6ad2a0d8edd3503b7c105f5136a214c75a"
+id = "gate-corpus-decode-replay-n2"
 source = "testing.observed-baseline-comments-beside-gate-floors-rot-silently"
 kind = "gate"
 gate_id = "corpus_decode_replay"
 
 [[reference]]
-id = "ref-testing-observed-baseline-comments-beside-gate-floors-rot-silently-test-symbol-h91ab61cdff6159c5294eec8058119963c8dae390181e7e6add05fc2fca12d304"
-source = "testing.observed-baseline-comments-beside-gate-floors-rot-silently"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::corpus_decode_replay"
-symbol = "tests::integration_tests::corpus_decode_replay"
-
-[[reference]]
-id = "ref-testing-orphan-fixture-directory-meta-test-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n7"
 source = "testing.orphan-fixture-directory-meta-test"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-orphan-fixture-directory-meta-test-authority"
+id = "testing-guard-orphan-fixture-directory-meta-test"
 source = "testing.orphan-fixture-directory-meta-test"
 kind = "roadmap"
 target_id = "testing.guard.orphan-fixture-directory-meta-test"
 
 [[reference]]
-id = "ref-testing-ownership-journal-making-dropped-std-forward-dep-converge-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n8"
 source = "testing.ownership-journal-making-dropped-std-forward-dep-converge"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-ownership-journal-making-dropped-std-forward-dep-converge-authority"
+id = "testing-guard-ownership-journal-making-dropped-std"
 source = "testing.ownership-journal-making-dropped-std-forward-dep-converge"
 kind = "roadmap"
 target_id = "testing.guard.ownership-journal-making-dropped-std-forward-dep-converge"
 
 [[reference]]
-id = "ref-testing-panic-site-un-shadowing-converting-shallow-panic-graceful-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n44"
 source = "testing.panic-site-un-shadowing-converting-shallow-panic-graceful"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-parallel-constructor-fixture-diversity-parser-over-external-input-test-symbol-h0a539c7624cba85a03789079dcbb8396196ccfc603cd7cb8c4fa78a9af03fc2b"
+id = "test-workspace-requests-alias-elements-host"
 source = "testing.parallel-constructor-fixture-diversity-parser-over-external-input"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::workspace_requests_alias_elements_host"
 symbol = "tests::integration_tests::workspace_requests_alias_elements_host"
 
 [[reference]]
-id = "ref-testing-predicate-prettyplease-formatting-ruling-owner"
+id = "testing-prettyplease-shelling-rustfmt"
 source = "testing.prettyplease-shelling-rustfmt"
 kind = "roadmap"
 target_id = "testing.prettyplease-shelling-rustfmt"
 
 [[reference]]
-id = "ref-testing-process-boundary-rustc-after-panic-fix-test-symbol-h1535d59c68ee2febd35ce88ec92365a843838940dda4648495494e28a4a9180d"
+id = "test-recursive-collection-ref"
 source = "testing.process-boundary.rustc-after-panic-fix"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::recursive_collection_ref"
 symbol = "tests::integration_tests::recursive_collection_ref"
 
 [[reference]]
-id = "ref-testing-process-boundary-rustc-after-panic-fix-test-symbol-h9b42afc58e18471a0a4f1d2ffa1b7c48302bfae88f89740b52be6f1922e8e179"
+id = "test-recursive-collection-ref-preserve"
 source = "testing.process-boundary.rustc-after-panic-fix"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::recursive_collection_ref_preserve"
 symbol = "tests::integration_tests::recursive_collection_ref_preserve"
 
 [[reference]]
-id = "ref-testing-process-boundary-rustfmt-pre-rustc-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n45"
 source = "testing.process-boundary.rustfmt-pre-rustc"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-profile-driven-compile-gate-covers-compositions-profiles-specs-gate-h27130094b630c9c61596568004d5fabd3d8420f7fad801b2c98c52c1c412b72c"
+id = "gate-no-std-check"
 source = "testing.profile-driven-compile-gate-covers-compositions-profiles-specs"
 kind = "gate"
 gate_id = "no_std_check"
 
 [[reference]]
-id = "ref-testing-proof-directive-effect-round-trip-coherence-sweep-accepted-custom-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n46"
 source = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-proof-directive-effect-round-trip-coherence-sweep-accepted-custom-roadmap-he5a254293d69634a726bd77c7d1cde49fee2f6fe57c270aa5dbf876d38328506"
+id = "testing-directive-effect-round-trip-coherence-sweep"
 source = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
 kind = "roadmap"
 target_id = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
 
 [[reference]]
-id = "ref-testing-proof-pin-toolchain-verify-ts-s-nested-cargo-scratch-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n47"
 source = "testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-proof-pin-toolchain-verify-ts-s-nested-cargo-scratch-roadmap-h41c11e8c7262400c23266ecfc4c28e30a1b59b83cb62b8035737fcfac96b55aa"
+id = "testing-pin-toolchain-verify-ts-s-nested-cargo-scratch"
 source = "testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"
 kind = "roadmap"
 target_id = "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"
 
 [[reference]]
-id = "ref-testing-proof-positional-diversity-fold-preserve-fixture-corpus-authoring-gives-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n48"
 source = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-proof-positional-diversity-fold-preserve-fixture-corpus-authoring-gives-roadmap-h8a6dd47dcf615a826f4736b9dee803dae68cf5cddfe34f9ba6d47f3e5d9216c7"
+id = "testing-positional-diversity-fold-preserve-fixture"
 source = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 kind = "roadmap"
 target_id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 
 [[reference]]
-id = "ref-testing-proof-same-named-generated-crates-silently-share-cargo-fingerprint-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n49"
 source = "testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-proof-same-named-generated-crates-silently-share-cargo-fingerprint-roadmap-h19b0d970320ceb3f498f1f90cf31f7068da61668d960ddabc101ed40cc62a3cb"
+id = "testing-same-named-generated-crates-silently-share-cargo"
 source = "testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"
 kind = "roadmap"
 target_id = "testing.same-named-generated-crates-silently-share-cargo-fingerprint"
 
 [[reference]]
-id = "ref-testing-proof-warm-up-refresh-dep-universe-lock-trust-fresh-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n50"
 source = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-proof-warm-up-refresh-dep-universe-lock-trust-fresh-roadmap-hfaf405b8952df1839f312626a996776d1cc6524cf548ffe70bb4d9130e59005e"
+id = "testing-warm-up-refresh-dep-universe-lock-trust-fresh"
 source = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 kind = "roadmap"
 target_id = "testing.warm-up-refresh-dep-universe-lock-trust-fresh"
 
 [[reference]]
-id = "ref-testing-quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n9"
 source = "testing.quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-reason-keyed-rejection-evidence-reject-catalogs-proven-near-test-symbol-h2530dd33835f16e026c5d69809e5c1a38b20bee1cd27a5ee3514dce5bcdba173"
+id = "test-fixture-bare-decode-rejects-hold-at-their-ratchet"
 source = "testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::decode_reject_reason_tests::fixture_bare_decode_rejects_hold_at_their_ratchet_baseline"
 symbol = "tests::decode_reject_reason_tests::fixture_bare_decode_rejects_hold_at_their_ratchet_baseline"
 
 [[reference]]
-id = "ref-testing-referencing-context-measured-wrapping-deep-honored-base-shape-test-symbol-hdf54feb89788ee827c0fa1a14327f84c1b89c8d44f94ff33911f27e63f2a6253"
+id = "test-directive-referencing-context-sweep"
 source = "testing.referencing-context-measured-wrapping-deep-honored-base-shape"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::referencing_context_tests::directive_referencing_context_sweep"
 symbol = "tests::referencing_context_tests::directive_referencing_context_sweep"
 
 [[reference]]
-id = "ref-testing-representation-changing-directive-goes-live-new-container-ship-test-symbol-h8fb1437d51762065bee21742c2489192a5e89006867fe660038c9f29c5b1229f"
+id = "test-extern-import-flavored-generic-base-projects"
 source = "testing.representation-changing-directive-goes-live-new-container-ship"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::extern_import_tests::extern_import_flavored_generic_base_projects_without_the_tag"
 symbol = "tests::extern_import_tests::extern_import_flavored_generic_base_projects_without_the_tag"
 
 [[reference]]
-id = "ref-testing-restructuring-features-std-tool-owned-sub-feature-cddl-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n10"
 source = "testing.restructuring-features-std-tool-owned-sub-feature-cddl"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-restructuring-features-std-tool-owned-sub-feature-cddl-authority"
+id = "testing-guard-restructuring-features-std-tool-owned-sub"
 source = "testing.restructuring-features-std-tool-owned-sub-feature-cddl"
 kind = "roadmap"
 target_id = "testing.guard.restructuring-features-std-tool-owned-sub-feature-cddl"
 
 [[reference]]
-id = "ref-testing-predicate-rule-trailing-conjunctive-unblock-owner"
+id = "testing-rule-trailing-directive-classification"
 source = "testing.rule-trailing.directive-classification"
 kind = "roadmap"
 target_id = "testing.rule-trailing.directive-classification"
 
 [[reference]]
-id = "ref-testing-rule-trailing-reviewed-fork-publication-commit"
+id = "commit-dcspark-cddl"
 source = "testing.rule-trailing.reviewed-fork-publication"
 kind = "external_commit"
 repository = "dcSpark/cddl"
 commit = "a7ed0784e89689784ff78ed0e85c7434a3528937"
 
 [[reference]]
-id = "ref-testing-predicate-reviewed-fork-publication-owner"
+id = "testing-rule-trailing-reviewed-fork-publication"
 source = "testing.rule-trailing.reviewed-fork-publication"
 kind = "roadmap"
 target_id = "testing.rule-trailing.reviewed-fork-publication"
 
 [[reference]]
-id = "ref-testing-ruling-premise-gate-x-stays-green-must-probed-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n51"
 source = "testing.ruling-premise-gate-x-stays-green-must-probed"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-run-local-values-gate-cache-key-material-proven-gate-h21dded476e33c8fff7c34a5c9b5adedd959977716912b4e5ca82c6189426aa45"
+id = "gate-verify-cache-transparency"
 source = "testing.run-local-values-gate-cache-key-material-proven"
 kind = "gate"
 gate_id = "verify_cache_transparency"
 
 [[reference]]
-id = "ref-testing-schema-document-s-name-injectivity-enforced-row-side-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n52"
 source = "testing.schema-document-s-name-injectivity-enforced-row-side"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-schema-name-collision-loser-no-row-same-id-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n53"
 source = "testing.schema-name.collision-loser-no-row-same-id"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-schema-name-cross-crate-same-id-collision-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n54"
 source = "testing.schema-name.cross-crate-same-id-collision"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-schema-name-two-rowless-types-collide-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n55"
 source = "testing.schema-name.two-rowless-types-collide"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-stale-known-limitation-prose-surviving-fix-finding-ledgered-gate-h3e599ca304737456b28414057bd77659676f5f807544e7c8d75f8d3d62d80797"
+id = "gate-lint-doc-citations-n5"
 source = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 kind = "gate"
 gate_id = "lint_doc_citations"
 
 [[reference]]
-id = "ref-testing-stale-known-limitation-prose-surviving-fix-finding-ledgered-test-symbol-hf56c41fd40492d55461f131282a45332d6dbcf25870414ace33425828a1011dd"
-source = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::facade_composition_compiles"
-symbol = "tests::integration_tests::facade_composition_compiles"
-
-[[reference]]
-id = "ref-testing-stale-known-limitation-prose-surviving-fix-finding-ledgered-test-symbol-h003eb69773f7ec4bdad0526ab52208064f423d1ae952f6e6facb0f984e0a1fcf"
-source = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::integration_extern_only_scope_declared_in_root"
-symbol = "tests::integration_tests::integration_extern_only_scope_declared_in_root"
-
-[[reference]]
-id = "ref-testing-synthesized-name-referenced-never-minted-e0425-flavor-test-symbol-hf32dc18af1b80049eaeceee59c2af22af5f31da3ff3353fe26b6ba5c0de46eb9"
+id = "test-synthesized-name-interaction-sweep"
 source = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::synthesized_name_interaction_sweep"
 symbol = "tests::integration_tests::synthesized_name_interaction_sweep"
 
 [[reference]]
-id = "ref-testing-tag-set-non-idiom-generic-boundary-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
+id = "testing-roadmap-deferred-features-build-when-a-real"
 source = "testing.tag-set.non-idiom-generic-boundary"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Deferred features (build when a real consumer needs them)"
 
 [[reference]]
-id = "ref-testing-tag-set-non-idiom-generic-boundary-authority"
+id = "testing-guard-tag-set-non-idiom-generic-boundary"
 source = "testing.tag-set.non-idiom-generic-boundary"
 kind = "roadmap"
 target_id = "testing.guard.tag-set-non-idiom-generic-boundary"
 
 [[reference]]
-id = "ref-testing-three-defect-classes-process-test-see-sharing-remedy-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n56"
 source = "testing.three-defect-classes-process-test-see-sharing-remedy"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-three-defect-classes-process-test-see-sharing-remedy-gate-h2aa524e34e8f48375ee9e9e45104902167fda5d035c9fedb1f623ce234697733"
-source = "testing.three-defect-classes-process-test-see-sharing-remedy"
-kind = "gate"
-gate_id = "all_supported_constructs_generate_all_profiles"
-
-[[reference]]
-id = "ref-testing-three-defect-classes-process-test-see-sharing-remedy-gate-h20a465abab9bd99b2b0f658fa9420b1e76d6c46d673b0313e7b503ed2ed0da56"
-source = "testing.three-defect-classes-process-test-see-sharing-remedy"
-kind = "gate"
-gate_id = "feature_corpus_roundtrips_nondefault_profiles"
-
-[[reference]]
-id = "ref-testing-three-defect-classes-process-test-see-sharing-remedy-test-symbol-h5d60b6dffc0a736899b02c6bd28d78ab5d21cef804a8f5da7975afb9383ebe34"
-source = "testing.three-defect-classes-process-test-see-sharing-remedy"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::all_supported_constructs_generate_all_profiles"
-symbol = "tests::integration_tests::all_supported_constructs_generate_all_profiles"
-
-[[reference]]
-id = "ref-testing-three-defect-classes-process-test-see-sharing-remedy-test-symbol-h894f1ec250eb93e74a6dc867e73684072291d7bdb8d2264e3990ee2ea2f181f6"
-source = "testing.three-defect-classes-process-test-see-sharing-remedy"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::feature_corpus_roundtrips_nondefault_profiles"
-symbol = "tests::integration_tests::feature_corpus_roundtrips_nondefault_profiles"
-
-[[reference]]
-id = "ref-testing-predicate-tier-memory-durable-measurements-owner"
+id = "testing-tier-memory-spend-measurements"
 source = "testing.tier-memory.spend-measurements"
 kind = "roadmap"
 target_id = "testing.tier-memory.spend-measurements"
 
 [[reference]]
-id = "ref-testing-tier-s-disk-bandwidth-unmeasured-anything-scratch-floor-file-heading-he05a163471131cbfda71d664fd575398611216b2c65b7e7910f984498d0a7e02"
+id = "testing-roadmap-operational-watches-n2"
 source = "testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Operational watches"
 
 [[reference]]
-id = "ref-testing-tooling-generated-coverage-instrumentation-declined-heading"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n11"
 source = "testing.tooling.generated-coverage-instrumentation"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-tooling-goldenfile-expect-test-corpus-declined-heading"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n12"
 source = "testing.tooling.goldenfile-expect-test-corpus"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-tooling-no-panic-lints-declined-heading"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n13"
 source = "testing.tooling.no-panic-lints"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-tooling-quickcheck-parallel-corpus-declined-heading"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n14"
 source = "testing.tooling.quickcheck-parallel-corpus"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-tooling-trybuild-whole-crate-declined-heading"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n15"
 source = "testing.tooling.trybuild-whole-crate"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-transparent-tag-set-idiom-recognized-shape-boundary-request-file-heading-h893d22e3d517c841e39837c99dc4b74cfa7efc5d5ec40fa4c0eb70ccac88ea39"
+id = "testing-roadmap-deferred-features-build-when-a-real-n2"
 source = "testing.transparent-tag-set-idiom-recognized-shape-boundary-request"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Deferred features (build when a real consumer needs them)"
 
 [[reference]]
-id = "ref-testing-tree-wide-sweeps-over-gitignored-regeneration-targets-count-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n57"
 source = "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-twin-implementation-comment-ast-change-cadence-parent"
+id = "testing-twin-repo-implementations-semantic-drifting"
 source = "testing.twin-implementation.comment-ast-change-cadence"
 kind = "roadmap"
 target_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 
 [[reference]]
-id = "ref-testing-twin-implementation-own-reviewed-change-rule-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n58"
 source = "testing.twin-implementation.own-reviewed-change-rule"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-twin-repo-implementations-semantic-drifting-apart-emission-spellings-gate-h6a27f79888f19ab92549180ecdcdf05a24145020e97ee6233a1528a47d151786"
+id = "gate-project-corpus-n2"
 source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 kind = "gate"
 gate_id = "project_corpus"
 
 [[reference]]
-id = "ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-h4c5e041e97a704e70c4a95276f741dd0e153a6e8cab36dea83486c0d206018f8"
+id = "test-extern-deps-n2"
 source = "testing.unused-imports-generated-crates-trait-import-class-name"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_deps"
 symbol = "tests::integration_tests::extern_deps"
 
 [[reference]]
-id = "ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-haf7edde0b79ace73f9b150c48055de3ca3348b998530b48a7b91250a394d3404"
+id = "test-generated-code-clippy-clean-n3"
 source = "testing.unused-imports-generated-crates-trait-import-class-name"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::generated_code_clippy_clean"
 symbol = "tests::integration_tests::generated_code_clippy_clean"
 
 [[reference]]
-id = "ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-ha47702162c05a22c06c0676347a748cb80857be1127f1cac35ec718cfcd11649"
+id = "test-workspace-requests-cohosted-keys-list-no-self"
 source = "testing.unused-imports-generated-crates-trait-import-class-name"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::workspace_requests_cohosted_keys_list_no_self_import"
 symbol = "tests::integration_tests::workspace_requests_cohosted_keys_list_no_self_import"
 
 [[reference]]
-id = "ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-h7e78d3856f7562dfcfd3c5ebf1df8d403b1ef99cbbdc960b64e689499bbbf6b2"
+id = "test-workspace-requests-hosts-borrowed-wrappers"
 source = "testing.unused-imports-generated-crates-trait-import-class-name"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::workspace_requests_hosts_borrowed_wrappers"
 symbol = "tests::integration_tests::workspace_requests_hosts_borrowed_wrappers"
 
 [[reference]]
-id = "ref-testing-unused-imports-generated-crates-trait-import-class-name-test-symbol-h787d2bf07c1dae413f902528cf38ac20971ed846b263b6b5e3a58b2920d1abbc"
+id = "test-workspace-requests-hosts-cross-scope-elements"
 source = "testing.unused-imports-generated-crates-trait-import-class-name"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::workspace_requests_hosts_cross_scope_elements"
 symbol = "tests::integration_tests::workspace_requests_hosts_cross_scope_elements"
 
 [[reference]]
-id = "ref-testing-value-anchor-rot-field-addition-delivery-grows-existing-file-heading-h1870867f5d3f2e8d012a5442c1984fec97b86166b6180574b291bea45497561d"
+id = "testing-roadmap-next-work-n59"
 source = "testing.value-anchor-rot-field-addition-delivery-grows-existing"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "ref-testing-wac-composed-component-transpiled-jco-loses-cross-instance-gate-hf2e5bf53c50997692623794ce66965b548397ac6f3cfba48d34d3000ed57b7b4"
+id = "gate-component-compose"
 source = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 kind = "gate"
 gate_id = "component_compose"
 
 [[reference]]
-id = "ref-testing-wac-composed-component-transpiled-jco-loses-cross-instance-gate-hc8c9ea0a21b96b2f9e6b028ca524ff1535227e2dbb5c9ab52a8e7f9c3e30eec1"
+id = "gate-component-jco"
 source = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 kind = "gate"
 gate_id = "component_jco"
 
 [[reference]]
-id = "ref-testing-wrapper-name-user-set-name-synthesized-collection-wrapper-file-heading-h1566c3deb4d7b978ec42e365111a76a1e4e863f7c993f9d2c6e69c565d0a2e9e"
+id = "testing-roadmap-declined-decided-with-a-reopening-signal-n16"
 source = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
 
 [[reference]]
-id = "ref-testing-wrapper-name-user-set-name-synthesized-collection-wrapper-authority"
+id = "testing-guard-wrapper-name-user-set-name-synthesized"
 source = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
 kind = "roadmap"
 target_id = "testing.guard.wrapper-name-user-set-name-synthesized-collection-wrapper"
-
-[[reference]]
-id = "ref-testing-wrapper-name-user-set-name-synthesized-collection-wrapper-test-symbol-ha14405d607785cd4d3d73c9308ab683fefb24decf97f9ef1d259f601e0355dd2"
-source = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_companions_defers_to_sibling_wasm_crate"
-symbol = "tests::integration_tests::extern_companions_defers_to_sibling_wasm_crate"
