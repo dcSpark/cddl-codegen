@@ -4,6 +4,7 @@ import { ROADMAP_CLI_USAGE } from "../cli.ts";
 import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import { RoadmapFailure } from "../errors.ts";
+import { codePointSort } from "../kernel.ts";
 import type { IssueCode } from "../errors.ts";
 import {
   createNodeRoadmapCliPorts,
@@ -87,6 +88,7 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_production_port_factory_smoke",
   "dispatch_capability_narrowing",
   "cli_dashboard_views_operationally_complete",
+  "cli_query_index_shape",
 ] as const;
 
 export type RequiredCliSelfTestCaseId = (typeof REQUIRED_CLI_SELFTEST_CASE_IDS)[number];
@@ -607,14 +609,14 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
     }
     case "cli_query_each_view": {
       for (const view of ["summary", "references", "transitions", "actionables", "decisions",
-        "watches", "content", "output-owners"]) {
+        "watches", "content", "output-owners", "index"]) {
         expectFailure(
           ["--roadmap", "testing", "--query", view],
           expectedIssue("E-SOURCE-MISSING", "tests/testing-roadmap.toml", "$", "declared source is missing", 1),
         );
       }
       return pass("positive", ["summary", "references", "transitions",
-        "actionables", "decisions", "watches", "content", "output-owners"]);
+        "actionables", "decisions", "watches", "content", "output-owners", "index"]);
     }
     case "cli_no_args_rejected": expectFailure([], cliIssue("E-CLI-MODE", 0, "exactly one primary mode is required"), fakePorts(), true); return pass("negative");
     case "cli_unknown_option": expectFailure(["--wat"], cliIssue("E-CLI-UNKNOWN-OPTION", 0, 'unknown option "--wat"'), fakePorts(), true); return pass("negative");
@@ -1113,6 +1115,51 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const format = run(["--format-source", "tests/testing-roadmap.toml"], validTestingPorts(context, () => { writes++; }));
       assert(format.exit_code === 0 && writes === 1, "format did not receive atomic replace capability");
       return pass("positive", ["check_read_only", "query_read_only", "write_gets_atomic_replace", "format_gets_atomic_replace"]);
+    }
+    case "cli_query_index_shape": {
+      // The agent index is a pure projection: one line per record, every column derived, and the
+      // text and JSON forms carrying the same rows in the same order.
+      const first = run(["--roadmap", "all", "--query", "index"], bothAuthoritativePorts());
+      const second = run(["--roadmap", "all", "--query", "index"], bothAuthoritativePorts());
+      assert(first.exit_code === 0 && first.stderr.byteLength === 0 &&
+        text(first.stdout) === text(second.stdout), `index view is not a deterministic query: ${text(first.stderr)}`);
+      const json = run(["--roadmap", "all", "--query", "index", "--json"], bothAuthoritativePorts());
+      assert(json.exit_code === 0, "index view rejected --json");
+      const payload = JSON.parse(text(json.stdout)) as {
+        evaluation_as_of: null;
+        index: readonly { roadmap: string; id: string; arm: string; state: string; section: string;
+          cited: readonly string[]; title: string }[];
+      };
+      const lines = text(first.stdout).split("\n").slice(0, -1);
+      const records = [...liveMatrixV3Document().records, ...liveTestingV3Document().records];
+      assert(payload.index.length === records.length && lines.length === records.length,
+        `index view has ${payload.index.length} rows and ${lines.length} lines for ${records.length} records`);
+      assert(JSON.stringify(payload.index.map((row) => `${row.roadmap}\u0000${row.id}`)) ===
+        JSON.stringify([...payload.index].sort((left, right) =>
+          codePointSort(left.roadmap, right.roadmap) || codePointSort(left.id, right.id))
+          .map((row) => `${row.roadmap}\u0000${row.id}`)),
+        "index rows are not ordered by roadmap then id");
+      const columns = lines.map((line) => line.split("\t"));
+      assert(columns.every((row) => row.length === 7), "an index line does not carry exactly seven columns");
+      for (const [position, row] of payload.index.entries()) {
+        const line = columns[position];
+        assert(line[0] === row.roadmap && line[1] === row.id && line[2] === row.arm &&
+          line[3] === row.state && line[4] === row.section &&
+          line[5] === (row.cited.length === 0 ? "-" : row.cited.join(",")) &&
+          line[6] === JSON.stringify(row.title),
+        `index line ${position} disagrees with its JSON row`);
+        assert(row.state !== "" && row.section !== "" && row.title !== "", "index row has an empty column");
+      }
+      // Non-rendering records report no section, and placed ones name the section that lists them.
+      const placed = payload.index.filter((row) => row.section !== "-");
+      const unplaced = payload.index.filter((row) => row.section === "-");
+      assert(placed.length > 0 && unplaced.length > 0, "index view distinguishes no placement state");
+      const sections = new Map([...liveMatrixV3Document().sections, ...liveTestingV3Document().sections]
+        .map((section) => [section.section_id as string, section.entries]));
+      assert(placed.every((row) => (sections.get(row.section) ?? []).includes(row.id)),
+        "an index row names a section that does not list it");
+      assert(payload.index.some((row) => row.cited.length > 0), "index view cites no record anywhere");
+      return pass("positive");
     }
     default: return undefined;
   }

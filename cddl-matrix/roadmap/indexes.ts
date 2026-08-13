@@ -272,6 +272,17 @@ function collectPayloadUses(
   walk(payload, armOfPayload(payload), "");
 }
 
+/**
+ * The roadmap-record IDs one payload cites, deduplicated and sorted. Same descriptor-derived walk
+ * as the document-wide use inventory, exposed per record for the `index` query view so that view
+ * restates no field list of its own.
+ */
+export function payloadRoadmapCitations(record: RecordNode): readonly RoadmapId[] {
+  const uses: RoadmapIdUseFact[] = [];
+  collectPayloadUses(semanticPayload(record), uses, []);
+  return Object.freeze([...new Set(uses.map((use) => use.id))].sort(codePointSort));
+}
+
 function providerSort(left: RoadmapIdProviderFact, right: RoadmapIdProviderFact): number {
   return codePointSort(left.id, right.id) ||
     codePointSort(left.kind, right.kind) ||

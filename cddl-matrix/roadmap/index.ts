@@ -124,7 +124,7 @@ function queryRoadmaps(
     return finalizeRoadmap(prepareRoadmapCore(name, worktreeReader(ports)));
   });
   const value = stableJsonValue(queryValue(prepared, view, asOf));
-  return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
+  return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value, view);
 }
 
 function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResult {

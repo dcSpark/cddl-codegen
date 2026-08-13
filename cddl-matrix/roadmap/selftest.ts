@@ -274,7 +274,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["cli_check_each_roadmap", ["matrix", "testing", "all"]],
   ["cli_write_each_single_roadmap", ["matrix", "testing"]],
   ["cli_query_each_view", ["summary", "references", "transitions", "actionables",
-    "decisions", "watches", "content", "output-owners"]],
+    "decisions", "watches", "content", "output-owners", "index"]],
   ["dispatch_capability_narrowing", ["check_read_only", "query_read_only", "write_gets_atomic_replace", "format_gets_atomic_replace"]],
 ]);
 

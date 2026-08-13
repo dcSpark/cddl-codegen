@@ -22,6 +22,7 @@ const QUERY_VIEWS = new Set<QueryView>([
   "watches",
   "content",
   "output-owners",
+  "index",
 ]);
 
 const QUERY_VIEW_LIST = [...QUERY_VIEWS];

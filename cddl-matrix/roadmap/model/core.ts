@@ -25,7 +25,8 @@ export type QueryView =
   | "decisions"
   | "watches"
   | "content"
-  | "output-owners";
+  | "output-owners"
+  | "index";
 
 export type CliRequest =
   | { mode: "selftest" }
