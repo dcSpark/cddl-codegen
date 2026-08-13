@@ -94,7 +94,6 @@ export function canonicalSemanticMarkdownFields(
       fields.push(Object.freeze({ logical_path: `payload.${path}`, bytes }));
     }
   };
-  add("summary_md", value.summary_md);
   add("detail_md", value.detail_md);
   switch (value.kind) {
     case "work":
@@ -194,23 +193,19 @@ export function canonicalSemanticMarkdownFields(
 }
 
 /**
- * Consume every decoded Markdown field exactly once. Document-visible converted owners project
- * only reviewed replacement fields in canonical payload order. Semantic-only records intentionally
- * emit no bytes. Metadata Markdown remains ledgered as consumed nonrendering content.
+ * Consume every decoded Markdown field exactly once. A record renders exactly its detail_md
+ * bytes (the manifest resolver guarantees placed records have one and unplaced records do not);
+ * every other Markdown field is ledgered as consumed nonrendering content.
  */
 export function renderCanonicalSemanticRecord(
   record: SemanticRecord,
   fields: FieldConsumer,
 ): Uint8Array {
-  const replacements = new Set(record.source_replacements.map((entry) => entry.replacement_field));
   const consumed = canonicalSemanticMarkdownFields(record.payload).map((entry) => {
     const bytes = fields.consume(entry.logical_path, entry.bytes);
     return { path: entry.logical_path, bytes };
   });
-  const rendered = record.projection_visibility === "semantic_only"
-    ? []
-    : consumed.filter((entry) => replacements.has(entry.path));
-  return concatenate(rendered.map((entry) => entry.bytes));
+  return concatenate(consumed.filter((entry) => entry.path === "payload.detail_md").map((entry) => entry.bytes));
 }
 
 export interface RoadmapFloorSpec {
@@ -246,8 +241,8 @@ export function createRoadmapFloorValidator(
     if (doc.document.projection_path !== spec.projection_path) {
       out.add(floor(source, "document.projection_path", `${spec.roadmap} projection path must be ${spec.projection_path}`));
     }
-    if (doc.records.length === 0 || doc.manifest.length === 0 || doc.spans.length === 0) {
-      out.add(floor(source, "$", `${spec.roadmap} roadmap requires records, manifest placements, and source spans`));
+    if (doc.records.length === 0 || doc.manifest.length === 0) {
+      out.add(floor(source, "$", `${spec.roadmap} roadmap requires records and manifest placements`));
     }
     const slots = new Map(doc.generated_slots.map((slot) => [slot.slot_id, slot]));
     if (doc.generated_slots.length !== spec.slot_bindings.length || slots.size !== spec.slot_bindings.length) {

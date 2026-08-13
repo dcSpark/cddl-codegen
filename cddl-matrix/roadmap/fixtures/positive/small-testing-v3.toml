@@ -1,0 +1,37 @@
+[document]
+schema_version = 3
+roadmap = "testing"
+source_path = "cddl-matrix/roadmap/fixtures/positive/small-testing-v3.toml"
+projection_path = "cddl-matrix/roadmap/fixtures/positive/small-testing-v3.expected.md"
+
+[[section]]
+section_id = "fixture"
+title = "Small testing fixture"
+body_md = """# Small testing fixture
+
+"""
+
+[[record]]
+id = "testing.fixture-small-semantic"
+title = "Small semantic testing owner"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+detail_md = """Semantic testing detail."""
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "infrastructure"
+risk = "false_pass_or_red"
+family_classification = "none_reviewed"
+acceptance_md = """The semantic testing owner renders deterministically."""
+priority_band = "high"
+priority_rationale_md = """The fixture exercises a high-priority arm."""
+
+[[manifest.entry]]
+kind = "section"
+section_id = "fixture"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "testing.fixture-small-semantic"

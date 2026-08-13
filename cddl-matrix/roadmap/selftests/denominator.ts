@@ -5,7 +5,7 @@ import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import { buildRoadmapIndexes } from "../indexes.ts";
 import type { ReferenceId, RepoPath, RoadmapId, SectionId } from "../model/core.ts";
-import type { RoadmapDocumentV2, SemanticAuthorityRecord, SemanticPayload } from "../model/documents.ts";
+import type { RoadmapDocumentV3, SemanticAuthorityRecord, SemanticPayload } from "../model/documents.ts";
 import type { FamilyPayload } from "../model/systematic.ts";
 import { resolveManifest } from "../manifest.ts";
 import { buildExpectedChunks, validateCompletedChunks } from "../render_ir.ts";
@@ -37,7 +37,7 @@ const CELL_IDS = [
 const EXCLUSION = id("matrix.fixture-denominator-exclusion-group-optional");
 
 function record(recordId: RoadmapId, payload: SemanticPayload): SemanticAuthorityRecord {
-  return { id: recordId, title: recordId, projection_group: "fixture" as SectionId, render_authority: "semantic", projection_visibility: "semantic_only", payload, source_replacements: [] };
+  return { id: recordId, title: recordId, projection_group: "fixture" as SectionId, payload };
 }
 
 function family(): FamilyPayload {
@@ -47,7 +47,7 @@ function family(): FamilyPayload {
     [[AXIS_A, A_GROUP], [AXIS_B, B_PLAIN]],
   ] as const;
   return {
-    kind: "family", summary_md: b("Closed fixture"), family_maturity: "closed_denominator", campaign_state: "closing",
+    kind: "family", family_maturity: "closed_denominator", campaign_state: "closing",
     goal_md: b("Close it."), boundary_md: b("Synthetic only."), work_ids: [WORK], authority_kind: "reviewed_relation",
     authority_reference_id: ref("authority"), derivation_md: b("Derive."), legality_rule_md: b("Three legal."),
     legality_owner_reference_id: ref("legality"), drift_check_reference_id: ref("drift"), mutation_test_reference_id: ref("mutation"),
@@ -76,14 +76,14 @@ function family(): FamilyPayload {
   };
 }
 
-function fixture(): { document: RoadmapDocumentV2; adapter: DenominatorAuthorityAdapter; view: RegistryView } {
+function fixture(): { document: RoadmapDocumentV3; adapter: DenominatorAuthorityAdapter; view: RegistryView } {
   const payload = family();
   const records: SemanticAuthorityRecord[] = [
     record(FAMILY, payload),
-    record(WORK, { kind: "work", summary_md: b("Work"), work_state: "ready", work_intent: "build_system", work_kind: "coverage_cell", risk: "false_pass_or_red", family_id: FAMILY, acceptance_md: b("Accepted."), priority_rationale_md: b("Now.") }),
-    record(CONTROL, { kind: "control", summary_md: b("Control"), control_kind: "gate", control_state: "live", reference_ids: [ref("ref-control-pin")], claim_md: b("Runs."), boundary_md: b("Synthetic.") }),
+    record(WORK, { kind: "work", work_state: "ready", work_intent: "build_system", work_kind: "coverage_cell", risk: "false_pass_or_red", family_id: FAMILY, acceptance_md: b("Accepted."), priority_rationale_md: b("Now.") }),
+    record(CONTROL, { kind: "control", control_kind: "gate", control_state: "live", reference_ids: [ref("ref-control-pin")], claim_md: b("Runs."), boundary_md: b("Synthetic.") }),
     ...CELL_IDS.map((cellId, index) => record(id(`matrix.fixture-denominator-evidence-${["zero", "one", "two"][index]}`), {
-      kind: "evidence", summary_md: b("Evidence"), evidence_kind: "gate", claim_md: b("Executed."), evidence_verdict: "confirmed", freshness: "live", reference_ids: [ref(`ref-evidence-pin-${["zero", "one", "two"][index]}`)], refresh_reference_id: ref(`ref-evidence-pin-${["zero", "one", "two"][index]}`), unprobed_remainder_md: b("None."), scope: { cell_ids: [cellId], profiles: ["default", "preserve"], faces: ["rust", "wasm"] },
+      kind: "evidence", evidence_kind: "gate", claim_md: b("Executed."), evidence_verdict: "confirmed", freshness: "live", reference_ids: [ref(`ref-evidence-pin-${["zero", "one", "two"][index]}`)], refresh_reference_id: ref(`ref-evidence-pin-${["zero", "one", "two"][index]}`), unprobed_remainder_md: b("None."), scope: { cell_ids: [cellId], profiles: ["default", "preserve"], faces: ["rust", "wasm"] },
     })),
   ];
   const gate = (referenceId: string, source = FAMILY) => ({ id: ref(referenceId), source, kind: "gate" as const, gate_id: referenceId });
@@ -96,9 +96,9 @@ function fixture(): { document: RoadmapDocumentV2; adapter: DenominatorAuthority
     heading("ex-owner"), passage("ex-source"), gate("ex-live"), gate("ref-control-pin", CONTROL),
     ...CELL_IDS.map((_, index) => gate(`ref-evidence-pin-${["zero", "one", "two"][index]}`, id(`matrix.fixture-denominator-evidence-${["zero", "one", "two"][index]}`))),
   ];
-  const document: RoadmapDocumentV2 = {
-    document: { schema_version: 2, authority: "authoritative", roadmap: "matrix", source_path: SOURCE, projection_path: "cddl-matrix/ROADMAP.md" as RepoPath, frozen_source_sha256: sectionDigest, frozen_source_byte_length: sectionBytes.byteLength, frozen_source_line_count: 1, frozen_source_eof: "lf" },
-    sections: [{ section_id: "fixture" as SectionId, title: "Fixture", render_authority: "semantic", body_md: sectionBytes, source_replacements: [{ span_id: "fixture-section" as never, replacement_field: "body_md", review_note_md: b("Reviewed") }] }], fragments: [], legacy_markers: [], records, parts: [], generated_slots: [], manifest: [{ kind: "section", section_id: "fixture" as SectionId }], spans: [{ id: "fixture-section" as never, start_byte: 0, end_byte: sectionBytes.byteLength, sha256: sectionDigest, source_kind: "section", owner_id: "fixture", owner_field: "body_md", migration_status: "replaced" }], relations: [], references,
+  const document: RoadmapDocumentV3 = {
+    document: { schema_version: 3, roadmap: "matrix", source_path: SOURCE, projection_path: "cddl-matrix/ROADMAP.md" as RepoPath },
+    sections: [{ section_id: "fixture" as SectionId, title: "Fixture", body_md: sectionBytes }], fragments: [], records, parts: [], generated_slots: [], manifest: [{ kind: "section", section_id: "fixture" as SectionId }], relations: [], references,
   };
   const derived = {
     axes: payload.axes.map((axis) => ({ id: axis.id, value_ids: axis.values.map((value) => value.id) })),
@@ -114,17 +114,17 @@ function fixture(): { document: RoadmapDocumentV2; adapter: DenominatorAuthority
   return { document, adapter, view: {} as RegistryView };
 }
 
-export function syntheticClosedDenominatorV2Source(): Uint8Array {
+export function syntheticClosedDenominatorSource(): Uint8Array {
   return composeRoadmapDocument(fixture().document);
 }
 
-function issues(document: RoadmapDocumentV2, adapter?: DenominatorAuthorityAdapter): readonly unknown[] {
+function issues(document: RoadmapDocumentV3, adapter?: DenominatorAuthorityAdapter): readonly unknown[] {
   const built = buildRoadmapIndexes(document);
   if (built.issues.length > 0) return built.issues;
   return validateSystematicFamilies(built.indexes, {} as RegistryView, new Map(adapter === undefined ? [] : [[FAMILY, adapter]]), SOURCE);
 }
 
-function pipelineIssues(document: RoadmapDocumentV2, adapter?: DenominatorAuthorityAdapter): readonly unknown[] {
+function pipelineIssues(document: RoadmapDocumentV3, adapter?: DenominatorAuthorityAdapter): readonly unknown[] {
   const roadmapAdapter = {
     roadmap: "matrix", namespace: "matrix", source_path: SOURCE,
     projection_path: "cddl-matrix/ROADMAP.md" as RepoPath,
@@ -152,14 +152,13 @@ const SUBCASES = ["valid", "production_empty_registry", "full_pipeline_injected"
 function run(): void {
   const base = fixture();
   const wire = composeRoadmapDocument(base.document);
-  const decoded = decodeRoadmapSource(wire, "<closed-denominator-v2>", "matrix");
-  if (decoded.document.schema_version !== 2) {
-    throw new Error("closed denominator did not decode/compose as strict schema v2");
+  const decoded = decodeRoadmapSource(wire, "<closed-denominator>", "matrix");
+  if (decoded.document.schema_version !== 3) {
+    throw new Error("closed denominator did not decode/compose as strict schema v3");
   }
-  const decodedFamily = (decoded as RoadmapDocumentV2).records.find((value) => value.id === FAMILY);
-  if (decodedFamily?.render_authority !== "semantic" ||
-    decodedFamily.payload.kind !== "family" || decodedFamily.payload.family_maturity !== "closed_denominator") {
-    throw new Error("closed denominator did not decode/compose as strict schema v2");
+  const decodedFamily = decoded.records.find((value) => value.id === FAMILY);
+  if (decodedFamily?.payload.kind !== "family" || decodedFamily.payload.family_maturity !== "closed_denominator") {
+    throw new Error("closed denominator did not decode/compose as strict schema v3");
   }
   const validIssues = issues(base.document, base.adapter);
   if (validIssues.length !== 0) throw new Error(`valid synthetic closed denominator failed: ${JSON.stringify(validIssues)}`);
@@ -174,7 +173,7 @@ function run(): void {
   });
   const completedIssues = [...placement.issues, ...validateCompletedChunks(base.document, placement.ops, completed)];
   if (completedIssues.length !== 0) throw new Error(`real completed-render validation rejected synthetic closure: ${JSON.stringify(completedIssues)}`);
-  const mutate = (edit: (doc: RoadmapDocumentV2, adapter: DenominatorAuthorityAdapter) => void): void => {
+  const mutate = (edit: (doc: RoadmapDocumentV3, adapter: DenominatorAuthorityAdapter) => void): void => {
     const value = fixture();
     edit(value.document, value.adapter);
     if (issues(value.document, value.adapter).length === 0) throw new Error("denominator mutation passed");

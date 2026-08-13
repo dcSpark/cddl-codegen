@@ -1,7 +1,5 @@
 import type {
   FragmentId,
-  LowercaseSlug,
-  MarkerId,
   PartId,
   ReferenceId,
   RepoPath,
@@ -10,8 +8,6 @@ import type {
   SectionId,
   SharedSemanticPayload,
   SlotId,
-  SpanId,
-  WorkKind,
 } from "./core.ts";
 import type { MatrixSemanticPayload } from "./matrix.ts";
 import type { FamilyPayload } from "./systematic.ts";
@@ -23,31 +19,19 @@ export type SemanticPayload =
   | MatrixSemanticPayload
   | TestingSemanticPayload;
 
-export interface FrozenSourceMeta {
+/** Stable v3 wire format: one schema version, no migration bookkeeping. */
+export interface DocumentMetaV3 {
+  schema_version: 3;
+  roadmap: RoadmapName;
   source_path: RepoPath;
   projection_path: RepoPath;
-  frozen_source_sha256: string;
-  frozen_source_byte_length: number;
-  frozen_source_line_count: number;
-  frozen_source_eof: "lf" | "none";
-}
-
-/** Stable semantic wire format. Migration state is intrinsic and has no authored escape hatch. */
-export interface DocumentMetaV2 extends FrozenSourceMeta {
-  schema_version: 2;
-  authority: "authoritative";
-  roadmap: RoadmapName;
-  /** Historical v2 sources omit this and retain the byte-identical legacy projection. */
-  projection_layout?: "legacy_v1" | "anchors_v1" | "standing_v1" | "unnumbered_v1" | "curated_v1";
 }
 
 export interface SemanticSection {
   section_id: SectionId;
   title: string;
   legacy_aliases?: string[];
-  render_authority: "semantic";
   body_md: Uint8Array;
-  source_replacements: SourceReplacement[];
 }
 
 export interface SemanticFragment {
@@ -55,18 +39,7 @@ export interface SemanticFragment {
   projection_group: SectionId;
   title?: string;
   legacy_aliases?: string[];
-  render_authority: "semantic";
-  lifecycle_disposition: "document_prose";
   body_md: Uint8Array;
-  source_replacements: SourceReplacement[];
-}
-
-export interface SemanticLegacyMarker {
-  marker_id: MarkerId;
-  legacy_aliases: string[];
-  render_authority: "semantic";
-  marker_md: Uint8Array;
-  source_replacements: SourceReplacement[];
 }
 
 export interface CommonEnvelope {
@@ -77,33 +50,25 @@ export interface CommonEnvelope {
   tags?: string[];
 }
 
-export interface SourceReplacement {
-  span_id: SpanId;
-  replacement_field: string;
-  review_note_md: Uint8Array;
-}
-
+/**
+ * Document membership is derived, never declared: a record renders exactly when it is placed in
+ * the manifest, and placement is legal exactly when `payload.detail_md` is present (the one
+ * rendering field). The manifest resolver enforces both directions.
+ */
 export interface SemanticAuthorityRecord<P extends SemanticPayload = SemanticPayload>
   extends CommonEnvelope {
-  render_authority: "semantic";
-  projection_visibility: "document" | "semantic_only";
   payload: P;
-  source_replacements: SourceReplacement[];
 }
 
 export interface SemanticPart {
   part_id: PartId;
   parent_record_id: RoadmapId;
   title?: string;
-  render_authority: "semantic";
-  lifecycle_disposition: "parent_supporting_prose";
   body_md: Uint8Array;
-  source_replacements: SourceReplacement[];
 }
 
 export type Section = SemanticSection;
 export type Fragment = SemanticFragment;
-export type LegacyMarker = SemanticLegacyMarker;
 export type RecordNode = SemanticAuthorityRecord;
 export type Part = SemanticPart;
 export type SemanticRecord<P extends SemanticPayload = SemanticPayload> =
@@ -112,27 +77,14 @@ export type SemanticRecord<P extends SemanticPayload = SemanticPayload> =
 export interface GeneratedSlot {
   slot_id: SlotId;
   binding: string;
-  span_ids: SpanId[];
 }
 
 export type ManifestEntry =
   | { kind: "section"; section_id: SectionId }
   | { kind: "fragment"; fragment_id: FragmentId }
-  | { kind: "legacy_marker"; marker_id: MarkerId }
   | { kind: "record"; record_id: RoadmapId }
   | { kind: "part"; part_id: PartId }
   | { kind: "generated_slot"; slot_id: SlotId };
-
-export interface SourceSpan {
-  id: SpanId;
-  start_byte: number;
-  end_byte: number;
-  sha256: string;
-  source_kind: ManifestEntry["kind"];
-  owner_id: string;
-  owner_field: string;
-  migration_status: "raw" | "replaced" | "generated";
-}
 
 export type RelationKind =
   | "parent_of"
@@ -172,26 +124,19 @@ export type Reference =
   | (ReferenceBase & { kind: "external_release"; project: string; release: string })
   | (ReferenceBase & { kind: "consumer_report"; consumer: string; report_reference: string });
 
-export interface RoadmapDocumentV2 {
-  document: DocumentMetaV2;
+export interface RoadmapDocumentV3 {
+  document: DocumentMetaV3;
   sections: SemanticSection[];
   fragments: SemanticFragment[];
-  legacy_markers: SemanticLegacyMarker[];
   records: SemanticAuthorityRecord[];
   parts: SemanticPart[];
   generated_slots: GeneratedSlot[];
   manifest: ManifestEntry[];
-  spans: SourceSpan[];
   relations: Relation[];
   references: Reference[];
 }
 
-export type RoadmapDocument = RoadmapDocumentV2;
-
-export type ReplacementPin =
-  | { kind: "gate"; gate_id: string; claim_md: Uint8Array }
-  | { kind: "test_symbol"; test_id: string; symbol: string; claim_md: Uint8Array }
-  | { kind: "file_heading"; path: RepoPath; heading: string; claim_md: Uint8Array };
+export type RoadmapDocument = RoadmapDocumentV3;
 
 export type FamilyGuardRole =
   | "closed_family_root"
@@ -200,6 +145,11 @@ export type FamilyGuardRole =
   | "family_evidence_requirement"
   | "family_cell"
   | "family_exclusion";
+
+export type ReplacementPin =
+  | { kind: "gate"; gate_id: string; claim_md: Uint8Array }
+  | { kind: "test_symbol"; test_id: string; symbol: string; claim_md: Uint8Array }
+  | { kind: "file_heading"; path: RepoPath; heading: string; claim_md: Uint8Array };
 
 interface CurrentGuardBase {
   id: RoadmapId;

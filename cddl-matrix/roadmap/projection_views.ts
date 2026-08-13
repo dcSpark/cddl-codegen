@@ -1,6 +1,5 @@
 import type { RoadmapIssue } from "./errors.ts";
-import type { ManifestEntry, RoadmapDocument, SourceReplacement } from "./model/documents.ts";
-import { projectionLayout, projectionLayoutRank } from "./projection_layout.ts";
+import type { ManifestEntry, RoadmapDocument } from "./model/documents.ts";
 import type { CompletedRenderIr, ProjectedFieldSegment } from "./render_ir.ts";
 import { bytesEqual } from "./kernel.ts";
 import { concatenate } from "./kernel.ts";
@@ -13,7 +12,7 @@ export type ContentTransformation =
   | { readonly kind: "testing_next_ordinal"; readonly ordinal: string };
 
 export interface AuthoredContentCoordinate {
-  readonly owner_kind: ManifestEntry["kind"] | "relation" | "source_replacement";
+  readonly owner_kind: ManifestEntry["kind"] | "relation";
   readonly owner_id: string;
   readonly logical_path: string;
 }
@@ -35,19 +34,7 @@ export interface ProjectionViews {
   /** Human-readable audit projection containing audit-assigned authored Markdown only. */
   readonly audit: Uint8Array;
   readonly content_reachability: readonly ContentReachabilityLedgerEntry[];
-  readonly legacy_span_provenance: readonly LegacySpanProvenanceLedgerEntry[];
   readonly issues: readonly RoadmapIssue[];
-}
-
-export interface LegacySpanProvenanceLedgerEntry {
-  readonly span_id: string;
-  readonly source_kind: ManifestEntry["kind"];
-  readonly owner_id: string;
-  readonly owner_field: string;
-  readonly migration_status: "raw" | "replaced" | "generated";
-  readonly start_byte: number;
-  readonly end_byte: number;
-  readonly sha256: string;
 }
 
 interface AuthoredField extends AuthoredContentCoordinate { readonly bytes: Uint8Array }
@@ -96,36 +83,21 @@ function markdownFields(value: unknown, logicalPath: string, add: (path: string,
   }
 }
 
-function replacementFields(
-  ownerKind: Exclude<ManifestEntry["kind"], "generated_slot">,
-  ownerId: string,
-  replacements: readonly SourceReplacement[],
-  fields: AuthoredField[],
-): void {
-  replacements.forEach((replacement) => fields.push({ owner_kind: "source_replacement",
-    owner_id: `${ownerKind}:${ownerId}:${replacement.span_id}`, logical_path: "review_note_md",
-    bytes: replacement.review_note_md }));
-}
-
 function authoredFields(document: RoadmapDocument): readonly AuthoredField[] {
   const fields: AuthoredField[] = [];
-  const structural = (ownerKind: "section" | "fragment" | "legacy_marker" | "part", ownerId: string,
+  const structural = (ownerKind: "section" | "fragment" | "part", ownerId: string,
     value: object): void => {
     markdownFields(value, "", (path, bytes) => {
-      if (path === ".body_md" || path === ".marker_md") fields.push({ owner_kind: ownerKind,
+      if (path === ".body_md") fields.push({ owner_kind: ownerKind,
         owner_id: ownerId, logical_path: path.slice(1), bytes });
     });
-    if ("source_replacements" in value) replacementFields(ownerKind, ownerId,
-      value.source_replacements as readonly SourceReplacement[], fields);
   };
   document.sections.forEach((value) => structural("section", value.section_id, value));
   document.fragments.forEach((value) => structural("fragment", value.fragment_id, value));
-  document.legacy_markers.forEach((value) => structural("legacy_marker", value.marker_id, value));
   document.parts.forEach((value) => structural("part", value.part_id, value));
   for (const record of document.records) {
     markdownFields(record.payload, "payload", (path, bytes) => fields.push({ owner_kind: "record",
       owner_id: record.id, logical_path: path, bytes }));
-    replacementFields("record", record.id, record.source_replacements, fields);
   }
   document.relations.forEach((relation, index) => {
     if (relation.note_md !== undefined) fields.push({ owner_kind: "relation",
@@ -210,38 +182,6 @@ export function validateContentReachability(
   return Object.freeze(issues);
 }
 
-export function validateLegacySpanProvenance(
-  document: RoadmapDocument,
-  ledger: readonly LegacySpanProvenanceLedgerEntry[],
-): readonly RoadmapIssue[] {
-  const expected = new Map(document.spans.map((span) => [span.id, span]));
-  const counts = new Map<string, number>();
-  const issues: RoadmapIssue[] = [];
-  for (const entry of ledger) {
-    counts.set(entry.span_id, (counts.get(entry.span_id) ?? 0) + 1);
-    const span = expected.get(entry.span_id as never);
-    if (span === undefined || span.source_kind !== entry.source_kind || span.owner_id !== entry.owner_id ||
-      span.owner_field !== entry.owner_field || span.migration_status !== entry.migration_status ||
-      span.start_byte !== entry.start_byte || span.end_byte !== entry.end_byte || span.sha256 !== entry.sha256) {
-      issues.push(issue(document, `projection.legacy_span_provenance.${JSON.stringify(entry.span_id)}`,
-        "legacy span provenance row does not exactly match its frozen source span"));
-    }
-  }
-  for (const id of [...expected.keys()].sort(cp)) {
-    const count = counts.get(id) ?? 0;
-    if (count !== 1) issues.push(issue(document, `projection.legacy_span_provenance.${JSON.stringify(id)}`,
-      `frozen source span is reported ${count} times, expected exactly once`));
-  }
-  return Object.freeze(issues);
-}
-
-function legacySpanProvenance(document: RoadmapDocument): readonly LegacySpanProvenanceLedgerEntry[] {
-  return Object.freeze([...document.spans].sort((left, right) => left.start_byte - right.start_byte || cp(left.id, right.id))
-    .map((span) => Object.freeze({ span_id: span.id, source_kind: span.source_kind,
-      owner_id: span.owner_id, owner_field: span.owner_field, migration_status: span.migration_status,
-      start_byte: span.start_byte, end_byte: span.end_byte, sha256: span.sha256 })));
-}
-
 function chunkSegments(completed: CompletedRenderIr, owner: Piece["owner"]): readonly ProjectedFieldSegment[] {
   if (owner.kind === "generated_slot") return [];
   return completed.projected_field_segments.filter((segment) =>
@@ -312,22 +252,23 @@ function generatedPiece(id: string, bytes: Uint8Array): Piece {
 
 function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, issues: RoadmapIssue[]): Piece[] {
   let pieces = basePieces(completed);
-  const rank = projectionLayoutRank(projectionLayout(document));
   if (document.document.roadmap === "testing") {
-    const nextSections = rank >= 3
-      ? pieces.filter((piece) => piece.owner.kind === "section" && piece.owner.id === "next-priority") : [];
-    const standingSections = rank >= 2
-      ? pieces.filter((piece) => piece.owner.kind === "section" && piece.owner.id === "standing-system") : [];
-    if (rank >= 3 && nextSections.length !== 1) issues.push(issue(document, "projection.layout.next-priority",
-      `unnumbered testing layout requires exactly one next-priority section, found ${nextSections.length}`));
-    if (rank >= 2 && standingSections.length !== 1) issues.push(issue(document, "projection.layout.standing-system",
-      `standing testing layout requires exactly one standing-system section, found ${standingSections.length}`));
+    // The curated testing transforms key on the live document's section vocabulary. Each applies
+    // exactly where its section exists (a synthetic document without one simply has nothing to
+    // transform); more than one owner of a transform's section is still a hard error, and the
+    // committed-projection drift comparison owns the live document's byte outcome.
+    const nextSections = pieces.filter((piece) => piece.owner.kind === "section" && piece.owner.id === "next-priority");
+    const standingSections = pieces.filter((piece) => piece.owner.kind === "section" && piece.owner.id === "standing-system");
+    if (nextSections.length > 1) issues.push(issue(document, "projection.layout.next-priority",
+      `curated testing layout requires at most one next-priority section, found ${nextSections.length}`));
+    if (standingSections.length > 1) issues.push(issue(document, "projection.layout.standing-system",
+      `curated testing layout requires at most one standing-system section, found ${standingSections.length}`));
     pieces = pieces.map((piece) => {
-      if (rank >= 3 && piece === nextSections[0]) return transformWholePiece(document, piece,
+      if (piece === nextSections[0]) return transformWholePiece(document, piece,
         { kind: "testing_next_heading" }, issues);
-      if (rank >= 2 && piece === standingSections[0]) return transformWholePiece(document, piece,
+      if (piece === standingSections[0]) return transformWholePiece(document, piece,
         { kind: "testing_standing_heading" }, issues);
-      if (rank < 3 || piece.owner.kind !== "record") return piece;
+      if (piece.owner.kind !== "record") return piece;
       const record = document.records.find((candidate) => candidate.id === piece.owner.id);
       const aliases = record?.legacy_aliases?.filter((alias) => /^Next work [0-9]+$/u.test(alias)) ?? [];
       if (aliases.length === 0) return piece;
@@ -339,19 +280,19 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
       return transformWholePiece(document, piece,
         { kind: "testing_next_ordinal", ordinal: aliases[0]!.slice("Next work ".length) }, issues);
     });
-    const ordinals = rank < 3 ? [] : document.records.flatMap((record) => record.legacy_aliases?.flatMap((alias) =>
+    const ordinals = document.records.flatMap((record) => record.legacy_aliases?.flatMap((alias) =>
       /^Next work ([0-9]+)$/u.exec(alias)?.[1] ?? []) ?? []);
     if (new Set(ordinals).size !== ordinals.length) issues.push(issue(document, "projection.layout.next-ordinals",
       "curated testing Next-work ordinal aliases must be unique"));
 
-    const starts = rank < 4 ? [] : pieces.flatMap((piece, index) =>
+    const starts = pieces.flatMap((piece, index) =>
       piece.owner.kind === "section" && piece.owner.id === "operational-watches" ? [index] : []);
     const start = starts[0];
     const end = start === undefined ? -1 : pieces.findIndex((piece, index) => index > start && piece.owner.kind === "section");
-    if (rank >= 4 && (starts.length !== 1 || start === undefined || end <= start)) {
+    if (starts.length > 1 || (start !== undefined && end <= start)) {
       issues.push(issue(document, "projection.layout.operational-watches",
         "curated testing layout requires one bounded operational-watches section"));
-    } else if (rank >= 4) {
+    } else if (start !== undefined) {
       const buckets: Record<OperationalClass, Piece[]> = { systems: [], live: [], history: [] };
       let current: OperationalClass = "systems";
       for (const piece of pieces.slice(start + 1, end)) {
@@ -377,8 +318,8 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
     }
   }
 
-  const visible = rank < 1 ? new Set<string>() : new Set(document.records.flatMap((record) =>
-    "projection_visibility" in record && record.projection_visibility === "document" ? [String(record.id)] : []
+  const visible = new Set(document.manifest.flatMap((entry) =>
+    entry.kind === "record" ? [String(entry.record_id)] : []
   ));
   let anchored = 0;
   pieces = pieces.map((piece) => {
@@ -387,8 +328,8 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
     return anchorPiece(piece);
   });
   if (anchored !== visible.size) issues.push(issue(document, "projection.layout.anchors",
-    `curated layout anchored ${anchored} records but ${visible.size} are document-visible`));
-  return rank < 1 ? pieces : [generatedPiece("layout-ownership-banner", UTF8.encode(
+    `curated layout anchored ${anchored} records but ${visible.size} are manifest-placed`));
+  return [generatedPiece("layout-ownership-banner", UTF8.encode(
     `<!-- GENERATED FILE: owned by ${document.document.source_path}; edit that TOML source and run project_roadmaps.ts --write. -->\n\n`,
   )), ...pieces];
 }
@@ -396,15 +337,10 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
 function materializeFull(
   document: RoadmapDocument,
   completed: CompletedRenderIr,
-  legacyProjection: Uint8Array,
   issues: RoadmapIssue[],
 ): { readonly bytes: Uint8Array; readonly bindings: readonly LocalBinding[] } {
-  const pieces = projectionLayout(document) !== "legacy_v1"
-    ? curatedPieces(document, completed, issues)
-    : basePieces(completed);
-  const bytes = projectionLayout(document) !== "legacy_v1"
-    ? concatenate(pieces.map((piece) => piece.bytes))
-    : new Uint8Array(legacyProjection);
+  const pieces = curatedPieces(document, completed, issues);
+  const bytes = concatenate(pieces.map((piece) => piece.bytes));
   const bindings: LocalBinding[] = [];
   let offset = 0;
   for (const piece of pieces) {
@@ -452,13 +388,11 @@ function ledgerEntry(
 export function buildProjectionViews(
   document: RoadmapDocument,
   completed: CompletedRenderIr,
-  legacyProjection: Uint8Array,
 ): ProjectionViews {
-  const provenance = legacySpanProvenance(document);
   const issues: RoadmapIssue[] = [];
   const fields = authoredFields(document);
   const fieldsByKey = new Map(fields.map((field) => [key(field), field]));
-  const full = materializeFull(document, completed, legacyProjection, issues);
+  const full = materializeFull(document, completed, issues);
   const fullBindings = new Map<string, LocalBinding>();
   for (const binding of full.bindings) {
     const coordinate = key(binding);
@@ -479,8 +413,7 @@ export function buildProjectionViews(
     return ledgerEntry(field, "audit", auditBinding, audit.bytes);
   });
   issues.push(...validateContentReachability(document, ledger, full.bytes, audit.bytes));
-  issues.push(...validateLegacySpanProvenance(document, provenance));
   return Object.freeze({ full: full.bytes, audit: audit.bytes,
-    content_reachability: Object.freeze(ledger), legacy_span_provenance: provenance,
+    content_reachability: Object.freeze(ledger),
     issues: Object.freeze(issues) });
 }

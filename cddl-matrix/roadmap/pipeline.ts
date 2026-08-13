@@ -30,7 +30,6 @@ import type {
 } from "./model/core.ts";
 import type { RoadmapDocument, SemanticPayload } from "./model/documents.ts";
 import { validateProductionOutputRegistry } from "./output_registry.ts";
-import { renderValidatedChunks } from "./render.ts";
 import {
   buildExpectedChunks,
   createImmutableByteView,
@@ -38,9 +37,7 @@ import {
   type CompletedRenderIr,
 } from "./render_ir.ts";
 import { buildProjectionViews, type ProjectionViews } from "./projection_views.ts";
-import { projectionLayout, projectionLayoutRank, validateProjectionLayoutDeclaration } from "./projection_layout.ts";
 import { scanRoadmapMarkdownFacts } from "./repository_facts.ts";
-import { validateSourceSpans } from "./spans.ts";
 
 export const MATRIX_SOURCE = "cddl-matrix/roadmap.toml" as RepoPath;
 export const TESTING_SOURCE = "tests/testing-roadmap.toml" as RepoPath;
@@ -103,11 +100,6 @@ export function decodeAt(name: RoadmapName, reader: RevisionReader): { document:
   const source = new Uint8Array(reader.read(path));
   strictSource(source, path);
   const document = decodeRoadmapSource(source, path, name, true);
-  const layoutIssues = validateProjectionLayoutDeclaration(
-    document,
-    reader.revision.kind === "commit",
-  );
-  if (layoutIssues.length > 0) failure(layoutIssues);
   return { document, source };
 }
 
@@ -183,11 +175,7 @@ const CORE_PIPELINE: readonly CoreStage[] = Object.freeze([
     name: "build-projection-views",
     run(state) {
       const completed = staged(state.completed, "build-expected-bytes");
-      const projectionViews = buildProjectionViews(
-        state.document,
-        completed,
-        renderValidatedChunks(completed.chunks, [], completed.expected_bytes),
-      );
+      const projectionViews = buildProjectionViews(state.document, completed);
       if (projectionViews.issues.length > 0) failure(projectionViews.issues);
       state.projection_views = projectionViews;
     },
@@ -215,16 +203,6 @@ const CORE_PIPELINE: readonly CoreStage[] = Object.freeze([
       });
       const structuralIssues = [...domain.issues];
       if (structuralIssues.length > 0) failure(structuralIssues);
-    },
-  },
-  {
-    name: "validate-source-spans",
-    run(state) {
-      const spanIssues = validateSourceSpans({
-        document: state.document,
-        completed: staged(state.completed, "build-expected-bytes"),
-      });
-      if (spanIssues.length > 0) failure(spanIssues);
     },
   },
   {
@@ -325,16 +303,15 @@ export function registryWithRoadmapMarkdownFact(
 }
 
 function validateProjectionAnchors(document: RoadmapDocument, projection: Uint8Array): void {
-  if (projectionLayoutRank(projectionLayout(document)) < 1) return;
   const facts = scanRoadmapMarkdownFacts(document.document.projection_path, createImmutableByteView(projection));
   if (facts.issues.length > 0) failure(facts.issues);
-  const expected = document.records.flatMap((record) =>
-    "projection_visibility" in record && record.projection_visibility === "document" ? [record.id] : []
+  const expected = document.manifest.flatMap((entry) =>
+    entry.kind === "record" ? [entry.record_id] : []
   ).sort();
   if (JSON.stringify(facts.stable_anchor_ids) !== JSON.stringify(expected)) failure([issue(
     "E-ID-DUPLICATE",
     document.document.projection_path,
     "roadmap-anchor",
-    `stable anchor inventory must exactly equal document-visible record IDs (expected=${expected.length}, actual=${facts.stable_anchor_ids.length})`,
+    `stable anchor inventory must exactly equal manifest-placed record IDs (expected=${expected.length}, actual=${facts.stable_anchor_ids.length})`,
   )]);
 }

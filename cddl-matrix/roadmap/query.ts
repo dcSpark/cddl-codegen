@@ -69,7 +69,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
         roadmaps: prepared.map((item) => ({
           roadmap: item.document.document.roadmap,
           schema_version: item.document.document.schema_version,
-          authority: item.document.document.authority,
           record_count: item.document.records.length,
           families: item.document.records.flatMap((record) => {
             const payload = record.payload;
@@ -95,10 +94,10 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
       const rows = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {
         if (payload.kind === "signal") {
           return [{ roadmap, id, transition_kind: payload.transition_kind,
-            evaluation: evaluateTemporalPayload(payload, asOf), summary_md: payload.summary_md,
+            evaluation: evaluateTemporalPayload(payload, asOf),
             ...(payload.transition_kind === "promotion_trigger" || payload.transition_kind === "reopening_signal"
-              ? { observer: payload.observer, dimension: payload.dimension, observable: payload.observable,
-                predicate_kind: payload.predicate_kind, current_evidence_ids: payload.current_evidence_ids,
+              ? { observer: payload.observer, dimension: payload.dimension,
+                ...(payload.observable === undefined ? {} : { observable: payload.observable }),
                 predicate: payload.predicate, action_on_fire_md: payload.action_on_fire_md }
               : payload.transition_kind === "unblock_predicate"
               ? { owner_reference_id: payload.owner_reference_id, event_md: payload.event_md,
@@ -123,7 +122,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
             roadmap, id,
             transition_kind: "evidence_freshness",
             evaluation: evaluateTemporalPayload(payload, asOf),
-            summary_md: payload.summary_md,
             evidence_kind: payload.evidence_kind, evidence_verdict: payload.evidence_verdict,
             freshness: payload.freshness, reference_ids: payload.reference_ids,
             observed_at: payload.observed_at ?? null, valid_through: payload.valid_through ?? null,
@@ -144,7 +142,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
             ? "not_applicable"
             : (payload.admission_ids?.length ?? 0) > 0 ? "admitted" : "missing",
           admission_basis_ids: payload.admission_ids ?? [], family_id: payload.family_id ?? null,
-          summary_md: payload.summary_md,
           ...(payload.work_state === "ready" ? { priority_band: payload.priority_band ?? "unbanded",
             priority_rationale_md: payload.priority_rationale_md }
           : payload.work_state === "blocked" ? { blocker_md: payload.blocker_md,
@@ -215,7 +212,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
         payload.kind !== "decision" ? [] : [{ roadmap, id, decision_state: payload.decision_state,
           permanence: payload.decision_state === "pending" ? "pending" : payload.permanence,
           transition_ids: "transition_ids" in payload ? payload.transition_ids ?? [] : [],
-          summary_md: payload.summary_md,
           ...(payload.decision_state === "pending" ? { question_md: payload.question_md }
           : payload.decision_state === "held" ? { rationale_md: payload.rationale_md }
           : { rationale_md: payload.rationale_md,
@@ -293,7 +289,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
         full_projection_byte_length: item.projection.byteLength,
         audit_markdown: item.projection_views.audit,
         authored_content: item.projection_views.content_reachability,
-        legacy_span_provenance: item.projection_views.legacy_span_provenance,
       })) };
     case "output-owners":
       return { evaluation_as_of, claims: prepared.flatMap((item) => item.registry.output_claims) };

@@ -8,7 +8,6 @@ import type {
   SemanticAuthorityRecord,
   SemanticPayload,
 } from "./model/documents.ts";
-import type { SpanId } from "./model/core.ts";
 import { bytesEqual, codePointSort } from "./kernel.ts";
 
 export interface RenderChunk {
@@ -19,7 +18,6 @@ export interface RenderChunk {
     readonly field: string;
   };
   readonly bytes: Uint8Array;
-  readonly source_span_ids: readonly SpanId[];
   readonly consumed_fields: readonly string[];
 }
 
@@ -573,23 +571,11 @@ function createFieldConsumer(
   };
 }
 
-function rawSource(value: object): { source_block_md: Uint8Array; span_ids: readonly SpanId[] } | undefined {
-  if (!("source_block_md" in value) || !(value.source_block_md instanceof Uint8Array)) return undefined;
-  if (!("span_ids" in value) || !Array.isArray(value.span_ids)) return undefined;
-  return { source_block_md: value.source_block_md, span_ids: value.span_ids as readonly SpanId[] };
-}
-
-function replacements(value: object): readonly { span_id: SpanId; replacement_field: string }[] {
-  if (!("source_replacements" in value) || !Array.isArray(value.source_replacements)) return [];
-  return value.source_replacements as readonly { span_id: SpanId; replacement_field: string }[];
-}
-
 function immutableChunk(chunk: RenderChunk): RenderChunk {
   return Object.freeze({
     ...chunk,
     owner: Object.freeze({ ...chunk.owner }),
     bytes: cloneBytes(chunk.bytes),
-    source_span_ids: Object.freeze([...chunk.source_span_ids]),
     consumed_fields: Object.freeze([...chunk.consumed_fields]),
   });
 }
@@ -608,18 +594,6 @@ export function buildExpectedChunks(
 
   for (const op of ops) {
     const { node } = op;
-    const raw = rawSource(node.value);
-    if (raw !== undefined) {
-      chunks.push(immutableChunk({
-        manifest_index: op.manifest_index,
-        owner: { kind: node.kind, id: node.id, field: "source_block_md" },
-        bytes: raw.source_block_md,
-        source_span_ids: raw.span_ids,
-        consumed_fields: ["source_block_md"],
-      }));
-      continue;
-    }
-
     if (node.kind === "generated_slot") {
       let resolution: GeneratedSlotResolution | undefined;
       try {
@@ -644,13 +618,12 @@ export function buildExpectedChunks(
         manifest_index: op.manifest_index,
         owner: { kind: node.kind, id: node.id, field: "generated" },
         bytes: resolution?.bytes ?? new Uint8Array(),
-        source_span_ids: node.value.span_ids,
         consumed_fields: ["generated"],
       }));
       continue;
     }
 
-    if (node.kind === "record" && "render_authority" in node.value && node.value.render_authority === "semantic") {
+    if (node.kind === "record") {
       const tracked = createFieldConsumer(node.kind, node.id, node.value.payload);
       let rendered: Uint8Array = new Uint8Array();
       try {
@@ -666,102 +639,19 @@ export function buildExpectedChunks(
       const trackedResult = tracked.finish();
       const ledger = trackedResult.ledger;
       fieldConsumption.push(Object.freeze(ledger));
-      if (node.value.projection_visibility === "semantic_only" && rendered.byteLength !== 0) {
+      const detail = node.value.payload.detail_md;
+      if (detail === undefined || rendered.byteLength === 0 || !bytesEqual(rendered, detail)) {
         buildIssues.push(issue(
           document,
           "E-RENDER-AUTHORITY",
-          `record[${JSON.stringify(node.id)}].projection_visibility`,
-          "semantic-only record renderer must emit zero bytes",
-        ));
-      }
-      if (node.value.projection_visibility === "document") {
-        const replacementRows = replacements(node.value);
-        const replacementFields = new Set(replacementRows.map((replacement) => replacement.replacement_field));
-        const replacementSpanIds = new Set(replacementRows.map((replacement) => replacement.span_id));
-        if (replacementFields.size !== replacementRows.length || replacementSpanIds.size !== replacementRows.length) {
-          buildIssues.push(issue(
-            document,
-            "E-FIELD-CONSUMPTION",
-            `record[${JSON.stringify(node.id)}].source_replacements`,
-            "document-visible semantic replacements must have unique fields and span IDs",
-          ));
-        }
-        const projected = trackedResult.returned_fields.filter((entry) => replacementFields.has(entry.logical_path));
-        const projectedLength = projected.reduce((sum, entry) => sum + entry.bytes.byteLength, 0);
-        const exactProjection = projected.length === replacementRows.length &&
-          projectedLength === rendered.byteLength && (() => {
-            let offset = 0;
-            for (const entry of projected) {
-              if (!bytesEqual(rendered.subarray(offset, offset + entry.bytes.byteLength), entry.bytes)) return false;
-              offset += entry.bytes.byteLength;
-            }
-            return true;
-          })();
-        if (!exactProjection) {
-          buildIssues.push(issue(
-            document,
-            "E-RENDER-AUTHORITY",
-            `record[${JSON.stringify(node.id)}]`,
-            "document-visible semantic output is not the exact canonical concatenation of its replacement fields",
-          ));
-        } else {
-          let offset = 0;
-          for (const entry of projected) {
-            projectedFieldSegments.push(Object.freeze({
-              owner_kind: "record",
-              owner_id: node.id,
-              logical_path: entry.logical_path,
-              start_in_chunk: offset,
-              end_in_chunk: offset + entry.bytes.byteLength,
-              bytes: cloneBytes(entry.bytes),
-            }));
-            offset += entry.bytes.byteLength;
-          }
-        }
-      }
-      chunks.push(immutableChunk({
-        manifest_index: op.manifest_index,
-        owner: { kind: node.kind, id: node.id, field: "payload" },
-        bytes: rendered,
-        source_span_ids: replacements(node.value).map((replacement) => replacement.span_id),
-        consumed_fields: ledger.consumed_fields,
-      }));
-      continue;
-    }
-
-    let field: "body_md" | "marker_md" | undefined;
-    if ("body_md" in node.value && node.value.body_md instanceof Uint8Array) field = "body_md";
-    if ("marker_md" in node.value && node.value.marker_md instanceof Uint8Array) field = "marker_md";
-    if (field !== undefined) {
-      const rendered = field === "body_md"
-        ? (node.value as { body_md: Uint8Array }).body_md
-        : (node.value as { marker_md: Uint8Array }).marker_md;
-      const ledger: FieldConsumptionLedgerEntry = Object.freeze({
-        owner_kind: node.kind,
-        owner_id: node.id,
-        expected_fields: Object.freeze([field]),
-        consumed_fields: Object.freeze([field]),
-        duplicate_fields: Object.freeze([]),
-        unknown_fields: Object.freeze([]),
-        mismatched_fields: Object.freeze([]),
-      });
-      fieldConsumption.push(ledger);
-      const replacementRows = replacements(node.value);
-      if (
-        replacementRows.length !== 1 || replacementRows[0]?.replacement_field !== field ||
-        rendered.byteLength === 0
-      ) {
-        buildIssues.push(issue(
-          document,
-          "E-FIELD-CONSUMPTION",
-          `${node.kind}[${JSON.stringify(node.id)}].source_replacements`,
-          "semantic structural output requires one non-empty full-field replacement",
+          `record[${JSON.stringify(node.id)}]`,
+          "placed record output must be exactly its non-empty detail_md bytes",
         ));
       } else {
         projectedFieldSegments.push(Object.freeze({
-          owner_kind: node.kind,
+          owner_kind: "record",
           owner_id: node.id,
-          logical_path: field,
+          logical_path: "payload.detail_md",
           start_in_chunk: 0,
           end_in_chunk: rendered.byteLength,
           bytes: cloneBytes(rendered),
@@ -769,34 +659,54 @@ export function buildExpectedChunks(
       }
       chunks.push(immutableChunk({
         manifest_index: op.manifest_index,
-        owner: { kind: node.kind, id: node.id, field },
+        owner: { kind: node.kind, id: node.id, field: "payload" },
         bytes: rendered,
-        source_span_ids: replacements(node.value).map((replacement) => replacement.span_id),
-        consumed_fields: [field],
+        consumed_fields: ledger.consumed_fields,
       }));
       continue;
     }
 
-    buildIssues.push(issue(
-      document,
-      "E-RENDER-AUTHORITY",
-      `${node.kind}[${JSON.stringify(node.id)}]`,
-      "render node has neither raw nor semantic authority bytes",
-    ));
+    const rendered = (node.value as { body_md: Uint8Array }).body_md;
+    const ledger: FieldConsumptionLedgerEntry = Object.freeze({
+      owner_kind: node.kind,
+      owner_id: node.id,
+      expected_fields: Object.freeze(["body_md"]),
+      consumed_fields: Object.freeze(["body_md"]),
+      duplicate_fields: Object.freeze([]),
+      unknown_fields: Object.freeze([]),
+      mismatched_fields: Object.freeze([]),
+    });
+    fieldConsumption.push(ledger);
+    if (rendered.byteLength === 0) {
+      buildIssues.push(issue(
+        document,
+        "E-FIELD-CONSUMPTION",
+        `${node.kind}[${JSON.stringify(node.id)}].body_md`,
+        "semantic structural output requires non-empty body_md bytes",
+      ));
+    } else {
+      projectedFieldSegments.push(Object.freeze({
+        owner_kind: node.kind,
+        owner_id: node.id,
+        logical_path: "body_md",
+        start_in_chunk: 0,
+        end_in_chunk: rendered.byteLength,
+        bytes: cloneBytes(rendered),
+      }));
+    }
     chunks.push(immutableChunk({
       manifest_index: op.manifest_index,
-      owner: { kind: node.kind, id: node.id, field: "invalid" },
-      bytes: new Uint8Array(),
-      source_span_ids: [],
-      consumed_fields: [],
+      owner: { kind: node.kind, id: node.id, field: "body_md" },
+      bytes: rendered,
+      consumed_fields: ["body_md"],
     }));
   }
 
-  // Semantic-only records are first-class semantic owners, not document render nodes. Validate
-  // their renderer and complete field consumption without minting a zero-byte manifest chunk.
+  // Unplaced records are first-class semantic owners, not document render nodes. Validate their
+  // renderer and complete field consumption without minting a zero-byte manifest chunk.
+  const placedRecordIds = new Set(ops.flatMap((op) => op.node.kind === "record" ? [op.node.id] : []));
   for (const record of document.records) {
-    if (!("render_authority" in record) || record.render_authority !== "semantic" ||
-      record.projection_visibility !== "semantic_only") continue;
+    if (placedRecordIds.has(record.id)) continue;
     const tracked = createFieldConsumer("record", record.id, record.payload);
     let rendered: Uint8Array = new Uint8Array();
     try {
@@ -814,8 +724,8 @@ export function buildExpectedChunks(
       buildIssues.push(issue(
         document,
         "E-RENDER-AUTHORITY",
-        `record[${JSON.stringify(record.id)}].projection_visibility`,
-        "semantic-only record renderer must emit zero bytes",
+        `record[${JSON.stringify(record.id)}]`,
+        "unplaced record renderer must emit zero bytes",
       ));
     }
   }
@@ -854,31 +764,16 @@ function fieldLedgerKey(kind: ManifestEntry["kind"], id: string): string {
   return JSON.stringify([kind, id]);
 }
 
-function expectedLedgerFields(op: RenderOp): readonly string[] | undefined {
-  if (rawSource(op.node.value) !== undefined || op.node.kind === "generated_slot") return undefined;
-  if (
-    op.node.kind === "record" && "render_authority" in op.node.value &&
-    op.node.value.render_authority === "semantic"
-  ) {
-    const expected = new Map<string, Uint8Array>();
-    collectMarkdownFields(op.node.value.payload, "payload", expected);
-    return Object.freeze([...expected.keys()].sort(codePointSort));
-  }
-  if ("body_md" in op.node.value && op.node.value.body_md instanceof Uint8Array) {
-    return Object.freeze(["body_md"]);
-  }
-  if ("marker_md" in op.node.value && op.node.value.marker_md instanceof Uint8Array) {
-    return Object.freeze(["marker_md"]);
-  }
-  return undefined;
+function payloadLedgerFields(payload: SemanticPayload): readonly string[] {
+  const expected = new Map<string, Uint8Array>();
+  collectMarkdownFields(payload, "payload", expected);
+  return Object.freeze([...expected.keys()].sort(codePointSort));
 }
 
-function semanticOnlyLedgerFields(
-  record: Extract<RoadmapDocument["records"][number], { render_authority: "semantic" }>,
-): readonly string[] {
-  const expected = new Map<string, Uint8Array>();
-  collectMarkdownFields(record.payload, "payload", expected);
-  return Object.freeze([...expected.keys()].sort(codePointSort));
+function expectedLedgerFields(op: RenderOp): readonly string[] | undefined {
+  if (op.node.kind === "generated_slot") return undefined;
+  if (op.node.kind === "record") return payloadLedgerFields(op.node.value.payload);
+  return Object.freeze(["body_md"]);
 }
 
 /** Validate only completed chunks/ledgers; declarations alone are never an accepted input seam. */
@@ -901,17 +796,18 @@ export function validateCompletedChunks(
   }
   const expectedFieldLedgers = new Map<string, readonly string[]>();
   const expectedSlotLedgers = new Map<string, Extract<RenderOp["node"], { kind: "generated_slot" }>["value"]>();
+  const placedRecordIds = new Set<string>();
   for (const op of ops) {
     const fields = expectedLedgerFields(op);
     if (fields !== undefined) expectedFieldLedgers.set(fieldLedgerKey(op.node.kind, op.node.id), fields);
+    if (op.node.kind === "record") placedRecordIds.add(op.node.id);
     if (op.node.kind === "generated_slot") {
       expectedSlotLedgers.set(JSON.stringify([op.manifest_index, op.node.id]), op.node.value);
     }
   }
   for (const record of document.records) {
-    if ("render_authority" in record && record.render_authority === "semantic" &&
-      record.projection_visibility === "semantic_only") {
-      expectedFieldLedgers.set(fieldLedgerKey("record", record.id), semanticOnlyLedgerFields(record));
+    if (!placedRecordIds.has(record.id)) {
+      expectedFieldLedgers.set(fieldLedgerKey("record", record.id), payloadLedgerFields(record.payload));
     }
   }
 
@@ -967,41 +863,17 @@ export function validateCompletedChunks(
     const segments = completed.projected_field_segments.filter((segment) =>
       segment.owner_kind === op.node.kind && segment.owner_id === op.node.id
     );
-    const semanticOnly = op.node.kind === "record" && "projection_visibility" in op.node.value &&
-      op.node.value.projection_visibility === "semantic_only";
-    if (semanticOnly) {
-      if (segments.length !== 0) {
-        issues.push(issue(document, "E-FIELD-CONSUMPTION", logicalPath, "semantic-only record has projected field segments"));
-      }
-      continue;
-    }
-    const replacementRows = replacements(op.node.value);
-    const replacementFields = new Set(replacementRows.map((replacement) => replacement.replacement_field));
-    const replacementSpanIds = new Set(replacementRows.map((replacement) => replacement.span_id));
+    const expectedPaths = op.node.kind === "record" ? ["payload.detail_md"] : ["body_md"];
+    const actualPaths = segments.map((segment) => segment.logical_path);
     const ledger = completed.field_consumption.filter((entry) =>
       entry.owner_kind === op.node.kind && entry.owner_id === op.node.id
     );
-    const structuralField = op.node.kind === "record"
-      ? undefined
-      : "marker_md" in op.node.value ? "marker_md" : "body_md";
-    const expectedPaths = structuralField === undefined
-      ? (ledger[0]?.consumed_fields ?? []).filter((field) => replacementFields.has(field))
-      : [structuralField];
-    const actualPaths = segments.map((segment) => segment.logical_path);
-    if (
-      replacementFields.size !== replacementRows.length || replacementSpanIds.size !== replacementRows.length ||
-      ledger.length !== 1 || !stringArraysEqual(actualPaths, expectedPaths) ||
-      segments.length !== replacementRows.length ||
-      (structuralField !== undefined && (
-        replacementRows.length !== 1 || replacementRows[0]?.replacement_field !== structuralField ||
-        !stringArraysEqual(ledger[0]?.consumed_fields ?? [], [structuralField])
-      ))
-    ) {
+    if (ledger.length !== 1 || !stringArraysEqual(actualPaths, expectedPaths)) {
       issues.push(issue(
         document,
         "E-FIELD-CONSUMPTION",
         logicalPath,
-        "projected fields are not in exact bijection with unique replacements and canonical consumption order",
+        "projected fields are not in exact bijection with the owner's one rendering field",
       ));
     }
     const chunkIndex = ops.indexOf(op);
@@ -1039,10 +911,7 @@ export function validateCompletedChunks(
     const key = JSON.stringify([item.manifest_index, item.slot.slot_id]);
     slotLedgerCounts.set(key, (slotLedgerCounts.get(key) ?? 0) + 1);
     const expectedSlot = expectedSlotLedgers.get(key);
-    if (
-      expectedSlot === undefined || item.slot.binding !== expectedSlot.binding ||
-      !stringArraysEqual(item.slot.span_ids, expectedSlot.span_ids)
-    ) {
+    if (expectedSlot === undefined || item.slot.binding !== expectedSlot.binding) {
       issues.push(issue(
         document,
         "E-OUTPUT-SLOT",
@@ -1087,29 +956,12 @@ export function validateCompletedChunks(
         "chunk does not positionally match its manifest operation and exact owner",
       ));
     }
-    const raw = rawSource(op.node.value);
-    if (raw !== undefined) {
-      if (
-        chunk.owner.field !== "source_block_md" || !bytesEqual(chunk.bytes, raw.source_block_md) ||
-        !stringArraysEqual(chunk.source_span_ids, raw.span_ids) ||
-        !stringArraysEqual(chunk.consumed_fields, ["source_block_md"])
-      ) {
-        issues.push(issue(
-          document,
-          "E-RENDER-AUTHORITY",
-          logicalPath,
-          "raw chunk does not exactly match its authority bytes, spans, and field ledger",
-        ));
-      }
-      continue;
-    }
     if (op.node.kind === "generated_slot") {
       const resolution = completed.slot_resolutions.filter((value) =>
         value.manifest_index === chunk.manifest_index && value.slot.slot_id === op.node.id
       );
       if (
         chunk.owner.field !== "generated" ||
-        !stringArraysEqual(chunk.source_span_ids, op.node.value.span_ids) ||
         !stringArraysEqual(chunk.consumed_fields, ["generated"]) ||
         resolution.length !== 1 || resolution[0].resolution === undefined ||
         !bytesEqual(chunk.bytes, resolution[0].resolution.bytes)
@@ -1123,48 +975,37 @@ export function validateCompletedChunks(
       }
       continue;
     }
-    if (op.node.kind === "record" && "render_authority" in op.node.value && op.node.value.render_authority === "semantic") {
+    if (op.node.kind === "record") {
       const ledger = completed.field_consumption.filter((value) =>
         value.owner_kind === "record" && value.owner_id === op.node.id
       );
-      const replacementIds = replacements(op.node.value).map((value) => value.span_id);
       if (
         chunk.owner.field !== "payload" || ledger.length !== 1 ||
-        !stringArraysEqual(chunk.consumed_fields, ledger[0]?.consumed_fields ?? []) ||
-        !stringArraysEqual(chunk.source_span_ids, replacementIds) ||
-        (op.node.value.projection_visibility === "semantic_only" && chunk.bytes.byteLength !== 0)
+        !stringArraysEqual(chunk.consumed_fields, ledger[0]?.consumed_fields ?? [])
       ) {
         issues.push(issue(
           document,
           "E-FIELD-CONSUMPTION",
           logicalPath,
-          "semantic record chunk does not match its completed field/replacement ledger",
+          "semantic record chunk does not match its completed field ledger",
         ));
       }
       continue;
     }
-    const semanticField = "body_md" in op.node.value
-      ? "body_md"
-      : "marker_md" in op.node.value ? "marker_md" : undefined;
-    if (semanticField !== undefined) {
-      const value = semanticField === "body_md"
-        ? (op.node.value as { body_md: Uint8Array }).body_md
-        : (op.node.value as { marker_md: Uint8Array }).marker_md;
-      const ledger = completed.field_consumption.filter((candidate) =>
-        candidate.owner_kind === op.node.kind && candidate.owner_id === op.node.id
-      );
-      if (
-        chunk.owner.field !== semanticField || !bytesEqual(chunk.bytes, value) || ledger.length !== 1 ||
-        !stringArraysEqual(chunk.consumed_fields, [semanticField]) ||
-        !stringArraysEqual(chunk.source_span_ids, replacements(op.node.value).map((replacement) => replacement.span_id))
-      ) {
-        issues.push(issue(
-          document,
-          "E-FIELD-CONSUMPTION",
-          logicalPath,
-          "semantic structural chunk does not match its completed field/replacement ledger",
-        ));
-      }
+    const value = (op.node.value as { body_md: Uint8Array }).body_md;
+    const ledger = completed.field_consumption.filter((candidate) =>
+      candidate.owner_kind === op.node.kind && candidate.owner_id === op.node.id
+    );
+    if (
+      chunk.owner.field !== "body_md" || !bytesEqual(chunk.bytes, value) || ledger.length !== 1 ||
+      !stringArraysEqual(chunk.consumed_fields, ["body_md"])
+    ) {
+      issues.push(issue(
+        document,
+        "E-FIELD-CONSUMPTION",
+        logicalPath,
+        "semantic structural chunk does not match its completed field ledger",
+      ));
     }
   }
   for (const ledger of completed.field_consumption) {

@@ -24,7 +24,6 @@ import {
   type DecodedRoadmapValidationOptions,
   type DecodedRoadmapValidationResult,
 } from "./engine.ts";
-import { MATRIX_SLOT_FLOORS } from "./matrix_slot_floors.ts";
 
 const issue = payloadFactIssue;
 
@@ -41,18 +40,11 @@ function usesLiveMatrixInlineSlots(doc: RoadmapDocument): boolean {
   if (
     doc.document.source_path !== MATRIX_SOURCE_PATH ||
     doc.document.projection_path !== MATRIX_PROJECTION_PATH ||
-    doc.generated_slots.length !== MATRIX_SLOT_FLOORS.length
+    doc.generated_slots.length !== SLOT_BINDINGS.length
   ) return false;
   const slots = new Map(doc.generated_slots.map((slot) => [slot.slot_id, slot]));
-  return slots.size === MATRIX_SLOT_FLOORS.length && MATRIX_SLOT_FLOORS.every(
-    ([slotId, binding, spanId, start, end]) => {
-      const slot = slots.get(slotId);
-      const span = doc.spans.find((entry) => entry.id === spanId);
-      return slot?.binding === binding && slot.span_ids.length === 1 &&
-        slot.span_ids[0] === spanId && span?.source_kind === "generated_slot" &&
-        span.owner_id === slotId && span.owner_field === "generated" &&
-        span.migration_status === "generated" && span.start_byte === start && span.end_byte === end;
-    },
+  return slots.size === SLOT_BINDINGS.length && SLOT_BINDINGS.every(
+    ([slotId, binding]) => slots.get(slotId)?.binding === binding,
   );
 }
 

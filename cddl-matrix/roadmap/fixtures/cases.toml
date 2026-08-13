@@ -27,42 +27,42 @@ projection_eof = "none"
 
 [[case]]
 kind = "single_file"
-id = "fixture_small_matrix_v2"
+id = "fixture_small_matrix_v3"
 class = "positive"
-input = "positive/small-matrix-v2.toml"
-expected = "positive/small-matrix-v2.expected.md"
+input = "positive/small-matrix-v3.toml"
+expected = "positive/small-matrix-v3.expected.md"
 adapter = "matrix"
-schema_version = 2
+schema_version = 3
 projection_eof = "lf"
 
 [[case]]
 kind = "single_file"
-id = "fixture_small_testing_v2"
+id = "fixture_small_testing_v3"
 class = "positive"
-input = "positive/small-testing-v2.toml"
-expected = "positive/small-testing-v2.expected.md"
+input = "positive/small-testing-v3.toml"
+expected = "positive/small-testing-v3.expected.md"
 adapter = "testing"
-schema_version = 2
+schema_version = 3
 projection_eof = "none"
 
 [[case]]
 kind = "single_file"
-id = "fixture_all_fields_matrix_v2"
+id = "fixture_all_fields_matrix_v3"
 class = "all_fields"
-input = "all-fields/matrix-v2.toml"
-expected = "all-fields/matrix-v2.expected.md"
+input = "all-fields/matrix-v3.toml"
+expected = "all-fields/matrix-v3.expected.md"
 adapter = "matrix"
-schema_version = 2
+schema_version = 3
 projection_eof = "lf"
 
 [[case]]
 kind = "single_file"
-id = "fixture_all_fields_testing_v2"
+id = "fixture_all_fields_testing_v3"
 class = "all_fields"
-input = "all-fields/testing-v2.toml"
-expected = "all-fields/testing-v2.expected.md"
+input = "all-fields/testing-v3.toml"
+expected = "all-fields/testing-v3.expected.md"
 adapter = "testing"
-schema_version = 2
+schema_version = 3
 projection_eof = "lf"
 
 [[case]]

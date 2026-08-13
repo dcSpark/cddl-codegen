@@ -31,7 +31,7 @@ import type {
   GeneratedSlot,
   Reference,
   RoadmapDocument,
-  RoadmapDocumentV2,
+  RoadmapDocumentV3,
   SemanticPayload,
   SemanticRecord,
 } from "../model/documents.ts";
@@ -65,14 +65,14 @@ export const ADAPTER_SELFTEST_SUBCASES = Object.freeze(["matrix", "testing"] as 
 
 const FIXTURE_ROOT = "cddl-matrix/roadmap/fixtures" as RepoPath;
 const FIXTURE_PATHS = Object.freeze([
-  "all-fields/matrix-v2.expected.md",
-  "all-fields/matrix-v2.toml",
-  "all-fields/testing-v2.expected.md",
-  "all-fields/testing-v2.toml",
-  "positive/small-matrix-v2.expected.md",
-  "positive/small-matrix-v2.toml",
-  "positive/small-testing-v2.expected.md",
-  "positive/small-testing-v2.toml",
+  "all-fields/matrix-v3.expected.md",
+  "all-fields/matrix-v3.toml",
+  "all-fields/testing-v3.expected.md",
+  "all-fields/testing-v3.toml",
+  "positive/small-matrix-v3.expected.md",
+  "positive/small-matrix-v3.toml",
+  "positive/small-testing-v3.expected.md",
+  "positive/small-testing-v3.toml",
   "status-compat/roadmap.after.md",
   "status-compat/roadmap.before.md",
 ] as const);
@@ -165,11 +165,11 @@ class Collector implements IssueCollector {
   }
 }
 
-function semanticPayload(record: RoadmapDocumentV2["records"][number]): SemanticPayload | undefined {
+function semanticPayload(record: RoadmapDocumentV3["records"][number]): SemanticPayload | undefined {
   return record.payload;
 }
 
-function productionDocument<T extends RoadmapDocumentV2>(document: T): T {
+function productionDocument<T extends RoadmapDocumentV3>(document: T): T {
   const matrix = document.document.roadmap === "matrix";
   return {
     ...document,
@@ -181,7 +181,7 @@ function productionDocument<T extends RoadmapDocumentV2>(document: T): T {
   } as T;
 }
 
-function replacePayload<T extends RoadmapDocumentV2>(
+function replacePayload<T extends RoadmapDocumentV3>(
   document: T,
   select: (payload: SemanticPayload) => boolean,
   mutate: (payload: SemanticPayload) => SemanticPayload,
@@ -362,10 +362,7 @@ function requireSemantic(
   predicate: (payload: SemanticPayload) => boolean,
 ): SemanticRecord {
   const record = document.records.find((candidate) => predicate(candidate.payload));
-  assert(
-    record !== undefined && "render_authority" in record && record.render_authority === "semantic",
-    "semantic adapter record is missing",
-  );
+  assert(record !== undefined, "semantic adapter record is missing");
   return record;
 }
 
@@ -378,13 +375,13 @@ function assertNoProductionIssues(issues: readonly RoadmapIssue[], label: string
 
 function testDecoderDispatch(bundle: AdapterFixtureBundle): void {
   const matrixRows: string[] = [];
-  const decodedMatrix = decoded(bundle, "all-fields/matrix-v2.toml", "matrix", {
+  const decodedMatrix = decoded(bundle, "all-fields/matrix-v3.toml", "matrix", {
     exactTable(schema, path) { if (schema.name === "matrix maintenance policy") matrixRows.push(path); },
     enum() {},
   });
   assert(JSON.stringify(matrixRows) === JSON.stringify(["record[24].payload"]), "matrix S1 domain arm did not dispatch exactly once at its frozen logical path");
-  assert(decodedMatrix.document.schema_version === 2, "matrix all-fields fixture is not v2");
-  const matrix = productionDocument(decodedMatrix as RoadmapDocumentV2);
+  assert(decodedMatrix.document.schema_version === 3, "matrix all-fields fixture is not v3");
+  const matrix = productionDocument(decodedMatrix as RoadmapDocumentV3);
   const matrixPayload = semanticPayload(matrix.records.find((record) => record.id === "matrix.fixture-policy-a" as RoadmapId)!);
   assert(matrixPayload?.kind === "matrix_policy", "matrix S1 branded shadow payload is absent");
   const matrixCallbacks: SemanticPayloadProviderFact[] = [];
@@ -404,13 +401,13 @@ function testDecoderDispatch(bundle: AdapterFixtureBundle): void {
   assert(matrixCallbacks.length === 1 && matrixCallbacks[0]?.payload === matrixPayload && matrixCallbacks[0]?.authority === "semantic", "matrix production domain callback did not receive the exact S1 branded payload object once");
 
   const testingRows: string[] = [];
-  const decodedTesting = decoded(bundle, "all-fields/testing-v2.toml", "testing", {
+  const decodedTesting = decoded(bundle, "all-fields/testing-v3.toml", "testing", {
     exactTable(schema, path) { if (schema.name === "watching operational watch") testingRows.push(path); },
     enum() {},
   });
   assert(JSON.stringify(testingRows) === JSON.stringify(["record[13].payload"]), "testing S1 domain arm did not dispatch exactly once at its frozen logical path");
-  assert(decodedTesting.document.schema_version === 2, "testing all-fields fixture is not v2");
-  const testing = productionDocument(decodedTesting as RoadmapDocumentV2);
+  assert(decodedTesting.document.schema_version === 3, "testing all-fields fixture is not v3");
+  const testing = productionDocument(decodedTesting as RoadmapDocumentV3);
   const testingPayload = semanticPayload(testing.records.find((record) => record.id === "testing.fixture-operational-watching" as RoadmapId)!);
   assert(testingPayload?.kind === "testing_operational_watch", "testing S1 branded shadow payload is absent");
   const testingCallbacks: SemanticPayloadProviderFact[] = [];
@@ -448,8 +445,8 @@ function requireFloorIssue(
 }
 
 function testFloors(bundle: AdapterFixtureBundle): void {
-  const matrix = productionDocument(decoded(bundle, "all-fields/matrix-v2.toml", "matrix") as RoadmapDocumentV2);
-  const testing = productionDocument(decoded(bundle, "all-fields/testing-v2.toml", "testing") as RoadmapDocumentV2);
+  const matrix = productionDocument(decoded(bundle, "all-fields/matrix-v3.toml", "matrix") as RoadmapDocumentV3);
+  const testing = productionDocument(decoded(bundle, "all-fields/testing-v3.toml", "testing") as RoadmapDocumentV3);
   assert(validateFloors(MATRIX_ADAPTER, matrix).length === 0, "exact production matrix floors failed");
   assert(validateFloors(TESTING_ADAPTER, testing).length === 0, "exact production testing floors failed");
 
@@ -466,11 +463,11 @@ function testFloors(bundle: AdapterFixtureBundle): void {
   requireFloorIssue(MATRIX_ADAPTER, { ...matrix, generated_slots: [...matrix.generated_slots, { ...matrix.generated_slots[0]!, slot_id: "extra" as SlotId }] }, "generated_slot", "matrix accepted an extra slot");
   requireFloorIssue(MATRIX_ADAPTER, { ...matrix, generated_slots: matrix.generated_slots.map((slot, index) => index === 0 ? { ...slot, slot_id: "wrong" as SlotId } : slot) }, `generated_slot["constraint"].binding`, "matrix accepted a wrong slot ID");
   requireFloorIssue(MATRIX_ADAPTER, { ...matrix, generated_slots: matrix.generated_slots.map((slot, index) => index === 0 ? { ...slot, binding: "wrong:binding" } : slot) }, `generated_slot["constraint"].binding`, "matrix accepted a wrong slot binding");
-  requireFloorIssue(TESTING_ADAPTER, { ...testing, generated_slots: [{ slot_id: "forbidden" as SlotId, binding: "wrong", span_ids: [] }] }, "generated_slot", "testing accepted a generated slot");
+  requireFloorIssue(TESTING_ADAPTER, { ...testing, generated_slots: [{ slot_id: "forbidden" as SlotId, binding: "wrong" }] }, "generated_slot", "testing accepted a generated slot");
 }
 
 function testProviders(bundle: AdapterFixtureBundle): void {
-  const matrix = productionDocument(decoded(bundle, "all-fields/matrix-v2.toml", "matrix") as RoadmapDocumentV2);
+  const matrix = productionDocument(decoded(bundle, "all-fields/matrix-v3.toml", "matrix") as RoadmapDocumentV3);
   const built = buildRoadmapIndexes(matrix);
   assert(built.issues.length === 0, `matrix provider fixture failed C4A: ${JSON.stringify(built.issues)}`);
   const view = registryView(bundle, matrix);
@@ -564,7 +561,6 @@ function testProviders(bundle: AdapterFixtureBundle): void {
     logical_path: controlPath,
     payload: {
       kind: "control",
-      summary_md: new TextEncoder().encode("Mixed direct test control."),
       control_kind: "test",
       control_state: "live",
       reference_ids: [cellReference.id, symbolReference.id],
@@ -612,8 +608,8 @@ function testProviders(bundle: AdapterFixtureBundle): void {
 }
 
 function testCrossRoadmapJoinSubstrate(bundle: AdapterFixtureBundle): void {
-  const matrix = productionDocument(decoded(bundle, "all-fields/matrix-v2.toml", "matrix") as RoadmapDocumentV2);
-  const testing = productionDocument(decoded(bundle, "all-fields/testing-v2.toml", "testing") as RoadmapDocumentV2);
+  const matrix = productionDocument(decoded(bundle, "all-fields/matrix-v3.toml", "matrix") as RoadmapDocumentV3);
+  const testing = productionDocument(decoded(bundle, "all-fields/testing-v3.toml", "testing") as RoadmapDocumentV3);
   const matrixBuilt = buildRoadmapIndexes(matrix).indexes;
   const testingBuilt = buildRoadmapIndexes(testing).indexes;
   const source = [...matrixBuilt.payload_records.values()].find((provider) => provider.payload.kind === "work");
@@ -714,8 +710,8 @@ function replaceMarkerInterior(source: string, markerId: string, interior: strin
 
 function testSlots(bundle: AdapterFixtureBundle): void {
   const view = registryView(bundle);
-  const matrixDocument = decoded(bundle, "all-fields/matrix-v2.toml", "matrix");
-  const testingDocument = decoded(bundle, "all-fields/testing-v2.toml", "testing");
+  const matrixDocument = decoded(bundle, "all-fields/matrix-v3.toml", "matrix");
+  const testingDocument = decoded(bundle, "all-fields/testing-v3.toml", "testing");
   const beforeBytes = fixtureBytes(bundle, "status-compat/roadmap.before.md");
   const afterBytes = fixtureBytes(bundle, "status-compat/roadmap.after.md");
   const expected = new Map(MATRIX_GENERATED_SLOT_BINDINGS.map(([slotId, binding]) => [
@@ -731,7 +727,7 @@ function testSlots(bundle: AdapterFixtureBundle): void {
   for (const [index, [slotId, binding]] of MATRIX_GENERATED_SLOT_BINDINGS.entries()) {
     const resolver = resolvers.get(slotId);
     assert(resolver !== undefined, `missing resolver ${slotId}`);
-    const slot: GeneratedSlot = { slot_id: slotId, binding, span_ids: [] };
+    const slot: GeneratedSlot = { slot_id: slotId, binding };
     const first = resolver.resolve(slot, view);
     const second = resolver.resolve(slot, view);
     const wanted = expected.get(binding);
@@ -806,7 +802,6 @@ function expectedCanonicalFieldOrder(value: SemanticPayload): readonly string[] 
   const add = (path: string, bytes: Uint8Array | undefined): void => {
     if (bytes !== undefined) paths.push(`payload.${path}`);
   };
-  add("summary_md", value.summary_md);
   add("detail_md", value.detail_md);
   switch (value.kind) {
     case "work":
@@ -949,10 +944,10 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
     rendered: Uint8Array;
   }[] = [];
   for (const [roadmap, sourcePath, expectedPath, adapter, statusInputs, expectedLength] of [
-    ["matrix", "positive/small-matrix-v2.toml", "positive/small-matrix-v2.expected.md", MATRIX_ADAPTER, statusCompatibilityInputs(), 73],
-    ["testing", "positive/small-testing-v2.toml", "positive/small-testing-v2.expected.md", TESTING_ADAPTER, statusCompatibilityInputs(), 75],
-    ["matrix", "all-fields/matrix-v2.toml", "all-fields/matrix-v2.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 1737],
-    ["testing", "all-fields/testing-v2.toml", "all-fields/testing-v2.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 511],
+    ["matrix", "positive/small-matrix-v3.toml", "positive/small-matrix-v3.expected.md", MATRIX_ADAPTER, statusCompatibilityInputs(), 48],
+    ["testing", "positive/small-testing-v3.toml", "positive/small-testing-v3.expected.md", TESTING_ADAPTER, statusCompatibilityInputs(), 49],
+    ["matrix", "all-fields/matrix-v3.toml", "all-fields/matrix-v3.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 380],
+    ["testing", "all-fields/testing-v3.toml", "all-fields/testing-v3.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 30],
   ] as const) {
     const document = decoded(bundle, sourcePath, roadmap);
     const snapshots = markdownSnapshots(document);
@@ -964,18 +959,18 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
       expected_length: expectedLength,
       rendered: rendered.bytes,
     });
-    const semanticAuthorities = document.records.filter((record) =>
-      "render_authority" in record && record.render_authority === "semantic"
-    ).length;
-    assert(rendered.semantic_calls === semanticAuthorities, `${roadmap} semantic shadow reached the renderer or a semantic authority did not render exactly once`);
+    // v3 has one render authority per record: every record's renderer runs exactly once, and the
+    // semantic-only ones (no manifest placement, no detail_md) are the ones that must yield zero
+    // bytes -- which validateCompletedChunks, not this count, is what proves.
+    assert(rendered.semantic_calls === document.records.length, `${roadmap} a record did not reach the renderer exactly once`);
     const second = renderFixture(document, adapter, registryView(bundle, document, statusInputs));
     assert(bytesEqual(rendered.bytes, second.bytes), `${roadmap} adapter rendering changed on a second render`);
     assert(snapshots.every((entry) => bytesEqual(entry.original, entry.copy)), `${roadmap} adapter mutated decoded Markdown bytes`);
   }
 
   for (const [roadmap, path, adapter] of [
-    ["matrix", "positive/small-matrix-v2.toml", MATRIX_ADAPTER],
-    ["testing", "positive/small-testing-v2.toml", TESTING_ADAPTER],
+    ["matrix", "positive/small-matrix-v3.toml", MATRIX_ADAPTER],
+    ["testing", "positive/small-testing-v3.toml", TESTING_ADAPTER],
   ] as const) {
     const document = decoded(bundle, path, roadmap);
     const record = requireSemantic(document, (payload) => payload.kind === "work");
@@ -993,7 +988,6 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
     assert(bytesEqual(normalBytes, adapter.renderSemantic(reversed, reversedSpy.consumer)), `${roadmap} rendering depends on payload property construction order`);
     assert(normal.calls.map((call) => call.path).join("|") === reversedSpy.calls.map((call) => call.path).join("|"), `${roadmap} field traversal order changed with object construction order`);
     const substitutions = new Map<string, Uint8Array>([
-      ["payload.summary_md", new TextEncoder().encode(`SUBSTITUTED ${roadmap.toUpperCase()} SUMMARY\n`)],
       ["payload.detail_md", new TextEncoder().encode(`SUBSTITUTED ${roadmap.toUpperCase()} DETAIL\n`)],
     ]);
     const substitutionCalls: { path: string; input: Uint8Array }[] = [];
@@ -1005,16 +999,15 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
     });
     assert(substitutionCalls.map((call) => call.path).join("|") === expectedOrder.join("|"), `${roadmap} substitution changed the exact FieldConsumer call sequence`);
     assert(substitutionCalls.every((call) => call.input === expectedInputs.get(call.path)), `${roadmap} substitution did not receive the exact decoded field input`);
-    const replacementFields = new Set(record.source_replacements.map((replacement) => replacement.replacement_field));
     const expectedSubstitution = combineBytes(expectedOrder
-      .filter((logicalPath) => replacementFields.has(logicalPath))
+      .filter((logicalPath) => logicalPath === "payload.detail_md")
       .map((logicalPath) => substitutions.get(logicalPath) ?? expectedInputs.get(logicalPath)!));
     assert(bytesEqual(substituted, expectedSubstitution) && !bytesEqual(substituted, normalBytes), `${roadmap} renderer did not append and expose FieldConsumer substitute bytes in exact canonical output order`);
   }
 
   for (const [roadmap, path, adapter] of [
-    ["matrix", "all-fields/matrix-v2.toml", MATRIX_ADAPTER],
-    ["testing", "all-fields/testing-v2.toml", TESTING_ADAPTER],
+    ["matrix", "all-fields/matrix-v3.toml", MATRIX_ADAPTER],
+    ["testing", "all-fields/testing-v3.toml", TESTING_ADAPTER],
   ] as const) {
     const document = decoded(bundle, path, roadmap);
     const built = buildRoadmapIndexes(document);
@@ -1036,10 +1029,7 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
       const rendered = adapter.renderSemantic(record, calls.consumer);
       assert(calls.calls.map((call) => call.path).join("|") === expectedOrder.join("|"), `${context} renderer call order differs from frozen per-arm oracle`);
       assert(calls.calls.every((call) => call.bytes === expectedInputs.get(call.path)), `${context} renderer passed a noncanonical path-to-input byte mapping`);
-      const replacements = new Set(record.source_replacements.map((entry) => entry.replacement_field));
-      const renderedPaths = record.projection_visibility === "semantic_only"
-        ? []
-        : expectedOrder.filter((logicalPath) => replacements.has(logicalPath));
+      const renderedPaths = expectedOrder.filter((logicalPath) => logicalPath === "payload.detail_md");
       assert(bytesEqual(rendered, combineBytes(renderedPaths.map((logicalPath) => expectedInputs.get(logicalPath)!))), `${context} output differs after exact order and input mapping validation`);
     }
   }
@@ -1056,7 +1046,7 @@ interface AdapterMutationVector {
   readonly roadmap: RoadmapName;
   readonly logical_path: string;
   readonly issue_codes: readonly RoadmapIssue["code"][];
-  mutate(document: RoadmapDocumentV2): { readonly document: RoadmapDocumentV2; readonly payload: SemanticPayload };
+  mutate(document: RoadmapDocumentV3): { readonly document: RoadmapDocumentV3; readonly payload: SemanticPayload };
 }
 
 function testDomainMutationTable(bundle: AdapterFixtureBundle): void {
@@ -1263,8 +1253,8 @@ function testDomainMutationTable(bundle: AdapterFixtureBundle): void {
   ];
 
   for (const vector of vectors) {
-    const sourcePath = vector.roadmap === "matrix" ? "all-fields/matrix-v2.toml" : "all-fields/testing-v2.toml";
-    const base = productionDocument(decoded(bundle, sourcePath, vector.roadmap) as RoadmapDocumentV2);
+    const sourcePath = vector.roadmap === "matrix" ? "all-fields/matrix-v3.toml" : "all-fields/testing-v3.toml";
+    const base = productionDocument(decoded(bundle, sourcePath, vector.roadmap) as RoadmapDocumentV3);
     const mutated = vector.mutate(base);
     const view = registryView(bundle, mutated.document, vector.roadmap === "matrix" ? allFieldsStatusInputs() : statusCompatibilityInputs());
     const result = vector.roadmap === "matrix"
@@ -1280,10 +1270,10 @@ function testDomainMutationTable(bundle: AdapterFixtureBundle): void {
 
 function testPipeline(bundle: AdapterFixtureBundle): void {
   for (const [roadmap, path, validate] of [
-    ["matrix", "all-fields/matrix-v2.toml", validateMatrixRoadmapDocument],
-    ["testing", "all-fields/testing-v2.toml", validateTestingRoadmapDocument],
+    ["matrix", "all-fields/matrix-v3.toml", validateMatrixRoadmapDocument],
+    ["testing", "all-fields/testing-v3.toml", validateTestingRoadmapDocument],
   ] as const) {
-    const document = productionDocument(decoded(bundle, path, roadmap) as RoadmapDocumentV2);
+    const document = productionDocument(decoded(bundle, path, roadmap) as RoadmapDocumentV3);
     const view = registryView(bundle, document, roadmap === "matrix" ? allFieldsStatusInputs() : statusCompatibilityInputs());
     const shared: RoadmapIndexes[] = [];
     const domain: { provider: SemanticPayloadProviderFact }[] = [];
@@ -1321,8 +1311,8 @@ function testPipeline(bundle: AdapterFixtureBundle): void {
 
 function testIndexesFromDecoded(bundle: AdapterFixtureBundle): void {
   for (const [roadmap, path, adapter] of [
-    ["matrix", "positive/small-matrix-v2.toml", MATRIX_ADAPTER],
-    ["testing", "positive/small-testing-v2.toml", TESTING_ADAPTER],
+    ["matrix", "positive/small-matrix-v3.toml", MATRIX_ADAPTER],
+    ["testing", "positive/small-testing-v3.toml", TESTING_ADAPTER],
   ] as const) {
     const document = decoded(bundle, path, roadmap);
     const built = buildRoadmapIndexes(document);
@@ -1332,8 +1322,8 @@ function testIndexesFromDecoded(bundle: AdapterFixtureBundle): void {
     assert(built.indexes.payload_records.get(record.id)?.payload === record.payload, `${roadmap} index did not retain the decoded payload identity`);
     const spy = fieldSpy();
     const rendered = adapter.renderSemantic(record, spy.consumer);
-    assert(spy.calls.length === 4, `${roadmap} adapter did not consume all four decoded ready-work Markdown fields`);
-    assert(rendered.byteLength > record.payload.summary_md.byteLength && bytesEqual(rendered.subarray(0, record.payload.summary_md.byteLength), record.payload.summary_md), `${roadmap} canonical rendering did not begin with decoded summary bytes`);
+    assert(spy.calls.length === 3, `${roadmap} adapter did not consume all three decoded ready-work Markdown fields`);
+    assert(record.payload.detail_md !== undefined && bytesEqual(rendered, record.payload.detail_md), `${roadmap} canonical rendering is not exactly the decoded detail bytes`);
   }
   testFloors(bundle);
   testGoldenRendering(bundle);
@@ -1348,8 +1338,8 @@ function testSurface(bundle: AdapterFixtureBundle): void {
   }
   testProviders(bundle);
   testSlots(bundle);
-  const matrix = decoded(bundle, "positive/small-matrix-v2.toml", "matrix");
-  const testing = decoded(bundle, "positive/small-testing-v2.toml", "testing");
+  const matrix = decoded(bundle, "positive/small-matrix-v3.toml", "matrix");
+  const testing = decoded(bundle, "positive/small-testing-v3.toml", "testing");
   assert(requireSemantic(matrix, () => true).payload.kind === "work", "matrix branded payload missing");
   assert(requireSemantic(testing, () => true).payload.kind === "work", "testing branded payload missing");
 }

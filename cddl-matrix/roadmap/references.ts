@@ -652,8 +652,7 @@ export function validateSemanticRoadmapJoins(
       ));
       continue;
     }
-    const structuralKind = use.role === "parent_record" || use.role === "manifest_record" ||
-        use.role === "span_record_owner"
+    const structuralKind = use.role === "parent_record" || use.role === "manifest_record"
       ? "record"
       : undefined;
     if (structuralKind !== undefined && target.kind !== structuralKind) {

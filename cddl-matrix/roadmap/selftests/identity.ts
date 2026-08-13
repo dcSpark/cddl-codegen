@@ -17,7 +17,7 @@ import type {
   Reference,
   Relation,
   RoadmapDocument,
-  RoadmapDocumentV2,
+  RoadmapDocumentV3,
   SemanticAuthorityRecord,
 } from "../model/documents.ts";
 import type { RegistryView } from "../adapters/types.ts";
@@ -63,10 +63,10 @@ import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
 import { codePointSort } from "../kernel.ts";
 
 export const IDENTITY_ROADMAP_FIXTURE_PATHS = Object.freeze([
-  "all-fields/matrix-v2.toml",
-  "all-fields/testing-v2.toml",
-  "positive/small-matrix-v2.toml",
-  "positive/small-testing-v2.toml",
+  "all-fields/matrix-v3.toml",
+  "all-fields/testing-v3.toml",
+  "positive/small-matrix-v3.toml",
+  "positive/small-testing-v3.toml",
 ] as const);
 
 export type IdentityRoadmapFixturePath =
@@ -193,11 +193,9 @@ interface FixtureIndexExpectation {
 const EMPTY_SUBORDINATE: ExactGroups = {
   fragment: [],
   generated_slot: [],
-  legacy_marker: [],
   part: [],
   reference: [],
   section: ["fixture"],
-  source_span: [],
 };
 
 function exactEntries(value: Readonly<Record<string, unknown>>): readonly [string, unknown][] {
@@ -305,14 +303,11 @@ function smallFixtureExpectation(roadmap: RoadmapName): FixtureIndexExpectation 
     roadmap,
     providers: { record: [recordId] },
     payloads: { "semantic:work": [recordId] },
-    id_use_roles: { manifest_record: 1, provider: 1, span_record_owner: 2 },
+    id_use_roles: { manifest_record: 1, provider: 1 },
     semantic_targets: {},
     reference_uses: {},
     aliases: [],
-    subordinate: {
-      ...EMPTY_SUBORDINATE,
-      source_span: ["section", "semantic-detail", "semantic-summary"],
-    },
+    subordinate: { ...EMPTY_SUBORDINATE },
     references_by_kind: {},
     relations: [],
     relations_by_source: {},
@@ -408,15 +403,14 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     ],
   },
   id_use_roles: {
-    manifest_record: 57,
+    manifest_record: 1,
     parent_record: 1,
     provider: 87,
     reference_source: 12,
     reference_target: 1,
     relation_source: 10,
     relation_target: 10,
-    semantic_target: 67,
-    span_record_owner: 58,
+    semantic_target: 65,
   },
   semantic_targets: {
     "matrix.fixture-control-a": 6,
@@ -426,8 +420,8 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     "matrix.fixture-dimension-c": 2,
     "matrix.fixture-dimension-d": 2,
     "matrix.fixture-evidence-a": 10,
-    "matrix.fixture-evidence-b": 3,
-    "matrix.fixture-evidence-c": 4,
+    "matrix.fixture-evidence-b": 2,
+    "matrix.fixture-evidence-c": 3,
     "matrix.fixture-evidence-d": 1,
     "matrix.fixture-option-a-five": 1,
     "matrix.fixture-option-a-four": 1,
@@ -461,11 +455,10 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     "ref-spec": 26,
     "ref-test": 2,
   },
-  aliases: ["matrix-all-fields-marker=legacy_marker:fixture-marker"],
+  aliases: [],
   subordinate: {
     fragment: ["fixture-fragment"],
     generated_slot: ["constraint", "counts", "emission", "ops"],
-    legacy_marker: ["fixture-marker"],
     part: ["fixture-part"],
     reference: [
       "ref-cell",
@@ -482,27 +475,6 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
       "ref-test",
     ],
     section: ["fixture"],
-    source_span: [
-      "fragment",
-      "legacy-marker",
-      "part",
-      ...suffixed("record-fixture-closeout-", "abc"),
-      ...suffixed("record-fixture-control-", "abcdefg"),
-      ...suffixed("record-fixture-decision-", "abcd"),
-      ...suffixed("record-fixture-evidence-", "abcdefghijklm"),
-      ...suffixed("record-fixture-family-", "abcd"),
-      ...suffixed("record-fixture-policy-", "abc"),
-      "record-fixture-raw-owner",
-      ...suffixed("record-fixture-signal-", "abcdefghijk"),
-      ...suffixed("record-fixture-work-", "abcdefghij"),
-      "section",
-      "semantic-detail",
-      "semantic-summary",
-      "slot-constraint",
-      "slot-counts",
-      "slot-emission",
-      "slot-ops",
-    ],
   },
   references_by_kind: {
     consumer_report: ["ref-consumer"],
@@ -576,11 +548,9 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     ],
   },
   id_use_roles: {
-    manifest_record: 17,
     provider: 17,
     reference_source: 12,
     semantic_target: 18,
-    span_record_owner: 18,
   },
   semantic_targets: {
     "testing.fixture-admission-bounded": 1,
@@ -624,27 +594,6 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
       "systematic-observation",
       "systematic-retirement",
     ],
-    source_span: [
-      "section",
-      "semantic-detail",
-      "semantic-summary",
-      "span-admission-bounded",
-      "span-admission-independent",
-      "span-admission-silent",
-      "span-all-fields-raw",
-      "span-control-review",
-      "span-cost-historical",
-      "span-evidence-gate",
-      "span-incident-attributed",
-      "span-incident-historical",
-      "span-incident-live",
-      "span-operational-attributed",
-      "span-operational-retire-pending",
-      "span-operational-watching",
-      "span-signal-escalation",
-      "span-systematic-observed",
-      "span-task-ready",
-    ],
   },
   references_by_kind: {
     file_heading: [
@@ -673,10 +622,10 @@ const EXPECTED_FIXTURE_INDEXES: Readonly<Record<
   IdentityRoadmapFixturePath,
   FixtureIndexExpectation
 >> = {
-  "all-fields/matrix-v2.toml": MATRIX_ALL_FIELDS_EXPECTATION,
-  "all-fields/testing-v2.toml": TESTING_ALL_FIELDS_EXPECTATION,
-  "positive/small-matrix-v2.toml": smallFixtureExpectation("matrix"),
-  "positive/small-testing-v2.toml": smallFixtureExpectation("testing"),
+  "all-fields/matrix-v3.toml": MATRIX_ALL_FIELDS_EXPECTATION,
+  "all-fields/testing-v3.toml": TESTING_ALL_FIELDS_EXPECTATION,
+  "positive/small-matrix-v3.toml": smallFixtureExpectation("matrix"),
+  "positive/small-testing-v3.toml": smallFixtureExpectation("testing"),
 };
 
 function fixtureBytes(
@@ -843,12 +792,6 @@ function assertFixtureIndexes(
     `${label} fragment index`,
   );
   assertIdentityMap(
-    indexes.legacy_markers,
-    (marker) => marker.marker_id,
-    groupValues(expected.subordinate, "legacy_marker"),
-    `${label} legacy-marker index`,
-  );
-  assertIdentityMap(
     indexes.parts,
     (part) => part.part_id,
     groupValues(expected.subordinate, "part"),
@@ -859,12 +802,6 @@ function assertFixtureIndexes(
     (slot) => slot.slot_id,
     groupValues(expected.subordinate, "generated_slot"),
     `${label} generated-slot index`,
-  );
-  assertIdentityMap(
-    indexes.spans,
-    (span) => span.id,
-    groupValues(expected.subordinate, "source_span"),
-    `${label} source-span index`,
   );
   assertExactGroups(
     groupStrings(
@@ -923,7 +860,7 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
     assertFixtureIndexes(path, result.indexes, expected);
     globalInputs.push(result.indexes.identity_inputs);
     const references = [...result.indexes.references.values()].sort(compareReferenceTargets);
-    if (path === "all-fields/matrix-v2.toml") {
+    if (path === "all-fields/matrix-v3.toml") {
       assert(
         new Set(references.map((reference) => reference.kind)).size === REFERENCE_KIND_REGISTRY.length,
         "matrix all-fields must provide one committed template for every Reference kind",
@@ -1001,10 +938,23 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
     const semanticUse = result.indexes.id_uses.find((use) => use.role === "semantic_target");
     if (semanticUse !== undefined) {
       const target = result.indexes.first_class.get(semanticUse.id)!;
+      // A semantic join field closes over one of two universes: a provider kind (the axis/value
+      // sub-providers) or the owner record's payload kind. Move the target in both directions at
+      // once, so the fault injection reaches whichever policy the first collected use carries
+      // rather than depending on a structural role happening to cite the same ID.
+      const ownerPayload = result.indexes.payload_records.get(target.owner_record_id);
+      const foreignOwner = [...result.indexes.payload_records.values()].find((provider) =>
+        provider.payload.kind !== ownerPayload?.payload.kind
+      );
+      assert(
+        foreignOwner !== undefined,
+        `${path} needs a second payload kind to move a semantic target out of its universe`,
+      );
       const wrongKind = new Map(result.indexes.first_class);
       wrongKind.set(semanticUse.id, {
         ...target,
         kind: target.kind === "record" ? "family_axis" : "record",
+        owner_record_id: foreignOwner.record.id,
       } as typeof target);
       assert(
         validateSemanticRoadmapJoins(result.indexes, {
@@ -1023,7 +973,7 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
         `${path} semantic target missing-provider mutation must fail`,
       );
     }
-    if (path === "all-fields/matrix-v2.toml") {
+    if (path === "all-fields/matrix-v3.toml") {
       const mutateSemanticTarget = (
         pathNeedle: string,
         mutate: (payload: SemanticPayloadProviderFact["payload"]) => unknown,
@@ -1140,19 +1090,16 @@ function decodedDocument(
   recordIds: readonly string[],
   roadmap: RoadmapName = "matrix",
 ): RoadmapDocument {
-  const sourceLength = recordIds.length + 1;
   const records = recordIds.map((id, index) => `
 [[record]]
 id = "${id}"
 title = "Record ${index}"
 projection_group = "fixture"
 legacy_aliases = ["Legacy ${String.fromCharCode(90 - index)}"]
-render_authority = "semantic"
-projection_visibility = "document"
 
 [record.payload]
 kind = "work"
-summary_md = """R"""
+detail_md = """R"""
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
@@ -1160,67 +1107,29 @@ risk = "cosmetic"
 family_classification = "none_reviewed"
 acceptance_md = """Accepted."""
 priority_rationale_md = """Normal."""
-
-[[record.source_replacement]]
-span_id = "span-record-${String.fromCharCode(97 + index)}"
-replacement_field = "payload.summary_md"
-review_note_md = """Reviewed record."""
 `).join("");
   const manifest = recordIds.map((id) => `
 [[manifest.entry]]
 kind = "record"
 record_id = "${id}"
 `).join("");
-  const spans = recordIds.map((id, index) => `
-[[source_span]]
-id = "span-record-${String.fromCharCode(97 + index)}"
-start_byte = ${index + 1}
-end_byte = ${index + 2}
-sha256 = "${"0".repeat(64)}"
-source_kind = "record"
-owner_id = "${id}"
-owner_field = "payload.summary_md"
-migration_status = "replaced"
-`).join("");
   return decodeRoadmapSource(bytes(`[document]
-schema_version = 2
-authority = "authoritative"
+schema_version = 3
 roadmap = "${roadmap}"
 source_path = "cddl-matrix/ROADMAP.md"
 projection_path = "cddl-matrix/ROADMAP.md"
-frozen_source_sha256 = "${"0".repeat(64)}"
-frozen_source_byte_length = ${sourceLength}
-frozen_source_line_count = 1
-frozen_source_eof = "none"
-projection_layout = "legacy_v1"
 
 [[section]]
 section_id = "fixture"
 title = "Fixture"
 legacy_aliases = ["Legacy Section"]
-render_authority = "semantic"
 body_md = """S"""
-
-[[section.source_replacement]]
-span_id = "span-section"
-replacement_field = "body_md"
-review_note_md = """Reviewed section."""
 ${records}
 [manifest]
 [[manifest.entry]]
 kind = "section"
 section_id = "fixture"
-${manifest}
-[[source_span]]
-id = "span-section"
-start_byte = 0
-end_byte = 1
-sha256 = "${"0".repeat(64)}"
-source_kind = "section"
-owner_id = "fixture"
-owner_field = "body_md"
-migration_status = "replaced"
-${spans}`), "<identity-selftest>", roadmap, false);
+${manifest}`), "<identity-selftest>", roadmap, false);
 }
 
 function requireAccepted(value: string, namespace?: RoadmapName): RoadmapId {
@@ -1731,7 +1640,6 @@ function citationCase(id: JoinSelfTestCaseId): boolean {
         manifest_index,
         owner: { kind: "fragment", id: `expected-${manifest_index}`, field: "body_md" },
         bytes: chunk,
-        source_span_ids: [],
         consumed_fields: ["body_md"],
       })));
       const expectedFacts = scanRoadmapMarkdownFacts("README.md" as RepoPath, expectedView);
@@ -2191,12 +2099,9 @@ function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticA
   return {
     id,
     title: "Lifecycle",
-    projection_group: "fixture" as RoadmapDocumentV2["records"][number]["projection_group"],
-    render_authority: "semantic",
-    projection_visibility: "semantic_only",
+    projection_group: "fixture" as RoadmapDocumentV3["records"][number]["projection_group"],
     payload: {
       kind: "work",
-      summary_md: bytes("summary"),
       work_state: "ready",
       work_intent: "build_capability",
       work_kind: workKind,
@@ -2205,7 +2110,6 @@ function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticA
       acceptance_md: bytes("acceptance"),
       priority_rationale_md: bytes("priority"),
     },
-    source_replacements: [],
   };
 }
 
@@ -2222,26 +2126,22 @@ function c5FamilySupportRecords(id: RoadmapId): readonly SemanticAuthorityRecord
   return [
     {
       id: evidenceId, title: "Family evidence", projection_group: "fixture" as never,
-      render_authority: "semantic", projection_visibility: "semantic_only",
       payload: {
-        kind: "evidence", summary_md: bytes("family evidence"), evidence_kind: "gate",
+        kind: "evidence", evidence_kind: "gate",
         claim_md: bytes("the fixture cell compiles"), evidence_verdict: "confirmed", freshness: "live",
         reference_ids: [`ref-${id.replaceAll(".", "-")}-evidence-gate` as ReferenceId],
         refresh_reference_id: `ref-${id.replaceAll(".", "-")}-evidence-gate` as ReferenceId,
         unprobed_remainder_md: bytes("none"),
         scope: { cell_ids: [`${id}.fixture-point` as RoadmapId], profiles: ["default"], faces: ["rust"] },
       },
-      source_replacements: [],
     },
     {
       id: controlId, title: "Family control", projection_group: "fixture" as never,
-      render_authority: "semantic", projection_visibility: "semantic_only",
       payload: {
-        kind: "control", summary_md: bytes("family control"), control_kind: "gate", control_state: "live",
+        kind: "control", control_kind: "gate", control_state: "live",
         reference_ids: [`ref-${id.replaceAll(".", "-")}-control-gate` as ReferenceId], claim_md: bytes("guards the fixture denominator"),
         boundary_md: bytes("synthetic fixture only"),
       },
-      source_replacements: [],
     },
   ];
 }
@@ -2257,31 +2157,25 @@ function c5Guard(id: RoadmapId, gateId = "roadmap_projection_check"): CurrentGua
 
 function c5Document(
   roadmap: RoadmapName,
-  records: readonly RoadmapDocumentV2["records"][number][] = [],
+  records: readonly RoadmapDocumentV3["records"][number][] = [],
   relations: readonly Relation[] = [],
   references: readonly Reference[] = [],
-): RoadmapDocumentV2 {
-  const markdown = bytes(`${roadmap}\n`);
+): RoadmapDocumentV3 {
   return {
     document: {
-      schema_version: 2,
-      authority: "authoritative",
+      schema_version: 3,
       roadmap,
       source_path: c5SourcePath(roadmap),
       projection_path: c5Path(roadmap),
-      frozen_source_sha256: c5Sha(markdown),
-      frozen_source_byte_length: markdown.byteLength,
-      frozen_source_line_count: 1,
-      frozen_source_eof: "lf",
     },
-    sections: [], fragments: [], legacy_markers: [], records: [...records], parts: [],
+    sections: [], fragments: [], records: [...records], parts: [],
     generated_slots: [],
     manifest: records.flatMap((record) =>
-      record.projection_visibility === "semantic_only"
+      record.payload.detail_md === undefined
         ? []
         : [{ kind: "record" as const, record_id: record.id }]
     ),
-    spans: [], relations: [...relations], references: [...references],
+    relations: [...relations], references: [...references],
   };
 }
 

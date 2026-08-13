@@ -1,0 +1,38 @@
+[document]
+schema_version = 3
+roadmap = "matrix"
+source_path = "cddl-matrix/roadmap/fixtures/positive/small-matrix-v3.toml"
+projection_path = "cddl-matrix/roadmap/fixtures/positive/small-matrix-v3.expected.md"
+
+[[section]]
+section_id = "fixture"
+title = "Small matrix fixture"
+body_md = """# Small matrix fixture
+
+"""
+
+[[record]]
+id = "matrix.fixture-small-semantic"
+title = "Small semantic matrix owner"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+detail_md = """Semantic matrix detail.
+"""
+work_state = "ready"
+work_intent = "build_capability"
+work_kind = "feature"
+risk = "cosmetic"
+family_classification = "none_reviewed"
+acceptance_md = """The semantic owner renders each consumed field once."""
+priority_band = "normal"
+priority_rationale_md = """The fixture is a normal-priority contract vector."""
+
+[[manifest.entry]]
+kind = "section"
+section_id = "fixture"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-small-semantic"

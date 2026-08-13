@@ -2,7 +2,6 @@ import type { RoadmapIssue } from "./errors.ts";
 import type {
   Fragment,
   GeneratedSlot,
-  LegacyMarker,
   ManifestEntry,
   Part,
   RecordNode,
@@ -14,7 +13,6 @@ import { codePointSort } from "./kernel.ts";
 export type RenderNode =
   | { kind: "section"; id: string; value: Section }
   | { kind: "fragment"; id: string; value: Fragment }
-  | { kind: "legacy_marker"; id: string; value: LegacyMarker }
   | { kind: "record"; id: string; value: RecordNode }
   | { kind: "part"; id: string; value: Part }
   | { kind: "generated_slot"; id: string; value: GeneratedSlot };
@@ -49,7 +47,6 @@ function entryTarget(entry: ManifestEntry): { kind: ManifestEntry["kind"]; id: s
   switch (entry.kind) {
     case "section": return { kind: entry.kind, id: entry.section_id };
     case "fragment": return { kind: entry.kind, id: entry.fragment_id };
-    case "legacy_marker": return { kind: entry.kind, id: entry.marker_id };
     case "record": return { kind: entry.kind, id: entry.record_id };
     case "part": return { kind: entry.kind, id: entry.part_id };
     case "generated_slot": return { kind: entry.kind, id: entry.slot_id };
@@ -60,11 +57,6 @@ function declaredNodes(document: RoadmapDocument): RenderNode[] {
   return [
     ...document.sections.map((value) => ({ kind: "section" as const, id: value.section_id, value })),
     ...document.fragments.map((value) => ({ kind: "fragment" as const, id: value.fragment_id, value })),
-    ...document.legacy_markers.map((value) => ({
-      kind: "legacy_marker" as const,
-      id: value.marker_id,
-      value,
-    })),
     ...document.records.map((value) => ({ kind: "record" as const, id: value.id, value })),
     ...document.parts.map((value) => ({ kind: "part" as const, id: value.part_id, value })),
     ...document.generated_slots.map((value) => ({
@@ -79,9 +71,14 @@ function nodeKey(kind: ManifestEntry["kind"], id: string): string {
   return JSON.stringify([kind, id]);
 }
 
+/**
+ * Document membership is derived: a record renders exactly when it is manifest-placed, and a
+ * placement is legal exactly when `payload.detail_md` is present (the one rendering field).
+ * Both directions are enforced here, so accidental orphaning of a renderable record and
+ * placement of a non-rendering record are loud states rather than silent ones.
+ */
 function manifestVisible(node: RenderNode): boolean {
-  return !(node.kind === "record" && "projection_visibility" in node.value &&
-    node.value.projection_visibility === "semantic_only");
+  return !(node.kind === "record" && node.value.payload.detail_md === undefined);
 }
 
 /** Resolve the authored linear manifest without rendering or reordering any node. */
@@ -181,7 +178,7 @@ export function resolveManifest(document: RoadmapDocument): ManifestResolution {
         document,
         "E-MANIFEST-KIND",
         logicalPath,
-        `semantic-only record ${JSON.stringify(target.id)} cannot have a manifest placement`,
+        `record ${JSON.stringify(target.id)} has no detail_md and cannot have a manifest placement`,
       ));
       continue;
     }

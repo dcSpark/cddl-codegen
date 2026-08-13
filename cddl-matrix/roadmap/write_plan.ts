@@ -64,9 +64,6 @@ export function createProjectionWritePlan(request: ProjectionWriteRequest): Proj
   if (meta.roadmap !== request.roadmap) {
     issues.push(issue(request, "E-OUTPUT-AUTHORITY", "document.roadmap", "selected roadmap does not match document"));
   }
-  if (meta.authority !== "authoritative") {
-    issues.push(issue(request, "E-OUTPUT-AUTHORITY", "document.authority", "projection write requires an authoritative roadmap"));
-  }
   if (meta.projection_path.endsWith(".toml") || meta.projection_path === meta.source_path) {
     issues.push(issue(request, "E-OUTPUT-TOML", "document.projection_path", "projection write cannot target TOML source bytes"));
   }

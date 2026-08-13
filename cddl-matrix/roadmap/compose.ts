@@ -2,7 +2,6 @@ import type {
   Fragment,
   GeneratedSlot,
   ManifestEntry,
-  LegacyMarker,
   Part,
   RecordNode,
   Reference,
@@ -10,8 +9,6 @@ import type {
   RoadmapDocument,
   Section,
   SemanticPayload,
-  SourceReplacement,
-  SourceSpan,
 } from "./model/documents.ts";
 import type {
   ControlPayload,
@@ -54,7 +51,6 @@ function optionalStrings(
 
 function semanticCommon(writer: CanonicalTomlWriter, payload: SemanticPayloadBase): void {
   writer.string("kind", payload.kind);
-  writer.markdown("summary_md", payload.summary_md);
   optionalMarkdown(writer, "detail_md", payload.detail_md);
 }
 
@@ -131,9 +127,7 @@ function writeSignal(writer: CanonicalTomlWriter, payload: SignalPayload, prefix
   if (payload.transition_kind === "promotion_trigger" || payload.transition_kind === "reopening_signal") {
     writer.string("observer", payload.observer);
     writer.string("dimension", payload.dimension);
-    writer.string("observable", payload.observable);
-    writer.string("predicate_kind", payload.predicate_kind);
-    writer.strings("current_evidence_ids", payload.current_evidence_ids, true);
+    if (payload.predicate.predicate_kind !== "event") writer.string("observable", payload.observable ?? "");
     writer.markdown("action_on_fire_md", payload.action_on_fire_md);
     writer.string("evaluation", payload.evaluation);
     writer.table(`${prefix}.predicate`);
@@ -146,6 +140,7 @@ function writeSignal(writer: CanonicalTomlWriter, payload: SignalPayload, prefix
       writer.string("scope", predicate.scope);
       writer.number("measurement", predicate.measurement);
       writer.string("as_of", predicate.as_of);
+      optionalStrings(writer, "evidence_ids", predicate.evidence_ids);
     } else if (predicate.predicate_kind === "event") {
       writer.markdown("event_md", predicate.event_md);
       writer.strings("evidence_ids", predicate.evidence_ids, true);
@@ -441,24 +436,10 @@ function writeSemanticPayload(
   }
 }
 
-function writeReplacements(
-  writer: CanonicalTomlWriter,
-  prefix: string,
-  replacements: readonly SourceReplacement[],
-): void {
-  for (const replacement of sorted(replacements, (value) => value.span_id)) {
-    writer.arrayTable(`${prefix}.source_replacement`);
-    writer.string("span_id", replacement.span_id);
-    writer.string("replacement_field", replacement.replacement_field);
-    writer.markdown("review_note_md", replacement.review_note_md);
-  }
-}
-
 function writeGeneratedSlot(writer: CanonicalTomlWriter, slot: GeneratedSlot): void {
   writer.arrayTable("generated_slot");
   writer.string("slot_id", slot.slot_id);
   writer.string("binding", slot.binding);
-  writer.strings("span_ids", slot.span_ids, true);
 }
 
 function writeManifestEntry(writer: CanonicalTomlWriter, entry: ManifestEntry): void {
@@ -467,23 +448,10 @@ function writeManifestEntry(writer: CanonicalTomlWriter, entry: ManifestEntry): 
   switch (entry.kind) {
     case "section": writer.string("section_id", entry.section_id); break;
     case "fragment": writer.string("fragment_id", entry.fragment_id); break;
-    case "legacy_marker": writer.string("marker_id", entry.marker_id); break;
     case "record": writer.string("record_id", entry.record_id); break;
     case "part": writer.string("part_id", entry.part_id); break;
     case "generated_slot": writer.string("slot_id", entry.slot_id); break;
   }
-}
-
-function writeSpan(writer: CanonicalTomlWriter, span: SourceSpan): void {
-  writer.arrayTable("source_span");
-  writer.string("id", span.id);
-  writer.integer("start_byte", span.start_byte);
-  writer.integer("end_byte", span.end_byte);
-  writer.string("sha256", span.sha256);
-  writer.string("source_kind", span.source_kind);
-  writer.string("owner_id", span.owner_id);
-  writer.string("owner_field", span.owner_field);
-  writer.string("migration_status", span.migration_status);
 }
 
 function referenceTuple(reference: Reference): string {
@@ -529,15 +497,9 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
   const meta = document.document;
   writer.table("document");
   writer.integer("schema_version", meta.schema_version);
-  writer.string("authority", meta.authority);
   writer.string("roadmap", meta.roadmap);
   writer.string("source_path", meta.source_path);
   writer.string("projection_path", meta.projection_path);
-  writer.string("frozen_source_sha256", meta.frozen_source_sha256);
-  writer.integer("frozen_source_byte_length", meta.frozen_source_byte_length);
-  writer.integer("frozen_source_line_count", meta.frozen_source_line_count);
-  writer.string("frozen_source_eof", meta.frozen_source_eof);
-  optionalString(writer, "projection_layout", meta.projection_layout);
 
   const sections: readonly Section[] = document.sections;
   for (const section of sorted(sections, (value) => value.section_id)) {
@@ -545,9 +507,7 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.string("section_id", section.section_id);
     writer.string("title", section.title);
     optionalStrings(writer, "legacy_aliases", section.legacy_aliases);
-    writer.string("render_authority", section.render_authority);
     writer.markdown("body_md", section.body_md);
-    writeReplacements(writer, "section", section.source_replacements);
   }
 
   const fragments: readonly Fragment[] = document.fragments;
@@ -557,20 +517,7 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.string("projection_group", fragment.projection_group);
     optionalString(writer, "title", fragment.title);
     optionalStrings(writer, "legacy_aliases", fragment.legacy_aliases);
-    writer.string("render_authority", fragment.render_authority);
-    writer.string("lifecycle_disposition", fragment.lifecycle_disposition);
     writer.markdown("body_md", fragment.body_md);
-    writeReplacements(writer, "fragment", fragment.source_replacements);
-  }
-
-  const markers: readonly LegacyMarker[] = document.legacy_markers;
-  for (const marker of sorted(markers, (value) => value.marker_id)) {
-    writer.arrayTable("legacy_marker");
-    writer.string("marker_id", marker.marker_id);
-    writer.strings("legacy_aliases", marker.legacy_aliases, true);
-    writer.string("render_authority", marker.render_authority);
-    writer.markdown("marker_md", marker.marker_md);
-    writeReplacements(writer, "legacy_marker", marker.source_replacements);
   }
 
   const records: readonly RecordNode[] = document.records;
@@ -581,11 +528,8 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.string("projection_group", record.projection_group);
     optionalStrings(writer, "legacy_aliases", record.legacy_aliases);
     optionalStrings(writer, "tags", record.tags);
-    writer.string("render_authority", record.render_authority);
-    writer.string("projection_visibility", record.projection_visibility);
     writer.table("record.payload");
     writeSemanticPayload(writer, record.payload, "record.payload");
-    writeReplacements(writer, "record", record.source_replacements);
   }
 
   const parts: readonly Part[] = document.parts;
@@ -594,15 +538,11 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.string("part_id", part.part_id);
     writer.string("parent_record_id", part.parent_record_id);
     optionalString(writer, "title", part.title);
-    writer.string("render_authority", part.render_authority);
-    writer.string("lifecycle_disposition", part.lifecycle_disposition);
     writer.markdown("body_md", part.body_md);
-    writeReplacements(writer, "part", part.source_replacements);
   }
 
   for (const slot of sorted(document.generated_slots, (value) => value.slot_id)) writeGeneratedSlot(writer, slot);
   for (const entry of document.manifest) writeManifestEntry(writer, entry);
-  for (const span of [...document.spans].sort((left, right) => left.start_byte - right.start_byte)) writeSpan(writer, span);
   {
     const relations = [...document.relations].sort((left, right) =>
       compare(`${left.source}\0${left.kind}\0${left.target}`, `${right.source}\0${right.kind}\0${right.target}`),

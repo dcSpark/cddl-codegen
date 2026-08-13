@@ -35,15 +35,15 @@ export const MATRIX_ENUM_FIELDS: readonly EnumSchemaField[] = [
 ] as const;
 
 export const MATRIX_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
-  { name: "waiting matrix closeout", required: ["kind", "summary_md", "closeout_state", "upstream_owner_reference_id", "current_upstream_state_md", "transition_ids", "verification_md"], optional: ["detail_md", "prune_reference_ids", "action", "branch"], forbidden: ["blocker_md"] },
-  { name: "due matrix closeout", required: ["kind", "summary_md", "closeout_state", "upstream_owner_reference_id", "current_upstream_state_md", "transition_ids", "verification_md", "action"], optional: ["detail_md", "prune_reference_ids", "branch"], forbidden: ["blocker_md"] },
-  { name: "blocked matrix closeout", required: ["kind", "summary_md", "closeout_state", "upstream_owner_reference_id", "current_upstream_state_md", "blocker_md", "transition_ids", "verification_md"], optional: ["detail_md", "prune_reference_ids", "action", "branch"] },
+  { name: "waiting matrix closeout", required: ["kind", "closeout_state", "upstream_owner_reference_id", "current_upstream_state_md", "transition_ids", "verification_md"], optional: ["detail_md", "prune_reference_ids", "action", "branch"], forbidden: ["blocker_md"] },
+  { name: "due matrix closeout", required: ["kind", "closeout_state", "upstream_owner_reference_id", "current_upstream_state_md", "transition_ids", "verification_md", "action"], optional: ["detail_md", "prune_reference_ids", "branch"], forbidden: ["blocker_md"] },
+  { name: "blocked matrix closeout", required: ["kind", "closeout_state", "upstream_owner_reference_id", "current_upstream_state_md", "blocker_md", "transition_ids", "verification_md"], optional: ["detail_md", "prune_reference_ids", "action", "branch"] },
   { name: "matrix closeout action", required: ["action_id", "action_md"] },
   { name: "matrix closeout branch", required: ["branch_id", "predicate_md", "action"], optional: ["prune_reference_ids"] },
   { name: "matrix closeout branch action", required: ["action_id"] },
-  { name: "matrix maintenance policy", required: ["kind", "summary_md", "policy_kind", "authority_reference_id", "protocol_md", "cadence_transition_id"], optional: ["detail_md"] },
-  { name: "matrix permanent boundary", required: ["kind", "summary_md", "policy_kind", "authority_reference_id", "rationale_md", "permanence"], optional: ["detail_md"], forbidden: ["reopening_transition_id"] },
-  { name: "matrix reopenable boundary", required: ["kind", "summary_md", "policy_kind", "authority_reference_id", "rationale_md", "permanence", "reopening_transition_id"], optional: ["detail_md"] },
+  { name: "matrix maintenance policy", required: ["kind", "policy_kind", "authority_reference_id", "protocol_md", "cadence_transition_id"], optional: ["detail_md"] },
+  { name: "matrix permanent boundary", required: ["kind", "policy_kind", "authority_reference_id", "rationale_md", "permanence"], optional: ["detail_md"], forbidden: ["reopening_transition_id"] },
+  { name: "matrix reopenable boundary", required: ["kind", "policy_kind", "authority_reference_id", "rationale_md", "permanence", "reopening_transition_id"], optional: ["detail_md"] },
 ] as const;
 
 function detail(ctx: DecodeContext, table: object, path: string): object {
@@ -56,9 +56,8 @@ function common(
   ctx: DecodeContext,
   table: object,
   path: string,
-): { summary_md: Uint8Array; detail_md?: Uint8Array } {
+): { detail_md?: Uint8Array } {
   return {
-    summary_md: expectMarkdown(ctx, requiredValue(table, "summary_md"), p(path, "summary_md")),
     ...detail(ctx, table, path),
   };
 }
@@ -101,7 +100,7 @@ function decodeBranch(ctx: DecodeContext, raw: unknown, path: string): MatrixClo
 function decodeCloseout(ctx: DecodeContext, raw: unknown, path: string): MatrixExternalCloseoutPayload {
   const pre = expectExactTable(ctx, raw, path, {
     name: "matrix closeout discriminator",
-    required: ["kind", "summary_md", "closeout_state"],
+    required: ["kind", "closeout_state"],
     optional: [
       "detail_md",
       "upstream_owner_reference_id",
@@ -172,7 +171,7 @@ function decodeCloseout(ctx: DecodeContext, raw: unknown, path: string): MatrixE
 function decodePolicy(ctx: DecodeContext, raw: unknown, path: string): MatrixPolicyPayload {
   const pre = expectExactTable(ctx, raw, path, {
     name: "matrix policy discriminator",
-    required: ["kind", "summary_md", "policy_kind"],
+    required: ["kind", "policy_kind"],
     optional: [
       "detail_md",
       "authority_reference_id",
@@ -210,7 +209,7 @@ function decodePolicy(ctx: DecodeContext, raw: unknown, path: string): MatrixPol
   }
   const boundary = expectExactTable(ctx, raw, path, {
     name: "matrix boundary discriminator",
-    required: ["kind", "summary_md", "policy_kind", "permanence"],
+    required: ["kind", "policy_kind", "permanence"],
     optional: ["detail_md", "authority_reference_id", "rationale_md", "reopening_transition_id"],
   });
   const permanence = expectEnum(

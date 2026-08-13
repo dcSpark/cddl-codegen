@@ -19,7 +19,7 @@ import type {
   ScratchGitHarnessPorts,
 } from "../io.ts";
 import type { FixtureRelativePath, RepoPath, RepositoryRevision, RoadmapId } from "../model/core.ts";
-import type { RoadmapDocumentV2, SemanticPayload } from "../model/documents.ts";
+import type { RoadmapDocumentV3, SemanticPayload } from "../model/documents.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
 import {
   LEGACY_STATUS_OUTPUT_CLAIMS,
@@ -30,12 +30,12 @@ import { observeSelfTestIssue } from "./observations.ts";
 import {
   liveMatrixAuthoritativeSource,
   liveMatrixProjection,
-  liveMatrixV2Document,
+  liveMatrixV3Document,
 } from "./live_matrix.ts";
 import {
   liveTestingAuthoritativeSource,
   liveTestingProjection,
-  liveTestingV2Document,
+  liveTestingV3Document,
 } from "./live_testing.ts";
 
 export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
@@ -156,7 +156,7 @@ function emptyRegistry(revision: RepositoryRevision): RegistryView {
 
 function registryForDocuments(
   revision: RepositoryRevision,
-  documents: readonly RoadmapDocumentV2[],
+  documents: readonly RoadmapDocumentV3[],
 ): RegistryView {
   const references = documents.flatMap((document) => document.references);
   const unique = <T>(values: readonly T[], key: (value: T) => string): readonly T[] =>
@@ -205,8 +205,8 @@ let cachedLiveRegistry: RegistryView | undefined;
 
 function liveRegistry(revision: RepositoryRevision): RegistryView {
   cachedLiveRegistry ??= registryForDocuments({ kind: "worktree" }, [
-      liveMatrixV2Document(),
-      liveTestingV2Document(),
+      liveMatrixV3Document(),
+      liveTestingV3Document(),
     ]);
   return {
     ...cachedLiveRegistry,
@@ -330,8 +330,8 @@ function withCrossRoadmapTestingExternTarget(source: Uint8Array): Uint8Array {
     "testing",
     true,
   );
-  assert(document.document.schema_version === 2, "cross-roadmap testing target fixture must be v2");
-  const base = document as RoadmapDocumentV2;
+  assert(document.document.schema_version === 3, "cross-roadmap testing target fixture must be v3");
+  const base = document as RoadmapDocumentV3;
   if (base.records.some((record) => record.id === CROSS_ROADMAP_TESTING_EXTERN_TARGET)) return source;
   const projectionGroup = base.sections[0]?.section_id;
   assert(projectionGroup !== undefined, "cross-roadmap testing target fixture lacks a projection group");
@@ -341,11 +341,8 @@ function withCrossRoadmapTestingExternTarget(source: Uint8Array): Uint8Array {
       id: CROSS_ROADMAP_TESTING_EXTERN_TARGET,
       title: "Cross-roadmap extern execution owner",
       projection_group: projectionGroup,
-      render_authority: "semantic",
-      projection_visibility: "semantic_only",
       payload: {
         kind: "work",
-        summary_md: UTF8.encode("Cross-roadmap extern execution owner."),
         work_state: "ready",
         work_intent: "build_system",
         work_kind: "infrastructure",
@@ -354,7 +351,6 @@ function withCrossRoadmapTestingExternTarget(source: Uint8Array): Uint8Array {
         acceptance_md: UTF8.encode("The combined cross-roadmap universe resolves this exact target."),
         priority_rationale_md: UTF8.encode("Fixture-only counterpart for the live matrix delegation."),
       },
-      source_replacements: [],
     }],
   });
 }
@@ -365,15 +361,12 @@ function temporalTestingPorts(
 ): RoadmapCliPorts {
   const sourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const projectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
-  const base = text(fixture(context, "positive/small-testing-v2.toml"))
-    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v2.toml", sourcePath)
-    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v2.expected.md", projectionPath);
+  const base = text(fixture(context, "positive/small-testing-v3.toml"))
+    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.toml", sourcePath)
+    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.expected.md", projectionPath);
   const payload = kind === "cadence"
     ? `[record.payload]
 kind = "signal"
-summary_md = """## Semantic testing work
-
-"""
 detail_md = """Semantic testing detail."""
 transition_kind = "cadence"
 owner_reference_id = "temporal-owner"
@@ -386,9 +379,6 @@ evaluation = "unknown"
 `
     : `[record.payload]
 kind = "evidence"
-summary_md = """## Semantic testing work
-
-"""
 detail_md = """Semantic testing detail."""
 evidence_kind = "external_commit"
 claim_md = """The fixture commit is point-in-time evidence."""
@@ -406,12 +396,12 @@ surfaces = ["fixture"]
   // `String.prototype.replace` silently returns the input when the anchor does not match, which
   // would leave this port serving the unmodified work payload under a temporal case name.
   const spliced = base.replace(
-    /\[record\.payload\]\n[\s\S]*?(?=\n\[\[record\.source_replacement\]\])/,
+    /\[record\.payload\]\n[\s\S]*?(?=\n\[\[manifest\.entry\]\])/,
     payload,
   );
   assert(
     spliced !== base && spliced.includes(payload),
-    "temporal payload splice matched nothing: the fixture no longer places [record.payload] before [[record.source_replacement]]",
+    "temporal payload splice matched nothing: the fixture no longer places [record.payload] before [[manifest.entry]]",
   );
   const source = withCrossRoadmapTestingExternTarget(UTF8.encode(spliced + `
 [[reference]]
@@ -421,7 +411,7 @@ kind = "external_commit"
 repository = "fixture/repository"
 commit = "1111111111111111111111111111111111111111"
 `));
-  const projection = fixture(context, "positive/small-testing-v2.expected.md");
+  const projection = fixture(context, "positive/small-testing-v3.expected.md");
   return fakePorts({
     read(path) {
       if (path === sourcePath) return new Uint8Array(source);
@@ -524,9 +514,9 @@ function authoritativeProjectionReferencePorts(
 ): RoadmapCliPorts {
   const sourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const projectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
-  const sourceFixture = text(fixture(context, "positive/small-testing-v2.toml"))
-    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v2.toml", sourcePath)
-    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v2.expected.md", projectionPath);
+  const sourceFixture = text(fixture(context, "positive/small-testing-v3.toml"))
+    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.toml", sourcePath)
+    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.expected.md", projectionPath);
   const sourceBytes = UTF8.encode(
     `${sourceFixture}\n[[reference]]
 id = "selftest-fresh-projection-heading"
@@ -760,7 +750,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         "promotion_trigger", "reopening_signal", "retirement_predicate", "unblock_predicate", "watch_escalation"]),
       "signals dashboard transition grouping changed");
       for (const [kind, required] of [
-        ["promotion_trigger", ["predicate", "predicate_kind", "current_evidence_ids", "action_on_fire_md"]],
+        ["promotion_trigger", ["predicate", "action_on_fire_md"]],
         ["unblock_predicate", ["event_md", "check_procedure_md", "due_action_md"]],
         ["watch_escalation", ["capture_procedure_md", "response_md", "escalation_action_md", "retirement_semantics_md"]],
         ["retirement_predicate", ["external_predicate_md", "verification_md", "due_action_md"]],
@@ -790,35 +780,29 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         [...closeouts.waiting!, ...closeouts.due!].every((row) => "actions" in row && "branches" in row &&
           "verification_md" in row && "upstream_owner_reference_id" in row),
       "matrix external closeout dashboard is absent or lossy");
-      const syntheticTesting = liveTestingV2Document();
-      const syntheticRecords: RoadmapDocumentV2["records"] = [
+      const syntheticTesting = liveTestingV3Document();
+      const syntheticRecords: RoadmapDocumentV3["records"] = [
         ...syntheticTesting.records,
         {
           id: "testing.fixture-dashboard-delegated" as RoadmapId,
           title: "Delegated dashboard fixture",
           projection_group: syntheticTesting.sections[0]!.section_id,
-          render_authority: "semantic",
-          projection_visibility: "semantic_only",
-          payload: { kind: "work", summary_md: UTF8.encode("Delegated dashboard fixture."),
+          payload: { kind: "work",
             work_state: "delegated", work_intent: "build_capability", work_kind: "feature",
             risk: "cosmetic", family_classification: "none_reviewed",
             return_condition_md: UTF8.encode("Return when the delegated owner completes the fixture.") },
-          source_replacements: [],
         },
         {
           id: "testing.fixture-dashboard-cost" as RoadmapId,
           title: "Cost dashboard fixture",
           projection_group: syntheticTesting.sections[0]!.section_id,
-          render_authority: "semantic",
-          projection_visibility: "semantic_only",
-          payload: { kind: "testing_cost", summary_md: UTF8.encode("Cost dashboard fixture."),
+          payload: { kind: "testing_cost",
             cost_posture: "live_registry", unit: "milliseconds",
             scope_md: UTF8.encode("One synthetic dashboard operation."),
             gate_reference_id: syntheticTesting.references.find((reference) => reference.kind === "gate")!.id },
-          source_replacements: [],
         },
       ];
-      const syntheticDocument: RoadmapDocumentV2 = { ...syntheticTesting, records: syntheticRecords,
+      const syntheticDocument: RoadmapDocumentV3 = { ...syntheticTesting, records: syntheticRecords,
         relations: [...syntheticTesting.relations, {
           source: "testing.fixture-dashboard-delegated" as RoadmapId,
           kind: "delegates_to",
@@ -892,24 +876,21 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       return pass("positive");
     }
     case "live_subordinate_lifecycle_dispositions": {
-      const matrix = liveMatrixV2Document();
-      const testing = liveTestingV2Document();
+      const matrix = liveMatrixV3Document();
+      const testing = liveTestingV3Document();
       for (const [name, document, expectedFragments, expectedParts] of [
         ["matrix", matrix, 5, 9],
         ["testing", testing, 2, 27],
       ] as const) {
-        assert(document.fragments.every((fragment) =>
-          fragment.lifecycle_disposition === "document_prose" && fragment.source_replacements.length > 0),
-        `${name} fragment lifecycle is not the semantic document-prose arm`);
-        assert(document.parts.every((part) =>
-          part.lifecycle_disposition === "parent_supporting_prose" && part.source_replacements.length > 0),
-        `${name} part lifecycle is not the semantic parent-supporting arm`);
+        assert(document.fragments.every((fragment) => fragment.body_md.byteLength > 0),
+          `${name} fragment prose is empty`);
+        assert(document.parts.every((part) => part.body_md.byteLength > 0),
+          `${name} part prose is empty`);
         assert(document.fragments.length === expectedFragments && document.parts.length === expectedParts,
           `${name} subordinate denominator drifted`);
       }
       const testingNested = testing.parts.find((part) => part.part_id === "part-nested-cargo-test");
-      assert(testingNested !== undefined && testingNested.lifecycle_disposition === "parent_supporting_prose",
-        "testing nested-cargo source classification exception drifted");
+      assert(testingNested !== undefined, "testing nested-cargo supporting part drifted");
       return pass("positive");
     }
     case "cli_as_of_valid_leap_day": {
@@ -976,7 +957,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
     }
     case "cli_authoritative_fresh_projection_reference_provenance": {
       const subcases: string[] = [];
-      const projection = fixture(context, "positive/small-testing-v2.expected.md");
+      const projection = fixture(context, "positive/small-testing-v3.expected.md");
       const freshHeading = uniqueProjectionHeading(projection);
 
       const freshReads = { value: 0 };

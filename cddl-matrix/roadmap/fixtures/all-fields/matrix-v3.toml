@@ -1,0 +1,1608 @@
+[document]
+schema_version = 3
+roadmap = "matrix"
+source_path = "cddl-matrix/roadmap/fixtures/all-fields/matrix-v3.toml"
+projection_path = "cddl-matrix/roadmap/fixtures/all-fields/matrix-v3.expected.md"
+
+[[section]]
+section_id = "fixture"
+title = "Matrix all-fields fixture"
+body_md = """# Matrix all-fields fixture
+"""
+
+[[fragment]]
+fragment_id = "fixture-fragment"
+projection_group = "fixture"
+title = "Raw fragment placement"
+body_md = """RAW FRAGMENT PLACEMENT
+"""
+
+[[record]]
+id = "matrix.fixture-choice-a"
+title = "Decision arm a"
+projection_group = "fixture"
+
+[record.payload]
+kind = "decision"
+decision_state = "pending"
+question_md = """Which branch should become authoritative?
+"""
+transition_ids = ["matrix.fixture-signal-h"]
+
+[[record]]
+id = "matrix.fixture-choice-b"
+title = "Decision arm b"
+projection_group = "fixture"
+
+[record.payload]
+kind = "decision"
+decision_state = "held"
+rationale_md = """The reviewed choice remains reopenable.
+"""
+permanence = "reopenable"
+transition_ids = ["matrix.fixture-signal-f"]
+
+[[record]]
+id = "matrix.fixture-choice-c"
+title = "Decision arm c"
+projection_group = "fixture"
+
+[record.payload]
+kind = "decision"
+decision_state = "decided"
+rationale_md = """The authority permanently closes this branch.
+"""
+authority_reference_id = "ref-spec"
+permanence = "permanent"
+
+[[record]]
+id = "matrix.fixture-choice-d"
+title = "Decision arm d"
+projection_group = "fixture"
+
+[record.payload]
+kind = "decision"
+decision_state = "decided"
+rationale_md = """The authority allows reopening on the declared transition.
+"""
+authority_reference_id = "ref-spec"
+permanence = "reopenable"
+transition_ids = ["matrix.fixture-signal-f"]
+
+[[record]]
+id = "matrix.fixture-control-a"
+title = "Control arm a"
+projection_group = "fixture"
+
+[record.payload]
+kind = "control"
+control_kind = "gate"
+control_state = "live"
+reference_ids = ["ref-gate"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-b"
+title = "Control arm b"
+projection_group = "fixture"
+
+[record.payload]
+kind = "control"
+control_kind = "test"
+control_state = "proposed"
+reference_ids = ["ref-test"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-c"
+title = "Control arm c"
+projection_group = "fixture"
+
+[record.payload]
+kind = "control"
+control_kind = "fixture"
+control_state = "stale"
+reference_ids = ["ref-file"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-d"
+title = "Control arm d"
+projection_group = "fixture"
+
+[record.payload]
+kind = "control"
+control_kind = "review_rule"
+control_state = "live"
+reference_ids = ["ref-file"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-e"
+title = "Control arm e"
+projection_group = "fixture"
+
+[record.payload]
+kind = "control"
+control_kind = "consumer_ci"
+control_state = "proposed"
+reference_ids = ["ref-consumer"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-f"
+title = "Control arm f"
+projection_group = "fixture"
+
+[record.payload]
+kind = "control"
+control_kind = "upstream_issue"
+control_state = "stale"
+reference_ids = ["ref-issue"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-control-g"
+title = "Control arm g"
+projection_group = "fixture"
+
+[record.payload]
+kind = "control"
+control_kind = "operator_procedure"
+control_state = "live"
+reference_ids = ["ref-file"]
+claim_md = """The control enforces its bounded claim.
+"""
+boundary_md = """The control claims only the synthetic fixture view.
+"""
+
+[[record]]
+id = "matrix.fixture-evidence-a"
+title = "Evidence arm a"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "regression_pin"
+claim_md = """The regression_pin evidence arm is represented.
+"""
+evidence_verdict = "proposed"
+freshness = "live"
+reference_ids = ["ref-gate"]
+unprobed_remainder_md = """No unprobed scope remains in the declared synthetic view.
+"""
+refresh_reference_id = "ref-gate"
+
+[record.payload.scope]
+surfaces = ["rust", "wasm"]
+profiles = ["default", "preserve"]
+flags = ["--wasm=false"]
+input_modes = ["file"]
+toolchains = ["1.88.0"]
+executors = ["fixture"]
+tiers = ["focused"]
+cell_ids = ["matrix.fixture-coordinate-a"]
+
+[[record]]
+id = "matrix.fixture-evidence-b"
+title = "Evidence arm b"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "gate"
+claim_md = """The gate evidence arm is represented.
+"""
+evidence_verdict = "confirmed"
+freshness = "as_of"
+reference_ids = ["ref-gate"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+valid_through = "2026-08-12"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+profiles = ["fixture-b"]
+
+[[record]]
+id = "matrix.fixture-evidence-c"
+title = "Evidence arm c"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "harness_free_repro"
+claim_md = """The harness_free_repro evidence arm is represented.
+"""
+evidence_verdict = "falsified"
+freshness = "historical"
+reference_ids = ["ref-gate"]
+command_md = """bun run fixture-repro
+"""
+result_md = """The harness-free reproduction completed.
+"""
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+flags = ["fixture-c"]
+
+[[record]]
+id = "matrix.fixture-evidence-d"
+title = "Evidence arm d"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "committed_vector"
+claim_md = """The committed_vector evidence arm is represented.
+"""
+evidence_verdict = "unknown"
+freshness = "stale"
+reference_ids = ["ref-file", "ref-test"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+input_modes = ["fixture-d"]
+
+[[record]]
+id = "matrix.fixture-evidence-e"
+title = "Evidence arm e"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "execution_probe"
+claim_md = """The execution_probe evidence arm is represented.
+"""
+evidence_verdict = "inapplicable"
+freshness = "as_of"
+reference_ids = ["ref-gate"]
+command_md = """bun run fixture-probe
+"""
+result_md = """The execution probe completed.
+"""
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+toolchains = ["fixture-e"]
+
+[[record]]
+id = "matrix.fixture-evidence-f"
+title = "Evidence arm f"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "registry_enumeration"
+claim_md = """The registry_enumeration evidence arm is represented.
+"""
+evidence_verdict = "proposed"
+freshness = "as_of"
+reference_ids = ["ref-feature", "ref-file"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+enumerated_registry = "matrix-features"
+
+[record.payload.scope]
+executors = ["fixture-f"]
+
+[[record]]
+id = "matrix.fixture-evidence-g"
+title = "Evidence arm g"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "source_read"
+claim_md = """The source_read evidence arm is represented.
+"""
+evidence_verdict = "confirmed"
+freshness = "historical"
+reference_ids = ["ref-file"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+tiers = ["fixture-g"]
+
+[[record]]
+id = "matrix.fixture-evidence-h"
+title = "Evidence arm h"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "spec_read"
+claim_md = """The spec_read evidence arm is represented.
+"""
+evidence_verdict = "falsified"
+freshness = "stale"
+reference_ids = ["ref-spec"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+surfaces = ["fixture-h"]
+
+[[record]]
+id = "matrix.fixture-evidence-i"
+title = "Evidence arm i"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "consumer_report"
+claim_md = """The consumer_report evidence arm is represented.
+"""
+evidence_verdict = "unknown"
+freshness = "as_of"
+reference_ids = ["ref-consumer"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+profiles = ["fixture-i"]
+
+[[record]]
+id = "matrix.fixture-evidence-j"
+title = "Evidence arm j"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "incident"
+claim_md = """The incident evidence arm is represented.
+"""
+evidence_verdict = "inapplicable"
+freshness = "as_of"
+reference_ids = ["ref-file"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+flags = ["fixture-j"]
+
+[[record]]
+id = "matrix.fixture-evidence-k"
+title = "Evidence arm k"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "external_issue"
+claim_md = """The external_issue evidence arm is represented.
+"""
+evidence_verdict = "proposed"
+freshness = "historical"
+reference_ids = ["ref-issue"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+input_modes = ["fixture-k"]
+
+[[record]]
+id = "matrix.fixture-evidence-l"
+title = "Evidence arm l"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "external_commit"
+claim_md = """The external_commit evidence arm is represented.
+"""
+evidence_verdict = "confirmed"
+freshness = "stale"
+reference_ids = ["ref-commit"]
+at_commit = "0123456789abcdef0123456789abcdef01234567"
+observed_at = "2026-08-11"
+environment_md = """Synthetic RegistryView fixture.
+"""
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+
+[record.payload.scope]
+toolchains = ["fixture-l"]
+
+[[record]]
+id = "matrix.fixture-evidence-m"
+title = "Evidence arm m"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "decision"
+claim_md = """The decision evidence arm is represented.
+"""
+evidence_verdict = "falsified"
+freshness = "live"
+reference_ids = ["ref-roadmap"]
+unprobed_remainder_md = """Only this declared evidence arm is claimed.
+"""
+refresh_reference_id = "ref-roadmap"
+
+[record.payload.scope]
+executors = ["fixture-m"]
+
+[[record]]
+id = "matrix.fixture-policy-a"
+title = "Maintenance policy"
+projection_group = "fixture"
+
+[record.payload]
+kind = "matrix_policy"
+policy_kind = "maintenance_protocol"
+authority_reference_id = "ref-file"
+protocol_md = """Run the fixture review at every declared cadence.
+"""
+cadence_transition_id = "matrix.fixture-signal-k"
+
+[[record]]
+id = "matrix.fixture-policy-b"
+title = "Permanent boundary policy"
+projection_group = "fixture"
+
+[record.payload]
+kind = "matrix_policy"
+policy_kind = "boundary"
+authority_reference_id = "ref-file"
+rationale_md = """The fixture scope is permanently bounded.
+"""
+permanence = "permanent"
+
+[[record]]
+id = "matrix.fixture-policy-c"
+title = "Reopenable boundary policy"
+projection_group = "fixture"
+
+[record.payload]
+kind = "matrix_policy"
+policy_kind = "boundary"
+authority_reference_id = "ref-file"
+rationale_md = """The fixture scope reopens on its declared signal.
+"""
+permanence = "reopenable"
+reopening_transition_id = "matrix.fixture-signal-f"
+
+[[record]]
+id = "matrix.fixture-raw-owner"
+title = "Raw authority sentinel"
+projection_group = "fixture"
+tags = ["coverage:authority_kind:grammar", "coverage:authority_kind:registry", "coverage:authority_kind:reviewed_relation", "coverage:campaign_state:closing", "coverage:campaign_state:designing", "coverage:campaign_state:enumerating", "coverage:cell_disposition:deliberately_unsupported", "coverage:cell_disposition:safely_refused", "coverage:cell_disposition:supported", "coverage:cell_disposition:unknown", "coverage:closeout_state:blocked", "coverage:closeout_state:due", "coverage:closeout_state:waiting", "coverage:comparator:eq", "coverage:comparator:ge", "coverage:comparator:gt", "coverage:comparator:le", "coverage:comparator:lt", "coverage:control_kind:consumer_ci", "coverage:control_kind:fixture", "coverage:control_kind:gate", "coverage:control_kind:operator_procedure", "coverage:control_kind:review_rule", "coverage:control_kind:test", "coverage:control_kind:upstream_issue", "coverage:control_state:live", "coverage:control_state:proposed", "coverage:control_state:stale", "coverage:decision_arm:decided_permanent", "coverage:decision_arm:decided_reopenable", "coverage:decision_arm:held_reopenable", "coverage:decision_arm:pending", "coverage:decision_state:decided", "coverage:decision_state:held", "coverage:decision_state:pending", "coverage:evidence_kind:committed_vector", "coverage:evidence_kind:consumer_report", "coverage:evidence_kind:decision", "coverage:evidence_kind:execution_probe", "coverage:evidence_kind:external_commit", "coverage:evidence_kind:external_issue", "coverage:evidence_kind:gate", "coverage:evidence_kind:harness_free_repro", "coverage:evidence_kind:incident", "coverage:evidence_kind:registry_enumeration", "coverage:evidence_kind:regression_pin", "coverage:evidence_kind:source_read", "coverage:evidence_kind:spec_read", "coverage:evidence_stage:compiled", "coverage:evidence_stage:constraint_enforced", "coverage:evidence_stage:executed", "coverage:evidence_stage:generated", "coverage:evidence_stage:independently_decoded", "coverage:evidence_stage:over_accepted", "coverage:evidence_stage:round_tripped", "coverage:evidence_verdict:confirmed", "coverage:evidence_verdict:falsified", "coverage:evidence_verdict:inapplicable", "coverage:evidence_verdict:proposed", "coverage:evidence_verdict:unknown", "coverage:family_classification:none_reviewed", "coverage:family_maturity:observed_only", "coverage:family_maturity:under_design", "coverage:freshness:as_of", "coverage:freshness:historical", "coverage:freshness:live", "coverage:freshness:stale", "coverage:manifest_kind:fragment", "coverage:manifest_kind:generated_slot", "coverage:manifest_kind:part", "coverage:manifest_kind:record", "coverage:manifest_kind:section", "coverage:payload_kind:control", "coverage:payload_kind:decision", "coverage:payload_kind:evidence", "coverage:payload_kind:family", "coverage:payload_kind:matrix_external_closeout", "coverage:payload_kind:matrix_policy", "coverage:payload_kind:signal", "coverage:payload_kind:work", "coverage:permanence:permanent", "coverage:permanence:reopenable", "coverage:policy_kind:boundary", "coverage:policy_kind:maintenance_protocol", "coverage:predicate_kind:event", "coverage:predicate_kind:manual", "coverage:predicate_kind:quantitative", "coverage:priority_band:critical", "coverage:priority_band:high", "coverage:priority_band:low", "coverage:priority_band:normal", "coverage:reference_kind:consumer_report", "coverage:reference_kind:external_commit", "coverage:reference_kind:external_issue", "coverage:reference_kind:external_release", "coverage:reference_kind:file_heading", "coverage:reference_kind:gate", "coverage:reference_kind:matrix_cell", "coverage:reference_kind:matrix_feature", "coverage:reference_kind:matrix_role", "coverage:reference_kind:roadmap", "coverage:reference_kind:spec_passage", "coverage:reference_kind:test_symbol", "coverage:relation_kind:blocked_by", "coverage:relation_kind:complements", "coverage:relation_kind:delegates_to", "coverage:relation_kind:depends_on", "coverage:relation_kind:overlaps", "coverage:relation_kind:parent_of", "coverage:relation_kind:related", "coverage:relation_kind:reopens", "coverage:relation_kind:split_from", "coverage:relation_kind:supersedes", "coverage:risk:abort_or_panic", "coverage:risk:compile_failure", "coverage:risk:cosmetic", "coverage:risk:false_pass_or_red", "coverage:risk:invalid_acceptance", "coverage:risk:misleading_docs", "coverage:risk:resource_exhaustion", "coverage:risk:silent_wrong_bytes", "coverage:risk:valid_rejection", "coverage:risk:wrong_public_api", "coverage:schema_version:3", "coverage:signal_evaluation:met", "coverage:signal_evaluation:stale", "coverage:signal_evaluation:unknown", "coverage:signal_evaluation:unmet", "coverage:spec_legality:illegal", "coverage:spec_legality:legal", "coverage:transition_kind:cadence", "coverage:transition_kind:promotion_trigger", "coverage:transition_kind:reopening_signal", "coverage:transition_kind:retirement_predicate", "coverage:transition_kind:unblock_predicate", "coverage:transition_kind:watch_escalation", "coverage:work_intent:add_regression", "coverage:work_intent:build_capability", "coverage:work_intent:build_system", "coverage:work_intent:change_documentation", "coverage:work_intent:establish_honest_refusal", "coverage:work_intent:optimize", "coverage:work_intent:repair", "coverage:work_kind:coverage_cell", "coverage:work_kind:defect", "coverage:work_kind:documentation_integrity", "coverage:work_kind:feature", "coverage:work_kind:infrastructure", "coverage:work_kind:missing_system", "coverage:work_kind:optimization", "coverage:work_kind:regression_gap", "coverage:work_state:armed", "coverage:work_state:blocked", "coverage:work_state:deferred", "coverage:work_state:delegated", "coverage:work_state:ready", "coverage:work_state:waiting_external"]
+
+[record.payload]
+kind = "work"
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "infrastructure"
+risk = "false_pass_or_red"
+family_classification = "none_reviewed"
+acceptance_md = """Reviewed acceptance for the ported fixture arm.
+"""
+priority_rationale_md = """Fixture arm carries no live priority claim.
+"""
+
+[[record]]
+id = "matrix.fixture-semantic-owner"
+title = "Semantic authority boundary"
+projection_group = "fixture"
+
+[record.payload]
+kind = "matrix_policy"
+policy_kind = "boundary"
+authority_reference_id = "ref-file"
+rationale_md = """Permanent matrix fixture boundary.
+"""
+permanence = "permanent"
+
+[[record]]
+id = "matrix.fixture-signal-a"
+title = "Quantitative signal a"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "met"
+
+[record.payload.predicate]
+predicate_kind = "quantitative"
+comparator = "lt"
+threshold = 1
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 0
+as_of = "2026-08-11"
+evidence_ids = ["matrix.fixture-evidence-a"]
+
+[[record]]
+id = "matrix.fixture-signal-b"
+title = "Quantitative signal b"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "unmet"
+
+[record.payload.predicate]
+predicate_kind = "quantitative"
+comparator = "le"
+threshold = 2
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 3
+as_of = "2026-08-11"
+evidence_ids = ["matrix.fixture-evidence-a"]
+
+[[record]]
+id = "matrix.fixture-signal-c"
+title = "Quantitative signal c"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "unmet"
+
+[record.payload.predicate]
+predicate_kind = "quantitative"
+comparator = "eq"
+threshold = 3
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 2
+as_of = "2026-08-11"
+evidence_ids = ["matrix.fixture-evidence-a"]
+
+[[record]]
+id = "matrix.fixture-signal-d"
+title = "Quantitative signal d"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "stale"
+
+[record.payload.predicate]
+predicate_kind = "quantitative"
+comparator = "ge"
+threshold = 4
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 3
+as_of = "2026-08-11"
+evidence_ids = ["matrix.fixture-evidence-d"]
+
+[[record]]
+id = "matrix.fixture-signal-e"
+title = "Quantitative signal e"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "promotion_trigger"
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+action_on_fire_md = """Promote the associated work.
+"""
+evaluation = "met"
+
+[record.payload.predicate]
+predicate_kind = "quantitative"
+comparator = "gt"
+threshold = 5
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 6
+as_of = "2026-08-11"
+evidence_ids = ["matrix.fixture-evidence-a"]
+
+[[record]]
+id = "matrix.fixture-signal-f"
+title = "Event reopening signal"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "reopening_signal"
+observer = "fixture-observer"
+dimension = "fixture-event"
+action_on_fire_md = """Reopen the held decision.
+"""
+evaluation = "unmet"
+
+[record.payload.predicate]
+predicate_kind = "event"
+event_md = """A reviewed event is recorded.
+"""
+evidence_ids = ["matrix.fixture-evidence-b"]
+
+[[record]]
+id = "matrix.fixture-signal-g"
+title = "Manual promotion signal"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "promotion_trigger"
+observer = "fixture-reviewer"
+dimension = "fixture-review"
+observable = "fixture-signoff"
+action_on_fire_md = """Promote after review.
+"""
+evaluation = "unknown"
+
+[record.payload.predicate]
+predicate_kind = "manual"
+review_procedure_md = """Inspect every declared fixture arm.
+"""
+evidence_ids = ["matrix.fixture-evidence-c"]
+
+[[record]]
+id = "matrix.fixture-signal-h"
+title = "Unblock signal"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "unblock_predicate"
+owner_reference_id = "ref-release"
+event_md = """The dependency release is published.
+"""
+check_procedure_md = """Resolve the release reference.
+"""
+due_action_md = """Unblock the associated work.
+"""
+evaluation = "stale"
+
+[[record]]
+id = "matrix.fixture-signal-i"
+title = "Watch escalation signal"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "watch_escalation"
+failure_signature_md = """The fixture signature recurs.
+"""
+capture_procedure_md = """Capture the complete reproduction.
+"""
+response_md = """Classify the recurrence.
+"""
+escalation_action_md = """Escalate to the named owner.
+"""
+retirement_semantics_md = """Retire only after the control proves the claim.
+"""
+evaluation = "met"
+
+[[record]]
+id = "matrix.fixture-signal-j"
+title = "Retirement signal"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "retirement_predicate"
+external_owner_reference_id = "ref-issue"
+external_predicate_md = """The external owner closes the issue.
+"""
+verification_md = """Verify the released behavior.
+"""
+due_action_md = """Retire the waiting work.
+"""
+evaluation = "unmet"
+
+[[record]]
+id = "matrix.fixture-signal-k"
+title = "Cadence signal"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "cadence"
+owner_reference_id = "ref-file"
+event_source = "fixture-calendar"
+period_or_event_md = """Review once per fixture revision.
+"""
+checklist_md = """Check schema, spans, references, and projection.
+"""
+missed_action_md = """Escalate a missed review.
+"""
+last_completion_reference_id = "ref-commit"
+due_on = "2026-08-12"
+as_of = "2026-08-11"
+evaluation = "unknown"
+
+[[record]]
+id = "matrix.fixture-systematic-a"
+title = "Systematic family a"
+projection_group = "fixture"
+
+[record.payload]
+kind = "family"
+family_maturity = "observed_only"
+campaign_state = "designing"
+goal_md = """Enumerate the declared synthetic coordinate space.
+"""
+boundary_md = """Only the fixture axes and profiles are in scope.
+"""
+work_ids = ["matrix.fixture-task-a"]
+observation_reference_ids = ["ref-consumer"]
+affected_profiles = ["default", "preserve"]
+affected_faces = ["rust", "wasm"]
+control_ids = ["matrix.fixture-control-a"]
+completion_owner_reference_id = "ref-file"
+retirement_owner_reference_id = "ref-file"
+
+[[record.payload.axis]]
+id = "matrix.fixture-dimension-a"
+label = "Axis a"
+authority_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-a-five"
+label = "Value a five"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-a-four"
+label = "Value a four"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-a-one"
+label = "Value a one"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-a-three"
+label = "Value a three"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-a-two"
+label = "Value a two"
+source_reference_id = "ref-spec"
+
+[[record.payload.evidence_requirement]]
+id = "matrix.fixture-requirement-a"
+profiles = ["default", "preserve"]
+faces = ["rust", "wasm"]
+stages = ["compiled", "constraint_enforced", "executed", "generated", "independently_decoded", "over_accepted", "round_tripped"]
+
+[[record.payload.cell]]
+id = "matrix.fixture-coordinate-a"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+evidence_ids = ["matrix.fixture-evidence-a"]
+work_id = "matrix.fixture-task-a"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-one"
+
+[[record.payload.cell]]
+id = "matrix.fixture-coordinate-b"
+spec_legality = "legal"
+cell_disposition = "safely_refused"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-two"
+
+[[record.payload.cell]]
+id = "matrix.fixture-coordinate-c"
+spec_legality = "legal"
+cell_disposition = "deliberately_unsupported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-three"
+
+[[record.payload.cell]]
+id = "matrix.fixture-coordinate-d"
+spec_legality = "legal"
+cell_disposition = "unknown"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-four"
+
+[[record.payload.exclusion]]
+id = "matrix.fixture-exclusion-a"
+spec_legality = "illegal"
+reason_md = """The authority excludes this coordinate.
+"""
+owner_reference_id = "ref-file"
+source_reference_id = "ref-spec"
+liveness_reference_id = "ref-gate"
+
+[[record.payload.exclusion.coordinate]]
+axis_id = "matrix.fixture-dimension-a"
+value_id = "matrix.fixture-option-a-five"
+
+[[record]]
+id = "matrix.fixture-systematic-b"
+title = "Systematic family b"
+projection_group = "fixture"
+
+[record.payload]
+kind = "family"
+family_maturity = "under_design"
+campaign_state = "enumerating"
+goal_md = """Enumerate the declared synthetic coordinate space.
+"""
+boundary_md = """Only the fixture axes and profiles are in scope.
+"""
+work_ids = []
+authority_kind = "grammar"
+authority_reference_id = "ref-spec"
+derivation_md = """Derive coordinates from the declared authority.
+"""
+legality_rule_md = """A coordinate is legal exactly when the authority admits it.
+"""
+legality_owner_reference_id = "ref-spec"
+affected_profiles = ["default", "preserve"]
+affected_faces = ["rust", "wasm"]
+control_ids = ["matrix.fixture-control-a"]
+completion_owner_reference_id = "ref-file"
+retirement_owner_reference_id = "ref-file"
+denominator_unknowns_md = """One coordinate remains debt until its authority is extended.
+"""
+
+[[record.payload.axis]]
+id = "matrix.fixture-dimension-b"
+label = "Axis b"
+authority_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-b-one"
+label = "Value b one"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-b-two"
+label = "Value b two"
+source_reference_id = "ref-spec"
+
+[[record.payload.evidence_requirement]]
+id = "matrix.fixture-requirement-b"
+profiles = ["default", "preserve"]
+faces = ["rust", "wasm"]
+stages = ["generated"]
+
+[[record.payload.cell]]
+id = "matrix.fixture-coordinate-bx"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+evidence_ids = ["matrix.fixture-evidence-a"]
+work_id = "matrix.fixture-task-a"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-b"
+value_id = "matrix.fixture-option-b-one"
+
+[[record.payload.exclusion]]
+id = "matrix.fixture-exclusion-b"
+spec_legality = "illegal"
+reason_md = """The authority excludes this coordinate.
+"""
+owner_reference_id = "ref-file"
+source_reference_id = "ref-spec"
+liveness_reference_id = "ref-gate"
+
+[[record.payload.exclusion.coordinate]]
+axis_id = "matrix.fixture-dimension-b"
+value_id = "matrix.fixture-option-b-two"
+
+[[record]]
+id = "matrix.fixture-systematic-c"
+title = "Systematic family c"
+projection_group = "fixture"
+
+[record.payload]
+kind = "family"
+family_maturity = "under_design"
+campaign_state = "closing"
+goal_md = """Enumerate the declared synthetic coordinate space.
+"""
+boundary_md = """Only the fixture axes and profiles are in scope.
+"""
+work_ids = []
+authority_kind = "registry"
+authority_reference_id = "ref-feature"
+derivation_md = """Derive coordinates from the declared authority.
+"""
+legality_rule_md = """A coordinate is legal exactly when the authority admits it.
+"""
+legality_owner_reference_id = "ref-spec"
+affected_profiles = ["default", "preserve"]
+affected_faces = ["rust", "wasm"]
+control_ids = ["matrix.fixture-control-a"]
+completion_owner_reference_id = "ref-file"
+retirement_owner_reference_id = "ref-file"
+
+[[record.payload.axis]]
+id = "matrix.fixture-dimension-c"
+label = "Axis c"
+authority_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-c-one"
+label = "Value c one"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-c-two"
+label = "Value c two"
+source_reference_id = "ref-spec"
+
+[[record.payload.evidence_requirement]]
+id = "matrix.fixture-requirement-c"
+profiles = ["default", "preserve"]
+faces = ["rust", "wasm"]
+stages = ["generated"]
+
+[[record.payload.cell]]
+id = "matrix.fixture-coordinate-cx"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+evidence_ids = ["matrix.fixture-evidence-a"]
+work_id = "matrix.fixture-task-a"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-c"
+value_id = "matrix.fixture-option-c-one"
+
+[[record.payload.exclusion]]
+id = "matrix.fixture-exclusion-c"
+spec_legality = "illegal"
+reason_md = """The authority excludes this coordinate.
+"""
+owner_reference_id = "ref-file"
+source_reference_id = "ref-spec"
+liveness_reference_id = "ref-gate"
+
+[[record.payload.exclusion.coordinate]]
+axis_id = "matrix.fixture-dimension-c"
+value_id = "matrix.fixture-option-c-two"
+
+[[record]]
+id = "matrix.fixture-systematic-d"
+title = "Systematic family d"
+projection_group = "fixture"
+
+[record.payload]
+kind = "family"
+family_maturity = "under_design"
+campaign_state = "designing"
+goal_md = """Enumerate the declared synthetic coordinate space.
+"""
+boundary_md = """Only the fixture axes and profiles are in scope.
+"""
+work_ids = []
+authority_kind = "reviewed_relation"
+authority_reference_id = "ref-roadmap"
+derivation_md = """Derive coordinates from the declared authority.
+"""
+legality_rule_md = """A coordinate is legal exactly when the authority admits it.
+"""
+legality_owner_reference_id = "ref-spec"
+affected_profiles = ["default", "preserve"]
+affected_faces = ["rust", "wasm"]
+control_ids = ["matrix.fixture-control-a"]
+completion_owner_reference_id = "ref-file"
+retirement_owner_reference_id = "ref-file"
+
+[[record.payload.axis]]
+id = "matrix.fixture-dimension-d"
+label = "Axis d"
+authority_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-d-one"
+label = "Value d one"
+source_reference_id = "ref-spec"
+
+[[record.payload.axis.value]]
+id = "matrix.fixture-option-d-two"
+label = "Value d two"
+source_reference_id = "ref-spec"
+
+[[record.payload.evidence_requirement]]
+id = "matrix.fixture-requirement-d"
+profiles = ["default", "preserve"]
+faces = ["rust", "wasm"]
+stages = ["generated"]
+
+[[record.payload.cell]]
+id = "matrix.fixture-coordinate-dx"
+spec_legality = "legal"
+cell_disposition = "supported"
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+evidence_ids = ["matrix.fixture-evidence-a"]
+work_id = "matrix.fixture-task-a"
+
+[[record.payload.cell.coordinate]]
+axis_id = "matrix.fixture-dimension-d"
+value_id = "matrix.fixture-option-d-one"
+
+[[record.payload.exclusion]]
+id = "matrix.fixture-exclusion-d"
+spec_legality = "illegal"
+reason_md = """The authority excludes this coordinate.
+"""
+owner_reference_id = "ref-file"
+source_reference_id = "ref-spec"
+liveness_reference_id = "ref-gate"
+
+[[record.payload.exclusion.coordinate]]
+axis_id = "matrix.fixture-dimension-d"
+value_id = "matrix.fixture-option-d-two"
+
+[[record]]
+id = "matrix.fixture-task-a"
+title = "Work arm a"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+detail_md = """Exercises every optional work-base linkage.
+"""
+work_state = "ready"
+work_intent = "repair"
+work_kind = "defect"
+risk = "silent_wrong_bytes"
+family_id = "matrix.fixture-systematic-a"
+evidence_ids = ["matrix.fixture-evidence-a", "matrix.fixture-evidence-c"]
+acceptance_md = """Ready work a has explicit acceptance.
+"""
+priority_band = "critical"
+priority_rationale_md = """Priority critical is explicit.
+"""
+control_ids = ["matrix.fixture-control-a"]
+regression_evidence_ids = ["matrix.fixture-evidence-b"]
+regression_gap_ids = ["matrix.fixture-task-b"]
+
+[[record]]
+id = "matrix.fixture-task-b"
+title = "Work arm b"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "ready"
+work_intent = "add_regression"
+work_kind = "regression_gap"
+risk = "invalid_acceptance"
+family_classification = "none_reviewed"
+acceptance_md = """Ready work b has explicit acceptance.
+"""
+priority_band = "high"
+priority_rationale_md = """Priority high is explicit.
+"""
+
+[[record]]
+id = "matrix.fixture-task-c"
+title = "Work arm c"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "ready"
+work_intent = "build_capability"
+work_kind = "coverage_cell"
+risk = "valid_rejection"
+family_classification = "none_reviewed"
+acceptance_md = """Ready work c has explicit acceptance.
+"""
+priority_band = "normal"
+priority_rationale_md = """Priority normal is explicit.
+"""
+
+[[record]]
+id = "matrix.fixture-task-d"
+title = "Work arm d"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "infrastructure"
+risk = "wrong_public_api"
+family_classification = "none_reviewed"
+acceptance_md = """Ready work d has explicit acceptance.
+"""
+priority_band = "low"
+priority_rationale_md = """Priority low is explicit.
+"""
+
+[[record]]
+id = "matrix.fixture-task-e"
+title = "Work arm e"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "blocked"
+work_intent = "establish_honest_refusal"
+work_kind = "feature"
+risk = "compile_failure"
+family_classification = "none_reviewed"
+blocker_md = """A named dependency blocks execution.
+"""
+transition_ids = ["matrix.fixture-signal-h"]
+
+[[record]]
+id = "matrix.fixture-task-f"
+title = "Work arm f"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "armed"
+work_intent = "optimize"
+work_kind = "optimization"
+risk = "abort_or_panic"
+family_classification = "none_reviewed"
+control_ids = ["matrix.fixture-control-a"]
+transition_ids = ["matrix.fixture-signal-b"]
+
+[[record]]
+id = "matrix.fixture-task-g"
+title = "Work arm g"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "deferred"
+work_intent = "change_documentation"
+work_kind = "documentation_integrity"
+risk = "false_pass_or_red"
+family_classification = "none_reviewed"
+transition_ids = ["matrix.fixture-signal-f"]
+
+[[record]]
+id = "matrix.fixture-task-h"
+title = "Work arm h"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "waiting_external"
+work_intent = "repair"
+work_kind = "missing_system"
+risk = "misleading_docs"
+family_classification = "none_reviewed"
+transition_ids = ["matrix.fixture-signal-j"]
+external_owner_reference_id = "ref-issue"
+
+[[record]]
+id = "matrix.fixture-task-i"
+title = "Work arm i"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "delegated"
+work_intent = "add_regression"
+work_kind = "defect"
+risk = "resource_exhaustion"
+family_classification = "none_reviewed"
+evidence_ids = ["matrix.fixture-evidence-c"]
+return_condition_md = """Return after the delegated review completes.
+"""
+regression_evidence_ids = ["matrix.fixture-evidence-a"]
+regression_gap_ids = ["matrix.fixture-task-b"]
+
+[[record]]
+id = "matrix.fixture-task-j"
+title = "Work arm j"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "ready"
+work_intent = "build_capability"
+work_kind = "regression_gap"
+risk = "cosmetic"
+family_classification = "none_reviewed"
+acceptance_md = """Reviewed acceptance for the ported fixture arm.
+"""
+priority_rationale_md = """Fixture arm carries no live priority claim.
+"""
+
+[[record]]
+id = "matrix.fixture-upstream-a"
+title = "Matrix closeout a"
+projection_group = "fixture"
+
+[record.payload]
+kind = "matrix_external_closeout"
+closeout_state = "waiting"
+upstream_owner_reference_id = "ref-issue"
+current_upstream_state_md = """The upstream state is waiting.
+"""
+transition_ids = ["matrix.fixture-signal-j"]
+verification_md = """Verify the referenced upstream behavior.
+"""
+prune_reference_ids = ["ref-issue"]
+
+[[record.payload.action]]
+action_id = "action-a-one"
+action_md = """Execute the closeout verification.
+"""
+
+[[record.payload.action]]
+action_id = "action-a-two"
+action_md = """Record the closeout result.
+"""
+
+[[record.payload.branch]]
+branch_id = "branch-a-one"
+predicate_md = """The upstream result satisfies the fixture predicate.
+"""
+prune_reference_ids = ["ref-issue"]
+
+[[record.payload.branch.action]]
+action_id = "action-a-one"
+
+[[record.payload.branch.action]]
+action_id = "action-a-two"
+
+[[record]]
+id = "matrix.fixture-upstream-b"
+title = "Matrix closeout b"
+projection_group = "fixture"
+
+[record.payload]
+kind = "matrix_external_closeout"
+closeout_state = "due"
+upstream_owner_reference_id = "ref-issue"
+current_upstream_state_md = """The upstream state is due.
+"""
+transition_ids = ["matrix.fixture-signal-j"]
+verification_md = """Verify the referenced upstream behavior.
+"""
+
+[[record.payload.action]]
+action_id = "action-b-one"
+action_md = """Execute the closeout verification.
+"""
+
+[[record.payload.action]]
+action_id = "action-b-two"
+action_md = """Record the closeout result.
+"""
+
+[[record.payload.branch]]
+branch_id = "branch-b-one"
+predicate_md = """The upstream result satisfies the fixture predicate.
+"""
+
+[[record.payload.branch.action]]
+action_id = "action-b-one"
+
+[[record.payload.branch.action]]
+action_id = "action-b-two"
+
+[[record]]
+id = "matrix.fixture-upstream-c"
+title = "Matrix closeout c"
+projection_group = "fixture"
+
+[record.payload]
+kind = "matrix_external_closeout"
+closeout_state = "blocked"
+upstream_owner_reference_id = "ref-issue"
+current_upstream_state_md = """The upstream state is blocked.
+"""
+blocker_md = """The upstream artifact is unavailable.
+"""
+transition_ids = ["matrix.fixture-signal-j"]
+verification_md = """Verify the referenced upstream behavior.
+"""
+
+[[record.payload.action]]
+action_id = "action-c-one"
+action_md = """Execute the closeout verification.
+"""
+
+[[record.payload.action]]
+action_id = "action-c-two"
+action_md = """Record the closeout result.
+"""
+
+[[record.payload.branch]]
+branch_id = "branch-c-one"
+predicate_md = """The upstream result satisfies the fixture predicate.
+"""
+
+[[record.payload.branch.action]]
+action_id = "action-c-one"
+
+[[record.payload.branch.action]]
+action_id = "action-c-two"
+
+[[part]]
+part_id = "fixture-part"
+parent_record_id = "matrix.fixture-semantic-owner"
+title = "Raw part placement"
+body_md = """RAW PART PLACEMENT
+"""
+
+[[generated_slot]]
+slot_id = "constraint"
+binding = "status_header_markers:roadmap-constraint"
+
+[[generated_slot]]
+slot_id = "counts"
+binding = "status_header_markers:roadmap-counts"
+
+[[generated_slot]]
+slot_id = "emission"
+binding = "status_header_markers:roadmap-emission"
+
+[[generated_slot]]
+slot_id = "ops"
+binding = "status_header_markers:roadmap-ops"
+
+[[manifest.entry]]
+kind = "section"
+section_id = "fixture"
+
+[[manifest.entry]]
+kind = "fragment"
+fragment_id = "fixture-fragment"
+
+[[manifest.entry]]
+kind = "part"
+part_id = "fixture-part"
+
+[[manifest.entry]]
+kind = "record"
+record_id = "matrix.fixture-task-a"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "counts"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "ops"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "emission"
+
+[[manifest.entry]]
+kind = "generated_slot"
+slot_id = "constraint"
+
+[[relation]]
+source = "matrix.fixture-task-a"
+kind = "parent_of"
+target = "matrix.fixture-semantic-owner"
+note_md = """The fixture relation is intentionally explicit.
+"""
+
+[[relation]]
+source = "matrix.fixture-task-b"
+kind = "depends_on"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-c"
+kind = "blocked_by"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-d"
+kind = "supersedes"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-e"
+kind = "split_from"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-f"
+kind = "reopens"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-g"
+kind = "overlaps"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-h"
+kind = "complements"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-i"
+kind = "delegates_to"
+target = "matrix.fixture-semantic-owner"
+
+[[relation]]
+source = "matrix.fixture-task-i"
+kind = "related"
+target = "matrix.fixture-semantic-owner"
+
+[[reference]]
+id = "ref-consumer"
+source = "matrix.fixture-semantic-owner"
+kind = "consumer_report"
+consumer = "fixture-consumer"
+report_reference = "report-1"
+
+[[reference]]
+id = "ref-commit"
+source = "matrix.fixture-semantic-owner"
+kind = "external_commit"
+repository = "example/upstream"
+commit = "0123456789abcdef0123456789abcdef01234567"
+
+[[reference]]
+id = "ref-issue"
+source = "matrix.fixture-semantic-owner"
+kind = "external_issue"
+repository = "example/upstream"
+issue = "17"
+
+[[reference]]
+id = "ref-release"
+source = "matrix.fixture-semantic-owner"
+kind = "external_release"
+project = "example-upstream"
+release = "v1.0.0"
+
+[[reference]]
+id = "ref-file"
+source = "matrix.fixture-semantic-owner"
+kind = "file_heading"
+path = "cddl-matrix/README.md"
+heading = "What lives here"
+
+[[reference]]
+id = "ref-gate"
+source = "matrix.fixture-semantic-owner"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "ref-cell"
+source = "matrix.fixture-semantic-owner"
+kind = "matrix_cell"
+cell_id = "contain.map-value.type.choice"
+
+[[reference]]
+id = "ref-feature"
+source = "matrix.fixture-semantic-owner"
+kind = "matrix_feature"
+feature_id = "type2.value"
+
+[[reference]]
+id = "ref-role"
+source = "matrix.fixture-semantic-owner"
+kind = "matrix_role"
+role_id = "role.top-level"
+
+[[reference]]
+id = "ref-roadmap"
+source = "matrix.fixture-semantic-owner"
+kind = "roadmap"
+target_id = "matrix.fixture-task-a"
+
+[[reference]]
+id = "ref-spec"
+source = "matrix.fixture-semantic-owner"
+kind = "spec_passage"
+document = "RFC 8610"
+passage = "Section 3"
+
+[[reference]]
+id = "ref-test"
+source = "matrix.fixture-semantic-owner"
+kind = "test_symbol"
+test_id = "robustness_tests"
+symbol = "plain_group_type_choice_arm_rejects_gracefully_at_every_spelling"

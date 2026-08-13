@@ -2,19 +2,16 @@ import type { Indexes as AdapterIndexes } from "./adapters/types.ts";
 import type { RoadmapIssue } from "./errors.ts";
 import type {
   FragmentId,
-  MarkerId,
   PartId,
   ReferenceId,
   RoadmapId,
   RoadmapName,
   SectionId,
   SlotId,
-  SpanId,
 } from "./model/core.ts";
 import type {
   Fragment,
   GeneratedSlot,
-  LegacyMarker,
   Part,
   RecordNode,
   Reference,
@@ -23,7 +20,6 @@ import type {
   Section,
   SemanticPayload,
   SemanticRecord,
-  SourceSpan,
 } from "./model/documents.ts";
 import type {
   FamilyAxis,
@@ -62,7 +58,7 @@ export interface RoadmapIdProviderFact {
   readonly value: FirstClassIdProviderValue;
 }
 
-export type AliasOwnerKind = "section" | "fragment" | "legacy_marker" | "record";
+export type AliasOwnerKind = "section" | "fragment" | "record";
 
 export interface AliasProviderFact {
   readonly alias: string;
@@ -75,19 +71,15 @@ export interface AliasProviderFact {
 export type SubordinateIdProviderKind =
   | "section"
   | "fragment"
-  | "legacy_marker"
   | "part"
   | "generated_slot"
-  | "source_span"
   | "reference";
 
 export type SubordinateIdProviderValue =
   | Section
   | Fragment
-  | LegacyMarker
   | Part
   | GeneratedSlot
-  | SourceSpan
   | Reference;
 
 export interface SubordinateIdProviderFact {
@@ -102,7 +94,6 @@ export type RoadmapIdUseRole =
   | "provider"
   | "parent_record"
   | "manifest_record"
-  | "span_record_owner"
   | "relation_source"
   | "relation_target"
   | "reference_source"
@@ -155,10 +146,8 @@ export interface RoadmapIndexes extends AdapterIndexes {
   readonly family_records: ReadonlyMap<RoadmapId, SemanticPayloadProviderFact>;
   readonly sections: ReadonlyMap<SectionId, Section>;
   readonly fragments: ReadonlyMap<FragmentId, Fragment>;
-  readonly legacy_markers: ReadonlyMap<MarkerId, LegacyMarker>;
   readonly parts: ReadonlyMap<PartId, Part>;
   readonly generated_slots: ReadonlyMap<SlotId, GeneratedSlot>;
-  readonly spans: ReadonlyMap<SpanId, SourceSpan>;
   readonly relations: readonly Relation[];
   readonly relations_by_source: ReadonlyMap<RoadmapId, readonly Relation[]>;
   readonly relations_by_target: ReadonlyMap<RoadmapId, readonly Relation[]>;
@@ -173,10 +162,8 @@ export interface RoadmapIndexBuildResult {
 const SUBORDINATE_ID_FIELD: Readonly<Record<SubordinateIdProviderKind, string>> = {
   section: "section_id",
   fragment: "fragment_id",
-  legacy_marker: "marker_id",
   part: "part_id",
   generated_slot: "slot_id",
-  source_span: "id",
   reference: "id",
 };
 
@@ -290,10 +277,7 @@ function collectPayloadUses(
       return;
     case "signal":
       if (payload.transition_kind === "promotion_trigger" || payload.transition_kind === "reopening_signal") {
-        roadmaps(payload.current_evidence_ids, "current_evidence_ids");
-        if (payload.predicate.predicate_kind !== "quantitative") {
-          roadmaps(payload.predicate.evidence_ids, "predicate.evidence_ids");
-        }
+          roadmaps(payload.predicate.evidence_ids ?? [], "predicate.evidence_ids");
       } else if (payload.transition_kind === "retirement_predicate") {
         reference(payload.external_owner_reference_id, "external_owner_reference_id");
       } else if (payload.transition_kind === "unblock_predicate" || payload.transition_kind === "cadence") {
@@ -526,7 +510,6 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
   const recordNodes: readonly RecordNode[] = document.records;
   const sections: readonly Section[] = document.sections;
   const fragments: readonly Fragment[] = document.fragments;
-  const legacyMarkers: readonly LegacyMarker[] = document.legacy_markers;
   const parts: readonly Part[] = document.parts;
   const references: readonly Reference[] = "references" in document ? document.references : [];
   const documentRelations: readonly Relation[] = "relations" in document ? document.relations : [];
@@ -572,11 +555,6 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
     addSubordinate("fragment", value.fragment_id, path, value);
     addAlias("fragment", value.fragment_id, value.legacy_aliases, path);
   }
-  for (const value of legacyMarkers) {
-    const path = `legacy_marker[${quoted(value.marker_id)}]`;
-    addSubordinate("legacy_marker", value.marker_id, path, value);
-    addAlias("legacy_marker", value.marker_id, value.legacy_aliases, path);
-  }
   for (const value of parts) {
     const path = `part[${quoted(value.part_id)}]`;
     addSubordinate("part", value.part_id, path, value);
@@ -594,18 +572,6 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
       `generated_slot[${quoted(value.slot_id)}]`,
       value,
     );
-  }
-  for (const value of document.spans) {
-    const path = `source_span[${quoted(value.id)}]`;
-    addSubordinate("source_span", value.id, path, value);
-    if (value.source_kind === "record") {
-      roadmapIdUses.push({
-        id: value.owner_id as RoadmapId,
-        logical_path: `${path}.owner_id`,
-        role: "span_record_owner",
-        expected_namespace: namespace,
-      });
-    }
   }
 
   const payloadProviders: SemanticPayloadProviderFact[] = [];
@@ -727,10 +693,8 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
   const subordinateKinds = [
     "section",
     "fragment",
-    "legacy_marker",
     "part",
     "generated_slot",
-    "source_span",
     "reference",
   ] as const;
   for (const kind of [...subordinateKinds].sort(codePointSort)) {
@@ -751,10 +715,7 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
     }
   }
 
-  const semanticRecords = recordNodes.filter(
-    (record): record is SemanticRecord =>
-      "render_authority" in record && record.render_authority === "semantic",
-  );
+  const semanticRecords: readonly SemanticRecord[] = recordNodes;
   const payloadRecords = payloadProviders.sort((left, right) =>
     codePointSort(left.record.id, right.record.id) ||
     codePointSort(left.authority, right.authority) ||
@@ -788,10 +749,8 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
     ),
     sections: mapValues(sections, (value) => value.section_id),
     fragments: mapValues(fragments, (value) => value.fragment_id),
-    legacy_markers: mapValues(legacyMarkers, (value) => value.marker_id),
     parts: mapValues(parts, (value) => value.part_id),
     generated_slots: mapValues(document.generated_slots, (value) => value.slot_id),
-    spans: mapValues([...document.spans].sort((left, right) => codePointSort(left.id, right.id)), (value) => value.id),
     references: mapValues(references, (reference) => reference.id),
     relations,
     relations_by_source: groupedRelations(relations, (relation) => relation.source),

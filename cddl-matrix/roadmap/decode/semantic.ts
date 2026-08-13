@@ -88,7 +88,7 @@ export const SEMANTIC_ENUM_FIELDS: readonly EnumSchemaField[] = [
 ];
 
 const DETAIL = ["detail_md"] as const;
-const WORK_COMMON = ["kind", "summary_md", "work_state", "work_intent", "work_kind", "risk"] as const;
+const WORK_COMMON = ["kind", "work_state", "work_intent", "work_kind", "risk"] as const;
 const WORK_OPTIONALS = ["detail_md", "family_id", "family_classification", "evidence_ids", "acceptance_md", "priority_band", "priority_rationale_md", "blocker_md", "control_ids", "transition_ids", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "regression_evidence_ids", "regression_gap_ids", "admission_ids"] as const;
 
 export const SHARED_SEMANTIC_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
@@ -99,40 +99,40 @@ export const SHARED_SEMANTIC_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
   { name: "waiting external work", required: [...WORK_COMMON, "transition_ids", "external_owner_reference_id"], optional: ["detail_md", "family_id", "family_classification", "evidence_ids", "acceptance_md", "control_ids", "regression_evidence_ids", "regression_gap_ids", "admission_ids"], forbidden: ["priority_band", "priority_rationale_md", "blocker_md", "return_condition_md", "uncertainty_md"] },
   { name: "delegated work", required: [...WORK_COMMON, "return_condition_md"], optional: ["detail_md", "family_id", "family_classification", "evidence_ids", "acceptance_md", "control_ids", "regression_evidence_ids", "regression_gap_ids", "admission_ids"], forbidden: ["priority_band", "priority_rationale_md", "blocker_md", "transition_ids", "external_owner_reference_id", "uncertainty_md"] },
   { name: "pending review work", required: [...WORK_COMMON, "uncertainty_md"], optional: ["detail_md", "family_id", "family_classification", "evidence_ids", "control_ids", "regression_evidence_ids", "regression_gap_ids", "admission_ids"], forbidden: ["acceptance_md", "priority_band", "priority_rationale_md", "blocker_md", "transition_ids", "external_owner_reference_id", "return_condition_md"] },
-  { name: "pending decision", required: ["kind", "summary_md", "decision_state", "question_md", "transition_ids"], optional: DETAIL, forbidden: ["rationale_md", "authority_reference_id", "permanence"] },
-  { name: "held decision", required: ["kind", "summary_md", "decision_state", "rationale_md", "permanence", "transition_ids"], optional: DETAIL, forbidden: ["question_md", "authority_reference_id"] },
-  { name: "decided permanent decision", required: ["kind", "summary_md", "decision_state", "rationale_md", "authority_reference_id", "permanence"], optional: DETAIL, forbidden: ["question_md", "transition_ids"] },
-  { name: "decided reopenable decision", required: ["kind", "summary_md", "decision_state", "rationale_md", "authority_reference_id", "permanence", "transition_ids"], optional: DETAIL, forbidden: ["question_md"] },
-  { name: "promotion or reopening signal", required: ["kind", "summary_md", "transition_kind", "observer", "dimension", "observable", "predicate_kind", "current_evidence_ids", "action_on_fire_md", "evaluation", "predicate"], optional: DETAIL },
-  { name: "unblock predicate", required: ["kind", "summary_md", "transition_kind", "owner_reference_id", "event_md", "check_procedure_md", "due_action_md", "evaluation"], optional: DETAIL },
-  { name: "watch escalation", required: ["kind", "summary_md", "transition_kind", "failure_signature_md", "capture_procedure_md", "response_md", "escalation_action_md", "retirement_semantics_md", "evaluation"], optional: DETAIL },
-  { name: "retirement predicate", required: ["kind", "summary_md", "transition_kind", "external_owner_reference_id", "external_predicate_md", "verification_md", "due_action_md", "evaluation"], optional: DETAIL },
-  { name: "cadence signal", required: ["kind", "summary_md", "transition_kind", "owner_reference_id", "event_source", "period_or_event_md", "checklist_md", "missed_action_md", "evaluation"], optional: ["detail_md", "last_completion_reference_id", "due_on", "as_of"] },
-  { name: "quantitative predicate", required: ["predicate_kind", "comparator", "threshold", "unit", "scope", "measurement", "as_of"] },
+  { name: "pending decision", required: ["kind", "decision_state", "question_md", "transition_ids"], optional: DETAIL, forbidden: ["rationale_md", "authority_reference_id", "permanence"] },
+  { name: "held decision", required: ["kind", "decision_state", "rationale_md", "permanence", "transition_ids"], optional: DETAIL, forbidden: ["question_md", "authority_reference_id"] },
+  { name: "decided permanent decision", required: ["kind", "decision_state", "rationale_md", "authority_reference_id", "permanence"], optional: DETAIL, forbidden: ["question_md", "transition_ids"] },
+  { name: "decided reopenable decision", required: ["kind", "decision_state", "rationale_md", "authority_reference_id", "permanence", "transition_ids"], optional: DETAIL, forbidden: ["question_md"] },
+  { name: "event-condition promotion or reopening signal", required: ["kind", "transition_kind", "observer", "dimension", "action_on_fire_md", "evaluation", "predicate"], optional: DETAIL, forbidden: ["observable"] },
+  { name: "unblock predicate", required: ["kind", "transition_kind", "owner_reference_id", "event_md", "check_procedure_md", "due_action_md", "evaluation"], optional: DETAIL },
+  { name: "watch escalation", required: ["kind", "transition_kind", "failure_signature_md", "capture_procedure_md", "response_md", "escalation_action_md", "retirement_semantics_md", "evaluation"], optional: DETAIL },
+  { name: "retirement predicate", required: ["kind", "transition_kind", "external_owner_reference_id", "external_predicate_md", "verification_md", "due_action_md", "evaluation"], optional: DETAIL },
+  { name: "cadence signal", required: ["kind", "transition_kind", "owner_reference_id", "event_source", "period_or_event_md", "checklist_md", "missed_action_md", "evaluation"], optional: ["detail_md", "last_completion_reference_id", "due_on", "as_of"] },
+  { name: "quantitative predicate", required: ["predicate_kind", "comparator", "threshold", "unit", "scope", "measurement", "as_of"], optional: ["evidence_ids"] },
   { name: "event predicate", required: ["predicate_kind", "event_md", "evidence_ids"] },
   { name: "manual predicate", required: ["predicate_kind", "review_procedure_md", "evidence_ids"] },
-  { name: "evidence", required: ["kind", "summary_md", "evidence_kind", "claim_md", "evidence_verdict", "freshness", "reference_ids", "unprobed_remainder_md", "scope"], optional: ["detail_md", "command_md", "result_md", "at_commit", "observed_at", "valid_through", "environment_md", "refresh_reference_id", "enumerated_registry"] },
+  { name: "evidence", required: ["kind", "evidence_kind", "claim_md", "evidence_verdict", "freshness", "reference_ids", "unprobed_remainder_md", "scope"], optional: ["detail_md", "command_md", "result_md", "at_commit", "observed_at", "valid_through", "environment_md", "refresh_reference_id", "enumerated_registry"] },
   { name: "evidence scope", required: [], optional: ["surfaces", "faces", "profiles", "flags", "input_modes", "toolchains", "executors", "tiers", "cell_ids"] },
-  { name: "control", required: ["kind", "summary_md", "control_kind", "control_state", "reference_ids", "claim_md", "boundary_md"], optional: DETAIL },
-  { name: "observed-only family", required: ["kind", "summary_md", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "observation_reference_ids", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id"], optional: ["detail_md", "axis", "evidence_requirement", "cell", "exclusion"], forbidden: ["authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "denominator_unknowns_md"] },
-  { name: "under-design family", required: ["kind", "summary_md", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id"], optional: ["detail_md", "denominator_unknowns_md", "axis", "evidence_requirement", "cell", "exclusion"] },
+  { name: "control", required: ["kind", "control_kind", "control_state", "reference_ids", "claim_md", "boundary_md"], optional: DETAIL },
+  { name: "observed-only family", required: ["kind", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "observation_reference_ids", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id"], optional: ["detail_md", "axis", "evidence_requirement", "cell", "exclusion"], forbidden: ["authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "denominator_unknowns_md"] },
+  { name: "under-design family", required: ["kind", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id"], optional: ["detail_md", "denominator_unknowns_md", "axis", "evidence_requirement", "cell", "exclusion"] },
   { name: "family axis", required: ["id", "label", "authority_reference_id"], optional: ["value"] },
   { name: "family axis value", required: ["id", "label", "source_reference_id"] },
   { name: "family evidence requirement", required: ["id", "profiles", "faces", "stages"] },
   { name: "open family cell", required: ["id", "spec_legality", "cell_disposition", "affected_profiles", "affected_faces", "coordinate"], optional: ["evidence_ids", "work_id"], forbidden: ["evidence_binding"] },
   { name: "family exclusion", required: ["id", "spec_legality", "reason_md", "owner_reference_id", "source_reference_id", "liveness_reference_id", "coordinate"] },
   { name: "family coordinate", required: ["axis_id", "value_id"] },
+  { name: "authored-condition promotion or reopening signal", required: ["kind", "transition_kind", "observer", "dimension", "observable", "action_on_fire_md", "evaluation", "predicate"], optional: DETAIL },
 ] as const;
 
 export const SEMANTIC_V2_SCHEMA_ROWS: readonly ExactSchemaRow[] = [
-  { name: "closed-denominator family", required: ["kind", "summary_md", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "drift_check_reference_id", "mutation_test_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id", "axis", "evidence_requirement", "cell"], optional: ["detail_md", "exclusion"], forbidden: ["observation_reference_ids", "denominator_unknowns_md"] },
+  { name: "closed-denominator family", required: ["kind", "family_maturity", "campaign_state", "goal_md", "boundary_md", "work_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "drift_check_reference_id", "mutation_test_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id", "axis", "evidence_requirement", "cell"], optional: ["detail_md", "exclusion"], forbidden: ["observation_reference_ids", "denominator_unknowns_md"] },
   { name: "family evidence binding", required: ["requirement_id", "profile", "face", "stage", "outcome", "evidence_id"] },
   { name: "closed family cell", required: ["id", "spec_legality", "cell_disposition", "affected_profiles", "affected_faces", "coordinate", "evidence_binding"], optional: ["work_id"], forbidden: ["evidence_ids"] },
 ] as const;
 
-function common(ctx: DecodeContext, table: object, path: string): { summary_md: Uint8Array; detail_md?: Uint8Array } {
+function common(ctx: DecodeContext, table: object, path: string): { detail_md?: Uint8Array } {
   return {
-    summary_md: expectMarkdown(ctx, requiredValue(table, "summary_md"), p(path, "summary_md")),
     ...optionalMarkdown(ctx, table, path, "detail_md"),
   };
 }
@@ -156,7 +156,7 @@ function optionalRoadmapSet(ctx: DecodeContext, table: object, path: string, key
 function decodeWork(ctx: DecodeContext, raw: unknown, path: string): WorkPayload {
   const discriminator = expectExactTable(ctx, raw, path, {
     name: "work discriminator",
-    required: ["kind", "summary_md", "work_state"],
+    required: ["kind", "work_state"],
     optional: ["work_intent", "work_kind", "risk", ...WORK_OPTIONALS],
   });
   const state = expectEnum(ctx, requiredValue(discriminator, "work_state"), WORK_STATES, p(path, "work_state"));
@@ -225,7 +225,7 @@ function optionalPriority(ctx: DecodeContext, table: object, path: string): { pr
 }
 
 function decodeDecision(ctx: DecodeContext, raw: unknown, path: string): DecisionPayload {
-  const discriminator = expectExactTable(ctx, raw, path, { name: "decision discriminator", required: ["kind", "summary_md", "decision_state"], optional: ["detail_md", "question_md", "rationale_md", "authority_reference_id", "permanence", "transition_ids"] });
+  const discriminator = expectExactTable(ctx, raw, path, { name: "decision discriminator", required: ["kind", "decision_state"], optional: ["detail_md", "question_md", "rationale_md", "authority_reference_id", "permanence", "transition_ids"] });
   const state = expectEnum(ctx, requiredValue(discriminator, "decision_state"), ["pending", "held", "decided"] as const, p(path, "decision_state"));
   if (state === "pending") {
     const table = expectExactTable(ctx, raw, path, SHARED_SEMANTIC_SCHEMA_ROWS[7]);
@@ -236,7 +236,7 @@ function decodeDecision(ctx: DecodeContext, raw: unknown, path: string): Decisio
     const permanence = expectEnum(ctx, requiredValue(table, "permanence"), ["reopenable"] as const, p(path, "permanence"));
     return { kind: "decision", ...common(ctx, table, path), decision_state: state, rationale_md: expectMarkdown(ctx, requiredValue(table, "rationale_md"), p(path, "rationale_md")), permanence, transition_ids: expectRoadmapIdSet(ctx, requiredValue(table, "transition_ids"), p(path, "transition_ids"), true) };
   }
-  const pre = expectExactTable(ctx, raw, path, { name: "decided decision discriminator", required: ["kind", "summary_md", "decision_state", "permanence"], optional: ["detail_md", "question_md", "rationale_md", "authority_reference_id", "transition_ids"] });
+  const pre = expectExactTable(ctx, raw, path, { name: "decided decision discriminator", required: ["kind", "decision_state", "permanence"], optional: ["detail_md", "question_md", "rationale_md", "authority_reference_id", "transition_ids"] });
   const permanence = expectEnum(ctx, requiredValue(pre, "permanence"), ["permanent", "reopenable"] as const, p(path, "permanence"));
   const table = expectExactTable(ctx, raw, path, SHARED_SEMANTIC_SCHEMA_ROWS[permanence === "permanent" ? 9 : 10]);
   return {
@@ -255,7 +255,7 @@ function decodePredicate(ctx: DecodeContext, raw: unknown, path: string): Signal
   const kind = expectEnum(ctx, requiredValue(pre, "predicate_kind"), ["quantitative", "event", "manual"] as const, p(path, "predicate_kind"));
   if (kind === "quantitative") {
     const table = expectExactTable(ctx, raw, path, SHARED_SEMANTIC_SCHEMA_ROWS[16]);
-    return { predicate_kind: kind, comparator: expectEnum(ctx, requiredValue(table, "comparator"), COMPARATORS, p(path, "comparator")), threshold: expectFiniteNumber(ctx, requiredValue(table, "threshold"), p(path, "threshold")), unit: expectString(ctx, requiredValue(table, "unit"), p(path, "unit")), scope: expectString(ctx, requiredValue(table, "scope"), p(path, "scope")), measurement: expectFiniteNumber(ctx, requiredValue(table, "measurement"), p(path, "measurement")), as_of: expectCivilDate(ctx, requiredValue(table, "as_of"), p(path, "as_of")) };
+    return { predicate_kind: kind, comparator: expectEnum(ctx, requiredValue(table, "comparator"), COMPARATORS, p(path, "comparator")), threshold: expectFiniteNumber(ctx, requiredValue(table, "threshold"), p(path, "threshold")), unit: expectString(ctx, requiredValue(table, "unit"), p(path, "unit")), scope: expectString(ctx, requiredValue(table, "scope"), p(path, "scope")), measurement: expectFiniteNumber(ctx, requiredValue(table, "measurement"), p(path, "measurement")), as_of: expectCivilDate(ctx, requiredValue(table, "as_of"), p(path, "as_of")), ...optionalRoadmapSet(ctx, table, path, "evidence_ids") };
   }
   if (kind === "event") {
     const table = expectExactTable(ctx, raw, path, SHARED_SEMANTIC_SCHEMA_ROWS[17]);
@@ -266,14 +266,27 @@ function decodePredicate(ctx: DecodeContext, raw: unknown, path: string): Signal
 }
 
 function decodeSignal(ctx: DecodeContext, raw: unknown, path: string): SignalPayload {
-  const pre = expectExactTable(ctx, raw, path, { name: "signal discriminator", required: ["kind", "summary_md", "transition_kind"], optional: ["detail_md", "observer", "dimension", "observable", "predicate_kind", "current_evidence_ids", "action_on_fire_md", "evaluation", "predicate", "owner_reference_id", "event_md", "check_procedure_md", "due_action_md", "failure_signature_md", "capture_procedure_md", "response_md", "escalation_action_md", "retirement_semantics_md", "external_owner_reference_id", "external_predicate_md", "verification_md", "event_source", "period_or_event_md", "checklist_md", "missed_action_md", "last_completion_reference_id", "due_on", "as_of"] });
+  const pre = expectExactTable(ctx, raw, path, { name: "signal discriminator", required: ["kind", "transition_kind"], optional: ["detail_md", "observer", "dimension", "observable", "action_on_fire_md", "evaluation", "predicate", "owner_reference_id", "event_md", "check_procedure_md", "due_action_md", "failure_signature_md", "capture_procedure_md", "response_md", "escalation_action_md", "retirement_semantics_md", "external_owner_reference_id", "external_predicate_md", "verification_md", "event_source", "period_or_event_md", "checklist_md", "missed_action_md", "last_completion_reference_id", "due_on", "as_of"] });
   const kind = expectEnum(ctx, requiredValue(pre, "transition_kind"), ["promotion_trigger", "reopening_signal", "unblock_predicate", "watch_escalation", "retirement_predicate", "cadence"] as const, p(path, "transition_kind"));
   if (kind === "promotion_trigger" || kind === "reopening_signal") {
-    const table = expectExactTable(ctx, raw, path, SHARED_SEMANTIC_SCHEMA_ROWS[11]);
-    const predicate = decodePredicate(ctx, requiredValue(table, "predicate"), p(path, "predicate"));
-    const predicateKind = expectEnum(ctx, requiredValue(table, "predicate_kind"), ["quantitative", "event", "manual"] as const, p(path, "predicate_kind"));
-    if (predicate.predicate_kind !== predicateKind) schemaFail(ctx, "E-SCHEMA-STATE", p(path, "predicate_kind"), "parent predicate_kind must match the nested predicate arm");
-    return { kind: "signal", ...common(ctx, table, path), transition_kind: kind, observer: expectString(ctx, requiredValue(table, "observer"), p(path, "observer")), dimension: expectString(ctx, requiredValue(table, "dimension"), p(path, "dimension")), observable: expectString(ctx, requiredValue(table, "observable"), p(path, "observable")), predicate_kind: predicateKind, current_evidence_ids: expectRoadmapIdSet(ctx, requiredValue(table, "current_evidence_ids"), p(path, "current_evidence_ids")), action_on_fire_md: expectMarkdown(ctx, requiredValue(table, "action_on_fire_md"), p(path, "action_on_fire_md")), evaluation: expectEnum(ctx, requiredValue(table, "evaluation"), EVALUATIONS, p(path, "evaluation")), predicate };
+    // The trigger condition's home is arm-dependent: an event predicate carries it as
+    // predicate.event_md (signal-level observable is forbidden), while manual and quantitative
+    // predicates have no nested condition field, so observable is required exactly there.
+    const predicate = decodePredicate(
+      ctx,
+      requiredValue(
+        expectExactTable(ctx, raw, path, { name: "signal predicate presence", required: ["kind", "transition_kind", "predicate"], optional: ["detail_md", "observer", "dimension", "observable", "action_on_fire_md", "evaluation"] }),
+        "predicate",
+      ),
+      p(path, "predicate"),
+    );
+    const table = expectExactTable(
+      ctx,
+      raw,
+      path,
+      predicate.predicate_kind === "event" ? SHARED_SEMANTIC_SCHEMA_ROWS[11] : SHARED_SEMANTIC_SCHEMA_ROWS[30],
+    );
+    return { kind: "signal", ...common(ctx, table, path), transition_kind: kind, observer: expectString(ctx, requiredValue(table, "observer"), p(path, "observer")), dimension: expectString(ctx, requiredValue(table, "dimension"), p(path, "dimension")), ...(predicate.predicate_kind === "event" ? {} : { observable: expectString(ctx, requiredValue(table, "observable"), p(path, "observable")) }), action_on_fire_md: expectMarkdown(ctx, requiredValue(table, "action_on_fire_md"), p(path, "action_on_fire_md")), evaluation: expectEnum(ctx, requiredValue(table, "evaluation"), EVALUATIONS, p(path, "evaluation")), predicate };
   }
   const schemaIndex = { unblock_predicate: 12, watch_escalation: 13, retirement_predicate: 14, cadence: 15 }[kind];
   const table = expectExactTable(ctx, raw, path, SHARED_SEMANTIC_SCHEMA_ROWS[schemaIndex]);
@@ -423,7 +436,7 @@ function decodeExclusion(ctx: DecodeContext, raw: unknown, path: string): Family
 }
 
 function decodeFamily(ctx: DecodeContext, raw: unknown, path: string): FamilyPayload {
-  const pre = expectExactTable(ctx, raw, path, { name: "family discriminator", required: ["kind", "summary_md", "family_maturity"], optional: ["detail_md", "campaign_state", "goal_md", "boundary_md", "work_ids", "observation_reference_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "drift_check_reference_id", "mutation_test_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id", "denominator_unknowns_md", "axis", "evidence_requirement", "cell", "exclusion"] });
+  const pre = expectExactTable(ctx, raw, path, { name: "family discriminator", required: ["kind", "family_maturity"], optional: ["detail_md", "campaign_state", "goal_md", "boundary_md", "work_ids", "observation_reference_ids", "authority_kind", "authority_reference_id", "derivation_md", "legality_rule_md", "legality_owner_reference_id", "drift_check_reference_id", "mutation_test_reference_id", "affected_profiles", "affected_faces", "control_ids", "completion_owner_reference_id", "retirement_owner_reference_id", "denominator_unknowns_md", "axis", "evidence_requirement", "cell", "exclusion"] });
   const maturity = expectEnum(ctx, requiredValue(pre, "family_maturity"), ["observed_only", "under_design", "closed_denominator"] as const, p(path, "family_maturity"));
   const table = expectExactTable(ctx, raw, path, maturity === "closed_denominator" ? SEMANTIC_V2_SCHEMA_ROWS[0] : SHARED_SEMANTIC_SCHEMA_ROWS[maturity === "observed_only" ? 22 : 23]);
   const axes = optionalDecoded(table, "axis", path, (value, fieldPath) => expectArrayOf(ctx, value, fieldPath, (entry, entryPath) => decodeAxis(ctx, entry, entryPath))) ?? [];

@@ -8,7 +8,7 @@ import {
 } from "../errors.ts";
 import { bytesEqual } from "../markdown_codec.ts";
 import type { FixtureRelativePath, RepoPath } from "../model/core.ts";
-import type { RoadmapDocumentV2 } from "../model/documents.ts";
+import type { RoadmapDocumentV3 } from "../model/documents.ts";
 import { REFERENCE_KIND_REGISTRY } from "../references.ts";
 import {
   enumerateFixtureFilesPolicy,
@@ -58,7 +58,6 @@ export type RequiredFixtureSelfTestCaseId =
 // tags to compareAllFieldsCoverageTags; it must not derive the expected universe from those tags.
 export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
   admission_kind: ["bounded_denominator", "independent_recurrence", "silent_corruption"],
-  authority: ["authoritative"],
   authority_kind: ["grammar", "registry", "reviewed_relation"],
   campaign_state: ["closing", "designing", "enumerating"],
   cell_disposition: ["deliberately_unsupported", "safely_refused", "supported", "unknown"],
@@ -105,10 +104,8 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
   family_classification: ["none_reviewed"],
   family_maturity: ["observed_only", "under_design"],
   freshness: ["as_of", "historical", "live", "stale"],
-  frozen_source_eof: ["lf"],
   incident_posture: ["attributed", "historical", "live"],
-  manifest_kind: ["fragment", "generated_slot", "legacy_marker", "part", "record", "section"],
-  migration_status: ["generated", "replaced"],
+  manifest_kind: ["fragment", "generated_slot", "part", "record", "section"],
   payload_kind: [
     "control",
     "decision",
@@ -153,7 +150,6 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "split_from",
     "supersedes",
   ],
-  render_authority: ["semantic"],
   risk: [
     "abort_or_panic",
     "compile_failure",
@@ -166,9 +162,8 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "valid_rejection",
     "wrong_public_api",
   ],
-  schema_version: ["2"],
+  schema_version: ["3"],
   signal_evaluation: ["met", "stale", "unknown", "unmet"],
-  source_kind: ["fragment", "generated_slot", "legacy_marker", "part", "record", "section"],
   spec_legality: ["illegal", "legal"],
   transition_kind: [
     "cadence",
@@ -321,7 +316,7 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
           if (row.adapter !== "codec" || typeof row.expected !== "string" || row.schema_version !== undefined || (row.projection_eof !== "lf" && row.projection_eof !== "none")) issues.push(`${String(id)} violates codec binding rules`);
         } else if (
           (row.adapter !== "matrix" && row.adapter !== "testing") || typeof row.expected !== "string" ||
-          (row.schema_version !== 0 && row.schema_version !== 1 && row.schema_version !== 2) || (row.projection_eof !== "lf" && row.projection_eof !== "none")
+          row.schema_version !== 3 || (row.projection_eof !== "lf" && row.projection_eof !== "none")
         ) issues.push(`${String(id)} violates roadmap fixture binding rules`);
         rows.push(row as unknown as import("../selftest.ts").SingleFileFixtureCaseRow);
       }
@@ -347,8 +342,8 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
   }
   const expectedIds = [
     "fixture_codec_leading_eof", "fixture_codec_no_eof", "fixture_codec_controls",
-    "fixture_small_matrix_v2", "fixture_small_testing_v2",
-    "fixture_all_fields_matrix_v2", "fixture_all_fields_testing_v2", "fixture_status_compat",
+    "fixture_small_matrix_v3", "fixture_small_testing_v3",
+    "fixture_all_fields_matrix_v3", "fixture_all_fields_testing_v3", "fixture_status_compat",
   ];
   if (JSON.stringify(rows.map((row) => row.id)) !== JSON.stringify(expectedIds)) issues.push("fixture case IDs/order differ from the frozen row registry");
   const singleSignatures = rows.flatMap((row) => row.kind === "single_file" ? [[
@@ -359,10 +354,10 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
     "fixture_codec_leading_eof|codec|codec/hazards-leading-and-eof.md|codec/hazards-leading-and-eof.toml.expected|codec|-|lf",
     "fixture_codec_no_eof|codec|codec/hazards-no-eof.md|codec/hazards-no-eof.toml.expected|codec|-|none",
     "fixture_codec_controls|codec|codec/control-scalars.bytes|codec/control-scalars.toml.expected|codec|-|none",
-    "fixture_small_matrix_v2|positive|positive/small-matrix-v2.toml|positive/small-matrix-v2.expected.md|matrix|2|lf",
-    "fixture_small_testing_v2|positive|positive/small-testing-v2.toml|positive/small-testing-v2.expected.md|testing|2|none",
-    "fixture_all_fields_matrix_v2|all_fields|all-fields/matrix-v2.toml|all-fields/matrix-v2.expected.md|matrix|2|lf",
-    "fixture_all_fields_testing_v2|all_fields|all-fields/testing-v2.toml|all-fields/testing-v2.expected.md|testing|2|lf",
+    "fixture_small_matrix_v3|positive|positive/small-matrix-v3.toml|positive/small-matrix-v3.expected.md|matrix|3|lf",
+    "fixture_small_testing_v3|positive|positive/small-testing-v3.toml|positive/small-testing-v3.expected.md|testing|3|none",
+    "fixture_all_fields_matrix_v3|all_fields|all-fields/matrix-v3.toml|all-fields/matrix-v3.expected.md|matrix|3|lf",
+    "fixture_all_fields_testing_v3|all_fields|all-fields/testing-v3.toml|all-fields/testing-v3.expected.md|testing|3|lf",
   ];
   if (JSON.stringify(singleSignatures) !== JSON.stringify(expectedSingleSignatures)) issues.push("single-file fixture bindings differ from the frozen row table");
   const disk = inventory.filter((path) => path !== "cases.toml").sort(codePointSort);
@@ -504,7 +499,7 @@ function caseReferenceProviderMembersNonemptyOrDeclaredEmpty(context: SelfTestCo
   assert(REFERENCE_KIND_REGISTRY.length > 0 && new Set(REFERENCE_KIND_REGISTRY).size === REFERENCE_KIND_REGISTRY.length, "reference kind provider registry is empty or duplicated");
   const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
   const decoded = (["matrix", "testing"] as const).map((roadmap) => {
-    const path = `all-fields/${roadmap}-v2.toml` as FixtureRelativePath;
+    const path = `all-fields/${roadmap}-v3.toml` as FixtureRelativePath;
     assert(inventory.includes(path), `all-fields provider fixture is missing ${path}`);
     return decodeRoadmapSource(context.ports.fixtures.readFixtureFile(FIXTURE_ROOT, path), path, roadmap, true);
   });

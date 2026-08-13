@@ -46,7 +46,6 @@ import {
   type ValidatedRoadmapCore,
 } from "./pipeline.ts";
 import { queryText, queryValue, stableJsonValue } from "./query.ts";
-import { validateProjectionLayoutDeclaration } from "./projection_layout.ts";
 // Type-only: the selftest runner VALUE is injected by the entry point through
 // RoadmapCliDispatchServices, so this module has no runtime edge into the selftest tree.
 import type { runSelfTests } from "./selftest.ts";
@@ -71,7 +70,7 @@ function roadmapReceipt(prepared: FinalizedRoadmap): string {
   const projectionOwner = prepared.registry.output_claims.find((claim) =>
     claim.kind === "whole_file" && claim.path === prepared.document.document.projection_path
   )?.producer ?? "unclaimed";
-  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} authority=${prepared.document.document.authority} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} manifest=${prepared.document.manifest.length} spans=${prepared.document.spans.length} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
+  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} manifest=${prepared.document.manifest.length} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
 }
 
 function success(stdout: string | Uint8Array): RoadmapCliResult {
@@ -134,8 +133,6 @@ function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResul
   if (path === MATRIX_SOURCE || path === TESTING_SOURCE) {
     const name: RoadmapName = path === MATRIX_SOURCE ? "matrix" : "testing";
     document = decodeRoadmapSource(source, path, name, false);
-    const declarationIssues = validateProjectionLayoutDeclaration(document, false);
-    if (declarationIssues.length > 0) failure(declarationIssues);
     prepareDecodedRoadmapCore(name, document, ports.registryView({ kind: "worktree" }));
   } else failure([issue("E-CLI-FORMAT-TARGET", "<cli>", "format_source", "format target is not declared", 2)]);
   const canonical = composeCanonicalDocument(document);

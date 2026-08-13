@@ -22,7 +22,6 @@ export interface ManifestSlotBindingFact {
   readonly slot_id: SlotId;
   readonly declaration_count: number;
   readonly placement_count: number;
-  readonly owner_span_count: number;
   readonly interval?: ByteInterval;
   readonly payload_interval?: ByteInterval;
 }
@@ -435,10 +434,6 @@ export function collectManifestSlotBindingFacts(
     const placements = document.manifest.filter((entry) =>
       entry.kind === "generated_slot" && entry.slot_id === slotId
     );
-    const spans = document.spans.filter((span) =>
-      span.source_kind === "generated_slot" && span.owner_id === slotId &&
-      span.owner_field === "generated" && span.migration_status === "generated"
-    );
     const chunks = completed.chunks.filter((chunk) =>
       chunk.owner.kind === "generated_slot" && chunk.owner.id === slotId &&
       chunk.owner.field === "generated"
@@ -455,7 +450,6 @@ export function collectManifestSlotBindingFacts(
       }
       : undefined;
     const declaration = declarations.length === 1 ? declarations[0] : undefined;
-    const span = spans.length === 1 ? spans[0] : undefined;
     const resolutionItem = resolutions.length === 1 ? resolutions[0] : undefined;
     const resolution = resolutionItem?.resolution;
     const resolverIsExact =
@@ -463,18 +457,11 @@ export function collectManifestSlotBindingFacts(
       placements.length === 1 && chunks.length === 1 && placementIndex >= 0 &&
       resolutionItem.manifest_index === placementIndex && chunks[0].manifest_index === placementIndex &&
       resolutionItem.slot.binding === declaration.binding &&
-      resolutionItem.slot.span_ids.length === declaration.span_ids.length &&
-      resolutionItem.slot.span_ids.every((value, index) => value === declaration.span_ids[index]) &&
       resolution.binding === declaration.binding && resolution.bytes.byteLength > 0 &&
       resolution.bytes.byteLength === chunks[0].bytes.byteLength &&
       resolution.bytes.every((value, index) => value === chunks[0].bytes[index]);
-    const ownerSpanIsExact =
-      declaration !== undefined && span !== undefined && chunkInterval !== undefined &&
-      declaration.span_ids.length === 1 && declaration.span_ids[0] === span.id &&
-      chunks[0].source_span_ids.length === 1 && chunks[0].source_span_ids[0] === span.id &&
-      span.start_byte === chunkInterval.start_byte && span.end_byte === chunkInterval.end_byte;
     const resolvedInterval =
-      resolverIsExact && ownerSpanIsExact && chunkInterval !== undefined &&
+      resolverIsExact && chunkInterval !== undefined &&
         chunkInterval.start_byte < chunkInterval.end_byte
         ? Object.freeze(chunkInterval)
         : undefined;
@@ -484,7 +471,6 @@ export function collectManifestSlotBindingFacts(
       slot_id: slotId,
       declaration_count: declarations.length,
       placement_count: placements.length,
-      owner_span_count: spans.length,
       ...(resolvedInterval === undefined ? {} : {
         interval: resolvedInterval,
         payload_interval: resolvedInterval,
@@ -551,14 +537,13 @@ function resolveManifestClaim(
   );
   if (
     matches.length !== 1 || matches[0].declaration_count !== 1 || matches[0].placement_count !== 1 ||
-    matches[0].owner_span_count !== 1 || matches[0].interval === undefined ||
-    matches[0].payload_interval === undefined
+    matches[0].interval === undefined || matches[0].payload_interval === undefined
   ) {
     return issue(
       "E-OUTPUT-SLOT",
       claim.path,
       `slot[${JSON.stringify(claim.slot_id)}]`,
-      "manifest slot must have exactly one declaration, placement, matching owner span, and resolved interval",
+      "manifest slot must have exactly one declaration, placement, and resolved interval",
     );
   }
   const interval = matches[0].interval;

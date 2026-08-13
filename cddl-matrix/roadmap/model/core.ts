@@ -86,7 +86,6 @@ export type FamilyClassification = "none_reviewed" | "pending";
 
 export interface SemanticPayloadBase {
   kind: string;
-  summary_md: Uint8Array;
   detail_md?: Uint8Array;
 }
 
@@ -192,6 +191,7 @@ export interface QuantitativePredicate {
   scope: string;
   measurement: number;
   as_of: CivilDate;
+  evidence_ids?: RoadmapId[];
 }
 
 export interface EventPredicate {
@@ -212,9 +212,13 @@ interface PredicateSignalBase extends SemanticPayloadBase {
   kind: "signal";
   observer: string;
   dimension: string;
-  observable: string;
-  predicate_kind: SignalPredicate["predicate_kind"];
-  current_evidence_ids: RoadmapId[];
+  /**
+   * The authored trigger condition. Arm-dependent home (Phase 2 re-cut): FORBIDDEN when the
+   * nested predicate is an event (predicate.event_md is the condition's single home) and
+   * REQUIRED for manual and quantitative predicates, where no nested field carries it.
+   * The decoder enforces the arm rule; the type stays one shape for switch ergonomics.
+   */
+  observable?: string;
   action_on_fire_md: Uint8Array;
   evaluation: SignalEvaluation;
   predicate: SignalPredicate;

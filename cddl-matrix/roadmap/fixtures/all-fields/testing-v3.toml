@@ -1,0 +1,354 @@
+[document]
+schema_version = 3
+roadmap = "testing"
+source_path = "cddl-matrix/roadmap/fixtures/all-fields/testing-v3.toml"
+projection_path = "cddl-matrix/roadmap/fixtures/all-fields/testing-v3.expected.md"
+
+[[section]]
+section_id = "fixture"
+title = "Testing all-fields fixture"
+body_md = """# Testing all-fields fixture
+
+"""
+
+[[record]]
+id = "testing.fixture-admission-bounded"
+title = "Bounded denominator admission"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_system_admission"
+admission_kind = "bounded_denominator"
+claim_md = """A reviewed systematic family and live cost bound the denominator."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+family_id = "testing.fixture-systematic-observed"
+cost_record_id = "testing.fixture-all-fields-semantic"
+
+[[record]]
+id = "testing.fixture-admission-independent"
+title = "Independent recurrence admission"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_system_admission"
+admission_kind = "independent_recurrence"
+claim_md = """Two distinct incidents recur independently."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+incident_ids = ["testing.fixture-incident-attributed", "testing.fixture-incident-live"]
+
+[[record]]
+id = "testing.fixture-admission-silent"
+title = "Silent corruption admission"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_system_admission"
+admission_kind = "silent_corruption"
+claim_md = """The evidence demonstrates a silent-corruption risk."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+
+[[record]]
+id = "testing.fixture-all-fields-raw"
+title = "All-fields raw owner"
+projection_group = "fixture"
+tags = ["coverage:admission_kind:bounded_denominator", "coverage:admission_kind:independent_recurrence", "coverage:admission_kind:silent_corruption", "coverage:cost_posture:historical_observation", "coverage:cost_posture:live_registry", "coverage:incident_posture:attributed", "coverage:incident_posture:historical", "coverage:incident_posture:live", "coverage:payload_kind:testing_cost", "coverage:payload_kind:testing_incident", "coverage:payload_kind:testing_operational_watch", "coverage:payload_kind:testing_system_admission", "coverage:watch_state:attributed", "coverage:watch_state:retire_pending", "coverage:watch_state:watching"]
+
+[record.payload]
+kind = "work"
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "infrastructure"
+risk = "false_pass_or_red"
+family_classification = "none_reviewed"
+acceptance_md = """Reviewed acceptance for the ported fixture arm.
+"""
+priority_rationale_md = """Fixture arm carries no live priority claim.
+"""
+
+[[record]]
+id = "testing.fixture-all-fields-semantic"
+title = "Testing semantic cost"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_cost"
+cost_posture = "live_registry"
+unit = "milliseconds"
+scope_md = """Live fixture timing registry.
+"""
+gate_reference_id = "semantic-cost-gate"
+
+[[record]]
+id = "testing.fixture-control-review"
+title = "Review rule control"
+projection_group = "fixture"
+
+[record.payload]
+kind = "control"
+control_kind = "review_rule"
+control_state = "live"
+reference_ids = ["control-review-heading"]
+claim_md = """The fixture review rule stays live."""
+boundary_md = """It covers only the synthetic all-fields fixture."""
+
+[[record]]
+id = "testing.fixture-cost-historical"
+title = "Historical cost"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_cost"
+cost_posture = "historical_observation"
+unit = "milliseconds"
+scope_md = """One synthetic fixture execution."""
+value_min = 10
+value_max = 20
+observed_at = "2026-08-11"
+environment_md = """Pinned synthetic executor."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+
+[[record]]
+id = "testing.fixture-evidence-gate"
+title = "Gate evidence"
+projection_group = "fixture"
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "gate"
+claim_md = """A non-stub synthetic gate protects this fixture."""
+evidence_verdict = "confirmed"
+freshness = "live"
+reference_ids = ["evidence-gate-target"]
+unprobed_remainder_md = """No production roadmap is probed."""
+refresh_reference_id = "evidence-gate-target"
+
+[record.payload.scope]
+tiers = ["local"]
+
+[[record]]
+id = "testing.fixture-incident-attributed"
+title = "Attributed incident"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_incident"
+incident_posture = "attributed"
+signature_md = """Synthetic attributed signature."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+attribution_md = """The fixture identifies the synthetic cause."""
+operating_rule_reference_id = "incident-attributed-rule"
+
+[[record]]
+id = "testing.fixture-incident-historical"
+title = "Historical incident"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_incident"
+incident_posture = "historical"
+signature_md = """Synthetic historical signature."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+attribution_md = """The fixture identifies the retired synthetic cause."""
+operating_rule_reference_id = "incident-historical-rule"
+retirement_reference_id = "incident-historical-retirement"
+
+[[record]]
+id = "testing.fixture-incident-live"
+title = "Live incident"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_incident"
+incident_posture = "live"
+signature_md = """Synthetic live signature."""
+evidence_ids = ["testing.fixture-evidence-gate"]
+
+[[record]]
+id = "testing.fixture-operational-attributed"
+title = "Attributed operational watch"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_operational_watch"
+watch_state = "attributed"
+signature_md = """Synthetic attributed watch signature."""
+attribution_md = """The fixture attributes the watch."""
+operating_rule_reference_id = "operational-attributed-rule"
+response_md = """Capture and retain exact evidence."""
+escalation_transition_id = "testing.fixture-signal-escalation"
+retirement_semantics_md = """Retire after the operating rule proves stable."""
+
+[[record.payload.capture_step]]
+step_id = "capture"
+capture_md = """Capture the full synthetic diagnostic."""
+
+[[record]]
+id = "testing.fixture-operational-retire-pending"
+title = "Retire-pending operational watch"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_operational_watch"
+watch_state = "retire_pending"
+signature_md = """Synthetic retire-pending watch signature."""
+attribution_md = """The fixture attributes the retired watch."""
+operating_rule_reference_id = "operational-retire-rule"
+response_md = """Retain the capture until retirement completes."""
+escalation_transition_id = "testing.fixture-signal-escalation"
+retirement_reference_id = "operational-retire-pin"
+retirement_semantics_md = """Retire when the replacement pin resolves."""
+
+[[record.payload.capture_step]]
+step_id = "capture"
+capture_md = """Capture the full synthetic diagnostic."""
+
+[[record]]
+id = "testing.fixture-operational-watching"
+title = "Watching operational watch"
+projection_group = "fixture"
+
+[record.payload]
+kind = "testing_operational_watch"
+watch_state = "watching"
+signature_md = """Synthetic watching signature."""
+response_md = """Capture the failure before responding."""
+escalation_transition_id = "testing.fixture-signal-escalation"
+retirement_semantics_md = """Retire after the watch predicate remains clear."""
+
+[[record.payload.capture_step]]
+step_id = "capture"
+capture_md = """Capture the full synthetic diagnostic."""
+
+[[record]]
+id = "testing.fixture-signal-escalation"
+title = "Watch escalation"
+projection_group = "fixture"
+
+[record.payload]
+kind = "signal"
+transition_kind = "watch_escalation"
+failure_signature_md = """The synthetic watch signature recurs."""
+capture_procedure_md = """Capture the exact fixture output."""
+response_md = """Attribute or quarantine the recurrence."""
+escalation_action_md = """Promote the watch to active repair work."""
+retirement_semantics_md = """Retire after the recurrence remains absent."""
+evaluation = "unknown"
+
+[[record]]
+id = "testing.fixture-systematic-observed"
+title = "Observed systematic family"
+projection_group = "fixture"
+
+[record.payload]
+kind = "family"
+family_maturity = "observed_only"
+campaign_state = "designing"
+goal_md = """Bound the synthetic testing denominator."""
+boundary_md = """Only this fixture is included."""
+work_ids = ["testing.fixture-task-ready"]
+observation_reference_ids = ["systematic-observation"]
+affected_profiles = ["default"]
+affected_faces = ["rust"]
+control_ids = ["testing.fixture-control-review"]
+completion_owner_reference_id = "systematic-completion"
+retirement_owner_reference_id = "systematic-retirement"
+
+[[record]]
+id = "testing.fixture-task-ready"
+title = "Ready missing-system task"
+projection_group = "fixture"
+
+[record.payload]
+kind = "work"
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "false_pass_or_red"
+family_id = "testing.fixture-systematic-observed"
+acceptance_md = """The bounded-denominator admission remains live."""
+priority_band = "high"
+priority_rationale_md = """Silent failure makes this fixture task high priority."""
+admission_ids = ["testing.fixture-admission-bounded"]
+
+[[manifest.entry]]
+kind = "section"
+section_id = "fixture"
+
+[[reference]]
+id = "semantic-cost-gate"
+source = "testing.fixture-all-fields-semantic"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "control-review-heading"
+source = "testing.fixture-control-review"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "evidence-gate-target"
+source = "testing.fixture-evidence-gate"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "incident-attributed-rule"
+source = "testing.fixture-incident-attributed"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "incident-historical-rule"
+source = "testing.fixture-incident-historical"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "incident-historical-retirement"
+source = "testing.fixture-incident-historical"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "operational-attributed-rule"
+source = "testing.fixture-operational-attributed"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "operational-retire-rule"
+source = "testing.fixture-operational-retire-pending"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "operational-retire-pin"
+source = "testing.fixture-operational-retire-pending"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "systematic-completion"
+source = "testing.fixture-systematic-observed"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Running everything"
+
+[[reference]]
+id = "systematic-observation"
+source = "testing.fixture-systematic-observed"
+kind = "gate"
+gate_id = "roadmap_projection_check"
+
+[[reference]]
+id = "systematic-retirement"
+source = "testing.fixture-systematic-observed"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::snapshot_tests::fixture_symbol"
+symbol = "tests::snapshot_tests::fixture_symbol"

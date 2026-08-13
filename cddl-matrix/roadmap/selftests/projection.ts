@@ -16,19 +16,16 @@ import type {
   FragmentId,
   FixtureRelativePath,
   FullCommitId,
-  MarkerId,
   PartId,
   RepoPath,
   RoadmapId,
   SectionId,
   SlotId,
-  SpanId,
 } from "../model/core.ts";
 import type {
   ManifestEntry,
   RoadmapDocument,
   SemanticPayload,
-  SourceSpan,
 } from "../model/documents.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
 import type {
@@ -53,7 +50,6 @@ import {
   renderValidatedChunks,
 } from "../render.ts";
 import { stableJsonValue } from "../query.ts";
-import { validateSourceSpans } from "../spans.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
 import {
   LEGACY_STATUS_OUTPUT_CLAIMS,
@@ -93,37 +89,16 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "manifest_orphan_fragment",
   "manifest_unknown_id",
   "manifest_wrong_kind",
-  "manifest_duplicate_legacy_marker",
   "manifest_record_table_order_irrelevant",
   "manifest_true_sequence_preserved",
   "manifest_duplicate_not_tiebroken",
   "manifest_semantic_only_is_not_placed",
-  "span_gap",
-  "span_overlap",
-  "span_wrong_digest",
-  "span_wrong_owner",
-  "span_wrong_kind",
-  "span_wrong_status",
-  "span_out_of_bounds",
-  "span_reversed",
   "span_utf8_byte_offsets",
   "span_mid_scalar_boundary",
-  "span_final_eof_owner",
-  "span_empty_vacuity",
-  "span_partial_prefix_rejected",
-  "span_single_snapshot",
-  "span_source_change_digest_rejected",
   "render_zero_chunks_rejected",
   "render_no_implicit_lf",
   "render_semantic_consumption_once",
   "render_semantic_only_zero_byte_consumption",
-  "render_semantic_only_span_prohibition",
-  "render_semantic_exact_field_binding_swapped_labels",
-  "render_semantic_exact_field_binding_partial",
-  "render_semantic_exact_field_binding_duplicate",
-  "render_semantic_replacement_rows_order_independent",
-  "render_structural_exact_field_binding_all_kinds",
-  "render_structural_exact_field_binding_rejections",
   "render_prior_projection_irrelevant",
   "outputs_duplicate_whole",
   "outputs_whole_vs_slot",
@@ -149,7 +124,6 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "two_clean_renders_equal",
   "no_clock_without_as_of",
   "render_chunks_precede_consumption_validation",
-  "render_chunks_precede_span_validation",
   "render_slots_resolved_before_slot_validation",
   "render_invalid_chunk_skips_projection_read",
   "render_committed_projection_read_last",
@@ -234,29 +208,14 @@ function bytes(value: string): Uint8Array {
 function asRoadmapId(value: string): RoadmapId { return value as RoadmapId; }
 function asSectionId(value: string): SectionId { return value as SectionId; }
 function asFragmentId(value: string): FragmentId { return value as FragmentId; }
-function asMarkerId(value: string): MarkerId { return value as MarkerId; }
 function asPartId(value: string): PartId { return value as PartId; }
 function asSlotId(value: string): SlotId { return value as SlotId; }
-function asSpanId(value: string): SpanId { return value as SpanId; }
 function asRepoPath(value: string): RepoPath { return value as RepoPath; }
 
 function complete(document: RoadmapDocument): { readonly completed: CompletedRenderIr; readonly manifestIssues: readonly RoadmapIssue[] } {
   const placement = resolveManifest(document);
   const completed = buildExpectedChunks(document, placement.ops, {
-    renderSemanticRecord(record, fields) {
-      const rendered: Uint8Array[] = [];
-      const payload = record.payload;
-      if (payload.kind === "work" && payload.work_state === "ready") {
-        rendered.push(fields.consume("payload.summary_md", payload.summary_md));
-        rendered.push(fields.consume("payload.acceptance_md", payload.acceptance_md));
-        rendered.push(fields.consume("payload.priority_rationale_md", payload.priority_rationale_md));
-      }
-      const length = rendered.reduce((sum, value) => sum + value.byteLength, 0);
-      const result = new Uint8Array(length);
-      let offset = 0;
-      for (const value of rendered) { result.set(value, offset); offset += value.byteLength; }
-      return result;
-    },
+    renderSemanticRecord: renderCanonicalSemanticRecord,
     resolveGeneratedSlot(slot) {
       return { binding: slot.binding, bytes: bytes("G") };
     },
@@ -436,10 +395,6 @@ function testManifestCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult 
       ) };
       expected = "E-MANIFEST-KIND";
       break;
-    case "manifest_duplicate_legacy_marker":
-      document = { ...document, manifest: [...document.manifest, { kind: "legacy_marker", marker_id: document.legacy_markers[0].marker_id }] };
-      expected = "E-MANIFEST-DUPLICATE";
-      break;
     case "manifest_record_table_order_irrelevant": {
       const second = {
         ...document.records[0],
@@ -497,7 +452,6 @@ function validateFixture(document: RoadmapDocument): readonly RoadmapIssue[] {
   return [
     ...placement.issues,
     ...validateCompletedChunks(document, placement.ops, completed),
-    ...validateSourceSpans({ document, completed }),
   ];
 }
 
@@ -509,266 +463,91 @@ function testSpanCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     expectedByteViewIncrementalHash();
     return pass();
   }
-  const fixture = semanticFixture("exact");
-  let document = fixture.document;
-  const lastSpanIndex = document.spans.length - 1;
-  let expected: RoadmapIssue["code"] | undefined;
-  // Some mutations are visible at more than one coordinate; pin the one the case is about.
-  let expectedPath: string | undefined;
-  switch (id) {
-    case "span_gap": {
-      const spans = document.spans.map((span, index) => index === 1 ? { ...span, start_byte: span.start_byte + 1 } : span);
-      document = { ...document, spans };
-      expected = "E-SPAN-GAP";
-      break;
-    }
-    case "span_overlap": {
-      const spans = document.spans.map((span, index) => index === 1 ? { ...span, start_byte: 0 } : span);
-      document = { ...document, spans };
-      expected = "E-SPAN-OVERLAP";
-      break;
-    }
-    case "span_wrong_digest":
-      document = { ...document, spans: document.spans.map((span, index) => index === 0 ? { ...span, sha256: "0".repeat(64) } : span) };
-      expected = "E-SPAN-DIGEST";
-      break;
-    case "span_wrong_owner":
-      document = { ...document, spans: document.spans.map((span, index) => index === 0 ? { ...span, owner_id: "wrong" } : span) };
-      expected = "E-SPAN-OWNER";
-      expectedPath = 'source_span["span-h"]';
-      break;
-    case "span_wrong_kind":
-      document = { ...document, spans: document.spans.map((span, index) => index === 0 ? { ...span, source_kind: "record" as const } : span) };
-      expected = "E-SPAN-KIND";
-      break;
-    case "span_wrong_status":
-      document = { ...document, spans: document.spans.map((span, index) => index === 0 ? { ...span, migration_status: "raw" as const } : span) };
-      expected = "E-SPAN-STATUS";
-      break;
-    case "span_out_of_bounds":
-      document = { ...document, spans: document.spans.map((span, index) => index === lastSpanIndex ? { ...span, end_byte: span.end_byte + 2 } : span) };
-      expected = "E-SPAN-BOUNDS";
-      break;
-    case "span_reversed":
-      document = { ...document, spans: document.spans.map((span, index) => index === 0 ? { ...span, start_byte: 1, end_byte: 0 } : span) };
-      expected = "E-SPAN-BOUNDS";
-      break;
-    case "span_utf8_byte_offsets":
-    case "span_mid_scalar_boundary": {
-      const chunks: RenderChunk[] = [{
-        manifest_index: 0,
-        owner: { kind: "section", id: "unicode", field: "body_md" },
-        bytes: bytes("é"),
-        source_span_ids: [],
-        consumed_fields: ["body_md"],
-      }];
-      const view = createExpectedByteView(chunks);
-      if (!view.equals(view.slice(0, 2), bytes("é"))) fail("UTF-8 byte offsets were not used");
-      let rejection: unknown;
-      try { view.slice(1, 2); } catch (error) { rejection = error; }
-      const rejected = rejection !== undefined;
-      if (!rejected) fail("mid-scalar byte boundary accepted");
-      if (id === "span_mid_scalar_boundary") observeUntypedSelfTestRejection(id, rejection);
-      return pass(id === "span_mid_scalar_boundary" ? "negative" : "positive");
-    }
-    case "span_final_eof_owner": {
-      const issues = validateFixture(document);
-      if (issues.length !== 0) fail(`valid EOF ownership failed: ${issues.map((value) => value.code).join(",")}`);
-      requireIssue(validateFixture({
-        ...document,
-        document: { ...document.document, frozen_source_line_count: 2 },
-      }), "E-SPAN-COVERAGE");
-      requireIssue(validateFixture({
-        ...document,
-        document: { ...document.document, frozen_source_eof: "lf" },
-      }), "E-SPAN-COVERAGE");
-      return pass("positive");
-    }
-    case "span_empty_vacuity":
-      document = { ...document, spans: [] };
-      expected = "E-SPAN-EMPTY";
-      break;
-    case "span_partial_prefix_rejected":
-      document = { ...document, spans: document.spans.slice(0, -1) };
-      expected = "E-SPAN-COVERAGE";
-      break;
-    case "span_single_snapshot": {
-      const original = complete(document).completed;
-      let reads = 0;
-      const completed: CompletedRenderIr = {
-        ...original,
-        expected_bytes: {
-          ...original.expected_bytes,
-          sourceFacts() { reads++; return original.expected_bytes.sourceFacts(); },
-        },
-      };
-      const valid = validateSourceSpans({ document, completed });
-      if (valid.length !== 0 || reads !== 1) fail(`source facts acquired ${reads} times`);
-      requireIssue(validateSourceSpans({
-        document: {
-          ...document,
-          document: { ...document.document, frozen_source_byte_length: document.document.frozen_source_byte_length + 1 },
-        },
-        completed: original,
-      }), "E-SPAN-COVERAGE");
-      requireIssue(validateSourceSpans({
-        document: {
-          ...document,
-          document: { ...document.document, frozen_source_sha256: "0".repeat(64) },
-        },
-        completed: original,
-      }), "E-SOURCE-DIGEST");
-      return pass("positive");
-    }
-    case "span_source_change_digest_rejected": {
-      document = {
-        ...document,
-        sections: document.sections.map((section, index) =>
-          index === 0 ? { ...section, body_md: bytes("X") } : section
-        ),
-      };
-      const changed = complete(document).completed;
-      if (changed.expected_bytes.sliceBytes(0, 1)[0] !== 0x58) fail("authority-byte mutation did not reach expected chunks");
-      expected = "E-SOURCE-DIGEST";
-      break;
-    }
-    default:
-      fail(`${id} is not a span case`);
+  if (id === "span_utf8_byte_offsets" || id === "span_mid_scalar_boundary") {
+    const chunks: RenderChunk[] = [{
+      manifest_index: 0,
+      owner: { kind: "section", id: "unicode", field: "body_md" },
+      bytes: bytes("é"),
+      consumed_fields: ["body_md"],
+    }];
+    const view = createExpectedByteView(chunks);
+    if (!view.equals(view.slice(0, 2), bytes("é"))) fail("UTF-8 byte offsets were not used");
+    let rejection: unknown;
+    try { view.slice(1, 2); } catch (error) { rejection = error; }
+    const rejected = rejection !== undefined;
+    if (!rejected) fail("mid-scalar byte boundary accepted");
+    if (id === "span_mid_scalar_boundary") observeUntypedSelfTestRejection(id, rejection);
+    return pass(id === "span_mid_scalar_boundary" ? "negative" : "positive");
   }
-  const issues = validateFixture(document);
-  if (expected === undefined) fail("span test lacks expected code");
-  if (expectedPath === undefined) requireIssue(issues, expected);
-  else requireExactIssue(issues, expected, expectedPath);
-  return pass("negative");
+  fail(`${id} is not a span case`);
 }
 
 function semanticFixture(
   mode: "exact" | "missing" | "duplicate" = "exact",
 ): {
   readonly document: RoadmapDocument;
-  readonly source: Uint8Array;
   readonly renderCalls: { value: number };
 } {
-  const source = bytes("HFMSUMACCRATIONALEPG");
   const sectionId = asSectionId("heading");
   const fragmentId = asFragmentId("fragment");
-  const markerId = asMarkerId("marker");
   const recordId = asRoadmapId("matrix.fixture-work");
   const partId = asPartId("part");
   const slotId = asSlotId("status-slot");
-  const summary = bytes("SUM");
-  const acceptance = bytes("ACC");
-  const rationale = bytes("RATIONALE");
-  const review = bytes("review");
-  const replacement = (span_id: string, replacement_field: string) => ({
-    span_id: asSpanId(span_id),
-    replacement_field,
-    review_note_md: review,
-  });
   const manifest: ManifestEntry[] = [
     { kind: "section", section_id: sectionId },
     { kind: "fragment", fragment_id: fragmentId },
-    { kind: "legacy_marker", marker_id: markerId },
     { kind: "record", record_id: recordId },
     { kind: "part", part_id: partId },
     { kind: "generated_slot", slot_id: slotId },
   ];
-  const spanRows: readonly [string, SourceSpan["source_kind"], string, string, number, number][] = [
-    ["span-h", "section", sectionId, "body_md", 0, 1],
-    ["span-f", "fragment", fragmentId, "body_md", 1, 2],
-    ["span-m", "legacy_marker", markerId, "marker_md", 2, 3],
-    ["span-summary", "record", recordId, "payload.summary_md", 3, 6],
-    ["span-acceptance", "record", recordId, "payload.acceptance_md", 6, 9],
-    ["span-rationale", "record", recordId, "payload.priority_rationale_md", 9, 18],
-    ["span-p", "part", partId, "body_md", 18, 19],
-    ["span-g", "generated_slot", slotId, "generated", 19, 20],
-  ];
-  const spans = spanRows.map(([id, source_kind, owner_id, owner_field, start_byte, end_byte]): SourceSpan => ({
-    id: asSpanId(id),
-    start_byte,
-    end_byte,
-    sha256: sha256(source.subarray(start_byte, end_byte)),
-    source_kind,
-    owner_id,
-    owner_field,
-    migration_status: source_kind === "generated_slot" ? "generated" : "replaced",
-  }));
   const document: RoadmapDocument = {
     document: {
-      schema_version: 2,
-      authority: "authoritative",
+      schema_version: 3,
       roadmap: "matrix",
       source_path: asRepoPath("fixture/matrix.toml"),
       projection_path: asRepoPath("fixture/matrix.md"),
-      frozen_source_sha256: sha256(source),
-      frozen_source_byte_length: source.byteLength,
-      frozen_source_line_count: 1,
-      frozen_source_eof: "none",
     },
     sections: [{
       section_id: sectionId,
       title: "Heading",
-      render_authority: "semantic",
       body_md: bytes("H"),
-      source_replacements: [replacement("span-h", "body_md")],
     }],
     fragments: [{
       fragment_id: fragmentId,
       projection_group: sectionId,
-      render_authority: "semantic",
-      lifecycle_disposition: "document_prose",
       body_md: bytes("F"),
-      source_replacements: [replacement("span-f", "body_md")],
-    }],
-    legacy_markers: [{
-      marker_id: markerId,
-      legacy_aliases: ["legacy"],
-      render_authority: "semantic",
-      marker_md: bytes("M"),
-      source_replacements: [replacement("span-m", "marker_md")],
     }],
     records: [{
       id: recordId,
       title: "Work",
       projection_group: sectionId,
-      render_authority: "semantic",
-      projection_visibility: "document",
       payload: {
         kind: "work",
-        summary_md: summary,
+        detail_md: bytes("DET"),
         work_state: "ready",
         work_intent: "repair",
         work_kind: "feature",
         risk: "cosmetic",
         family_classification: "none_reviewed",
         evidence_ids: [asRoadmapId("matrix.fixture-evidence-a"), asRoadmapId("matrix.fixture-evidence-b")],
-        acceptance_md: acceptance,
-        priority_rationale_md: rationale,
+        acceptance_md: bytes("ACC"),
+        priority_rationale_md: bytes("RATIONALE"),
       },
-      source_replacements: [
-        replacement("span-summary", "payload.summary_md"),
-        replacement("span-acceptance", "payload.acceptance_md"),
-        replacement("span-rationale", "payload.priority_rationale_md"),
-      ],
     }],
     parts: [{
       part_id: partId,
       parent_record_id: recordId,
-      render_authority: "semantic",
-      lifecycle_disposition: "parent_supporting_prose",
       body_md: bytes("P"),
-      source_replacements: [replacement("span-p", "body_md")],
     }],
-    generated_slots: [{ slot_id: slotId, binding: "fixture-status", span_ids: [asSpanId("span-g")] }],
+    generated_slots: [{ slot_id: slotId, binding: "fixture-status" }],
     manifest,
-    spans,
     relations: [],
     references: [],
   };
   const calls = { value: 0 };
   Object.defineProperty(document, "__selftest_mode", { value: mode, enumerable: false });
   Object.defineProperty(document, "__render_calls", { value: calls, enumerable: false });
-  return { document, source, renderCalls: calls };
+  return { document, renderCalls: calls };
 }
 
 function completeSemantic(document: RoadmapDocument, calls: { value: number }): CompletedRenderIr {
@@ -778,17 +557,13 @@ function completeSemantic(document: RoadmapDocument, calls: { value: number }): 
     renderSemanticRecord(record, fields) {
       calls.value++;
       const payload = record.payload;
-      if (payload.kind !== "work" || payload.work_state !== "ready") return new Uint8Array();
-      const first = fields.consume("payload.summary_md", payload.summary_md);
-      if (mode === "duplicate") fields.consume("payload.summary_md", payload.summary_md);
-      const second = mode === "missing" ? new Uint8Array() : fields.consume("payload.acceptance_md", payload.acceptance_md);
-      const third = fields.consume("payload.priority_rationale_md", payload.priority_rationale_md);
-      if (record.projection_visibility === "semantic_only") return new Uint8Array();
-      const output = new Uint8Array(first.byteLength + second.byteLength + third.byteLength);
-      output.set(first);
-      output.set(second, first.byteLength);
-      output.set(third, first.byteLength + second.byteLength);
-      return output;
+      if (payload.kind !== "work" || payload.work_state !== "ready" || payload.detail_md === undefined ||
+        payload.acceptance_md === undefined) return new Uint8Array();
+      const first = fields.consume("payload.detail_md", payload.detail_md);
+      if (mode === "duplicate") fields.consume("payload.detail_md", payload.detail_md);
+      if (mode !== "missing") fields.consume("payload.acceptance_md", payload.acceptance_md);
+      fields.consume("payload.priority_rationale_md", payload.priority_rationale_md);
+      return new Uint8Array(first);
     },
     resolveGeneratedSlot(slot) { return { binding: slot.binding, bytes: bytes("G") }; },
   });
@@ -800,28 +575,6 @@ function recordChunkFor(completed: CompletedRenderIr, id: string): RenderChunk {
   return chunks[0]!;
 }
 
-/**
- * Every v2 owner is semantic, so the structural exact-binding vectors read the same fixture as the
- * record vectors; the alias keeps the structural cases' intent legible at their call sites.
- */
-function structuralSemanticFixture(): {
-  readonly document: RoadmapDocument;
-  readonly completed: CompletedRenderIr;
-} {
-  const document = semanticFixture("exact").document;
-  return { document, completed: complete(document).completed };
-}
-
-function structuralSectionWithReplacements(
-  document: RoadmapDocument,
-  source_replacements: RoadmapDocument["sections"][number]["source_replacements"],
-): RoadmapDocument {
-  return {
-    ...document,
-    sections: document.sections.map((section) => ({ ...section, source_replacements })),
-  };
-}
-
 function semanticOnlyCompletion(): {
   readonly document: RoadmapDocument;
   readonly record: RoadmapDocument["records"][number];
@@ -830,13 +583,15 @@ function semanticOnlyCompletion(): {
 } {
   const exact = semanticFixture("exact");
   const record = exact.document.records[0];
-  if (record === undefined) fail("semantic-only render vector lacks semantic record");
-  const semanticOnlyRecord = { ...record, projection_visibility: "semantic_only" as const, source_replacements: [] };
+  if (record === undefined) fail("unplaced render vector lacks a record");
+  if (record.payload.kind !== "work") fail("unplaced render vector payload drifted");
+  const { detail_md: _detail, ...payload } = record.payload;
+  const unplacedRecord = { ...record, payload: payload as SemanticPayload };
   const document: RoadmapDocument = {
     ...exact.document,
-    records: exact.document.records.map((candidate) => candidate === record ? semanticOnlyRecord : candidate),
+    records: exact.document.records.map((candidate) => candidate === record ? unplacedRecord : candidate),
     manifest: exact.document.manifest.filter((entry) =>
-      !(entry.kind === "record" && entry.record_id === semanticOnlyRecord.id)
+      !(entry.kind === "record" && entry.record_id === unplacedRecord.id)
     ),
   };
   const placement = resolveManifest(document);
@@ -844,7 +599,7 @@ function semanticOnlyCompletion(): {
     renderSemanticRecord: renderCanonicalSemanticRecord,
     resolveGeneratedSlot(slot) { return { binding: slot.binding, bytes: bytes("G") }; },
   });
-  return { document, record: semanticOnlyRecord, placement, completed };
+  return { document, record: unplacedRecord, placement, completed };
 }
 
 function testRenderCase(
@@ -926,354 +681,10 @@ function testRenderCase(
       placement.ops.some((op) => op.node.kind === "record" && op.node.id === record.id)) {
       fail("semantic-only record minted a manifest operation, chunk, or projected field segment");
     }
-    if (ledger === undefined || ledger.expected_fields.length !== 3 || ledger.consumed_fields.length !== 3) {
-      fail("semantic-only record did not explicitly consume every Markdown field");
+    if (ledger === undefined || ledger.expected_fields.length !== 2 || ledger.consumed_fields.length !== 2) {
+      fail("unplaced record did not explicitly consume every Markdown field");
     }
     return pass();
-  }
-  if (id === "render_semantic_only_span_prohibition") {
-    const { document, record, completed } = semanticOnlyCompletion();
-    requireIssue(validateSourceSpans({ document, completed }), "E-SPAN-OWNER");
-    const exactRecord = semanticFixture("exact").document.records[0];
-    if (exactRecord === undefined) fail("span-prohibition vector lacks replacement source");
-    const replacementOnly: RoadmapDocument = {
-      ...document,
-      records: document.records.map((candidate) => candidate === record
-        ? { ...candidate, source_replacements: [exactRecord.source_replacements[0]!] }
-        : candidate),
-    };
-    requireIssue(validateSourceSpans({ document: replacementOnly, completed }), "E-SPAN-OWNER");
-    return pass("negative");
-  }
-  if (
-    id === "render_semantic_exact_field_binding_swapped_labels" ||
-    id === "render_semantic_exact_field_binding_partial" ||
-    id === "render_semantic_exact_field_binding_duplicate" ||
-    id === "render_semantic_replacement_rows_order_independent"
-  ) {
-    const exact = semanticFixture("exact");
-    const exactPlacement = resolveManifest(exact.document);
-    const exactCompleted = completeSemantic(exact.document, exact.renderCalls);
-    const exactIssues = [
-      ...validateCompletedChunks(exact.document, exactPlacement.ops, exactCompleted),
-      ...validateSourceSpans({ document: exact.document, completed: exactCompleted }),
-    ];
-    if (exactIssues.length !== 0) fail(`exact semantic control failed: ${exactIssues.map((issue) => issue.message).join(";")}`);
-    const record = exact.document.records.find((candidate) =>
-      "render_authority" in candidate && candidate.render_authority === "semantic"
-    );
-    if (record === undefined || record.render_authority !== "semantic") fail("exact binding vector lacks semantic record");
-    if (id === "render_semantic_exact_field_binding_swapped_labels") {
-      const [first, second, third] = record.source_replacements;
-      const swapped: RoadmapDocument = {
-        ...exact.document,
-        records: exact.document.records.map((candidate) => candidate === record ? {
-          ...record,
-          source_replacements: [
-            { ...first!, replacement_field: second!.replacement_field },
-            { ...second!, replacement_field: first!.replacement_field },
-            third!,
-          ],
-        } : candidate),
-        spans: exact.document.spans.map((span) => span.id === first!.span_id
-          ? { ...span, owner_field: second!.replacement_field }
-          : span.id === second!.span_id ? { ...span, owner_field: first!.replacement_field } : span),
-      };
-      requireIssue(validateSourceSpans({ document: swapped, completed: exactCompleted }), "E-SPAN-OWNER");
-      return pass("negative");
-    }
-    if (id === "render_semantic_exact_field_binding_partial") {
-      const first = record.source_replacements[0]!;
-      const partial: RoadmapDocument = {
-        ...exact.document,
-        spans: exact.document.spans.map((span) => span.id === first.span_id
-          ? { ...span, end_byte: span.end_byte - 1, sha256: sha256(bytes("SU")) }
-          : span),
-      };
-      requireIssue(validateSourceSpans({ document: partial, completed: exactCompleted }), "E-SPAN-OWNER");
-      return pass("negative");
-    }
-    if (id === "render_semantic_exact_field_binding_duplicate") {
-      const [first, second, third] = record.source_replacements;
-      const duplicateField: RoadmapDocument = {
-        ...exact.document,
-        records: exact.document.records.map((candidate) => candidate === record ? {
-          ...record,
-          source_replacements: [first!, { ...second!, replacement_field: first!.replacement_field }, third!],
-        } : candidate),
-      };
-      requireIssue(validateCompletedChunks(duplicateField, resolveManifest(duplicateField).ops, exactCompleted), "E-FIELD-CONSUMPTION");
-      requireIssue(validateSourceSpans({ document: duplicateField, completed: exactCompleted }), "E-SPAN-OWNER");
-      const duplicateSpan: RoadmapDocument = {
-        ...exact.document,
-        records: exact.document.records.map((candidate) => candidate === record ? {
-          ...record,
-          source_replacements: [first!, { ...second!, span_id: first!.span_id }, third!],
-        } : candidate),
-      };
-      requireIssue(validateCompletedChunks(duplicateSpan, resolveManifest(duplicateSpan).ops, exactCompleted), "E-FIELD-CONSUMPTION");
-      requireIssue(validateSourceSpans({ document: duplicateSpan, completed: exactCompleted }), "E-SPAN-OWNER");
-      return pass("negative");
-    }
-    const reversed: RoadmapDocument = {
-      ...exact.document,
-      records: exact.document.records.map((candidate) => candidate === record ? {
-        ...record,
-        source_replacements: [...record.source_replacements].reverse(),
-      } : candidate),
-    };
-    const reversedCompleted = completeSemantic(reversed, { value: 0 });
-    const reversedPlacement = resolveManifest(reversed);
-    const reversedIssues = [
-      ...validateCompletedChunks(reversed, reversedPlacement.ops, reversedCompleted),
-      ...validateSourceSpans({ document: reversed, completed: reversedCompleted }),
-    ];
-    if (reversedIssues.length !== 0 || !exactCompleted.expected_bytes.bytesEqual(reversedCompleted.expected_bytes) ||
-      JSON.stringify(exactCompleted.projected_field_segments.map((segment) => [segment.logical_path, segment.start_in_chunk, segment.end_in_chunk])) !==
-        JSON.stringify(reversedCompleted.projected_field_segments.map((segment) => [segment.logical_path, segment.start_in_chunk, segment.end_in_chunk]))) {
-      fail("replacement row order changed rendered bytes or canonical projected field segments");
-    }
-    return pass();
-  }
-  if (id === "render_structural_exact_field_binding_all_kinds") {
-    const fixture = structuralSemanticFixture();
-    const placement = resolveManifest(fixture.document);
-    const issues = [
-      ...validateCompletedChunks(fixture.document, placement.ops, fixture.completed),
-      ...validateSourceSpans({ document: fixture.document, completed: fixture.completed }),
-    ];
-    if (issues.length !== 0) fail(`exact structural binding failed: ${issues.map((issue) => issue.message).join(";")}`);
-    const expected: readonly [Exclude<SourceSpan["source_kind"], "generated_slot">, string, string][] = [
-      ["section", "heading", "body_md"],
-      ["fragment", "fragment", "body_md"],
-      ["legacy_marker", "marker", "marker_md"],
-    ];
-    const executed: string[] = [];
-    for (const [kind, ownerId, field] of expected) {
-      const chunk = fixture.completed.chunks.find((candidate) =>
-        candidate.owner.kind === kind && candidate.owner.id === ownerId
-      );
-      const span = fixture.document.spans.find((candidate) =>
-        candidate.source_kind === kind && candidate.owner_id === ownerId
-      );
-      if (chunk === undefined || span === undefined) fail(`${kind} exact-binding control is incomplete`);
-      if (exactProjectedFieldSegment(
-        fixture.completed, chunk, kind, ownerId, field, span.start_byte, span.end_byte,
-      ) === undefined) fail(`${kind} exact projected field did not resolve`);
-      executed.push(kind);
-    }
-    const recordFixture = semanticFixture("exact");
-    const recordCompleted = completeSemantic(recordFixture.document, recordFixture.renderCalls);
-    const record = recordFixture.document.records.find((candidate) =>
-      "render_authority" in candidate && candidate.render_authority === "semantic"
-    );
-    if (record === undefined || !("source_replacements" in record)) fail("record exact-binding control is incomplete");
-    const recordChunk = recordChunkFor(recordCompleted, record.id);
-    for (const replacement of record.source_replacements) {
-      const span = recordFixture.document.spans.find((candidate) => candidate.id === replacement.span_id);
-      if (span === undefined || exactProjectedFieldSegment(
-        recordCompleted,
-        recordChunk,
-        "record",
-        record.id,
-        replacement.replacement_field,
-        span.start_byte,
-        span.end_byte,
-      ) === undefined) fail("record exact projected field did not resolve");
-    }
-    executed.push("record");
-    const partChunk = fixture.completed.chunks.find((candidate) =>
-      candidate.owner.kind === "part" && candidate.owner.id === "part"
-    );
-    const partSpan = fixture.document.spans.find((candidate) =>
-      candidate.source_kind === "part" && candidate.owner_id === "part"
-    );
-    if (partChunk === undefined || partSpan === undefined || exactProjectedFieldSegment(
-      fixture.completed, partChunk, "part", "part", "body_md", partSpan.start_byte, partSpan.end_byte,
-    ) === undefined) fail("part exact projected field did not resolve");
-    executed.push("part");
-    const semanticOnly = semanticOnlyCompletion();
-    if (semanticOnly.completed.projected_field_segments.some((segment) =>
-      segment.owner_kind === "record" && segment.owner_id === semanticOnly.record.id
-    )) fail("semantic-only record minted a projected field segment");
-    executed.push("semantic_only_zero_segments");
-    return pass("positive", Object.freeze(executed));
-  }
-  if (id === "render_structural_exact_field_binding_rejections") {
-    const fixture = structuralSemanticFixture();
-    const section = fixture.document.sections[0]!;
-    if (!("render_authority" in section) || section.render_authority !== "semantic") {
-      fail("structural rejection fixture lacks semantic section");
-    }
-    const sectionChunk = fixture.completed.chunks.find((chunk) =>
-      chunk.owner.kind === "section" && chunk.owner.id === section.section_id
-    );
-    const sectionSpan = fixture.document.spans.find((span) =>
-      span.source_kind === "section" && span.owner_id === section.section_id
-    );
-    const segmentIndex = fixture.completed.projected_field_segments.findIndex((segment) =>
-      segment.owner_kind === "section" && segment.owner_id === section.section_id
-    );
-    const segment = fixture.completed.projected_field_segments[segmentIndex];
-    if (sectionChunk === undefined || sectionSpan === undefined || segmentIndex < 0 || segment === undefined) {
-      fail("structural rejection fixture lacks exact section facts");
-    }
-    const withSegments = (segments: CompletedRenderIr["projected_field_segments"]): CompletedRenderIr => ({
-      ...fixture.completed,
-      projected_field_segments: segments,
-    });
-    const requireCompletedSegmentIssue = (completed: CompletedRenderIr): void => requireExactIssue(
-      validateCompletedChunks(fixture.document, resolveManifest(fixture.document).ops, completed),
-      "E-FIELD-CONSUMPTION",
-      'section["heading"].projected_field_segments',
-    );
-    const executed: string[] = [];
-    const without = fixture.completed.projected_field_segments.filter((_, index) => index !== segmentIndex);
-    requireCompletedSegmentIssue(withSegments(without));
-    executed.push("missing_segment");
-    requireCompletedSegmentIssue(withSegments([...fixture.completed.projected_field_segments, segment]));
-    executed.push("duplicate_segment");
-    const fragmentChunkIndex = fixture.completed.chunks.findIndex((chunk) => chunk.owner.kind === "fragment");
-    const fragmentSegmentIndex = fixture.completed.projected_field_segments.findIndex((candidate) =>
-      candidate.owner_kind === "fragment"
-    );
-    const fragmentChunk = fixture.completed.chunks[fragmentChunkIndex];
-    const fragmentSegment = fixture.completed.projected_field_segments[fragmentSegmentIndex];
-    if (fragmentChunkIndex < 0 || fragmentSegmentIndex < 0 || fragmentChunk === undefined || fragmentSegment === undefined) {
-      fail("same-ID cross-kind fixture lacks fragment facts");
-    }
-    const collidingFragmentChunk: RenderChunk = {
-      ...fragmentChunk,
-      owner: { ...fragmentChunk.owner, id: section.section_id },
-    };
-    const collidingChunks = [...fixture.completed.chunks];
-    collidingChunks[fragmentChunkIndex] = collidingFragmentChunk;
-    const collidingSegments = [...fixture.completed.projected_field_segments];
-    collidingSegments[fragmentSegmentIndex] = { ...fragmentSegment, owner_id: section.section_id };
-    const collidingCompleted: CompletedRenderIr = {
-      ...fixture.completed,
-      chunks: collidingChunks,
-      projected_field_segments: collidingSegments,
-    };
-    if (exactProjectedFieldSegment(
-      collidingCompleted,
-      collidingFragmentChunk,
-      "section",
-      section.section_id,
-      "body_md",
-      sectionSpan.start_byte,
-      sectionSpan.end_byte,
-    ) !== undefined) fail("same textual ID under a different structural kind satisfied section binding");
-    executed.push("same_id_wrong_kind");
-    requireCompletedSegmentIssue(withSegments([...without, { ...segment, owner_id: "wrong" }]));
-    executed.push("wrong_owner_id");
-    requireCompletedSegmentIssue(withSegments([...without, { ...segment, logical_path: "marker_md" }]));
-    executed.push("wrong_logical_path");
-    const sectionChunkIndex = fixture.completed.chunks.indexOf(sectionChunk);
-    const widenedChunks = [...fixture.completed.chunks];
-    const widenedSectionChunk: RenderChunk = { ...sectionChunk, bytes: bytes("HH") };
-    widenedChunks[sectionChunkIndex] = widenedSectionChunk;
-    const partialSegment = { ...segment, end_in_chunk: 1, bytes: bytes("H") };
-    const partialCompleted: CompletedRenderIr = {
-      ...fixture.completed,
-      chunks: widenedChunks,
-      projected_field_segments: [...without, partialSegment],
-      expected_bytes: createExpectedByteView(widenedChunks),
-    };
-    if (exactProjectedFieldSegment(
-      partialCompleted,
-      widenedSectionChunk,
-      "section",
-      section.section_id,
-      "body_md",
-      sectionSpan.start_byte,
-      sectionSpan.end_byte,
-    ) !== undefined) fail("proper non-empty structural prefix satisfied full-field binding");
-    executed.push("partial_full_field");
-    const unsafeSegment = {
-      ...segment,
-      start_in_chunk: Number.MAX_SAFE_INTEGER + 1,
-      end_in_chunk: Number.MAX_SAFE_INTEGER + 2,
-    };
-    if (exactProjectedFieldSegment(
-      withSegments([...without, unsafeSegment]),
-      sectionChunk,
-      "section",
-      section.section_id,
-      "body_md",
-      sectionSpan.start_byte,
-      sectionSpan.end_byte,
-    ) !== undefined) fail("unsafe structural segment coordinate was accepted");
-    if (exactProjectedFieldSegment(
-      fixture.completed,
-      sectionChunk,
-      "section",
-      section.section_id,
-      "body_md",
-      Number.MAX_SAFE_INTEGER + 1,
-      Number.MAX_SAFE_INTEGER + 2,
-    ) !== undefined) fail("unsafe whole-document coordinate was accepted");
-    executed.push("unsafe_coordinate");
-    const driftedBytes = new Uint8Array(segment.bytes);
-    driftedBytes[0] = driftedBytes[0]! ^ 1;
-    requireIssue(validateCompletedChunks(fixture.document, resolveManifest(fixture.document).ops,
-      withSegments([...without, { ...segment, bytes: driftedBytes }])), "E-RENDER-AUTHORITY");
-    executed.push("segment_byte_drift");
-    const expectedDriftChunks = fixture.completed.chunks.map((chunk) =>
-      chunk === sectionChunk ? { ...chunk, bytes: bytes("X") } : chunk
-    );
-    const expectedDrift: CompletedRenderIr = {
-      ...fixture.completed,
-      expected_bytes: createExpectedByteView(expectedDriftChunks),
-    };
-    if (exactProjectedFieldSegment(
-      expectedDrift,
-      sectionChunk,
-      "section",
-      section.section_id,
-      "body_md",
-      sectionSpan.start_byte,
-      sectionSpan.end_byte,
-    ) !== undefined) fail("expected-byte-view drift did not invalidate structural binding");
-    executed.push("expected_view_drift");
-    if (exactProjectedFieldSegment(
-      fixture.completed,
-      { ...sectionChunk },
-      "section",
-      section.section_id,
-      "body_md",
-      sectionSpan.start_byte,
-      sectionSpan.end_byte,
-    ) !== undefined) fail("cloned chunk object satisfied structural binding");
-    executed.push("cloned_chunk_identity");
-    const duplicatedChunkCompleted: CompletedRenderIr = {
-      ...fixture.completed,
-      chunks: [sectionChunk, ...fixture.completed.chunks],
-    };
-    if (exactProjectedFieldSegment(
-      duplicatedChunkCompleted,
-      sectionChunk,
-      "section",
-      section.section_id,
-      "body_md",
-      sectionSpan.start_byte,
-      sectionSpan.end_byte,
-    ) !== undefined) fail("duplicated chunk object satisfied structural binding");
-    executed.push("duplicate_chunk_identity");
-    const missingReplacement = structuralSectionWithReplacements(fixture.document, []);
-    requireIssue(validateCompletedChunks(missingReplacement, resolveManifest(missingReplacement).ops, fixture.completed), "E-FIELD-CONSUMPTION");
-    executed.push("missing_replacement");
-    const row = section.source_replacements[0]!;
-    const duplicateReplacement = structuralSectionWithReplacements(fixture.document, [row, row]);
-    requireIssue(validateCompletedChunks(duplicateReplacement, resolveManifest(duplicateReplacement).ops, fixture.completed), "E-FIELD-CONSUMPTION");
-    executed.push("duplicate_replacement");
-    const wrongReplacement = structuralSectionWithReplacements(fixture.document, [{ ...row, replacement_field: "marker_md" }]);
-    requireIssue(validateCompletedChunks(wrongReplacement, resolveManifest(wrongReplacement).ops, fixture.completed), "E-FIELD-CONSUMPTION");
-    executed.push("wrong_replacement_field");
-    const noSegment = withSegments(without);
-    requireIssue(validateSourceSpans({ document: fixture.document, completed: noSegment }), "E-SPAN-OWNER");
-    executed.push("whole_chunk_without_segment");
-    return pass("negative", Object.freeze(executed));
   }
   if (id === "render_slots_resolved_before_slot_validation") {
     const fixture = semanticFixture("exact");
@@ -1287,14 +698,6 @@ function testRenderCase(
     requireIssue(validateCompletedChunks(fixture.document, placement.ops, completed), "E-OUTPUT-SLOT");
     return pass("negative");
   }
-  if (id === "render_chunks_precede_span_validation") {
-    const fixture = semanticFixture("exact");
-    const completed = complete(fixture.document).completed;
-    const broken = { ...fixture.document, spans: [] };
-    if (completed.chunks.length !== fixture.document.manifest.length) fail("chunks were not completed first");
-    requireIssue(validateSourceSpans({ document: broken, completed }), "E-SPAN-EMPTY");
-    return pass("negative");
-  }
   if (id === "render_invalid_chunk_skips_projection_read") {
     const fixture = semanticFixture("exact");
     const completed = complete(fixture.document).completed;
@@ -1303,15 +706,15 @@ function testRenderCase(
     try {
       renderThenCheckCommittedProjection(
         completed.chunks,
-        [{ code: "E-SPAN-GAP", source: "fixture", logical_path: "span", message: "bad", exit: 1 }],
+        [{ code: "E-RENDER-AUTHORITY", source: "fixture", logical_path: "span", message: "bad", exit: 1 }],
         completed.expected_bytes,
         fixture.document.document.projection_path,
-        () => { reads++; return fixture.source; },
+        () => { reads++; return bytes("prior"); },
       );
     } catch (error) { rejection = error; }
     if (rejection === undefined || reads !== 0) fail("invalid chunks reached committed projection read");
     if (typeof rejection === "object" && rejection !== null && "issues" in rejection) {
-      observeMatchingIssue((rejection as { issues: readonly RoadmapIssue[] }).issues, "E-SPAN-GAP", "span");
+      observeMatchingIssue((rejection as { issues: readonly RoadmapIssue[] }).issues, "E-RENDER-AUTHORITY", "span");
     }
     return pass("negative");
   }
@@ -1319,7 +722,9 @@ function testRenderCase(
     const fixture = semanticFixture("exact");
     const completed = complete(fixture.document).completed;
     let reads = 0;
-    const actual = id === "render_committed_projection_read_last" ? fixture.source : bytes("X\nMSUMACCRATIONALEPG");
+    const rendered = renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
+    // The drifted bytes carry a newline so the diagnostic's escaped local context is exercised.
+    const actual = id === "render_committed_projection_read_last" ? rendered : bytes("X\nDETPG");
     const checked = renderThenCheckCommittedProjection(
       completed.chunks,
       [],
@@ -1344,7 +749,7 @@ function testRenderCase(
   const completed = complete(fixture.document).completed;
   const first = renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
   const second = renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
-  if (new TextDecoder().decode(first) !== "HFMSUMACCRATIONALEPG") fail(`${id}: exact render differs`);
+  if (new TextDecoder().decode(first) !== "HFDETPG") fail(`${id}: exact render differs`);
   if (id === "render_prior_projection_irrelevant") {
     const stale = renderThenCheckCommittedProjection(
       completed.chunks,
@@ -1622,8 +1027,6 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     const completed = complete(fixture.document).completed;
     const facts = collectManifestSlotBindingFacts(fixture.document, completed);
     const slot = fixture.document.generated_slots[0].slot_id;
-    const slotSpan = fixture.document.spans.find((span) => span.source_kind === "generated_slot");
-    if (slotSpan === undefined) fail("fixture lacks its generated-slot span");
     const manifestClaim: OutputClaim = {
       kind: "slot",
       producer: "roadmap-projector",
@@ -1641,12 +1044,15 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       targets: new Map(),
       manifest_slots: facts,
     });
+    const slotChunkIndex = completed.chunks.findIndex((chunk) => chunk.owner.kind === "generated_slot");
+    const slotStart = completed.expected_bytes.prefix_offsets[slotChunkIndex]!;
+    const slotEnd = completed.expected_bytes.prefix_offsets[slotChunkIndex + 1]!;
     if (
       resolved.issues.length !== 0 || resolved.resolved.length !== 1 ||
-      resolved.resolved[0].interval.start_byte !== slotSpan.start_byte ||
-      resolved.resolved[0].interval.end_byte !== slotSpan.end_byte ||
-      resolved.resolved[0].payload_interval.start_byte !== slotSpan.start_byte ||
-      resolved.resolved[0].payload_interval.end_byte !== slotSpan.end_byte
+      resolved.resolved[0].interval.start_byte !== slotStart ||
+      resolved.resolved[0].interval.end_byte !== slotEnd ||
+      resolved.resolved[0].payload_interval.start_byte !== slotStart ||
+      resolved.resolved[0].payload_interval.end_byte !== slotEnd
     ) fail("manifest slot owner did not resolve its exact completed chunk without a projection read");
     const mismatchedCompleted: CompletedRenderIr = {
       ...completed,
@@ -1971,9 +1377,6 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     const placement = fixture.document.manifest.find((entry) =>
       entry.kind === "generated_slot" && entry.slot_id === slot
     ) ?? fail("fixture generated-slot placement is missing");
-    const ownerSpan = fixture.document.spans.find((span) =>
-      span.source_kind === "generated_slot" && span.owner_id === slot
-    ) ?? fail("fixture generated-slot span is missing");
     const manifestCases: readonly [string, RoadmapDocument][] = [
       ["manifest_zero", { ...fixture.document, generated_slots: [] }],
       ["manifest_two_declarations", {
@@ -1983,10 +1386,6 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       ["manifest_two_placements", {
         ...fixture.document,
         manifest: [...fixture.document.manifest, { ...placement }],
-      }],
-      ["manifest_two_spans", {
-        ...fixture.document,
-        spans: [...fixture.document.spans, { ...ownerSpan, id: asSpanId("span-g-duplicate") }],
       }],
     ] as const;
     for (const [label, mutatedDocument] of manifestCases) {
@@ -2111,9 +1510,13 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
   if (id === "write_check_read_only_port" || id === "write_query_read_only_port") {
     let writeCapabilityReads = 0;
     const fixture = semanticFixture("exact");
+    const fixtureRendered = (() => {
+      const completed = complete(fixture.document).completed;
+      return renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
+    })();
     const readOnly = new Proxy({
-      readDeclared: (_path: RepoPath) => fixture.source,
-      readDeclaredAtCommit: () => fixture.source,
+      readDeclared: (_path: RepoPath) => fixtureRendered,
+      readDeclaredAtCommit: () => fixtureRendered,
       repositoryObjectFormat: () => "sha1" as const,
       resolveFullCommit: () => fail("unused"),
       registryView: () => fail("unused"),
@@ -2358,20 +1761,16 @@ function testStatusCase(
 function testDeterminismCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
   if (id === "issues_sorted") {
     const fixture = semanticFixture("exact");
-    const brokenSpans = fixture.document.spans.map((span, index) =>
-      index < 2 ? { ...span, sha256: "0".repeat(64) } : span
-    );
-    const forward = validateSourceSpans({
-      document: { ...fixture.document, spans: brokenSpans },
-      completed: complete(fixture.document).completed,
-    });
-    const reverse = validateSourceSpans({
-      document: { ...fixture.document, spans: [...brokenSpans].reverse() },
-      completed: complete(fixture.document).completed,
-    });
+    const orphaned = {
+      ...fixture.document,
+      fragments: fixture.document.fragments.map((fragment) => ({ ...fragment, projection_group: asSectionId("missing") })),
+      records: fixture.document.records.map((record) => ({ ...record, projection_group: asSectionId("missing") })),
+    };
+    const forward = resolveManifest(orphaned).issues;
+    const reverse = resolveManifest({ ...orphaned, records: [...orphaned.records].reverse() }).issues;
     const coordinates = (issues: readonly RoadmapIssue[]): string =>
       issues.map((value) => `${value.code}:${value.logical_path}`).join("|");
-    if (coordinates(forward) !== coordinates(reverse) || !coordinates(forward).includes("span-h")) {
+    if (coordinates(forward) !== coordinates(reverse) || !coordinates(forward).includes("fragment")) {
       fail("issue order depends on source table insertion order");
     }
     return pass();
@@ -2431,37 +1830,16 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   manifest_orphan_fragment: { category: "manifest-render", run: testManifestCase },
   manifest_unknown_id: { category: "manifest-render", run: testManifestCase },
   manifest_wrong_kind: { category: "manifest-render", run: testManifestCase },
-  manifest_duplicate_legacy_marker: { category: "manifest-render", run: testManifestCase },
   manifest_record_table_order_irrelevant: { category: "manifest-render", run: testManifestCase },
   manifest_true_sequence_preserved: { category: "manifest-render", run: testManifestCase },
   manifest_duplicate_not_tiebroken: { category: "manifest-render", run: testManifestCase },
   manifest_semantic_only_is_not_placed: { category: "manifest-render", run: testManifestCase },
-  span_gap: { category: "spans", run: testSpanCase },
-  span_overlap: { category: "spans", run: testSpanCase },
-  span_wrong_digest: { category: "spans", run: testSpanCase },
-  span_wrong_owner: { category: "spans", run: testSpanCase },
-  span_wrong_kind: { category: "spans", run: testSpanCase },
-  span_wrong_status: { category: "spans", run: testSpanCase },
-  span_out_of_bounds: { category: "spans", run: testSpanCase },
-  span_reversed: { category: "spans", run: testSpanCase },
-  span_utf8_byte_offsets: { category: "spans", run: testSpanCase },
-  span_mid_scalar_boundary: { category: "spans", run: testSpanCase },
-  span_final_eof_owner: { category: "spans", run: testSpanCase },
-  span_empty_vacuity: { category: "spans", run: testSpanCase },
-  span_partial_prefix_rejected: { category: "spans", run: testSpanCase },
-  span_single_snapshot: { category: "spans", run: testSpanCase },
-  span_source_change_digest_rejected: { category: "spans", run: testSpanCase },
+  span_utf8_byte_offsets: { category: "manifest-render", run: testSpanCase },
+  span_mid_scalar_boundary: { category: "manifest-render", run: testSpanCase },
   render_zero_chunks_rejected: { category: "manifest-render", run: testRenderCase },
   render_no_implicit_lf: { category: "manifest-render", run: testRenderCase },
   render_semantic_consumption_once: { category: "manifest-render", run: testRenderCase },
   render_semantic_only_zero_byte_consumption: { category: "manifest-render", run: testRenderCase },
-  render_semantic_only_span_prohibition: { category: "manifest-render", run: testRenderCase },
-  render_semantic_exact_field_binding_swapped_labels: { category: "manifest-render", run: testRenderCase },
-  render_semantic_exact_field_binding_partial: { category: "manifest-render", run: testRenderCase },
-  render_semantic_exact_field_binding_duplicate: { category: "manifest-render", run: testRenderCase },
-  render_semantic_replacement_rows_order_independent: { category: "manifest-render", run: testRenderCase },
-  render_structural_exact_field_binding_all_kinds: { category: "manifest-render", run: testRenderCase },
-  render_structural_exact_field_binding_rejections: { category: "manifest-render", run: testRenderCase },
   render_prior_projection_irrelevant: { category: "manifest-render", run: testRenderCase },
   outputs_duplicate_whole: { category: "output-ownership", run: testOutputCase },
   outputs_whole_vs_slot: { category: "output-ownership", run: testOutputCase },
@@ -2487,7 +1865,6 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   two_clean_renders_equal: { category: "determinism-purity", run: testRenderCase },
   no_clock_without_as_of: { category: "determinism-purity", run: testDeterminismCase },
   render_chunks_precede_consumption_validation: { category: "manifest-render", run: testRenderCase },
-  render_chunks_precede_span_validation: { category: "manifest-render", run: testRenderCase },
   render_slots_resolved_before_slot_validation: { category: "manifest-render", run: testRenderCase },
   render_invalid_chunk_skips_projection_read: { category: "manifest-render", run: testRenderCase },
   render_committed_projection_read_last: { category: "manifest-render", run: testRenderCase },
@@ -2505,8 +1882,8 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   status_projector_before_after_message_parity: { category: "status-compat", run: testStatusCase, fixture: true },
   status_projector_preflight_no_partial_write: { category: "status-compat", run: testStatusCase, fixture: true },
   status_projector_after_matrix_handoff: { category: "status-compat", run: testStatusCase, fixture: true },
-  span_expected_byte_view_cross_chunk: { category: "spans", run: testSpanCase },
-  span_expected_byte_view_incremental_hash: { category: "spans", run: testSpanCase },
+  span_expected_byte_view_cross_chunk: { category: "manifest-render", run: testSpanCase },
+  span_expected_byte_view_incremental_hash: { category: "manifest-render", run: testSpanCase },
 };
 
 export const PROJECTION_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
