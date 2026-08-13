@@ -807,7 +807,7 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     }
     case "domain_defect_regression_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "defect"'), "matrix"), ["E-SCHEMA-STATE"]); return;
     case "domain_missing_system_admission_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "missing_system"'), "testing"), ["E-SCHEMA-STATE"]); return;
-    case "schema_held_permanent_rejected": expectFailure(() => decodePayload('kind = "decision"\ndecision_state = "held"\nrationale_md = """R."""\npermanence = "permanent"\ntransition_ids = ["matrix.fixture-signal"]\n', "matrix"), ["E-SCHEMA-ENUM"]); return;
+    case "schema_held_permanent_rejected": expectFailure(() => decodePayload('kind = "decision"\ndecision_state = "held"\nrationale_md = """R."""\npermanence = "permanent"\n\n[p.reopening_signal]\nobserver = "operator"\ndimension = "count"\naction_on_fire_md = """Act."""\nevaluation = "unknown"\n\n[p.reopening_signal.predicate]\npredicate_kind = "event"\nevent_md = """Event."""\n', "matrix"), ["E-SCHEMA-ENUM"]); return;
     case "domain_quantitative_scope_unit_required": expectFailure(() => decodePayload(predicateSignal('predicate_kind = "quantitative"\ncomparator = "ge"\nthreshold = 2\nmeasurement = 1\nas_of = "2026-08-11"\n'), "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;
     case "domain_manual_not_auto_boolean": {
       const decoded = decodePayload(predicateSignal('predicate_kind = "manual"\nreview_procedure_md = """Review."""\nevidence_ids = ["matrix.fixture-evidence"]\n'), "matrix");
@@ -820,17 +820,22 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       return;
     }
     case "domain_fired_transition_not_parked": {
+      // Deferred work is the one arm retaining the standalone-signal citation (Packet 3A-2);
+      // fixture-signal-a's evaluation is already "met", so retargeting the citation parks a
+      // fired transition.
       assert(context !== undefined, `${id} requires fixture ports`);
       const source = fixtureText(context, "all-fields/matrix-v3.toml");
-      const mutated = replaceAfter(source, 'id = "matrix.fixture-task-f"', 'transition_ids = ["matrix.fixture-signal-b"]', 'transition_ids = ["matrix.fixture-signal-a"]');
-      expectFailure(() => decodeRoadmapSource(text(mutated), "<fired-transition>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-f.transition_ids");
+      const mutated = replaceAfter(source, 'id = "matrix.fixture-task-g"', 'transition_ids = ["matrix.fixture-signal-f"]', 'transition_ids = ["matrix.fixture-signal-a"]');
+      expectFailure(() => decodeRoadmapSource(text(mutated), "<fired-transition>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-g.transition_ids");
       return;
     }
     case "domain_already_met_signal_rejected": {
+      // The nested form of the same rule: an armed work's nested promotion trigger whose
+      // evaluation already reads "met" cannot be parked.
       assert(context !== undefined, `${id} requires fixture ports`);
       const source = fixtureText(context, "all-fields/matrix-v3.toml");
-      const mutated = replaceAfter(source, 'id = "matrix.fixture-signal-b"', 'evaluation = "unmet"', 'evaluation = "met"');
-      expectFailure(() => decodeRoadmapSource(text(mutated), "<already-met-signal>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-f.transition_ids");
+      const mutated = replaceAfter(source, "[record.payload.promotion_trigger]", 'evaluation = "unknown"', 'evaluation = "met"');
+      expectFailure(() => decodeRoadmapSource(text(mutated), "<already-met-signal>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-f.promotion_trigger");
       return;
     }
     case "domain_stale_unknown_visible": {

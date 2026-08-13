@@ -29,7 +29,16 @@ detail_md = """Decision a: pending.
 decision_state = "pending"
 question_md = """Which branch should become authoritative?
 """
-transition_ids = ["matrix.fixture-signal-h"]
+
+[record.payload.unblock_predicate]
+owner_reference_id = "ref-issue"
+event_md = """Nested unblock event.
+"""
+check_procedure_md = """Nested unblock check procedure.
+"""
+due_action_md = """Nested unblock due action.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixture-choice-b"
@@ -44,7 +53,19 @@ decision_state = "held"
 rationale_md = """The reviewed choice remains reopenable.
 """
 permanence = "reopenable"
-transition_ids = ["matrix.fixture-signal-f"]
+
+[record.payload.reopening_signal]
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+action_on_fire_md = """Nested event trigger action.
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """Nested event condition.
+"""
+evidence_ids = ["matrix.fixture-evidence-a"]
 
 [[record]]
 id = "matrix.fixture-choice-c"
@@ -75,7 +96,18 @@ rationale_md = """The authority allows reopening on the declared transition.
 """
 authority_reference_id = "ref-spec"
 permanence = "reopenable"
-transition_ids = ["matrix.fixture-signal-f"]
+
+[record.payload.reopening_signal]
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+action_on_fire_md = """Nested event trigger action.
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """Nested event condition.
+"""
 
 [[record]]
 id = "matrix.fixture-control-a"
@@ -544,7 +576,20 @@ policy_kind = "maintenance_protocol"
 authority_reference_id = "ref-file"
 protocol_md = """Run the fixture review at every declared cadence.
 """
-cadence_transition_id = "matrix.fixture-signal-k"
+
+[record.payload.cadence]
+owner_reference_id = "ref-issue"
+event_source = "fixture-event-source"
+period_or_event_md = """Nested cadence period.
+"""
+checklist_md = """Nested cadence checklist.
+"""
+missed_action_md = """Nested cadence missed action.
+"""
+last_completion_reference_id = "ref-issue"
+due_on = "2026-08-12"
+as_of = "2026-08-11"
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixture-policy-b"
@@ -575,7 +620,23 @@ authority_reference_id = "ref-file"
 rationale_md = """The fixture scope reopens on its declared signal.
 """
 permanence = "reopenable"
-reopening_transition_id = "matrix.fixture-signal-f"
+
+[record.payload.reopening_signal]
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-observable"
+action_on_fire_md = """Nested quantitative trigger action.
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "quantitative"
+comparator = "ge"
+threshold = 2
+unit = "fixture-units"
+scope = "matrix fixture nested"
+measurement = 1
+as_of = "2026-08-11"
 
 [[record]]
 id = "matrix.fixture-raw-owner"
@@ -970,7 +1031,16 @@ work_kind = "feature"
 risk = "compile_failure"
 blocker_md = """A named dependency blocks execution.
 """
-transition_ids = ["matrix.fixture-signal-h"]
+
+[record.payload.unblock_predicate]
+owner_reference_id = "ref-issue"
+event_md = """Nested unblock event.
+"""
+check_procedure_md = """Nested unblock check procedure.
+"""
+due_action_md = """Nested unblock due action.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixture-task-f"
@@ -986,7 +1056,19 @@ work_intent = "optimize"
 work_kind = "optimization"
 risk = "abort_or_panic"
 control_ids = ["matrix.fixture-control-a"]
-transition_ids = ["matrix.fixture-signal-b"]
+
+[record.payload.promotion_trigger]
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-observable"
+action_on_fire_md = """Nested manual trigger action.
+"""
+evaluation = "unknown"
+
+[record.payload.promotion_trigger.predicate]
+predicate_kind = "manual"
+review_procedure_md = """Nested manual review procedure.
+"""
 
 [[record]]
 id = "matrix.fixture-task-g"
@@ -1016,8 +1098,17 @@ work_state = "waiting_external"
 work_intent = "repair"
 work_kind = "missing_system"
 risk = "misleading_docs"
-transition_ids = ["matrix.fixture-signal-j"]
 external_owner_reference_id = "ref-issue"
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-issue"
+external_predicate_md = """Nested external retirement predicate.
+"""
+verification_md = """Nested retirement verification.
+"""
+due_action_md = """Nested retirement due action.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixture-task-i"
@@ -1069,10 +1160,19 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-issue"
 current_upstream_state_md = """The upstream state is waiting.
 """
-transition_ids = ["matrix.fixture-signal-j"]
 verification_md = """Verify the referenced upstream behavior.
 """
 prune_reference_ids = ["ref-issue"]
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-issue"
+external_predicate_md = """Nested external retirement predicate.
+"""
+verification_md = """Nested retirement verification.
+"""
+due_action_md = """Nested retirement due action.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "action-a-one"
@@ -1109,9 +1209,18 @@ closeout_state = "due"
 upstream_owner_reference_id = "ref-issue"
 current_upstream_state_md = """The upstream state is due.
 """
-transition_ids = ["matrix.fixture-signal-j"]
 verification_md = """Verify the referenced upstream behavior.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-issue"
+external_predicate_md = """Nested external retirement predicate.
+"""
+verification_md = """Nested retirement verification.
+"""
+due_action_md = """Nested retirement due action.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "action-b-one"
@@ -1149,9 +1258,18 @@ current_upstream_state_md = """The upstream state is blocked.
 """
 blocker_md = """The upstream artifact is unavailable.
 """
-transition_ids = ["matrix.fixture-signal-j"]
 verification_md = """Verify the referenced upstream behavior.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-issue"
+external_predicate_md = """Nested external retirement predicate.
+"""
+verification_md = """Nested retirement verification.
+"""
+due_action_md = """Nested retirement due action.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "action-c-one"

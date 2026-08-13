@@ -110,7 +110,7 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
           record.payload.kind === "testing_operational_watch" && record.payload.watch_state !== "watching" ||
           record.payload.kind === "testing_incident" && record.payload.incident_posture !== "live"),
       };
-      assert(operationalBuckets.systems.length === 32 && operationalBuckets.live.length === 4 &&
+      assert(operationalBuckets.systems.length === 16 && operationalBuckets.live.length === 4 &&
         operationalBuckets.history.length === 0, "live operational classification counts changed");
       const systemsStart = liveText.indexOf("### Operational systems, controls, and resource work");
       const liveStart = liveText.indexOf("### Live operational watches");

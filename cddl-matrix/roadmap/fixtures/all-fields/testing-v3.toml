@@ -185,8 +185,20 @@ signature_md = """Synthetic attributed watch signature."""
 attribution_md = """The fixture attributes the watch."""
 operating_rule_reference_id = "operational-attributed-rule"
 response_md = """Capture and retain exact evidence."""
-escalation_transition_id = "testing.fixture-signal-escalation"
 retirement_semantics_md = """Retire after the operating rule proves stable."""
+
+[record.payload.watch_escalation]
+failure_signature_md = """Nested failure signature.
+"""
+capture_procedure_md = """Nested capture procedure.
+"""
+response_md = """Nested response.
+"""
+escalation_action_md = """Nested escalation action.
+"""
+retirement_semantics_md = """Nested retirement semantics.
+"""
+evaluation = "unknown"
 
 [[record.payload.capture_step]]
 step_id = "capture"
@@ -206,9 +218,21 @@ signature_md = """Synthetic retire-pending watch signature."""
 attribution_md = """The fixture attributes the retired watch."""
 operating_rule_reference_id = "operational-retire-rule"
 response_md = """Retain the capture until retirement completes."""
-escalation_transition_id = "testing.fixture-signal-escalation"
 retirement_reference_id = "operational-retire-pin"
 retirement_semantics_md = """Retire when the replacement pin resolves."""
+
+[record.payload.watch_escalation]
+failure_signature_md = """Nested failure signature.
+"""
+capture_procedure_md = """Nested capture procedure.
+"""
+response_md = """Nested response.
+"""
+escalation_action_md = """Nested escalation action.
+"""
+retirement_semantics_md = """Nested retirement semantics.
+"""
+evaluation = "unknown"
 
 [[record.payload.capture_step]]
 step_id = "capture"

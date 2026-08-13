@@ -137,21 +137,8 @@ export function validateMatrixPayloadFact(
   const payload = provider.payload;
   if (payload.kind !== "matrix_external_closeout" && payload.kind !== "matrix_policy") return;
   if (payload.kind === "matrix_external_closeout") {
-    if (payload.transition_ids.length !== 1) {
-      out.add(issue(provider, source, "E-SCHEMA-STATE", "transition_ids", "matrix closeout requires exactly one retirement predicate"));
-    }
-    for (const id of payload.transition_ids) {
-      requirePayloadKind(
-        provider,
-        source,
-        indexes,
-        id,
-        "transition_ids",
-        (target) => target.kind === "signal" && target.transition_kind === "retirement_predicate",
-        "one retirement-predicate signal",
-        out,
-      );
-    }
+    // The retirement predicate is a required NESTED table (Packet 3A-2): existence and kind are
+    // structural, so the old exactly-one-citation and target-subtype checks are unrepresentable.
     const actionIds = new Set<string>();
     for (const action of payload.actions) {
       if (actionIds.has(action.action_id)) {
@@ -190,26 +177,9 @@ export function validateMatrixPayloadFact(
     }
     return;
   }
-  const targetId = payload.policy_kind === "maintenance_protocol"
-    ? payload.cadence_transition_id
-    : payload.reopening_transition_id;
-  if (targetId === undefined) {
-    if (payload.policy_kind === "boundary" && payload.permanence === "reopenable") {
-      out.add(issue(provider, source, "E-SCHEMA-STATE", "reopening_transition_id", "reopenable matrix boundary requires a reopening signal"));
-    }
-    return;
-  }
-  const expected = payload.policy_kind === "maintenance_protocol" ? "cadence" : "reopening_signal";
-  requirePayloadKind(
-    provider,
-    source,
-    indexes,
-    targetId,
-    payload.policy_kind === "maintenance_protocol" ? "cadence_transition_id" : "reopening_transition_id",
-    (target) => target.kind === "signal" && target.transition_kind === expected,
-    `${expected} signal`,
-    out,
-  );
+  // Policy transitions are required NESTED tables (Packet 3A-2): the maintenance cadence and the
+  // reopenable boundary's reopening signal exist by decode, with their kind fixed by the field
+  // name, so the old citation-subtype checks are unrepresentable rather than validated.
 }
 
 const MATRIX_FLOORS = createRoadmapFloorValidator({

@@ -734,19 +734,19 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       }
       const decisions = dashboards.get("decisions")!.decisions as Record<string, readonly Record<string, unknown>[]>;
       assert(Object.values(decisions).flat().length > 0 &&
-        (decisions.pending ?? []).every((row) => "question_md" in row && "transition_ids" in row) &&
-        (decisions.held ?? []).every((row) => "rationale_md" in row && "transition_ids" in row) &&
+        (decisions.pending ?? []).every((row) => "question_md" in row && "unblock_predicate" in row) &&
+        (decisions.held ?? []).every((row) => "rationale_md" in row && "reopening_signal" in row) &&
         (decisions.decided ?? []).every((row) => "rationale_md" in row && "authority_reference_id" in row),
       "decisions dashboard dropped its state-specific question/rationale/authority fields");
+      // Post-fold (Packet 3A-2) the signals dashboard carries only STANDALONE signal records;
+      // the unblock/retirement kinds live nested on their owners and surface via actionables.
       const signals = dashboards.get("signals")!.signals as Record<string, readonly Record<string, unknown>[]>;
       assert(JSON.stringify(Object.keys(signals)) === JSON.stringify(["cadence", "evidence_freshness",
-        "promotion_trigger", "reopening_signal", "retirement_predicate", "unblock_predicate", "watch_escalation"]),
+        "promotion_trigger", "reopening_signal", "watch_escalation"]),
       "signals dashboard transition grouping changed");
       for (const [kind, required] of [
         ["promotion_trigger", ["predicate", "action_on_fire_md"]],
-        ["unblock_predicate", ["event_md", "check_procedure_md", "due_action_md"]],
         ["watch_escalation", ["capture_procedure_md", "response_md", "escalation_action_md", "retirement_semantics_md"]],
-        ["retirement_predicate", ["external_predicate_md", "verification_md", "due_action_md"]],
         ["cadence", ["period_or_event_md", "checklist_md", "missed_action_md", "due_on"]],
         ["evidence_freshness", ["claim_md", "reference_ids", "scope", "valid_through", "unprobed_remainder_md"]],
       ] as const) {

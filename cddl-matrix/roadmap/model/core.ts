@@ -111,24 +111,28 @@ export interface ReadyWork extends WorkBase {
 export interface BlockedWork extends WorkBase {
   work_state: "blocked";
   blocker_md: Uint8Array;
-  transition_ids: RoadmapId[];
+  unblock_predicate: NestedUnblockPredicate;
 }
 
 export interface ArmedWork extends WorkBase {
   work_state: "armed";
   control_ids: RoadmapId[];
-  transition_ids: RoadmapId[];
+  promotion_trigger: NestedTriggerSignal;
 }
 
+/** Deferred work carries a nested reopening signal, a standalone-signal citation, or both. */
 export interface DeferredWork extends WorkBase {
   work_state: "deferred";
-  transition_ids: RoadmapId[];
+  transition_ids?: RoadmapId[];
+  reopening_signal?: NestedTriggerSignal;
 }
 
+/** Waiting-external work carries exactly one of the two admissible transition contracts. */
 export interface WaitingExternalWork extends WorkBase {
   work_state: "waiting_external";
-  transition_ids: RoadmapId[];
   external_owner_reference_id: ReferenceId;
+  retirement_predicate?: NestedRetirementPredicate;
+  unblock_predicate?: NestedUnblockPredicate;
 }
 
 export interface DelegatedWork extends WorkBase {
@@ -154,7 +158,7 @@ export interface PendingDecision extends SemanticPayloadBase {
   kind: "decision";
   decision_state: "pending";
   question_md: Uint8Array;
-  transition_ids: RoadmapId[];
+  unblock_predicate: NestedUnblockPredicate;
 }
 
 export interface HeldDecision extends SemanticPayloadBase {
@@ -162,7 +166,7 @@ export interface HeldDecision extends SemanticPayloadBase {
   decision_state: "held";
   rationale_md: Uint8Array;
   permanence: "reopenable";
-  transition_ids: RoadmapId[];
+  reopening_signal: NestedTriggerSignal;
 }
 
 export interface DecidedDecision extends SemanticPayloadBase {
@@ -171,7 +175,7 @@ export interface DecidedDecision extends SemanticPayloadBase {
   rationale_md: Uint8Array;
   authority_reference_id: ReferenceId;
   permanence: "permanent" | "reopenable";
-  transition_ids?: RoadmapId[];
+  reopening_signal?: NestedTriggerSignal;
 }
 
 export type DecisionPayload = PendingDecision | HeldDecision | DecidedDecision;
@@ -190,16 +194,17 @@ export interface QuantitativePredicate {
   evidence_ids?: RoadmapId[];
 }
 
+/** evidence_ids absent means "no evidence of the event recorded yet" (3A-2 re-cut ruling 1). */
 export interface EventPredicate {
   predicate_kind: "event";
   event_md: Uint8Array;
-  evidence_ids: RoadmapId[];
+  evidence_ids?: RoadmapId[];
 }
 
 export interface ManualPredicate {
   predicate_kind: "manual";
   review_procedure_md: Uint8Array;
-  evidence_ids: RoadmapId[];
+  evidence_ids?: RoadmapId[];
 }
 
 export type SignalPredicate = QuantitativePredicate | EventPredicate | ManualPredicate;
@@ -280,6 +285,17 @@ export type SignalPayload =
   | WatchEscalation
   | RetirementPredicate
   | CadenceSignal;
+
+/**
+ * Nested transition tables (Packet 3A-2): the standalone signal arms' typed contracts packaged as
+ * tables on the owning record — the field name supplies `transition_kind`, the owner supplies the
+ * identity, so those and `detail_md` have no nested representation.
+ */
+export type NestedTriggerSignal = Omit<PromotionTrigger, "kind" | "transition_kind" | "detail_md">;
+export type NestedUnblockPredicate = Omit<UnblockPredicate, "kind" | "transition_kind" | "detail_md">;
+export type NestedWatchEscalation = Omit<WatchEscalation, "kind" | "transition_kind" | "detail_md">;
+export type NestedRetirementPredicate = Omit<RetirementPredicate, "kind" | "transition_kind" | "detail_md">;
+export type NestedCadenceSignal = Omit<CadenceSignal, "kind" | "transition_kind" | "detail_md">;
 
 export type EvidenceKind =
   | "regression_pin"

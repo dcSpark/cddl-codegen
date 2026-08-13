@@ -1,8 +1,10 @@
 import type {
   LowercaseSlug,
+  NestedCadenceSignal,
+  NestedRetirementPredicate,
+  NestedTriggerSignal,
   ReferenceId,
   RepoPath,
-  RoadmapId,
   SemanticPayloadBase,
 } from "./core.ts";
 
@@ -23,9 +25,9 @@ interface MatrixExternalCloseoutBase extends SemanticPayloadBase {
   closeout_state: "waiting" | "due" | "blocked";
   upstream_owner_reference_id: ReferenceId;
   current_upstream_state_md: Uint8Array;
-  transition_ids: RoadmapId[];
   verification_md: Uint8Array;
   prune_reference_ids?: ReferenceId[];
+  retirement_predicate: NestedRetirementPredicate;
   actions: MatrixCloseoutAction[];
   branches: MatrixCloseoutBranch[];
 }
@@ -53,7 +55,7 @@ export interface MatrixMaintenancePolicy extends SemanticPayloadBase {
   policy_kind: "maintenance_protocol";
   authority_reference_id: ReferenceId;
   protocol_md: Uint8Array;
-  cadence_transition_id: RoadmapId;
+  cadence: NestedCadenceSignal;
 }
 
 export interface MatrixBoundaryPolicy extends SemanticPayloadBase {
@@ -62,7 +64,7 @@ export interface MatrixBoundaryPolicy extends SemanticPayloadBase {
   authority_reference_id: ReferenceId;
   rationale_md: Uint8Array;
   permanence: "permanent" | "reopenable";
-  reopening_transition_id?: RoadmapId;
+  reopening_signal?: NestedTriggerSignal;
 }
 
 export type MatrixPolicyPayload = MatrixMaintenancePolicy | MatrixBoundaryPolicy;

@@ -308,11 +308,19 @@ function assertDecodedDomainJoins(ctx: DecodeContext, doc: RoadmapDocumentV3): v
     const payload = payloads.get(record.id);
     if (payload?.kind === "work") {
       if ("transition_ids" in payload) {
-        for (const transitionId of payload.transition_ids) {
+        for (const transitionId of payload.transition_ids ?? []) {
           const transition = payloads.get(transitionId);
           if (transition?.kind === "signal" && transition.evaluation === "met") {
             schemaFail(ctx, "E-SCHEMA-STATE", `record.${record.id}.transition_ids`, `work cannot park already-fired transition ${transitionId}`);
           }
+        }
+      }
+      // The same fired-transition rule applies to nested transitions (Packet 3A-2): a parked
+      // state cannot carry a transition whose evaluation already reads met.
+      for (const field of ["promotion_trigger", "reopening_signal", "unblock_predicate", "retirement_predicate"] as const) {
+        const nested = (payload as unknown as Record<string, { evaluation?: string } | undefined>)[field];
+        if (nested !== undefined && nested.evaluation === "met") {
+          schemaFail(ctx, "E-SCHEMA-STATE", `record.${record.id}.${field}`, `work cannot park already-fired nested ${field}`);
         }
       }
       if (payload.work_kind === "defect") {

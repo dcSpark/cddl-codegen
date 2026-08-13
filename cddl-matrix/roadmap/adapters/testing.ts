@@ -26,16 +26,20 @@ export function validateTestingPayloadFact(
     payload.kind !== "testing_cost" && payload.kind !== "testing_system_admission"
   ) return;
   if (payload.kind === "testing_operational_watch") {
-    requirePayloadKind(
-      provider,
-      source,
-      indexes,
-      payload.escalation_transition_id,
-      "escalation_transition_id",
-      (target) => target.kind === "signal" && target.transition_kind === "watch_escalation",
-      "a watch-escalation signal",
-      out,
-    );
+    // The nested watch_escalation form is structural; only the standalone-signal citation form
+    // still needs its target subtype validated.
+    if (payload.escalation_transition_id !== undefined) {
+      requirePayloadKind(
+        provider,
+        source,
+        indexes,
+        payload.escalation_transition_id,
+        "escalation_transition_id",
+        (target) => target.kind === "signal" && target.transition_kind === "watch_escalation",
+        "a watch-escalation signal",
+        out,
+      );
+    }
     return;
   }
   if (payload.kind === "testing_incident") {

@@ -380,19 +380,15 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     reference_target: 1,
     relation_source: 10,
     relation_target: 10,
-    semantic_target: 28,
+    semantic_target: 18,
   },
   semantic_targets: {
     "matrix.fixture-control-a": 2,
-    "matrix.fixture-evidence-a": 6,
+    "matrix.fixture-evidence-a": 7,
     "matrix.fixture-evidence-b": 2,
     "matrix.fixture-evidence-c": 3,
     "matrix.fixture-evidence-d": 1,
-    "matrix.fixture-signal-b": 1,
-    "matrix.fixture-signal-f": 4,
-    "matrix.fixture-signal-h": 2,
-    "matrix.fixture-signal-j": 4,
-    "matrix.fixture-signal-k": 1,
+    "matrix.fixture-signal-f": 1,
     "matrix.fixture-task-b": 2,
   },
   reference_uses: {
@@ -401,7 +397,7 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     "ref-feature": 1,
     "ref-file": 12,
     "ref-gate": 6,
-    "ref-issue": 9,
+    "ref-issue": 17,
     "ref-release": 1,
     "ref-roadmap": 2,
     "ref-spec": 3,
@@ -499,14 +495,14 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     manifest_record: 15,
     provider: 15,
     reference_source: 9,
-    semantic_target: 12,
+    semantic_target: 10,
   },
   semantic_targets: {
     "testing.fixture-admission-independent": 1,
     "testing.fixture-evidence-gate": 6,
     "testing.fixture-incident-attributed": 1,
     "testing.fixture-incident-live": 1,
-    "testing.fixture-signal-escalation": 3,
+    "testing.fixture-signal-escalation": 1,
   },
   reference_uses: {
     "control-review-heading": 1,
@@ -925,26 +921,15 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
           payload_records: payloadRecords,
         }, path);
       };
+      // The nested transition forms (Packet 3A-2) make a wrong-kind target unrepresentable for
+      // blocked/armed work, closeouts, and policies; the one remaining matrix citation surface is
+      // deferred work's standalone-signal transition list.
       assert(
-        mutateSemanticTarget("fixture-task-e\"].payload.transition_ids", (payload) => ({
+        mutateSemanticTarget("fixture-task-g\"].payload.transition_ids", (payload) => ({
           ...payload,
           transition_kind: "cadence",
-        })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.includes("fixture-task-e")),
-        "blocked work must reject a cadence target in place of its unblock predicate",
-      );
-      assert(
-        mutateSemanticTarget("fixture-policy-a\"].payload.cadence_transition_id", (payload) => ({
-          ...payload,
-          transition_kind: "reopening_signal",
-        })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.endsWith("cadence_transition_id")),
-        "maintenance policy cadence must reject a reopening signal",
-      );
-      assert(
-        mutateSemanticTarget("fixture-policy-c\"].payload.reopening_transition_id", (payload) => ({
-          ...payload,
-          transition_kind: "cadence",
-        })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.endsWith("reopening_transition_id")),
-        "reopenable policy must reject a cadence signal",
+        })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.includes("fixture-task-g")),
+        "deferred work must reject a cadence target in place of its reopening signal",
       );
       assert(
         mutateSemanticTarget("fixture-task-f\"].payload.control_ids", (payload) => ({

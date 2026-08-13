@@ -41,13 +41,18 @@ function decodeWatch(ctx: DecodeContext, raw: unknown, path: string): TestingOpe
   const pre = expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.testing_watch);
   const state = expectEnum(ctx, requiredValue(pre, "watch_state"), WATCH_STATES, p(path, "watch_state"));
   const arm = armForDiscriminants("testing_operational_watch", { watch_state: state });
-  return decodeArmFields(
+  const payload = decodeArmFields(
     ctx,
     raw,
     path,
     arm,
     { kind: "testing_operational_watch", watch_state: state },
   ) as unknown as TestingOperationalWatchPayload;
+  const record = payload as unknown as Record<string, unknown>;
+  if ((record.watch_escalation === undefined) === (record.escalation_transition_id === undefined)) {
+    schemaFail(ctx, "E-SCHEMA-STATE", path, "operational watch requires exactly one of a nested watch_escalation or escalation_transition_id");
+  }
+  return payload;
 }
 
 function decodeIncident(ctx: DecodeContext, raw: unknown, path: string): TestingIncidentPayload {

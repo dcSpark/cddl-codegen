@@ -32,7 +32,7 @@ import {
   armForDiscriminants,
   armOfGroupValue,
 } from "../payload_descriptors.ts";
-import { decodeArmFields } from "./fields.ts";
+import { decodeArmFields, decodePredicate } from "./fields.ts";
 import {
   childLogicalPath as p,
   expectEnum,
@@ -82,6 +82,13 @@ function decodeWork(ctx: DecodeContext, raw: unknown, path: string): WorkPayload
   if (state === "ready" && payload.work_kind === "missing_system" && (payload.admission_ids?.length ?? 0) === 0) {
     schemaFail(ctx, "E-SCHEMA-STATE", path, "ready missing-system work requires an admission ID");
   }
+  const record = payload as unknown as Record<string, unknown>;
+  if (state === "deferred" && record.reopening_signal === undefined && record.transition_ids === undefined) {
+    schemaFail(ctx, "E-SCHEMA-STATE", path, "deferred work requires a nested reopening_signal or a standalone transition citation");
+  }
+  if (state === "waiting_external" && (record.retirement_predicate === undefined) === (record.unblock_predicate === undefined)) {
+    schemaFail(ctx, "E-SCHEMA-STATE", path, "waiting-external work requires exactly one of retirement_predicate or unblock_predicate");
+  }
   return payload;
 }
 
@@ -104,13 +111,6 @@ function decodeDecision(ctx: DecodeContext, raw: unknown, path: string): Decisio
   ) as unknown as DecisionPayload;
 }
 
-function decodePredicate(ctx: DecodeContext, raw: unknown, path: string): SignalPredicate {
-  const pre = expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.signal_predicate);
-  const kind = expectEnum(ctx, requiredValue(pre, "predicate_kind"), PREDICATE_KINDS, p(path, "predicate_kind"));
-  const arm = armOfGroupValue(SIGNAL_PREDICATE_GROUP, { predicate_kind: kind });
-  return decodeArmFields(ctx, raw, path, arm, { predicate_kind: kind }) as unknown as SignalPredicate;
-}
-
 function decodeSignal(ctx: DecodeContext, raw: unknown, path: string): SignalPayload {
   const pre = expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.signal);
   const kind = expectEnum(ctx, requiredValue(pre, "transition_kind"), TRANSITION_KINDS, p(path, "transition_kind"));
@@ -122,7 +122,7 @@ function decodeSignal(ctx: DecodeContext, raw: unknown, path: string): SignalPay
       ctx,
       requiredValue(expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.signal_predicate_presence), "predicate"),
       p(path, "predicate"),
-    );
+    ) as unknown as SignalPredicate;
     const arm = armForDiscriminants("signal", { transition_kind: kind, predicate });
     return decodeArmFields(
       ctx,

@@ -999,40 +999,20 @@ function testDomainMutationTable(bundle: AdapterFixtureBundle): void {
   const matrixPath = (id: string, field: string): string => `record[${JSON.stringify(id)}].payload.${field}`;
   const testingPath = (id: string, field: string): string => `record[${JSON.stringify(id)}].payload.${field}`;
   const vectors: readonly AdapterMutationVector[] = [
+    // The closeout/policy transition-subtype vectors retired with Packet 3A-2: those transitions
+    // are required NESTED tables whose kind is fixed by the field name, so a wrong-kind target is
+    // unrepresentable rather than validated.  The remaining citation surfaces (deferred work,
+    // watch escalation) keep their subtype vectors below and in the identity suite.
     {
-      name: "matrix closeout retirement subtype",
+      name: "matrix deferred transition subtype",
       roadmap: "matrix",
-      logical_path: matrixPath("matrix.fixture-upstream-a", "transition_ids"),
-      issue_codes: ["E-REFERENCE-FORBIDDEN", "E-SCHEMA-STATE"],
+      logical_path: matrixPath("matrix.fixture-task-g", "transition_ids"),
+      issue_codes: ["E-REFERENCE-FORBIDDEN"],
       mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "matrix_external_closeout" && payload.closeout_state === "waiting",
+        (payload) => payload.kind === "work" && payload.work_state === "deferred",
         (payload) => {
-          assert(payload.kind === "matrix_external_closeout", "matrix closeout vector selected the wrong payload");
+          assert(payload.kind === "work" && payload.work_state === "deferred", "matrix deferred vector selected the wrong payload");
           return { ...payload, transition_ids: ["matrix.fixture-signal-k" as RoadmapId] };
-        }),
-    },
-    {
-      name: "matrix cadence transition subtype",
-      roadmap: "matrix",
-      logical_path: matrixPath("matrix.fixture-policy-a", "cadence_transition_id"),
-      issue_codes: ["E-REFERENCE-FORBIDDEN", "E-SCHEMA-STATE"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "matrix_policy" && payload.policy_kind === "maintenance_protocol",
-        (payload) => {
-          assert(payload.kind === "matrix_policy" && payload.policy_kind === "maintenance_protocol", "matrix cadence vector selected the wrong payload");
-          return { ...payload, cadence_transition_id: "matrix.fixture-signal-f" as RoadmapId };
-        }),
-    },
-    {
-      name: "matrix reopening transition subtype",
-      roadmap: "matrix",
-      logical_path: matrixPath("matrix.fixture-policy-c", "reopening_transition_id"),
-      issue_codes: ["E-REFERENCE-FORBIDDEN", "E-SCHEMA-STATE"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "matrix_policy" && payload.policy_kind === "boundary" && payload.permanence === "reopenable",
-        (payload) => {
-          assert(payload.kind === "matrix_policy" && payload.policy_kind === "boundary", "matrix reopening vector selected the wrong payload");
-          return { ...payload, reopening_transition_id: "matrix.fixture-signal-k" as RoadmapId };
         }),
     },
     {

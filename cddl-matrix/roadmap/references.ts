@@ -655,23 +655,18 @@ export function validateSemanticRoadmapJoins(
   }
   for (const provider of indexes.payload_records.values()) {
     const payload = provider.payload;
-    const expectedCount = payload.kind === "work" && ["blocked", "armed", "deferred", "waiting_external"].includes(payload.work_state)
-      ? 1
-      : payload.kind === "decision" && (payload.decision_state === "pending" || payload.decision_state === "held" || payload.permanence === "reopenable")
-      ? 1
-      : payload.kind === "matrix_external_closeout"
-      ? 1
-      : undefined;
-    if (expectedCount !== undefined) {
-      const transitionIds = "transition_ids" in payload ? payload.transition_ids ?? [] : [];
-      if (transitionIds.length !== expectedCount) {
-        issues.push(issue(
-          "E-REFERENCE-FORBIDDEN",
-          source,
-          `${provider.logical_path}.transition_ids`,
-          `state-specific transition list must contain exactly ${expectedCount} target`,
-        ));
-      }
+    // Post-fold (Packet 3A-2) the only remaining transition CITATION lists are deferred work's
+    // optional standalone-signal citation; when authored it must name exactly one target.
+    if (
+      payload.kind === "work" && payload.work_state === "deferred" &&
+      payload.transition_ids !== undefined && payload.transition_ids.length !== 1
+    ) {
+      issues.push(issue(
+        "E-REFERENCE-FORBIDDEN",
+        source,
+        `${provider.logical_path}.transition_ids`,
+        "state-specific transition list must contain exactly 1 target",
+      ));
     }
     if (payload.kind === "work" && payload.work_state === "delegated") {
       const edges = indexes.relations.filter((relation) =>

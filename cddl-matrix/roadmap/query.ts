@@ -117,13 +117,14 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
           ...(payload.work_state === "ready" ? { priority_band: payload.priority_band ?? "unbanded",
             priority_rationale_md: payload.priority_rationale_md }
           : payload.work_state === "blocked" ? { blocker_md: payload.blocker_md,
-            unblock_transition_ids: payload.transition_ids }
+            unblock_predicate: payload.unblock_predicate }
           : payload.work_state === "waiting_external" ? {
             external_owner_reference_id: payload.external_owner_reference_id,
-            unblock_transition_ids: payload.transition_ids }
+            ...(payload.unblock_predicate === undefined ? {} : { unblock_predicate: payload.unblock_predicate }),
+            ...(payload.retirement_predicate === undefined ? {} : { retirement_predicate: payload.retirement_predicate }) }
           : payload.work_state === "delegated" ? { return_condition_md: payload.return_condition_md }
           : payload.work_state === "armed" ? { control_ids: payload.control_ids,
-            transition_ids: payload.transition_ids }
+            promotion_trigger: payload.promotion_trigger }
           : { uncertainty_md: payload.uncertainty_md }),
         }]);
       const costs = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] =>
@@ -141,27 +142,25 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
       const relations = prepared.flatMap((item) => item.document.relations);
       const blockedOrOwned = rows.filter((row) => ["blocked", "waiting_external", "delegated"].includes(String(row.work_state)))
         .map((row) => {
-          const transitionIds = "unblock_transition_ids" in row
-            ? row.unblock_transition_ids as readonly string[]
-            : [];
           const delegationTargets = row.work_state === "delegated"
             ? relations.filter((relation) => relation.kind === "delegates_to" && relation.source === row.id)
               .map((relation) => relation.target)
             : [];
+          // The unblock predicate now lives nested on the owner (Packet 3A-2); the exact list is
+          // its one nested entry rather than a citation join over standalone signal records.
+          const nested = "unblock_predicate" in row
+            ? row.unblock_predicate as { evaluation: string; event_md: Uint8Array; check_procedure_md: Uint8Array; due_action_md: Uint8Array; owner_reference_id: string }
+            : undefined;
           return { ...row,
             owner_group: row.work_state === "waiting_external"
               ? String(row.external_owner_reference_id)
               : row.work_state === "delegated" ? delegationTargets.join(",") : "blocked_internal",
             delegation_targets: delegationTargets,
-            exact_unblock_predicates: transitionIds.flatMap((id) => {
-            const signal = signalsById.get(id);
-            return signal === undefined ? [] : [{ id, transition_kind: signal.transition_kind,
-              evaluation: signal.evaluation,
-              ...(signal.transition_kind === "unblock_predicate"
-                ? { event_md: signal.event_md, check_procedure_md: signal.check_procedure_md,
-                  due_action_md: signal.due_action_md, owner_reference_id: signal.owner_reference_id }
-                : {}) }];
-          }) };
+            exact_unblock_predicates: nested === undefined ? [] : [{
+              transition_kind: "unblock_predicate", evaluation: nested.evaluation,
+              event_md: nested.event_md, check_procedure_md: nested.check_procedure_md,
+              due_action_md: nested.due_action_md, owner_reference_id: nested.owner_reference_id,
+            }] };
         });
       const pendingReview = rows.filter((row) => row.work_state === "pending_review");
       return { evaluation_as_of,

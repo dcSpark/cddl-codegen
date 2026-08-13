@@ -240,7 +240,18 @@ authority_reference_id = "ref-matrix-additional-tool-annotations-source"
 rationale_md = """The master stays implementation-agnostic; add an annotations/<tool>.toml adapter only when another tool actually adopts it.
 """
 permanence = "reopenable"
-reopening_transition_id = "matrix.trigger.additional-tool-annotations"
+
+[record.payload.reopening_signal]
+observer = "adopting tool owner"
+dimension = "annotation consumers"
+action_on_fire_md = """add its annotation file and adapter
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """another consumer adopts the master
+"""
 
 [[record]]
 id = "matrix.anonymous-nested-map"
@@ -266,7 +277,18 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-transition_ids = ["matrix.trigger.anonymous-nested-map-demand"]
+
+[record.payload.reopening_signal]
+observer = "affected spec owner"
+dimension = "required map hoists"
+action_on_fire_md = """add the anonymous map door
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """one committed spec requires five
+"""
 
 [[record]]
 id = "matrix.array-sequence-upstream"
@@ -284,9 +306,18 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-array-sequence-upstream-upstream"
 current_upstream_state_md = """The behavior is fixed on local-fixes at 773b723; no fresh release-and-pin check has been performed.
 """
-transition_ids = ["matrix.retirement.array-sequence-upstream"]
 verification_md = """Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-array-sequence-upstream-upstream"
+external_predicate_md = """A published release contains commit 773b723 behavior and this repository's Cargo pin can return from local-fixes to that release.
+"""
+verification_md = """Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.bignum-key-tag-upstream"
@@ -305,97 +336,16 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-bignum-key-tag-upstream-upstream"
 current_upstream_state_md = """The fix and test suite are on local-fixes; no fresh published-release check has been performed.
 """
-transition_ids = ["matrix.retirement.bignum-key-tag-upstream"]
 verification_md = """Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
 """
 
-[[record]]
-id = "matrix.cadence.emission-input-mode-honesty"
-title = "Transition for matrix.emission-input-mode-honesty."
-projection_group = "wasm-abi-multifile"
-
-[record.payload]
-kind = "signal"
-transition_kind = "cadence"
-owner_reference_id = "ref-matrix-emission-input-mode-honesty-source"
-event_source = "flag-surface changes"
-period_or_event_md = """Run for every new flag-gated emission surface.
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-bignum-key-tag-upstream-upstream"
+external_predicate_md = """A published release contains commit c2ebf9f behavior for bignum map keys and value tags.
 """
-checklist_md = """Declare directory-input execution coverage or a reasoned single-file posture.
+verification_md = """Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
 """
-missed_action_md = """Reject a silently omitted input mode.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.cadence.intra-alternative-variations"
-title = "Transition for matrix.intra-alternative-variations."
-projection_group = "expansion"
-
-[record.payload]
-kind = "signal"
-transition_kind = "cadence"
-owner_reference_id = "ref-matrix-intra-alternative-variations-source"
-event_source = "matrix row authoring"
-period_or_event_md = """Run whenever a new intra-alternative value or dispatch axis is added.
-"""
-checklist_md = """Enumerate the row and its violation vector before accepting green.
-"""
-missed_action_md = """Block the row when enforcement is unclassified.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.cadence.periodic-coverage-honesty"
-title = "Transition for matrix.periodic-coverage-honesty."
-projection_group = "wasm-abi-multifile"
-
-[record.payload]
-kind = "signal"
-transition_kind = "cadence"
-owner_reference_id = "ref-matrix-periodic-coverage-honesty-source"
-event_source = "matrix and generator coverage review"
-period_or_event_md = """Run at periodic review and whenever a boundary position, shape, or mode is added.
-"""
-checklist_md = """Run the four exact tells in the supporting parts and inspect exclusions and committed consumer hand patches.
-"""
-missed_action_md = """Fail pickup when a discovered hole has no durable owner.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.cadence.profile-version-scope"
-title = "Transition for matrix.profile-version-scope."
-projection_group = "expansion"
-
-[record.payload]
-kind = "signal"
-transition_kind = "cadence"
-owner_reference_id = "ref-matrix-profile-version-scope-source"
-event_source = "target-profile and cddl-dependency revisions"
-period_or_event_md = """Run on every target-profile or cddl-dependency update.
-"""
-checklist_md = """Bump the pinned source filename, URL, and checksum together and re-review the module stance against the cited passages.
-"""
-missed_action_md = """Refuse the update when the source set and declared profile disagree.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.cadence.refusal-spelling-space"
-title = "Transition for matrix.refusal-spelling-space."
-projection_group = "expansion"
-
-[record.payload]
-kind = "signal"
-transition_kind = "cadence"
-owner_reference_id = "ref-matrix-refusal-spelling-space-source"
-event_source = "graceful-refusal guard changes"
-period_or_event_md = """Run in every change that adds or changes a graceful-refusal guard.
-"""
-checklist_md = """Review trigger ordering, placement, aliases, and alternate spellings against the guard's reachable syntax space.
-"""
-missed_action_md = """Block the change when an equivalent spelling bypasses or contradicts the guard.
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 """
 evaluation = "unknown"
 
@@ -410,7 +360,18 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "invalid_acceptance"
-transition_ids = ["matrix.trigger.refusal-spelling-catalog"]
+
+[record.payload.reopening_signal]
+observer = "refusal-fix owner"
+dimension = "guards with ordering bypass history"
+action_on_fire_md = """add the mechanical reject-catalog leg
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """a second guard is bypassed at an unenumerated trigger-space point
+"""
 
 [[record]]
 id = "matrix.cbor-any-boundary"
@@ -466,7 +427,18 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-transition_ids = ["matrix.trigger.control-host-placement-space"]
+
+[record.payload.reopening_signal]
+observer = "control-fix owner"
+dimension = "controls with proven multi-point breakage"
+action_on_fire_md = """enumerate that operator's full product
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """a second operator breaks outside its enumerated host placement
+"""
 
 [[record]]
 id = "matrix.derived-variant-naming"
@@ -506,7 +478,18 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-transition_ids = ["matrix.trigger.derived-variant-naming-demand"]
+
+[record.payload.reopening_signal]
+observer = "affected crate owner"
+dimension = "hand-authored arm names"
+action_on_fire_md = """review a public naming convention
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """arms needing @name outnumber unnamed arms or exceed a handful in one crate
+"""
 
 [[record]]
 id = "matrix.duplicate-rejection-diagnostics"
@@ -542,7 +525,18 @@ work_state = "deferred"
 work_intent = "repair"
 work_kind = "regression_gap"
 risk = "misleading_docs"
-transition_ids = ["matrix.trigger.duplicate-rejection-diagnostics"]
+
+[record.payload.reopening_signal]
+observer = "spec fixer"
+dimension = "unreadable rejection output"
+action_on_fire_md = """identify sites and deduplicate visits/pairs
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """three copies or interleaving obscure the distinct-problem count
+"""
 
 [[record]]
 id = "matrix.emission-input-mode-honesty"
@@ -567,7 +561,17 @@ policy_kind = "maintenance_protocol"
 authority_reference_id = "ref-matrix-emission-input-mode-honesty-source"
 protocol_md = """Every flag-gated emitted surface must declare directory-input execution coverage or a reasoned single-file posture; directory input containing one file is not multifile coverage.
 """
-cadence_transition_id = "matrix.cadence.emission-input-mode-honesty"
+
+[record.payload.cadence]
+owner_reference_id = "ref-matrix-emission-input-mode-honesty-source"
+event_source = "flag-surface changes"
+period_or_event_md = """Run for every new flag-gated emission surface.
+"""
+checklist_md = """Declare directory-input execution coverage or a reasoned single-file posture.
+"""
+missed_action_md = """Reject a silently omitted input mode.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.emission-narrowing-fixture-floor"
@@ -595,7 +599,18 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "documentation_integrity"
 risk = "misleading_docs"
-transition_ids = ["matrix.trigger.emission-narrowing-fixture-floor"]
+
+[record.payload.reopening_signal]
+observer = "golden-vector author"
+dimension = "duplicate asserted-byte authoring"
+action_on_fire_md = """add an emission model or name the narrow type
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """a new vector duplicates bytes already asserted through narrowing
+"""
 
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.bool"
@@ -818,7 +833,18 @@ authority_reference_id = "ref-matrix-extern-emitted-test-boundary-source"
 rationale_md = """Extern and raw-bytes execution needs consumer-owned valid-byte knowledge; retain compile coverage plus existing hand tests until a consumer supplies that knowledge or reports a missed defect.
 """
 permanence = "reopenable"
-reopening_transition_id = "matrix.trigger.extern-emitted-test-boundary"
+
+[record.payload.reopening_signal]
+observer = "extern/raw-bytes consumer"
+dimension = "demand or missed wasm defect"
+action_on_fire_md = """review hint feature
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """consumer supplies valid-byte knowledge or reports a defect
+"""
 
 [[record]]
 id = "matrix.extern-execution-multifile"
@@ -861,7 +887,18 @@ authority_reference_id = "ref-matrix-extern-interface-sentinel-boundary-source"
 rationale_md = """Do not model vendor-sentinel extern-interface data without a concrete matrix query that needs it; the strict parser tests remain the current seam control.
 """
 permanence = "reopenable"
-reopening_transition_id = "matrix.trigger.extern-interface-sentinel-boundary"
+
+[record.payload.reopening_signal]
+observer = "matrix query consumer"
+dimension = "vendor-sentinel query demand"
+action_on_fire_md = """model only demanded seam data
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """a concrete query needs it
+"""
 
 [[record]]
 id = "matrix.fixed-array.static-representation"
@@ -911,8 +948,17 @@ work_state = "waiting_external"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "valid_rejection"
-transition_ids = ["matrix.retirement.fixed-bytes.lowercase-base64-parser"]
 external_owner_reference_id = "ref-matrix-fixed-bytes-lowercase-base64-parser-upstream"
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-fixed-bytes-lowercase-base64-parser-upstream"
+external_predicate_md = """One published parser release accepts both h'cafe' and b64'yv4=' and lowers them to the same bytes as h'CAFE'.
+"""
+verification_md = """Probe h'cafe', b64'yv4=', h'CAFE', and a raw UTF-8 control in the same release, exercise every already-supported fixed-value surface, and update feature/docs/projections/vectors only if lowered bytes agree.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixed-bytes.static-representation"
@@ -965,8 +1011,17 @@ work_state = "waiting_external"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "false_pass_or_red"
-transition_ids = ["matrix.retirement.fixed-bytes.validator-corroboration"]
 external_owner_reference_id = "ref-matrix-fixed-bytes-validator-corroboration-upstream"
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-fixed-bytes-validator-corroboration-upstream"
+external_predicate_md = """A published release validates h'CAFE' and raw UTF-8 fixed-byte rules without panic and renders arbitrary B16ByteString bytes without a UTF-8 assumption.
+"""
+verification_md = """Run bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes,contain.choice-member.type2.value.bytes.fixed-kind; require normal two-oracle and constraint evidence; run fixed-member and recombination regressions before pruning gap 17 or simplifying diagnostics.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixed-map-key-kinds"
@@ -1018,9 +1073,18 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-float-key-null-upstream-upstream"
 current_upstream_state_md = """The fix is on local-fixes; no fresh published-release check has been performed.
 """
-transition_ids = ["matrix.retirement.float-key-null-upstream"]
 verification_md = """Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-float-key-null-upstream-upstream"
+external_predicate_md = """A published release contains commit 707c038 behavior matching float keys and rejecting null keys.
+"""
+verification_md = """Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.float-prelude-name-upstream"
@@ -1049,9 +1113,18 @@ closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-float-prelude-name-upstream-upstream"
 current_upstream_state_md = """A paste-ready report is committed at cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md, but no issue is filed.
 """
-transition_ids = ["matrix.retirement.float-prelude-name-upstream"]
 verification_md = """File the report; on a distinguishing fix, drop rust from affected exemptions and re-mint the five constrained float rows; on the opposite ruling, execute the report's reversal branch.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-float-prelude-name-upstream-upstream"
+external_predicate_md = """A published ruling or release distinguishes the six float prelude names, or explicitly rules that the current common set is correct.
+"""
+verification_md = """File the report; on a distinguishing fix, drop rust from affected exemptions and re-mint the five constrained float rows; on the opposite ruling, execute the report's reversal branch.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -1107,7 +1180,18 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "compile_failure"
-transition_ids = ["matrix.trigger.float-table-key-demand"]
+
+[record.payload.reopening_signal]
+observer = "affected consumer"
+dimension = "immutable wire formats with float keys"
+action_on_fire_md = """design an ordered-float key
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """a consumer cannot apply integer/text/bytes remedy
+"""
 
 [[record]]
 id = "matrix.grammar-derived-legality"
@@ -1134,7 +1218,18 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-transition_ids = ["matrix.trigger.grammar-derived-legality"]
+
+[record.payload.reopening_signal]
+observer = "consumer reporter"
+dimension = "blank legal role×feature cells"
+action_on_fire_md = """derive the grammar denominator
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """a valid-CDDL generation defect is reported in a blank cell
+"""
 
 [[record]]
 id = "matrix.heterogeneous-array.atomic-bounds-handover"
@@ -1206,9 +1301,18 @@ closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-incremental-extension-reference-upstream-upstream"
 current_upstream_state_md = """The report cddl-matrix/upstream-reports/rust-cddl-incremental-extension-reference-resolution.md is committed but no issue is filed.
 """
-transition_ids = ["matrix.retirement.incremental-extension-reference-upstream"]
 verification_md = """File the report; probe both statement orders at root and through r = extended; require uint and text arms through the reference; re-enable ordinary rust corroboration for assignt_extend while retaining the ruby extension-first branch until ruby separately passes.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-incremental-extension-reference-upstream-upstream"
+external_predicate_md = """A published release accumulates the base = arm and every /= arm when the rule is referenced, for both statement orders.
+"""
+verification_md = """File the report; probe both statement orders at root and through r = extended; require uint and text arms through the reference; re-enable ordinary rust corroboration for assignt_extend while retaining the ruby extension-first branch until ruby separately passes.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -1256,7 +1360,16 @@ work_kind = "feature"
 risk = "valid_rejection"
 blocker_md = """The required choice-of-bodies representation is not yet reviewed and cannot represent group //= bodies; consumer demand for the parent capability is not sufficient to unblock this implementation dependency.
 """
-transition_ids = ["matrix.predicate.incremental-group-choice-extension"]
+
+[record.payload.unblock_predicate]
+owner_reference_id = "ref-matrix-multi-choice-group-rule-source"
+event_md = """The choice-of-bodies design is reviewed and can represent group //= bodies without flattening their alternatives.
+"""
+check_procedure_md = """Confirm a durable design and acceptance owner exists and matrix.multi-choice-group-rule is no longer blocked for that capability.
+"""
+due_action_md = """Delete the current refusal arm, generalize group-choice merging, flip assigng.extend, and re-mint the affected decode rows.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.inline-cbor-containment-boundary"
@@ -1283,7 +1396,18 @@ authority_reference_id = "ref-matrix-inline-cbor-containment-boundary-source"
 rationale_md = """Do not add nested-CBOR containment rows unless a concrete query demonstrates additional discrimination beyond the existing corpus, decode, and recombination controls.
 """
 permanence = "reopenable"
-reopening_transition_id = "matrix.trigger.inline-cbor-containment-boundary"
+
+[record.payload.reopening_signal]
+observer = "matrix query consumer"
+dimension = "nested-cbor row demand"
+action_on_fire_md = """add the row if it adds discrimination
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """a concrete query needs it
+"""
 
 [[record]]
 id = "matrix.inline-group-choice-arm"
@@ -1307,7 +1431,18 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-transition_ids = ["matrix.trigger.inline-group-choice-arm-demand"]
+
+[record.payload.reopening_signal]
+observer = "affected spec owner"
+dimension = "required group names"
+action_on_fire_md = """mint the inline arm struct
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """one committed spec requires ten
+"""
 
 [[record]]
 id = "matrix.inline-group-occurrence-carrier"
@@ -1397,7 +1532,17 @@ policy_kind = "maintenance_protocol"
 authority_reference_id = "ref-matrix-intra-alternative-variations-source"
 protocol_md = """A newly discovered intra-alternative value or dispatch axis must be represented by a row and a truthful violation vector before the affected surface is accepted as green.
 """
-cadence_transition_id = "matrix.cadence.intra-alternative-variations"
+
+[record.payload.cadence]
+owner_reference_id = "ref-matrix-intra-alternative-variations-source"
+event_source = "matrix row authoring"
+period_or_event_md = """Run whenever a new intra-alternative value or dispatch axis is added.
+"""
+checklist_md = """Enumerate the row and its violation vector before accepting green.
+"""
+missed_action_md = """Block the row when enforcement is unclassified.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.keyed-struct-map.zero-permitting-fields"
@@ -1479,7 +1624,18 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-transition_ids = ["matrix.trigger.multi-choice-group-demand"]
+
+[record.payload.reopening_signal]
+observer = "affected spec owner"
+dimension = "repeated hand expansion"
+action_on_fire_md = """design a choice of bodies
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """one rule's alternatives are re-spelled at more than a handful of reference sites
+"""
 
 [[record]]
 id = "matrix.multifile.extern-shape-coverage"
@@ -1503,7 +1659,18 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-transition_ids = ["matrix.trigger.multifile-extern-shape-coverage"]
+
+[record.payload.reopening_signal]
+observer = "multi-scope consumer"
+dimension = "scopes crossed by extern surface"
+action_on_fire_md = """enumerate demanded shapes
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """a cross-module extern build breaks outside facade composition
+"""
 
 [[record]]
 id = "matrix.named-group-reference-grid"
@@ -1637,9 +1804,18 @@ closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-named-rule-map-key-upstream-upstream"
 current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue has been filed, and the repository has not been queried.
 """
-transition_ids = ["matrix.retirement.named-rule-map-key-upstream"]
 verification_md = """Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-named-rule-map-key-upstream-upstream"
+external_predicate_md = """A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions.
+"""
+verification_md = """Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -1676,7 +1852,18 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-transition_ids = ["matrix.trigger.nint-capability-demand"]
+
+[record.payload.reopening_signal]
+observer = "affected spec owner"
+dimension = "full-range nint constructs in an uncontrolled spec"
+action_on_fire_md = """design runtime/emitted type and resolve upstream literal width
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """a consumer reports such a spec
+"""
 
 [[record]]
 id = "matrix.nominal-custom-pair-wrapper"
@@ -1707,7 +1894,18 @@ work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-transition_ids = ["matrix.trigger.nominal-custom-pair-demand"]
+
+[record.payload.reopening_signal]
+observer = "affected crate owner"
+dimension = "handwritten standalone wrappers"
+action_on_fire_md = """design opt-in nominalization
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """one crate carries more than a handful
+"""
 
 [[record]]
 id = "matrix.non-uint-range-upstream"
@@ -1724,9 +1922,18 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-non-uint-range-upstream-upstream"
 current_upstream_state_md = """The behavior is fixed on local-fixes at 885c61c; no fresh published-release check has been performed.
 """
-transition_ids = ["matrix.retirement.non-uint-range-upstream"]
 verification_md = """Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-non-uint-range-upstream-upstream"
+external_predicate_md = """A published release contains commit 885c61c behavior for integer-sign and float range endpoints.
+"""
+verification_md = """Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.open-array.optional-adjacency"
@@ -1754,7 +1961,16 @@ work_kind = "feature"
 risk = "invalid_acceptance"
 blocker_md = """No reviewed discriminator and residue proof yet separates all sound optional-adjacency classes under greedy non-backtracking matching; overlapping [? uint, uint] remains intentionally refused.
 """
-transition_ids = ["matrix.predicate.open-array-optional-adjacency"]
+
+[record.payload.unblock_predicate]
+owner_reference_id = "ref-matrix-open-array-optional-adjacency-source"
+event_md = """A reviewed discriminator and residue proof exists for a specific optional adjacency.
+"""
+check_procedure_md = """Verify that proof against RFC greedy non-backtracking examples, including the overlapping [? uint, uint] refusal control.
+"""
+due_action_md = """Implement and vector only the proven adjacency classes; retain graceful refusal for every unresolved overlap.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.open-table.bounded-rest-rows"
@@ -1808,7 +2024,18 @@ work_state = "deferred"
 work_intent = "repair"
 work_kind = "regression_gap"
 risk = "invalid_acceptance"
-transition_ids = ["matrix.trigger.open-table-min-one-hardening"]
+
+[record.payload.reopening_signal]
+observer = "affected consumer"
+dimension = "empty typed row reaching wire/cross-crate boundary"
+action_on_fire_md = """adopt NonEmptyMap/PairMap across faces
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """bypass is observed
+"""
 
 [[record]]
 id = "matrix.optional-closed-map-upstream"
@@ -1830,9 +2057,18 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-optional-closed-map-upstream-upstream"
 current_upstream_state_md = """The combined fix is on local-fixes; three adjacent future issues remain independent; no fresh release check has been performed.
 """
-transition_ids = ["matrix.retirement.optional-closed-map-upstream"]
 verification_md = """Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-optional-closed-map-upstream-upstream"
+external_predicate_md = """A published release contains commit 3d56d8e behavior for optional entries, closed maps, and JSON type-domain keys.
+"""
+verification_md = """Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "adjacent-map-matching"
@@ -1884,7 +2120,16 @@ consolidation — are recorded in the code + git history; not re-litigated here.
 decision_state = "pending"
 question_md = """Should over-acceptance completeness use the grammar's full superset or only realistically implementable constructs as its denominator?
 """
-transition_ids = ["matrix.predicate.denominator-ruling"]
+
+[record.payload.unblock_predicate]
+owner_reference_id = "ref-matrix-over-acceptance-denominator-source"
+event_md = """A maintainer records either the grammar superset or the realistically implementable construct set as the reporting denominator.
+"""
+check_procedure_md = """Confirm the ruling cites a durable authority and states how completeness, exclusions, and future vectors are reported.
+"""
+due_action_md = """Update matrix.systematic.over-acceptance from the ruling, including its axes or explicit denominator unknowns, without changing certified numerator vectors.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.per-value-encoding-reachability"
@@ -1912,7 +2157,18 @@ work_state = "deferred"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "false_pass_or_red"
-transition_ids = ["matrix.trigger.per-value-encoding-reachability"]
+
+[record.payload.reopening_signal]
+observer = "golden-vector author"
+dimension = "actionable-column overstatement"
+action_on_fire_md = """add per-value reachability
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """the author hand-dismisses more cells than they can vector
+"""
 
 [[record]]
 id = "matrix.periodic-coverage-honesty"
@@ -1937,56 +2193,15 @@ policy_kind = "maintenance_protocol"
 authority_reference_id = "ref-matrix-periodic-coverage-honesty-source"
 protocol_md = """At periodic review and every new boundary shape, inspect fix reach, steering comments, consumer hand patches, and exclusion comments; every discovered hole must gain a durable owner.
 """
-cadence_transition_id = "matrix.cadence.periodic-coverage-honesty"
 
-[[record]]
-id = "matrix.predicate.denominator-ruling"
-title = "Transition for matrix.over-acceptance-denominator."
-projection_group = "pending-decisions"
-
-[record.payload]
-kind = "signal"
-transition_kind = "unblock_predicate"
-owner_reference_id = "ref-matrix-over-acceptance-denominator-source"
-event_md = """A maintainer records either the grammar superset or the realistically implementable construct set as the reporting denominator.
+[record.payload.cadence]
+owner_reference_id = "ref-matrix-periodic-coverage-honesty-source"
+event_source = "matrix and generator coverage review"
+period_or_event_md = """Run at periodic review and whenever a boundary position, shape, or mode is added.
 """
-check_procedure_md = """Confirm the ruling cites a durable authority and states how completeness, exclusions, and future vectors are reported.
+checklist_md = """Run the four exact tells in the supporting parts and inspect exclusions and committed consumer hand patches.
 """
-due_action_md = """Update matrix.systematic.over-acceptance from the ruling, including its axes or explicit denominator unknowns, without changing certified numerator vectors.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.predicate.incremental-group-choice-extension"
-title = "Transition for matrix.incremental-group-choice-extension."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "unblock_predicate"
-owner_reference_id = "ref-matrix-multi-choice-group-rule-source"
-event_md = """The choice-of-bodies design is reviewed and can represent group //= bodies without flattening their alternatives.
-"""
-check_procedure_md = """Confirm a durable design and acceptance owner exists and matrix.multi-choice-group-rule is no longer blocked for that capability.
-"""
-due_action_md = """Delete the current refusal arm, generalize group-choice merging, flip assigng.extend, and re-mint the affected decode rows.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.predicate.open-array-optional-adjacency"
-title = "Transition for matrix.open-array.optional-adjacency."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "unblock_predicate"
-owner_reference_id = "ref-matrix-open-array-optional-adjacency-source"
-event_md = """A reviewed discriminator and residue proof exists for a specific optional adjacency.
-"""
-check_procedure_md = """Verify that proof against RFC greedy non-backtracking examples, including the overlapping [? uint, uint] refusal control.
-"""
-due_action_md = """Implement and vector only the proven adjacency classes; retain graceful refusal for every unresolved overlap.
+missed_action_md = """Fail pickup when a discovered hole has no durable owner.
 """
 evaluation = "unknown"
 
@@ -2014,9 +2229,18 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-prelude-number-float-upstream-upstream"
 current_upstream_state_md = """The prelude-number fix is on local-fixes; adjacent tag-leniency and ruby calendar-date observations are unfiled and independent.
 """
-transition_ids = ["matrix.retirement.prelude-number-float-upstream"]
 verification_md = """Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-prelude-number-float-upstream-upstream"
+external_predicate_md = """A published release contains commit 90f66ff behavior accepting floats for prelude number while preserving non-number rejection.
+"""
+verification_md = """Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "ruby-calendar-date"
@@ -2065,7 +2289,17 @@ policy_kind = "maintenance_protocol"
 authority_reference_id = "ref-matrix-profile-version-scope-source"
 protocol_md = """Pin the target profile's source filename, URL, and checksum as one reviewed unit, and re-review the module stance whenever the profile or cddl dependency changes.
 """
-cadence_transition_id = "matrix.cadence.profile-version-scope"
+
+[record.payload.cadence]
+owner_reference_id = "ref-matrix-profile-version-scope-source"
+event_source = "target-profile and cddl-dependency revisions"
+period_or_event_md = """Run on every target-profile or cddl-dependency update.
+"""
+checklist_md = """Bump the pinned source filename, URL, and checksum together and re-review the module stance against the cited passages.
+"""
+missed_action_md = """Refuse the update when the source set and declared profile disagree.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.radix-literal-upstream"
@@ -2087,9 +2321,18 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-radix-literal-upstream-upstream"
 current_upstream_state_md = """The parser fix is on local-fixes at 2c7548e; WG issue 33 and ruby non-value-position deviations remain independent; no fresh release check has been performed.
 """
-transition_ids = ["matrix.retirement.radix-literal-upstream"]
 verification_md = """Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-radix-literal-upstream-upstream"
+external_predicate_md = """A published release contains commit 2c7548e behavior for RFC radix integers in every uint_value position.
+"""
+verification_md = """Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "ruby-radix-positions"
@@ -2149,345 +2392,15 @@ policy_kind = "maintenance_protocol"
 authority_reference_id = "ref-matrix-refusal-spelling-space-source"
 protocol_md = """For every graceful-refusal guard, review ordering, placement, and alternate spellings in the closing change; keep the mechanical trigger-space catalog as separate deferred work.
 """
-cadence_transition_id = "matrix.cadence.refusal-spelling-space"
 
-[[record]]
-id = "matrix.retirement.array-sequence-upstream"
-title = "Retire matrix.array-sequence-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-array-sequence-upstream-upstream"
-external_predicate_md = """A published release contains commit 773b723 behavior and this repository's Cargo pin can return from local-fixes to that release.
+[record.payload.cadence]
+owner_reference_id = "ref-matrix-refusal-spelling-space-source"
+event_source = "graceful-refusal guard changes"
+period_or_event_md = """Run in every change that adds or changes a graceful-refusal guard.
 """
-verification_md = """Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
+checklist_md = """Review trigger ordering, placement, aliases, and alternate spellings against the guard's reachable syntax space.
 """
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.bignum-key-tag-upstream"
-title = "Retire matrix.bignum-key-tag-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-bignum-key-tag-upstream-upstream"
-external_predicate_md = """A published release contains commit c2ebf9f behavior for bignum map keys and value tags.
-"""
-verification_md = """Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.fixed-bytes.lowercase-base64-parser"
-title = "Retire matrix.fixed-bytes.lowercase-base64-parser only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-fixed-bytes-lowercase-base64-parser-upstream"
-external_predicate_md = """One published parser release accepts both h'cafe' and b64'yv4=' and lowers them to the same bytes as h'CAFE'.
-"""
-verification_md = """Probe h'cafe', b64'yv4=', h'CAFE', and a raw UTF-8 control in the same release, exercise every already-supported fixed-value surface, and update feature/docs/projections/vectors only if lowered bytes agree.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.fixed-bytes.validator-corroboration"
-title = "Retire matrix.fixed-bytes.validator-corroboration only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-fixed-bytes-validator-corroboration-upstream"
-external_predicate_md = """A published release validates h'CAFE' and raw UTF-8 fixed-byte rules without panic and renders arbitrary B16ByteString bytes without a UTF-8 assumption.
-"""
-verification_md = """Run bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes,contain.choice-member.type2.value.bytes.fixed-kind; require normal two-oracle and constraint evidence; run fixed-member and recombination regressions before pruning gap 17 or simplifying diagnostics.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.float-key-null-upstream"
-title = "Retire matrix.float-key-null-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-float-key-null-upstream-upstream"
-external_predicate_md = """A published release contains commit 707c038 behavior matching float keys and rejecting null keys.
-"""
-verification_md = """Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.float-prelude-name-upstream"
-title = "Retire matrix.float-prelude-name-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-float-prelude-name-upstream-upstream"
-external_predicate_md = """A published ruling or release distinguishes the six float prelude names, or explicitly rules that the current common set is correct.
-"""
-verification_md = """File the report; on a distinguishing fix, drop rust from affected exemptions and re-mint the five constrained float rows; on the opposite ruling, execute the report's reversal branch.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.incremental-extension-reference-upstream"
-title = "Retire matrix.incremental-extension-reference-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-incremental-extension-reference-upstream-upstream"
-external_predicate_md = """A published release accumulates the base = arm and every /= arm when the rule is referenced, for both statement orders.
-"""
-verification_md = """File the report; probe both statement orders at root and through r = extended; require uint and text arms through the reference; re-enable ordinary rust corroboration for assignt_extend while retaining the ruby extension-first branch until ruby separately passes.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.named-rule-map-key-upstream"
-title = "Retire matrix.named-rule-map-key-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-named-rule-map-key-upstream-upstream"
-external_predicate_md = """A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions.
-"""
-verification_md = """Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.non-uint-range-upstream"
-title = "Retire matrix.non-uint-range-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-non-uint-range-upstream-upstream"
-external_predicate_md = """A published release contains commit 885c61c behavior for integer-sign and float range endpoints.
-"""
-verification_md = """Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.optional-closed-map-upstream"
-title = "Retire matrix.optional-closed-map-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-optional-closed-map-upstream-upstream"
-external_predicate_md = """A published release contains commit 3d56d8e behavior for optional entries, closed maps, and JSON type-domain keys.
-"""
-verification_md = """Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.prelude-number-float-upstream"
-title = "Retire matrix.prelude-number-float-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-prelude-number-float-upstream-upstream"
-external_predicate_md = """A published release contains commit 90f66ff behavior accepting floats for prelude number while preserving non-number rejection.
-"""
-verification_md = """Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.radix-literal-upstream"
-title = "Retire matrix.radix-literal-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-radix-literal-upstream-upstream"
-external_predicate_md = """A published release contains commit 2c7548e behavior for RFC radix integers in every uint_value position.
-"""
-verification_md = """Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.ruby-inline-controller-upstream"
-title = "Retire matrix.ruby-inline-controller-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-ruby-inline-controller-upstream-upstream"
-external_predicate_md = """A published gem parses inline/composite type2 controller arguments such as bytes .cbor [coords].
-"""
-verification_md = """Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.signed-int-size-upstream"
-title = "Retire matrix.signed-int-size-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-signed-int-size-upstream-upstream"
-external_predicate_md = """A published release validates int .size N as the uint arm's window with nint values as per-value non-matches, and durable spec text records the clarification.
-"""
-verification_md = """Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.string-key-mixed-rest-upstream"
-title = "Retire matrix.string-key-mixed-rest-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-string-key-mixed-rest-upstream-upstream"
-external_predicate_md = """A published release permits zero rest entries for bytes- and tstr-keyed star rows in mixed maps while retaining required declared entries.
-"""
-verification_md = """Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.tag-map-key-upstream"
-title = "Retire matrix.tag-map-key-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-tag-map-key-upstream-upstream"
-external_predicate_md = """A published release validates TAG-typed map keys at entry-key position and the tagged-key row can mint nonempty two-oracle vectors.
-"""
-verification_md = """Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.typed-tag-report-upstream"
-title = "Retire matrix.typed-tag-report-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-typed-tag-report-upstream-upstream"
-external_predicate_md = """A published ruling or release rejects wrong fixed payload 81cbf4 for the declared typed tag, or explicitly rules that acceptance correct.
-"""
-verification_md = """File the report; on an 81cbf4 fix remove that exact exemption, re-mint contain.group-choice-arm.type2.tag.fixed_array, run probe/fold, and prune gap 14; do not treat an 81ccf5-only change as closure.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.uint-control-operator-upstream"
-title = "Retire matrix.uint-control-operator-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-uint-control-operator-upstream-upstream"
-external_predicate_md = """A published release contains the submitted uint-target numeric, size, and bits control-operator enforcement fix.
-"""
-verification_md = """Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.undefined-ciborium-upstream"
-title = "Retire matrix.undefined-ciborium-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-undefined-ciborium-upstream-upstream"
-external_predicate_md = """A published release exposes CBOR undefined as a distinct generic Value variant rather than Null.
-"""
-verification_md = """Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
-evaluation = "unknown"
-
-[[record]]
-id = "matrix.retirement.undefined-validator-upstream"
-title = "Retire matrix.undefined-validator-upstream only after fresh upstream evidence and local verification."
-projection_group = "upstream-closeouts"
-
-[record.payload]
-kind = "signal"
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-matrix-undefined-validator-upstream-upstream"
-external_predicate_md = """A published release accepts validate_cbor_from_slice(\"x = undefined\", &[0xf7], None) with RFC 8949 undefined semantics.
-"""
-verification_md = """Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+missed_action_md = """Block the change when an equivalent spelling bypasses or contradicts the guard.
 """
 evaluation = "unknown"
 
@@ -2516,7 +2429,18 @@ work_state = "deferred"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "compile_failure"
-transition_ids = ["matrix.trigger.root-reference-placement"]
+
+[record.payload.reopening_signal]
+observer = "affected consumer"
+dimension = "root-position dangling imports"
+action_on_fire_md = """add named/alias root rows
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """E0412/E0425/E0432 is hand-fixed after regen outside seven rootref cells
+"""
 
 [[record]]
 id = "matrix.ruby-inline-controller-upstream"
@@ -2539,9 +2463,18 @@ closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-ruby-inline-controller-upstream-upstream"
 current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue is named, and the repository has not been queried.
 """
-transition_ids = ["matrix.retirement.ruby-inline-controller-upstream"]
 verification_md = """Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-ruby-inline-controller-upstream-upstream"
+external_predicate_md = """A published gem parses inline/composite type2 controller arguments such as bytes .cbor [coords].
+"""
+verification_md = """Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -2571,9 +2504,18 @@ closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-signed-int-size-upstream-upstream"
 current_upstream_state_md = """WG issue 32 clarifies semantics, but the validator fix/report and erratum are not complete; no fresh upstream query has been performed.
 """
-transition_ids = ["matrix.retirement.signed-int-size-upstream"]
 verification_md = """Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-signed-int-size-upstream-upstream"
+external_predicate_md = """A published release validates int .size N as the uint arm's window with nint values as per-value non-matches, and durable spec text records the clarification.
+"""
+verification_md = """Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -2607,489 +2549,6 @@ predicate_md = """A published validator release implements int .size as the uint
 action_id = "validator-release"
 
 [[record]]
-id = "matrix.source-observation.additional-tool-annotations"
-title = "Source-owner review for matrix.additional-tool-annotations."
-projection_group = "expansion"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-additional-tool-annotations-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.anonymous-nested-map-demand"
-title = "Source-owner review for matrix.anonymous-nested-map."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-anonymous-nested-map-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.control-host-placement-space"
-title = "Source-owner review for matrix.control-host-placement-space."
-projection_group = "expansion"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-control-host-placement-space-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.derived-variant-naming-demand"
-title = "Source-owner review for matrix.derived-variant-naming."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-derived-variant-naming-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.duplicate-rejection-diagnostics"
-title = "Source-owner review for matrix.duplicate-rejection-diagnostics."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-duplicate-rejection-diagnostics-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.emission-narrowing-fixture-floor"
-title = "Source-owner review for matrix.emission-narrowing-fixture-floor."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-emission-narrowing-fixture-floor-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.extern-emitted-test-boundary"
-title = "Source-owner review for matrix.extern-emitted-test-boundary."
-projection_group = "explicit-boundaries"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-extern-emitted-test-boundary-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.extern-interface-sentinel-boundary"
-title = "Source-owner review for matrix.extern-interface-sentinel-boundary."
-projection_group = "explicit-boundaries"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-extern-interface-sentinel-boundary-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.float-table-key-demand"
-title = "Source-owner review for matrix.float-table-key-domain."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-float-table-key-domain-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.grammar-derived-legality"
-title = "Source-owner review for matrix.grammar-derived-legality."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-grammar-derived-legality-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.inline-cbor-containment-boundary"
-title = "Source-owner review for matrix.inline-cbor-containment-boundary."
-projection_group = "explicit-boundaries"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-inline-cbor-containment-boundary-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.inline-group-choice-arm-demand"
-title = "Source-owner review for matrix.inline-group-choice-arm."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-inline-group-choice-arm-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.multi-choice-group-demand"
-title = "Source-owner review for matrix.multi-choice-group-rule."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-multi-choice-group-rule-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.multifile-extern-shape-coverage"
-title = "Source-owner review for matrix.multifile.extern-shape-coverage."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-multifile-extern-shape-coverage-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.nint-capability-demand"
-title = "Source-owner review for matrix.nint-capability."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-nint-capability-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.nominal-custom-pair-demand"
-title = "Source-owner review for matrix.nominal-custom-pair-wrapper."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-nominal-custom-pair-wrapper-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.open-table-min-one-hardening"
-title = "Source-owner review for matrix.open-table.min-one-hardening."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-open-table-min-one-hardening-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.per-value-encoding-reachability"
-title = "Source-owner review for matrix.per-value-encoding-reachability."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-per-value-encoding-reachability-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.refusal-spelling-catalog"
-title = "Source-owner review for matrix.catalog-build.refusal-spelling."
-projection_group = "expansion"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-catalog-build-refusal-spelling-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.root-reference-placement"
-title = "Source-owner review for matrix.root-reference-placement."
-projection_group = "wasm-abi-multifile"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-root-reference-placement-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.tag-registry-boundary"
-title = "Source-owner review for matrix.tag-registry-boundary."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-tag-registry-boundary-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.wasm-extern-wrapper-demand"
-title = "Source-owner review for matrix.wasm-extern-wrapper-demand."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-wasm-extern-wrapper-demand-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
-id = "matrix.source-observation.wasm-macro-behavior-boundary"
-title = "Source-owner review for matrix.wasm-macro-behavior-boundary."
-projection_group = "explicit-boundaries"
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "source_read"
-claim_md = """The frozen source block was reviewed to classify the lifecycle and to transcribe its event; the review does not establish whether that external event has occurred.
-"""
-evidence_verdict = "confirmed"
-freshness = "as_of"
-reference_ids = ["ref-matrix-wasm-macro-behavior-boundary-source"]
-at_commit = "0a580d14de8c65baa86c1c575fe7f9433201844b"
-observed_at = "2026-08-12"
-unprobed_remainder_md = """No consumer, issue, release, repository, or other event universe was queried; transition evaluation therefore remains unknown.
-"""
-
-[record.payload.scope]
-surfaces = ["roadmap-source"]
-
-[[record]]
 id = "matrix.string-key-mixed-rest-upstream"
 title = "Close out rust cddl mixed-map string-key rest occurrence validation."
 projection_group = "upstream-closeouts"
@@ -3101,9 +2560,18 @@ closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-string-key-mixed-rest-upstream-upstream"
 current_upstream_state_md = """README gap 13 contains the durable conclusion, but no durable report or upstream issue has been filed and the repository has not been queried.
 """
-transition_ids = ["matrix.retirement.string-key-mixed-rest-upstream"]
 verification_md = """Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-string-key-mixed-rest-upstream-upstream"
+external_predicate_md = """A published release permits zero rest entries for bytes- and tstr-keyed star rows in mixed maps while retaining required declared entries.
+"""
+verification_md = """Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -3132,9 +2600,18 @@ closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-tag-map-key-upstream-upstream"
 current_upstream_state_md = """The diagnosis is complete but no durable upstream report or issue has been filed; the repository has not been queried.
 """
-transition_ids = ["matrix.retirement.tag-map-key-upstream"]
 verification_md = """Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-tag-map-key-upstream-upstream"
+external_predicate_md = """A published release validates TAG-typed map keys at entry-key position and the tagged-key row can mint nonempty two-oracle vectors.
+"""
+verification_md = """Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
@@ -3162,467 +2639,18 @@ authority_reference_id = "ref-matrix-tag-registry-boundary-readme"
 rationale_md = """Tag numbers remain parameters rather than separate feature rows because cddl-codegen is tag-parametric; enumerate tag semantics only when a consumer needs behavior keyed by a tag number.
 """
 permanence = "reopenable"
-reopening_transition_id = "matrix.trigger.tag-registry-boundary"
 
-[[record]]
-id = "matrix.trigger.additional-tool-annotations"
-title = "Reopen matrix.additional-tool-annotations when its reviewed demand event is observed."
-projection_group = "expansion"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "adopting tool owner"
-dimension = "annotation consumers"
-action_on_fire_md = """add its annotation file and adapter
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """another consumer adopts the master
-"""
-evidence_ids = ["matrix.source-observation.additional-tool-annotations"]
-
-[[record]]
-id = "matrix.trigger.anonymous-nested-map-demand"
-title = "Reopen matrix.anonymous-nested-map when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "affected spec owner"
-dimension = "required map hoists"
-action_on_fire_md = """add the anonymous map door
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """one committed spec requires five
-"""
-evidence_ids = ["matrix.source-observation.anonymous-nested-map-demand"]
-
-[[record]]
-id = "matrix.trigger.control-host-placement-space"
-title = "Reopen matrix.control-host-placement-space when its reviewed demand event is observed."
-projection_group = "expansion"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "control-fix owner"
-dimension = "controls with proven multi-point breakage"
-action_on_fire_md = """enumerate that operator's full product
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """a second operator breaks outside its enumerated host placement
-"""
-evidence_ids = ["matrix.source-observation.control-host-placement-space"]
-
-[[record]]
-id = "matrix.trigger.derived-variant-naming-demand"
-title = "Reopen matrix.derived-variant-naming when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "affected crate owner"
-dimension = "hand-authored arm names"
-action_on_fire_md = """review a public naming convention
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """arms needing @name outnumber unnamed arms or exceed a handful in one crate
-"""
-evidence_ids = ["matrix.source-observation.derived-variant-naming-demand"]
-
-[[record]]
-id = "matrix.trigger.duplicate-rejection-diagnostics"
-title = "Reopen matrix.duplicate-rejection-diagnostics when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "spec fixer"
-dimension = "unreadable rejection output"
-action_on_fire_md = """identify sites and deduplicate visits/pairs
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """three copies or interleaving obscure the distinct-problem count
-"""
-evidence_ids = ["matrix.source-observation.duplicate-rejection-diagnostics"]
-
-[[record]]
-id = "matrix.trigger.emission-narrowing-fixture-floor"
-title = "Reopen matrix.emission-narrowing-fixture-floor when its reviewed demand event is observed."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "golden-vector author"
-dimension = "duplicate asserted-byte authoring"
-action_on_fire_md = """add an emission model or name the narrow type
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """a new vector duplicates bytes already asserted through narrowing
-"""
-evidence_ids = ["matrix.source-observation.emission-narrowing-fixture-floor"]
-
-[[record]]
-id = "matrix.trigger.extern-emitted-test-boundary"
-title = "Reopen matrix.extern-emitted-test-boundary when its reviewed demand event is observed."
-projection_group = "explicit-boundaries"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "extern/raw-bytes consumer"
-dimension = "demand or missed wasm defect"
-action_on_fire_md = """review hint feature
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """consumer supplies valid-byte knowledge or reports a defect
-"""
-evidence_ids = ["matrix.source-observation.extern-emitted-test-boundary"]
-
-[[record]]
-id = "matrix.trigger.extern-interface-sentinel-boundary"
-title = "Reopen matrix.extern-interface-sentinel-boundary when its reviewed demand event is observed."
-projection_group = "explicit-boundaries"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "matrix query consumer"
-dimension = "vendor-sentinel query demand"
-action_on_fire_md = """model only demanded seam data
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """a concrete query needs it
-"""
-evidence_ids = ["matrix.source-observation.extern-interface-sentinel-boundary"]
-
-[[record]]
-id = "matrix.trigger.float-table-key-demand"
-title = "Reopen matrix.float-table-key-domain when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "affected consumer"
-dimension = "immutable wire formats with float keys"
-action_on_fire_md = """design an ordered-float key
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """a consumer cannot apply integer/text/bytes remedy
-"""
-evidence_ids = ["matrix.source-observation.float-table-key-demand"]
-
-[[record]]
-id = "matrix.trigger.grammar-derived-legality"
-title = "Reopen matrix.grammar-derived-legality when its reviewed demand event is observed."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "consumer reporter"
-dimension = "blank legal role×feature cells"
-action_on_fire_md = """derive the grammar denominator
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """a valid-CDDL generation defect is reported in a blank cell
-"""
-evidence_ids = ["matrix.source-observation.grammar-derived-legality"]
-
-[[record]]
-id = "matrix.trigger.inline-cbor-containment-boundary"
-title = "Reopen matrix.inline-cbor-containment-boundary when its reviewed demand event is observed."
-projection_group = "explicit-boundaries"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "matrix query consumer"
-dimension = "nested-cbor row demand"
-action_on_fire_md = """add the row if it adds discrimination
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """a concrete query needs it
-"""
-evidence_ids = ["matrix.source-observation.inline-cbor-containment-boundary"]
-
-[[record]]
-id = "matrix.trigger.inline-group-choice-arm-demand"
-title = "Reopen matrix.inline-group-choice-arm when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "affected spec owner"
-dimension = "required group names"
-action_on_fire_md = """mint the inline arm struct
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """one committed spec requires ten
-"""
-evidence_ids = ["matrix.source-observation.inline-group-choice-arm-demand"]
-
-[[record]]
-id = "matrix.trigger.multi-choice-group-demand"
-title = "Reopen matrix.multi-choice-group-rule when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "affected spec owner"
-dimension = "repeated hand expansion"
-action_on_fire_md = """design a choice of bodies
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """one rule's alternatives are re-spelled at more than a handful of reference sites
-"""
-evidence_ids = ["matrix.source-observation.multi-choice-group-demand"]
-
-[[record]]
-id = "matrix.trigger.multifile-extern-shape-coverage"
-title = "Reopen matrix.multifile.extern-shape-coverage when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "multi-scope consumer"
-dimension = "scopes crossed by extern surface"
-action_on_fire_md = """enumerate demanded shapes
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """a cross-module extern build breaks outside facade composition
-"""
-evidence_ids = ["matrix.source-observation.multifile-extern-shape-coverage"]
-
-[[record]]
-id = "matrix.trigger.nint-capability-demand"
-title = "Reopen matrix.nint-capability when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "affected spec owner"
-dimension = "full-range nint constructs in an uncontrolled spec"
-action_on_fire_md = """design runtime/emitted type and resolve upstream literal width
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """a consumer reports such a spec
-"""
-evidence_ids = ["matrix.source-observation.nint-capability-demand"]
-
-[[record]]
-id = "matrix.trigger.nominal-custom-pair-demand"
-title = "Reopen matrix.nominal-custom-pair-wrapper when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "affected crate owner"
-dimension = "handwritten standalone wrappers"
-action_on_fire_md = """design opt-in nominalization
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """one crate carries more than a handful
-"""
-evidence_ids = ["matrix.source-observation.nominal-custom-pair-demand"]
-
-[[record]]
-id = "matrix.trigger.open-table-min-one-hardening"
-title = "Reopen matrix.open-table.min-one-hardening when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "affected consumer"
-dimension = "empty typed row reaching wire/cross-crate boundary"
-action_on_fire_md = """adopt NonEmptyMap/PairMap across faces
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """bypass is observed
-"""
-evidence_ids = ["matrix.source-observation.open-table-min-one-hardening"]
-
-[[record]]
-id = "matrix.trigger.per-value-encoding-reachability"
-title = "Reopen matrix.per-value-encoding-reachability when its reviewed demand event is observed."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "golden-vector author"
-dimension = "actionable-column overstatement"
-action_on_fire_md = """add per-value reachability
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """the author hand-dismisses more cells than they can vector
-"""
-evidence_ids = ["matrix.source-observation.per-value-encoding-reachability"]
-
-[[record]]
-id = "matrix.trigger.refusal-spelling-catalog"
-title = "Reopen matrix.catalog-build.refusal-spelling when its reviewed demand event is observed."
-projection_group = "expansion"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "refusal-fix owner"
-dimension = "guards with ordering bypass history"
-action_on_fire_md = """add the mechanical reject-catalog leg
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """a second guard is bypassed at an unenumerated trigger-space point
-"""
-evidence_ids = ["matrix.source-observation.refusal-spelling-catalog"]
-
-[[record]]
-id = "matrix.trigger.root-reference-placement"
-title = "Reopen matrix.root-reference-placement when its reviewed demand event is observed."
-projection_group = "wasm-abi-multifile"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "affected consumer"
-dimension = "root-position dangling imports"
-action_on_fire_md = """add named/alias root rows
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """E0412/E0425/E0432 is hand-fixed after regen outside seven rootref cells
-"""
-evidence_ids = ["matrix.source-observation.root-reference-placement"]
-
-[[record]]
-id = "matrix.trigger.tag-registry-boundary"
-title = "Reopen matrix.tag-registry-boundary when its reviewed demand event is observed."
-projection_group = "matrix-side-work"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
+[record.payload.reopening_signal]
 observer = "matrix consumer"
 dimension = "tag-semantic consumers"
 action_on_fire_md = """enumerate only the demanded tag semantics
 """
 evaluation = "unknown"
 
-[record.payload.predicate]
+[record.payload.reopening_signal.predicate]
 predicate_kind = "event"
 event_md = """a consumer needs behavior keyed by tag number
 """
-evidence_ids = ["matrix.source-observation.tag-registry-boundary"]
-
-[[record]]
-id = "matrix.trigger.wasm-extern-wrapper-demand"
-title = "Reopen matrix.wasm-extern-wrapper-demand when its reviewed demand event is observed."
-projection_group = "findings-open"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "generated-crate consumer"
-dimension = "unused wrapper obligations"
-action_on_fire_md = """make reachability-conditional emission
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """consumer reports or silences the generated unused import
-"""
-evidence_ids = ["matrix.source-observation.wasm-extern-wrapper-demand"]
-
-[[record]]
-id = "matrix.trigger.wasm-macro-behavior-boundary"
-title = "Reopen matrix.wasm-macro-behavior-boundary when its reviewed demand event is observed."
-projection_group = "explicit-boundaries"
-
-[record.payload]
-kind = "signal"
-transition_kind = "reopening_signal"
-observer = "macro-mode consumer"
-dimension = "behavioral defects past compile verdict"
-action_on_fire_md = """revisit only that boundary
-"""
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = """one is reported
-"""
-evidence_ids = ["matrix.source-observation.wasm-macro-behavior-boundary"]
 
 [[record]]
 id = "matrix.typed-tag-report-upstream"
@@ -3649,9 +2677,18 @@ closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-typed-tag-report-upstream-upstream"
 current_upstream_state_md = """The paste-ready report cddl-matrix/upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md is committed but no issue is filed.
 """
-transition_ids = ["matrix.retirement.typed-tag-report-upstream"]
 verification_md = """File the report; on an 81cbf4 fix remove that exact exemption, re-mint contain.group-choice-arm.type2.tag.fixed_array, run probe/fold, and prune gap 14; do not treat an 81ccf5-only change as closure.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-typed-tag-report-upstream-upstream"
+external_predicate_md = """A published ruling or release rejects wrong fixed payload 81cbf4 for the declared typed tag, or explicitly rules that acceptance correct.
+"""
+verification_md = """File the report; on an 81cbf4 fix remove that exact exemption, re-mint contain.group-choice-arm.type2.tag.fixed_array, run probe/fold, and prune gap 14; do not treat an 81ccf5-only change as closure.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "acceptance-ruled-correct"
@@ -3712,9 +2749,18 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-uint-control-operator-upstream-upstream"
 current_upstream_state_md = """The fix is submitted upstream; no fresh published-release check has been performed.
 """
-transition_ids = ["matrix.retirement.uint-control-operator-upstream"]
 verification_md = """Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-uint-control-operator-upstream-upstream"
+external_predicate_md = """A published release contains the submitted uint-target numeric, size, and bits control-operator enforcement fix.
+"""
+verification_md = """Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.undefined-ciborium-upstream"
@@ -3737,9 +2783,18 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-undefined-ciborium-upstream-upstream"
 current_upstream_state_md = """The current generic decoder collapses f7 to Null; no fresh release check has been performed.
 """
-transition_ids = ["matrix.retirement.undefined-ciborium-upstream"]
 verification_md = """Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-undefined-ciborium-upstream-upstream"
+external_predicate_md = """A published release exposes CBOR undefined as a distinct generic Value variant rather than Null.
+"""
+verification_md = """Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record]]
 id = "matrix.undefined-validator-upstream"
@@ -3764,9 +2819,18 @@ closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-undefined-validator-upstream-upstream"
 current_upstream_state_md = """The pinned validator rejects f7 as Null; no fresh published-release check has been performed.
 """
-transition_ids = ["matrix.retirement.undefined-validator-upstream"]
 verification_md = """Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
 """
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "ref-matrix-undefined-validator-upstream-upstream"
+external_predicate_md = """A published release accepts validate_cbor_from_slice(\"x = undefined\", &[0xf7], None) with RFC 8949 undefined semantics.
+"""
+verification_md = """Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
+"""
+due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+"""
+evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "signature-only-change"
@@ -3812,7 +2876,18 @@ work_state = "deferred"
 work_intent = "repair"
 work_kind = "regression_gap"
 risk = "misleading_docs"
-transition_ids = ["matrix.trigger.wasm-extern-wrapper-demand"]
+
+[record.payload.reopening_signal]
+observer = "generated-crate consumer"
+dimension = "unused wrapper obligations"
+action_on_fire_md = """make reachability-conditional emission
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """consumer reports or silences the generated unused import
+"""
 
 [[record]]
 id = "matrix.wasm-macro-behavior-boundary"
@@ -3833,7 +2908,18 @@ authority_reference_id = "ref-matrix-wasm-macro-behavior-boundary-source"
 rationale_md = """Macro modes replace the wrapper method surface with fixture-supplied bodies, so the matrix judges generator compile behavior and skips behavioral claims until a consumer reports a defect that passed compilation.
 """
 permanence = "reopenable"
-reopening_transition_id = "matrix.trigger.wasm-macro-behavior-boundary"
+
+[record.payload.reopening_signal]
+observer = "macro-mode consumer"
+dimension = "behavioral defects past compile verdict"
+action_on_fire_md = """revisit only that boundary
+"""
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = """one is reported
+"""
 
 [[part]]
 part_id = "consumer-hand-patch"
@@ -4333,104 +3419,9 @@ kind = "section"
 section_id = "related"
 
 [[relation]]
-source = "matrix.additional-tool-annotations"
-kind = "parent_of"
-target = "matrix.source-observation.additional-tool-annotations"
-
-[[relation]]
-source = "matrix.additional-tool-annotations"
-kind = "parent_of"
-target = "matrix.trigger.additional-tool-annotations"
-
-[[relation]]
-source = "matrix.anonymous-nested-map"
-kind = "parent_of"
-target = "matrix.source-observation.anonymous-nested-map-demand"
-
-[[relation]]
-source = "matrix.anonymous-nested-map"
-kind = "parent_of"
-target = "matrix.trigger.anonymous-nested-map-demand"
-
-[[relation]]
-source = "matrix.array-sequence-upstream"
-kind = "parent_of"
-target = "matrix.retirement.array-sequence-upstream"
-
-[[relation]]
-source = "matrix.bignum-key-tag-upstream"
-kind = "parent_of"
-target = "matrix.retirement.bignum-key-tag-upstream"
-
-[[relation]]
 source = "matrix.catalog-build.refusal-spelling"
 kind = "depends_on"
 target = "matrix.refusal-spelling-space"
-
-[[relation]]
-source = "matrix.catalog-build.refusal-spelling"
-kind = "parent_of"
-target = "matrix.source-observation.refusal-spelling-catalog"
-
-[[relation]]
-source = "matrix.catalog-build.refusal-spelling"
-kind = "parent_of"
-target = "matrix.trigger.refusal-spelling-catalog"
-
-[[relation]]
-source = "matrix.control-host-placement-space"
-kind = "parent_of"
-target = "matrix.source-observation.control-host-placement-space"
-
-[[relation]]
-source = "matrix.control-host-placement-space"
-kind = "parent_of"
-target = "matrix.trigger.control-host-placement-space"
-
-[[relation]]
-source = "matrix.derived-variant-naming"
-kind = "parent_of"
-target = "matrix.source-observation.derived-variant-naming-demand"
-
-[[relation]]
-source = "matrix.derived-variant-naming"
-kind = "parent_of"
-target = "matrix.trigger.derived-variant-naming-demand"
-
-[[relation]]
-source = "matrix.duplicate-rejection-diagnostics"
-kind = "parent_of"
-target = "matrix.source-observation.duplicate-rejection-diagnostics"
-
-[[relation]]
-source = "matrix.duplicate-rejection-diagnostics"
-kind = "parent_of"
-target = "matrix.trigger.duplicate-rejection-diagnostics"
-
-[[relation]]
-source = "matrix.emission-input-mode-honesty"
-kind = "parent_of"
-target = "matrix.cadence.emission-input-mode-honesty"
-
-[[relation]]
-source = "matrix.emission-narrowing-fixture-floor"
-kind = "parent_of"
-target = "matrix.source-observation.emission-narrowing-fixture-floor"
-
-[[relation]]
-source = "matrix.emission-narrowing-fixture-floor"
-kind = "parent_of"
-target = "matrix.trigger.emission-narrowing-fixture-floor"
-
-[[relation]]
-source = "matrix.extern-emitted-test-boundary"
-kind = "parent_of"
-target = "matrix.source-observation.extern-emitted-test-boundary"
-
-[[relation]]
-source = "matrix.extern-emitted-test-boundary"
-kind = "parent_of"
-target = "matrix.trigger.extern-emitted-test-boundary"
 
 [[relation]]
 source = "matrix.extern-execution-multifile"
@@ -4443,29 +3434,9 @@ kind = "parent_of"
 target = "matrix.multifile.extern-shape-coverage"
 
 [[relation]]
-source = "matrix.extern-interface-sentinel-boundary"
-kind = "parent_of"
-target = "matrix.source-observation.extern-interface-sentinel-boundary"
-
-[[relation]]
-source = "matrix.extern-interface-sentinel-boundary"
-kind = "parent_of"
-target = "matrix.trigger.extern-interface-sentinel-boundary"
-
-[[relation]]
 source = "matrix.fixed-array.static-representation"
 kind = "complements"
 target = "matrix.fixed-bytes.static-representation"
-
-[[relation]]
-source = "matrix.fixed-bytes.lowercase-base64-parser"
-kind = "parent_of"
-target = "matrix.retirement.fixed-bytes.lowercase-base64-parser"
-
-[[relation]]
-source = "matrix.fixed-bytes.validator-corroboration"
-kind = "parent_of"
-target = "matrix.retirement.fixed-bytes.validator-corroboration"
 
 [[relation]]
 source = "matrix.fixed-map-key-kinds"
@@ -4476,36 +3447,6 @@ target = "matrix.float-table-key-domain"
 source = "matrix.fixed-map-key-kinds"
 kind = "related"
 target = "matrix.nint-capability"
-
-[[relation]]
-source = "matrix.float-key-null-upstream"
-kind = "parent_of"
-target = "matrix.retirement.float-key-null-upstream"
-
-[[relation]]
-source = "matrix.float-prelude-name-upstream"
-kind = "parent_of"
-target = "matrix.retirement.float-prelude-name-upstream"
-
-[[relation]]
-source = "matrix.float-table-key-domain"
-kind = "parent_of"
-target = "matrix.source-observation.float-table-key-demand"
-
-[[relation]]
-source = "matrix.float-table-key-domain"
-kind = "parent_of"
-target = "matrix.trigger.float-table-key-demand"
-
-[[relation]]
-source = "matrix.grammar-derived-legality"
-kind = "parent_of"
-target = "matrix.source-observation.grammar-derived-legality"
-
-[[relation]]
-source = "matrix.grammar-derived-legality"
-kind = "parent_of"
-target = "matrix.trigger.grammar-derived-legality"
 
 [[relation]]
 source = "matrix.heterogeneous-array.occurrence-bounds"
@@ -4528,99 +3469,9 @@ kind = "related"
 target = "matrix.open-table.bounded-rest-rows"
 
 [[relation]]
-source = "matrix.incremental-extension-reference-upstream"
-kind = "parent_of"
-target = "matrix.retirement.incremental-extension-reference-upstream"
-
-[[relation]]
 source = "matrix.incremental-group-choice-extension"
 kind = "blocked_by"
 target = "matrix.multi-choice-group-rule"
-
-[[relation]]
-source = "matrix.incremental-group-choice-extension"
-kind = "parent_of"
-target = "matrix.predicate.incremental-group-choice-extension"
-
-[[relation]]
-source = "matrix.inline-cbor-containment-boundary"
-kind = "parent_of"
-target = "matrix.source-observation.inline-cbor-containment-boundary"
-
-[[relation]]
-source = "matrix.inline-cbor-containment-boundary"
-kind = "parent_of"
-target = "matrix.trigger.inline-cbor-containment-boundary"
-
-[[relation]]
-source = "matrix.inline-group-choice-arm"
-kind = "parent_of"
-target = "matrix.source-observation.inline-group-choice-arm-demand"
-
-[[relation]]
-source = "matrix.inline-group-choice-arm"
-kind = "parent_of"
-target = "matrix.trigger.inline-group-choice-arm-demand"
-
-[[relation]]
-source = "matrix.intra-alternative-variations"
-kind = "parent_of"
-target = "matrix.cadence.intra-alternative-variations"
-
-[[relation]]
-source = "matrix.multi-choice-group-rule"
-kind = "parent_of"
-target = "matrix.source-observation.multi-choice-group-demand"
-
-[[relation]]
-source = "matrix.multi-choice-group-rule"
-kind = "parent_of"
-target = "matrix.trigger.multi-choice-group-demand"
-
-[[relation]]
-source = "matrix.multifile.extern-shape-coverage"
-kind = "parent_of"
-target = "matrix.source-observation.multifile-extern-shape-coverage"
-
-[[relation]]
-source = "matrix.multifile.extern-shape-coverage"
-kind = "parent_of"
-target = "matrix.trigger.multifile-extern-shape-coverage"
-
-[[relation]]
-source = "matrix.named-rule-map-key-upstream"
-kind = "parent_of"
-target = "matrix.retirement.named-rule-map-key-upstream"
-
-[[relation]]
-source = "matrix.nint-capability"
-kind = "parent_of"
-target = "matrix.source-observation.nint-capability-demand"
-
-[[relation]]
-source = "matrix.nint-capability"
-kind = "parent_of"
-target = "matrix.trigger.nint-capability-demand"
-
-[[relation]]
-source = "matrix.nominal-custom-pair-wrapper"
-kind = "parent_of"
-target = "matrix.source-observation.nominal-custom-pair-demand"
-
-[[relation]]
-source = "matrix.nominal-custom-pair-wrapper"
-kind = "parent_of"
-target = "matrix.trigger.nominal-custom-pair-demand"
-
-[[relation]]
-source = "matrix.non-uint-range-upstream"
-kind = "parent_of"
-target = "matrix.retirement.non-uint-range-upstream"
-
-[[relation]]
-source = "matrix.open-array.optional-adjacency"
-kind = "parent_of"
-target = "matrix.predicate.open-array-optional-adjacency"
 
 [[relation]]
 source = "matrix.open-table.bounded-rest-rows"
@@ -4628,264 +3479,14 @@ kind = "related"
 target = "matrix.open-table.min-one-hardening"
 
 [[relation]]
-source = "matrix.open-table.min-one-hardening"
-kind = "parent_of"
-target = "matrix.source-observation.open-table-min-one-hardening"
-
-[[relation]]
-source = "matrix.open-table.min-one-hardening"
-kind = "parent_of"
-target = "matrix.trigger.open-table-min-one-hardening"
-
-[[relation]]
-source = "matrix.optional-closed-map-upstream"
-kind = "parent_of"
-target = "matrix.retirement.optional-closed-map-upstream"
-
-[[relation]]
-source = "matrix.over-acceptance-denominator"
-kind = "parent_of"
-target = "matrix.predicate.denominator-ruling"
-
-[[relation]]
-source = "matrix.per-value-encoding-reachability"
-kind = "parent_of"
-target = "matrix.source-observation.per-value-encoding-reachability"
-
-[[relation]]
-source = "matrix.per-value-encoding-reachability"
-kind = "parent_of"
-target = "matrix.trigger.per-value-encoding-reachability"
-
-[[relation]]
-source = "matrix.periodic-coverage-honesty"
-kind = "parent_of"
-target = "matrix.cadence.periodic-coverage-honesty"
-
-[[relation]]
-source = "matrix.prelude-number-float-upstream"
-kind = "parent_of"
-target = "matrix.retirement.prelude-number-float-upstream"
-
-[[relation]]
-source = "matrix.profile-version-scope"
-kind = "parent_of"
-target = "matrix.cadence.profile-version-scope"
-
-[[relation]]
-source = "matrix.radix-literal-upstream"
-kind = "parent_of"
-target = "matrix.retirement.radix-literal-upstream"
-
-[[relation]]
-source = "matrix.refusal-spelling-space"
-kind = "parent_of"
-target = "matrix.cadence.refusal-spelling-space"
-
-[[relation]]
 source = "matrix.refusal-spelling-space"
 kind = "parent_of"
 target = "matrix.catalog-build.refusal-spelling"
-
-[[relation]]
-source = "matrix.root-reference-placement"
-kind = "parent_of"
-target = "matrix.source-observation.root-reference-placement"
-
-[[relation]]
-source = "matrix.root-reference-placement"
-kind = "parent_of"
-target = "matrix.trigger.root-reference-placement"
-
-[[relation]]
-source = "matrix.ruby-inline-controller-upstream"
-kind = "parent_of"
-target = "matrix.retirement.ruby-inline-controller-upstream"
-
-[[relation]]
-source = "matrix.signed-int-size-upstream"
-kind = "parent_of"
-target = "matrix.retirement.signed-int-size-upstream"
-
-[[relation]]
-source = "matrix.string-key-mixed-rest-upstream"
-kind = "parent_of"
-target = "matrix.retirement.string-key-mixed-rest-upstream"
-
-[[relation]]
-source = "matrix.tag-map-key-upstream"
-kind = "parent_of"
-target = "matrix.retirement.tag-map-key-upstream"
-
-[[relation]]
-source = "matrix.tag-registry-boundary"
-kind = "parent_of"
-target = "matrix.source-observation.tag-registry-boundary"
-
-[[relation]]
-source = "matrix.tag-registry-boundary"
-kind = "parent_of"
-target = "matrix.trigger.tag-registry-boundary"
-
-[[relation]]
-source = "matrix.trigger.additional-tool-annotations"
-kind = "reopens"
-target = "matrix.additional-tool-annotations"
-
-[[relation]]
-source = "matrix.trigger.anonymous-nested-map-demand"
-kind = "reopens"
-target = "matrix.anonymous-nested-map"
-
-[[relation]]
-source = "matrix.trigger.control-host-placement-space"
-kind = "reopens"
-target = "matrix.control-host-placement-space"
-
-[[relation]]
-source = "matrix.trigger.derived-variant-naming-demand"
-kind = "reopens"
-target = "matrix.derived-variant-naming"
-
-[[relation]]
-source = "matrix.trigger.duplicate-rejection-diagnostics"
-kind = "reopens"
-target = "matrix.duplicate-rejection-diagnostics"
-
-[[relation]]
-source = "matrix.trigger.emission-narrowing-fixture-floor"
-kind = "reopens"
-target = "matrix.emission-narrowing-fixture-floor"
-
-[[relation]]
-source = "matrix.trigger.extern-emitted-test-boundary"
-kind = "reopens"
-target = "matrix.extern-emitted-test-boundary"
-
-[[relation]]
-source = "matrix.trigger.extern-interface-sentinel-boundary"
-kind = "reopens"
-target = "matrix.extern-interface-sentinel-boundary"
-
-[[relation]]
-source = "matrix.trigger.float-table-key-demand"
-kind = "reopens"
-target = "matrix.float-table-key-domain"
-
-[[relation]]
-source = "matrix.trigger.grammar-derived-legality"
-kind = "reopens"
-target = "matrix.grammar-derived-legality"
-
-[[relation]]
-source = "matrix.trigger.inline-cbor-containment-boundary"
-kind = "reopens"
-target = "matrix.inline-cbor-containment-boundary"
-
-[[relation]]
-source = "matrix.trigger.inline-group-choice-arm-demand"
-kind = "reopens"
-target = "matrix.inline-group-choice-arm"
-
-[[relation]]
-source = "matrix.trigger.multi-choice-group-demand"
-kind = "reopens"
-target = "matrix.multi-choice-group-rule"
-
-[[relation]]
-source = "matrix.trigger.multifile-extern-shape-coverage"
-kind = "reopens"
-target = "matrix.multifile.extern-shape-coverage"
-
-[[relation]]
-source = "matrix.trigger.nint-capability-demand"
-kind = "reopens"
-target = "matrix.nint-capability"
-
-[[relation]]
-source = "matrix.trigger.nominal-custom-pair-demand"
-kind = "reopens"
-target = "matrix.nominal-custom-pair-wrapper"
-
-[[relation]]
-source = "matrix.trigger.open-table-min-one-hardening"
-kind = "reopens"
-target = "matrix.open-table.min-one-hardening"
-
-[[relation]]
-source = "matrix.trigger.per-value-encoding-reachability"
-kind = "reopens"
-target = "matrix.per-value-encoding-reachability"
-
-[[relation]]
-source = "matrix.trigger.refusal-spelling-catalog"
-kind = "reopens"
-target = "matrix.catalog-build.refusal-spelling"
-
-[[relation]]
-source = "matrix.trigger.root-reference-placement"
-kind = "reopens"
-target = "matrix.root-reference-placement"
-
-[[relation]]
-source = "matrix.trigger.tag-registry-boundary"
-kind = "reopens"
-target = "matrix.tag-registry-boundary"
-
-[[relation]]
-source = "matrix.trigger.wasm-extern-wrapper-demand"
-kind = "reopens"
-target = "matrix.wasm-extern-wrapper-demand"
-
-[[relation]]
-source = "matrix.trigger.wasm-macro-behavior-boundary"
-kind = "reopens"
-target = "matrix.wasm-macro-behavior-boundary"
-
-[[relation]]
-source = "matrix.typed-tag-report-upstream"
-kind = "parent_of"
-target = "matrix.retirement.typed-tag-report-upstream"
-
-[[relation]]
-source = "matrix.uint-control-operator-upstream"
-kind = "parent_of"
-target = "matrix.retirement.uint-control-operator-upstream"
 
 [[relation]]
 source = "matrix.undefined-ciborium-upstream"
 kind = "complements"
 target = "matrix.undefined-validator-upstream"
-
-[[relation]]
-source = "matrix.undefined-ciborium-upstream"
-kind = "parent_of"
-target = "matrix.retirement.undefined-ciborium-upstream"
-
-[[relation]]
-source = "matrix.undefined-validator-upstream"
-kind = "parent_of"
-target = "matrix.retirement.undefined-validator-upstream"
-
-[[relation]]
-source = "matrix.wasm-extern-wrapper-demand"
-kind = "parent_of"
-target = "matrix.source-observation.wasm-extern-wrapper-demand"
-
-[[relation]]
-source = "matrix.wasm-extern-wrapper-demand"
-kind = "parent_of"
-target = "matrix.trigger.wasm-extern-wrapper-demand"
-
-[[relation]]
-source = "matrix.wasm-macro-behavior-boundary"
-kind = "parent_of"
-target = "matrix.source-observation.wasm-macro-behavior-boundary"
-
-[[relation]]
-source = "matrix.wasm-macro-behavior-boundary"
-kind = "parent_of"
-target = "matrix.trigger.wasm-macro-behavior-boundary"
 
 [[reference]]
 id = "ref-matrix-additional-tool-annotations-source"
