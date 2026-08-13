@@ -63,6 +63,7 @@ body_md = '''## Pending maintainer action
 entries = [
   "testing.prettyplease-shelling-rustfmt",
   "testing.rule-trailing.directive-classification",
+  "testing.signal-shaped-prose-lives-arms-cannot-reopen",
 ]
 
 [[section]]
@@ -7532,6 +7533,48 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
+id = "testing.signal-shaped-prose-lives-arms-cannot-reopen"
+title = "Where signal-shaped prose lives on arms that cannot reopen."
+
+[record.payload]
+kind = "decision"
+body_md = '''- **Where signal-shaped prose lives on arms that cannot reopen.** The prose-slot vocabulary
+  declares `signal_md` exactly on the arms that carry a nested transition contract, on the rule
+  that a signal slot on an arm which structurally cannot reopen would legitimize a contradiction:
+  a record typed permanent promising, in prose, that it might not be. Five records sit on the far
+  side of that rule with signal-shaped sentences left inside `body_md` — three decided-permanent
+  decisions (`testing.checking-runtime-flavor-s-safety-condition-rather-stating`,
+  `testing.complete-cargo-mutants-sweep-will-never-run`,
+  `testing.generic-raw-bytes-base-refused-generic-extern-base`) and two controls
+  (`testing.arm-position-s-classifier-compile-time-forcing-function`,
+  `testing.transparent-tag-set-idiom-recognized-shape-boundary-request`) — so for these five the
+  reopenability claim a reader sees is prose no typed field backs. The two candidate resolutions
+  differ in kind, not degree: give those arms an optional transition home (schema grows, and the
+  permanence enum stops meaning what it says), or reword/relocate the prose when each record is
+  next touched (schema unchanged, five hand edits spread over whoever next opens them). The
+  corpus already argues for the second: `cargo-mutants`'s sentence *refuses* a signal ("do not
+  schedule it, add it to a later burndown, or invent a reopening signal"), and the arm-position
+  control's names a trigger for a narrower follow-on — adding a runtime assertion of the exclusion
+  set — not for reopening the control itself. Neither is a transition contract wearing the wrong
+  clothes; both are prose that borrowed the word. The reason this is a decision and not a chore is
+  that answering it fixes what `signal_md`'s declaration rule *means* for every arm added later,
+  and that is the maintainer's to set.
+
+'''
+decision_state = "pending"
+question_md = '''May an arm that carries no transition contract declare a prose signal slot, or is signal-shaped prose on such an arm reworded in place when the record is next touched?
+'''
+
+[record.payload.unblock_predicate]
+owner_reference_id = "testing-signal-shaped-prose-lives-arms-cannot"
+event_md = '''A maintainer records whether non-reopenable arms may declare a prose signal slot, naming which of the five records the ruling rewords rather than re-homes.
+'''
+check_procedure_md = '''Require a durable ruling that states the rule for arms added later, not only a disposition of today's five records; an edit to one record is not the ruling.
+'''
+due_action_md = '''If a slot is permitted, add it to the named arms and move the five sentences; otherwise reword the five in place and delete this record.
+'''
+
+[[record]]
 id = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 title = "Stale \"known limitation\" prose surviving its fix — a finding ledgered in TWO homes where the fixing commit prunes only one."
 
@@ -10818,6 +10861,12 @@ source = "testing.schema-name.two-rowless-types-collide"
 kind = "file_heading"
 path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
+
+[[reference]]
+id = "testing-signal-shaped-prose-lives-arms-cannot"
+source = "testing.signal-shaped-prose-lives-arms-cannot-reopen"
+kind = "roadmap"
+target_id = "testing.signal-shaped-prose-lives-arms-cannot-reopen"
 
 [[reference]]
 id = "gate-lint-doc-citations-n5"

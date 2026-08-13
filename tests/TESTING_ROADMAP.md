@@ -120,6 +120,30 @@ At the pinned cddl revision (`ac1b98ec`) a
   revision must be re-carried either way), or a consumer reports hitting the refusal on a
   multi-line spelling their formatting tooling forces.
 
+<a id="roadmap-id-testing.signal-shaped-prose-lives-arms-cannot-reopen"></a>
+<sub>decision · decision_state=pending</sub>
+- **Where signal-shaped prose lives on arms that cannot reopen.** The prose-slot vocabulary
+  declares `signal_md` exactly on the arms that carry a nested transition contract, on the rule
+  that a signal slot on an arm which structurally cannot reopen would legitimize a contradiction:
+  a record typed permanent promising, in prose, that it might not be. Five records sit on the far
+  side of that rule with signal-shaped sentences left inside `body_md` — three decided-permanent
+  decisions (`testing.checking-runtime-flavor-s-safety-condition-rather-stating`,
+  `testing.complete-cargo-mutants-sweep-will-never-run`,
+  `testing.generic-raw-bytes-base-refused-generic-extern-base`) and two controls
+  (`testing.arm-position-s-classifier-compile-time-forcing-function`,
+  `testing.transparent-tag-set-idiom-recognized-shape-boundary-request`) — so for these five the
+  reopenability claim a reader sees is prose no typed field backs. The two candidate resolutions
+  differ in kind, not degree: give those arms an optional transition home (schema grows, and the
+  permanence enum stops meaning what it says), or reword/relocate the prose when each record is
+  next touched (schema unchanged, five hand edits spread over whoever next opens them). The
+  corpus already argues for the second: `cargo-mutants`'s sentence *refuses* a signal ("do not
+  schedule it, add it to a later burndown, or invent a reopening signal"), and the arm-position
+  control's names a trigger for a narrower follow-on — adding a runtime assertion of the exclusion
+  set — not for reopening the control itself. Neither is a transition contract wearing the wrong
+  clothes; both are prose that borrowed the word. The reason this is a decision and not a chore is
+  that answering it fixes what `signal_md`'s declaration rule *means* for every arm added later,
+  and that is the maintainer's to set.
+
 ## Next work
 
 <a id="roadmap-id-testing.grammar-fuzzer-escalations"></a>
