@@ -10,6 +10,62 @@ title = "Matrix all-fields fixture"
 body_md = """# Matrix all-fields fixture
 {{slot:counts}}{{slot:ops}}{{slot:emission}}{{slot:constraint}}
 """
+entries = [
+  "matrix.fixture-upstream-c",
+  "fixture-part",
+  "matrix.fixture-upstream-b",
+  "matrix.fixture-upstream-a",
+  "matrix.fixture-task-j",
+  "matrix.fixture-task-i",
+  "matrix.fixture-task-h",
+  "matrix.fixture-task-g",
+  "matrix.fixture-task-f",
+  "matrix.fixture-task-e",
+  "matrix.fixture-task-d",
+  "matrix.fixture-task-c",
+  "matrix.fixture-task-b",
+  "matrix.fixture-task-a",
+  "matrix.fixture-signal-k",
+  "matrix.fixture-signal-j",
+  "matrix.fixture-signal-i",
+  "matrix.fixture-signal-h",
+  "matrix.fixture-signal-g",
+  "matrix.fixture-signal-f",
+  "matrix.fixture-signal-e",
+  "matrix.fixture-signal-d",
+  "matrix.fixture-signal-c",
+  "matrix.fixture-signal-b",
+  "matrix.fixture-signal-a",
+  "matrix.fixture-semantic-owner",
+  "matrix.fixture-raw-owner",
+  "matrix.fixture-policy-c",
+  "matrix.fixture-policy-b",
+  "matrix.fixture-policy-a",
+  "matrix.fixture-evidence-m",
+  "matrix.fixture-evidence-l",
+  "matrix.fixture-evidence-k",
+  "matrix.fixture-evidence-j",
+  "matrix.fixture-evidence-i",
+  "matrix.fixture-evidence-h",
+  "matrix.fixture-evidence-g",
+  "matrix.fixture-evidence-f",
+  "matrix.fixture-evidence-e",
+  "matrix.fixture-evidence-d",
+  "matrix.fixture-evidence-c",
+  "matrix.fixture-evidence-b",
+  "matrix.fixture-evidence-a",
+  "matrix.fixture-control-g",
+  "matrix.fixture-control-f",
+  "matrix.fixture-control-e",
+  "matrix.fixture-control-d",
+  "matrix.fixture-control-c",
+  "matrix.fixture-control-b",
+  "matrix.fixture-control-a",
+  "matrix.fixture-choice-d",
+  "matrix.fixture-choice-c",
+  "matrix.fixture-choice-b",
+  "matrix.fixture-choice-a",
+]
 
 [section.slots.constraint]
 binding = "status_header_markers:roadmap-constraint"
@@ -26,7 +82,6 @@ binding = "status_header_markers:roadmap-ops"
 [[record]]
 id = "matrix.fixture-choice-a"
 title = "Decision arm a"
-projection_group = "fixture"
 
 [record.payload]
 kind = "decision"
@@ -49,7 +104,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.fixture-choice-b"
 title = "Decision arm b"
-projection_group = "fixture"
 
 [record.payload]
 kind = "decision"
@@ -76,7 +130,6 @@ evidence_ids = ["matrix.fixture-evidence-a"]
 [[record]]
 id = "matrix.fixture-choice-c"
 title = "Decision arm c"
-projection_group = "fixture"
 
 [record.payload]
 kind = "decision"
@@ -91,7 +144,6 @@ permanence = "permanent"
 [[record]]
 id = "matrix.fixture-choice-d"
 title = "Decision arm d"
-projection_group = "fixture"
 
 [record.payload]
 kind = "decision"
@@ -118,7 +170,6 @@ event_md = """Nested event condition.
 [[record]]
 id = "matrix.fixture-control-a"
 title = "Control arm a"
-projection_group = "fixture"
 
 [record.payload]
 kind = "control"
@@ -135,7 +186,6 @@ boundary_md = """The control claims only the synthetic fixture view.
 [[record]]
 id = "matrix.fixture-control-b"
 title = "Control arm b"
-projection_group = "fixture"
 
 [record.payload]
 kind = "control"
@@ -152,7 +202,6 @@ boundary_md = """The control claims only the synthetic fixture view.
 [[record]]
 id = "matrix.fixture-control-c"
 title = "Control arm c"
-projection_group = "fixture"
 
 [record.payload]
 kind = "control"
@@ -169,7 +218,6 @@ boundary_md = """The control claims only the synthetic fixture view.
 [[record]]
 id = "matrix.fixture-control-d"
 title = "Control arm d"
-projection_group = "fixture"
 
 [record.payload]
 kind = "control"
@@ -186,7 +234,6 @@ boundary_md = """The control claims only the synthetic fixture view.
 [[record]]
 id = "matrix.fixture-control-e"
 title = "Control arm e"
-projection_group = "fixture"
 
 [record.payload]
 kind = "control"
@@ -203,7 +250,6 @@ boundary_md = """The control claims only the synthetic fixture view.
 [[record]]
 id = "matrix.fixture-control-f"
 title = "Control arm f"
-projection_group = "fixture"
 
 [record.payload]
 kind = "control"
@@ -220,7 +266,6 @@ boundary_md = """The control claims only the synthetic fixture view.
 [[record]]
 id = "matrix.fixture-control-g"
 title = "Control arm g"
-projection_group = "fixture"
 
 [record.payload]
 kind = "control"
@@ -237,7 +282,6 @@ boundary_md = """The control claims only the synthetic fixture view.
 [[record]]
 id = "matrix.fixture-evidence-a"
 title = "Evidence arm a"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -265,7 +309,6 @@ tiers = ["focused"]
 [[record]]
 id = "matrix.fixture-evidence-b"
 title = "Evidence arm b"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -291,7 +334,6 @@ profiles = ["fixture-b"]
 [[record]]
 id = "matrix.fixture-evidence-c"
 title = "Evidence arm c"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -320,7 +362,6 @@ flags = ["fixture-c"]
 [[record]]
 id = "matrix.fixture-evidence-d"
 title = "Evidence arm d"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -345,7 +386,6 @@ input_modes = ["fixture-d"]
 [[record]]
 id = "matrix.fixture-evidence-e"
 title = "Evidence arm e"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -374,7 +414,6 @@ toolchains = ["fixture-e"]
 [[record]]
 id = "matrix.fixture-evidence-f"
 title = "Evidence arm f"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -400,7 +439,6 @@ executors = ["fixture-f"]
 [[record]]
 id = "matrix.fixture-evidence-g"
 title = "Evidence arm g"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -425,7 +463,6 @@ tiers = ["fixture-g"]
 [[record]]
 id = "matrix.fixture-evidence-h"
 title = "Evidence arm h"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -450,7 +487,6 @@ surfaces = ["fixture-h"]
 [[record]]
 id = "matrix.fixture-evidence-i"
 title = "Evidence arm i"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -475,7 +511,6 @@ profiles = ["fixture-i"]
 [[record]]
 id = "matrix.fixture-evidence-j"
 title = "Evidence arm j"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -500,7 +535,6 @@ flags = ["fixture-j"]
 [[record]]
 id = "matrix.fixture-evidence-k"
 title = "Evidence arm k"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -525,7 +559,6 @@ input_modes = ["fixture-k"]
 [[record]]
 id = "matrix.fixture-evidence-l"
 title = "Evidence arm l"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -550,7 +583,6 @@ toolchains = ["fixture-l"]
 [[record]]
 id = "matrix.fixture-evidence-m"
 title = "Evidence arm m"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -572,7 +604,6 @@ executors = ["fixture-m"]
 [[record]]
 id = "matrix.fixture-policy-a"
 title = "Maintenance policy"
-projection_group = "fixture"
 
 [record.payload]
 kind = "matrix_policy"
@@ -600,7 +631,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.fixture-policy-b"
 title = "Permanent boundary policy"
-projection_group = "fixture"
 
 [record.payload]
 kind = "matrix_policy"
@@ -615,7 +645,6 @@ permanence = "permanent"
 [[record]]
 id = "matrix.fixture-policy-c"
 title = "Reopenable boundary policy"
-projection_group = "fixture"
 
 [record.payload]
 kind = "matrix_policy"
@@ -647,7 +676,6 @@ as_of = "2026-08-11"
 [[record]]
 id = "matrix.fixture-raw-owner"
 title = "Raw authority sentinel"
-projection_group = "fixture"
 tags = ["coverage:closeout_state:blocked", "coverage:closeout_state:due", "coverage:closeout_state:waiting", "coverage:comparator:eq", "coverage:comparator:ge", "coverage:comparator:gt", "coverage:comparator:le", "coverage:comparator:lt", "coverage:control_kind:consumer_ci", "coverage:control_kind:fixture", "coverage:control_kind:gate", "coverage:control_kind:operator_procedure", "coverage:control_kind:review_rule", "coverage:control_kind:test", "coverage:control_kind:upstream_issue", "coverage:control_state:live", "coverage:control_state:proposed", "coverage:control_state:stale", "coverage:decision_arm:decided_permanent", "coverage:decision_arm:decided_reopenable", "coverage:decision_arm:held_reopenable", "coverage:decision_arm:pending", "coverage:decision_state:decided", "coverage:decision_state:held", "coverage:decision_state:pending", "coverage:evidence_kind:committed_vector", "coverage:evidence_kind:consumer_report", "coverage:evidence_kind:decision", "coverage:evidence_kind:execution_probe", "coverage:evidence_kind:external_commit", "coverage:evidence_kind:external_issue", "coverage:evidence_kind:gate", "coverage:evidence_kind:harness_free_repro", "coverage:evidence_kind:incident", "coverage:evidence_kind:registry_enumeration", "coverage:evidence_kind:regression_pin", "coverage:evidence_kind:source_read", "coverage:evidence_kind:spec_read", "coverage:evidence_verdict:confirmed", "coverage:evidence_verdict:falsified", "coverage:evidence_verdict:inapplicable", "coverage:evidence_verdict:proposed", "coverage:evidence_verdict:unknown", "coverage:freshness:as_of", "coverage:freshness:historical", "coverage:freshness:live", "coverage:freshness:stale", "coverage:manifest_kind:part", "coverage:manifest_kind:record", "coverage:manifest_kind:section", "coverage:payload_kind:control", "coverage:payload_kind:decision", "coverage:payload_kind:evidence", "coverage:payload_kind:matrix_external_closeout", "coverage:payload_kind:matrix_policy", "coverage:payload_kind:signal", "coverage:payload_kind:work", "coverage:permanence:permanent", "coverage:permanence:reopenable", "coverage:policy_kind:boundary", "coverage:policy_kind:maintenance_protocol", "coverage:predicate_kind:event", "coverage:predicate_kind:manual", "coverage:predicate_kind:quantitative", "coverage:priority_band:critical", "coverage:priority_band:high", "coverage:priority_band:low", "coverage:priority_band:normal", "coverage:reference_kind:consumer_report", "coverage:reference_kind:external_commit", "coverage:reference_kind:external_issue", "coverage:reference_kind:external_release", "coverage:reference_kind:file_heading", "coverage:reference_kind:gate", "coverage:reference_kind:matrix_cell", "coverage:reference_kind:matrix_feature", "coverage:reference_kind:matrix_role", "coverage:reference_kind:roadmap", "coverage:reference_kind:spec_passage", "coverage:reference_kind:test_symbol", "coverage:relation_kind:blocked_by", "coverage:relation_kind:complements", "coverage:relation_kind:delegates_to", "coverage:relation_kind:depends_on", "coverage:relation_kind:overlaps", "coverage:relation_kind:parent_of", "coverage:relation_kind:related", "coverage:relation_kind:reopens", "coverage:relation_kind:split_from", "coverage:relation_kind:supersedes", "coverage:risk:abort_or_panic", "coverage:risk:compile_failure", "coverage:risk:cosmetic", "coverage:risk:false_pass_or_red", "coverage:risk:invalid_acceptance", "coverage:risk:misleading_docs", "coverage:risk:resource_exhaustion", "coverage:risk:silent_wrong_bytes", "coverage:risk:valid_rejection", "coverage:risk:wrong_public_api", "coverage:schema_version:3", "coverage:signal_evaluation:met", "coverage:signal_evaluation:stale", "coverage:signal_evaluation:unknown", "coverage:signal_evaluation:unmet", "coverage:transition_kind:cadence", "coverage:transition_kind:promotion_trigger", "coverage:transition_kind:reopening_signal", "coverage:transition_kind:retirement_predicate", "coverage:transition_kind:unblock_predicate", "coverage:transition_kind:watch_escalation", "coverage:work_intent:add_regression", "coverage:work_intent:build_capability", "coverage:work_intent:build_system", "coverage:work_intent:change_documentation", "coverage:work_intent:establish_honest_refusal", "coverage:work_intent:optimize", "coverage:work_intent:repair", "coverage:work_kind:coverage_cell", "coverage:work_kind:defect", "coverage:work_kind:documentation_integrity", "coverage:work_kind:feature", "coverage:work_kind:infrastructure", "coverage:work_kind:missing_system", "coverage:work_kind:optimization", "coverage:work_kind:regression_gap", "coverage:work_state:armed", "coverage:work_state:blocked", "coverage:work_state:deferred", "coverage:work_state:delegated", "coverage:work_state:ready", "coverage:work_state:waiting_external"]
 
 [record.payload]
@@ -666,7 +694,6 @@ priority_rationale_md = """Fixture arm carries no live priority claim.
 [[record]]
 id = "matrix.fixture-semantic-owner"
 title = "Semantic authority boundary"
-projection_group = "fixture"
 
 [record.payload]
 kind = "matrix_policy"
@@ -682,7 +709,6 @@ permanence = "permanent"
 [[record]]
 id = "matrix.fixture-signal-a"
 title = "Quantitative signal a"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -709,7 +735,6 @@ evidence_ids = ["matrix.fixture-evidence-a"]
 [[record]]
 id = "matrix.fixture-signal-b"
 title = "Quantitative signal b"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -736,7 +761,6 @@ evidence_ids = ["matrix.fixture-evidence-a"]
 [[record]]
 id = "matrix.fixture-signal-c"
 title = "Quantitative signal c"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -763,7 +787,6 @@ evidence_ids = ["matrix.fixture-evidence-a"]
 [[record]]
 id = "matrix.fixture-signal-d"
 title = "Quantitative signal d"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -790,7 +813,6 @@ evidence_ids = ["matrix.fixture-evidence-d"]
 [[record]]
 id = "matrix.fixture-signal-e"
 title = "Quantitative signal e"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -817,7 +839,6 @@ evidence_ids = ["matrix.fixture-evidence-a"]
 [[record]]
 id = "matrix.fixture-signal-f"
 title = "Event reopening signal"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -839,7 +860,6 @@ evidence_ids = ["matrix.fixture-evidence-b"]
 [[record]]
 id = "matrix.fixture-signal-g"
 title = "Manual promotion signal"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -862,7 +882,6 @@ evidence_ids = ["matrix.fixture-evidence-c"]
 [[record]]
 id = "matrix.fixture-signal-h"
 title = "Unblock signal"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -881,7 +900,6 @@ evaluation = "stale"
 [[record]]
 id = "matrix.fixture-signal-i"
 title = "Watch escalation signal"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -903,7 +921,6 @@ evaluation = "met"
 [[record]]
 id = "matrix.fixture-signal-j"
 title = "Retirement signal"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -922,7 +939,6 @@ evaluation = "unmet"
 [[record]]
 id = "matrix.fixture-signal-k"
 title = "Cadence signal"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -945,7 +961,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.fixture-task-a"
 title = "Work arm a"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -968,7 +983,6 @@ regression_gap_ids = ["matrix.fixture-task-b"]
 [[record]]
 id = "matrix.fixture-task-b"
 title = "Work arm b"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -987,7 +1001,6 @@ priority_rationale_md = """Priority high is explicit.
 [[record]]
 id = "matrix.fixture-task-c"
 title = "Work arm c"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -1006,7 +1019,6 @@ priority_rationale_md = """Priority normal is explicit.
 [[record]]
 id = "matrix.fixture-task-d"
 title = "Work arm d"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -1025,7 +1037,6 @@ priority_rationale_md = """Priority low is explicit.
 [[record]]
 id = "matrix.fixture-task-e"
 title = "Work arm e"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -1051,7 +1062,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.fixture-task-f"
 title = "Work arm f"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -1079,7 +1089,6 @@ review_procedure_md = """Nested manual review procedure.
 [[record]]
 id = "matrix.fixture-task-g"
 title = "Work arm g"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -1094,7 +1103,6 @@ transition_ids = ["matrix.fixture-signal-f"]
 [[record]]
 id = "matrix.fixture-task-h"
 title = "Work arm h"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -1119,7 +1127,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.fixture-task-i"
 title = "Work arm i"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -1138,7 +1145,6 @@ regression_gap_ids = ["matrix.fixture-task-b"]
 [[record]]
 id = "matrix.fixture-task-j"
 title = "Work arm j"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -1156,7 +1162,6 @@ priority_rationale_md = """Fixture arm carries no live priority claim.
 [[record]]
 id = "matrix.fixture-upstream-a"
 title = "Matrix closeout a"
-projection_group = "fixture"
 
 [record.payload]
 kind = "matrix_external_closeout"
@@ -1205,7 +1210,6 @@ action_id = "action-a-two"
 [[record]]
 id = "matrix.fixture-upstream-b"
 title = "Matrix closeout b"
-projection_group = "fixture"
 
 [record.payload]
 kind = "matrix_external_closeout"
@@ -1252,7 +1256,6 @@ action_id = "action-b-two"
 [[record]]
 id = "matrix.fixture-upstream-c"
 title = "Matrix closeout c"
-projection_group = "fixture"
 
 [record.payload]
 kind = "matrix_external_closeout"
@@ -1304,226 +1307,6 @@ parent_record_id = "matrix.fixture-semantic-owner"
 title = "Raw part placement"
 body_md = """RAW PART PLACEMENT
 """
-
-[[manifest.entry]]
-kind = "section"
-section_id = "fixture"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-upstream-c"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "fixture-part"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-upstream-b"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-upstream-a"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-j"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-i"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-h"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-g"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-f"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-e"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-d"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-c"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-b"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-task-a"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-k"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-j"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-i"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-h"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-g"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-f"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-e"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-d"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-c"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-b"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-signal-a"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-semantic-owner"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-raw-owner"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-policy-c"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-policy-b"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-policy-a"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-m"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-l"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-k"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-j"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-i"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-h"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-g"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-f"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-e"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-d"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-c"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-b"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-evidence-a"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-control-g"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-control-f"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-control-e"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-control-d"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-control-c"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-control-b"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-control-a"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-choice-d"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-choice-c"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-choice-b"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixture-choice-a"
 
 [[relation]]
 source = "matrix.fixture-task-a"

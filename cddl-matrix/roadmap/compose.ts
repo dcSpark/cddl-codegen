@@ -1,5 +1,4 @@
 import type {
-  ManifestEntry,
   Part,
   RecordNode,
   Reference,
@@ -114,16 +113,6 @@ function writeSemanticPayload(
   writeArmFields(writer, payload, armOfPayload(payload), prefix);
 }
 
-function writeManifestEntry(writer: CanonicalTomlWriter, entry: ManifestEntry): void {
-  writer.arrayTable("manifest.entry");
-  writer.string("kind", entry.kind);
-  switch (entry.kind) {
-    case "section": writer.string("section_id", entry.section_id); break;
-    case "record": writer.string("record_id", entry.record_id); break;
-    case "part": writer.string("part_id", entry.part_id); break;
-  }
-}
-
 function referenceTuple(reference: Reference): string {
   switch (reference.kind) {
     case "roadmap": return reference.target_id;
@@ -171,13 +160,16 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
   writer.string("source_path", meta.source_path);
   writer.string("projection_path", meta.projection_path);
 
+  // Section order IS presentation order, so the section table sequence is authored data and is
+  // never re-sorted; every other table stays sorted by its own ID.
   const sections: readonly Section[] = document.sections;
-  for (const section of sorted(sections, (value) => value.section_id)) {
+  for (const section of sections) {
     writer.arrayTable("section");
     writer.string("section_id", section.section_id);
     writer.string("title", section.title);
     optionalStrings(writer, "legacy_aliases", section.legacy_aliases);
     writer.markdown("body_md", section.body_md);
+    writer.stringList("entries", section.entries);
     for (const slot of sorted(section.slots ?? [], (value) => value.slot_id)) {
       writer.table(`section.slots.${slot.slot_id}`);
       writer.string("binding", slot.binding);
@@ -189,7 +181,6 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.arrayTable("record");
     writer.string("id", record.id);
     writer.string("title", record.title);
-    writer.string("projection_group", record.projection_group);
     optionalStrings(writer, "legacy_aliases", record.legacy_aliases);
     optionalStrings(writer, "tags", record.tags);
     writer.table("record.payload");
@@ -205,7 +196,6 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.markdown("body_md", part.body_md);
   }
 
-  for (const entry of document.manifest) writeManifestEntry(writer, entry);
   {
     const relations = [...document.relations].sort((left, right) =>
       compare(`${left.source}\0${left.kind}\0${left.target}`, `${right.source}\0${right.kind}\0${right.target}`),

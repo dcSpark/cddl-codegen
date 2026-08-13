@@ -334,14 +334,12 @@ function withCrossRoadmapTestingExternTarget(source: Uint8Array): Uint8Array {
   assert(document.document.schema_version === 3, "cross-roadmap testing target fixture must be v3");
   const base = document as RoadmapDocumentV3;
   if (base.records.some((record) => record.id === CROSS_ROADMAP_TESTING_EXTERN_TARGET)) return source;
-  const projectionGroup = base.sections[0]?.section_id;
-  assert(projectionGroup !== undefined, "cross-roadmap testing target fixture lacks a projection group");
+  assert(base.sections.length > 0, "cross-roadmap testing target fixture lacks a section");
   return composeRoadmapDocument({
     ...base,
     records: [...base.records, {
       id: CROSS_ROADMAP_TESTING_EXTERN_TARGET,
       title: "Cross-roadmap extern execution owner",
-      projection_group: projectionGroup,
       payload: {
         kind: "work",
         work_state: "ready",
@@ -396,12 +394,12 @@ surfaces = ["fixture"]
   // `String.prototype.replace` silently returns the input when the anchor does not match, which
   // would leave this port serving the unmodified work payload under a temporal case name.
   const spliced = base.replace(
-    /\[record\.payload\]\n[\s\S]*?(?=\n\[\[manifest\.entry\]\])/,
+    /\[record\.payload\]\n[\s\S]*$/u,
     payload,
   );
   assert(
     spliced !== base && spliced.includes(payload),
-    "temporal payload splice matched nothing: the fixture no longer places [record.payload] before [[manifest.entry]]",
+    "temporal payload splice matched nothing: the fixture no longer ends with [record.payload]",
   );
   const source = withCrossRoadmapTestingExternTarget(UTF8.encode(spliced + `
 [[reference]]
@@ -780,7 +778,6 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         {
           id: "testing.fixture-dashboard-delegated" as RoadmapId,
           title: "Delegated dashboard fixture",
-          projection_group: syntheticTesting.sections[0]!.section_id,
           payload: { kind: "work",
             work_state: "delegated", work_intent: "build_capability", work_kind: "feature",
             risk: "cosmetic",
@@ -789,7 +786,6 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         {
           id: "testing.fixture-dashboard-cost" as RoadmapId,
           title: "Cost dashboard fixture",
-          projection_group: syntheticTesting.sections[0]!.section_id,
           payload: { kind: "testing_cost",
             cost_posture: "live_registry", unit: "milliseconds",
             scope_md: UTF8.encode("One synthetic dashboard operation."),

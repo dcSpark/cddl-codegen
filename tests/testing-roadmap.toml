@@ -5,63 +5,6 @@ source_path = "tests/testing-roadmap.toml"
 projection_path = "tests/TESTING_ROADMAP.md"
 
 [[section]]
-section_id = "declined-boundaries"
-title = "Declined (decided, with a reopening signal unless explicitly permanent)"
-body_md = """## Declined (decided, with a reopening signal unless explicitly permanent)
-
-"""
-
-[[section]]
-section_id = "deferred-features"
-title = "Deferred features (build when a real consumer needs them)"
-body_md = """## Deferred features (build when a real consumer needs them)
-
-"""
-
-[[section]]
-section_id = "next-priority"
-title = "Next work items, in priority order"
-body_md = """## Next work items, in priority order
-
-"""
-
-[[section]]
-section_id = "north-star"
-title = "North star — automated feature coverage"
-body_md = """## North star — automated feature coverage
-
-The direction all of this points toward: **an automatic flow that ensures every CDDL construct worth
-supporting works properly through the generated library — verified by execution, not by hand.**
-The future loop is *enumerate → generate → compile → execute*: round-trip real values, reject invalid
-ones, and classify every failure as either an explicitly unsupported construct or a bug to fix.
-\"Worth supporting\" remains load-bearing. Some constructs are deliberate product exclusions rather
-than holes to grind toward 100%, and the durable exclusion list is revisable as the product boundary
-moves. This roadmap owns only the work still needed to close that loop; delivered test maps,
-user-facing contracts, and current oracle behavior live in their durable documentation.
-
-One deferred coverage item remains: the wasm emit-tests minter has no `any` constructor path
-(`src/emit_tests_wasm.rs`, `Any => None`), so a minted `any` value gets no wasm-side round-trip
-differential while the rust leg does. Lifting that boundary follows demand because the wasm
-`AnyCbor` wrapper is byte-oriented and exposes no value-destructuring constructor. The other
-remaining work on this axis is carried by the future items below.
-
-"""
-
-[[section]]
-section_id = "operational-watches"
-title = "Operational watches"
-body_md = """## Operational watches
-
-"""
-
-[[section]]
-section_id = "pending-maintainer"
-title = "Pending maintainer action"
-body_md = """## Pending maintainer action
-
-"""
-
-[[section]]
 section_id = "preamble"
 title = "Testing roadmap preamble"
 body_md = """# Testing roadmap — what to do next
@@ -86,14 +29,107 @@ known noise sources with a capture discipline; \"Declined\" records what we deci
 the signal that would reopen the decision.
 
 """
+entries = []
 
 [[section]]
-section_id = "sources"
-title = "Sources"
-body_md = """## Sources
-- Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
-- Per-dimension expert write-ups: `draft/testing-recommendations/*.md`
+section_id = "north-star"
+title = "North star — automated feature coverage"
+body_md = """## North star — automated feature coverage
+
+The direction all of this points toward: **an automatic flow that ensures every CDDL construct worth
+supporting works properly through the generated library — verified by execution, not by hand.**
+The future loop is *enumerate → generate → compile → execute*: round-trip real values, reject invalid
+ones, and classify every failure as either an explicitly unsupported construct or a bug to fix.
+\"Worth supporting\" remains load-bearing. Some constructs are deliberate product exclusions rather
+than holes to grind toward 100%, and the durable exclusion list is revisable as the product boundary
+moves. This roadmap owns only the work still needed to close that loop; delivered test maps,
+user-facing contracts, and current oracle behavior live in their durable documentation.
+
+One deferred coverage item remains: the wasm emit-tests minter has no `any` constructor path
+(`src/emit_tests_wasm.rs`, `Any => None`), so a minted `any` value gets no wasm-side round-trip
+differential while the rust leg does. Lifting that boundary follows demand because the wasm
+`AnyCbor` wrapper is byte-oriented and exposes no value-destructuring constructor. The other
+remaining work on this axis is carried by the future items below.
+
 """
+entries = []
+
+[[section]]
+section_id = "pending-maintainer"
+title = "Pending maintainer action"
+body_md = """## Pending maintainer action
+
+"""
+entries = [
+  "testing.prettyplease-shelling-rustfmt",
+  "testing.rule-trailing.directive-classification",
+]
+
+[[section]]
+section_id = "next-priority"
+title = "Next work items, in priority order"
+body_md = """## Next work items, in priority order
+
+"""
+entries = [
+  "testing.grammar-fuzzer-escalations",
+  "testing.grammar-fuzzer.embed-site-alias-roots",
+  "testing.grammar-fuzzer.arbitrary-supported-ast",
+  "testing.grammar-fuzzer.batch-masking-detector",
+  "testing.grammar-fuzzer.real-world-corpus-differential",
+  "testing.duplicates-policy-residuals",
+  "part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516",
+  "testing.duplicates.same-shape-set-conversion",
+  "testing.duplicates.occurrence-aware-generic-identity",
+  "testing.duplicates.dedicated-generic-collision-message",
+  "testing.duplicates.member-position-extension",
+  "part-md-mdmap",
+  "testing.lint-provocation-shapes-generated-code-clippy-clean-partially",
+  "testing.rustfmt-seam-error-leg-still-witness-needs-subprocess",
+  "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives",
+  "testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite",
+  "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial",
+  "part-what-hand-per-construct-buy-established-escape-produced",
+  "part-cheap-system-matrix-shape-pairs-compiled-wasm-side",
+  "testing.container-combinations.reopening-signal",
+  "testing.generated-local-collision-class-refused-mangled-refusal-s",
+  "testing.generated-local-collision.general-mangling-remedy",
+  "testing.generated-local-collision.scope-wide-probe",
+  "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism",
+  "part-why-parity-gate-cannot-host-generalization",
+  "testing.wasm-door-vocabulary.reopening-signal",
+  "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
+  "testing.build-registration-class-reference-position-sweep-second-escape",
+  "testing.fixture-shape-evicted-over-known-defect-stale-guard",
+  "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim",
+  "testing.rejection-message-s-remedy-string-executable-claim-pin",
+  "part-remedy-string-executable-wherever-lives-emitted-message-gets",
+  "part-advice-shaped-spelling-message-prints-remedy-string-strings",
+  "part-remedy-pin-per-message-per-triggering-construct-class",
+  "part-findings-couples-carriers-least-carrier-executes-s-headline",
+  "part-refusal-s-first-predicate-refused-exact-remedy-own",
+  "part-tagged-remedy-spelling-was-imprecise-coords-faithful-coords",
+  "part-findings-s-recommended-remedy-c-kv-keyed-plain",
+  "part-findings-s-description-claimed-shape-s-standalone-codec",
+  "part-both-ignore-rejections-printed-k-v-ignore-valid",
+  "part-inline-group-choice-rejection-s-remedy-g-b",
+  "part-anonymous-group-rejection-s-give-name-using-name",
+  "part-default-head-refusal-s-remedy-list-offered-bare",
+  "part-generics-repeat-refusal-s-first-drafted-remedy-advertised",
+  "part-bare-fixed-table-value-refusal-continued-say-named",
+  "testing.directive-effect-round-trip-coherence-sweep-accepted-custom",
+  "testing.warm-up-refresh-dep-universe-lock-trust-fresh",
+  "testing.check-merged-d-ts-name-collisions-two-halves",
+  "testing.corpus-preserve-pair-map-key-value-self-encoding",
+  "testing.same-named-generated-crates-silently-share-cargo-fingerprint",
+  "testing.corpus-c-style-enum-data-type-choice-arm",
+  "testing.execution-binary-wrappers-true-last-documented-flag-value",
+  "part-nested-cargo-test",
+  "testing.synthetic-protocol-controls-component-probe-host-s-defensive",
+  "testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror",
+  "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch",
+  "testing.verify-ts-refuse-unknown-flag-silently-degrading-plain",
+]
 
 [[section]]
 section_id = "standing-system"
@@ -130,11 +166,176 @@ is not evidence about a gate in another TIER\" (the mechanical half is a maintai
 `check.ts` itself).
 
 """
+entries = [
+  "testing.gate-exists-registry-nowhere-tests-readme-md-hand",
+  "testing.lint-doc-citations-accepts-docs-heading-durable-citation",
+  "testing.representation-changing-directive-goes-live-new-container-ship",
+  "testing.emission-branch-generated-output-fixture-exercises-invisible-gate",
+  "testing.logic-tool-emits-source-text-outside-layer-reasons",
+  "testing.value-anchor-rot-field-addition-delivery-grows-existing",
+  "testing.corpus-wide-regen-over-prior-output-sweep-reaches",
+  "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered",
+  "testing.finding-s-defect-side-attribution-recorded-narrative-plausibility",
+  "testing.gate-demands-premise-probed-against-gate-evidence-about",
+  "testing.ruling-premise-gate-x-stays-green-must-probed",
+  "testing.observed-baseline-comments-beside-gate-floors-rot-silently",
+  "testing.extreme-value-boundary-correctness-generation-time-encode-paths",
+  "testing.fixture-models-obsolete-user-contract-stays-green-real",
+  "testing.panic-site-un-shadowing-converting-shallow-panic-graceful",
+  "testing.three-defect-classes-process-test-see-sharing-remedy",
+  "testing.process-boundary.rustc-after-panic-fix",
+  "testing.process-boundary.rustfmt-pre-rustc",
+  "testing.process-boundary.another-profile-escape",
+  "testing.parallel-constructor-fixture-diversity-parser-over-external-input",
+  "testing.synthesized-name-referenced-never-minted-e0425-flavor",
+  "testing.multifile-reference-position-coverage-two-position-keyed-escapes",
+  "testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near",
+  "testing.armed-idle-harness-arms-empty-head-ledgers-zero",
+  "testing.doubled-doc-comment-markers-emitted-docs-proven-instance",
+  "testing.emitted-shape-lint-classes-outside-clippy-all-beyond",
+  "testing.unused-imports-generated-crates-trait-import-class-name",
+  "testing.mechanical-layers-two-review-owned-design-rules-tests",
+  "testing.add-profile-wrapper-participation-grid-participation-differs-across",
+  "testing.extern-deps-wasm-boundary-surface-packaging-json-gen",
+  "testing.generic-raw-bytes-base-refused-generic-extern-base",
+  "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings",
+  "testing.twin-implementation.read-caught-instance-trigger",
+  "testing.twin-implementation.comment-ast-change-cadence",
+  "testing.twin-implementation.own-reviewed-change-rule",
+  "part-non-recorded-isn-t-re-litigated-coverage-gap",
+  "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count",
+  "testing.run-local-values-gate-cache-key-material-proven",
+  "testing.control-bytes-committed-source-files-proven-instance-machinery",
+  "testing.gate-script-health-cache-staleness-key-fresh-worktree",
+  "testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently",
+  "testing.dependency-swap-pass-compile-parity-existing-gate-silently",
+  "testing.fixture-s-verdict-accident-cargo-feature-unification-harness",
+  "testing.profile-driven-compile-gate-covers-compositions-profiles-specs",
+  "testing.alloc-imports-nested-inline-modules-hand-carried-design",
+  "testing.gate-cache-closure-audit-structurally-blind-gate-authored",
+  "testing.comment-residue-false-matches-text-scans-over-emitted",
+  "testing.directive-dependent-emitter-edge-case-triggering-shape-hand",
+  "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored",
+  "testing.extend-recombination-member-kind-table-optional-fixed-shape",
+  "testing.referencing-context-measured-wrapping-deep-honored-base-shape",
+  "testing.arm-position-s-classifier-compile-time-forcing-function",
+  "testing.schema-document-s-name-injectivity-enforced-row-side",
+  "part-emitted-name-guard-mint-records-unminted-extra",
+  "testing.schema-name.collision-loser-no-row-same-id",
+  "testing.schema-name.cross-crate-same-id-collision",
+  "testing.schema-name.percent-encoded-ref",
+  "testing.schema-name.two-rowless-types-collide",
+  "part-emitted-name-guard-neither-closes-holes-above-two",
+  "testing.directive-s-documented-sentence-stay-true-consumer-visible",
+  "testing.citation-resolves-naming-wrong-thing-invisible-citation-lint",
+  "testing.matrix-s-note-names-panic-site-aborts-nothing",
+  "testing.nothing-asserts-how-many-times-rejection-message-emitted",
+  "testing.containment-note-s-stated-reason-go-false-any",
+  "testing.emit-tests-gate-asserts-round-trip-green-cannot",
+  "testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible",
+  "testing.cargo-feature-generated-crate-s-dependency-change-what",
+  "testing.documented-flag-pairing-broken-fixture-stays-green-because",
+  "testing.documented-failure-shape-exercises-prose-cross-crate-int",
+  "testing.dsl-position-tests-string-level-design-green-emitted",
+  "testing.nothing-asserts-two-ir-sites-cannot-mint-same",
+  "testing.message-s-level-classification-review-owned-two-ways",
+  "testing.wac-composed-component-transpiled-jco-loses-cross-instance",
+  "testing.make-fixture-comment-s-claimed-wire-bytes-executable",
+]
+
+[[section]]
+section_id = "deferred-features"
+title = "Deferred features (build when a real consumer needs them)"
+body_md = """## Deferred features (build when a real consumer needs them)
+
+"""
+entries = [
+  "testing.workspace-mode-wasm32-wasip2-build-gate-both-faces",
+  "testing.workspace-wasip2.reopening-signal",
+  "testing.probe-component-face-s-js-surface-axes-js",
+  "testing.component-js-probe.reopening-signal",
+  "testing.crate-generates-json-schema-document-aggregate-package",
+  "testing.wasm32-link-floor-deferred-reject-twin",
+  "testing.extern-interface-export-dialect-v2-candidates",
+  "testing.cddl-module-directives-draft-ietf-cbor-cddl-modules",
+  "testing.std-generated-crates",
+  "testing.dependency-version-range-resolution-untested-generated-crates-float",
+  "testing.transparent-tag-set-idiom-recognized-shape-boundary-request",
+  "testing.tag-set.non-idiom-generic-boundary",
+  "testing.tag-set.inline-anonymous-choice-boundary",
+  "testing.opt-rfc-faithful-total-cbor-json-rendering-json",
+  "testing.edn-text-notation-round-trip-edn-edn-draft",
+  "testing.project-json-gen-documents-run-test-fixture-writes",
+  "testing.propagating-deliberately-unpublished-type-s-intent-json-ts",
+  "testing.json2ts-artifact-doc-comments-naming-undefined",
+  "testing.file-listing-json-schema-root-values-flag-per",
+  "testing.assert-hand-authored-json-schema-against-type-s",
+  "testing.composing-registration-rows-across-generation-passes-share-output",
+  "testing.machine-readable-ownership-co-owned-features-std-list",
+]
+
+[[section]]
+section_id = "operational-watches"
+title = "Operational watches"
+body_md = """## Operational watches
+
+"""
+entries = [
+  "testing.gate-s-own-stdout-print-column-result-pass",
+  "testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag",
+  "testing.failing-snapshot-test-surfaces-mismatch-per-test-run",
+  "testing.stale-pin-guard-cannot-distinguish-gap-closed-vector",
+  "testing.config-run-s-convergence-warning-name-crate-already",
+  "testing.extern-interface-export-public-interchange-format",
+  "testing.exclusion-reasons-informational-interchange",
+  "testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until",
+  "testing.scratch-retention.reopening-signal",
+  "testing.tier-memory.spend-measurements",
+  "testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor",
+  "testing.gate-cache-costs",
+  "testing.gate-cache.all-hit-cost",
+  "testing.gate-cache.coverage-extensions",
+  "testing.gate-cache.closure-audit-traced-set-extension",
+  "part-pre-cache-remedies-stay-valid-if-uncached-path",
+  "testing.registry-fetch-transients-nested-cargo-cells",
+  "part-surfaces-still-online",
+  "part-verify-ts-evidence-absorber-stays",
+  "part-sighting-offline-gate-run-new-class",
+  "testing.verify-cache-transparency-b-split-emission-profile-embed",
+]
+
+[[section]]
+section_id = "declined-boundaries"
+title = "Declined (decided, with a reopening signal unless explicitly permanent)"
+body_md = """## Declined (decided, with a reopening signal unless explicitly permanent)
+
+"""
+entries = [
+  "testing.complete-cargo-mutants-sweep-will-never-run",
+  "testing.making-type-choice-path-reject-duplicated-explicit-name",
+  "testing.msrv-declaration-os-matrix-generated-code",
+  "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx",
+  "testing.full-n-flag-powerset-pict-pairwise",
+  "testing.quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus",
+  "testing.orphan-fixture-directory-meta-test",
+  "testing.restructuring-features-std-tool-owned-sub-feature-cddl",
+  "testing.ownership-journal-making-dropped-std-forward-dep-converge",
+  "testing.wrapper-name-user-set-name-synthesized-collection-wrapper",
+  "testing.checking-runtime-flavor-s-safety-condition-rather-stating",
+]
+
+[[section]]
+section_id = "sources"
+title = "Sources"
+body_md = """## Sources
+- Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
+- Per-dimension expert write-ups: `draft/testing-recommendations/*.md`
+"""
+entries = []
 
 [[record]]
 id = "testing.add-profile-wrapper-participation-grid-participation-differs-across"
 title = "Add a PROFILE axis to the wrapper-participation grid only when participation differs across profiles."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "decision"
@@ -171,7 +372,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.admission-path.build-registration-class-reference-position-sweep-second-escape"
 title = "Admission for testing.build-registration-class-reference-position-sweep-second-escape."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -184,7 +384,6 @@ incident_ids = ["testing.incident-observation.build-registration-class-reference
 [[record]]
 id = "testing.admission-path.directive-effect-round-trip-coherence-sweep-accepted-custom"
 title = "Admission for testing.directive-effect-round-trip-coherence-sweep-accepted-custom."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -196,7 +395,6 @@ evidence_ids = ["testing.proof.directive-effect-round-trip-coherence-sweep-accep
 [[record]]
 id = "testing.admission-path.gate-demands-premise-probed-against-gate-evidence-about"
 title = "Admission for testing.gate-demands-premise-probed-against-gate-evidence-about."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -209,7 +407,6 @@ incident_ids = ["testing.incident-observation.gate-demands-premise-probed-agains
 [[record]]
 id = "testing.admission-path.grammar-fuzzer-embed-site-alias-roots"
 title = "Admission for testing.grammar-fuzzer.embed-site-alias-roots."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -222,7 +419,6 @@ incident_ids = ["testing.incident-observation.grammar-fuzzer-embed-site-alias-ro
 [[record]]
 id = "testing.admission-path.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
 title = "Admission for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -235,7 +431,6 @@ incident_ids = ["testing.incident-observation.minted-identifier-spellability-flo
 [[record]]
 id = "testing.admission-path.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 title = "Admission for testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -247,7 +442,6 @@ evidence_ids = ["testing.proof.positional-diversity-fold-preserve-fixture-corpus
 [[record]]
 id = "testing.admission-path.rejection-message-s-remedy-string-executable-claim-pin"
 title = "Admission for testing.rejection-message-s-remedy-string-executable-claim-pin."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -260,7 +454,6 @@ incident_ids = ["testing.incident-observation.rejection-message-s-remedy-string-
 [[record]]
 id = "testing.admission-path.same-named-generated-crates-silently-share-cargo-fingerprint"
 title = "Admission for testing.same-named-generated-crates-silently-share-cargo-fingerprint."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -272,7 +465,6 @@ evidence_ids = ["testing.proof.same-named-generated-crates-silently-share-cargo-
 [[record]]
 id = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
 title = "The alloc imports of nested inline modules are hand-carried by design, and two of the eight `natural_any_cbor_*` adapters were missed — silent under `std`, six E0425s without it."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -321,7 +513,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.arm-position-s-classifier-compile-time-forcing-function"
 title = "The arm-position axis's classifier is a compile-time forcing function, and losing it is the regression to watch for."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -357,7 +548,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.armed-idle-harness-arms-empty-head-ledgers-zero"
 title = "Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind gate branches) have untested first-use paths — seven review-caught instances recorded, no machinery yet."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -444,7 +634,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.assert-hand-authored-json-schema-against-type-s"
 title = "Assert a hand-authored JSON schema against the type's actual serialization."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -487,7 +676,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.build-registration-class-reference-position-sweep-second-escape"
 title = "Build the registration-class × reference-position sweep — the second escape makes it due."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 12"]
 
 [record.payload]
@@ -519,7 +707,6 @@ admission_ids = ["testing.admission-path.build-registration-class-reference-posi
 [[record]]
 id = "testing.cargo-feature-generated-crate-s-dependency-change-what"
 title = "A cargo FEATURE on a generated crate's dependency can change what emitted code MEANS, and no axis varies dependency features — compounded by every generated `Serialize` only ever being exercised through `serde_json`, the one serializer that cannot observe dishonesty in the serde data model."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -582,7 +769,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.cddl-module-directives-draft-ietf-cbor-cddl-modules"
 title = "CDDL module directives (draft-ietf-cbor-cddl-modules) with the draft's real inlining semantics, and `as`-namespacing."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -619,7 +805,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.check-merged-d-ts-name-collisions-two-halves"
 title = "Check the merged `.d.ts` for name collisions BETWEEN its two halves."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 18"]
 
 [record.payload]
@@ -654,7 +839,6 @@ priority_rationale_md = """The source owner places this item in Next priority or
 [[record]]
 id = "testing.checking-runtime-flavor-s-safety-condition-rather-stating"
 title = "Checking `[runtime] flavor-from`'s safety condition rather than stating it."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -692,7 +876,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.citation-resolves-naming-wrong-thing-invisible-citation-lint"
 title = "A citation that RESOLVES while naming the wrong thing is invisible to every citation lint, and the claim it makes is the half a human reads."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -741,7 +924,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.comment-residue-false-matches-text-scans-over-emitted"
 title = "Comment-residue false matches in text scans over emitted/prior `.rs` output — one proven instance, no machinery yet."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -789,7 +971,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.complete-cargo-mutants-sweep-will-never-run"
 title = "The complete `cargo-mutants` sweep will never be run."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -811,7 +992,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.component-js-probe.reopening-signal"
 title = "Reopening signal:"
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "signal"
@@ -838,7 +1018,6 @@ event_md = """a consumer requires the JSON doors, browser build, preserve canoni
 [[record]]
 id = "testing.composing-registration-rows-across-generation-passes-share-output"
 title = "Composing registration rows across generation passes that share one output crate."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -873,7 +1052,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.config-run-s-convergence-warning-name-crate-already"
 title = "The config run's convergence warning can name a crate that already converged."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "work"
@@ -919,7 +1097,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.container-combinations.reopening-signal"
 title = "Reopening signal:"
-projection_group = "next-priority"
 
 [record.payload]
 kind = "signal"
@@ -950,7 +1127,6 @@ as_of = "2026-08-12"
 [[record]]
 id = "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
 title = "A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile coverage — its placement behaviour rests on one hand cell per construct."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 7"]
 
 [record.payload]
@@ -988,7 +1164,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.containment-note-s-stated-reason-go-false-any"
 title = "A containment note's stated REASON can go false without any gate noticing — the note carries a behavioural claim, and only its `spec` and (via the annotation) its support verdict are checked."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1035,7 +1210,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.control-bytes-committed-source-files-proven-instance-machinery"
 title = "Control bytes in committed source files — one proven instance, no machinery yet."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1071,7 +1245,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.corpus-c-style-enum-data-type-choice-arm"
 title = "A corpus cell for a c-style enum as a DATA type-choice arm — the one inline-dispatch leg no corpus cell exercises."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 21"]
 
 [record.payload]
@@ -1114,7 +1287,6 @@ priority_rationale_md = """The source owner places this item in Next priority or
 [[record]]
 id = "testing.corpus-preserve-pair-map-key-value-self-encoding"
 title = "A corpus cell for the preserve pair-map whose key AND value are self-encoding — the one `@duplicates preserve` emission arm no committed snapshot pins."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 19"]
 
 [record.payload]
@@ -1151,7 +1323,6 @@ priority_rationale_md = """The source owner places this item in Next priority or
 [[record]]
 id = "testing.corpus-wide-regen-over-prior-output-sweep-reaches"
 title = "The corpus-wide regen-over-prior-output sweep reaches two emission profiles of four, and its user-EDIT leg reaches one."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1191,7 +1362,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.crate-generates-json-schema-document-aggregate-package"
 title = "A crate entry that generates only a JSON-schema document (the aggregate package)."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -1242,7 +1412,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite"
 title = "Cross-version preserve vectors beyond the std→alloc rewrite."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 6"]
 
 [record.payload]
@@ -1288,7 +1457,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.dependency-swap-pass-compile-parity-existing-gate-silently"
 title = "A dependency swap can pass compile-parity and every existing gate while silently changing behavior our public API re-exposes — one proven near-miss, pins landed for the instance."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1349,7 +1517,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.dependency-version-range-resolution-untested-generated-crates-float"
 title = "Dependency version-RANGE resolution is untested: generated crates float on semver `cbor_event = \"3.3.0\"`, and nothing gates what that range actually resolves to over time."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -1387,7 +1554,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
 title = "A directive-dependent emitter edge case whose triggering SHAPE is in no hand fixture is invisible to every combinatorial layer — the recombination fuzzer skips ALL `dsl.*` features wholesale (\"DSL comment in root RHS; not a clean reusable expression\"), so no fuzz composition ever carries a directive."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1433,7 +1599,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
 title = "A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement executes write-then-read as an identity, with inverse stub codecs."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 16"]
 
 [record.payload]
@@ -1491,7 +1656,6 @@ admission_ids = ["testing.admission-path.directive-effect-round-trip-coherence-s
 [[record]]
 id = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
 title = "A directive's documented sentence can stay true while its consumer-visible MEANING changes underneath it, because the artifact it controls changed shape."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1555,7 +1719,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
 title = "A docs-vs-behavior conformance harness for `comment_dsl.mdx` / `output_format.mdx`"
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -1651,7 +1814,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.documented-failure-shape-exercises-prose-cross-crate-int"
 title = "A documented failure SHAPE that no cell exercises is prose — the cross-crate `Int` channel has three, plus a hand mirror nothing cross-checks."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1697,7 +1859,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.documented-flag-pairing-broken-fixture-stays-green-because"
 title = "A DOCUMENTED flag pairing can be broken while every fixture stays green, because a fixture satisfies the pairing's preconditions by accident."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1739,7 +1900,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.doubled-doc-comment-markers-emitted-docs-proven-instance"
 title = "Doubled doc-comment markers in emitted docs — one proven instance recorded, no machinery yet."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1780,7 +1940,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.dsl-position-tests-string-level-design-green-emitted"
 title = "`dsl_position_tests` is string-level by design, so a cell can be GREEN while the emitted crate is broken."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -1818,7 +1977,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.duplicates-policy-residuals"
 title = "Duplicates-policy residuals."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 2"]
 
 [record.payload]
@@ -1843,7 +2001,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.duplicates.dedicated-generic-collision-message"
 title = "Dedicated collision message for the generic-instantiation naming family."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -1879,7 +2036,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.duplicates.member-position-extension"
 title = "Member-position `@duplicates` extension."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -1917,7 +2073,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.duplicates.occurrence-aware-generic-identity"
 title = "Occurrence-aware generic-instance identity."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -1953,7 +2108,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.duplicates.same-shape-set-conversion"
 title = "`From` between same-shape set instantiations."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -1989,7 +2143,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.edn-text-notation-round-trip-edn-edn-draft"
 title = "EDN text-notation round-trip (`to_edn` / `from_edn`, draft-ietf-cbor-edn-literals)."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -2027,7 +2180,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.emission-branch-generated-output-fixture-exercises-invisible-gate"
 title = "An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate — it can rot to uncompilable and hide behavioral bugs in both directions."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2074,7 +2226,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
 title = "An `--emit-tests` gate that asserts only \"the round-trip is green\" cannot tell an INTENDED minted value from a wrong one that happens to land in-window."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2122,7 +2273,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.emitted-shape-lint-classes-outside-clippy-all-beyond"
 title = "Emitted-shape lint classes OUTSIDE `clippy::all` are beyond `generated_code_clippy_clean`'s reach — the wasm-boundary clone-of-owned class stays ledgered, no machinery yet."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2165,7 +2315,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible"
 title = "An emitter that DROPS an overloadable parameter by building a fresh config is invisible to the lint that catches one which hardcodes the default."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2220,7 +2369,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.exclusion-reasons-informational-interchange"
 title = "Exclusion-record reasons are informational, not interchange."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "decision"
@@ -2237,7 +2385,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.execution-binary-wrappers-true-last-documented-flag-value"
 title = "An execution cell for `--binary-wrappers=true` — the last documented flag value whose only coverage is a compile smoke while its emission risk is byte-level."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 22"]
 
 [record.payload]
@@ -2259,7 +2406,6 @@ priority_rationale_md = """The source owner places this item in Next priority or
 [[record]]
 id = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
 title = "Extend the recombination member-kind table to the OPTIONAL-FIXED shape."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2303,7 +2449,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.extern-deps-wasm-boundary-surface-packaging-json-gen"
 title = "Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2354,7 +2499,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.extern-interface-export-dialect-v2-candidates"
 title = "Extern-interface export dialect v2 candidates."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -2401,7 +2545,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.extern-interface-export-public-interchange-format"
 title = "The extern-interface export is a public interchange format."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "control"
@@ -2427,7 +2570,6 @@ boundary_md = """This control owns the public interchange-format boundary and do
 [[record]]
 id = "testing.extreme-value-boundary-correctness-generation-time-encode-paths"
 title = "Extreme-value boundary correctness of generation-time encode paths: a value that FITS the type can still encode wrong at the type's boundary, and no fixture minted from \"supported shapes\" ever lands there."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2476,7 +2618,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.failing-snapshot-test-surfaces-mismatch-per-test-run"
 title = "A failing snapshot test surfaces ONE mismatch per test run — the first assertion that panics — so a \"N snapshots changed\" count read off a single failure list understates multi-snapshot churn."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "control"
@@ -2505,7 +2646,6 @@ boundary_md = """This procedure owns its exact operating surface and does not in
 [[record]]
 id = "testing.file-listing-json-schema-root-values-flag-per"
 title = "A file listing `--json-schema-root` values, instead of one flag per root."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -2538,7 +2678,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.finding-s-defect-side-attribution-recorded-narrative-plausibility"
 title = "A finding's DEFECT-SIDE attribution recorded by narrative plausibility, not execution — the RECORDING-side twin of the closure-side reproduce-at-parent rule above."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2593,7 +2732,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.fixture-models-obsolete-user-contract-stays-green-real"
 title = "A fixture that models an OBSOLETE user contract stays green while the real contract path is broken — the wrong-shape member of the fixture-blindness family headed by \"An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate\"."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2660,7 +2798,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.fixture-s-verdict-accident-cargo-feature-unification-harness"
 title = "A fixture cell's verdict can be an accident of cargo feature unification: harness-spliced hand code needing a feature a dep reshape disabled stays green whenever a SIBLING dep in the same fixture graph re-enables that feature — so the red arrives on a later graph change, not on the change that broke the code."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2720,7 +2857,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.fixture-shape-evicted-over-known-defect-stale-guard"
 title = "A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds it."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 13"]
 
 [record.payload]
@@ -2761,7 +2897,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag"
 title = "A no-flag `cddl-codegen` invocation is a WASM run — the `wasm` flag's PARSE default is true — so a \"default profile\" probe that does not spell `--wasm=false` attributes wasm-profile facts to the default profile."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "control"
@@ -2792,7 +2927,6 @@ boundary_md = """This procedure owns its exact operating surface and does not in
 [[record]]
 id = "testing.full-n-flag-powerset-pict-pairwise"
 title = "Full `2^N` flag powerset / PICT pairwise"
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -2891,7 +3025,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.gate-cache-closure-audit-structurally-blind-gate-authored"
 title = "The gate-cache closure audit is structurally blind to GATE-AUTHORED inputs parked in scratch: its allowed-read table admits everything under `$TMPDIR` on the justification \"the generated tree is hashed\", which is true only while every file a cached cell reads under scratch actually lives inside a hashed root."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -2939,7 +3072,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.gate-cache-costs"
 title = "Gate-cache residual costs."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "control"
@@ -2959,7 +3091,6 @@ boundary_md = """This procedure owns its exact operating surface and does not in
 [[record]]
 id = "testing.gate-cache.all-hit-cost"
 title = "Residual all-hit cost"
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "work"
@@ -2988,7 +3119,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.gate-cache.closure-audit-traced-set-extension"
 title = "Closure-audit traced-set extension"
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "work"
@@ -3023,7 +3153,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.gate-cache.coverage-extensions"
 title = "Coverage extensions"
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "work"
@@ -3054,7 +3183,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
 title = "A \"no gate demands this\" premise probed against ONE gate is not evidence about a gate in another TIER — and a full-tier gate is where such a premise survives longest, because CI runs `fast` only."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -3132,7 +3260,6 @@ admission_ids = ["testing.admission-path.gate-demands-premise-probed-against-gat
 [[record]]
 id = "testing.gate-exists-registry-nowhere-tests-readme-md-hand"
 title = "A gate exists in the registry but nowhere in `tests/README.md`, and a hand-written count of gates disagrees with the registry — no mechanism ties the two."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -3179,7 +3306,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.gate-s-own-stdout-print-column-result-pass"
 title = "A gate's own stdout can print a column-0 `RESULT: PASS (...)` line, so a log poll that greps for `RESULT:` (even line-anchored) reads a sub-check's verdict as the tier's."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "control"
@@ -3208,7 +3334,6 @@ boundary_md = """This procedure owns its exact operating surface and does not in
 [[record]]
 id = "testing.gate-script-health-cache-staleness-key-fresh-worktree"
 title = "Gate-script health is in no cache or staleness key — a fresh worktree/cold run is the only detector, and warm runs launder pre-split rot."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -3252,7 +3377,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 title = "The generated-local collision class is refused, not mangled — and the refusal's shape scope comes from a bounded probe matrix, so a position that matrix never touched can still ship an uncompilable crate."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 8"]
 
 [record.payload]
@@ -3279,7 +3403,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.generated-local-collision.general-mangling-remedy"
 title = "Residual: mangling is still the general fix."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -3311,7 +3434,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.generated-local-collision.scope-wide-probe"
 title = "Residual: the scope is only as wide as the probe."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -3348,7 +3470,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.generic-raw-bytes-base-refused-generic-extern-base"
 title = "A generic RAW-BYTES base is refused, where a generic EXTERN base is recorded-and-skipped — the asymmetry is the decision, and only one direction of it is swept."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "decision"
@@ -3381,7 +3502,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.grammar-fuzzer-escalations"
 title = "Grammar-fuzzer escalations."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 1"]
 
 [record.payload]
@@ -3406,7 +3526,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.grammar-fuzzer.arbitrary-supported-ast"
 title = "`arbitrary`-derived \"supported-CDDL\" AST generation"
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -3435,7 +3554,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.grammar-fuzzer.batch-masking-detector"
 title = "Batch-masking detector for the layer-2 sweeps."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -3479,7 +3597,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.grammar-fuzzer.embed-site-alias-roots"
 title = "Embed-site leg for alias-classifying roots — two proven escapes."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -3535,7 +3652,6 @@ admission_ids = ["testing.admission-path.grammar-fuzzer-embed-site-alias-roots"]
 [[record]]
 id = "testing.grammar-fuzzer.real-world-corpus-differential"
 title = "Real-world corpus differential"
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -3564,7 +3680,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.guard.add-profile-wrapper-participation-grid-participation-differs-across"
 title = "Current control for testing.add-profile-wrapper-participation-grid-participation-differs-across."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3579,7 +3694,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.alloc-imports-nested-inline-modules-hand-carried-design"
 title = "Current control for testing.alloc-imports-nested-inline-modules-hand-carried-design."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3594,7 +3708,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.armed-idle-harness-arms-empty-head-ledgers-zero"
 title = "Current control for testing.armed-idle-harness-arms-empty-head-ledgers-zero."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3609,7 +3722,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.cargo-feature-generated-crate-s-dependency-change-what"
 title = "Current control for testing.cargo-feature-generated-crate-s-dependency-change-what."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3624,7 +3736,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.checking-runtime-flavor-s-safety-condition-rather-stating"
 title = "Current control for testing.checking-runtime-flavor-s-safety-condition-rather-stating."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -3639,7 +3750,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.citation-resolves-naming-wrong-thing-invisible-citation-lint"
 title = "Current control for testing.citation-resolves-naming-wrong-thing-invisible-citation-lint."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3654,7 +3764,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.comment-residue-false-matches-text-scans-over-emitted"
 title = "Current control for testing.comment-residue-false-matches-text-scans-over-emitted."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3669,7 +3778,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.complete-cargo-mutants-sweep-will-never-run"
 title = "Current control for testing.complete-cargo-mutants-sweep-will-never-run."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -3684,7 +3792,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.containment-note-s-stated-reason-go-false-any"
 title = "Current control for testing.containment-note-s-stated-reason-go-false-any."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3699,7 +3806,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.control-bytes-committed-source-files-proven-instance-machinery"
 title = "Current control for testing.control-bytes-committed-source-files-proven-instance-machinery."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3714,7 +3820,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.corpus-wide-regen-over-prior-output-sweep-reaches"
 title = "Current control for testing.corpus-wide-regen-over-prior-output-sweep-reaches."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3729,7 +3834,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.dependency-swap-pass-compile-parity-existing-gate-silently"
 title = "Current control for testing.dependency-swap-pass-compile-parity-existing-gate-silently."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3744,7 +3848,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.directive-dependent-emitter-edge-case-triggering-shape-hand"
 title = "Current control for testing.directive-dependent-emitter-edge-case-triggering-shape-hand."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3759,7 +3862,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.directive-s-documented-sentence-stay-true-consumer-visible"
 title = "Current control for testing.directive-s-documented-sentence-stay-true-consumer-visible."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3774,7 +3876,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
 title = "Current control for testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -3789,7 +3890,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.documented-failure-shape-exercises-prose-cross-crate-int"
 title = "Current control for testing.documented-failure-shape-exercises-prose-cross-crate-int."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3804,7 +3904,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.documented-flag-pairing-broken-fixture-stays-green-because"
 title = "Current control for testing.documented-flag-pairing-broken-fixture-stays-green-because."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3819,7 +3918,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.doubled-doc-comment-markers-emitted-docs-proven-instance"
 title = "Current control for testing.doubled-doc-comment-markers-emitted-docs-proven-instance."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3834,7 +3932,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.dsl-position-tests-string-level-design-green-emitted"
 title = "Current control for testing.dsl-position-tests-string-level-design-green-emitted."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3849,7 +3946,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.duplicates-dedicated-generic-collision-message"
 title = "Current control for testing.duplicates.dedicated-generic-collision-message."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "control"
@@ -3864,7 +3960,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.emission-branch-generated-output-fixture-exercises-invisible-gate"
 title = "Current control for testing.emission-branch-generated-output-fixture-exercises-invisible-gate."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3879,7 +3974,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.emit-tests-gate-asserts-round-trip-green-cannot"
 title = "Current control for testing.emit-tests-gate-asserts-round-trip-green-cannot."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3894,7 +3988,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.emitted-shape-lint-classes-outside-clippy-all-beyond"
 title = "Current control for testing.emitted-shape-lint-classes-outside-clippy-all-beyond."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3909,7 +4002,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.emitter-drops-overloadable-parameter-building-fresh-config-invisible"
 title = "Current control for testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3924,7 +4016,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.exclusion-reasons-informational-interchange"
 title = "Current control for testing.exclusion-reasons-informational-interchange."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "control"
@@ -3939,7 +4030,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.extend-recombination-member-kind-table-optional-fixed-shape"
 title = "Current control for testing.extend-recombination-member-kind-table-optional-fixed-shape."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3954,7 +4044,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.extern-deps-wasm-boundary-surface-packaging-json-gen"
 title = "Current control for testing.extern-deps-wasm-boundary-surface-packaging-json-gen."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3969,7 +4058,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.extreme-value-boundary-correctness-generation-time-encode-paths"
 title = "Current control for testing.extreme-value-boundary-correctness-generation-time-encode-paths."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3984,7 +4072,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.finding-s-defect-side-attribution-recorded-narrative-plausibility"
 title = "Current control for testing.finding-s-defect-side-attribution-recorded-narrative-plausibility."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -3999,7 +4086,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.fixture-models-obsolete-user-contract-stays-green-real"
 title = "Current control for testing.fixture-models-obsolete-user-contract-stays-green-real."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4014,7 +4100,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.fixture-s-verdict-accident-cargo-feature-unification-harness"
 title = "Current control for testing.fixture-s-verdict-accident-cargo-feature-unification-harness."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4029,7 +4114,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.full-n-flag-powerset-pict-pairwise"
 title = "Current control for testing.full-n-flag-powerset-pict-pairwise."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -4044,7 +4128,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.gate-cache-closure-audit-structurally-blind-gate-authored"
 title = "Current control for testing.gate-cache-closure-audit-structurally-blind-gate-authored."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4059,7 +4142,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.gate-exists-registry-nowhere-tests-readme-md-hand"
 title = "Current control for testing.gate-exists-registry-nowhere-tests-readme-md-hand."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4074,7 +4156,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.gate-script-health-cache-staleness-key-fresh-worktree"
 title = "Current control for testing.gate-script-health-cache-staleness-key-fresh-worktree."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4089,7 +4170,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.generated-local-collision-scope-wide-probe"
 title = "Current control for testing.generated-local-collision.scope-wide-probe."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "control"
@@ -4104,7 +4184,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.generic-raw-bytes-base-refused-generic-extern-base"
 title = "Current control for testing.generic-raw-bytes-base-refused-generic-extern-base."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4119,7 +4198,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.grammar-fuzzer-batch-masking-detector"
 title = "Current control for testing.grammar-fuzzer.batch-masking-detector."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "control"
@@ -4134,7 +4212,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 title = "Current control for testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4149,7 +4226,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
 title = "Current control for testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4164,7 +4240,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.lint-doc-citations-accepts-docs-heading-durable-citation"
 title = "Current control for testing.lint-doc-citations-accepts-docs-heading-durable-citation."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4179,7 +4254,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.logic-tool-emits-source-text-outside-layer-reasons"
 title = "Current control for testing.logic-tool-emits-source-text-outside-layer-reasons."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4194,7 +4268,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.make-fixture-comment-s-claimed-wire-bytes-executable"
 title = "Current control for testing.make-fixture-comment-s-claimed-wire-bytes-executable."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4209,7 +4282,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.making-type-choice-path-reject-duplicated-explicit-name"
 title = "Current control for testing.making-type-choice-path-reject-duplicated-explicit-name."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -4224,7 +4296,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.matrix-s-note-names-panic-site-aborts-nothing"
 title = "Current control for testing.matrix-s-note-names-panic-site-aborts-nothing."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4239,7 +4310,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.mechanical-layers-two-review-owned-design-rules-tests"
 title = "Current control for testing.mechanical-layers-two-review-owned-design-rules-tests."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4254,7 +4324,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.message-s-level-classification-review-owned-two-ways"
 title = "Current control for testing.message-s-level-classification-review-owned-two-ways."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4269,7 +4338,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.msrv-declaration-os-matrix-generated-code"
 title = "Current control for testing.msrv-declaration-os-matrix-generated-code."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -4284,7 +4352,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.multifile-reference-position-coverage-two-position-keyed-escapes"
 title = "Current control for testing.multifile-reference-position-coverage-two-position-keyed-escapes."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4299,7 +4366,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.nothing-asserts-how-many-times-rejection-message-emitted"
 title = "Current control for testing.nothing-asserts-how-many-times-rejection-message-emitted."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4314,7 +4380,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.nothing-asserts-two-ir-sites-cannot-mint-same"
 title = "Current control for testing.nothing-asserts-two-ir-sites-cannot-mint-same."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4329,7 +4394,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.observed-baseline-comments-beside-gate-floors-rot-silently"
 title = "Current control for testing.observed-baseline-comments-beside-gate-floors-rot-silently."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4344,7 +4408,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.orphan-fixture-directory-meta-test"
 title = "Current control for testing.orphan-fixture-directory-meta-test."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -4359,7 +4422,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.ownership-journal-making-dropped-std-forward-dep-converge"
 title = "Current control for testing.ownership-journal-making-dropped-std-forward-dep-converge."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -4374,7 +4436,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.panic-site-un-shadowing-converting-shallow-panic-graceful"
 title = "Current control for testing.panic-site-un-shadowing-converting-shallow-panic-graceful."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4389,7 +4450,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.parallel-constructor-fixture-diversity-parser-over-external-input"
 title = "Current control for testing.parallel-constructor-fixture-diversity-parser-over-external-input."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4404,7 +4464,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.process-boundary-rustc-after-panic-fix"
 title = "Current control for testing.process-boundary.rustc-after-panic-fix."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4419,7 +4478,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.process-boundary-rustfmt-pre-rustc"
 title = "Current control for testing.process-boundary.rustfmt-pre-rustc."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4434,7 +4492,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.profile-driven-compile-gate-covers-compositions-profiles-specs"
 title = "Current control for testing.profile-driven-compile-gate-covers-compositions-profiles-specs."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4449,7 +4506,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.reason-keyed-rejection-evidence-reject-catalogs-proven-near"
 title = "Current control for testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4464,7 +4520,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.referencing-context-measured-wrapping-deep-honored-base-shape"
 title = "Current control for testing.referencing-context-measured-wrapping-deep-honored-base-shape."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4479,7 +4534,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.representation-changing-directive-goes-live-new-container-ship"
 title = "Current control for testing.representation-changing-directive-goes-live-new-container-ship."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4494,7 +4548,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.restructuring-features-std-tool-owned-sub-feature-cddl"
 title = "Current control for testing.restructuring-features-std-tool-owned-sub-feature-cddl."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -4509,7 +4562,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.ruling-premise-gate-x-stays-green-must-probed"
 title = "Current control for testing.ruling-premise-gate-x-stays-green-must-probed."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4524,7 +4576,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.run-local-values-gate-cache-key-material-proven"
 title = "Current control for testing.run-local-values-gate-cache-key-material-proven."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4539,7 +4590,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.schema-name-collision-loser-no-row-same-id"
 title = "Current control for testing.schema-name.collision-loser-no-row-same-id."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4554,7 +4604,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.schema-name-cross-crate-same-id-collision"
 title = "Current control for testing.schema-name.cross-crate-same-id-collision."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4569,7 +4618,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.schema-name-two-rowless-types-collide"
 title = "Current control for testing.schema-name.two-rowless-types-collide."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4584,7 +4632,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 title = "Current control for testing.stale-known-limitation-prose-surviving-fix-finding-ledgered."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4599,7 +4646,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.synthesized-name-referenced-never-minted-e0425-flavor"
 title = "Current control for testing.synthesized-name-referenced-never-minted-e0425-flavor."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4614,7 +4660,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.tag-set-non-idiom-generic-boundary"
 title = "Current control for testing.tag-set.non-idiom-generic-boundary."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "control"
@@ -4629,7 +4674,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
 title = "Current control for testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "control"
@@ -4644,7 +4688,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 title = "Current control for testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4659,7 +4702,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 title = "Current control for testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4674,7 +4716,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.unused-imports-generated-crates-trait-import-class-name"
 title = "Current control for testing.unused-imports-generated-crates-trait-import-class-name."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4689,7 +4730,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.value-anchor-rot-field-addition-delivery-grows-existing"
 title = "Current control for testing.value-anchor-rot-field-addition-delivery-grows-existing."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4704,7 +4744,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.wac-composed-component-transpiled-jco-loses-cross-instance"
 title = "Current control for testing.wac-composed-component-transpiled-jco-loses-cross-instance."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -4719,7 +4758,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.guard.wrapper-name-user-set-name-synthesized-collection-wrapper"
 title = "Current control for testing.wrapper-name-user-set-name-synthesized-collection-wrapper."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -4734,7 +4772,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 title = "A hand-enumerated ban-pattern list whose AUTHORITY lives in gitignored plan files lags the id scheme it bans — no in-repo lockstep is possible (the tracked side cannot read the authority in CI), so the list drifts one delivery-phase behind by construction."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -4779,7 +4816,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
 title = "A hand-maintained source→dependency mapping in a manifest changeset can silently under-assert: the tool exports source referencing a crate that no changeset op guarantees."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -4828,7 +4864,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one"
 title = "Independent admitted incident one for testing.build-registration-class-reference-position-sweep-second-escape."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_incident"
@@ -4843,7 +4878,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-build-registrati
 [[record]]
 id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
 title = "Incident evidence for testing.build-registration-class-reference-position-sweep-second-escape."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -4864,7 +4898,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 [[record]]
 id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"
 title = "Independent admitted incident two for testing.build-registration-class-reference-position-sweep-second-escape."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_incident"
@@ -4879,7 +4912,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-build-registrati
 [[record]]
 id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
 title = "Incident evidence for testing.build-registration-class-reference-position-sweep-second-escape."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -4900,7 +4932,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 [[record]]
 id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
 title = "Independent admitted incident one for testing.gate-demands-premise-probed-against-gate-evidence-about."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "testing_incident"
@@ -4915,7 +4946,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-gate-demands-pre
 [[record]]
 id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
 title = "Incident evidence for testing.gate-demands-premise-probed-against-gate-evidence-about."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "evidence"
@@ -4937,7 +4967,6 @@ tiers = ["fast", "full", "local"]
 [[record]]
 id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"
 title = "Independent admitted incident two for testing.gate-demands-premise-probed-against-gate-evidence-about."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "testing_incident"
@@ -4952,7 +4981,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-gate-demands-pre
 [[record]]
 id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
 title = "Incident evidence for testing.gate-demands-premise-probed-against-gate-evidence-about."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "evidence"
@@ -4974,7 +5002,6 @@ tiers = ["fast", "full", "local"]
 [[record]]
 id = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one"
 title = "Independent admitted incident one for testing.grammar-fuzzer.embed-site-alias-roots."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_incident"
@@ -4989,7 +5016,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-grammar-fuzzer-e
 [[record]]
 id = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof"
 title = "Incident evidence for testing.grammar-fuzzer.embed-site-alias-roots."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -5011,7 +5037,6 @@ tiers = ["local"]
 [[record]]
 id = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two"
 title = "Independent admitted incident two for testing.grammar-fuzzer.embed-site-alias-roots."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_incident"
@@ -5026,7 +5051,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-grammar-fuzzer-e
 [[record]]
 id = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"
 title = "Incident evidence for testing.grammar-fuzzer.embed-site-alias-roots."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -5048,7 +5072,6 @@ tiers = ["local"]
 [[record]]
 id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one"
 title = "Independent admitted incident one for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_incident"
@@ -5063,7 +5086,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-minted-identifie
 [[record]]
 id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
 title = "Incident evidence for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -5084,7 +5106,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 [[record]]
 id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"
 title = "Independent admitted incident two for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_incident"
@@ -5099,7 +5120,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-minted-identifie
 [[record]]
 id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
 title = "Incident evidence for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -5120,7 +5140,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 [[record]]
 id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one"
 title = "Independent admitted incident one for testing.rejection-message-s-remedy-string-executable-claim-pin."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_incident"
@@ -5135,7 +5154,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-rejection-messag
 [[record]]
 id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
 title = "Incident evidence for testing.rejection-message-s-remedy-string-executable-claim-pin."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -5156,7 +5174,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 [[record]]
 id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"
 title = "Independent admitted incident two for testing.rejection-message-s-remedy-string-executable-claim-pin."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "testing_incident"
@@ -5171,7 +5188,6 @@ operating_rule_reference_id = "ref-testing-incident-observation-rejection-messag
 [[record]]
 id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
 title = "Incident evidence for testing.rejection-message-s-remedy-string-executable-claim-pin."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -5192,7 +5208,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 [[record]]
 id = "testing.json2ts-artifact-doc-comments-naming-undefined"
 title = "json2ts artifact doc comments naming `undefined`."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -5231,7 +5246,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.lint-doc-citations-accepts-docs-heading-durable-citation"
 title = "`lint_doc_citations` accepts \"a docs section by heading\" as a durable citation, but a section citation only proves the SECTION still exists — not that the claim cited from it does."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -5275,7 +5289,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.lint-provocation-shapes-generated-code-clippy-clean-partially"
 title = "Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best)."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 3"]
 
 [record.payload]
@@ -5326,7 +5339,6 @@ priority_rationale_md = """The source owner places this item in Next priority or
 [[record]]
 id = "testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror"
 title = "A lockstep drift gate for the rust↔TS kebab-ident mirror — today the pin is one-directional and the rust side can drift silently-soft."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 24"]
 
 [record.payload]
@@ -5362,7 +5374,6 @@ priority_rationale_md = """The source owner places this item in Next priority or
 [[record]]
 id = "testing.logic-tool-emits-source-text-outside-layer-reasons"
 title = "Logic the tool EMITS as source text is outside every layer that reasons about the tool's own code, so its only oracle is a hand vector chosen to DISTINGUISH a wrong implementation — and a vector that merely EXERCISES the logic certifies nothing."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -5411,7 +5422,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.machine-readable-ownership-co-owned-features-std-list"
 title = "A machine-readable ownership record for the co-owned `features.std` list."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -5449,7 +5459,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns"
 title = "A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud serialize error into a panic."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 11"]
 
 [record.payload]
@@ -5488,7 +5497,6 @@ evaluation = "unknown"
 [[record]]
 id = "testing.make-fixture-comment-s-claimed-wire-bytes-executable"
 title = "Make a fixture comment's claimed WIRE BYTES executable, or stop writing them."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -5532,7 +5540,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.making-type-choice-path-reject-duplicated-explicit-name"
 title = "Making the TYPE-CHOICE path reject a duplicated explicit `@name` the way the group-choice arm path does."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -5576,7 +5583,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.matrix-s-note-names-panic-site-aborts-nothing"
 title = "A matrix cell's `note` names the panic site it aborts at, and nothing re-derives that name from a run either."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -5617,7 +5623,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.mechanical-layers-two-review-owned-design-rules-tests"
 title = "Mechanical layers for the two review-owned design rules in `tests/README.md` § \"Design rules\" (invariant-softening, vacuity-floor witness) — build only if a class recurs."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -5674,7 +5679,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.message-s-level-classification-review-owned-two-ways"
 title = "A message's LEVEL classification is review-owned, and two ways of getting it wrong are invisible."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -5727,7 +5731,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
 title = "A minted-identifier spellability floor: every identifier the generator emits verbatim must satisfy `is_spellable_variant_name`'s two string properties, asserted at the emission side rather than per-minter."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 14"]
 
 [record.payload]
@@ -5782,7 +5785,6 @@ admission_ids = ["testing.admission-path.minted-identifier-spellability-floor-id
 [[record]]
 id = "testing.msrv-declaration-os-matrix-generated-code"
 title = "MSRV declaration / OS matrix for GENERATED code."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -5813,7 +5815,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.multifile-reference-position-coverage-two-position-keyed-escapes"
 title = "Multifile reference-POSITION coverage: two position-keyed escapes down, one enumerated position still missing."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -5875,7 +5876,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until"
 title = "Nested-cargo scratch retention: `/tmp/cddl*` leaks until the disk fills."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "testing_operational_watch"
@@ -5922,7 +5922,6 @@ capture_md = """Record the full untruncated log or consumer report, command, ful
 [[record]]
 id = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
 title = "Nothing asserts how MANY times a rejection message is emitted, and nested composites emit theirs twice."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -5960,7 +5959,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
 title = "Nothing asserts that two IR sites cannot mint the SAME `RustIdent`: `register_rust_struct` ends in a bare map insert, so a second claimant silently overwrites the first."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -6017,7 +6015,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.observed-baseline-comments-beside-gate-floors-rot-silently"
 title = "Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two distinct rot modes; the floors/consts stay the enforced artifact."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -6058,7 +6055,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.opt-rfc-faithful-total-cbor-json-rendering-json"
 title = "Opt-in RFC 8949 §6.1-faithful total CBOR→JSON rendering (a `to_json_rfc8949`-style lossy flavor)."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -6102,7 +6098,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.orphan-fixture-directory-meta-test"
 title = "An orphan-fixture-directory meta-test"
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -6119,7 +6114,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.ownership-journal-making-dropped-std-forward-dep-converge"
 title = "An ownership journal making a dropped `--std-forward-dep` converge (safe retraction)."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -6157,7 +6151,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.panic-site-un-shadowing-converting-shallow-panic-graceful"
 title = "Panic-site un-shadowing: converting a shallow panic to a graceful rejection exposes deeper panic sites for inputs that previously died early — and the outcome catalogs, which record CATEGORY only by design, cannot see a PANIC→PANIC site shift."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -6199,7 +6192,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.parallel-constructor-fixture-diversity-parser-over-external-input"
 title = "Parallel-constructor fixture diversity: a parser over external input must span the ident-class matrix of REAL specs, not the feature spec's mental model."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -6253,7 +6245,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"
 title = "Pin the toolchain of verify.ts's nested cargo — its scratch-cwd spawns resolve the rustup DEFAULT toolchain, and the cache key claims otherwise."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 25"]
 
 [record.payload]
@@ -6294,7 +6285,6 @@ regression_evidence_ids = ["testing.proof.pin-toolchain-verify-ts-s-nested-cargo
 [[record]]
 id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 title = "Positional-diversity fold family for the preserve-fixture corpus — the authoring work that gives the rustfmt-cycle sweep discovery power."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 5"]
 
 [record.payload]
@@ -6336,7 +6326,6 @@ admission_ids = ["testing.admission-path.positional-diversity-fold-preserve-fixt
 [[record]]
 id = "testing.prettyplease-shelling-rustfmt"
 title = "`prettyplease` instead of shelling to `rustfmt`."
-projection_group = "pending-maintainer"
 
 [record.payload]
 kind = "decision"
@@ -6398,7 +6387,6 @@ evaluation = "unknown"
 [[record]]
 id = "testing.probe-component-face-s-js-surface-axes-js"
 title = "Probe the component face's JS surface on the axes the JS-host gate left untouched."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -6437,7 +6425,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.process-boundary.another-profile-escape"
 title = "*another profile, with no flip, no abort and no fix widening a reachable set — the shape always generated."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -6487,7 +6474,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.process-boundary.rustc-after-panic-fix"
 title = "*rustc, after a PANIC→`ok` flip: a panic fix lands on the FIRST site that dispatches on a shape, not the last — the sites behind it ask the same question and each answers it in its own code."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -6532,7 +6518,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.process-boundary.rustfmt-pre-rustc"
 title = "*rustfmt, so the code never reaches rustc at all."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -6583,7 +6568,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.profile-driven-compile-gate-covers-compositions-profiles-specs"
 title = "A profile-driven compile gate covers the compositions its PROFILES' SPECS reach, and a runtime file emitted on an IR PREDICATE × a FLAG is reached only by their conjunction — the first consumer-reported no_std break lived exactly in that hole."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -6631,7 +6615,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.project-json-gen-documents-run-test-fixture-writes"
 title = "Project the json-gen documents that no `run_test` fixture writes."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -6674,7 +6657,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.proof-gap.config-run-s-convergence-warning-name-crate-already"
 title = "Regression gap for testing.config-run-s-convergence-warning-name-crate-already."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "work"
@@ -6690,7 +6672,6 @@ priority_rationale_md = """The parent defect owns repair; this record owns the s
 [[record]]
 id = "testing.proof-gap.verify-ts-refuse-unknown-flag-silently-degrading-plain"
 title = "Regression gap for testing.verify-ts-refuse-unknown-flag-silently-degrading-plain."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "work"
@@ -6706,7 +6687,6 @@ priority_rationale_md = """The parent defect owns repair; this record owns the s
 [[record]]
 id = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
 title = "Incident evidence for testing.directive-effect-round-trip-coherence-sweep-accepted-custom."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -6727,7 +6707,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 [[record]]
 id = "testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"
 title = "Regression proof for testing.pin-toolchain-verify-ts-s-nested-cargo-scratch."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -6755,7 +6734,6 @@ toolchains = ["default 1.97.1", "repository pin 1.96.1"]
 [[record]]
 id = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 title = "Incident evidence for testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -6776,7 +6754,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 [[record]]
 id = "testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"
 title = "Incident evidence for testing.same-named-generated-crates-silently-share-cargo-fingerprint."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -6797,7 +6774,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 [[record]]
 id = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 title = "Regression proof for testing.warm-up-refresh-dep-universe-lock-trust-fresh."
-projection_group = "next-priority"
 
 [record.payload]
 kind = "evidence"
@@ -6824,7 +6800,6 @@ surfaces = ["check.ts warm-up and oracle-fingerprint scratch resolve"]
 [[record]]
 id = "testing.propagating-deliberately-unpublished-type-s-intent-json-ts"
 title = "Propagating a deliberately-unpublished type's intent to the JSON → TS scripts."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -6867,7 +6842,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus"
 title = "`quickcheck` alongside `proptest`; `goldenfile`/`expect-test` as a second corpus engine; `no-panic` lints; coverage instrumentation of *generated* code; `trybuild` for whole-crate compile-pass"
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "control"
@@ -6886,7 +6860,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near"
 title = "Reason-keyed rejection evidence for the reject catalogs — one proven near-miss recorded, no machinery yet."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -6961,7 +6934,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.referencing-context-measured-wrapping-deep-honored-base-shape"
 title = "The referencing-context axis is measured one wrapping DEEP and at one honored base shape per directive; stacked wrappings and second base shapes are not."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7007,7 +6979,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.registry-fetch-transients-nested-cargo-cells"
 title = "Registry-fetch transients in nested-cargo cells."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "testing_operational_watch"
@@ -7055,7 +7026,6 @@ capture_md = """Record the full untruncated log or consumer report, command, ful
 [[record]]
 id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 title = "A rejection message's remedy string is an executable claim — pin each one with a generates-green vector, and execute a findings entry's operative claims at pickup."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 15"]
 
 [record.payload]
@@ -7087,7 +7057,6 @@ admission_ids = ["testing.admission-path.rejection-message-s-remedy-string-execu
 [[record]]
 id = "testing.representation-changing-directive-goes-live-new-container-ship"
 title = "A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its extern-interface projection — the cross-crate skew class, invisible to every single-crate gate."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7163,7 +7132,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.restructuring-features-std-tool-owned-sub-feature-cddl"
 title = "Restructuring `features.std` into a tool-owned sub-feature (a `_cddl-codegen-std` key referenced from a consumer-owned `std`)."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -7197,7 +7165,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.rule-trailing.directive-classification"
 title = "Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery — blocked on publishing the reviewed fork revision."
-projection_group = "pending-maintainer"
 legacy_aliases = ["B3-002", "B3-005", "T1-09"]
 
 [record.payload]
@@ -7258,7 +7225,6 @@ evaluation = "unknown"
 [[record]]
 id = "testing.rule-trailing.reviewed-fork-publication"
 title = "Publish and adopt the reviewed RuleTrailing fork."
-projection_group = "pending-maintainer"
 
 [record.payload]
 kind = "work"
@@ -7281,7 +7247,6 @@ evaluation = "unknown"
 [[record]]
 id = "testing.ruling-premise-gate-x-stays-green-must-probed"
 title = "A ruling whose premise is \"gate X stays green\" must be probed in the state the ruling CREATES, not the state that precedes it."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7328,7 +7293,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.run-local-values-gate-cache-key-material-proven"
 title = "Run-local values in gate-cache key material — one proven instance, no machinery yet."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7369,7 +7333,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.rustfmt-seam-error-leg-still-witness-needs-subprocess"
 title = "One rustfmt-seam error leg still has no witness, and it is the one that needs a subprocess-scoped test harness."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 4"]
 
 [record.payload]
@@ -7416,7 +7379,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.same-named-generated-crates-silently-share-cargo-fingerprint"
 title = "Same-named generated crates silently share one cargo fingerprint under a shared `CARGO_TARGET_DIR`, so a concurrent shard can report a non-compiling crate as `Finished`."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 20"]
 
 [record.payload]
@@ -7474,7 +7436,6 @@ admission_ids = ["testing.admission-path.same-named-generated-crates-silently-sh
 [[record]]
 id = "testing.schema-document-s-name-injectivity-enforced-row-side"
 title = "The schema document's name injectivity is enforced ROW-side, so the residue is everything the row set cannot see."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -7496,7 +7457,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.schema-name.collision-loser-no-row-same-id"
 title = "A collision whose LOSER has no row and whose `schema_id`s match"
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7530,7 +7490,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.schema-name.cross-crate-same-id-collision"
 title = "A cross-crate collision whose `schema_id`s MATCH"
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7573,7 +7532,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.schema-name.percent-encoded-ref"
 title = "A `schema_name()` that `schemars` percent-encodes into its `$ref`"
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7603,7 +7561,6 @@ priority_rationale_md = """The former independent part identifies the remaining 
 [[record]]
 id = "testing.schema-name.two-rowless-types-collide"
 title = "A collision between two types that BOTH lack rows"
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7682,7 +7639,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.scratch-retention.reopening-signal"
 title = "Reopening signal"
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "signal"
@@ -7714,7 +7670,6 @@ evaluation = "unknown"
 [[record]]
 id = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 title = "Stale \"known limitation\" prose surviving its fix — a finding ledgered in TWO homes where the fixing commit prunes only one."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7814,7 +7769,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.stale-pin-guard-cannot-distinguish-gap-closed-vector"
 title = "A stale-pin guard cannot distinguish \"the gap closed\" from \"the vector that proved the gap went blunt\" — and a wholesale re-mint of RANDOMLY GENERATED vectors produces the second while reporting the first."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "testing_operational_watch"
@@ -7876,7 +7830,6 @@ capture_md = """Record the full untruncated log or consumer report, command, ful
 [[record]]
 id = "testing.std-generated-crates"
 title = "no_std generated crates."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -7906,7 +7859,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
 title = "Synthesized-name residual: the referenced-but-never-minted (E0425) flavor."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -7951,7 +7903,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.synthetic-protocol-controls-component-probe-host-s-defensive"
 title = "Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm no generated component can reach never gets red-proven."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 23"]
 
 [record.payload]
@@ -7985,7 +7936,6 @@ priority_rationale_md = """The source owner places this item in Next priority or
 [[record]]
 id = "testing.tag-set.inline-anonymous-choice-boundary"
 title = "Inline/anonymous two-arm choices are not recognized."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -8014,7 +7964,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.tag-set.non-idiom-generic-boundary"
 title = "Non-idiom choice-BODIED generic defs are refused, not supported."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "decision"
@@ -8036,7 +7985,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.three-defect-classes-process-test-see-sharing-remedy"
 title = "Three defect classes that no IN-PROCESS test can see, sharing one remedy: extend the corpus's INPUT."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -8078,7 +8026,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.tier-memory.spend-measurements"
 title = "Spend the measurements."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "work"
@@ -8108,7 +8055,6 @@ evaluation = "unknown"
 [[record]]
 id = "testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
 title = "A tier's DISK BANDWIDTH is unmeasured by anything — the scratch floor is a capacity check, not a rate one, and no incident has ever been attributable either way."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "work"
@@ -8164,7 +8110,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.tooling.generated-coverage-instrumentation"
 title = "Coverage instrumentation of generated code does not establish semantic correctness and has no reviewed bounded denominator here."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -8177,7 +8122,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.tooling.goldenfile-expect-test-corpus"
 title = "Goldenfile and expect-test would create a second corpus engine while the incumbent snapshot and hand-vector corpora are simpler and broader."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -8190,7 +8134,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.tooling.no-panic-lints"
 title = "No-panic linting does not replace the existing input-robustness panic/refusal catalog and its exact site-bearing vectors."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -8203,7 +8146,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.tooling.quickcheck-parallel-corpus"
 title = "Quickcheck duplicates the incumbent proptest mechanism without adding a distinct admitted failure class."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -8216,7 +8158,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.tooling.trybuild-whole-crate"
 title = "Trybuild is narrower than the existing generated-crate cargo check and execution corpus for whole-crate pass behavior."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -8229,7 +8170,6 @@ permanence = "permanent"
 [[record]]
 id = "testing.transparent-tag-set-idiom-recognized-shape-boundary-request"
 title = "Transparent tag-set idiom — recognized-shape boundary (REQUEST-08)."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "control"
@@ -8252,7 +8192,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 title = "Tree-wide sweeps over gitignored regeneration targets count DEAD files as product — one proven near-miss, no machinery (and none possible tool-side)."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -8296,7 +8235,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.twin-implementation.comment-ast-change-cadence"
 title = "On the next `comment_ast` grammar change of ANY form (not just a new directive):"
-projection_group = "standing-system"
 
 [record.payload]
 kind = "signal"
@@ -8325,7 +8263,6 @@ evaluation = "unknown"
 [[record]]
 id = "testing.twin-implementation.own-reviewed-change-rule"
 title = "Its own reviewed change, never a drive-by:"
-projection_group = "standing-system"
 
 [record.payload]
 kind = "control"
@@ -8347,7 +8284,6 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record]]
 id = "testing.twin-implementation.read-caught-instance-trigger"
 title = "On the next read-caught instance of the class:"
-projection_group = "standing-system"
 
 [record.payload]
 kind = "signal"
@@ -8373,7 +8309,6 @@ event_md = """a fresh read-caught instance of the class recorded by the parent
 [[record]]
 id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 title = "Twin in-repo implementations of one semantic decision drifting apart (emission spellings, detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix pattern; only the directive-SET flavor has a firing detector so far."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -8440,7 +8375,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.unused-imports-generated-crates-trait-import-class-name"
 title = "`unused_imports` on generated crates — residual trait-import class the name-scan model cannot reach."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -8592,7 +8526,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.value-anchor-rot-field-addition-delivery-grows-existing"
 title = "Value-anchor rot on field addition: a delivery that grows an existing type's fields leaves the type's existing hand-vector sweeps decoding the new data but asserting nothing about it — the EXECUTED-but-unasserted member of the fixture-blindness family, whose never-executed first member is \"An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate\"."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -8638,7 +8571,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.verify-cache-transparency-b-split-emission-profile-embed"
 title = "`verify_cache_transparency` A/B split on an emission-profile EMBED cell — intermittent, distinct from the ruby and registry classes."
-projection_group = "operational-watches"
 
 [record.payload]
 kind = "testing_operational_watch"
@@ -8694,7 +8626,6 @@ capture_md = """Record the full untruncated log or consumer report, command, ful
 [[record]]
 id = "testing.verify-ts-refuse-unknown-flag-silently-degrading-plain"
 title = "verify.ts should refuse an unknown flag instead of silently degrading to a plain run."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 26"]
 
 [record.payload]
@@ -8726,7 +8657,6 @@ regression_gap_ids = ["testing.proof-gap.verify-ts-refuse-unknown-flag-silently-
 [[record]]
 id = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 title = "A `wac`-composed component transpiled by jco loses cross-instance resource identity, and the worse half of that is SILENT."
-projection_group = "standing-system"
 
 [record.payload]
 kind = "work"
@@ -8776,7 +8706,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.warm-up-refresh-dep-universe-lock-trust-fresh"
 title = "The warm-up should REFRESH the dep-universe lock, not trust it: a fresh-resolving scratch crate outruns `tests/warmup/Cargo.lock` at every upstream release."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 17"]
 
 [record.payload]
@@ -8819,7 +8748,6 @@ regression_evidence_ids = ["testing.proof.warm-up-refresh-dep-universe-lock-trus
 [[record]]
 id = "testing.wasm-door-vocabulary.reopening-signal"
 title = "Reopening signal:"
-projection_group = "next-priority"
 
 [record.payload]
 kind = "signal"
@@ -8844,7 +8772,6 @@ event_md = """a consumer reports an undefined wasm member and identifies the rus
 [[record]]
 id = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
 title = "The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust surface it mirrors."
-projection_group = "next-priority"
 legacy_aliases = ["Next work 10"]
 
 [record.payload]
@@ -8869,7 +8796,6 @@ priority_rationale_md = """The source owner places this item in Next priority or
 [[record]]
 id = "testing.wasm32-link-floor-deferred-reject-twin"
 title = "A wasm32 LINK floor for the deferred reject twin."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -8906,7 +8832,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.workspace-mode-wasm32-wasip2-build-gate-both-faces"
 title = "A workspace-mode `wasm32-wasip2` build gate for a BOTH-FACES tree."
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "work"
@@ -8949,7 +8874,6 @@ review_procedure_md = """Compare fresh, durable evidence with the exact trigger 
 [[record]]
 id = "testing.workspace-wasip2.reopening-signal"
 title = "Reopening signal:"
-projection_group = "deferred-features"
 
 [record.payload]
 kind = "signal"
@@ -8975,7 +8899,6 @@ event_md = """an upstream LLD fix reaches the pinned toolchain and both matrix c
 [[record]]
 id = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
 title = "`@wrapper_name` — a user-set name for a synthesized collection wrapper."
-projection_group = "declined-boundaries"
 
 [record.payload]
 kind = "decision"
@@ -9357,790 +9280,6 @@ body_md = """    - **Why the parity gate cannot host the generalization.** `wasm
       `From`/`AsRef` noise the exemption exists to remove; the generalization wants its own
       mechanism, keyed on the trait set the wasm face promises to mirror.
 """
-
-[[manifest.entry]]
-kind = "section"
-section_id = "preamble"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "north-star"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "pending-maintainer"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.prettyplease-shelling-rustfmt"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.rule-trailing.directive-classification"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "next-priority"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.grammar-fuzzer-escalations"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.grammar-fuzzer.embed-site-alias-roots"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.grammar-fuzzer.arbitrary-supported-ast"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.grammar-fuzzer.batch-masking-detector"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.grammar-fuzzer.real-world-corpus-differential"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.duplicates-policy-residuals"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.duplicates.same-shape-set-conversion"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.duplicates.occurrence-aware-generic-identity"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.duplicates.dedicated-generic-collision-message"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.duplicates.member-position-extension"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-md-mdmap"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.lint-provocation-shapes-generated-code-clippy-clean-partially"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.rustfmt-seam-error-leg-still-witness-needs-subprocess"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-what-hand-per-construct-buy-established-escape-produced"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-cheap-system-matrix-shape-pairs-compiled-wasm-side"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.container-combinations.reopening-signal"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.generated-local-collision-class-refused-mangled-refusal-s"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.generated-local-collision.general-mangling-remedy"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.generated-local-collision.scope-wide-probe"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-why-parity-gate-cannot-host-generalization"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.wasm-door-vocabulary.reopening-signal"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.build-registration-class-reference-position-sweep-second-escape"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-shape-evicted-over-known-defect-stale-guard"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-remedy-string-executable-wherever-lives-emitted-message-gets"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-advice-shaped-spelling-message-prints-remedy-string-strings"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-remedy-pin-per-message-per-triggering-construct-class"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-findings-couples-carriers-least-carrier-executes-s-headline"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-refusal-s-first-predicate-refused-exact-remedy-own"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-tagged-remedy-spelling-was-imprecise-coords-faithful-coords"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-findings-s-recommended-remedy-c-kv-keyed-plain"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-findings-s-description-claimed-shape-s-standalone-codec"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-both-ignore-rejections-printed-k-v-ignore-valid"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-inline-group-choice-rejection-s-remedy-g-b"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-anonymous-group-rejection-s-give-name-using-name"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-default-head-refusal-s-remedy-list-offered-bare"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-generics-repeat-refusal-s-first-drafted-remedy-advertised"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-bare-fixed-table-value-refusal-continued-say-named"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.warm-up-refresh-dep-universe-lock-trust-fresh"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.check-merged-d-ts-name-collisions-two-halves"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.corpus-preserve-pair-map-key-value-self-encoding"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.same-named-generated-crates-silently-share-cargo-fingerprint"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.corpus-c-style-enum-data-type-choice-arm"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.execution-binary-wrappers-true-last-documented-flag-value"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-nested-cargo-test"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.synthetic-protocol-controls-component-probe-host-s-defensive"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.verify-ts-refuse-unknown-flag-silently-degrading-plain"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "standing-system"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.gate-exists-registry-nowhere-tests-readme-md-hand"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.lint-doc-citations-accepts-docs-heading-durable-citation"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.representation-changing-directive-goes-live-new-container-ship"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.emission-branch-generated-output-fixture-exercises-invisible-gate"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.logic-tool-emits-source-text-outside-layer-reasons"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.value-anchor-rot-field-addition-delivery-grows-existing"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.corpus-wide-regen-over-prior-output-sweep-reaches"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.finding-s-defect-side-attribution-recorded-narrative-plausibility"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.ruling-premise-gate-x-stays-green-must-probed"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.observed-baseline-comments-beside-gate-floors-rot-silently"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.extreme-value-boundary-correctness-generation-time-encode-paths"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-models-obsolete-user-contract-stays-green-real"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.panic-site-un-shadowing-converting-shallow-panic-graceful"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.three-defect-classes-process-test-see-sharing-remedy"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.process-boundary.rustc-after-panic-fix"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.process-boundary.rustfmt-pre-rustc"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.process-boundary.another-profile-escape"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.parallel-constructor-fixture-diversity-parser-over-external-input"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.multifile-reference-position-coverage-two-position-keyed-escapes"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.armed-idle-harness-arms-empty-head-ledgers-zero"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.doubled-doc-comment-markers-emitted-docs-proven-instance"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.emitted-shape-lint-classes-outside-clippy-all-beyond"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.unused-imports-generated-crates-trait-import-class-name"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.mechanical-layers-two-review-owned-design-rules-tests"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.add-profile-wrapper-participation-grid-participation-differs-across"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.extern-deps-wasm-boundary-surface-packaging-json-gen"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.generic-raw-bytes-base-refused-generic-extern-base"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.twin-implementation.read-caught-instance-trigger"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.twin-implementation.comment-ast-change-cadence"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.twin-implementation.own-reviewed-change-rule"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-non-recorded-isn-t-re-litigated-coverage-gap"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.run-local-values-gate-cache-key-material-proven"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.control-bytes-committed-source-files-proven-instance-machinery"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.gate-script-health-cache-staleness-key-fresh-worktree"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.dependency-swap-pass-compile-parity-existing-gate-silently"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-s-verdict-accident-cargo-feature-unification-harness"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.profile-driven-compile-gate-covers-compositions-profiles-specs"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.gate-cache-closure-audit-structurally-blind-gate-authored"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.comment-residue-false-matches-text-scans-over-emitted"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.referencing-context-measured-wrapping-deep-honored-base-shape"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.arm-position-s-classifier-compile-time-forcing-function"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.schema-document-s-name-injectivity-enforced-row-side"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-emitted-name-guard-mint-records-unminted-extra"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.schema-name.collision-loser-no-row-same-id"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.schema-name.cross-crate-same-id-collision"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.schema-name.percent-encoded-ref"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.schema-name.two-rowless-types-collide"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-emitted-name-guard-neither-closes-holes-above-two"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.citation-resolves-naming-wrong-thing-invisible-citation-lint"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.matrix-s-note-names-panic-site-aborts-nothing"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.containment-note-s-stated-reason-go-false-any"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.cargo-feature-generated-crate-s-dependency-change-what"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.documented-flag-pairing-broken-fixture-stays-green-because"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.documented-failure-shape-exercises-prose-cross-crate-int"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.dsl-position-tests-string-level-design-green-emitted"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.message-s-level-classification-review-owned-two-ways"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.make-fixture-comment-s-claimed-wire-bytes-executable"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "deferred-features"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.workspace-mode-wasm32-wasip2-build-gate-both-faces"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.workspace-wasip2.reopening-signal"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.probe-component-face-s-js-surface-axes-js"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.component-js-probe.reopening-signal"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.crate-generates-json-schema-document-aggregate-package"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.wasm32-link-floor-deferred-reject-twin"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.extern-interface-export-dialect-v2-candidates"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.cddl-module-directives-draft-ietf-cbor-cddl-modules"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.std-generated-crates"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.dependency-version-range-resolution-untested-generated-crates-float"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.transparent-tag-set-idiom-recognized-shape-boundary-request"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.tag-set.non-idiom-generic-boundary"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.tag-set.inline-anonymous-choice-boundary"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.opt-rfc-faithful-total-cbor-json-rendering-json"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.edn-text-notation-round-trip-edn-edn-draft"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.project-json-gen-documents-run-test-fixture-writes"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.propagating-deliberately-unpublished-type-s-intent-json-ts"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.json2ts-artifact-doc-comments-naming-undefined"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.file-listing-json-schema-root-values-flag-per"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.assert-hand-authored-json-schema-against-type-s"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.composing-registration-rows-across-generation-passes-share-output"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.machine-readable-ownership-co-owned-features-std-list"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "operational-watches"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.gate-s-own-stdout-print-column-result-pass"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.failing-snapshot-test-surfaces-mismatch-per-test-run"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.stale-pin-guard-cannot-distinguish-gap-closed-vector"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.config-run-s-convergence-warning-name-crate-already"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.extern-interface-export-public-interchange-format"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.exclusion-reasons-informational-interchange"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.scratch-retention.reopening-signal"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.tier-memory.spend-measurements"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.gate-cache-costs"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.gate-cache.all-hit-cost"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.gate-cache.coverage-extensions"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.gate-cache.closure-audit-traced-set-extension"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-pre-cache-remedies-stay-valid-if-uncached-path"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.registry-fetch-transients-nested-cargo-cells"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-surfaces-still-online"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-verify-ts-evidence-absorber-stays"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "part-sighting-offline-gate-run-new-class"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.verify-cache-transparency-b-split-emission-profile-embed"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "declined-boundaries"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.complete-cargo-mutants-sweep-will-never-run"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.making-type-choice-path-reject-duplicated-explicit-name"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.msrv-declaration-os-matrix-generated-code"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.full-n-flag-powerset-pict-pairwise"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.orphan-fixture-directory-meta-test"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.restructuring-features-std-tool-owned-sub-feature-cddl"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.ownership-journal-making-dropped-std-forward-dep-converge"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.checking-runtime-flavor-s-safety-condition-rather-stating"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "sources"
 
 [[relation]]
 source = "testing.add-profile-wrapper-participation-grid-participation-differs-across"

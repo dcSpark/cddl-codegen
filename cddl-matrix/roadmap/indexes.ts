@@ -449,14 +449,18 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
       });
     }
   }
-  for (const [index, entry] of document.manifest.entries()) {
-    if (entry.kind === "record") {
-      roadmapIdUses.push({
-        id: entry.record_id,
-        logical_path: `manifest[${index}].record_id`,
-        role: "manifest_record",
-        expected_namespace: namespace,
-      });
+  const partIds = new Set(parts.map((part) => String(part.part_id)));
+  for (const section of sections) {
+    for (const [index, entryId] of section.entries.entries()) {
+      const path = `section[${quoted(section.section_id)}].entries[${index}]`;
+      if (!partIds.has(entryId)) {
+        roadmapIdUses.push({
+          id: entryId as RoadmapId,
+          logical_path: path,
+          role: "manifest_record",
+          expected_namespace: namespace,
+        });
+      }
     }
   }
 

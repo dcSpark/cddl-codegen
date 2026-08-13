@@ -22,7 +22,7 @@ import {
   type RoadmapIssue,
 } from "./errors.ts";
 import type { ReadOnlyRoadmapPorts } from "./io.ts";
-import { resolveManifest, type ManifestResolution } from "./manifest.ts";
+import { resolveSectionPlan, type SectionPlan } from "./manifest.ts";
 import type {
   RepoPath,
   RepositoryRevision,
@@ -119,7 +119,7 @@ interface CoreStageState {
   readonly adapter: RoadmapAdapter<SemanticPayload>;
   /** Replaced once, by the projection-fact stage, with the registry domain validation sees. */
   registry: RegistryView;
-  manifest?: ManifestResolution;
+  manifest?: SectionPlan;
   completed?: CompletedRenderIr;
   projection_views?: ProjectionViews;
 }
@@ -141,7 +141,7 @@ const CORE_PIPELINE: readonly CoreStage[] = Object.freeze([
   {
     name: "resolve-manifest",
     run(state) {
-      state.manifest = resolveManifest(state.document);
+      state.manifest = resolveSectionPlan(state.document);
     },
   },
   {
@@ -305,9 +305,10 @@ export function registryWithRoadmapMarkdownFact(
 function validateProjectionAnchors(document: RoadmapDocument, projection: Uint8Array): void {
   const facts = scanRoadmapMarkdownFacts(document.document.projection_path, createImmutableByteView(projection));
   if (facts.issues.length > 0) failure(facts.issues);
-  const expected = document.manifest.flatMap((entry) =>
-    entry.kind === "record" ? [entry.record_id] : []
-  ).sort();
+  const expected = document.sections
+    .flatMap((section) => [...section.entries])
+    .filter((id) => document.records.some((record) => String(record.id) === id))
+    .sort();
   if (JSON.stringify(facts.stable_anchor_ids) !== JSON.stringify(expected)) failure([issue(
     "E-ID-DUPLICATE",
     document.document.projection_path,

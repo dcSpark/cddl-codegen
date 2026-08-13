@@ -24,7 +24,7 @@ import type {
   SlotId,
 } from "../model/core.ts";
 import type {
-  ManifestEntry,
+  RenderNodeKind,
   RoadmapDocument,
   SemanticPayload,
 } from "../model/documents.ts";
@@ -34,7 +34,7 @@ import type {
   StatusCompatibilityInputsWire,
   StatusCompatibilityModeFixture,
 } from "../selftest.ts";
-import { resolveManifest } from "../manifest.ts";
+import { resolveSectionPlan } from "../manifest.ts";
 import { buildRoadmapIndexes } from "../indexes.ts";
 import {
   buildExpectedChunks,
@@ -85,15 +85,15 @@ import { sha256 } from "../kernel.ts";
  * typechecked, greppable failure instead of an inferred count.
  */
 export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
-  "manifest_duplicate_record",
-  "manifest_missing_part",
-  "manifest_orphan_record",
-  "manifest_unknown_id",
-  "manifest_wrong_kind",
-  "manifest_record_table_order_irrelevant",
-  "manifest_true_sequence_preserved",
-  "manifest_duplicate_not_tiebroken",
-  "manifest_semantic_only_is_not_placed",
+  "section_entry_duplicate_record",
+  "section_entry_missing_part",
+  "section_entry_orphan_record",
+  "section_entry_unknown_id",
+  "section_entry_non_rendering_record",
+  "section_record_table_order_irrelevant",
+  "section_true_sequence_preserved",
+  "section_entry_duplicate_not_tiebroken",
+  "section_semantic_only_is_not_placed",
   "span_utf8_byte_offsets",
   "span_mid_scalar_boundary",
   "render_zero_chunks_rejected",
@@ -214,7 +214,7 @@ function asSlotId(value: string): SlotId { return value as SlotId; }
 function asRepoPath(value: string): RepoPath { return value as RepoPath; }
 
 function complete(document: RoadmapDocument): { readonly completed: CompletedRenderIr; readonly manifestIssues: readonly RoadmapIssue[] } {
-  const placement = resolveManifest(document);
+  const placement = resolveSectionPlan(document);
   const completed = buildExpectedChunks(document, placement.ops, {
     renderSemanticRecord: renderCanonicalSemanticRecord,
     resolveGeneratedSlot(slot) {
@@ -249,9 +249,9 @@ function fail(message: string): never {
 
 function expectedByteViewCrossChunk(): readonly string[] {
   const executed: string[] = [];
-  const chunks: RenderChunk[] = ["a", "é", "🚀", "z"].map((value, manifest_index) => ({
-    manifest_index,
-    owner: { kind: "part", id: `chunk-${manifest_index}`, field: "body_md" },
+  const chunks: RenderChunk[] = ["a", "é", "🚀", "z"].map((value, plan_index) => ({
+    plan_index,
+    owner: { kind: "part", id: `chunk-${plan_index}`, field: "body_md" },
     bytes: bytes(value),
     source_span_ids: [],
     consumed_fields: ["body_md"],
@@ -293,9 +293,9 @@ function expectedByteViewCrossChunk(): readonly string[] {
 }
 
 function expectedByteViewIncrementalHash(): void {
-  const chunks: RenderChunk[] = ["one\n", "two", "three\n"].map((value, manifest_index) => ({
-    manifest_index,
-    owner: { kind: "part", id: `hash-${manifest_index}`, field: "body_md" },
+  const chunks: RenderChunk[] = ["one\n", "two", "three\n"].map((value, plan_index) => ({
+    plan_index,
+    owner: { kind: "part", id: `hash-${plan_index}`, field: "body_md" },
     bytes: bytes(value),
     source_span_ids: [],
     consumed_fields: ["body_md"],
@@ -355,9 +355,9 @@ function expectedByteViewIncrementalHash(): void {
 }
 
 function finalRenderHasNoImplicitBytes(): void {
-  const chunks: RenderChunk[] = ["left", "right"].map((value, manifest_index) => ({
-    manifest_index,
-    owner: { kind: "part", id: `render-${manifest_index}`, field: "body_md" },
+  const chunks: RenderChunk[] = ["left", "right"].map((value, plan_index) => ({
+    plan_index,
+    owner: { kind: "part", id: `render-${plan_index}`, field: "body_md" },
     bytes: bytes(value),
     source_span_ids: [],
     consumed_fields: ["body_md"],
@@ -366,89 +366,100 @@ function finalRenderHasNoImplicitBytes(): void {
   if (new TextDecoder().decode(rendered) !== "leftright") fail("renderer inserted bytes");
 }
 
-function testManifestCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
+function withEntries(
+  document: RoadmapDocument,
+  entries: readonly string[],
+): RoadmapDocument {
+  return { ...document, sections: document.sections.map((section) => ({ ...section, entries })) };
+}
+
+function testSectionPlanCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
   const fixture = semanticFixture("exact");
   let document = fixture.document;
+  const entries = document.sections[0]!.entries;
   let expected: RoadmapIssue["code"] | undefined;
   switch (id) {
-    case "manifest_duplicate_record":
-    case "manifest_duplicate_not_tiebroken":
-      document = { ...document, manifest: [...document.manifest, { kind: "record", record_id: document.records[0].id }] };
-      expected = "E-MANIFEST-DUPLICATE";
+    case "section_entry_duplicate_record":
+    case "section_entry_duplicate_not_tiebroken":
+      document = withEntries(document, [...entries, String(document.records[0].id)]);
+      expected = "E-SECTION-DUPLICATE";
       break;
-    case "manifest_missing_part":
-      document = { ...document, manifest: document.manifest.filter((entry) => entry.kind !== "part") };
-      expected = "E-MANIFEST-MISSING";
+    case "section_entry_missing_part":
+      document = withEntries(document, entries.filter((entry) => entry !== "part"));
+      expected = "E-SECTION-ORPHAN";
       break;
-    case "manifest_orphan_record":
-      document = { ...document, records: [{ ...document.records[0], projection_group: asSectionId("missing") }] };
-      expected = "E-MANIFEST-ORPHAN";
+    case "section_entry_orphan_record":
+      document = withEntries(document, entries.filter((entry) => entry !== String(document.records[0].id)));
+      expected = "E-SECTION-ORPHAN";
       break;
-    case "manifest_unknown_id":
-      document = { ...document, manifest: document.manifest.map((entry) =>
-        entry.kind === "record" ? { kind: "record", record_id: asRoadmapId("matrix.fixture-unknown") } : entry
-      ) };
-      expected = "E-MANIFEST-UNKNOWN";
+    case "section_entry_unknown_id":
+      document = withEntries(document, entries.map((entry) =>
+        entry === String(document.records[0].id) ? "matrix.fixture-unknown" : entry
+      ));
+      expected = "E-SECTION-UNKNOWN";
       break;
-    case "manifest_wrong_kind":
-      document = { ...document, manifest: document.manifest.map((entry) =>
-        entry.kind === "part" ? { kind: "part", part_id: asPartId(document.records[0].id) } : entry
-      ) };
-      expected = "E-MANIFEST-KIND";
+    case "section_entry_non_rendering_record": {
+      const record = document.records[0]!;
+      if (record.payload.kind !== "work") fail("section-plan vector payload drifted");
+      const { detail_md: _detail, ...payload } = record.payload;
+      document = { ...document, records: [{ ...record, payload: payload as SemanticPayload }] };
+      expected = "E-SECTION-KIND";
       break;
-    case "manifest_record_table_order_irrelevant": {
+    }
+    case "section_record_table_order_irrelevant": {
       const second = {
         ...document.records[0],
         id: asRoadmapId("matrix.fixture-second"),
         title: "Second",
       };
-      const firstManifestIndex = document.manifest.findIndex((entry) => entry.kind === "record");
-      const manifest = [...document.manifest];
-      manifest.splice(firstManifestIndex + 1, 0, { kind: "record", record_id: second.id });
-      const forward = resolveManifest({ ...document, records: [document.records[0], second], manifest });
-      const reverse = resolveManifest({ ...document, records: [second, document.records[0]], manifest });
-      if (forward.issues.length !== 0 || reverse.issues.length !== 0) fail("valid manifest order rejected");
+      const placed = withEntries(document, [...entries, String(second.id)]);
+      const forward = resolveSectionPlan({ ...placed, records: [document.records[0], second] });
+      const reverse = resolveSectionPlan({ ...placed, records: [second, document.records[0]] });
+      if (forward.issues.length !== 0 || reverse.issues.length !== 0) fail("valid section entries rejected");
       if (forward.ops.map((op) => op.node.id).join("|") !== reverse.ops.map((op) => op.node.id).join("|")) {
         fail("record table order changed presentation");
       }
       return pass();
     }
-    case "manifest_true_sequence_preserved": {
-      const reversed = { ...document, manifest: [...document.manifest].reverse() };
-      const resolved = resolveManifest(reversed);
-      if (resolved.ops[0]?.node.kind !== "part" || resolved.ops.at(-1)?.node.kind !== "section") {
-        fail("manifest authored sequence was reordered");
+    case "section_true_sequence_preserved": {
+      const reversed = withEntries(document, [...entries].reverse());
+      const resolved = resolveSectionPlan(reversed);
+      if (resolved.ops[0]?.node.kind !== "section" ||
+        resolved.ops[1]?.node.id !== entries.at(-1) ||
+        resolved.ops.at(-1)?.node.id !== entries[0]) {
+        fail("authored entry sequence was reordered");
       }
       return pass();
     }
-    case "manifest_semantic_only_is_not_placed": {
+    case "section_semantic_only_is_not_placed": {
       const semanticOnly = semanticOnlyCompletion();
       if (semanticOnly.placement.issues.length !== 0 ||
         semanticOnly.placement.ops.some((op) => op.node.kind === "record" && op.node.id === semanticOnly.record.id)) {
         fail("semantic-only record did not remain an unplaced first-class semantic owner");
       }
+      const section = semanticOnly.document.sections[0]!;
       const authored = {
         ...semanticOnly.document,
-        manifest: [...semanticOnly.document.manifest, { kind: "record" as const, record_id: semanticOnly.record.id }],
+        sections: [{ ...section, entries: [...section.entries, String(semanticOnly.record.id)] }],
       };
-      const rejected = resolveManifest(authored).issues;
-      if (!rejected.some((entry) => entry.code === "E-MANIFEST-KIND" &&
-        entry.logical_path === `manifest[${semanticOnly.document.manifest.length}]`)) {
-        fail("authored semantic-only manifest placement was not rejected at its exact entry");
+      const rejected = resolveSectionPlan(authored).issues;
+      if (!rejected.some((entry) => entry.code === "E-SECTION-KIND" &&
+        entry.logical_path === `section[${JSON.stringify(String(section.section_id))}].entries[${section.entries.length}]`)) {
+        fail("authored non-rendering entry was not rejected at its exact coordinate");
       }
       return pass();
     }
     default:
-      fail(`${id} is not a manifest case`);
+      fail(`${id} is not a section-plan case`);
   }
-  const issues = resolveManifest(document).issues;
-  if (expected === undefined) fail("manifest test lacks expected code");
+  const issues = resolveSectionPlan(document).issues;
+  if (expected === undefined) fail("section-plan test lacks expected code");
   requireIssue(issues, expected);
   return pass("negative");
 }
 
 function validateFixture(document: RoadmapDocument): readonly RoadmapIssue[] {
-  const placement = resolveManifest(document);
+  const placement = resolveSectionPlan(document);
   const completed = complete(document).completed;
   return [
     ...placement.issues,
@@ -466,7 +477,7 @@ function testSpanCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
   }
   if (id === "span_utf8_byte_offsets" || id === "span_mid_scalar_boundary") {
     const chunks: RenderChunk[] = [{
-      manifest_index: 0,
+      plan_index: 0,
       owner: { kind: "section", id: "unicode", field: "body_md" },
       bytes: bytes("é"),
       consumed_fields: ["body_md"],
@@ -493,11 +504,7 @@ function semanticFixture(
   const recordId = asRoadmapId("matrix.fixture-work");
   const partId = asPartId("part");
   const slotId = asSlotId("status-slot");
-  const manifest: ManifestEntry[] = [
-    { kind: "section", section_id: sectionId },
-    { kind: "record", record_id: recordId },
-    { kind: "part", part_id: partId },
-  ];
+  const entries: readonly string[] = [String(recordId), String(partId)];
   const document: RoadmapDocument = {
     document: {
       schema_version: 3,
@@ -509,12 +516,12 @@ function semanticFixture(
       section_id: sectionId,
       title: "Heading",
       body_md: bytes(`H${placeholderFor(slotId)}F`),
+      entries,
       slots: [{ slot_id: slotId, binding: "fixture-status" }],
     }],
     records: [{
       id: recordId,
       title: "Work",
-      projection_group: sectionId,
       payload: {
         kind: "work",
         detail_md: bytes("DET"),
@@ -532,7 +539,6 @@ function semanticFixture(
       parent_record_id: recordId,
       body_md: bytes("P"),
     }],
-    manifest,
     relations: [],
     references: [],
   };
@@ -544,7 +550,7 @@ function semanticFixture(
 
 function completeSemantic(document: RoadmapDocument, calls: { value: number }): CompletedRenderIr {
   const mode = (document as RoadmapDocument & { __selftest_mode?: string }).__selftest_mode ?? "exact";
-  const placement = resolveManifest(document);
+  const placement = resolveSectionPlan(document);
   return buildExpectedChunks(document, placement.ops, {
     renderSemanticRecord(record, fields) {
       calls.value++;
@@ -570,7 +576,7 @@ function recordChunkFor(completed: CompletedRenderIr, id: string): RenderChunk {
 function semanticOnlyCompletion(): {
   readonly document: RoadmapDocument;
   readonly record: RoadmapDocument["records"][number];
-  readonly placement: ReturnType<typeof resolveManifest>;
+  readonly placement: ReturnType<typeof resolveSectionPlan>;
   readonly completed: CompletedRenderIr;
 } {
   const exact = semanticFixture("exact");
@@ -582,11 +588,12 @@ function semanticOnlyCompletion(): {
   const document: RoadmapDocument = {
     ...exact.document,
     records: exact.document.records.map((candidate) => candidate === record ? unplacedRecord : candidate),
-    manifest: exact.document.manifest.filter((entry) =>
-      !(entry.kind === "record" && entry.record_id === unplacedRecord.id)
-    ),
+    sections: exact.document.sections.map((section) => ({
+      ...section,
+      entries: section.entries.filter((entry) => entry !== String(unplacedRecord.id)),
+    })),
   };
-  const placement = resolveManifest(document);
+  const placement = resolveSectionPlan(document);
   const completed = buildExpectedChunks(document, placement.ops, {
     renderSemanticRecord: renderCanonicalSemanticRecord,
     resolveGeneratedSlot(slot) { return { binding: slot.binding, bytes: bytes("G") }; },
@@ -611,7 +618,7 @@ function testRenderCase(
   }
   if (id === "render_semantic_consumption_once" || id === "render_chunks_precede_consumption_validation") {
     const fixture = semanticFixture(id === "render_semantic_consumption_once" ? "duplicate" : "missing");
-    const placement = resolveManifest(fixture.document);
+    const placement = resolveSectionPlan(fixture.document);
     const completed = completeSemantic(fixture.document, fixture.renderCalls);
     if (completed.chunks.length !== placement.ops.length) fail("field failure prevented chunk completion");
     requireExactIssue(
@@ -621,7 +628,7 @@ function testRenderCase(
     );
     if (id === "render_chunks_precede_consumption_validation") {
       const raw = semanticFixture("exact");
-      const rawPlacement = resolveManifest(raw.document);
+      const rawPlacement = resolveSectionPlan(raw.document);
       const rawCompleted = complete(raw.document).completed;
       const reordered: CompletedRenderIr = {
         ...rawCompleted,
@@ -630,7 +637,7 @@ function testRenderCase(
       requireIssue(validateCompletedChunks(raw.document, rawPlacement.ops, reordered), "E-RENDER-AUTHORITY");
 
       const exactFixture = semanticFixture("exact");
-      const exactPlacement = resolveManifest(exactFixture.document);
+      const exactPlacement = resolveSectionPlan(exactFixture.document);
       const exactCompleted = completeSemantic(exactFixture.document, exactFixture.renderCalls);
       const fieldLedger = exactCompleted.field_consumption[0];
       requireIssue(validateCompletedChunks(exactFixture.document, exactPlacement.ops, {
@@ -657,7 +664,7 @@ function testRenderCase(
       }), "E-OUTPUT-SLOT");
       requireIssue(validateCompletedChunks(raw.document, rawPlacement.ops, {
         ...rawCompleted,
-        slot_resolutions: [...rawCompleted.slot_resolutions, { ...slotLedger, manifest_index: 999 }],
+        slot_resolutions: [...rawCompleted.slot_resolutions, { ...slotLedger, plan_index: 999 }],
       }), "E-OUTPUT-SLOT");
     }
     return pass("negative");
@@ -680,7 +687,7 @@ function testRenderCase(
   }
   if (id === "render_slots_resolved_before_slot_validation") {
     const fixture = semanticFixture("exact");
-    const placement = resolveManifest(fixture.document);
+    const placement = resolveSectionPlan(fixture.document);
     let resolverCalls = 0;
     const completed = buildExpectedChunks(fixture.document, placement.ops, {
       renderSemanticRecord: () => new Uint8Array(),
@@ -702,7 +709,7 @@ function testRenderCase(
         body_md: bytes(`H${placeholderFor(asSlotId("status-slot"))}F${placeholderFor(asSlotId("absent"))}`),
       }],
     };
-    const placement = resolveManifest(document);
+    const placement = resolveSectionPlan(document);
     const completed = buildExpectedChunks(document, placement.ops, {
       renderSemanticRecord: () => new Uint8Array(),
       resolveGeneratedSlot(slot) { return { binding: slot.binding, bytes: bytes("G") }; },
@@ -1779,12 +1786,14 @@ function testStatusCase(
 function testDeterminismCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
   if (id === "issues_sorted") {
     const fixture = semanticFixture("exact");
+    const second = { ...fixture.document.records[0]!, id: asRoadmapId("matrix.fixture-second") };
     const orphaned = {
       ...fixture.document,
-      records: fixture.document.records.map((record) => ({ ...record, projection_group: asSectionId("missing") })),
+      records: [...fixture.document.records, second],
+      sections: fixture.document.sections.map((section) => ({ ...section, entries: [] })),
     };
-    const forward = resolveManifest(orphaned).issues;
-    const reverse = resolveManifest({ ...orphaned, records: [...orphaned.records].reverse() }).issues;
+    const forward = resolveSectionPlan(orphaned).issues;
+    const reverse = resolveSectionPlan({ ...orphaned, records: [...orphaned.records].reverse() }).issues;
     const coordinates = (issues: readonly RoadmapIssue[]): string =>
       issues.map((value) => `${value.code}:${value.logical_path}`).join("|");
     if (coordinates(forward) !== coordinates(reverse) || !coordinates(forward).includes("record")) {
@@ -1842,15 +1851,15 @@ interface ProjectionCaseSpec {
  * select.
  */
 const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: ProjectionCaseSpec } = {
-  manifest_duplicate_record: { category: "manifest-render", run: testManifestCase },
-  manifest_missing_part: { category: "manifest-render", run: testManifestCase },
-  manifest_orphan_record: { category: "manifest-render", run: testManifestCase },
-  manifest_unknown_id: { category: "manifest-render", run: testManifestCase },
-  manifest_wrong_kind: { category: "manifest-render", run: testManifestCase },
-  manifest_record_table_order_irrelevant: { category: "manifest-render", run: testManifestCase },
-  manifest_true_sequence_preserved: { category: "manifest-render", run: testManifestCase },
-  manifest_duplicate_not_tiebroken: { category: "manifest-render", run: testManifestCase },
-  manifest_semantic_only_is_not_placed: { category: "manifest-render", run: testManifestCase },
+  section_entry_duplicate_record: { category: "manifest-render", run: testSectionPlanCase },
+  section_entry_missing_part: { category: "manifest-render", run: testSectionPlanCase },
+  section_entry_orphan_record: { category: "manifest-render", run: testSectionPlanCase },
+  section_entry_unknown_id: { category: "manifest-render", run: testSectionPlanCase },
+  section_entry_non_rendering_record: { category: "manifest-render", run: testSectionPlanCase },
+  section_record_table_order_irrelevant: { category: "manifest-render", run: testSectionPlanCase },
+  section_true_sequence_preserved: { category: "manifest-render", run: testSectionPlanCase },
+  section_entry_duplicate_not_tiebroken: { category: "manifest-render", run: testSectionPlanCase },
+  section_semantic_only_is_not_placed: { category: "manifest-render", run: testSectionPlanCase },
   span_utf8_byte_offsets: { category: "manifest-render", run: testSpanCase },
   span_mid_scalar_boundary: { category: "manifest-render", run: testSpanCase },
   render_zero_chunks_rejected: { category: "manifest-render", run: testRenderCase },

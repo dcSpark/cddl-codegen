@@ -10,11 +10,13 @@ title = "Small testing fixture"
 body_md = """# Small testing fixture
 
 """
+entries = [
+  "testing.fixture-small-semantic",
+]
 
 [[record]]
 id = "testing.fixture-small-semantic"
 title = "Small semantic testing owner"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -26,11 +28,3 @@ risk = "false_pass_or_red"
 acceptance_md = """The semantic testing owner renders deterministically."""
 priority_band = "high"
 priority_rationale_md = """The fixture exercises a high-priority arm."""
-
-[[manifest.entry]]
-kind = "section"
-section_id = "fixture"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-small-semantic"

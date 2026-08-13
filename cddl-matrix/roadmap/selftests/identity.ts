@@ -57,7 +57,7 @@ import {
   validateGlobalIdentity,
 } from "../identity.ts";
 import { buildExpectedChunks, createExpectedByteView, type CompletedRenderIr, type RenderChunk } from "../render_ir.ts";
-import { resolveManifest } from "../manifest.ts";
+import { resolveSectionPlan } from "../manifest.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
 import { codePointSort } from "../kernel.ts";
 
@@ -1000,7 +1000,6 @@ function decodedDocument(
 [[record]]
 id = "${id}"
 title = "Record ${index}"
-projection_group = "fixture"
 legacy_aliases = ["Legacy ${String.fromCharCode(90 - index)}"]
 
 [record.payload]
@@ -1013,11 +1012,7 @@ risk = "cosmetic"
 acceptance_md = """Accepted."""
 priority_rationale_md = """Normal."""
 `).join("");
-  const manifest = recordIds.map((id) => `
-[[manifest.entry]]
-kind = "record"
-record_id = "${id}"
-`).join("");
+  const entries = recordIds.map((id) => `  ${JSON.stringify(id)},\n`).join("");
   return decodeRoadmapSource(bytes(`[document]
 schema_version = 3
 roadmap = "${roadmap}"
@@ -1029,12 +1024,9 @@ section_id = "fixture"
 title = "Fixture"
 legacy_aliases = ["Legacy Section"]
 body_md = """S"""
-${records}
-[manifest]
-[[manifest.entry]]
-kind = "section"
-section_id = "fixture"
-${manifest}`), "<identity-selftest>", roadmap, false);
+entries = [
+${entries}]
+${records}`), "<identity-selftest>", roadmap, false);
 }
 
 function requireAccepted(value: string, namespace?: RoadmapName): RoadmapId {
@@ -1499,9 +1491,9 @@ function citationCase(id: JoinSelfTestCaseId): boolean {
       const expectedView = createExpectedByteView([
         expectedBytes.subarray(0, 5),
         expectedBytes.subarray(5),
-      ].map((chunk, manifest_index): RenderChunk => ({
-        manifest_index,
-        owner: { kind: "part", id: `expected-${manifest_index}`, field: "body_md" },
+      ].map((chunk, plan_index): RenderChunk => ({
+        plan_index,
+        owner: { kind: "part", id: `expected-${plan_index}`, field: "body_md" },
         bytes: chunk,
         consumed_fields: ["body_md"],
       })));
@@ -1962,7 +1954,6 @@ function c5ReadyRecord(id: RoadmapId, workKind: WorkKind = "feature"): SemanticA
   return {
     id,
     title: "Lifecycle",
-    projection_group: "fixture" as RoadmapDocumentV3["records"][number]["projection_group"],
     payload: {
       kind: "work",
       work_state: "ready",
@@ -1998,11 +1989,6 @@ function c5Document(
       projection_path: c5Path(roadmap),
     },
     sections: [], records: [...records], parts: [],
-    manifest: records.flatMap((record) =>
-      record.payload.detail_md === undefined
-        ? []
-        : [{ kind: "record" as const, record_id: record.id }]
-    ),
     relations: [...relations], references: [...references],
   };
 }

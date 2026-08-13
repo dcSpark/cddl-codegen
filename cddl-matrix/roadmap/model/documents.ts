@@ -34,11 +34,19 @@ export interface GeneratedSlot {
   binding: string;
 }
 
+/**
+ * A section owns its presentation order. `entries` is the ordered list of record and part IDs the
+ * section renders after its own prose, and it is the sole placement authority — membership is
+ * TOTAL, so every record carrying renderable prose appears in exactly one section's entries and a
+ * record without it appears in none. Both directions are validation errors, so neither accidental
+ * orphaning nor a placed non-rendering record is a silent state.
+ */
 export interface SemanticSection {
   section_id: SectionId;
   title: string;
   legacy_aliases?: string[];
   body_md: Uint8Array;
+  entries: readonly string[];
   /** Declared slots, sorted by `slot_id`; absent when the section's prose interleaves nothing. */
   slots?: readonly GeneratedSlot[];
 }
@@ -46,15 +54,13 @@ export interface SemanticSection {
 export interface CommonEnvelope {
   id: RoadmapId;
   title: string;
-  projection_group: SectionId;
   legacy_aliases?: string[];
   tags?: string[];
 }
 
 /**
- * Document membership is derived, never declared: a record renders exactly when it is placed in
- * the manifest, and placement is legal exactly when `payload.detail_md` is present (the one
- * rendering field). The manifest resolver enforces both directions.
+ * A record renders exactly when `payload.detail_md` is present (its one rendering field) and it is
+ * listed in a section's `entries`. The section-plan resolver enforces both directions.
  */
 export interface SemanticAuthorityRecord<P extends SemanticPayload = SemanticPayload>
   extends CommonEnvelope {
@@ -74,10 +80,8 @@ export type Part = SemanticPart;
 export type SemanticRecord<P extends SemanticPayload = SemanticPayload> =
   SemanticAuthorityRecord<P>;
 
-export type ManifestEntry =
-  | { kind: "section"; section_id: SectionId }
-  | { kind: "record"; record_id: RoadmapId }
-  | { kind: "part"; part_id: PartId };
+/** The three node kinds a rendered projection is built from. */
+export type RenderNodeKind = "section" | "record" | "part";
 
 export type RelationKind =
   | "parent_of"
@@ -122,7 +126,6 @@ export interface RoadmapDocumentV3 {
   sections: SemanticSection[];
   records: SemanticAuthorityRecord[];
   parts: SemanticPart[];
-  manifest: ManifestEntry[];
   relations: Relation[];
   references: Reference[];
 }

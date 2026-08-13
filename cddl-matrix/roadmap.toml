@@ -5,105 +5,6 @@ source_path = "cddl-matrix/roadmap.toml"
 projection_path = "cddl-matrix/ROADMAP.md"
 
 [[section]]
-section_id = "expansion"
-title = "Expansion (when relevant)"
-body_md = """## Expansion (when relevant)
-
-"""
-
-[[section]]
-section_id = "explicit-boundaries"
-title = "Explicitly out of scope (decided, not overlooked)"
-body_md = """## Explicitly out of scope (decided, not overlooked)
-
-Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a concrete need surfaces):
-"""
-
-[[section]]
-section_id = "findings-open"
-title = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-body_md = """## Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)
-
-Every entry here is a defect or a missing capability in **this** generator that a probe, gate, or
-fuzzer sweep surfaced — that is what the section means, and what the many `§ findings` citations in
-`src/tests/` and `tests/README.md` resolve to. Two neighbouring classes live elsewhere on purpose:
-what the generator does TODAY, including the boundaries it keeps permanently and the upstream-oracle
-gap state, is current state in `README.md` (§ \"Gotchas\", § \"Upstream oracle gaps\"); prunes that wait
-on an external release are § \"Upstream close-outs (waiting on external releases)\". New findings are
-ledgered here (that's what the probe/gate error messages point at).
-
-One evidence rule for this section: an entry claiming a GENERATOR defect carries a harness-free
-repro — the tool run alone, into a scratch dir — before it is written. Evidence read off committed
-fixture trees does not qualify, because those trees pass through the test harness, which appends its
-own content INTO generated files, so a harness-written emission is indistinguishable there from a
-generator-written one. One entry was retracted on exactly that (2026-08-07): its \"greppable in the
-fixture trees\" emission defect — an unused `use serialization::*;` — was such an append, and a
-fresh-generation probe found the generator emits that glob nowhere. The retraction record is in
-`tests/TESTING_ROADMAP.md`'s unused-imports entry. Two corollaries, each learned from a shipped
-imprecision: a verified remedy's MECHANISM gloss is part of the claim — write only what the probe
-executed (a 2026-08 entry glossed its executed rename-the-rule remedy as \"`@name` renames a rule\",
-which the parser refuses; the gloss outlived the entry into a delegation spec before a parse probe
-caught it) — and edits to this section delete or move entries WHOLE, bold header through final
-line (a partial deletion once merged the following entry's body into the previous one's
-continuation lines, headerless and invisible as an entry; no lint can tell that merge from a long
-entry, so the atomicity is the rule).
-
-"""
-
-[[section]]
-section_id = "maintenance"
-title = "Maintenance"
-body_md = """## Maintenance
-
-Upstream specs churn (IANA registries, the grammar). Refresh with `sources/fetch.sh` (re-fetches + verifies
-against `SHA256SUMS`); a checksum mismatch flags upstream drift to review before re-pinning and regenerating.
-
-Hand-counted prose lists in this doc — a family-count header over a findings-ledger list, and any
-sibling of one; cited here count-free and instance-free on
-purpose, since a hard-coded example count is itself this rot class and one went stale exactly that
-way — are maintained by review: pruning or adding a
-family must update the count and keep the entry in the list whose framing matches its failure
-stage (generation-failure vs layer-2 compile/round-trip). If a count or a mis-homed entry slips
-through review again, fold these counts into `project_status_headers.ts`'s generated-counter
-system (the same mechanism that already generates the status-header counts) instead of adding
-another review rule. The class is not confined to this doc — one armed instance on record: the
-wasm-ABI shape-family delivery (2026-07-21) grew the multifile skip ledger across three reviewed
-commits while `tests/README.md`'s \"Twelve cells\" pinned-cell prose (count + enumeration) went
-stale, caught only by a dedicated post-delivery doc audit, not by any of the six per-commit
-reviews. A second armed instance is on record and it did NOT land in prose: the recombination
-sweep's baseline outcome counts, carried as a source comment in `src/tests/recombination_tests.rs`,
-drifted 42 `ok` compositions from a fresh measurement while every gate stayed green — the sweep's
-vacuity floors sit far enough under the real numbers that the drift could not fire them. So the
-trigger is the class, not the venue, and it sits on the axis the cost grows along: **the count of
-hand-written MEASURED quantities that nothing re-measures**. Any such number a delivery has to
-hand-correct is the signal to derive it from its source rather than re-audit it — a generated span
-where the quantity is structural (`MULTIFILE_MATRIX_SKIP`'s count and enumeration), a committed
-self-measuring datum where it is measured (the shape `tests/timings.json` already uses for
-durations; the recombination sweep's own datum is DELIVERED as `tests/recombination-counts.json`,
-held exactly by `recombination_generation_sweep` — see `tests/README.md`'s recombination section).
-
-"""
-
-[[section]]
-section_id = "matrix-side-work"
-title = "Matrix-side work — the model and the projections it renders"
-body_md = """## Matrix-side work — the model and the projections it renders
-
-The matrix exists to feed **many** consumers; corpus was just the hard flagship. What is left on the
-matrix's own side — as opposed to in the generator, which is the findings ledger below — is of two
-kinds: a defect in a projection (buildable now) and known incompletenesses of the coverage MODEL
-(deferred, so each names the observable that would reopen it).
-
-"""
-
-[[section]]
-section_id = "pending-decisions"
-title = "Pending decisions (need a human call)"
-body_md = """## Pending decisions (need a human call)
-
-"""
-
-[[section]]
 section_id = "preamble"
 title = "Matrix roadmap preamble"
 body_md = """# CDDL master matrix — roadmap (remaining work + findings)
@@ -162,6 +63,7 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § \"Definition of done
 > evidence\", § \"Upstream oracle gaps\").
 
 """
+entries = []
 
 [section.slots.constraint]
 binding = "status_header_markers:roadmap-constraint"
@@ -176,13 +78,95 @@ binding = "status_header_markers:roadmap-emission"
 binding = "status_header_markers:roadmap-ops"
 
 [[section]]
-section_id = "related"
-title = "Related"
-body_md = """## Related
+section_id = "matrix-side-work"
+title = "Matrix-side work — the model and the projections it renders"
+body_md = """## Matrix-side work — the model and the projections it renders
 
-Broader testing work (clear-wins, roadmap items, the trailing-bytes runtime change) lives in
-`tests/TESTING_ROADMAP.md` — the matrix is the reference that testing effort *projects from*.
+The matrix exists to feed **many** consumers; corpus was just the hard flagship. What is left on the
+matrix's own side — as opposed to in the generator, which is the findings ledger below — is of two
+kinds: a defect in a projection (buildable now) and known incompletenesses of the coverage MODEL
+(deferred, so each names the observable that would reopen it).
+
 """
+entries = [
+  "matrix.named-group-reference-grid",
+  "matrix.grammar-derived-legality",
+  "matrix.per-value-encoding-reachability",
+  "matrix.emission-narrowing-fixture-floor",
+  "matrix.tag-registry-boundary",
+]
+
+[[section]]
+section_id = "expansion"
+title = "Expansion (when relevant)"
+body_md = """## Expansion (when relevant)
+
+"""
+entries = [
+  "matrix.profile-version-scope",
+  "matrix.additional-tool-annotations",
+  "matrix.intra-alternative-variations",
+  "matrix.control-host-placement-space",
+  "matrix.refusal-spelling-space",
+]
+
+[[section]]
+section_id = "findings-open"
+title = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
+body_md = """## Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)
+
+Every entry here is a defect or a missing capability in **this** generator that a probe, gate, or
+fuzzer sweep surfaced — that is what the section means, and what the many `§ findings` citations in
+`src/tests/` and `tests/README.md` resolve to. Two neighbouring classes live elsewhere on purpose:
+what the generator does TODAY, including the boundaries it keeps permanently and the upstream-oracle
+gap state, is current state in `README.md` (§ \"Gotchas\", § \"Upstream oracle gaps\"); prunes that wait
+on an external release are § \"Upstream close-outs (waiting on external releases)\". New findings are
+ledgered here (that's what the probe/gate error messages point at).
+
+One evidence rule for this section: an entry claiming a GENERATOR defect carries a harness-free
+repro — the tool run alone, into a scratch dir — before it is written. Evidence read off committed
+fixture trees does not qualify, because those trees pass through the test harness, which appends its
+own content INTO generated files, so a harness-written emission is indistinguishable there from a
+generator-written one. One entry was retracted on exactly that (2026-08-07): its \"greppable in the
+fixture trees\" emission defect — an unused `use serialization::*;` — was such an append, and a
+fresh-generation probe found the generator emits that glob nowhere. The retraction record is in
+`tests/TESTING_ROADMAP.md`'s unused-imports entry. Two corollaries, each learned from a shipped
+imprecision: a verified remedy's MECHANISM gloss is part of the claim — write only what the probe
+executed (a 2026-08 entry glossed its executed rename-the-rule remedy as \"`@name` renames a rule\",
+which the parser refuses; the gloss outlived the entry into a delegation spec before a parse probe
+caught it) — and edits to this section delete or move entries WHOLE, bold header through final
+line (a partial deletion once merged the following entry's body into the previous one's
+continuation lines, headerless and invisible as an entry; no lint can tell that merge from a long
+entry, so the atomicity is the rule).
+
+"""
+entries = [
+  "matrix.multi-choice-group-rule",
+  "matrix.derived-variant-naming",
+  "matrix.nominal-custom-pair-wrapper",
+  "matrix.duplicate-rejection-diagnostics",
+  "matrix.incremental-group-choice-extension",
+  "matrix.heterogeneous-array.occurrence-bounds",
+  "matrix.open-array.optional-adjacency",
+  "matrix.open-table.bounded-rest-rows",
+  "matrix.open-table.min-one-hardening",
+  "matrix.heterogeneous-array.atomic-bounds-handover",
+  "matrix.fixed-bytes.static-representation",
+  "matrix.fixed-array.static-representation",
+  "shared-carrier-delivery-requirements",
+  "matrix.keyed-struct-map.zero-permitting-fields",
+  "matrix.inline-group-occurrence-carrier",
+  "matrix.cbor-any-boundary",
+  "matrix.anonymous-nested-map",
+  "matrix.inline-group-choice-arm",
+  "matrix.float-table-key-domain",
+  "matrix.fixed-map-key-kinds",
+  "matrix.nint-capability",
+  "matrix.wasm-extern-wrapper-demand",
+  "matrix.extern-execution-multifile",
+  "extern-execution",
+  "matrix.multifile.extern-shape-coverage",
+]
 
 [[section]]
 section_id = "upstream-closeouts"
@@ -196,6 +180,26 @@ nothing here is a candidate fix — the code change already exists upstream or o
 remains is deleting the notes that explain why we do not have it yet.
 
 """
+entries = [
+  "matrix.prelude-number-float-upstream",
+  "matrix.float-key-null-upstream",
+  "matrix.uint-control-operator-upstream",
+  "matrix.array-sequence-upstream",
+  "matrix.non-uint-range-upstream",
+  "matrix.radix-literal-upstream",
+  "matrix.signed-int-size-upstream",
+  "matrix.ruby-inline-controller-upstream",
+  "matrix.bignum-key-tag-upstream",
+  "matrix.undefined-validator-upstream",
+  "matrix.undefined-ciborium-upstream",
+  "matrix.fixed-bytes.lowercase-base64-parser",
+  "matrix.fixed-bytes.validator-corroboration",
+  "matrix.tag-map-key-upstream",
+  "matrix.named-rule-map-key-upstream",
+  "matrix.optional-closed-map-upstream",
+  "matrix.float-prelude-name-upstream",
+  "matrix.typed-tag-report-upstream",
+]
 
 [[section]]
 section_id = "wasm-abi-multifile"
@@ -211,11 +215,94 @@ annotations-table row in `README.md` (`verify.ts`'s default-on `--wasm` probe); 
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
 """
+entries = [
+  "matrix.root-reference-placement",
+  "matrix.periodic-coverage-honesty",
+  "fix-review-reach",
+  "test-steering-comment",
+  "consumer-hand-patch",
+  "exclusion-comment-audit",
+  "matrix.emission-input-mode-honesty",
+  "emitted-conformance-directory",
+  "wasm-macro-directory",
+  "json-gen-cross-module-execution",
+]
+
+[[section]]
+section_id = "explicit-boundaries"
+title = "Explicitly out of scope (decided, not overlooked)"
+body_md = """## Explicitly out of scope (decided, not overlooked)
+
+Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a concrete need surfaces):
+"""
+entries = [
+  "matrix.matching-semantics-boundary",
+  "matrix.interaction-tuples-boundary",
+  "matrix.over-acceptance-ast-notes",
+  "matrix.wasm-macro-behavior-boundary",
+  "matrix.extern-emitted-test-boundary",
+  "matrix.extern-interface-sentinel-boundary",
+  "matrix.inline-cbor-containment-boundary",
+]
+
+[[section]]
+section_id = "pending-decisions"
+title = "Pending decisions (need a human call)"
+body_md = """## Pending decisions (need a human call)
+
+"""
+entries = [
+  "matrix.over-acceptance-denominator",
+]
+
+[[section]]
+section_id = "maintenance"
+title = "Maintenance"
+body_md = """## Maintenance
+
+Upstream specs churn (IANA registries, the grammar). Refresh with `sources/fetch.sh` (re-fetches + verifies
+against `SHA256SUMS`); a checksum mismatch flags upstream drift to review before re-pinning and regenerating.
+
+Hand-counted prose lists in this doc — a family-count header over a findings-ledger list, and any
+sibling of one; cited here count-free and instance-free on
+purpose, since a hard-coded example count is itself this rot class and one went stale exactly that
+way — are maintained by review: pruning or adding a
+family must update the count and keep the entry in the list whose framing matches its failure
+stage (generation-failure vs layer-2 compile/round-trip). If a count or a mis-homed entry slips
+through review again, fold these counts into `project_status_headers.ts`'s generated-counter
+system (the same mechanism that already generates the status-header counts) instead of adding
+another review rule. The class is not confined to this doc — one armed instance on record: the
+wasm-ABI shape-family delivery (2026-07-21) grew the multifile skip ledger across three reviewed
+commits while `tests/README.md`'s \"Twelve cells\" pinned-cell prose (count + enumeration) went
+stale, caught only by a dedicated post-delivery doc audit, not by any of the six per-commit
+reviews. A second armed instance is on record and it did NOT land in prose: the recombination
+sweep's baseline outcome counts, carried as a source comment in `src/tests/recombination_tests.rs`,
+drifted 42 `ok` compositions from a fresh measurement while every gate stayed green — the sweep's
+vacuity floors sit far enough under the real numbers that the drift could not fire them. So the
+trigger is the class, not the venue, and it sits on the axis the cost grows along: **the count of
+hand-written MEASURED quantities that nothing re-measures**. Any such number a delivery has to
+hand-correct is the signal to derive it from its source rather than re-audit it — a generated span
+where the quantity is structural (`MULTIFILE_MATRIX_SKIP`'s count and enumeration), a committed
+self-measuring datum where it is measured (the shape `tests/timings.json` already uses for
+durations; the recombination sweep's own datum is DELIVERED as `tests/recombination-counts.json`,
+held exactly by `recombination_generation_sweep` — see `tests/README.md`'s recombination section).
+
+"""
+entries = []
+
+[[section]]
+section_id = "related"
+title = "Related"
+body_md = """## Related
+
+Broader testing work (clear-wins, roadmap items, the trailing-bytes runtime change) lives in
+`tests/TESTING_ROADMAP.md` — the matrix is the reference that testing effort *projects from*.
+"""
+entries = []
 
 [[record]]
 id = "matrix.additional-tool-annotations"
 title = "More tools:"
-projection_group = "expansion"
 
 [record.payload]
 kind = "matrix_policy"
@@ -243,7 +330,6 @@ event_md = """another consumer adopts the master
 [[record]]
 id = "matrix.anonymous-nested-map"
 title = "Real support for the anonymous nested MAP in a type position"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -280,7 +366,6 @@ event_md = """one committed spec requires five
 [[record]]
 id = "matrix.array-sequence-upstream"
 title = "When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #2", "README gap #4"]
 
 [record.payload]
@@ -309,7 +394,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.bignum-key-tag-upstream"
 title = "When a release ships the `c2ebf9f` bignum map-key/value-tag fix"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #6"]
 
 [record.payload]
@@ -339,7 +423,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.catalog-build.refusal-spelling"
 title = "Mechanical graceful-refusal trigger-space catalog."
-projection_group = "expansion"
 
 [record.payload]
 kind = "work"
@@ -363,7 +446,6 @@ event_md = """a second guard is bypassed at an unenumerated trigger-space point
 [[record]]
 id = "matrix.cbor-any-boundary"
 title = "`cbor-any` is a decided permanent exclusion, not a candidate feature."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "matrix_policy"
@@ -382,7 +464,6 @@ permanence = "permanent"
 [[record]]
 id = "matrix.control-host-placement-space"
 title = "A supported control's HOST-PLACEMENT spelling space — one support example proves ONE point of it."
-projection_group = "expansion"
 
 [record.payload]
 kind = "work"
@@ -430,7 +511,6 @@ event_md = """a second operator breaks outside its enumerated host placement
 [[record]]
 id = "matrix.derived-variant-naming"
 title = "No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -481,7 +561,6 @@ event_md = """arms needing @name outnumber unnamed arms or exceed a handful in o
 [[record]]
 id = "matrix.duplicate-rejection-diagnostics"
 title = "Say each rejection once, so the count of messages is the count of problems."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -528,7 +607,6 @@ event_md = """three copies or interleaving obscure the distinct-problem count
 [[record]]
 id = "matrix.emission-input-mode-honesty"
 title = "Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the SHAPES/ROLES rule above)."
-projection_group = "wasm-abi-multifile"
 
 [record.payload]
 kind = "matrix_policy"
@@ -563,7 +641,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.emission-narrowing-fixture-floor"
 title = "Narrowing at emission, in the golden fixture floor."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "work"
@@ -602,7 +679,6 @@ event_md = """a new vector duplicates bytes already asserted through narrowing
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.bool"
 title = "Live bool FixedValue choice-member evidence."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "evidence"
@@ -623,7 +699,6 @@ profiles = ["default"]
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.bytes"
 title = "Live bytes FixedValue choice-member evidence."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "evidence"
@@ -644,7 +719,6 @@ profiles = ["default"]
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.closure"
 title = "Delivered FixedValue choice-member closure at 8320fb33."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "evidence"
@@ -666,7 +740,6 @@ profiles = ["default"]
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.float"
 title = "Live float FixedValue choice-member evidence."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "evidence"
@@ -687,7 +760,6 @@ profiles = ["default"]
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.nint"
 title = "Live nint FixedValue choice-member evidence."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "evidence"
@@ -708,7 +780,6 @@ profiles = ["default"]
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.null"
 title = "Live null FixedValue choice-member evidence."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "evidence"
@@ -729,7 +800,6 @@ profiles = ["default"]
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.text"
 title = "Live text FixedValue choice-member evidence."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "evidence"
@@ -750,7 +820,6 @@ profiles = ["default"]
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.uint"
 title = "Live uint FixedValue choice-member evidence."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "evidence"
@@ -771,7 +840,6 @@ profiles = ["default"]
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.undefined"
 title = "Live undefined FixedValue choice-member evidence."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "evidence"
@@ -792,7 +860,6 @@ profiles = ["default"]
 [[record]]
 id = "matrix.extern-emitted-test-boundary"
 title = "Behavioral emitted-test cells for extern / raw-bytes ctor args"
-projection_group = "explicit-boundaries"
 
 [record.payload]
 kind = "matrix_policy"
@@ -836,7 +903,6 @@ event_md = """consumer supplies valid-byte knowledge or reports a defect
 [[record]]
 id = "matrix.extern-execution-multifile"
 title = "Corpus/matrix extern EXECUTION, and the multifile matrix's structural extern exclusion."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "matrix_policy"
@@ -856,7 +922,6 @@ permanence = "permanent"
 [[record]]
 id = "matrix.extern-interface-sentinel-boundary"
 title = "Extern-interface seam sentinels"
-projection_group = "explicit-boundaries"
 
 [record.payload]
 kind = "matrix_policy"
@@ -890,7 +955,6 @@ event_md = """a concrete query needs it
 [[record]]
 id = "matrix.fixed-array.static-representation"
 title = "Fixed-array representation optimization"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -916,7 +980,6 @@ priority_rationale_md = """The fixed-array representation remains explicitly sel
 [[record]]
 id = "matrix.fixed-bytes.lowercase-base64-parser"
 title = "When a `cddl` parser release accepts lowercase-hex and base64 fixed-byte literals"
-projection_group = "upstream-closeouts"
 
 [record.payload]
 kind = "work"
@@ -950,7 +1013,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.fixed-bytes.static-representation"
 title = "Fixed-byte representation optimization"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -974,7 +1036,6 @@ priority_rationale_md = """The exact byte-array representation carries its lengt
 [[record]]
 id = "matrix.fixed-bytes.validator-corroboration"
 title = "When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17)"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #17"]
 
 [record.payload]
@@ -1013,7 +1074,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.fixed-map-key-kinds"
 title = "Bytes, nint, and float fixed map-key refusals are pinned at the shared allowlist seam."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "control"
@@ -1047,7 +1107,6 @@ boundary_md = """This control owns current enforcement only. Nint feature work b
 [[record]]
 id = "matrix.float-key-null-upstream"
 title = "When a release ships the `707c038` float-key/null member-key fix (README gap #10)"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #10"]
 
 [record.payload]
@@ -1076,7 +1135,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.float-prelude-name-upstream"
 title = "When the rust oracle starts distinguishing the float prelude names at all (README gap #12 — OPEN"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #12"]
 
 [record.payload]
@@ -1147,7 +1205,6 @@ action_id = "validator-rules-common-set"
 [[record]]
 id = "matrix.float-table-key-domain"
 title = "Float-family table key domains"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1183,7 +1240,6 @@ event_md = """a consumer cannot apply integer/text/bytes remedy
 [[record]]
 id = "matrix.grammar-derived-legality"
 title = "Grammar-derived legality denominator for the role × feature grid."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "work"
@@ -1221,7 +1277,6 @@ event_md = """a valid-CDDL generation defect is reported in a blank cell
 [[record]]
 id = "matrix.heterogeneous-array.atomic-bounds-handover"
 title = "Atomically hand over bounded scalar and byte/text values to private-field newtypes"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1245,7 +1300,6 @@ priority_rationale_md = """The invariant currently has multiple enforcement site
 [[record]]
 id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record fields."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1279,7 +1333,6 @@ priority_rationale_md = """Spec-valid middle repetitions and bounded heterogeneo
 [[record]]
 id = "matrix.incremental-extension-reference-upstream"
 title = "Close out rust cddl incremental extension reference resolution."
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #15"]
 
 [record.payload]
@@ -1322,7 +1375,6 @@ action_id = "ruby-extension-first"
 [[record]]
 id = "matrix.incremental-group-choice-extension"
 title = "Incremental GROUP-choice extension (`//=`) stays refused; honoring it is blocked on the choice-of-bodies design, not on this seam."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1361,7 +1413,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.inline-cbor-containment-boundary"
 title = "A containment-matrix row for the INLINE nested `.cbor` self-composition"
-projection_group = "explicit-boundaries"
 
 [record.payload]
 kind = "matrix_policy"
@@ -1399,7 +1450,6 @@ event_md = """a concrete query needs it
 [[record]]
 id = "matrix.inline-group-choice-arm"
 title = "Real support for an inline group as a group-choice arm's sole entry"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1434,7 +1484,6 @@ event_md = """one committed spec requires ten
 [[record]]
 id = "matrix.inline-group-occurrence-carrier"
 title = "Honor zero-permitting occurrences on inline parenthesized groups when a carrier exists"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1464,7 +1513,6 @@ priority_rationale_md = """The work is sound and unblocked, but the named-group 
 [[record]]
 id = "matrix.interaction-tuples-boundary"
 title = "F9 — interaction tuples"
-projection_group = "explicit-boundaries"
 legacy_aliases = ["F9"]
 
 [record.payload]
@@ -1481,7 +1529,6 @@ permanence = "permanent"
 [[record]]
 id = "matrix.intra-alternative-variations"
 title = "Intra-alternative variation rows (the enforcement-blind-spot class):"
-projection_group = "expansion"
 
 [record.payload]
 kind = "matrix_policy"
@@ -1534,7 +1581,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.keyed-struct-map.zero-permitting-fields"
 title = "Honor zero-permitting occurrences on keyed struct-map fields"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1564,7 +1610,6 @@ priority_rationale_md = """Zero-permitting keyed struct-map fields are valid inp
 [[record]]
 id = "matrix.matching-semantics-boundary"
 title = "F8 — matching semantics"
-projection_group = "explicit-boundaries"
 legacy_aliases = ["F8"]
 
 [record.payload]
@@ -1581,7 +1626,6 @@ permanence = "permanent"
 [[record]]
 id = "matrix.multi-choice-group-rule"
 title = "A group RULE whose body carries multiple group choices is refused with two verified remedies — the honoring design (a choice of bodies) is the missing capability, not the guard."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1627,7 +1671,6 @@ event_md = """one rule's alternatives are re-spelled at more than a handful of r
 [[record]]
 id = "matrix.multifile.extern-shape-coverage"
 title = "The multifile matrix never enumerates extern/rawbytes shapes at all"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1662,7 +1705,6 @@ event_md = """a cross-module extern build breaks outside facade composition
 [[record]]
 id = "matrix.named-group-reference-grid"
 title = "Enumerate the named-group REFERENCE kind (`grpent.groupname`) across its container PLACEMENTS and member MODIFIERS — two explicit axes, not a \"remaining roles\" sweep."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "work"
@@ -1770,7 +1812,6 @@ priority_rationale_md = """The source marks this buildable now and records silen
 [[record]]
 id = "matrix.named-rule-map-key-upstream"
 title = "When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #11"]
 
 [record.payload]
@@ -1812,7 +1853,6 @@ action_md = """Create and file a durable report.
 [[record]]
 id = "matrix.nint-capability"
 title = "Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration cells of the matrix, not separate tasks."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1855,7 +1895,6 @@ event_md = """a consumer reports such a spec
 [[record]]
 id = "matrix.nominal-custom-pair-wrapper"
 title = "No opt-in NOMINAL wrapper over a custom pair, so a pair's wire has no standalone entry point."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1897,7 +1936,6 @@ event_md = """one crate carries more than a handful
 [[record]]
 id = "matrix.non-uint-range-upstream"
 title = "When a release ships the `885c61c` non-uint-endpoint range fix"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #3"]
 
 [record.payload]
@@ -1925,7 +1963,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.open-array.optional-adjacency"
 title = "Resolve optional fields adjacent to open array tails or open-table rows"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1962,7 +1999,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.open-table.bounded-rest-rows"
 title = "Honor bounded occurrences on open-table rows"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -1989,7 +2025,6 @@ priority_rationale_md = """Bounded typed and catch-all rows remain selected beca
 [[record]]
 id = "matrix.open-table.min-one-hardening"
 title = "Harden an open table's min-1 typed row when an invalid value is observed"
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -2027,7 +2062,6 @@ event_md = """bypass is observed
 [[record]]
 id = "matrix.optional-closed-map-upstream"
 title = "When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #9"]
 
 [record.payload]
@@ -2073,7 +2107,6 @@ action_id = "adjacent-map-matching"
 [[record]]
 id = "matrix.over-acceptance-ast-notes"
 title = "F10 / F11"
-projection_group = "explicit-boundaries"
 legacy_aliases = ["F10", "F11"]
 
 [record.payload]
@@ -2089,7 +2122,6 @@ permanence = "permanent"
 [[record]]
 id = "matrix.over-acceptance-denominator"
 title = "Over-acceptance denominator:"
-projection_group = "pending-decisions"
 
 [record.payload]
 kind = "decision"
@@ -2121,7 +2153,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.per-value-encoding-reachability"
 title = "Per-VALUE encoding reachability."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "work"
@@ -2160,7 +2191,6 @@ event_md = """the author hand-dismisses more cells than they can vector
 [[record]]
 id = "matrix.periodic-coverage-honesty"
 title = "Keep EVERY matrix axis honest (periodic)."
-projection_group = "wasm-abi-multifile"
 
 [record.payload]
 kind = "matrix_policy"
@@ -2195,7 +2225,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.prelude-number-float-upstream"
 title = "When a release ships the `90f66ff` prelude-`number` float fix (README gap #7)"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #7"]
 
 [record.payload]
@@ -2258,7 +2287,6 @@ action_id = "tag-leniency"
 [[record]]
 id = "matrix.profile-version-scope"
 title = "Profiles/versions:"
-projection_group = "expansion"
 
 [record.payload]
 kind = "matrix_policy"
@@ -2291,7 +2319,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.radix-literal-upstream"
 title = "When a release ships the `2c7548e` radix-literal lexer fix"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #5"]
 
 [record.payload]
@@ -2350,7 +2377,6 @@ action_id = "wg-radix-mantissa"
 [[record]]
 id = "matrix.refusal-spelling-space"
 title = "A REFUSED construct's spelling space — a refusal probed on one spelling is not a refusal of the class."
-projection_group = "expansion"
 
 [record.payload]
 kind = "matrix_policy"
@@ -2394,7 +2420,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.root-reference-placement"
 title = "Carry root-position references into the NON-structural reference positions."
-projection_group = "wasm-abi-multifile"
 
 [record.payload]
 kind = "work"
@@ -2432,7 +2457,6 @@ event_md = """E0412/E0425/E0432 is hand-fixed after regen outside seven rootref 
 [[record]]
 id = "matrix.ruby-inline-controller-upstream"
 title = "When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`"
-projection_group = "upstream-closeouts"
 
 [record.payload]
 kind = "matrix_external_closeout"
@@ -2471,7 +2495,6 @@ action_md = """Create and file a durable ruby report.
 [[record]]
 id = "matrix.signed-int-size-upstream"
 title = "Signed int .size close-out"
-projection_group = "upstream-closeouts"
 
 [record.payload]
 kind = "matrix_external_closeout"
@@ -2538,7 +2561,6 @@ action_id = "validator-release"
 [[record]]
 id = "matrix.string-key-mixed-rest-upstream"
 title = "Close out rust cddl mixed-map string-key rest occurrence validation."
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #13"]
 
 [record.payload]
@@ -2568,7 +2590,6 @@ action_md = """Create and file a durable report from the README-owned differenti
 [[record]]
 id = "matrix.tag-map-key-upstream"
 title = "When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8)"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #8"]
 
 [record.payload]
@@ -2608,7 +2629,6 @@ action_md = """Create and file the durable report.
 [[record]]
 id = "matrix.tag-registry-boundary"
 title = "Tag registry — deliberately not pinned or enumerated."
-projection_group = "matrix-side-work"
 
 [record.payload]
 kind = "matrix_policy"
@@ -2642,7 +2662,6 @@ event_md = """a consumer needs behavior keyed by tag number
 [[record]]
 id = "matrix.typed-tag-report-upstream"
 title = "Typed-tag fixed-payload report"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #14"]
 
 [record.payload]
@@ -2724,7 +2743,6 @@ action_id = "tag-only-changes"
 [[record]]
 id = "matrix.uint-control-operator-upstream"
 title = "When a rust `cddl` release ships the uint-target control-op fix"
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #1"]
 
 [record.payload]
@@ -2752,7 +2770,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.undefined-ciborium-upstream"
 title = "When ciborium's generic value decoder preserves CBOR `undefined` (`f7`) distinctly instead of"
-projection_group = "upstream-closeouts"
 
 [record.payload]
 kind = "matrix_external_closeout"
@@ -2786,7 +2803,6 @@ evaluation = "unknown"
 [[record]]
 id = "matrix.undefined-validator-upstream"
 title = "When the pinned rust `cddl` validator accepts `validate_cbor_from_slice(\"x = undefined\","
-projection_group = "upstream-closeouts"
 legacy_aliases = ["README gap #16"]
 
 [record.payload]
@@ -2835,7 +2851,6 @@ action_id = "signature-only-change"
 [[record]]
 id = "matrix.wasm-extern-wrapper-demand"
 title = "The wasm extern re-export glue demands a wrapper the wasm crate never uses."
-projection_group = "findings-open"
 
 [record.payload]
 kind = "work"
@@ -2879,7 +2894,6 @@ event_md = """consumer reports or silences the generated unused import
 [[record]]
 id = "matrix.wasm-macro-behavior-boundary"
 title = "Behavioral wasm-surface rows for the `--wasm-*-macro` modes"
-projection_group = "explicit-boundaries"
 
 [record.payload]
 kind = "matrix_policy"
@@ -3032,330 +3046,6 @@ body_md = """  - The `--wasm-*-macro` modes × directory input are compile-gated
     input-mode axis under the compile-only verdict that is those surfaces' permanent posture
     (§ \"Explicitly out of scope\") rather than adding a behavioral row.
 """
-
-[[manifest.entry]]
-kind = "section"
-section_id = "preamble"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "matrix-side-work"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.named-group-reference-grid"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.grammar-derived-legality"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.per-value-encoding-reachability"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.emission-narrowing-fixture-floor"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.tag-registry-boundary"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "expansion"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.profile-version-scope"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.additional-tool-annotations"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.intra-alternative-variations"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.control-host-placement-space"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.refusal-spelling-space"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "findings-open"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.multi-choice-group-rule"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.derived-variant-naming"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.nominal-custom-pair-wrapper"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.duplicate-rejection-diagnostics"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.incremental-group-choice-extension"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.heterogeneous-array.occurrence-bounds"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.open-array.optional-adjacency"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.open-table.bounded-rest-rows"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.open-table.min-one-hardening"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.heterogeneous-array.atomic-bounds-handover"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixed-bytes.static-representation"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixed-array.static-representation"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "shared-carrier-delivery-requirements"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.keyed-struct-map.zero-permitting-fields"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.inline-group-occurrence-carrier"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.cbor-any-boundary"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.anonymous-nested-map"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.inline-group-choice-arm"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.float-table-key-domain"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixed-map-key-kinds"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.nint-capability"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.wasm-extern-wrapper-demand"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.extern-execution-multifile"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "extern-execution"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.multifile.extern-shape-coverage"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "upstream-closeouts"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.prelude-number-float-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.float-key-null-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.uint-control-operator-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.array-sequence-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.non-uint-range-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.radix-literal-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.signed-int-size-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.ruby-inline-controller-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.bignum-key-tag-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.undefined-validator-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.undefined-ciborium-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixed-bytes.lowercase-base64-parser"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.fixed-bytes.validator-corroboration"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.tag-map-key-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.named-rule-map-key-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.optional-closed-map-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.float-prelude-name-upstream"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.typed-tag-report-upstream"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "wasm-abi-multifile"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.root-reference-placement"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.periodic-coverage-honesty"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "fix-review-reach"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "test-steering-comment"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "consumer-hand-patch"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "exclusion-comment-audit"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.emission-input-mode-honesty"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "emitted-conformance-directory"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "wasm-macro-directory"
-
-[[manifest.entry]]
-kind = "part"
-part_id = "json-gen-cross-module-execution"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "explicit-boundaries"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.matching-semantics-boundary"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.interaction-tuples-boundary"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.over-acceptance-ast-notes"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.wasm-macro-behavior-boundary"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.extern-emitted-test-boundary"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.extern-interface-sentinel-boundary"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.inline-cbor-containment-boundary"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "pending-decisions"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "matrix.over-acceptance-denominator"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "maintenance"
-
-[[manifest.entry]]
-kind = "section"
-section_id = "related"
 
 [[relation]]
 source = "matrix.catalog-build.refusal-spelling"

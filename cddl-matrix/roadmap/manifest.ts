@@ -1,12 +1,21 @@
+/**
+ * The render plan: sections in authored order, each followed by the nodes its `entries` list
+ * places. Sections own presentation order outright — there is no separate placement table to keep
+ * in sync with them — and membership is total in both directions:
+ *
+ *   - every record with renderable prose (`payload.detail_md`) is listed exactly once;
+ *   - a record without it is listed nowhere (listing one is an error, not a silent no-op);
+ *   - every declared part is listed exactly once;
+ *   - every listed ID resolves to a declared record or part.
+ */
 import type { RoadmapIssue } from "./errors.ts";
+import { codePointSort } from "./kernel.ts";
 import type {
-  ManifestEntry,
   Part,
   RecordNode,
   RoadmapDocument,
   Section,
 } from "./model/documents.ts";
-import { codePointSort } from "./kernel.ts";
 
 export type RenderNode =
   | { kind: "section"; id: string; value: Section }
@@ -14,19 +23,18 @@ export type RenderNode =
   | { kind: "part"; id: string; value: Part };
 
 export interface RenderOp {
-  readonly manifest_index: number;
-  readonly entry: ManifestEntry;
+  readonly plan_index: number;
   readonly node: RenderNode;
 }
 
-export interface ManifestResolution {
+export interface SectionPlan {
   readonly ops: readonly RenderOp[];
   readonly issues: readonly RoadmapIssue[];
 }
 
 function issue(
   document: RoadmapDocument,
-  code: Extract<RoadmapIssue["code"], `E-MANIFEST-${string}`>,
+  code: Extract<RoadmapIssue["code"], `E-SECTION-${string}`>,
   logical_path: string,
   message: string,
 ): RoadmapIssue {
@@ -39,142 +47,101 @@ function issue(
   };
 }
 
-function entryTarget(entry: ManifestEntry): { kind: ManifestEntry["kind"]; id: string } {
-  switch (entry.kind) {
-    case "section": return { kind: entry.kind, id: entry.section_id };
-    case "record": return { kind: entry.kind, id: entry.record_id };
-    case "part": return { kind: entry.kind, id: entry.part_id };
-  }
-}
-
-function declaredNodes(document: RoadmapDocument): RenderNode[] {
-  return [
-    ...document.sections.map((value) => ({ kind: "section" as const, id: value.section_id, value })),
-    ...document.records.map((value) => ({ kind: "record" as const, id: value.id, value })),
-    ...document.parts.map((value) => ({ kind: "part" as const, id: value.part_id, value })),
-  ];
-}
-
-function nodeKey(kind: ManifestEntry["kind"], id: string): string {
-  return JSON.stringify([kind, id]);
-}
-
-/**
- * Document membership is derived: a record renders exactly when it is manifest-placed, and a
- * placement is legal exactly when `payload.detail_md` is present (the one rendering field).
- * Both directions are enforced here, so accidental orphaning of a renderable record and
- * placement of a non-rendering record are loud states rather than silent ones.
- */
-function manifestVisible(node: RenderNode): boolean {
+function renderable(node: RenderNode): boolean {
   return !(node.kind === "record" && node.value.payload.detail_md === undefined);
 }
 
-/** Resolve the authored linear manifest without rendering or reordering any node. */
-export function resolveManifest(document: RoadmapDocument): ManifestResolution {
+function entryPath(sectionId: string, index: number): string {
+  return `section[${JSON.stringify(sectionId)}].entries[${index}]`;
+}
+
+/** Resolve the authored section plan without rendering or reordering any node. */
+export function resolveSectionPlan(document: RoadmapDocument): SectionPlan {
   const issues: RoadmapIssue[] = [];
-  const declared = declaredNodes(document);
-  const byKey = new Map<string, RenderNode>();
-  const kindsById = new Map<string, Set<ManifestEntry["kind"]>>();
-
-  for (const node of declared) {
-    const key = nodeKey(node.kind, node.id);
-    if (byKey.has(key)) {
+  const declared = new Map<string, RenderNode>();
+  // NB: not named `declare` — TypeScript treats a bare `declare(...)` statement as an ambient
+  // declaration modifier, and the transpiler erases the call.
+  const declareNode = (node: RenderNode): void => {
+    if (declared.has(node.id)) {
       issues.push(issue(
         document,
-        "E-MANIFEST-DUPLICATE",
+        "E-SECTION-DUPLICATE",
         `${node.kind}[${JSON.stringify(node.id)}]`,
-        `render node ${node.kind} ${JSON.stringify(node.id)} is declared more than once`,
+        `render node ID ${JSON.stringify(node.id)} is declared more than once`,
       ));
-      continue;
+      return;
     }
-    byKey.set(key, node);
-    const kinds = kindsById.get(node.id) ?? new Set<ManifestEntry["kind"]>();
-    kinds.add(node.kind);
-    kindsById.set(node.id, kinds);
-  }
+    declared.set(node.id, node);
+  };
+  for (const value of document.records) declareNode({ kind: "record", id: value.id, value });
+  for (const value of document.parts) declareNode({ kind: "part", id: value.part_id, value });
 
-  const sectionIds = new Set(document.sections.map((section) => String(section.section_id)));
-  const recordIds = new Set(document.records.map((record) => String(record.id)));
-  for (const record of document.records) {
-    if (!sectionIds.has(record.projection_group)) {
+  const sectionIds = new Set<string>();
+  for (const section of document.sections) {
+    const id = String(section.section_id);
+    if (sectionIds.has(id)) {
       issues.push(issue(
         document,
-        "E-MANIFEST-ORPHAN",
-        `record[${JSON.stringify(record.id)}].projection_group`,
-        `record refers to missing section ${JSON.stringify(record.projection_group)}`,
+        "E-SECTION-DUPLICATE",
+        `section[${JSON.stringify(id)}]`,
+        `section ${JSON.stringify(id)} is declared more than once`,
       ));
     }
-  }
-  for (const part of document.parts) {
-    if (!recordIds.has(part.parent_record_id)) {
-      issues.push(issue(
-        document,
-        "E-MANIFEST-ORPHAN",
-        `part[${JSON.stringify(part.part_id)}].parent_record_id`,
-        `part refers to missing record ${JSON.stringify(part.parent_record_id)}`,
-      ));
-    }
+    sectionIds.add(id);
   }
 
-  const placed = new Set<string>();
+  const placed = new Map<string, string>();
   const ops: RenderOp[] = [];
-  for (const [manifest_index, entry] of document.manifest.entries()) {
-    const target = entryTarget(entry);
-    const key = nodeKey(target.kind, target.id);
-    const logicalPath = `manifest[${manifest_index}]`;
-    if (placed.has(key)) {
-      issues.push(issue(
-        document,
-        "E-MANIFEST-DUPLICATE",
-        logicalPath,
-        `${target.kind} ${JSON.stringify(target.id)} is placed more than once`,
-      ));
-      continue;
-    }
-    const node = byKey.get(key);
-    if (node === undefined) {
-      const otherKinds = [...(kindsById.get(target.id) ?? [])].sort(codePointSort);
-      if (otherKinds.length > 0) {
+  let planIndex = 0;
+  for (const section of document.sections) {
+    const sectionId = String(section.section_id);
+    ops.push({ plan_index: planIndex++, node: { kind: "section", id: sectionId, value: section } });
+    for (const [index, entryId] of section.entries.entries()) {
+      const path = entryPath(sectionId, index);
+      const owner = placed.get(entryId);
+      if (owner !== undefined) {
         issues.push(issue(
           document,
-          "E-MANIFEST-KIND",
-          logicalPath,
-          `${JSON.stringify(target.id)} is declared as ${otherKinds.join(", ")}, not ${target.kind}`,
+          "E-SECTION-DUPLICATE",
+          path,
+          `${JSON.stringify(entryId)} is already placed by section ${JSON.stringify(owner)}`,
         ));
-      } else {
-        issues.push(issue(
-          document,
-          "E-MANIFEST-UNKNOWN",
-          logicalPath,
-          `${target.kind} ${JSON.stringify(target.id)} is not declared`,
-        ));
+        continue;
       }
-      continue;
+      const node = declared.get(entryId);
+      if (node === undefined) {
+        issues.push(issue(
+          document,
+          "E-SECTION-UNKNOWN",
+          path,
+          `${JSON.stringify(entryId)} is not a declared record or part`,
+        ));
+        continue;
+      }
+      if (!renderable(node)) {
+        issues.push(issue(
+          document,
+          "E-SECTION-KIND",
+          path,
+          `record ${JSON.stringify(entryId)} has no detail_md and cannot be a section entry`,
+        ));
+        continue;
+      }
+      placed.set(entryId, sectionId);
+      ops.push({ plan_index: planIndex++, node });
     }
-    if (!manifestVisible(node)) {
-      issues.push(issue(
-        document,
-        "E-MANIFEST-KIND",
-        logicalPath,
-        `record ${JSON.stringify(target.id)} has no detail_md and cannot have a manifest placement`,
-      ));
-      continue;
-    }
-    placed.add(key);
-    ops.push({ manifest_index, entry, node });
   }
 
-  for (const node of declared) {
-    if (!manifestVisible(node)) continue;
-    const key = nodeKey(node.kind, node.id);
-    if (!placed.has(key)) {
-      issues.push(issue(
-        document,
-        "E-MANIFEST-MISSING",
-        `${node.kind}[${JSON.stringify(node.id)}]`,
-        `declared ${node.kind} ${JSON.stringify(node.id)} has no manifest placement`,
-      ));
-    }
+  // Orphans are reported in ID order so the diagnostic set never depends on source table order.
+  const orphans = [...declared.values()].sort((left, right) => codePointSort(left.id, right.id));
+  for (const node of orphans) {
+    if (!renderable(node) || placed.has(node.id)) continue;
+    issues.push(issue(
+      document,
+      "E-SECTION-ORPHAN",
+      `${node.kind}[${JSON.stringify(node.id)}]`,
+      `declared ${node.kind} ${JSON.stringify(node.id)} appears in no section's entries`,
+    ));
   }
 
   return { ops: Object.freeze(ops), issues: Object.freeze(issues) };

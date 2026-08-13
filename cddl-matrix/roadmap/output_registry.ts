@@ -452,7 +452,7 @@ export function collectManifestSlotBindingFacts(
     const chunkIndex = resolutionItem === undefined
       ? -1
       : completed.chunks.findIndex((chunk) =>
-        chunk.manifest_index === resolutionItem.manifest_index &&
+        chunk.plan_index === resolutionItem.plan_index &&
         chunk.owner.kind === "section" && chunk.owner.id === resolutionItem.section_id
       );
     const chunkStart = chunkIndex >= 0 ? completed.expected_bytes.prefix_offsets[chunkIndex] : undefined;
@@ -527,7 +527,7 @@ export function validateOutputClaimInventory(claims: readonly OutputClaim[]): re
   return Object.freeze(issues);
 }
 
-function resolveManifestClaim(
+function resolveSectionPlanClaim(
   claim: Extract<OutputClaim, { kind: "slot" }>,
   facts: readonly ManifestSlotBindingFact[],
 ): ResolvedOutputClaim | RoadmapIssue {
@@ -593,7 +593,7 @@ export function resolveOutputClaims(input: OutputResolutionInput): OutputResolut
   const resolved: ResolvedOutputClaim[] = [];
   for (const [index, claim] of resolutionClaims.entries()) {
     if (claim.kind === "slot" && claim.interval.binding.kind === "manifest_generated_slot") {
-      const result = resolveManifestClaim(claim, input.manifest_slots ?? []);
+      const result = resolveSectionPlanClaim(claim, input.manifest_slots ?? []);
       if ("code" in result) issues.push(result);
       else {
         resolved.push(result);

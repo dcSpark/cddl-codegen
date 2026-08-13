@@ -74,6 +74,16 @@ export class CanonicalTomlWriter {
     this.#line(key, `[${entries.map(encodeTomlBasicString).join(", ")}]`);
   }
 
+  /** One element per line: an ordered ID list stays reviewable and hand-editable at any length. */
+  stringList(key: string, values: readonly string[]): void {
+    this.#line(
+      key,
+      values.length === 0
+        ? "[]"
+        : `[\n${values.map((value) => `  ${encodeTomlBasicString(value)},`).join("\n")}\n]`,
+    );
+  }
+
   finish(): Uint8Array {
     if (this.#blocks.length === 0) throw new Error("canonical TOML document cannot be empty");
     return UTF8.encode(`${this.#blocks.map((block) => block.join("\n")).join("\n\n")}\n`);

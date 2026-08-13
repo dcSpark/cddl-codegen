@@ -2,7 +2,7 @@ import { bytesEqual, RoadmapWireError } from "../markdown_codec.ts";
 import type {
   DocumentMetaV3,
   GeneratedSlot,
-  ManifestEntry,
+  RenderNodeKind,
   Reference,
   Relation,
   RoadmapDocument,
@@ -46,12 +46,10 @@ import { shieldTomlMarkdown, type MarkdownBindings } from "./raw_markdown.ts";
 import { decodeSharedSemanticPayload } from "./semantic.ts";
 import { decodeTestingPayload } from "./testing.ts";
 
-const STRUCTURAL_KINDS = ["section", "record", "part"] as const;
 
 export const ROADMAP_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "schema_version", values: ["3"] },
   { name: "roadmap", values: ["matrix", "testing"] },
-  { name: "manifest_kind", values: STRUCTURAL_KINDS },
   { name: "relation_kind", values: ["parent_of", "depends_on", "blocked_by", "supersedes", "split_from", "reopens", "overlaps", "complements", "related", "delegates_to"] },
   { name: "reference_kind", values: ["roadmap", "matrix_feature", "matrix_role", "matrix_cell", "gate", "test_symbol", "file_heading", "spec_passage", "external_issue", "external_commit", "external_release", "consumer_report"] },
 ] as const;
@@ -61,14 +59,12 @@ export const ROADMAP_ENUM_FIELDS: readonly EnumSchemaField[] = [
  * deliberately absent: a row list that is edited by hand cannot safely be addressed by offset.
  */
 export const ROADMAP_ROW = {
-  root: { name: "roadmap v3 root", required: ["document", "section", "record", "manifest"], optional: ["part", "relation", "reference"] },
+  root: { name: "roadmap v3 root", required: ["document", "section", "record"], optional: ["part", "relation", "reference"] },
   document: { name: "roadmap v3 document", required: ["schema_version", "roadmap", "source_path", "projection_path"] },
-  section: { name: "semantic section", required: ["section_id", "title", "body_md"], optional: ["legacy_aliases", "slots"] },
+  section: { name: "semantic section", required: ["section_id", "title", "body_md", "entries"], optional: ["legacy_aliases", "slots"] },
   section_slot: { name: "section slot declaration", required: ["binding"] },
-  record: { name: "semantic record", required: ["id", "title", "projection_group", "payload"], optional: ["legacy_aliases", "tags"] },
+  record: { name: "semantic record", required: ["id", "title", "payload"], optional: ["legacy_aliases", "tags"] },
   part: { name: "semantic part", required: ["part_id", "parent_record_id", "body_md"], optional: ["title"] },
-  manifest_table: { name: "manifest table", required: ["entry"] },
-  manifest_entry: { name: "manifest entry", required: ["kind"], optional: ["section_id", "record_id", "part_id"] },
   relation: { name: "relation", required: ["source", "kind", "target"], optional: ["note_md"] },
   reference_discriminator: { name: "reference discriminator", required: ["id", "source", "kind"], optional: ["target_id", "feature_id", "role_id", "cell_id", "gate_id", "test_id", "symbol", "path", "heading", "document", "passage", "repository", "issue", "commit", "project", "release", "consumer", "report_reference"] },
 } as const satisfies Readonly<Record<string, ExactSchemaRow>>;
@@ -89,17 +85,6 @@ const REFERENCE_REMAINING: Readonly<Record<Reference["kind"], readonly string[]>
   external_release: ["project", "release"],
   consumer_report: ["consumer", "report_reference"],
 };
-
-const MANIFEST_TARGET: Readonly<Record<(typeof STRUCTURAL_KINDS)[number], string>> = {
-  section: "section_id",
-  record: "record_id",
-  part: "part_id",
-};
-
-export const MANIFEST_SCHEMA_ROWS: readonly ExactSchemaRow[] = STRUCTURAL_KINDS.map((kind) => ({
-  name: `${kind} manifest entry`,
-  required: ["kind", MANIFEST_TARGET[kind]],
-}));
 
 export const REFERENCE_SCHEMA_ROWS: readonly ExactSchemaRow[] = Object.entries(REFERENCE_REMAINING).map(
   ([kind, keys]) => ({ name: `${kind} reference`, required: ["id", "source", "kind", ...keys] }),
@@ -209,6 +194,12 @@ function decodeSection(ctx: DecodeContext, raw: unknown, path: string): Semantic
     title: expectString(ctx, requiredValue(table, "title"), p(path, "title")),
     ...aliases(ctx, table, path),
     body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")),
+    entries: expectArrayOf(
+      ctx,
+      requiredValue(table, "entries"),
+      p(path, "entries"),
+      (entry, entryPath) => expectString(ctx, entry, entryPath),
+    ),
     ...(hasOwn(table, "slots") ? { slots: decodeSectionSlots(ctx, optionalValue(table, "slots"), path) } : {}),
   };
 }
@@ -217,7 +208,6 @@ function envelope(ctx: DecodeContext, table: object, path: string, roadmap: Road
   return {
     id: expectRoadmapId(ctx, requiredValue(table, "id"), p(path, "id"), roadmap),
     title: expectString(ctx, requiredValue(table, "title"), p(path, "title")),
-    projection_group: expectSubordinateId(ctx, requiredValue(table, "projection_group"), p(path, "projection_group")) as SectionId,
     ...aliases(ctx, table, path),
     ...(hasOwn(table, "tags") ? { tags: expectStringSet(ctx, optionalValue(table, "tags"), p(path, "tags")) } : {}),
   };
@@ -239,21 +229,6 @@ function decodePart(ctx: DecodeContext, raw: unknown, path: string, roadmap: Roa
     ...title(ctx, table, path),
     body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")),
   };
-}
-
-function decodeManifest(ctx: DecodeContext, raw: unknown): ManifestEntry[] {
-  const table = expectExactTable(ctx, raw, "manifest", ROADMAP_ROW.manifest_table);
-  return expectNonemptyArray(ctx, expectArrayOf(ctx, requiredValue(table, "entry"), "manifest.entry", (entry, path) => {
-    const row = expectExactTable(ctx, entry, path, ROADMAP_ROW.manifest_entry);
-    const kind = expectEnum(ctx, requiredValue(row, "kind"), STRUCTURAL_KINDS, p(path, "kind"));
-    const target = MANIFEST_TARGET[kind];
-    const exact = expectExactTable(ctx, entry, path, MANIFEST_SCHEMA_ROWS[STRUCTURAL_KINDS.indexOf(kind)]);
-    const rawId = requiredValue(exact, target);
-    if (kind === "record") return { kind, record_id: expectRoadmapId(ctx, rawId, p(path, target)) };
-    const id = expectSubordinateId(ctx, rawId, p(path, target));
-    if (kind === "section") return { kind, section_id: id as SectionId };
-    return { kind, part_id: id as PartId };
-  }), "manifest.entry");
 }
 
 function decodeRelation(ctx: DecodeContext, raw: unknown, path: string, roadmap: RoadmapName): Relation {
@@ -341,17 +316,17 @@ export function decodeRoadmapFromBindings(
   schemaTrace?: SchemaDecodeTrace,
 ): RoadmapDocument {
   const ctx: DecodeContext = { source: bindings.source, bindings, schema_trace: schemaTrace };
-  const rootPre = expectExactTable(ctx, bindings.parsed, "$", { name: "roadmap root discriminator", required: ["document"], optional: ["section", "record", "part", "manifest", "relation", "reference"] });
+  const rootPre = expectExactTable(ctx, bindings.parsed, "$", { name: "roadmap root discriminator", required: ["document"], optional: ["section", "record", "part", "relation", "reference"] });
   const meta = decodeDocumentMeta(ctx, requiredValue(rootPre, "document"));
   if (expectedRoadmap !== undefined && meta.roadmap !== expectedRoadmap) schemaFail(ctx, "E-ID-NAMESPACE", "document.roadmap", `expected ${expectedRoadmap} roadmap source`);
   const root = expectExactTable(ctx, bindings.parsed, "$", ROADMAP_ROW.root);
   const roadmap = meta.roadmap;
   const doc: RoadmapDocumentV3 = {
     document: meta,
-    sections: sortBy(optionalRows(ctx, root, "section", (raw, path) => decodeSection(ctx, raw, path)), (value) => value.section_id),
+    // Section order is authored presentation order; unlike every other table it is never sorted.
+    sections: optionalRows(ctx, root, "section", (raw, path) => decodeSection(ctx, raw, path)),
     records: sortBy(optionalRows(ctx, root, "record", (raw, path) => decodeRecord(ctx, raw, path, roadmap)), (value) => value.id),
     parts: sortBy(optionalRows(ctx, root, "part", (raw, path) => decodePart(ctx, raw, path, roadmap)), (value) => value.part_id),
-    manifest: decodeManifest(ctx, requiredValue(root, "manifest")),
     relations: sortBy(
       optionalRows(ctx, root, "relation", (raw, path) => decodeRelation(ctx, raw, path, roadmap)),
       (relation) => `${relation.source}\0${relation.kind}\0${relation.target}`,
@@ -361,7 +336,7 @@ export function decodeRoadmapFromBindings(
       (reference) => `${reference.source}\0${reference.kind}\0${referenceTuple(reference)}`,
     ),
   };
-  if (doc.sections.length === 0 || doc.records.length === 0) schemaFail(ctx, "E-SCHEMA-FLOOR", "$", "roadmap requires at least one section, record, and manifest entry");
+  if (doc.sections.length === 0 || doc.records.length === 0) schemaFail(ctx, "E-SCHEMA-FLOOR", "$", "roadmap requires at least one section and one record");
   assertDecodedDomainJoins(ctx, doc);
   bindings.assertAllConsumed();
   return doc;

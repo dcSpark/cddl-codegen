@@ -177,8 +177,8 @@ export function createRoadmapFloorValidator(
     if (doc.document.projection_path !== spec.projection_path) {
       out.add(floor(source, "document.projection_path", `${spec.roadmap} projection path must be ${spec.projection_path}`));
     }
-    if (doc.records.length === 0 || doc.manifest.length === 0) {
-      out.add(floor(source, "$", `${spec.roadmap} roadmap requires records and manifest placements`));
+    if (doc.records.length === 0 || doc.sections.every((section) => section.entries.length === 0)) {
+      out.add(floor(source, "$", `${spec.roadmap} roadmap requires records and section entries`));
     }
     const declared = documentSlots(doc.sections);
     const slots = new Map(declared.map((slot) => [slot.slot_id, slot]));

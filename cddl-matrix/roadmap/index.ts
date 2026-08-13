@@ -70,7 +70,7 @@ function roadmapReceipt(prepared: FinalizedRoadmap): string {
   const projectionOwner = prepared.registry.output_claims.find((claim) =>
     claim.kind === "whole_file" && claim.path === prepared.document.document.projection_path
   )?.producer ?? "unclaimed";
-  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} manifest=${prepared.document.manifest.length} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
+  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} entries=${prepared.document.sections.reduce((sum, section) => sum + section.entries.length, 0)} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
 }
 
 function success(stdout: string | Uint8Array): RoadmapCliResult {

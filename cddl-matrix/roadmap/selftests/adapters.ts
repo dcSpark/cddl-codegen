@@ -20,7 +20,7 @@ import {
   type RoadmapIndexes,
   type SemanticPayloadProviderFact,
 } from "../indexes.ts";
-import { resolveManifest } from "../manifest.ts";
+import { resolveSectionPlan } from "../manifest.ts";
 import type {
   FixtureRelativePath,
   ReferenceId,
@@ -872,7 +872,7 @@ function renderFixture(
   adapter: RoadmapAdapter<SemanticPayload>,
   view: RegistryView,
 ): { readonly bytes: Uint8Array; readonly semantic_calls: number } {
-  const placement = resolveManifest(document);
+  const placement = resolveSectionPlan(document);
   const resolvers = adapter.slotResolvers(view, document);
   let semanticCalls = 0;
   const completed = buildExpectedChunks(document, placement.ops, {

@@ -1,5 +1,5 @@
 import type { RoadmapIssue } from "./errors.ts";
-import type { ManifestEntry, RoadmapDocument } from "./model/documents.ts";
+import type { RenderNodeKind, RoadmapDocument } from "./model/documents.ts";
 import type { CompletedRenderIr, ProjectedFieldSegment } from "./render_ir.ts";
 import { bytesEqual } from "./kernel.ts";
 import { concatenate } from "./kernel.ts";
@@ -18,7 +18,7 @@ export type ContentTransformation =
   | { readonly kind: "testing_next_ordinal"; readonly ordinal: string };
 
 export interface AuthoredContentCoordinate {
-  readonly owner_kind: ManifestEntry["kind"] | "relation";
+  readonly owner_kind: RenderNodeKind | "relation";
   readonly owner_id: string;
   readonly logical_path: string;
 }
@@ -51,7 +51,7 @@ interface LocalBinding extends AuthoredContentCoordinate {
 }
 interface Piece {
   readonly owner: {
-    readonly kind: ManifestEntry["kind"] | "generated";
+    readonly kind: RenderNodeKind | "generated";
     readonly id: string;
     readonly field: string;
   };
@@ -230,7 +230,7 @@ function chunkSegments(completed: CompletedRenderIr, owner: Piece["owner"]): rea
 function basePieces(completed: CompletedRenderIr): Piece[] {
   return completed.chunks.map((chunk, chunkIndex) => {
     const resolutions = completed.slot_resolutions.filter((item) =>
-      item.manifest_index === completed.chunks[chunkIndex]!.manifest_index &&
+      item.plan_index === completed.chunks[chunkIndex]!.plan_index &&
       item.section_id === chunk.owner.id
     );
     if (resolutions.length > 0) {
@@ -384,9 +384,10 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
     }
   }
 
-  const visible = new Set(document.manifest.flatMap((entry) =>
-    entry.kind === "record" ? [String(entry.record_id)] : []
-  ));
+  const recordIds = new Set(document.records.map((record) => String(record.id)));
+  const visible = new Set(document.sections
+    .flatMap((section) => [...section.entries])
+    .filter((id) => recordIds.has(id)));
   let anchored = 0;
   pieces = pieces.map((piece) => {
     if (piece.owner.kind !== "record" || !visible.has(piece.owner.id)) return piece;
@@ -394,7 +395,7 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
     return anchorPiece(piece);
   });
   if (anchored !== visible.size) issues.push(issue(document, "projection.layout.anchors",
-    `curated layout anchored ${anchored} records but ${visible.size} are manifest-placed`));
+    `curated layout anchored ${anchored} records but ${visible.size} are section-placed`));
   return [generatedPiece("layout-ownership-banner", UTF8.encode(
     `<!-- GENERATED FILE: owned by ${document.document.source_path}; edit that TOML source and run project_roadmaps.ts --write. -->\n\n`,
   )), ...pieces];

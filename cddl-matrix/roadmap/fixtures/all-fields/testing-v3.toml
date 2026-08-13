@@ -10,11 +10,27 @@ title = "Testing all-fields fixture"
 body_md = """# Testing all-fields fixture
 
 """
+entries = [
+  "testing.fixture-task-ready",
+  "testing.fixture-signal-escalation",
+  "testing.fixture-operational-watching",
+  "testing.fixture-operational-retire-pending",
+  "testing.fixture-operational-attributed",
+  "testing.fixture-incident-live",
+  "testing.fixture-incident-historical",
+  "testing.fixture-incident-attributed",
+  "testing.fixture-evidence-gate",
+  "testing.fixture-cost-historical",
+  "testing.fixture-control-review",
+  "testing.fixture-all-fields-semantic",
+  "testing.fixture-all-fields-raw",
+  "testing.fixture-admission-silent",
+  "testing.fixture-admission-independent",
+]
 
 [[record]]
 id = "testing.fixture-admission-independent"
 title = "Independent recurrence admission"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -28,7 +44,6 @@ incident_ids = ["testing.fixture-incident-attributed", "testing.fixture-incident
 [[record]]
 id = "testing.fixture-admission-silent"
 title = "Silent corruption admission"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_system_admission"
@@ -41,7 +56,6 @@ evidence_ids = ["testing.fixture-evidence-gate"]
 [[record]]
 id = "testing.fixture-all-fields-raw"
 title = "All-fields raw owner"
-projection_group = "fixture"
 tags = ["coverage:admission_kind:independent_recurrence", "coverage:admission_kind:silent_corruption", "coverage:cost_posture:historical_observation", "coverage:cost_posture:live_registry", "coverage:incident_posture:attributed", "coverage:incident_posture:historical", "coverage:incident_posture:live", "coverage:payload_kind:testing_cost", "coverage:payload_kind:testing_incident", "coverage:payload_kind:testing_operational_watch", "coverage:payload_kind:testing_system_admission", "coverage:watch_state:attributed", "coverage:watch_state:retire_pending", "coverage:watch_state:watching"]
 
 [record.payload]
@@ -60,7 +74,6 @@ priority_rationale_md = """Fixture arm carries no live priority claim.
 [[record]]
 id = "testing.fixture-all-fields-semantic"
 title = "Testing semantic cost"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_cost"
@@ -77,7 +90,6 @@ gate_reference_id = "semantic-cost-gate"
 [[record]]
 id = "testing.fixture-control-review"
 title = "Review rule control"
-projection_group = "fixture"
 
 [record.payload]
 kind = "control"
@@ -92,7 +104,6 @@ boundary_md = """It covers only the synthetic all-fields fixture."""
 [[record]]
 id = "testing.fixture-cost-historical"
 title = "Historical cost"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_cost"
@@ -110,7 +121,6 @@ evidence_ids = ["testing.fixture-evidence-gate"]
 [[record]]
 id = "testing.fixture-evidence-gate"
 title = "Gate evidence"
-projection_group = "fixture"
 
 [record.payload]
 kind = "evidence"
@@ -130,7 +140,6 @@ tiers = ["local"]
 [[record]]
 id = "testing.fixture-incident-attributed"
 title = "Attributed incident"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_incident"
@@ -145,7 +154,6 @@ operating_rule_reference_id = "incident-attributed-rule"
 [[record]]
 id = "testing.fixture-incident-historical"
 title = "Historical incident"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_incident"
@@ -161,7 +169,6 @@ retirement_reference_id = "incident-historical-retirement"
 [[record]]
 id = "testing.fixture-incident-live"
 title = "Live incident"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_incident"
@@ -174,7 +181,6 @@ evidence_ids = ["testing.fixture-evidence-gate"]
 [[record]]
 id = "testing.fixture-operational-attributed"
 title = "Attributed operational watch"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_operational_watch"
@@ -207,7 +213,6 @@ capture_md = """Capture the full synthetic diagnostic."""
 [[record]]
 id = "testing.fixture-operational-retire-pending"
 title = "Retire-pending operational watch"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_operational_watch"
@@ -241,7 +246,6 @@ capture_md = """Capture the full synthetic diagnostic."""
 [[record]]
 id = "testing.fixture-operational-watching"
 title = "Watching operational watch"
-projection_group = "fixture"
 
 [record.payload]
 kind = "testing_operational_watch"
@@ -260,7 +264,6 @@ capture_md = """Capture the full synthetic diagnostic."""
 [[record]]
 id = "testing.fixture-signal-escalation"
 title = "Watch escalation"
-projection_group = "fixture"
 
 [record.payload]
 kind = "signal"
@@ -277,7 +280,6 @@ evaluation = "unknown"
 [[record]]
 id = "testing.fixture-task-ready"
 title = "Ready missing-system task"
-projection_group = "fixture"
 
 [record.payload]
 kind = "work"
@@ -291,70 +293,6 @@ acceptance_md = """The independent-recurrence admission remains live."""
 priority_band = "high"
 priority_rationale_md = """Silent failure makes this fixture task high priority."""
 admission_ids = ["testing.fixture-admission-independent"]
-
-[[manifest.entry]]
-kind = "section"
-section_id = "fixture"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-task-ready"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-signal-escalation"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-operational-watching"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-operational-retire-pending"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-operational-attributed"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-incident-live"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-incident-historical"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-incident-attributed"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-evidence-gate"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-cost-historical"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-control-review"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-all-fields-semantic"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-all-fields-raw"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-admission-silent"
-
-[[manifest.entry]]
-kind = "record"
-record_id = "testing.fixture-admission-independent"
 
 [[reference]]
 id = "semantic-cost-gate"

@@ -1,7 +1,7 @@
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import type { RepoPath, RoadmapId, SectionId } from "../model/core.ts";
 import type { RoadmapDocumentV3 } from "../model/documents.ts";
-import { resolveManifest } from "../manifest.ts";
+import { resolveSectionPlan } from "../manifest.ts";
 import { buildExpectedChunks } from "../render_ir.ts";
 import { buildProjectionViews, validateContentReachability } from "../projection_views.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
@@ -24,14 +24,13 @@ function fixture(): { document: RoadmapDocumentV3 } {
   const document: RoadmapDocumentV3 = {
     document: { schema_version: 3, roadmap: "matrix",
       source_path: "fixture/roadmap.toml" as RepoPath, projection_path: "fixture/ROADMAP.md" as RepoPath },
-    sections: [{ section_id: sectionId, title: "Fixture", body_md: section }],
+    sections: [{ section_id: sectionId, title: "Fixture", body_md: section, entries: [String(recordId)] }],
     parts: [],
-    records: [{ id: recordId, title: "Visible record", projection_group: sectionId,
+    records: [{ id: recordId, title: "Visible record",
       legacy_aliases: ["Legacy item 1"],
       payload: { kind: "work", detail_md: record, work_state: "ready", work_intent: "build_system",
         work_kind: "infrastructure", risk: "false_pass_or_red",
         acceptance_md: bytes("Acceptance detail.\n"), priority_rationale_md: bytes("Priority detail.\n") } }],
-    manifest: [{ kind: "section", section_id: sectionId }, { kind: "record", record_id: recordId }],
     relations: [{ source: recordId, kind: "related", target: recordId, note_md: bytes("Relation audit note.\n") }],
     references: [],
   };
@@ -40,7 +39,7 @@ function fixture(): { document: RoadmapDocumentV3 } {
 
 function views() {
   const value = fixture();
-  const manifest = resolveManifest(value.document);
+  const manifest = resolveSectionPlan(value.document);
   assert(manifest.issues.length === 0, "projection-view fixture manifest is invalid");
   const completed = buildExpectedChunks(value.document, manifest.ops, {
     renderSemanticRecord: renderCanonicalSemanticRecord,
@@ -51,7 +50,7 @@ function views() {
 }
 
 function liveTestingViews(document: RoadmapDocumentV3 = liveTestingV3Document()) {
-  const manifest = resolveManifest(document);
+  const manifest = resolveSectionPlan(document);
   assert(manifest.issues.length === 0, "live testing manifest is invalid");
   const completed = buildExpectedChunks(document, manifest.ops, {
     renderSemanticRecord: (record, fields) => TESTING_ADAPTER.renderSemantic(record, fields),
@@ -99,7 +98,10 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       }
       assert(!liveText.includes("### Attributed and historical operating guidance"),
         "empty relocated history bucket still rendered a heading");
-      const operationalRecords = live.document.records.filter((record) => record.projection_group === "operational-watches");
+      const operationalEntries = new Set(live.document.sections
+        .filter((section) => String(section.section_id) === "operational-watches")
+        .flatMap((section) => [...section.entries]));
+      const operationalRecords = live.document.records.filter((record) => operationalEntries.has(String(record.id)));
       const operationalBuckets = {
         systems: operationalRecords.filter((record) => record.payload.kind !== "testing_operational_watch" &&
           record.payload.kind !== "testing_incident"),
@@ -110,7 +112,7 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
           record.payload.kind === "testing_operational_watch" && record.payload.watch_state !== "watching" ||
           record.payload.kind === "testing_incident" && record.payload.incident_posture !== "live"),
       };
-      assert(operationalBuckets.systems.length === 16 && operationalBuckets.live.length === 4 &&
+      assert(operationalBuckets.systems.length === 13 && operationalBuckets.live.length === 4 &&
         operationalBuckets.history.length === 0, "live operational classification counts changed");
       const systemsStart = liveText.indexOf("### Operational systems, controls, and resource work");
       const liveStart = liveText.indexOf("### Live operational watches");
@@ -121,8 +123,10 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
         "retained tier-memory work is absent or still nested under an unrelated operational record");
       assert(liveText.indexOf(retainedMemory) > systemsStart && liveText.indexOf(retainedMemory) < liveStart,
         "retained tier-memory work escaped the operational systems/resource bucket");
-      const placedIds = new Set(live.document.manifest.flatMap((entry) =>
-        entry.kind === "record" ? [entry.record_id as string] : []));
+      const liveRecordIds = new Set(live.document.records.map((record) => String(record.id)));
+      const placedIds = new Set(live.document.sections
+        .flatMap((section) => [...section.entries])
+        .filter((id) => liveRecordIds.has(id)));
       for (const [kind, records, start, end] of [
         ["systems", operationalBuckets.systems, systemsStart, liveStart],
         ["live", operationalBuckets.live, liveStart, nextSection],
@@ -147,7 +151,7 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       assert(JSON.stringify(liveFacts.stable_anchor_ids) === JSON.stringify(visibleIds) &&
         live.document.records.filter((record) => !placedIds.has(record.id))
           .every((record) => !liveFacts.stable_anchor_ids.includes(record.id)),
-      "live anchors do not exactly match manifest-placed records");
+      "live anchors do not exactly match section-placed records");
       const badHeadingDocument: RoadmapDocumentV3 = {
         ...live.document,
         sections: live.document.sections.map((section) => section.section_id === "next-priority"
