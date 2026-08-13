@@ -43,7 +43,7 @@ const text = (value: string): Uint8Array => UTF8.encode(value);
 const ZERO_HASH = "0".repeat(64);
 
 export const REQUIRED_SCHEMA_SELFTEST_CASE_IDS = [
-  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "v0_missing_manifest", "v0_empty_records_floor", "truncated_span_read", "v0_all_fields_identity", "v1_all_fields_identity", "v2_semantic_identity", "v2_migration_escape_hatches_rejected", "v2_intrinsic_completion", "v2_unresolved_migration_reference_rejected", "v3_unsupported", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "v0_rejects_semantics", "v0_rejects_authoritative", "v1_raw_requires_frozen_span", "v1_new_raw_rejected", "v1_raw_shadow_nonrendering", "v1_semantic_forbids_raw", "schema_lifecycle_raw_omission_historical", "schema_lifecycle_raw_review_arms", "schema_lifecycle_semantic_requires_reviewed", "schema_lifecycle_cross_kind_rejected", "schema_lifecycle_v0_forbidden", "schema_projection_visibility_document_arm", "schema_projection_visibility_semantic_only_arm", "schema_projection_visibility_forbidden_nonsemantic_arms", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "domain_closed_denominator_rejected", "schema_v0_exact_keys_every_table", "schema_v1_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
+  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "v0_missing_manifest", "v0_empty_records_floor", "truncated_span_read", "v0_all_fields_identity", "v1_all_fields_identity", "v2_semantic_identity", "v2_migration_escape_hatches_rejected", "v2_intrinsic_completion", "v2_unresolved_migration_reference_rejected", "v3_unsupported", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "v0_rejects_semantics", "v0_rejects_authoritative", "v1_raw_requires_frozen_span", "v1_new_raw_rejected", "v1_semantic_forbids_raw", "schema_lifecycle_raw_omission_historical", "schema_lifecycle_raw_review_arms", "schema_lifecycle_semantic_requires_reviewed", "schema_lifecycle_cross_kind_rejected", "schema_lifecycle_v0_forbidden", "schema_projection_visibility_document_arm", "schema_projection_visibility_semantic_only_arm", "schema_projection_visibility_forbidden_nonsemantic_arms", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "domain_closed_denominator_rejected", "schema_v0_exact_keys_every_table", "schema_v1_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
 ] as const;
 
 export type RequiredSchemaSelfTestCaseId = (typeof REQUIRED_SCHEMA_SELFTEST_CASE_IDS)[number];
@@ -249,19 +249,15 @@ function readFixture(context: SelfTestContext, relative: string): Uint8Array {
   return context.ports.fixtures.readFixtureFile(FIXTURE_ROOT, path);
 }
 
-function roadmapFixture(context: SelfTestContext, relative: string, roadmap: RoadmapName): RoadmapDocumentV1 {
+function roadmapFixture(context: SelfTestContext, relative: string, roadmap: RoadmapName): RoadmapDocumentV2 {
   const doc = decodeRoadmapSource(readFixture(context, relative), relative, roadmap);
-  assert(doc.document.schema_version === 1, `${relative} is v1`);
-  return doc as RoadmapDocumentV1;
+  assert(doc.document.schema_version === 2, `${relative} is v2`);
+  return doc as RoadmapDocumentV2;
 }
 
 function fixtureIdentity(context: SelfTestContext): void {
   const paths: readonly [string, RoadmapName][] = [
-    ["positive/minimal-matrix-v0.toml", "matrix"], ["positive/minimal-testing-v0.toml", "testing"],
-    ["positive/mixed-matrix-v1.toml", "matrix"], ["positive/mixed-testing-v1.toml", "testing"],
     ["positive/small-matrix-v2.toml", "matrix"], ["positive/small-testing-v2.toml", "testing"],
-    ["irregular/matrix-v0.toml", "matrix"], ["irregular/testing-v0.toml", "testing"],
-    ["all-fields/matrix-v1.toml", "matrix"], ["all-fields/testing-v1.toml", "testing"],
     ["all-fields/matrix-v2.toml", "matrix"], ["all-fields/testing-v2.toml", "testing"],
   ];
   for (const [path, roadmap] of paths) {
@@ -269,11 +265,19 @@ function fixtureIdentity(context: SelfTestContext): void {
     const doc = decodeRoadmapSource(bytes, path, roadmap);
     assert(bytesEqual(composeRoadmapDocument(doc), bytes), `${path} canonical identity`);
   }
+  // The v0/v1 structural corpus is synthetic: no committed fixture carries those arms any more.
+  for (const [label, bytes] of [
+    ["synthetic/structural-matrix-v0.toml", structuralRoadmap(0)],
+    ["synthetic/structural-matrix-v1.toml", structuralRoadmap(1)],
+  ] as const) {
+    const doc = decodeRoadmapSource(bytes, label, "matrix", false);
+    assert(bytesEqual(composeRoadmapDocument(doc), bytes), `${label} canonical identity`);
+  }
 }
 
 function allFieldsCoverage(context: SelfTestContext): void {
-  const matrix = roadmapFixture(context, "all-fields/matrix-v1.toml", "matrix");
-  const testing = roadmapFixture(context, "all-fields/testing-v1.toml", "testing");
+  const matrix = roadmapFixture(context, "all-fields/matrix-v2.toml", "matrix");
+  const testing = roadmapFixture(context, "all-fields/testing-v2.toml", "testing");
   assert(
     [matrix.document.roadmap, testing.document.roadmap].sort().join("|") === "matrix|testing",
     "all-fields documents must structurally cover both RoadmapName values",
@@ -409,71 +413,30 @@ const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
   "testing:testing_semantic_kind": "kind",
 };
 
-function injectV0StructuralFixture(bytes: Uint8Array): Uint8Array {
-  const injected = `
-[[fragment]]
-fragment_id = "fixture-fragment"
-projection_group = "fixture"
-source_block_md = """Injected fixture fragment.
-"""
-span_ids = ["section"]
-
-[[legacy_marker]]
-marker_id = "fixture-marker"
-legacy_aliases = ["fixture-marker-alias"]
-source_block_md = """Injected fixture marker.
-"""
-span_ids = ["section"]
-
-[[part]]
-part_id = "fixture-part"
-parent_record_id = "matrix.fixture-irregular"
-source_block_md = """Injected fixture part.
-"""
-span_ids = ["section"]
-`;
-  const source = new TextDecoder().decode(bytes);
-  const marker = "\n[[generated_slot]]";
-  assert(source.includes(marker), "v0 structural fixture injection point");
-  return text(source.replace(marker, `${injected}${marker}`));
-}
-
-function injectV1SemanticStructuralFixture(bytes: Uint8Array): Uint8Array {
-  const injected = `
-[[section]]
-section_id = "fixture-semantic-section"
-title = "Injected semantic section"
-render_authority = "semantic"
-body_md = """Injected semantic section.
-"""
-
-[[fragment]]
-fragment_id = "fixture-semantic-fragment"
-projection_group = "fixture"
-render_authority = "semantic"
-lifecycle_disposition = "document_prose"
-body_md = """Injected semantic fragment.
-"""
-
-[[legacy_marker]]
-marker_id = "fixture-semantic-marker"
-legacy_aliases = ["fixture-semantic-marker-alias"]
-render_authority = "semantic"
-marker_md = """Injected semantic marker.
-"""
-
-[[part]]
-part_id = "fixture-semantic-part"
-parent_record_id = "matrix.fixture-raw-owner"
-render_authority = "semantic"
-lifecycle_disposition = "parent_supporting_prose"
-body_md = """Injected semantic part.
-"""
-`;
-  const source = new TextDecoder().decode(bytes);
-  const marker = "\n[[record]]";
-  assert(source.includes(marker), "v1 semantic structural fixture injection point");
-  return text(source.replace(marker, `${injected}${marker}`));
+/**
+ * Synthetic v0/v1 structural corpus. The committed fixture corpus is v2-only, so the v0 and v1
+ * schema arms (raw sections, fragments, legacy markers, records and parts) are exercised against
+ * documents built here. These go away with the v0/v1 decode arms themselves.
+ */
+function structuralRoadmap(version: 0 | 1): Uint8Array {
+  const source = subordinateRoadmap(version, "raw_omitted", "raw_omitted");
+  const render = version === 1 ? 'render_authority = "raw"\n' : "";
+  const marker = `\n[[legacy_marker]]\nmarker_id = "marker"\nlegacy_aliases = ["marker-alias"]\n${render}source_block_md = """M\n"""\nspan_ids = ["section"]\n`;
+  const anchor = "\n[[record]]";
+  assert(source.includes(anchor), "structural fixture injection point");
+  const withMarker = source.replace(anchor, `${marker}${anchor}`);
+  if (version === 0) return text(withMarker);
+  // A raw record carrying a pending-review shadow payload: the only home of the shadow-authority
+  // work arm now that no committed fixture is pre-v2.
+  const shadowRecord = `\n[[record]]\nid = "matrix.fixture-pending"\ntitle = "Pending"\nprojection_group = "fixture"\nrender_authority = "raw"\nsource_block_md = """P\n"""\nspan_ids = ["record"]\n\n[record.semantic_shadow]\nkind = "work"\nsummary_md = """Pending."""\nwork_state = "pending_review"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nfamily_classification = "pending"\nuncertainty_md = """Review."""\n`;
+  // The v1 arm also carries the migration-only optional document key and the unresolved-migration
+  // reference arm; neither is representable in a v2 document.
+  const reference = `\n[[reference]]\nid = "ref-migration"\nsource = "matrix.fixture-record"\nkind = "unresolved_migration"\nlocal_reference = "legacy structural fixture line"\nuncertainty_md = """The synthetic migration reference intentionally remains unresolved.\n"""\nexpires_at = "campaign-cutover"\n`;
+  // Records compose in code-point ID order, so the pending record precedes matrix.fixture-record.
+  const recordAnchor = '\n[[record]]\nid = "matrix.fixture-record"';
+  assert(withMarker.includes(recordAnchor), "structural v1 shadow-record injection point");
+  const withShadow = withMarker.replace(recordAnchor, `${shadowRecord}${recordAnchor}`);
+  return text(`${withShadow.replace('frozen_source_eof = "none"\n', 'frozen_source_eof = "none"\nsemantic_conversion = "converting"\n')}${reference}`);
 }
 
 function productionFixtureSources(context: SelfTestContext): { fixtures: readonly FixtureSource[]; reads: number } {
@@ -484,10 +447,8 @@ function productionFixtureSources(context: SelfTestContext): { fixtures: readonl
     return readFixture(context, path);
   };
   const roadmapFixtures = [
-    ["positive/minimal-matrix-v0.toml", "matrix"], ["positive/minimal-testing-v0.toml", "testing"],
-    ["positive/mixed-matrix-v1.toml", "matrix"], ["positive/mixed-testing-v1.toml", "testing"],
-    ["irregular/matrix-v0.toml", "matrix"], ["irregular/testing-v0.toml", "testing"],
-    ["all-fields/matrix-v1.toml", "matrix"], ["all-fields/testing-v1.toml", "testing"],
+    ["positive/small-matrix-v2.toml", "matrix"], ["positive/small-testing-v2.toml", "testing"],
+    ["all-fields/matrix-v2.toml", "matrix"], ["all-fields/testing-v2.toml", "testing"],
   ] as const;
   for (const [path, roadmap] of roadmapFixtures) {
     fixtures.push({
@@ -512,10 +473,15 @@ function productionFixtureSources(context: SelfTestContext): { fixtures: readonl
     roadmap: "matrix",
     enum_groups: ["roadmap", "semantic", "matrix"],
   });
-  const v0 = fixtures.find((fixture) => fixture.path === "irregular/matrix-v0.toml")!;
-  fixtures.push({ ...v0, path: `${v0.path}#injected-structural-arms`, bytes: injectV0StructuralFixture(v0.bytes) });
-  const v1 = fixtures.find((fixture) => fixture.path === "all-fields/matrix-v1.toml")!;
-  fixtures.push({ ...v1, path: `${v1.path}#injected-semantic-arms`, bytes: injectV1SemanticStructuralFixture(v1.bytes) });
+  for (const version of [0, 1] as const) {
+    fixtures.push({
+      path: `synthetic/structural-matrix-v${version}.toml`,
+      bytes: structuralRoadmap(version),
+      kind: "roadmap",
+      roadmap: "matrix",
+      enum_groups: ["roadmap", "semantic", "matrix"],
+    });
+  }
   return { fixtures, reads };
 }
 
@@ -937,18 +903,6 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     case "v0_rejects_authoritative": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('authority = "shadow"', 'authority = "authoritative"')), "<v0-authority>", "matrix"), ["E-SCHEMA-ENUM"]); return;
     case "v0_rejects_semantics": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('title = "Fixture record"', 'title = "Fixture record"\nrender_authority = "raw"')), "<v0-semantic>", "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"]); return;
     case "v1_raw_requires_frozen_span": case "v1_new_raw_rejected": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(1)).replace('frozen_legacy_span_ids = ["record", "section"]', 'frozen_legacy_span_ids = ["section"]')), "<v1-raw>", "matrix"), ["E-SCHEMA-STATE"]); return;
-    case "v1_raw_shadow_nonrendering": {
-      assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/matrix-v1.toml");
-      const decoded = decodeRoadmapSource(text(source), "<raw-shadow>", "matrix", false);
-      assert("relations" in decoded, "v1 raw-shadow fixture");
-      const record = decoded.records.find((entry) => entry.id === "matrix.fixture-raw-owner");
-      assert(record !== undefined && record.render_authority === "raw" && record.semantic_shadow !== undefined, "raw owner retains a nonrendering semantic shadow");
-      assert(new TextDecoder().decode(record.source_block_md).startsWith("RAW OWNER"), "raw bytes remain the render authority");
-      const mutated = replaceAfter(source, 'id = "matrix.fixture-raw-owner"', 'render_authority = "raw"', 'render_authority = "semantic"');
-      expectFailure(() => decodeRoadmapSource(text(mutated), "<raw-shadow-authority>", "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"]);
-      return;
-    }
     case "v2_semantic_identity": {
       const decoded = minimalV2Document();
       const composed = composeRoadmapDocument(decoded);
@@ -1187,14 +1141,14 @@ expires_at = "2026-08-12"
     }
     case "domain_fired_transition_not_parked": {
       assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/matrix-v1.toml");
+      const source = fixtureText(context, "all-fields/matrix-v2.toml");
       const mutated = replaceAfter(source, 'id = "matrix.fixture-task-f"', 'transition_ids = ["matrix.fixture-signal-b"]', 'transition_ids = ["matrix.fixture-signal-a"]');
       expectFailure(() => decodeRoadmapSource(text(mutated), "<fired-transition>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-f.transition_ids");
       return;
     }
     case "domain_already_met_signal_rejected": {
       assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/matrix-v1.toml");
+      const source = fixtureText(context, "all-fields/matrix-v2.toml");
       const mutated = replaceAfter(source, 'id = "matrix.fixture-signal-b"', 'evaluation = "unmet"', 'evaluation = "met"');
       expectFailure(() => decodeRoadmapSource(text(mutated), "<already-met-signal>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-f.transition_ids");
       return;
@@ -1207,21 +1161,21 @@ expires_at = "2026-08-12"
     case "evidence_negative_requires_enumeration": expectFailure(() => decodePayload('kind = "evidence"\nsummary_md = """Registry."""\nevidence_kind = "registry_enumeration"\nclaim_md = """None found."""\nevidence_verdict = "confirmed"\nfreshness = "live"\nreference_ids = ["registry"]\nunprobed_remainder_md = """None."""\nrefresh_reference_id = "refresh"\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix"), ["E-SCHEMA-STATE"]); return;
     case "evidence_generator_requires_harness_free": {
       assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/matrix-v1.toml");
+      const source = fixtureText(context, "all-fields/matrix-v2.toml");
       const mutated = replaceAfter(source, 'id = "matrix.fixture-task-a"', 'evidence_ids = ["matrix.fixture-evidence-a", "matrix.fixture-evidence-c"]', 'evidence_ids = ["matrix.fixture-evidence-a"]');
       expectFailure(() => decodeRoadmapSource(text(mutated), "<generator-evidence>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-a.evidence_ids");
       return;
     }
     case "evidence_timing_join_structural": {
       assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/testing-v1.toml");
+      const source = fixtureText(context, "all-fields/testing-v2.toml");
       const mutated = replaceAfter(source, 'id = "testing.fixture-cost-historical"', 'evidence_ids = ["testing.fixture-evidence-gate"]', 'evidence_ids = ["testing.fixture-cost-historical"]');
       expectFailure(() => decodeRoadmapSource(text(mutated), "<timing-evidence>", "testing"), ["E-SCHEMA-STATE"], "record.testing.fixture-cost-historical.evidence_ids");
       return;
     }
     case "evidence_draft_log_rejected": {
       assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/matrix-v1.toml");
+      const source = fixtureText(context, "all-fields/matrix-v2.toml");
       const mutated = replaceAfter(source, 'id = "ref-file"', 'path = "cddl-matrix/README.md"', 'path = "draft/logs/check-local.log"');
       expectFailure(() => decodeRoadmapSource(text(mutated), "<draft-evidence>", "matrix"), ["E-REFERENCE-FORBIDDEN"], "reference[4].path");
       return;
@@ -1241,7 +1195,7 @@ expires_at = "2026-08-12"
     }
     case "systematic_unmodelled_coordinate_not_cell": {
       assert(context !== undefined, `${id} requires fixture ports`);
-      const source = fixtureText(context, "all-fields/matrix-v1.toml");
+      const source = fixtureText(context, "all-fields/matrix-v2.toml");
       const mutated = replaceAfter(source, 'id = "matrix.fixture-coordinate-a"', 'spec_legality = "legal"', 'spec_legality = "unknown"');
       expectFailure(() => decodeRoadmapSource(text(mutated), "<unmodelled-coordinate>", "matrix"), ["E-SCHEMA-ENUM"]);
       return;
@@ -1249,34 +1203,32 @@ expires_at = "2026-08-12"
     case "schema_v0_exact_keys_every_table": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), [...ROADMAP_SCHEMA_ROWS.filter((_, index) => [0, 2, 4, 7, 10, 13, 17, 20, 21, 22, 23].includes(index)), ...MANIFEST_SCHEMA_ROWS]);
-      canonicalRoadmapFixture(context, "irregular/matrix-v0.toml", "matrix");
-      canonicalRoadmapFixture(context, "irregular/testing-v0.toml", "testing");
       return;
     }
     case "schema_v1_exact_keys_every_structural_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), [...ROADMAP_SCHEMA_ROWS.filter((_, index) => [1, 3, 5, 6, 8, 9, 11, 12, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25].includes(index)), ...MANIFEST_SCHEMA_ROWS]);
-      canonicalRoadmapFixture(context, "all-fields/matrix-v1.toml", "matrix");
-      canonicalRoadmapFixture(context, "all-fields/testing-v1.toml", "testing");
+      canonicalRoadmapFixture(context, "all-fields/matrix-v2.toml", "matrix");
+      canonicalRoadmapFixture(context, "all-fields/testing-v2.toml", "testing");
       return;
     }
     case "schema_shared_payload_exact_keys_every_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), SHARED_SEMANTIC_SCHEMA_ROWS);
-      canonicalRoadmapFixture(context, "all-fields/matrix-v1.toml", "matrix");
+      canonicalRoadmapFixture(context, "all-fields/matrix-v2.toml", "matrix");
       return;
     }
     case "schema_systematic_exact_keys_every_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), SHARED_SEMANTIC_SCHEMA_ROWS.filter((row) => row.name.includes("family")));
-      canonicalRoadmapFixture(context, "all-fields/matrix-v1.toml", "matrix");
+      canonicalRoadmapFixture(context, "all-fields/matrix-v2.toml", "matrix");
       return;
     }
     case "schema_matrix_payload_exact_keys_every_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), MATRIX_SCHEMA_ROWS);
-      const source = fixtureText(context, "all-fields/matrix-v1.toml");
-      canonicalRoadmapFixture(context, "all-fields/matrix-v1.toml", "matrix");
+      const source = fixtureText(context, "all-fields/matrix-v2.toml");
+      canonicalRoadmapFixture(context, "all-fields/matrix-v2.toml", "matrix");
       const action = replaceAfter(source, 'id = "matrix.fixture-upstream-a"', 'action_id = "action-a-one"', 'action_id = "action-1"');
       expectFailure(() => decodeRoadmapSource(text(action), "<action-slug>", "matrix"), ["E-ID-GRAMMAR"]);
       const branch = replaceAfter(source, 'id = "matrix.fixture-upstream-a"', 'branch_id = "branch-a-one"', 'branch_id = "branch-1"');
@@ -1286,8 +1238,8 @@ expires_at = "2026-08-12"
     case "schema_testing_payload_exact_keys_every_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), TESTING_SCHEMA_ROWS);
-      const source = fixtureText(context, "all-fields/testing-v1.toml");
-      canonicalRoadmapFixture(context, "all-fields/testing-v1.toml", "testing");
+      const source = fixtureText(context, "all-fields/testing-v2.toml");
+      canonicalRoadmapFixture(context, "all-fields/testing-v2.toml", "testing");
       const capture = replaceAfter(source, 'id = "testing.fixture-operational-attributed"', 'step_id = "capture"', 'step_id = "capture-1"');
       expectFailure(() => decodeRoadmapSource(text(capture), "<capture-slug>", "testing"), ["E-ID-GRAMMAR"]);
       return;
@@ -1301,7 +1253,7 @@ expires_at = "2026-08-12"
     case "schema_reference_exact_keys_every_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), [ROADMAP_SCHEMA_ROWS[25], ...REFERENCE_SCHEMA_ROWS]);
-      canonicalRoadmapFixture(context, "all-fields/matrix-v1.toml", "matrix");
+      canonicalRoadmapFixture(context, "all-fields/matrix-v2.toml", "matrix");
       return;
     }
     case "schema_due_on_valid_through_postures": {
@@ -1314,12 +1266,10 @@ expires_at = "2026-08-12"
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), ALL_SCHEMA_ROWS);
       for (const [path, roadmap] of [
-        ["positive/minimal-matrix-v0.toml", "matrix"], ["positive/minimal-testing-v0.toml", "testing"],
-        ["positive/mixed-matrix-v1.toml", "matrix"], ["positive/mixed-testing-v1.toml", "testing"],
-        ["irregular/matrix-v0.toml", "matrix"], ["irregular/testing-v0.toml", "testing"],
-        ["all-fields/matrix-v1.toml", "matrix"], ["all-fields/testing-v1.toml", "testing"],
+        ["positive/small-matrix-v2.toml", "matrix"], ["positive/small-testing-v2.toml", "testing"],
+        ["all-fields/matrix-v2.toml", "matrix"], ["all-fields/testing-v2.toml", "testing"],
       ] as const) canonicalRoadmapFixture(context, path, roadmap);
-      const matrix = composeRoadmapDocument(decodeRoadmapSource(readFixture(context, "all-fields/matrix-v1.toml"), "<work-order>", "matrix", false));
+      const matrix = composeRoadmapDocument(decodeRoadmapSource(readFixture(context, "all-fields/matrix-v2.toml"), "<work-order>", "matrix", false));
       const matrixText = new TextDecoder().decode(matrix);
       const workStart = matrixText.indexOf('[[record]]\nid = "matrix.fixture-task-a"');
       const workEnd = matrixText.indexOf("\n[[record]]", workStart + 1);
@@ -1356,7 +1306,6 @@ const POSITIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "v2_migration_escape_hatches_rejected",
   "v2_intrinsic_completion",
   "toml_terminal_newline",
-  "v1_raw_shadow_nonrendering",
   "schema_lifecycle_raw_omission_historical",
   "schema_lifecycle_raw_review_arms",
   "domain_matrix_all_tags",
@@ -1470,7 +1419,6 @@ const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "strict_unknown_every_table",
   "v0_all_fields_identity",
   "v1_all_fields_identity",
-  "v1_raw_shadow_nonrendering",
   "domain_matrix_all_tags",
   "domain_testing_all_tags",
   "domain_transition_each_kind",

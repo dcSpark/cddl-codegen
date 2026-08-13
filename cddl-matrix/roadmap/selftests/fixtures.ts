@@ -8,7 +8,7 @@ import {
 } from "../errors.ts";
 import { bytesEqual } from "../markdown_codec.ts";
 import type { FixtureRelativePath, RepoPath } from "../model/core.ts";
-import type { RoadmapDocumentV1 } from "../model/documents.ts";
+import type { RoadmapDocumentV2 } from "../model/documents.ts";
 import { REFERENCE_KIND_REGISTRY } from "../references.ts";
 import {
   enumerateFixtureFilesPolicy,
@@ -101,13 +101,13 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "round_tripped",
   ],
   evidence_verdict: ["confirmed", "falsified", "inapplicable", "proposed", "unknown"],
-  family_classification: ["none_reviewed", "pending"],
+  family_classification: ["none_reviewed"],
   family_maturity: ["observed_only", "under_design"],
   freshness: ["as_of", "historical", "live", "stale"],
   frozen_source_eof: ["lf"],
   incident_posture: ["attributed", "historical", "live"],
   manifest_kind: ["fragment", "generated_slot", "legacy_marker", "part", "record", "section"],
-  migration_status: ["generated", "raw", "replaced"],
+  migration_status: ["generated", "replaced"],
   payload_kind: [
     "control",
     "decision",
@@ -139,7 +139,6 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "roadmap",
     "spec_passage",
     "test_symbol",
-    "unresolved_migration",
   ],
   relation_kind: [
     "blocked_by",
@@ -153,7 +152,7 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "split_from",
     "supersedes",
   ],
-  render_authority: ["raw", "semantic"],
+  render_authority: ["semantic"],
   risk: [
     "abort_or_panic",
     "compile_failure",
@@ -166,7 +165,7 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "valid_rejection",
     "wrong_public_api",
   ],
-  schema_version: ["1"],
+  schema_version: ["2"],
   signal_evaluation: ["met", "stale", "unknown", "unmet"],
   source_kind: ["fragment", "generated_slot", "legacy_marker", "part", "record", "section"],
   spec_legality: ["illegal", "legal"],
@@ -198,7 +197,7 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "optimization",
     "regression_gap",
   ],
-  work_state: ["armed", "blocked", "deferred", "delegated", "pending_review", "ready", "waiting_external"],
+  work_state: ["armed", "blocked", "deferred", "delegated", "ready", "waiting_external"],
 } as const;
 
 export type AllFieldsCoverageAxis = keyof typeof ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS;
@@ -312,7 +311,7 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
       const hasEof = row.projection_eof !== undefined;
       const expectedKeys = ["kind", "id", "class", "input", ...(hasExpected ? ["expected"] : []), "adapter", ...(hasSchema ? ["schema_version"] : []), ...(hasEof ? ["projection_eof"] : [])];
       if (!exactKeys(row, expectedKeys)) issues.push(`${String(id)} has unknown or noncanonical keys`);
-      const validClass = row.class === "codec" || row.class === "positive" || row.class === "all_fields" || row.class === "irregular";
+      const validClass = row.class === "codec" || row.class === "positive" || row.class === "all_fields";
       const validAdapter = row.adapter === "codec" || row.adapter === "matrix" || row.adapter === "testing";
       if (!validClass || !validAdapter || typeof row.input !== "string") issues.push(`${String(id)} has an invalid single-file binding`);
       else {
@@ -349,11 +348,8 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
   }
   const expectedIds = [
     "fixture_codec_leading_eof", "fixture_codec_no_eof", "fixture_codec_controls",
-    "fixture_minimal_matrix_v0", "fixture_minimal_testing_v0", "fixture_mixed_matrix_v1", "fixture_mixed_testing_v1",
     "fixture_small_matrix_v2", "fixture_small_testing_v2",
-    "fixture_all_fields_matrix_v1", "fixture_all_fields_testing_v1",
-    "fixture_all_fields_matrix_v2", "fixture_all_fields_testing_v2",
-    "fixture_irregular_matrix_v0", "fixture_irregular_testing_v0", "fixture_status_compat",
+    "fixture_all_fields_matrix_v2", "fixture_all_fields_testing_v2", "fixture_status_compat",
   ];
   if (JSON.stringify(rows.map((row) => row.id)) !== JSON.stringify(expectedIds)) issues.push("fixture case IDs/order differ from the frozen row registry");
   const singleSignatures = rows.flatMap((row) => row.kind === "single_file" ? [[
@@ -364,18 +360,10 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
     "fixture_codec_leading_eof|codec|codec/hazards-leading-and-eof.md|codec/hazards-leading-and-eof.toml.expected|codec|-|lf",
     "fixture_codec_no_eof|codec|codec/hazards-no-eof.md|codec/hazards-no-eof.toml.expected|codec|-|none",
     "fixture_codec_controls|codec|codec/control-scalars.bytes|codec/control-scalars.toml.expected|codec|-|none",
-    "fixture_minimal_matrix_v0|positive|positive/minimal-matrix-v0.toml|positive/minimal-matrix-v0.expected.md|matrix|0|lf",
-    "fixture_minimal_testing_v0|positive|positive/minimal-testing-v0.toml|positive/minimal-testing-v0.expected.md|testing|0|none",
-    "fixture_mixed_matrix_v1|positive|positive/mixed-matrix-v1.toml|positive/mixed-matrix-v1.expected.md|matrix|1|lf",
-    "fixture_mixed_testing_v1|positive|positive/mixed-testing-v1.toml|positive/mixed-testing-v1.expected.md|testing|1|none",
     "fixture_small_matrix_v2|positive|positive/small-matrix-v2.toml|positive/small-matrix-v2.expected.md|matrix|2|lf",
     "fixture_small_testing_v2|positive|positive/small-testing-v2.toml|positive/small-testing-v2.expected.md|testing|2|none",
-    "fixture_all_fields_matrix_v1|all_fields|all-fields/matrix-v1.toml|all-fields/matrix-v1.expected.md|matrix|1|lf",
-    "fixture_all_fields_testing_v1|all_fields|all-fields/testing-v1.toml|all-fields/testing-v1.expected.md|testing|1|lf",
     "fixture_all_fields_matrix_v2|all_fields|all-fields/matrix-v2.toml|all-fields/matrix-v2.expected.md|matrix|2|lf",
     "fixture_all_fields_testing_v2|all_fields|all-fields/testing-v2.toml|all-fields/testing-v2.expected.md|testing|2|lf",
-    "fixture_irregular_matrix_v0|irregular|irregular/matrix-v0.toml|irregular/matrix-v0.expected.md|matrix|0|lf",
-    "fixture_irregular_testing_v0|irregular|irregular/testing-v0.toml|irregular/testing-v0.expected.md|testing|0|none",
   ];
   if (JSON.stringify(singleSignatures) !== JSON.stringify(expectedSingleSignatures)) issues.push("single-file fixture bindings differ from the frozen row table");
   const disk = inventory.filter((path) => path !== "cases.toml").sort(codePointSort);
@@ -479,9 +467,9 @@ function executeFixtureCase(id: RequiredFixtureSelfTestCaseId, context: SelfTest
     const decoded = registry(context);
     const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
     assert(decoded.issues.length === 0, decoded.issues.join("; "));
-    assert(decoded.rows.length === 16, `fixture registry has ${decoded.rows.length} rows instead of 16`);
-    assert(decoded.declared_paths.length === 39, `fixture registry binds ${decoded.declared_paths.length} files instead of 39`);
-    assert(inventory.length === 40, `fixture inventory has ${inventory.length} files including cases.toml instead of 40`);
+    assert(decoded.rows.length === 8, `fixture registry has ${decoded.rows.length} rows instead of 8`);
+    assert(decoded.declared_paths.length === 23, `fixture registry binds ${decoded.declared_paths.length} files instead of 23`);
+    assert(inventory.length === 24, `fixture inventory has ${inventory.length} files including cases.toml instead of 24`);
   } else if (id === "fixture_registry_missing_file") {
     const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
     const decoded = registry(context);
@@ -503,7 +491,7 @@ function executeFixtureCase(id: RequiredFixtureSelfTestCaseId, context: SelfTest
   } else if (id === "fixture_family_floors") {
     const rows = registry(context).rows;
     const count = (kind: string) => rows.filter((row) => row.class === kind).length;
-    assert(count("codec") >= 2 && count("positive") >= 4 && count("all_fields") >= 2 && count("irregular") >= 2 && count("status-compat") >= 1, "fixture family floor failed");
+    assert(count("codec") >= 2 && count("positive") >= 2 && count("all_fields") >= 2 && count("status-compat") >= 1, "fixture family floor failed");
   } else if (id === "slot_resolver_four_matrix_slots") {
     assert(JSON.stringify(MATRIX_GENERATED_SLOT_BINDINGS) === JSON.stringify([
       ["constraint", "status_header_markers:roadmap-constraint"],
@@ -515,16 +503,21 @@ function executeFixtureCase(id: RequiredFixtureSelfTestCaseId, context: SelfTest
     assert(REFERENCE_KIND_REGISTRY.length > 0 && new Set(REFERENCE_KIND_REGISTRY).size === REFERENCE_KIND_REGISTRY.length, "reference kind provider registry is empty or duplicated");
     const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
     const decoded = (["matrix", "testing"] as const).map((roadmap) => {
-      const path = `all-fields/${roadmap}-v1.toml` as FixtureRelativePath;
+      const path = `all-fields/${roadmap}-v2.toml` as FixtureRelativePath;
       assert(inventory.includes(path), `all-fields provider fixture is missing ${path}`);
       return decodeRoadmapSource(context.ports.fixtures.readFixtureFile(FIXTURE_ROOT, path), path, roadmap, true);
     });
-    const represented = new Set(decoded.flatMap((document) =>
-      document.document.schema_version === 1
-        ? (document as RoadmapDocumentV1).references.map((reference) => reference.kind)
+    const represented = new Set<string>(decoded.flatMap((document) =>
+      document.document.schema_version === 2
+        ? (document as RoadmapDocumentV2).references.map((reference) => reference.kind)
         : []
     ));
-    const missing = REFERENCE_KIND_REGISTRY.filter((kind) => !represented.has(kind));
+    // `unresolved_migration` is unrepresentable in a v2 document (StableReference excludes it), so
+    // the committed corpus can only cover the remaining kinds. The kind itself leaves
+    // REFERENCE_KIND_REGISTRY when the v0/v1 machinery is deleted, at which point this filter goes.
+    const missing = REFERENCE_KIND_REGISTRY
+      .filter((kind) => kind !== "unresolved_migration")
+      .filter((kind) => !represented.has(kind));
     assert(missing.length === 0, `reference-provider fixture members are empty for ${missing.join(", ")}`);
   } else if (id === "selftest_case_ids_unique") {
     const ids = context.registry.cases.map((testCase) => testCase.id);

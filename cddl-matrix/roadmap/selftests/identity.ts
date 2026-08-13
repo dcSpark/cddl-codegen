@@ -62,14 +62,10 @@ import { debtOwnerIndex, type MigrationDebt } from "../debt.ts";
 import { createExpectedByteView, type RenderChunk } from "../render_ir.ts";
 
 export const IDENTITY_ROADMAP_FIXTURE_PATHS = Object.freeze([
-  "all-fields/matrix-v1.toml",
-  "all-fields/testing-v1.toml",
-  "irregular/matrix-v0.toml",
-  "irregular/testing-v0.toml",
-  "positive/minimal-matrix-v0.toml",
-  "positive/minimal-testing-v0.toml",
-  "positive/mixed-matrix-v1.toml",
-  "positive/mixed-testing-v1.toml",
+  "all-fields/matrix-v2.toml",
+  "all-fields/testing-v2.toml",
+  "positive/small-matrix-v2.toml",
+  "positive/small-testing-v2.toml",
 ] as const);
 
 export type IdentityRoadmapFixturePath =
@@ -78,7 +74,7 @@ export type IdentityRoadmapFixturePath =
 const IDENTITY_FIXTURE_ROOT = "cddl-matrix/roadmap/fixtures" as RepoPath;
 
 export interface IdentityFixtureBundle {
-  readonly file_count: 8;
+  readonly file_count: 4;
 }
 
 const identityFixtureFiles = new WeakMap<object, ReadonlyMap<
@@ -91,7 +87,7 @@ export function createIdentityFixtureBundle(
 ): IdentityFixtureBundle {
   assert(
     files.size === IDENTITY_ROADMAP_FIXTURE_PATHS.length,
-    "identity fixture bundle must contain exactly eight roadmap files",
+    "identity fixture bundle must contain exactly four roadmap files",
   );
   const snapshots = new Map<IdentityRoadmapFixturePath, Uint8Array>();
   for (const path of IDENTITY_ROADMAP_FIXTURE_PATHS) {
@@ -99,7 +95,7 @@ export function createIdentityFixtureBundle(
     assert(value !== undefined && value.byteLength > 0, `identity fixture bundle is missing ${path}`);
     snapshots.set(path, new Uint8Array(value));
   }
-  const bundle: IdentityFixtureBundle = Object.freeze({ file_count: 8 });
+  const bundle: IdentityFixtureBundle = Object.freeze({ file_count: 4 });
   identityFixtureFiles.set(bundle, snapshots);
   return bundle;
 }
@@ -314,44 +310,19 @@ function assertIdentityMap<K extends string, V>(
   );
 }
 
-function rawFixtureExpectation(
-  roadmap: RoadmapName,
-  recordId: string,
-  slots: readonly string[],
-  spans: readonly string[],
-): FixtureIndexExpectation {
+function smallFixtureExpectation(roadmap: RoadmapName): FixtureIndexExpectation {
+  const recordId = `${roadmap}.fixture-small-semantic`;
   return {
     roadmap,
     providers: { record: [recordId] },
-    payloads: {},
-    id_use_roles: { manifest_record: 1, provider: 1, span_record_owner: 1 },
-    semantic_targets: {},
-    reference_uses: {},
-    aliases: [],
-    subordinate: { ...EMPTY_SUBORDINATE, generated_slot: slots, source_span: spans },
-    references_by_kind: {},
-    relations: [],
-    relations_by_source: {},
-    relations_by_target: {},
-  };
-}
-
-function mixedFixtureExpectation(roadmap: RoadmapName): FixtureIndexExpectation {
-  const prefix = `${roadmap}.fixture-mixed-`;
-  return {
-    roadmap,
-    providers: { record: [`${prefix}raw`, `${prefix}semantic`] },
-    payloads: {
-      "semantic:work": [`${prefix}semantic`],
-      "semantic_shadow:work": [`${prefix}raw`],
-    },
-    id_use_roles: { manifest_record: 2, provider: 2, span_record_owner: 3 },
+    payloads: { "semantic:work": [recordId] },
+    id_use_roles: { manifest_record: 1, provider: 1, span_record_owner: 2 },
     semantic_targets: {},
     reference_uses: {},
     aliases: [],
     subordinate: {
       ...EMPTY_SUBORDINATE,
-      source_span: ["raw-record", "section", "semantic-detail", "semantic-summary"],
+      source_span: ["section", "semantic-detail", "semantic-summary"],
     },
     references_by_kind: {},
     relations: [],
@@ -426,15 +397,17 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     record: MATRIX_RECORD_IDS,
   },
   payloads: {
-    "semantic:matrix_policy": ["matrix.fixture-semantic-owner"],
-    "semantic_shadow:control": suffixed("matrix.fixture-control-", "abcdefg"),
-    "semantic_shadow:decision": suffixed("matrix.fixture-choice-", "abcd"),
-    "semantic_shadow:evidence": suffixed("matrix.fixture-evidence-", "abcdefghijklm"),
-    "semantic_shadow:family": suffixed("matrix.fixture-systematic-", "abcd"),
-    "semantic_shadow:matrix_external_closeout": suffixed("matrix.fixture-upstream-", "abc"),
-    "semantic_shadow:matrix_policy": suffixed("matrix.fixture-policy-", "abc"),
-    "semantic_shadow:signal": suffixed("matrix.fixture-signal-", "abcdefghijk"),
-    "semantic_shadow:work": [
+    "semantic:control": suffixed("matrix.fixture-control-", "abcdefg"),
+    "semantic:decision": suffixed("matrix.fixture-choice-", "abcd"),
+    "semantic:evidence": suffixed("matrix.fixture-evidence-", "abcdefghijklm"),
+    "semantic:family": suffixed("matrix.fixture-systematic-", "abcd"),
+    "semantic:matrix_external_closeout": suffixed("matrix.fixture-upstream-", "abc"),
+    "semantic:matrix_policy": [
+      ...suffixed("matrix.fixture-policy-", "abc"),
+      "matrix.fixture-semantic-owner",
+    ],
+    "semantic:signal": suffixed("matrix.fixture-signal-", "abcdefghijk"),
+    "semantic:work": [
       "matrix.fixture-raw-owner",
       ...suffixed("matrix.fixture-task-", "abcdefghij"),
     ],
@@ -443,7 +416,7 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     manifest_record: 57,
     parent_record: 1,
     provider: 81,
-    reference_source: 13,
+    reference_source: 12,
     reference_target: 1,
     relation_source: 10,
     relation_target: 10,
@@ -501,7 +474,6 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
       "ref-file",
       "ref-gate",
       "ref-issue",
-      "ref-migration",
       "ref-release",
       "ref-roadmap",
       "ref-role",
@@ -544,7 +516,6 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     roadmap: ["ref-roadmap"],
     spec_passage: ["ref-spec"],
     test_symbol: ["ref-test"],
-    unresolved_migration: ["ref-migration"],
   },
   relations: MATRIX_RELATIONS,
   relations_by_source: MATRIX_RELATIONS_BY_SOURCE,
@@ -575,28 +546,30 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
   roadmap: "testing",
   providers: { record: TESTING_RECORD_IDS },
   payloads: {
-    "semantic:testing_cost": ["testing.fixture-all-fields-semantic"],
-    "semantic_shadow:control": ["testing.fixture-control-review"],
-    "semantic_shadow:evidence": ["testing.fixture-evidence-gate"],
-    "semantic_shadow:family": ["testing.fixture-systematic-observed"],
-    "semantic_shadow:signal": ["testing.fixture-signal-escalation"],
-    "semantic_shadow:testing_cost": ["testing.fixture-cost-historical"],
-    "semantic_shadow:testing_incident": [
+    "semantic:control": ["testing.fixture-control-review"],
+    "semantic:evidence": ["testing.fixture-evidence-gate"],
+    "semantic:family": ["testing.fixture-systematic-observed"],
+    "semantic:signal": ["testing.fixture-signal-escalation"],
+    "semantic:testing_cost": [
+      "testing.fixture-all-fields-semantic",
+      "testing.fixture-cost-historical",
+    ],
+    "semantic:testing_incident": [
       "testing.fixture-incident-attributed",
       "testing.fixture-incident-historical",
       "testing.fixture-incident-live",
     ],
-    "semantic_shadow:testing_operational_watch": [
+    "semantic:testing_operational_watch": [
       "testing.fixture-operational-attributed",
       "testing.fixture-operational-retire-pending",
       "testing.fixture-operational-watching",
     ],
-    "semantic_shadow:testing_system_admission": [
+    "semantic:testing_system_admission": [
       "testing.fixture-admission-bounded",
       "testing.fixture-admission-independent",
       "testing.fixture-admission-silent",
     ],
-    "semantic_shadow:work": [
+    "semantic:work": [
       "testing.fixture-all-fields-raw",
       "testing.fixture-task-ready",
     ],
@@ -699,34 +672,10 @@ const EXPECTED_FIXTURE_INDEXES: Readonly<Record<
   IdentityRoadmapFixturePath,
   FixtureIndexExpectation
 >> = {
-  "all-fields/matrix-v1.toml": MATRIX_ALL_FIELDS_EXPECTATION,
-  "all-fields/testing-v1.toml": TESTING_ALL_FIELDS_EXPECTATION,
-  "irregular/matrix-v0.toml": rawFixtureExpectation(
-    "matrix",
-    "matrix.fixture-irregular",
-    ["constraint", "counts", "emission", "ops"],
-    ["record", "section", "slot-constraint", "slot-counts", "slot-emission", "slot-ops"],
-  ),
-  "irregular/testing-v0.toml": rawFixtureExpectation(
-    "testing",
-    "testing.fixture-irregular",
-    [],
-    ["record", "section"],
-  ),
-  "positive/minimal-matrix-v0.toml": rawFixtureExpectation(
-    "matrix",
-    "matrix.fixture-minimal",
-    ["counts"],
-    ["record", "section", "slot"],
-  ),
-  "positive/minimal-testing-v0.toml": rawFixtureExpectation(
-    "testing",
-    "testing.fixture-minimal",
-    ["ignored-gates"],
-    ["record", "section", "slot"],
-  ),
-  "positive/mixed-matrix-v1.toml": mixedFixtureExpectation("matrix"),
-  "positive/mixed-testing-v1.toml": mixedFixtureExpectation("testing"),
+  "all-fields/matrix-v2.toml": MATRIX_ALL_FIELDS_EXPECTATION,
+  "all-fields/testing-v2.toml": TESTING_ALL_FIELDS_EXPECTATION,
+  "positive/small-matrix-v2.toml": smallFixtureExpectation("matrix"),
+  "positive/small-testing-v2.toml": smallFixtureExpectation("testing"),
 };
 
 function fixtureBytes(
@@ -973,9 +922,12 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
     assertFixtureIndexes(path, result.indexes, expected);
     globalInputs.push(result.indexes.identity_inputs);
     const references = [...result.indexes.references.values()].sort(compareReferenceTargets);
-    if (path === "all-fields/matrix-v1.toml") {
+    if (path === "all-fields/matrix-v2.toml") {
+      // `unresolved_migration` is unrepresentable in a v2 document, so the committed template set
+      // covers the registry minus that one kind. The `- 1` goes away with the kind itself when the
+      // v0/v1 machinery is deleted.
       assert(
-        new Set(references.map((reference) => reference.kind)).size === REFERENCE_KIND_REGISTRY.length,
+        new Set(references.map((reference) => reference.kind)).size === REFERENCE_KIND_REGISTRY.length - 1,
         "matrix all-fields must provide one committed template for every Reference kind",
       );
       committedReferenceTemplates = Object.freeze([...references]);
@@ -987,7 +939,7 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
       `${path} unresolved-migration authority derivation must succeed: ${JSON.stringify(unresolvedAuthority.issues)}`,
     );
     assert(
-      unresolvedAuthority.debt.length === (path === "all-fields/matrix-v1.toml" ? 1 : 0),
+      unresolvedAuthority.debt.length === 0,
       `${path} unresolved-migration debt enumeration must be exact`,
     );
     assert(
@@ -1086,7 +1038,7 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
         `${path} semantic target missing-provider mutation must fail`,
       );
     }
-    if (path === "all-fields/matrix-v1.toml") {
+    if (path === "all-fields/matrix-v2.toml") {
       const mutateSemanticTarget = (
         pathNeedle: string,
         mutate: (payload: SemanticPayloadProviderFact["payload"]) => unknown,
@@ -1110,28 +1062,28 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
         }, path);
       };
       assert(
-        mutateSemanticTarget("fixture-task-e\"].semantic_shadow.transition_ids", (payload) => ({
+        mutateSemanticTarget("fixture-task-e\"].payload.transition_ids", (payload) => ({
           ...payload,
           transition_kind: "cadence",
         })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.includes("fixture-task-e")),
         "blocked work must reject a cadence target in place of its unblock predicate",
       );
       assert(
-        mutateSemanticTarget("fixture-policy-a\"].semantic_shadow.cadence_transition_id", (payload) => ({
+        mutateSemanticTarget("fixture-policy-a\"].payload.cadence_transition_id", (payload) => ({
           ...payload,
           transition_kind: "reopening_signal",
         })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.endsWith("cadence_transition_id")),
         "maintenance policy cadence must reject a reopening signal",
       );
       assert(
-        mutateSemanticTarget("fixture-policy-c\"].semantic_shadow.reopening_transition_id", (payload) => ({
+        mutateSemanticTarget("fixture-policy-c\"].payload.reopening_transition_id", (payload) => ({
           ...payload,
           transition_kind: "cadence",
         })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.endsWith("reopening_transition_id")),
         "reopenable policy must reject a cadence signal",
       );
       assert(
-        mutateSemanticTarget("fixture-task-f\"].semantic_shadow.control_ids", (payload) => ({
+        mutateSemanticTarget("fixture-task-f\"].payload.control_ids", (payload) => ({
           ...payload,
           control_state: "planned",
         })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.includes("fixture-task-f")),
@@ -1158,30 +1110,6 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
           value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.endsWith("delegates_to")
         ),
         "delegated work must reject duplicate delegates_to relations",
-      );
-
-      const withoutShadowAuthority = {
-        ...result.indexes,
-        payload_records: new Map([...result.indexes.payload_records].map(([id, provider]) => [
-          id,
-          { ...provider, authority: "semantic" as const },
-        ])),
-      } as RoadmapIndexes;
-      const rejectedAuthority = deriveUnresolvedMigrationAuthority(withoutShadowAuthority, path);
-      assert(rejectedAuthority.authority === undefined, "semantic-only payloads must not mint unresolved-migration authority");
-      assert(
-        rejectedAuthority.issues.some((value) => value.code === "E-REFERENCE-FORBIDDEN") &&
-          rejectedAuthority.debt.length === 1,
-        "unresolved migration debt must remain observable when authority derivation fails",
-      );
-      assert(
-        validateRoadmapReferences(withoutShadowAuthority, registry, {
-          source: path,
-          providers: MATRIX_ADAPTER.referenceProviders(registry),
-        }).some((value) =>
-          value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path === "reference[\"ref-migration\"]"
-        ),
-        "unresolved migration must fail without structurally derived shadow authority",
       );
     }
   }

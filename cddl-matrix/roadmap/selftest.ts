@@ -20,11 +20,11 @@ import { PROJECTION_VIEW_SELFTEST_CASES, REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_
 export interface SingleFileFixtureCaseRow {
   kind: "single_file";
   id: string;
-  class: "codec" | "positive" | "all_fields" | "irregular";
+  class: "codec" | "positive" | "all_fields";
   input: FixtureRelativePath;
   expected?: FixtureRelativePath;
   adapter: "codec" | "matrix" | "testing";
-  schema_version?: 0 | 1;
+  schema_version?: 0 | 1 | 2;
   projection_eof?: "lf" | "none";
 }
 
@@ -440,7 +440,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["noncanonical_comment", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["noncanonical_inline_table", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["systematic_illegal_cell_rejected", { code: "E-SCHEMA-ENUM", logical_path: "p.cell[0].spec_legality" }],
-  ["systematic_unmodelled_coordinate_not_cell", { code: "E-SCHEMA-ENUM", logical_path: "record[40].semantic_shadow.cell[0].spec_legality" }],
+  ["systematic_unmodelled_coordinate_not_cell", { code: "E-SCHEMA-ENUM", logical_path: "record[40].payload.cell[0].spec_legality" }],
   ["schema_observed_at_civil_date", { code: "E-SCHEMA-TYPE", logical_path: "p.observed_at" }],
   ["schema_held_permanent_rejected", { code: "E-SCHEMA-ENUM", logical_path: "p.permanence" }],
   ["schema_due_on_valid_through_postures", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "p.due_on" }],

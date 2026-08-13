@@ -27,46 +27,6 @@ projection_eof = "none"
 
 [[case]]
 kind = "single_file"
-id = "fixture_minimal_matrix_v0"
-class = "positive"
-input = "positive/minimal-matrix-v0.toml"
-expected = "positive/minimal-matrix-v0.expected.md"
-adapter = "matrix"
-schema_version = 0
-projection_eof = "lf"
-
-[[case]]
-kind = "single_file"
-id = "fixture_minimal_testing_v0"
-class = "positive"
-input = "positive/minimal-testing-v0.toml"
-expected = "positive/minimal-testing-v0.expected.md"
-adapter = "testing"
-schema_version = 0
-projection_eof = "none"
-
-[[case]]
-kind = "single_file"
-id = "fixture_mixed_matrix_v1"
-class = "positive"
-input = "positive/mixed-matrix-v1.toml"
-expected = "positive/mixed-matrix-v1.expected.md"
-adapter = "matrix"
-schema_version = 1
-projection_eof = "lf"
-
-[[case]]
-kind = "single_file"
-id = "fixture_mixed_testing_v1"
-class = "positive"
-input = "positive/mixed-testing-v1.toml"
-expected = "positive/mixed-testing-v1.expected.md"
-adapter = "testing"
-schema_version = 1
-projection_eof = "none"
-
-[[case]]
-kind = "single_file"
 id = "fixture_small_matrix_v2"
 class = "positive"
 input = "positive/small-matrix-v2.toml"
@@ -87,26 +47,6 @@ projection_eof = "none"
 
 [[case]]
 kind = "single_file"
-id = "fixture_all_fields_matrix_v1"
-class = "all_fields"
-input = "all-fields/matrix-v1.toml"
-expected = "all-fields/matrix-v1.expected.md"
-adapter = "matrix"
-schema_version = 1
-projection_eof = "lf"
-
-[[case]]
-kind = "single_file"
-id = "fixture_all_fields_testing_v1"
-class = "all_fields"
-input = "all-fields/testing-v1.toml"
-expected = "all-fields/testing-v1.expected.md"
-adapter = "testing"
-schema_version = 1
-projection_eof = "lf"
-
-[[case]]
-kind = "single_file"
 id = "fixture_all_fields_matrix_v2"
 class = "all_fields"
 input = "all-fields/matrix-v2.toml"
@@ -124,26 +64,6 @@ expected = "all-fields/testing-v2.expected.md"
 adapter = "testing"
 schema_version = 2
 projection_eof = "lf"
-
-[[case]]
-kind = "single_file"
-id = "fixture_irregular_matrix_v0"
-class = "irregular"
-input = "irregular/matrix-v0.toml"
-expected = "irregular/matrix-v0.expected.md"
-adapter = "matrix"
-schema_version = 0
-projection_eof = "lf"
-
-[[case]]
-kind = "single_file"
-id = "fixture_irregular_testing_v0"
-class = "irregular"
-input = "irregular/testing-v0.toml"
-expected = "irregular/testing-v0.expected.md"
-adapter = "testing"
-schema_version = 0
-projection_eof = "none"
 
 [[case]]
 kind = "status_compat_bundle"

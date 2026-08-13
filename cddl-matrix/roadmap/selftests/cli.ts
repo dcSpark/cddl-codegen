@@ -2226,7 +2226,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       );
       assert(
         result.exit_code === 0 && result.stderr.byteLength === 0 && anchorReads === 1 &&
-          fixtureCount >= 31 && fixtureBytes > 0 &&
+          fixtureCount >= 20 && fixtureBytes > 0 &&
           text(result.stdout) === `SELFTEST OK production_factory fixtures=${fixtureCount}\n`,
         `direct frozen seam did not lazily initialize once from its absolute anchor: exit=${result.exit_code} anchor_reads=${anchorReads} fixtures=${fixtureCount} fixture_bytes=${fixtureBytes} stdout=${JSON.stringify(text(result.stdout))} stderr=${JSON.stringify(text(result.stderr))}`,
       );

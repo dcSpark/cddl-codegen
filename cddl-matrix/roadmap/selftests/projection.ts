@@ -163,8 +163,6 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "debt_part_to_record_promotion_composes",
   "debt_part_adoption_exact",
   "debt_part_adoption_rejections",
-  "render_irregular_matrix_exact",
-  "render_irregular_testing_exact",
   "render_zero_chunks_rejected",
   "render_no_implicit_lf",
   "render_semantic_consumption_once",
@@ -260,8 +258,6 @@ export type RequiredProjectionSelfTestCaseId =
   (typeof REQUIRED_PROJECTION_SELFTEST_CASE_IDS)[number];
 
 export const PROJECTION_FIXTURE_PATHS = Object.freeze([
-  "irregular/matrix-v0.expected.md",
-  "irregular/testing-v0.expected.md",
   "status-compat/diagnostics.toml",
   "status-compat/inputs.toml",
   "status-compat/matrix-readme.after.md",
@@ -276,7 +272,7 @@ export const PROJECTION_FIXTURE_PATHS = Object.freeze([
 export type ProjectionFixturePath = (typeof PROJECTION_FIXTURE_PATHS)[number];
 
 export interface ProjectionFixtureBundle {
-  readonly file_count: 11;
+  readonly file_count: 9;
 }
 
 export interface ProjectionFixtureObserver {
@@ -292,14 +288,14 @@ export function createProjectionFixtureBundle(
   files: ReadonlyMap<ProjectionFixturePath, Uint8Array>,
   observer?: ProjectionFixtureObserver,
 ): ProjectionFixtureBundle {
-  if (files.size !== PROJECTION_FIXTURE_PATHS.length) throw new Error("projection fixture bundle must contain exactly eleven files");
+  if (files.size !== PROJECTION_FIXTURE_PATHS.length) throw new Error("projection fixture bundle must contain exactly nine files");
   const snapshots = new Map<ProjectionFixturePath, Uint8Array>();
   for (const path of PROJECTION_FIXTURE_PATHS) {
     const value = files.get(path);
     if (value === undefined || value.byteLength === 0) throw new Error(`projection fixture bundle is missing ${path}`);
     snapshots.set(path, new Uint8Array(value));
   }
-  const bundle: ProjectionFixtureBundle = Object.freeze({ file_count: 11 });
+  const bundle: ProjectionFixtureBundle = Object.freeze({ file_count: 9 });
   projectionFixtureFiles.set(bundle, { files: snapshots, observer });
   return bundle;
 }
@@ -313,8 +309,6 @@ function fixtureBytes(bundle: ProjectionFixtureBundle, path: ProjectionFixturePa
 }
 
 const FIXTURE_REQUIRED_CASES = new Set<RequiredProjectionSelfTestCaseId>([
-  "render_irregular_matrix_exact",
-  "render_irregular_testing_exact",
   "status_facts_derive_fixture_parity",
   "status_projector_before_after_target_byte_parity",
   "status_projector_before_after_mode_parity",
@@ -2969,28 +2963,6 @@ function testRenderCase(
       candidate_document: candidate,
     });
     if (issues.length !== 0) fail(`semantic-only candidate addition debt failed: ${issues.map((value) => value.message).join(";")}`);
-    return pass();
-  }
-  if (id === "render_irregular_matrix_exact" || id === "render_irregular_testing_exact") {
-    if (fixtureBundle === undefined) fail(`${id}: committed fixture bundle was not injected`);
-    const expected = fixtureBytes(
-      fixtureBundle,
-      id === "render_irregular_matrix_exact"
-        ? "irregular/matrix-v0.expected.md"
-        : "irregular/testing-v0.expected.md",
-    );
-    const newline = expected.indexOf(0x0a);
-    if (newline < 0) fail(`${id}: committed irregular fixture has no safe split boundary`);
-    const split = newline + 1;
-    const chunks: RenderChunk[] = [expected.subarray(0, split), expected.subarray(split)].map((value, manifest_index) => ({
-      manifest_index,
-      owner: { kind: "fragment", id: `${id}-${manifest_index}`, field: "source_block_md" },
-      bytes: value,
-      source_span_ids: [],
-      consumed_fields: ["source_block_md"],
-    }));
-    const rendered = renderValidatedChunks(chunks, [], createExpectedByteView(chunks));
-    if (sha256(rendered) !== sha256(expected) || rendered.byteLength !== expected.byteLength) fail("committed irregular source bytes changed");
     return pass();
   }
   if (id === "render_no_implicit_lf") {
