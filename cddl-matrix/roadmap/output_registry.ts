@@ -257,6 +257,13 @@ const PRODUCTION_OUTPUT_INVENTORIES: Readonly<Record<ProductionOutputStage, Prod
 /**
  * The one production ownership stage. Both roadmaps project from their TOML source, so the
  * projector owns both whole-file projections alongside the README/tests status slots.
+ *
+ * The other two stages stay even though production never selects them, because the enum is not
+ * severable from the surfaces built on it: `pre_cutover` names the twelve legacy status slots the
+ * `project_status_headers` compatibility seam and the status-compat fixture bundle key on, and
+ * having more than one stage is what lets `validateProductionOutputRegistry` refuse to infer
+ * ownership authority from claim shape -- the guard `outputs_production_stage_required` and the
+ * authoritative-under-the-wrong-stage rejection both need a second stage to exist at all.
  */
 export function productionOutputStage(): ProductionOutputStage {
   return "both_authoritative";

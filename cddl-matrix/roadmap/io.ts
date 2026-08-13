@@ -51,6 +51,15 @@ export type ScratchRepositoryHandle = {
 
 export interface ReadOnlyRoadmapPorts {
   readDeclared(path: RepoPath): Uint8Array;
+  /**
+   * The committed-revision read seam. No production path calls the three commit methods -- every
+   * production run reads the worktree -- and they stay anyway: `readDeclaredAtCommit` is the only
+   * way to observe the committed bytes independently of the worktree, which is what proves an
+   * atomic replace published to the worktree WITHOUT touching the commit (the write-discipline
+   * invariant, exercised by `scratch_git_lifecycle`). Deleting them deletes that assertion, not
+   * dead code. `resolveFullCommit`/`repositoryObjectFormat` are what a `{ kind: "commit" }`
+   * registry view is built from.
+   */
   readDeclaredAtCommit(commit: FullCommitId, path: RepoPath): Uint8Array;
   repositoryObjectFormat(): "sha1" | "sha256";
   resolveFullCommit(candidate: string): FullCommitId;
