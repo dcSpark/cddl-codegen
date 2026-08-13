@@ -15,7 +15,7 @@ export class RenderValidationError extends Error {
 }
 
 /**
- * The sole final projection concatenator.  Callers pass every structural/debt/output validation
+ * The sole final projection concatenator.  Callers pass every structural/output validation
  * issue; allocation and copying occur only after that complete set is empty.
  */
 export function renderValidatedChunks(

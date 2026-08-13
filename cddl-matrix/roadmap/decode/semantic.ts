@@ -3,8 +3,8 @@ import type {
   DecisionPayload,
   EvidencePayload,
   SharedSemanticPayload,
-  SignalPayload,
-  SignalPredicate,
+  TransitionPayload,
+  TransitionPredicate,
   WorkPayload,
 } from "../model/core.ts";
 import type { SemanticPayload } from "../model/documents.ts";
@@ -24,7 +24,7 @@ import {
   RISKS,
   SHARED_SEMANTIC_KINDS,
   SHARED_SEMANTIC_SCHEMA_ROW_LIST,
-  SIGNAL_PREDICATE_GROUP,
+  TRANSITION_PREDICATE_GROUP,
   TRANSITION_KINDS,
   WORK_INTENTS,
   WORK_KINDS,
@@ -56,7 +56,7 @@ export const SEMANTIC_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "decision_state", values: DECISION_STATES },
   { name: "decision_permanence", values: PERMANENCE },
   { name: "transition_kind", values: TRANSITION_KINDS },
-  { name: "signal_evaluation", values: EVALUATIONS },
+  { name: "transition_evaluation", values: EVALUATIONS },
   { name: "predicate_kind", values: PREDICATE_KINDS },
   { name: "comparator", values: COMPARATORS },
   { name: "evidence_kind", values: EVIDENCE_KINDS },
@@ -111,29 +111,29 @@ function decodeDecision(ctx: DecodeContext, raw: unknown, path: string): Decisio
   ) as unknown as DecisionPayload;
 }
 
-function decodeSignal(ctx: DecodeContext, raw: unknown, path: string): SignalPayload {
-  const pre = expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.signal);
+function decodeTransition(ctx: DecodeContext, raw: unknown, path: string): TransitionPayload {
+  const pre = expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.transition);
   const kind = expectEnum(ctx, requiredValue(pre, "transition_kind"), TRANSITION_KINDS, p(path, "transition_kind"));
   if (kind === "promotion_trigger" || kind === "reopening_signal") {
     // The trigger condition's home is arm-dependent: an event predicate carries it as
-    // predicate.event_md (signal-level observable is forbidden), while manual and quantitative
+    // predicate.event_md (transition-level observable is forbidden), while manual and quantitative
     // predicates have no nested condition field, so observable is required exactly there.
     const predicate = decodePredicate(
       ctx,
-      requiredValue(expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.signal_predicate_presence), "predicate"),
+      requiredValue(expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.transition_predicate_presence), "predicate"),
       p(path, "predicate"),
-    ) as unknown as SignalPredicate;
-    const arm = armForDiscriminants("signal", { transition_kind: kind, predicate });
+    ) as unknown as TransitionPredicate;
+    const arm = armForDiscriminants("transition", { transition_kind: kind, predicate });
     return decodeArmFields(
       ctx,
       raw,
       path,
       arm,
-      { kind: "signal", transition_kind: kind, predicate },
-    ) as unknown as SignalPayload;
+      { kind: "transition", transition_kind: kind, predicate },
+    ) as unknown as TransitionPayload;
   }
-  const arm = armForDiscriminants("signal", { transition_kind: kind });
-  return decodeArmFields(ctx, raw, path, arm, { kind: "signal", transition_kind: kind }) as unknown as SignalPayload;
+  const arm = armForDiscriminants("transition", { transition_kind: kind });
+  return decodeArmFields(ctx, raw, path, arm, { kind: "transition", transition_kind: kind }) as unknown as TransitionPayload;
 }
 
 function decodeEvidence(ctx: DecodeContext, raw: unknown, path: string): EvidencePayload {
@@ -184,7 +184,7 @@ export function decodeSharedSemanticPayload(
   switch (kind) {
     case "work": return decodeWork(ctx, raw, path);
     case "decision": return decodeDecision(ctx, raw, path);
-    case "signal": return decodeSignal(ctx, raw, path);
+    case "transition": return decodeTransition(ctx, raw, path);
     case "evidence": return decodeEvidence(ctx, raw, path);
     case "control": return decodeControl(ctx, raw, path);
     default: return undefined;

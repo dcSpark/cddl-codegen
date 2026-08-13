@@ -76,7 +76,7 @@ export interface SubordinateIdProviderFact {
 export type RoadmapIdUseRole =
   | "provider"
   | "parent_record"
-  | "manifest_record"
+  | "section_entry"
   | "relation_source"
   | "relation_target"
   | "reference_source"
@@ -457,7 +457,7 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
         roadmapIdUses.push({
           id: entryId as RoadmapId,
           logical_path: path,
-          role: "manifest_record",
+          role: "section_entry",
           expected_namespace: namespace,
         });
       }

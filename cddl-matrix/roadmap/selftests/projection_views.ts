@@ -1,7 +1,7 @@
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import type { RepoPath, RoadmapId, SectionId } from "../model/core.ts";
 import type { RoadmapDocumentV3 } from "../model/documents.ts";
-import { resolveSectionPlan } from "../manifest.ts";
+import { resolveSectionPlan } from "../section_plan.ts";
 import { buildExpectedChunks } from "../render_ir.ts";
 import { buildProjectionViews, validateContentReachability } from "../projection_views.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
@@ -39,9 +39,9 @@ function fixture(): { document: RoadmapDocumentV3 } {
 
 function views() {
   const value = fixture();
-  const manifest = resolveSectionPlan(value.document);
-  assert(manifest.issues.length === 0, "projection-view fixture manifest is invalid");
-  const completed = buildExpectedChunks(value.document, manifest.ops, {
+  const plan = resolveSectionPlan(value.document);
+  assert(plan.issues.length === 0, "projection-view fixture section plan is invalid");
+  const completed = buildExpectedChunks(value.document, plan.ops, {
     renderSemanticRecord: renderCanonicalSemanticRecord,
     resolveGeneratedSlot: () => undefined,
   });
@@ -50,9 +50,9 @@ function views() {
 }
 
 function liveTestingViews(document: RoadmapDocumentV3 = liveTestingV3Document()) {
-  const manifest = resolveSectionPlan(document);
-  assert(manifest.issues.length === 0, "live testing manifest is invalid");
-  const completed = buildExpectedChunks(document, manifest.ops, {
+  const plan = resolveSectionPlan(document);
+  assert(plan.issues.length === 0, "live testing section plan is invalid");
+  const completed = buildExpectedChunks(document, plan.ops, {
     renderSemanticRecord: (record, fields) => TESTING_ADAPTER.renderSemantic(record, fields),
     resolveGeneratedSlot: () => undefined,
   });
@@ -67,7 +67,7 @@ export const REQUIRED_PROJECTION_VIEW_SELFTEST_CASE_IDS = [
 
 export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze([
   {
-    id: "projection_views_layout_and_provenance", category: "manifest-render", run(): SelfTestResult {
+    id: "projection_views_layout_and_provenance", category: "section-render", run(): SelfTestResult {
       const value = views();
       assert(value.projection.issues.length === 0, "valid projection views reported issues");
       const text = TEXT.decode(value.projection.full);
@@ -87,7 +87,7 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       assert(live.projection.issues.length === 0, "live testing projection views reported issues");
       const liveText = TEXT.decode(live.projection.full);
       assert(liveText === TEXT.decode(liveTestingProjection()),
-        "live testing curated projection escaped its committed exact projection bytes");
+        "live testing projection escaped its committed exact projection bytes");
       assert((liveText.match(/^## Next work$/gmu) ?? []).length === 1 &&
         !liveText.includes("## Next work items, in priority order"), "Next heading rewrite is absent or non-exact");
       assert((liveText.match(/^## Standing-system residuals$/gmu) ?? []).length === 1,
@@ -160,13 +160,13 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       };
       assert(liveTestingViews(badHeadingDocument).projection.issues.some((entry) =>
         entry.logical_path === "projection.layout.section.next-priority"),
-      "Next-heading source-prefix drift silently disabled its curated transform");
-      return pass(["banner", "anchor", "curated_layout", "full_audit_separation",
+      "Next-heading source-prefix drift silently disabled its layout transform");
+      return pass(["banner", "anchor", "layout", "full_audit_separation",
         "fragment_scan", "fragment_duplicate", "fragment_malformed"]);
     },
   },
   {
-    id: "projection_views_content_exactly_once", category: "manifest-render", run(): SelfTestResult {
+    id: "projection_views_content_exactly_once", category: "section-render", run(): SelfTestResult {
       const value = views();
       const ledger = value.projection.content_reachability;
       assert(ledger.length === 5 && ledger.filter((entry) => entry.view === "full").length === 2 &&

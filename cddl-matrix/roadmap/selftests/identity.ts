@@ -57,7 +57,7 @@ import {
   validateGlobalIdentity,
 } from "../identity.ts";
 import { buildExpectedChunks, createExpectedByteView, type CompletedRenderIr, type RenderChunk } from "../render_ir.ts";
-import { resolveSectionPlan } from "../manifest.ts";
+import { resolveSectionPlan } from "../section_plan.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
 import { codePointSort } from "../kernel.ts";
 
@@ -301,7 +301,7 @@ function smallFixtureExpectation(roadmap: RoadmapName): FixtureIndexExpectation 
     roadmap,
     providers: { record: [recordId] },
     payloads: { "semantic:work": [recordId] },
-    id_use_roles: { manifest_record: 1, provider: 1 },
+    id_use_roles: { section_entry: 1, provider: 1 },
     semantic_targets: {},
     reference_uses: {},
     aliases: [],
@@ -365,14 +365,14 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
       ...suffixed("matrix.fixture-policy-", "abc"),
       "matrix.fixture-semantic-owner",
     ],
-    "semantic:signal": suffixed("matrix.fixture-signal-", "abcdefghijk"),
+    "semantic:transition": suffixed("matrix.fixture-signal-", "abcdefghijk"),
     "semantic:work": [
       "matrix.fixture-raw-owner",
       ...suffixed("matrix.fixture-task-", "abcdefghij"),
     ],
   },
   id_use_roles: {
-    manifest_record: 53,
+    section_entry: 53,
     parent_record: 1,
     provider: 53,
     reference_source: 12,
@@ -465,7 +465,7 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
   payloads: {
     "semantic:control": ["testing.fixture-control-review"],
     "semantic:evidence": ["testing.fixture-evidence-gate"],
-    "semantic:signal": ["testing.fixture-signal-escalation"],
+    "semantic:transition": ["testing.fixture-signal-escalation"],
     "semantic:testing_cost": [
       "testing.fixture-all-fields-semantic",
       "testing.fixture-cost-historical",
@@ -490,7 +490,7 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     ],
   },
   id_use_roles: {
-    manifest_record: 15,
+    section_entry: 15,
     provider: 15,
     reference_source: 9,
     semantic_target: 10,
@@ -915,7 +915,7 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
       };
       // The nested transition forms (Packet 3A-2) make a wrong-kind target unrepresentable for
       // blocked/armed work, closeouts, and policies; the one remaining matrix citation surface is
-      // deferred work's standalone-signal transition list.
+      // deferred work's standalone-transition transition list.
       assert(
         mutateSemanticTarget("fixture-task-g\"].payload.transition_ids", (payload) => ({
           ...payload,

@@ -280,7 +280,7 @@ function assertDecodedDomainJoins(ctx: DecodeContext, doc: RoadmapDocumentV3): v
       if ("transition_ids" in payload) {
         for (const transitionId of payload.transition_ids ?? []) {
           const transition = payloads.get(transitionId);
-          if (transition?.kind === "signal" && transition.evaluation === "met") {
+          if (transition?.kind === "transition" && transition.evaluation === "met") {
             schemaFail(ctx, "E-SCHEMA-STATE", `record.${record.id}.transition_ids`, `work cannot park already-fired transition ${transitionId}`);
           }
         }

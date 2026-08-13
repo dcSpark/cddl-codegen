@@ -266,7 +266,7 @@ id = "testing.fixture-signal-escalation"
 title = "Watch escalation"
 
 [record.payload]
-kind = "signal"
+kind = "transition"
 detail_md = '''Watch escalation signal.
 '''
 transition_kind = "watch_escalation"

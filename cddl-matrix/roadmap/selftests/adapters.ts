@@ -20,7 +20,7 @@ import {
   type RoadmapIndexes,
   type SemanticPayloadProviderFact,
 } from "../indexes.ts";
-import { resolveSectionPlan } from "../manifest.ts";
+import { resolveSectionPlan } from "../section_plan.ts";
 import type {
   FixtureRelativePath,
   ReferenceId,
@@ -917,7 +917,7 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
       rendered: rendered.bytes,
     });
     // v3 has one render authority per record: every record's renderer runs exactly once, and the
-    // semantic-only ones (no manifest placement, no detail_md) are the ones that must yield zero
+    // semantic-only ones (no section placement, no detail_md) are the ones that must yield zero
     // bytes -- which validateCompletedChunks, not this count, is what proves.
     assert(rendered.semantic_calls === document.records.length, `${roadmap} a record did not reach the renderer exactly once`);
     const second = renderFixture(document, adapter, registryView(bundle, document, statusInputs));

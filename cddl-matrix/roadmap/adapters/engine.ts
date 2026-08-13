@@ -130,7 +130,7 @@ export function canonicalSemanticMarkdownFields(
 
 /**
  * Consume every decoded Markdown field exactly once. A record renders exactly its detail_md
- * bytes (the manifest resolver guarantees placed records have one and unplaced records do not);
+ * bytes (the section plan guarantees placed records have one and unplaced records do not);
  * every other Markdown field is ledgered as consumed nonrendering content.
  */
 export function renderCanonicalSemanticRecord(

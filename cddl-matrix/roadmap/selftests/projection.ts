@@ -34,7 +34,7 @@ import type {
   StatusCompatibilityInputsWire,
   StatusCompatibilityModeFixture,
 } from "../selftest.ts";
-import { resolveSectionPlan } from "../manifest.ts";
+import { resolveSectionPlan } from "../section_plan.ts";
 import { buildRoadmapIndexes } from "../indexes.ts";
 import {
   buildExpectedChunks,
@@ -61,7 +61,7 @@ import {
   renderMatrixStatusPayloads,
 } from "../matrix_status_facts.ts";
 import {
-  collectManifestSlotBindingFacts,
+  collectSectionSlotBindingFacts,
   createTestOutputRegistry,
   inspectStatusMarkerBinding,
   intervalsOverlap,
@@ -132,7 +132,7 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "render_projection_mutation_changes_only_drift",
   "outputs_interval_overlap",
   "outputs_interval_utf8_bytes",
-  "outputs_manifest_binding_owner",
+  "outputs_section_slot_binding_owner",
   "outputs_live_status_claims_all_twelve",
   "outputs_production_stage_inventories",
   "outputs_production_stage_required",
@@ -213,7 +213,7 @@ function asPartId(value: string): PartId { return value as PartId; }
 function asSlotId(value: string): SlotId { return value as SlotId; }
 function asRepoPath(value: string): RepoPath { return value as RepoPath; }
 
-function complete(document: RoadmapDocument): { readonly completed: CompletedRenderIr; readonly manifestIssues: readonly RoadmapIssue[] } {
+function complete(document: RoadmapDocument): { readonly completed: CompletedRenderIr; readonly planIssues: readonly RoadmapIssue[] } {
   const placement = resolveSectionPlan(document);
   const completed = buildExpectedChunks(document, placement.ops, {
     renderSemanticRecord: renderCanonicalSemanticRecord,
@@ -221,7 +221,7 @@ function complete(document: RoadmapDocument): { readonly completed: CompletedRen
       return { binding: slot.binding, bytes: bytes("G") };
     },
   });
-  return { completed, manifestIssues: placement.issues };
+  return { completed, planIssues: placement.issues };
 }
 
 function issueCodes(issues: readonly RoadmapIssue[]): Set<string> {
@@ -678,7 +678,7 @@ function testRenderCase(
     if (semanticChunk !== undefined ||
       completed.projected_field_segments.some((segment) => segment.owner_kind === "record") ||
       placement.ops.some((op) => op.node.kind === "record" && op.node.id === record.id)) {
-      fail("semantic-only record minted a manifest operation, chunk, or projected field segment");
+      fail("semantic-only record minted a section-plan operation, chunk, or projected field segment");
     }
     if (ledger === undefined || ledger.expected_fields.length !== 2 || ledger.consumed_fields.length !== 2) {
       fail("unplaced record did not explicitly consume every Markdown field");
@@ -962,7 +962,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
           slot_id: leftSlot,
           interval: {
             kind: "binding",
-            binding: { kind: "manifest_generated_slot", roadmap: "matrix", slot_id: leftSlot },
+            binding: { kind: "section_slot", roadmap: "matrix", slot_id: leftSlot },
             cardinality: { exact: 1 },
           },
         };
@@ -973,11 +973,11 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
         slot_id: rightSlot,
         interval: {
           kind: "binding",
-          binding: { kind: "manifest_generated_slot", roadmap: "matrix", slot_id: rightSlot },
+          binding: { kind: "section_slot", roadmap: "matrix", slot_id: rightSlot },
           cardinality: { exact: 1 },
         },
       };
-      const manifestSlots = [
+      const sectionSlots = [
         ...(leftClaim.kind === "slot" ? [{
           roadmap: "matrix" as const,
           path,
@@ -1003,7 +1003,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
         registry: closedOutputRegistry([leftClaim, rightClaim]),
         claims: [leftClaim, rightClaim],
         targets: new Map([[path, bytes("12345678")]]),
-        manifest_slots: manifestSlots,
+        section_slots: sectionSlots,
       });
       if (expected) requireIssue(resolution.issues, "E-OUTPUT-CLAIM");
       else if (resolution.issues.length !== 0 || resolution.resolved.length !== 2) {
@@ -1041,27 +1041,27 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     ) fail("whole-file claim did not resolve to exact [0, UTF-8 byte length)");
     return pass();
   }
-  if (id === "outputs_manifest_binding_owner") {
+  if (id === "outputs_section_slot_binding_owner") {
     const fixture = semanticFixture("exact");
     const completed = complete(fixture.document).completed;
-    const facts = collectManifestSlotBindingFacts(fixture.document, completed);
+    const facts = collectSectionSlotBindingFacts(fixture.document, completed);
     const slot = documentSlots(fixture.document.sections)[0]!.slot_id;
-    const manifestClaim: OutputClaim = {
+    const sectionClaim: OutputClaim = {
       kind: "slot",
       producer: "roadmap-projector",
       path: fixture.document.document.projection_path,
       slot_id: slot,
       interval: {
         kind: "binding",
-        binding: { kind: "manifest_generated_slot", roadmap: "matrix", slot_id: slot },
+        binding: { kind: "section_slot", roadmap: "matrix", slot_id: slot },
         cardinality: { exact: 1 },
       },
     };
     const resolved = resolveOutputClaims({
-      registry: closedOutputRegistry([manifestClaim]),
-      claims: [manifestClaim],
+      registry: closedOutputRegistry([sectionClaim]),
+      claims: [sectionClaim],
       targets: new Map(),
-      manifest_slots: facts,
+      section_slots: facts,
     });
     const resolution = completed.slot_resolutions[0]!;
     const sectionChunkIndex = completed.chunks.findIndex((chunk) =>
@@ -1076,7 +1076,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       resolved.resolved[0].interval.end_byte !== slotEnd ||
       resolved.resolved[0].payload_interval.start_byte !== slotStart ||
       resolved.resolved[0].payload_interval.end_byte !== slotEnd
-    ) fail("manifest slot owner did not resolve its exact completed chunk without a projection read");
+    ) fail("section-slot owner did not resolve its exact completed chunk without a projection read");
     const mismatchedCompleted: CompletedRenderIr = {
       ...completed,
       slot_resolutions: completed.slot_resolutions.map((item) => ({
@@ -1087,10 +1087,10 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       })),
     };
     requireIssue(resolveOutputClaims({
-      registry: closedOutputRegistry([manifestClaim]),
-      claims: [manifestClaim],
+      registry: closedOutputRegistry([sectionClaim]),
+      claims: [sectionClaim],
       targets: new Map(),
-      manifest_slots: collectManifestSlotBindingFacts(fixture.document, mismatchedCompleted),
+      section_slots: collectSectionSlotBindingFacts(fixture.document, mismatchedCompleted),
     }).issues, "E-OUTPUT-SLOT");
     return pass();
   }
@@ -1235,7 +1235,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       ...live,
       interval: {
         kind: "binding",
-        binding: { kind: "manifest_generated_slot", roadmap: "matrix", slot_id: live.slot_id },
+        binding: { kind: "section_slot", roadmap: "matrix", slot_id: live.slot_id },
         cardinality: { exact: 1 },
       },
     };
@@ -1299,7 +1299,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     return pass("negative");
   }
   if (id === "outputs_overlapping_slots") {
-    const manifestClaims = ["one", "two"].map((value): OutputClaim => {
+    const sectionClaims = ["one", "two"].map((value): OutputClaim => {
       const slotId = asSlotId(value);
       return {
         kind: "slot",
@@ -1308,17 +1308,17 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
         slot_id: slotId,
         interval: {
           kind: "binding",
-          binding: { kind: "manifest_generated_slot", roadmap: "matrix", slot_id: slotId },
+          binding: { kind: "section_slot", roadmap: "matrix", slot_id: slotId },
           cardinality: { exact: 1 },
         },
       };
     });
     const resolved = resolveOutputClaims({
-      registry: closedOutputRegistry(manifestClaims),
-      claims: manifestClaims,
+      registry: closedOutputRegistry(sectionClaims),
+      claims: sectionClaims,
       targets: new Map(),
-      manifest_slots: manifestClaims.map((value, index) => {
-        if (value.kind !== "slot") return fail("unexpected whole-file manifest claim");
+      section_slots: sectionClaims.map((value, index) => {
+        if (value.kind !== "slot") return fail("unexpected whole-file section claim");
         const interval = index === 0
           ? { start_byte: 0, end_byte: 4 }
           : { start_byte: 2, end_byte: 6 };
@@ -1384,41 +1384,41 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     const fixture = semanticFixture("exact");
     const completed = complete(fixture.document).completed;
     const slot = documentSlots(fixture.document.sections)[0]!.slot_id;
-    const manifestClaim: OutputClaim = {
+    const sectionClaim: OutputClaim = {
       kind: "slot",
       producer: "roadmap-projector",
       path: fixture.document.document.projection_path,
       slot_id: slot,
       interval: {
         kind: "binding",
-        binding: { kind: "manifest_generated_slot", roadmap: "matrix", slot_id: slot },
+        binding: { kind: "section_slot", roadmap: "matrix", slot_id: slot },
         cardinality: { exact: 1 },
       },
     };
-    const manifestRegistry = closedOutputRegistry([manifestClaim]);
+    const sectionRegistry = closedOutputRegistry([sectionClaim]);
     const declaringSection = fixture.document.sections[0]!;
     const declaration = (declaringSection.slots ?? [])[0]!;
     const withSection = (section: RoadmapDocument["sections"][number]): RoadmapDocument => ({
       ...fixture.document,
       sections: [section],
     });
-    const manifestCases: readonly [string, RoadmapDocument][] = [
-      ["manifest_zero", withSection({ ...declaringSection, slots: undefined })],
-      ["manifest_two_declarations", {
+    const slotCases: readonly [string, RoadmapDocument][] = [
+      ["section_slot_zero", withSection({ ...declaringSection, slots: undefined })],
+      ["section_slot_two_declarations", {
         ...fixture.document,
         sections: [declaringSection, { ...declaringSection, section_id: asSectionId("second") }],
       }],
-      ["manifest_two_placements", withSection({
+      ["section_slot_two_placements", withSection({
         ...declaringSection,
         body_md: bytes(`H${placeholderFor(declaration.slot_id)}${placeholderFor(declaration.slot_id)}F`),
       })],
     ] as const;
-    for (const [label, mutatedDocument] of manifestCases) {
+    for (const [label, mutatedDocument] of slotCases) {
       requireIssue(resolveOutputClaims({
-        registry: manifestRegistry,
-        claims: [manifestClaim],
+        registry: sectionRegistry,
+        claims: [sectionClaim],
         targets: new Map(),
-        manifest_slots: collectManifestSlotBindingFacts(mutatedDocument, completed),
+        section_slots: collectSectionSlotBindingFacts(mutatedDocument, completed),
       }).issues, "E-OUTPUT-SLOT");
       executed.push(label);
     }
@@ -1851,22 +1851,22 @@ interface ProjectionCaseSpec {
  * select.
  */
 const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: ProjectionCaseSpec } = {
-  section_entry_duplicate_record: { category: "manifest-render", run: testSectionPlanCase },
-  section_entry_missing_part: { category: "manifest-render", run: testSectionPlanCase },
-  section_entry_orphan_record: { category: "manifest-render", run: testSectionPlanCase },
-  section_entry_unknown_id: { category: "manifest-render", run: testSectionPlanCase },
-  section_entry_non_rendering_record: { category: "manifest-render", run: testSectionPlanCase },
-  section_record_table_order_irrelevant: { category: "manifest-render", run: testSectionPlanCase },
-  section_true_sequence_preserved: { category: "manifest-render", run: testSectionPlanCase },
-  section_entry_duplicate_not_tiebroken: { category: "manifest-render", run: testSectionPlanCase },
-  section_semantic_only_is_not_placed: { category: "manifest-render", run: testSectionPlanCase },
-  span_utf8_byte_offsets: { category: "manifest-render", run: testSpanCase },
-  span_mid_scalar_boundary: { category: "manifest-render", run: testSpanCase },
-  render_zero_chunks_rejected: { category: "manifest-render", run: testRenderCase },
-  render_no_implicit_lf: { category: "manifest-render", run: testRenderCase },
-  render_semantic_consumption_once: { category: "manifest-render", run: testRenderCase },
-  render_semantic_only_zero_byte_consumption: { category: "manifest-render", run: testRenderCase },
-  render_prior_projection_irrelevant: { category: "manifest-render", run: testRenderCase },
+  section_entry_duplicate_record: { category: "section-render", run: testSectionPlanCase },
+  section_entry_missing_part: { category: "section-render", run: testSectionPlanCase },
+  section_entry_orphan_record: { category: "section-render", run: testSectionPlanCase },
+  section_entry_unknown_id: { category: "section-render", run: testSectionPlanCase },
+  section_entry_non_rendering_record: { category: "section-render", run: testSectionPlanCase },
+  section_record_table_order_irrelevant: { category: "section-render", run: testSectionPlanCase },
+  section_true_sequence_preserved: { category: "section-render", run: testSectionPlanCase },
+  section_entry_duplicate_not_tiebroken: { category: "section-render", run: testSectionPlanCase },
+  section_semantic_only_is_not_placed: { category: "section-render", run: testSectionPlanCase },
+  span_utf8_byte_offsets: { category: "section-render", run: testSpanCase },
+  span_mid_scalar_boundary: { category: "section-render", run: testSpanCase },
+  render_zero_chunks_rejected: { category: "section-render", run: testRenderCase },
+  render_no_implicit_lf: { category: "section-render", run: testRenderCase },
+  render_semantic_consumption_once: { category: "section-render", run: testRenderCase },
+  render_semantic_only_zero_byte_consumption: { category: "section-render", run: testRenderCase },
+  render_prior_projection_irrelevant: { category: "section-render", run: testRenderCase },
   outputs_duplicate_whole: { category: "output-ownership", run: testOutputCase },
   outputs_whole_vs_slot: { category: "output-ownership", run: testOutputCase },
   outputs_duplicate_slot: { category: "output-ownership", run: testOutputCase },
@@ -1890,15 +1890,15 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   lexical_not_locale_sort: { category: "determinism-purity", run: testDeterminismCase },
   two_clean_renders_equal: { category: "determinism-purity", run: testRenderCase },
   no_clock_without_as_of: { category: "determinism-purity", run: testDeterminismCase },
-  render_chunks_precede_consumption_validation: { category: "manifest-render", run: testRenderCase },
-  render_slots_resolved_before_slot_validation: { category: "manifest-render", run: testRenderCase },
-  render_undeclared_slot_placeholder_rejected: { category: "manifest-render", run: testRenderCase },
-  render_invalid_chunk_skips_projection_read: { category: "manifest-render", run: testRenderCase },
-  render_committed_projection_read_last: { category: "manifest-render", run: testRenderCase },
-  render_projection_mutation_changes_only_drift: { category: "manifest-render", run: testRenderCase },
+  render_chunks_precede_consumption_validation: { category: "section-render", run: testRenderCase },
+  render_slots_resolved_before_slot_validation: { category: "section-render", run: testRenderCase },
+  render_undeclared_slot_placeholder_rejected: { category: "section-render", run: testRenderCase },
+  render_invalid_chunk_skips_projection_read: { category: "section-render", run: testRenderCase },
+  render_committed_projection_read_last: { category: "section-render", run: testRenderCase },
+  render_projection_mutation_changes_only_drift: { category: "section-render", run: testRenderCase },
   outputs_interval_overlap: { category: "output-ownership", run: testOutputCase },
   outputs_interval_utf8_bytes: { category: "output-ownership", run: testOutputCase },
-  outputs_manifest_binding_owner: { category: "output-ownership", run: testOutputCase },
+  outputs_section_slot_binding_owner: { category: "output-ownership", run: testOutputCase },
   outputs_live_status_claims_all_twelve: { category: "output-ownership", run: testOutputCase },
   outputs_production_stage_inventories: { category: "output-ownership", run: testOutputCase },
   outputs_production_stage_required: { category: "output-ownership", run: testOutputCase },
@@ -1909,8 +1909,8 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   status_projector_before_after_message_parity: { category: "status-compat", run: testStatusCase, fixture: true },
   status_projector_preflight_no_partial_write: { category: "status-compat", run: testStatusCase, fixture: true },
   status_projector_after_matrix_handoff: { category: "status-compat", run: testStatusCase, fixture: true },
-  span_expected_byte_view_cross_chunk: { category: "manifest-render", run: testSpanCase },
-  span_expected_byte_view_incremental_hash: { category: "manifest-render", run: testSpanCase },
+  span_expected_byte_view_cross_chunk: { category: "section-render", run: testSpanCase },
+  span_expected_byte_view_incremental_hash: { category: "section-render", run: testSpanCase },
 };
 
 export const PROJECTION_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(

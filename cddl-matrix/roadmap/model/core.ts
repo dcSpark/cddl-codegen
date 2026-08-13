@@ -20,7 +20,7 @@ export type FixtureRelativePath = Brand<string, "FixtureRelativePath">;
 export type QueryView =
   | "summary"
   | "references"
-  | "signals"
+  | "transitions"
   | "actionables"
   | "decisions"
   | "watches"
@@ -117,14 +117,14 @@ export interface BlockedWork extends WorkBase {
 export interface ArmedWork extends WorkBase {
   work_state: "armed";
   control_ids: RoadmapId[];
-  promotion_trigger: NestedTriggerSignal;
+  promotion_trigger: NestedTransition;
 }
 
-/** Deferred work carries a nested reopening signal, a standalone-signal citation, or both. */
+/** Deferred work carries a nested reopening signal, a standalone-transition citation, or both. */
 export interface DeferredWork extends WorkBase {
   work_state: "deferred";
   transition_ids?: RoadmapId[];
-  reopening_signal?: NestedTriggerSignal;
+  reopening_signal?: NestedTransition;
 }
 
 /** Waiting-external work carries exactly one of the two admissible transition contracts. */
@@ -166,7 +166,7 @@ export interface HeldDecision extends SemanticPayloadBase {
   decision_state: "held";
   rationale_md: Uint8Array;
   permanence: "reopenable";
-  reopening_signal: NestedTriggerSignal;
+  reopening_signal: NestedTransition;
 }
 
 export interface DecidedDecision extends SemanticPayloadBase {
@@ -175,12 +175,12 @@ export interface DecidedDecision extends SemanticPayloadBase {
   rationale_md: Uint8Array;
   authority_reference_id: ReferenceId;
   permanence: "permanent" | "reopenable";
-  reopening_signal?: NestedTriggerSignal;
+  reopening_signal?: NestedTransition;
 }
 
 export type DecisionPayload = PendingDecision | HeldDecision | DecidedDecision;
 
-export type SignalEvaluation = "met" | "unmet" | "unknown" | "stale";
+export type TransitionEvaluation = "met" | "unmet" | "unknown" | "stale";
 export type Comparator = "lt" | "le" | "eq" | "ge" | "gt";
 
 export interface QuantitativePredicate {
@@ -207,10 +207,10 @@ export interface ManualPredicate {
   evidence_ids?: RoadmapId[];
 }
 
-export type SignalPredicate = QuantitativePredicate | EventPredicate | ManualPredicate;
+export type TransitionPredicate = QuantitativePredicate | EventPredicate | ManualPredicate;
 
-interface PredicateSignalBase extends SemanticPayloadBase {
-  kind: "signal";
+interface PredicateTransitionBase extends SemanticPayloadBase {
+  kind: "transition";
   observer: string;
   dimension: string;
   /**
@@ -221,51 +221,51 @@ interface PredicateSignalBase extends SemanticPayloadBase {
    */
   observable?: string;
   action_on_fire_md: Uint8Array;
-  evaluation: SignalEvaluation;
-  predicate: SignalPredicate;
+  evaluation: TransitionEvaluation;
+  predicate: TransitionPredicate;
 }
 
-export interface PromotionTrigger extends PredicateSignalBase {
+export interface PromotionTrigger extends PredicateTransitionBase {
   transition_kind: "promotion_trigger";
 }
 
-export interface ReopeningSignal extends PredicateSignalBase {
+export interface ReopeningSignal extends PredicateTransitionBase {
   transition_kind: "reopening_signal";
 }
 
 export interface UnblockPredicate extends SemanticPayloadBase {
-  kind: "signal";
+  kind: "transition";
   transition_kind: "unblock_predicate";
   owner_reference_id: ReferenceId;
   event_md: Uint8Array;
   check_procedure_md: Uint8Array;
   due_action_md: Uint8Array;
-  evaluation: SignalEvaluation;
+  evaluation: TransitionEvaluation;
 }
 
 export interface WatchEscalation extends SemanticPayloadBase {
-  kind: "signal";
+  kind: "transition";
   transition_kind: "watch_escalation";
   failure_signature_md: Uint8Array;
   capture_procedure_md: Uint8Array;
   response_md: Uint8Array;
   escalation_action_md: Uint8Array;
   retirement_semantics_md: Uint8Array;
-  evaluation: SignalEvaluation;
+  evaluation: TransitionEvaluation;
 }
 
 export interface RetirementPredicate extends SemanticPayloadBase {
-  kind: "signal";
+  kind: "transition";
   transition_kind: "retirement_predicate";
   external_owner_reference_id: ReferenceId;
   external_predicate_md: Uint8Array;
   verification_md: Uint8Array;
   due_action_md: Uint8Array;
-  evaluation: SignalEvaluation;
+  evaluation: TransitionEvaluation;
 }
 
-export interface CadenceSignal extends SemanticPayloadBase {
-  kind: "signal";
+export interface CadenceTransition extends SemanticPayloadBase {
+  kind: "transition";
   transition_kind: "cadence";
   owner_reference_id: ReferenceId;
   event_source: string;
@@ -275,27 +275,27 @@ export interface CadenceSignal extends SemanticPayloadBase {
   last_completion_reference_id?: ReferenceId;
   due_on?: CivilDate;
   as_of?: CivilDate;
-  evaluation: SignalEvaluation;
+  evaluation: TransitionEvaluation;
 }
 
-export type SignalPayload =
+export type TransitionPayload =
   | PromotionTrigger
   | ReopeningSignal
   | UnblockPredicate
   | WatchEscalation
   | RetirementPredicate
-  | CadenceSignal;
+  | CadenceTransition;
 
 /**
- * Nested transition tables (Packet 3A-2): the standalone signal arms' typed contracts packaged as
+ * Nested transition tables (Packet 3A-2): the standalone transition arms' typed contracts packaged as
  * tables on the owning record — the field name supplies `transition_kind`, the owner supplies the
  * identity, so those and `detail_md` have no nested representation.
  */
-export type NestedTriggerSignal = Omit<PromotionTrigger, "kind" | "transition_kind" | "detail_md">;
+export type NestedTransition = Omit<PromotionTrigger, "kind" | "transition_kind" | "detail_md">;
 export type NestedUnblockPredicate = Omit<UnblockPredicate, "kind" | "transition_kind" | "detail_md">;
 export type NestedWatchEscalation = Omit<WatchEscalation, "kind" | "transition_kind" | "detail_md">;
 export type NestedRetirementPredicate = Omit<RetirementPredicate, "kind" | "transition_kind" | "detail_md">;
-export type NestedCadenceSignal = Omit<CadenceSignal, "kind" | "transition_kind" | "detail_md">;
+export type NestedCadenceTransition = Omit<CadenceTransition, "kind" | "transition_kind" | "detail_md">;
 
 export type EvidenceKind =
   | "regression_pin"
@@ -365,6 +365,6 @@ export interface ControlPayload extends SemanticPayloadBase {
 export type SharedSemanticPayload =
   | WorkPayload
   | DecisionPayload
-  | SignalPayload
+  | TransitionPayload
   | EvidencePayload
   | ControlPayload;

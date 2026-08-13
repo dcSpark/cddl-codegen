@@ -7,7 +7,7 @@ import type {
   AsOfDate,
   EvidencePayload,
   QueryView,
-  SignalPayload,
+  TransitionPayload,
 } from "./model/core.ts";
 import type { FinalizedRoadmap } from "./pipeline.ts";
 import { armQueryEntries } from "./payload_descriptors.ts";
@@ -33,10 +33,10 @@ export function stableJsonValue(value: unknown): unknown {
 
 /** Derive only date-bearing query labels; authored qualitative/manual states stay authored. */
 function evaluateTemporalPayload(
-  payload: SignalPayload | EvidencePayload,
+  payload: TransitionPayload | EvidencePayload,
   asOf: AsOfDate | undefined,
 ): string {
-  if (payload.kind === "signal") {
+  if (payload.kind === "transition") {
     if (payload.transition_kind !== "cadence") return payload.evaluation;
     if (payload.due_on === undefined) return "unknown";
     if (asOf === undefined) return "unknown_no_as_of";
@@ -80,9 +80,9 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
         roadmap: item.document.document.roadmap,
         references: item.document.references,
       })) };
-    case "signals": {
+    case "transitions": {
       const rows = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {
-        if (payload.kind === "signal") {
+        if (payload.kind === "transition") {
           // The row's shape is the arm's own field list (descriptor-derived); evaluation is the
           // one computed value, so it and the discriminant stay explicit here.
           return [{ roadmap, id, transition_kind: payload.transition_kind,
@@ -103,7 +103,7 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
         }
         return [];
       });
-      return { evaluation_as_of, signals: groupQueryRows(rows, (row) => String(row.transition_kind)) };
+      return { evaluation_as_of, transitions: groupQueryRows(rows, (row) => String(row.transition_kind)) };
     }
     case "actionables": {
       const rows = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] =>
@@ -137,7 +137,7 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
           : [{ roadmap, id, ...Object.fromEntries(armQueryEntries(payload, ["detail_md"])) }]);
       const ready = rows.filter((row) => row.work_state === "ready");
       const armed = rows.filter((row) => row.work_state === "armed");
-      const signalsById = new Map(payloadRows.flatMap(({ id, payload }) => payload.kind === "signal"
+      const transitionsById = new Map(payloadRows.flatMap(({ id, payload }) => payload.kind === "transition"
         ? [[String(id), payload] as const] : []));
       const relations = prepared.flatMap((item) => item.document.relations);
       const blockedOrOwned = rows.filter((row) => ["blocked", "waiting_external", "delegated"].includes(String(row.work_state)))
@@ -147,7 +147,7 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
               .map((relation) => relation.target)
             : [];
           // The unblock predicate now lives nested on the owner (Packet 3A-2); the exact list is
-          // its one nested entry rather than a citation join over standalone signal records.
+          // its one nested entry rather than a citation join over standalone transition records.
           const nested = "unblock_predicate" in row
             ? row.unblock_predicate as { evaluation: string; event_md: Uint8Array; check_procedure_md: Uint8Array; due_action_md: Uint8Array; owner_reference_id: string }
             : undefined;

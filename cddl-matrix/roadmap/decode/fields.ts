@@ -7,9 +7,9 @@
  */
 import {
   DISCRIMINATOR_ROWS,
-  NESTED_TRIGGER_PRESENCE_ROW,
+  NESTED_TRANSITION_PRESENCE_ROW,
   PREDICATE_KINDS,
-  SIGNAL_PREDICATE_GROUP,
+  TRANSITION_PREDICATE_GROUP,
   armOfGroupValue,
   fieldProperty,
   type NestedGroup,
@@ -82,8 +82,8 @@ function decodeScalar(
     case "table": {
       if (spec.group.arms.length > 1) {
         // The only multi-arm nested group is the trigger contract, discriminated by its own
-        // nested predicate (mirroring the standalone signal's predicate-first flow).
-        return decodeNestedTrigger(ctx, value, fieldPath, spec.group);
+        // nested predicate (mirroring the standalone transition's predicate-first flow).
+        return decodeNestedTransition(ctx, value, fieldPath, spec.group);
       }
       return decodeArmFields(ctx, value, fieldPath, singleArm(spec.group));
     }
@@ -98,21 +98,21 @@ function decodeScalar(
   }
 }
 
-/** Decode a signal predicate (shared by standalone signal drivers and nested trigger tables). */
+/** Decode a transition predicate (shared by standalone transition drivers and nested trigger tables). */
 export function decodePredicate(ctx: DecodeContext, raw: unknown, path: string): Record<string, unknown> {
-  const pre = expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.signal_predicate);
+  const pre = expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.transition_predicate);
   const kind = expectEnum(ctx, requiredValue(pre, "predicate_kind"), PREDICATE_KINDS, p(path, "predicate_kind"));
-  const arm = armOfGroupValue(SIGNAL_PREDICATE_GROUP, { predicate_kind: kind });
+  const arm = armOfGroupValue(TRANSITION_PREDICATE_GROUP, { predicate_kind: kind });
   return decodeArmFields(ctx, raw, path, arm, { predicate_kind: kind });
 }
 
-function decodeNestedTrigger(
+function decodeNestedTransition(
   ctx: DecodeContext,
   raw: unknown,
   path: string,
   group: NestedGroup,
 ): Record<string, unknown> {
-  const pre = expectExactTable(ctx, raw, path, NESTED_TRIGGER_PRESENCE_ROW);
+  const pre = expectExactTable(ctx, raw, path, NESTED_TRANSITION_PRESENCE_ROW);
   const predicate = decodePredicate(ctx, requiredValue(pre, "predicate"), p(path, "predicate"));
   const arm = armOfGroupValue(group, { predicate });
   return decodeArmFields(ctx, raw, path, arm, { predicate });
@@ -120,7 +120,7 @@ function decodeNestedTrigger(
 
 function singleArm(group: NestedGroup): PayloadArm {
   if (group.arms.length !== 1) {
-    // Multi-arm groups (the signal predicate) are discriminated by their driver, which supplies
+    // Multi-arm groups (the transition predicate) are discriminated by their driver, which supplies
     // the decoded value through `presupplied`; reaching here is a descriptor-table defect.
     throw new Error("nested descriptor group requires driver-side discrimination");
   }

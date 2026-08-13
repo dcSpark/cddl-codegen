@@ -17,7 +17,7 @@ export type {
   ResolvedOutputClaim,
 } from "./adapters/types.ts";
 
-export interface ManifestSlotBindingFact {
+export interface SectionSlotBindingFact {
   readonly roadmap: RoadmapName;
   readonly path: RepoPath;
   readonly slot_id: SlotId;
@@ -31,7 +31,7 @@ export interface OutputResolutionInput {
   readonly registry: ClosedOutputRegistry;
   readonly claims: readonly OutputClaim[];
   readonly targets: ReadonlyMap<RepoPath, Uint8Array>;
-  readonly manifest_slots?: readonly ManifestSlotBindingFact[];
+  readonly section_slots?: readonly SectionSlotBindingFact[];
   readonly observer?: { claimResolved(claim: ResolvedOutputClaim): void };
 }
 
@@ -133,7 +133,7 @@ function snapshotClaim(claim: OutputClaim): OutputClaim {
       marker_id: claim.interval.binding.marker_id,
     })
     : Object.freeze({
-      kind: "manifest_generated_slot" as const,
+      kind: "section_slot" as const,
       roadmap: claim.interval.binding.roadmap,
       slot_id: claim.interval.binding.slot_id,
     });
@@ -432,11 +432,11 @@ export function intervalsOverlap(left: ByteInterval, right: ByteInterval): boole
   return Math.max(left.start_byte, right.start_byte) < Math.min(left.end_byte, right.end_byte);
 }
 
-export function collectManifestSlotBindingFacts(
+export function collectSectionSlotBindingFacts(
   document: RoadmapDocument,
   completed: CompletedRenderIr,
-): readonly ManifestSlotBindingFact[] {
-  const facts: ManifestSlotBindingFact[] = [];
+): readonly SectionSlotBindingFact[] {
+  const facts: SectionSlotBindingFact[] = [];
   const declared = documentSlots(document.sections);
   for (const slotId of new Set(declared.map((slot) => slot.slot_id))) {
     const declarations = declared.filter((slot) => slot.slot_id === slotId);
@@ -529,11 +529,11 @@ export function validateOutputClaimInventory(claims: readonly OutputClaim[]): re
 
 function resolveSectionPlanClaim(
   claim: Extract<OutputClaim, { kind: "slot" }>,
-  facts: readonly ManifestSlotBindingFact[],
+  facts: readonly SectionSlotBindingFact[],
 ): ResolvedOutputClaim | RoadmapIssue {
   const binding = claim.interval.binding;
-  if (binding.kind !== "manifest_generated_slot") {
-    throw new Error("internal: status binding passed to manifest resolver");
+  if (binding.kind !== "section_slot") {
+    throw new Error("internal: status binding passed to the section-slot resolver");
   }
   const matches = facts.filter((fact) =>
     fact.roadmap === binding.roadmap && fact.path === claim.path && fact.slot_id === binding.slot_id
@@ -546,7 +546,7 @@ function resolveSectionPlanClaim(
       "E-OUTPUT-SLOT",
       claim.path,
       `slot[${JSON.stringify(claim.slot_id)}]`,
-      "manifest slot must have exactly one declaration, placement, and resolved interval",
+      "section slot must have exactly one declaration, placement, and resolved interval",
     );
   }
   const interval = matches[0].interval;
@@ -561,7 +561,7 @@ function resolveSectionPlanClaim(
       "E-OUTPUT-SLOT",
       claim.path,
       `slot[${JSON.stringify(claim.slot_id)}]`,
-      "manifest slot intervals are invalid or empty",
+      "section slot intervals are invalid or empty",
     );
   }
   return Object.freeze({
@@ -592,8 +592,8 @@ export function resolveOutputClaims(input: OutputResolutionInput): OutputResolut
   );
   const resolved: ResolvedOutputClaim[] = [];
   for (const [index, claim] of resolutionClaims.entries()) {
-    if (claim.kind === "slot" && claim.interval.binding.kind === "manifest_generated_slot") {
-      const result = resolveSectionPlanClaim(claim, input.manifest_slots ?? []);
+    if (claim.kind === "slot" && claim.interval.binding.kind === "section_slot") {
+      const result = resolveSectionPlanClaim(claim, input.section_slots ?? []);
       if ("code" in result) issues.push(result);
       else {
         resolved.push(result);

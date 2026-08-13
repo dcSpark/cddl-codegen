@@ -26,7 +26,7 @@ export function validateTestingPayloadFact(
     payload.kind !== "testing_cost" && payload.kind !== "testing_system_admission"
   ) return;
   if (payload.kind === "testing_operational_watch") {
-    // The nested watch_escalation form is structural; only the standalone-signal citation form
+    // The nested watch_escalation form is structural; only the standalone-transition citation form
     // still needs its target subtype validated.
     if (payload.escalation_transition_id !== undefined) {
       requirePayloadKind(
@@ -35,8 +35,8 @@ export function validateTestingPayloadFact(
         indexes,
         payload.escalation_transition_id,
         "escalation_transition_id",
-        (target) => target.kind === "signal" && target.transition_kind === "watch_escalation",
-        "a watch-escalation signal",
+        (target) => target.kind === "transition" && target.transition_kind === "watch_escalation",
+        "a watch-escalation transition",
         out,
       );
     }

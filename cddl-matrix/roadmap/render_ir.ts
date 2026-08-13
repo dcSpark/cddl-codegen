@@ -1,6 +1,6 @@
 import type { FieldConsumer, GeneratedSlotResolution } from "./adapters/types.ts";
 import type { RoadmapIssue } from "./errors.ts";
-import type { RenderOp } from "./manifest.ts";
+import type { RenderOp } from "./section_plan.ts";
 import type {
   GeneratedSlot,
   RenderNodeKind,
@@ -749,7 +749,7 @@ export function buildExpectedChunks(
   }
 
   // Unplaced records are first-class semantic owners, not document render nodes. Validate their
-  // renderer and complete field consumption without minting a zero-byte manifest chunk.
+  // renderer and complete field consumption without minting a zero-byte section-plan chunk.
   const placedRecordIds = new Set(ops.flatMap((op) => op.node.kind === "record" ? [op.node.id] : []));
   for (const record of document.records) {
     if (placedRecordIds.has(record.id)) continue;
@@ -843,7 +843,7 @@ export function validateCompletedChunks(
       document,
       "E-RENDER-AUTHORITY",
       "render.chunks",
-      `render produced ${completed.chunks.length} chunks for ${ops.length} manifest operations`,
+      `render produced ${completed.chunks.length} chunks for ${ops.length} section-plan operations`,
     ));
   }
   const expectedFieldLedgers = new Map<string, readonly string[]>();
@@ -879,7 +879,7 @@ export function validateCompletedChunks(
         document,
         "E-FIELD-CONSUMPTION",
         `${ledger.owner_kind}[${JSON.stringify(ledger.owner_id)}]`,
-        "field ledger has no semantic manifest owner",
+        "field ledger has no semantic section-plan owner",
       ));
     } else if (!stringArraysEqual(ledger.expected_fields, expectedFields)) {
       issues.push(issue(
@@ -912,7 +912,7 @@ export function validateCompletedChunks(
         document,
         "E-FIELD-CONSUMPTION",
         `projected_field_segment[${JSON.stringify(segment.owner_id)},${JSON.stringify(segment.logical_path)}]`,
-        `projected field segment has ${owners.length} semantic manifest owners, expected exactly one`,
+        `projected field segment has ${owners.length} semantic section-plan owners, expected exactly one`,
       ));
     }
   }
@@ -994,7 +994,7 @@ export function validateCompletedChunks(
         document,
         "E-OUTPUT-SLOT",
         `slot_resolutions[${JSON.stringify(item.slot.slot_id)}]`,
-        "slot-resolution ledger has no exact manifest slot owner",
+        "slot-resolution ledger has no exact section-slot owner",
       ));
     }
   }
@@ -1014,13 +1014,13 @@ export function validateCompletedChunks(
   for (const [chunkIndex, chunk] of completed.chunks.entries()) {
     const logicalPath = `render.chunks[${chunkIndex}]`;
     if (seenIndexes.has(chunk.plan_index)) {
-      issues.push(issue(document, "E-RENDER-AUTHORITY", logicalPath, "manifest index is duplicated"));
+      issues.push(issue(document, "E-RENDER-AUTHORITY", logicalPath, "section-plan index is duplicated"));
       continue;
     }
     seenIndexes.add(chunk.plan_index);
     const op = ops[chunkIndex];
     if (op === undefined) {
-      issues.push(issue(document, "E-RENDER-AUTHORITY", logicalPath, "chunk has no positional manifest operation"));
+      issues.push(issue(document, "E-RENDER-AUTHORITY", logicalPath, "chunk has no positional section-plan operation"));
       continue;
     }
     if (
@@ -1031,7 +1031,7 @@ export function validateCompletedChunks(
         document,
         "E-RENDER-AUTHORITY",
         logicalPath,
-        "chunk does not positionally match its manifest operation and exact owner",
+        "chunk does not positionally match its section-plan operation and exact owner",
       ));
     }
     if (op.node.kind === "record") {

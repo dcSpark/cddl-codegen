@@ -16,7 +16,7 @@
  *  - Discriminator pre-tables derive as: required = the discriminant chain; optional = the union
  *    of every arm's fields AND forbidden keys minus required (so a forbidden key still reaches the
  *    arm row, preserving E-SCHEMA-FORBIDDEN-KEY over E-SCHEMA-UNKNOWN-KEY).
- *  - Nested tables (signal predicates, evidence scope, closeout actions/branches, watch capture
+ *  - Nested tables (transition predicates, evidence scope, closeout actions/branches, watch capture
  *    steps) are GROUPS with their own arms; a field of kind `table`/`array_table` points at one.
  */
 import type { ExactSchemaRow } from "./decode/primitives.ts";
@@ -124,7 +124,7 @@ export const DECISION_STATES = ["pending", "held", "decided"] as const;
 export const PERMANENCE = ["permanent", "reopenable"] as const;
 export const TRANSITION_KINDS = ["promotion_trigger", "reopening_signal", "unblock_predicate", "watch_escalation", "retirement_predicate", "cadence"] as const;
 export const PREDICATE_KINDS = ["quantitative", "event", "manual"] as const;
-export const SHARED_SEMANTIC_KINDS = ["work", "decision", "signal", "evidence", "control"] as const;
+export const SHARED_SEMANTIC_KINDS = ["work", "decision", "transition", "evidence", "control"] as const;
 export const CLOSEOUT_STATES = ["waiting", "due", "blocked"] as const;
 export const POLICY_KINDS = ["maintenance_protocol", "boundary"] as const;
 export const MATRIX_SEMANTIC_KINDS = ["matrix_external_closeout", "matrix_policy"] as const;
@@ -266,9 +266,9 @@ const LIVE_CONTROL_TARGET: RoadmapTargetExpectation = { payload_kind: "control",
 const REGRESSION_GAP_TARGET: RoadmapTargetExpectation = { payload_kind: "work", work_kind: "regression_gap" };
 const ADMISSION_TARGET: RoadmapTargetExpectation = { payload_kind: "testing_system_admission" };
 const INCIDENT_TARGET: RoadmapTargetExpectation = { payload_kind: "testing_incident" };
-const signalTarget = (
+const transitionTarget = (
   ...kinds: NonNullable<RoadmapTargetExpectation["transition_kinds"]>[number][]
-): RoadmapTargetExpectation => ({ payload_kind: "signal", transition_kinds: kinds });
+): RoadmapTargetExpectation => ({ payload_kind: "transition", transition_kinds: kinds });
 
 const workCommon = (): PayloadField[] => [
   kindField(),
@@ -285,7 +285,7 @@ const workTail = (): PayloadField[] => [
   idSet("admission_ids", ADMISSION_TARGET, "optional"),
 ];
 
-export const SIGNAL_PREDICATE_GROUP: NestedGroup = Object.freeze({
+export const TRANSITION_PREDICATE_GROUP: NestedGroup = Object.freeze({
   arms: [
     arm("quantitative predicate", [["predicate_kind", ["quantitative"]]], [
       en("predicate_kind", PREDICATE_KINDS),
@@ -314,18 +314,18 @@ export const SIGNAL_PREDICATE_GROUP: NestedGroup = Object.freeze({
 });
 
 // ---------------------------------------------------------------------------------------------
-// Nested signal groups (Packet 3A-2): the six transition kinds' typed contracts, packaged as
+// Nested transition groups (Packet 3A-2): the six transition kinds' typed contracts, packaged as
 // nested tables on the record that owns them.  The nested field's NAME is the transition kind, so
 // `kind`/`transition_kind`/`detail_md` have no nested representation; everything else is the same
-// arm contract the standalone signal records keep.
+// arm contract the standalone transition records keep.
 
-const NESTED_TRIGGER_GROUP_ARMS: readonly PayloadArm[] = [
+const NESTED_TRANSITION_GROUP_ARMS: readonly PayloadArm[] = [
   arm("nested event-condition trigger", [["predicate.predicate_kind", ["event"]]], [
     str("observer"),
     str("dimension"),
     md("action_on_fire_md"),
     en("evaluation", EVALUATIONS),
-    field("predicate", "required", { t: "table", group: SIGNAL_PREDICATE_GROUP }),
+    field("predicate", "required", { t: "table", group: TRANSITION_PREDICATE_GROUP }),
   ], ["observable"]),
   arm("nested authored-condition trigger", [["predicate.predicate_kind", ["quantitative", "manual"]]], [
     str("observer"),
@@ -333,18 +333,18 @@ const NESTED_TRIGGER_GROUP_ARMS: readonly PayloadArm[] = [
     str("observable"),
     md("action_on_fire_md"),
     en("evaluation", EVALUATIONS),
-    field("predicate", "required", { t: "table", group: SIGNAL_PREDICATE_GROUP }),
+    field("predicate", "required", { t: "table", group: TRANSITION_PREDICATE_GROUP }),
   ]),
 ];
 
 /** Promotion triggers and reopening signals share the trigger contract; the field name fixes the kind. */
-export const NESTED_TRIGGER_GROUP: NestedGroup = Object.freeze({ arms: NESTED_TRIGGER_GROUP_ARMS });
+export const NESTED_TRANSITION_GROUP: NestedGroup = Object.freeze({ arms: NESTED_TRANSITION_GROUP_ARMS });
 
 /** Pre-table for the trigger group's predicate-first discrimination (mirrors the standalone flow). */
-export const NESTED_TRIGGER_PRESENCE_ROW: ExactSchemaRow = discriminatorRow(
+export const NESTED_TRANSITION_PRESENCE_ROW: ExactSchemaRow = discriminatorRow(
   "nested trigger predicate presence",
   ["predicate"],
-  NESTED_TRIGGER_GROUP_ARMS,
+  NESTED_TRANSITION_GROUP_ARMS,
 );
 
 export const NESTED_UNBLOCK_GROUP: NestedGroup = Object.freeze({
@@ -425,17 +425,17 @@ const WORK_ARM_LIST: readonly PayloadArm[] = [
     md("acceptance_md", "optional"),
     idSet("control_ids", LIVE_CONTROL_TARGET, "required", true),
     ...workTail(),
-    nestedTable("promotion_trigger", NESTED_TRIGGER_GROUP),
+    nestedTable("promotion_trigger", NESTED_TRANSITION_GROUP),
   ], ["priority_band", "priority_rationale_md", "blocker_md", "transition_ids", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "unblock_predicate", "reopening_signal", "retirement_predicate"]),
   // Deferred work admits BOTH forms at once (re-cut ruling 3): the nested reopening signal and a
-  // citation of a standalone (rendered) signal record; the decoder requires at least one.
+  // citation of a standalone (rendered) transition record; the decoder requires at least one.
   arm("deferred work", [["work_state", ["deferred"]]], [
     ...workCommon(),
     md("acceptance_md", "optional"),
     idSet("control_ids", CONTROL_TARGET, "optional"),
-    idSet("transition_ids", signalTarget("reopening_signal"), "optional", true),
+    idSet("transition_ids", transitionTarget("reopening_signal"), "optional", true),
     ...workTail(),
-    nestedTable("reopening_signal", NESTED_TRIGGER_GROUP, "optional"),
+    nestedTable("reopening_signal", NESTED_TRANSITION_GROUP, "optional"),
   ], ["priority_band", "priority_rationale_md", "blocker_md", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "unblock_predicate", "promotion_trigger", "retirement_predicate"]),
   // Waiting-external work carries exactly one of the two admissible transition contracts.
   arm("waiting external work", [["work_state", ["waiting_external"]]], [
@@ -476,7 +476,7 @@ const DECISION_ARM_LIST: readonly PayloadArm[] = [
     en("decision_state", DECISION_STATES),
     md("rationale_md"),
     en("permanence", ["reopenable"]),
-    nestedTable("reopening_signal", NESTED_TRIGGER_GROUP),
+    nestedTable("reopening_signal", NESTED_TRANSITION_GROUP),
   ], ["question_md", "authority_reference_id", "transition_ids", "unblock_predicate"]),
   arm("decided permanent decision", [["decision_state", ["decided"]], ["permanence", ["permanent"]]], [
     kindField(),
@@ -493,7 +493,7 @@ const DECISION_ARM_LIST: readonly PayloadArm[] = [
     md("rationale_md"),
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
     en("permanence", PERMANENCE),
-    nestedTable("reopening_signal", NESTED_TRIGGER_GROUP),
+    nestedTable("reopening_signal", NESTED_TRANSITION_GROUP),
   ], ["question_md", "transition_ids", "unblock_predicate"]),
 ];
 
@@ -502,7 +502,7 @@ const triggerWhen = (predicateKinds: readonly string[]): readonly (readonly [str
   ["predicate.predicate_kind", predicateKinds],
 ];
 
-const SIGNAL_ARM_LIST: readonly PayloadArm[] = [
+const TRANSITION_ARM_LIST: readonly PayloadArm[] = [
   arm("event-condition promotion or reopening signal", triggerWhen(["event"]), [
     kindField(),
     detail(),
@@ -511,7 +511,7 @@ const SIGNAL_ARM_LIST: readonly PayloadArm[] = [
     str("dimension"),
     md("action_on_fire_md"),
     en("evaluation", EVALUATIONS),
-    field("predicate", "required", { t: "table", group: SIGNAL_PREDICATE_GROUP }),
+    field("predicate", "required", { t: "table", group: TRANSITION_PREDICATE_GROUP }),
   ], ["observable"]),
   arm("authored-condition promotion or reopening signal", triggerWhen(["quantitative", "manual"]), [
     kindField(),
@@ -522,7 +522,7 @@ const SIGNAL_ARM_LIST: readonly PayloadArm[] = [
     str("observable"),
     md("action_on_fire_md"),
     en("evaluation", EVALUATIONS),
-    field("predicate", "required", { t: "table", group: SIGNAL_PREDICATE_GROUP }),
+    field("predicate", "required", { t: "table", group: TRANSITION_PREDICATE_GROUP }),
   ]),
   arm("unblock predicate", [["transition_kind", ["unblock_predicate"]]], [
     kindField(),
@@ -555,7 +555,7 @@ const SIGNAL_ARM_LIST: readonly PayloadArm[] = [
     md("due_action_md"),
     en("evaluation", EVALUATIONS),
   ]),
-  arm("cadence signal", [["transition_kind", ["cadence"]]], [
+  arm("cadence transition", [["transition_kind", ["cadence"]]], [
     kindField(),
     detail(),
     en("transition_kind", TRANSITION_KINDS),
@@ -710,7 +710,7 @@ const POLICY_ARM_LIST: readonly PayloadArm[] = [
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
     md("rationale_md"),
     en("permanence", PERMANENCE),
-    nestedTable("reopening_signal", NESTED_TRIGGER_GROUP),
+    nestedTable("reopening_signal", NESTED_TRANSITION_GROUP),
   ], ["cadence_transition_id", "reopening_transition_id", "cadence"]),
 ];
 
@@ -722,7 +722,7 @@ export const CAPTURE_STEP_GROUP: NestedGroup = Object.freeze({
 });
 
 // A watch carries exactly one of the two escalation forms: the nested watch_escalation, or a
-// citation of a standalone (rendered) watch-escalation signal record (re-cut ruling 2).
+// citation of a standalone (rendered) watch-escalation transition record (re-cut ruling 2).
 const watchFields = (state: "watching" | "attributed" | "retire_pending"): PayloadField[] => [
   kindField(),
   detail(),
@@ -733,7 +733,7 @@ const watchFields = (state: "watching" | "attributed" | "retire_pending"): Paylo
     refId("operating_rule_reference_id", ["file_heading", "gate"]),
   ]),
   md("response_md"),
-  idField("escalation_transition_id", signalTarget("watch_escalation"), "optional"),
+  idField("escalation_transition_id", transitionTarget("watch_escalation"), "optional"),
   ...(state === "retire_pending" ? [refId("retirement_reference_id", ["file_heading", "gate", "test_symbol"])] : []),
   md("retirement_semantics_md"),
   nestedTable("watch_escalation", NESTED_WATCH_ESCALATION_GROUP, "optional"),
@@ -818,7 +818,7 @@ const ADMISSION_ARM_LIST: readonly PayloadArm[] = [
 export const PAYLOAD_KIND_ARMS: Readonly<Record<SemanticPayload["kind"], readonly PayloadArm[]>> = Object.freeze({
   work: WORK_ARM_LIST,
   decision: DECISION_ARM_LIST,
-  signal: SIGNAL_ARM_LIST,
+  transition: TRANSITION_ARM_LIST,
   evidence: EVIDENCE_ARM_LIST,
   control: CONTROL_ARM_LIST,
   matrix_external_closeout: CLOSEOUT_ARM_LIST,
@@ -858,7 +858,7 @@ export function armOfPayload(payload: SemanticPayload): PayloadArm {
 /**
  * Select an arm from decoded discriminants alone (drivers call this mid-decode, before the arm's
  * remaining fields exist).  The probe object carries exactly the discriminant chain — and, for
- * trigger signals, the already-decoded nested predicate.
+ * trigger transitions, the already-decoded nested predicate.
  */
 export function armForDiscriminants(
   kind: SemanticPayload["kind"],
@@ -923,16 +923,16 @@ export const DISCRIMINATOR_ROWS = Object.freeze({
     ["kind", "decision_state", "permanence"],
     DECISION_ARM_LIST.slice(2),
   ),
-  signal: discriminatorRow("signal discriminator", ["kind", "transition_kind"], SIGNAL_ARM_LIST),
-  signal_predicate_presence: discriminatorRow(
-    "signal predicate presence",
+  transition: discriminatorRow("transition discriminator", ["kind", "transition_kind"], TRANSITION_ARM_LIST),
+  transition_predicate_presence: discriminatorRow(
+    "transition predicate presence",
     ["kind", "transition_kind", "predicate"],
-    SIGNAL_ARM_LIST.slice(0, 2),
+    TRANSITION_ARM_LIST.slice(0, 2),
   ),
-  signal_predicate: discriminatorRow(
-    "signal predicate discriminator",
+  transition_predicate: discriminatorRow(
+    "transition predicate discriminator",
     ["predicate_kind"],
-    SIGNAL_PREDICATE_GROUP.arms,
+    TRANSITION_PREDICATE_GROUP.arms,
   ),
   matrix_closeout: discriminatorRow("matrix closeout discriminator", ["kind", "closeout_state"], CLOSEOUT_ARM_LIST),
   matrix_policy: discriminatorRow("matrix policy discriminator", ["kind", "policy_kind"], POLICY_ARM_LIST),
@@ -956,14 +956,14 @@ export const SHARED_SEMANTIC_SCHEMA_ROW_LIST: readonly ExactSchemaRow[] = Object
   ...WORK_ARM_LIST.map((entry) => entry.row),
   ...DECISION_ARM_LIST.slice(0, 3).map((entry) => entry.row),
   DECISION_ARM_LIST[3]!.row,
-  SIGNAL_ARM_LIST[0]!.row,
-  ...SIGNAL_ARM_LIST.slice(2).map((entry) => entry.row),
-  ...SIGNAL_PREDICATE_GROUP.arms.map((entry) => entry.row),
+  TRANSITION_ARM_LIST[0]!.row,
+  ...TRANSITION_ARM_LIST.slice(2).map((entry) => entry.row),
+  ...TRANSITION_PREDICATE_GROUP.arms.map((entry) => entry.row),
   EVIDENCE_ARM_LIST[0]!.row,
   EVIDENCE_SCOPE_GROUP.arms[0]!.row,
   CONTROL_ARM_LIST[0]!.row,
-  SIGNAL_ARM_LIST[1]!.row,
-  ...NESTED_TRIGGER_GROUP.arms.map((entry) => entry.row),
+  TRANSITION_ARM_LIST[1]!.row,
+  ...NESTED_TRANSITION_GROUP.arms.map((entry) => entry.row),
   NESTED_UNBLOCK_GROUP.arms[0]!.row,
   NESTED_WATCH_ESCALATION_GROUP.arms[0]!.row,
   NESTED_RETIREMENT_GROUP.arms[0]!.row,

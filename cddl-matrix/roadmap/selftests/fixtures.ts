@@ -91,14 +91,13 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
   evidence_verdict: ["confirmed", "falsified", "inapplicable", "proposed", "unknown"],
   freshness: ["as_of", "historical", "live", "stale"],
   incident_posture: ["attributed", "historical", "live"],
-  manifest_kind: ["part", "record", "section"],
   payload_kind: [
     "control",
     "decision",
     "evidence",
     "matrix_external_closeout",
     "matrix_policy",
-    "signal",
+    "transition",
     "testing_cost",
     "testing_incident",
     "testing_operational_watch",
@@ -135,6 +134,7 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "split_from",
     "supersedes",
   ],
+  render_node_kind: ["part", "record", "section"],
   risk: [
     "abort_or_panic",
     "compile_failure",
@@ -148,7 +148,7 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "wrong_public_api",
   ],
   schema_version: ["3"],
-  signal_evaluation: ["met", "stale", "unknown", "unmet"],
+  transition_evaluation: ["met", "stale", "unknown", "unmet"],
   transition_kind: [
     "cadence",
     "promotion_trigger",

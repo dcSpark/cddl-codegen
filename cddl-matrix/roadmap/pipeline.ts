@@ -22,7 +22,7 @@ import {
   type RoadmapIssue,
 } from "./errors.ts";
 import type { ReadOnlyRoadmapPorts } from "./io.ts";
-import { resolveSectionPlan, type SectionPlan } from "./manifest.ts";
+import { resolveSectionPlan, type SectionPlan } from "./section_plan.ts";
 import type {
   RepoPath,
   RepositoryRevision,
@@ -119,7 +119,7 @@ interface CoreStageState {
   readonly adapter: RoadmapAdapter<SemanticPayload>;
   /** Replaced once, by the projection-fact stage, with the registry domain validation sees. */
   registry: RegistryView;
-  manifest?: SectionPlan;
+  section_plan?: SectionPlan;
   completed?: CompletedRenderIr;
   projection_views?: ProjectionViews;
 }
@@ -139,9 +139,9 @@ function staged<T>(value: T | undefined, produced_by: string): T {
 
 const CORE_PIPELINE: readonly CoreStage[] = Object.freeze([
   {
-    name: "resolve-manifest",
+    name: "resolve-section-plan",
     run(state) {
-      state.manifest = resolveSectionPlan(state.document);
+      state.section_plan = resolveSectionPlan(state.document);
     },
   },
   {
@@ -150,7 +150,7 @@ const CORE_PIPELINE: readonly CoreStage[] = Object.freeze([
       const registry = state.registry;
       const adapter = state.adapter;
       const resolvers = adapter.slotResolvers(registry, state.document);
-      state.completed = buildExpectedChunks(state.document, staged(state.manifest, "resolve-manifest").ops, {
+      state.completed = buildExpectedChunks(state.document, staged(state.section_plan, "resolve-section-plan").ops, {
         renderSemanticRecord(record, fields) {
           return adapter.renderSemantic(record, fields);
         },
@@ -163,10 +163,10 @@ const CORE_PIPELINE: readonly CoreStage[] = Object.freeze([
   {
     name: "validate-expected-chunks",
     run(state) {
-      const manifest = staged(state.manifest, "resolve-manifest");
+      const section_plan = staged(state.section_plan, "resolve-section-plan");
       const renderIssues = [
-        ...manifest.issues,
-        ...validateCompletedChunks(state.document, manifest.ops, staged(state.completed, "build-expected-bytes")),
+        ...section_plan.issues,
+        ...validateCompletedChunks(state.document, section_plan.ops, staged(state.completed, "build-expected-bytes")),
       ];
       if (renderIssues.length > 0) failure(renderIssues);
     },
@@ -313,6 +313,6 @@ function validateProjectionAnchors(document: RoadmapDocument, projection: Uint8A
     "E-ID-DUPLICATE",
     document.document.projection_path,
     "roadmap-anchor",
-    `stable anchor inventory must exactly equal manifest-placed record IDs (expected=${expected.length}, actual=${facts.stable_anchor_ids.length})`,
+    `stable anchor inventory must exactly equal section-placed record IDs (expected=${expected.length}, actual=${facts.stable_anchor_ids.length})`,
   )]);
 }

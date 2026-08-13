@@ -365,7 +365,7 @@ function temporalTestingPorts(
     .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.expected.md", projectionPath);
   const payload = kind === "cadence"
     ? `[record.payload]
-kind = "signal"
+kind = "transition"
 detail_md = '''Semantic testing detail.'''
 transition_kind = "cadence"
 owner_reference_id = "temporal-owner"
@@ -606,14 +606,14 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
       return pass("positive");
     }
     case "cli_query_each_view": {
-      for (const view of ["summary", "references", "signals", "actionables", "decisions",
+      for (const view of ["summary", "references", "transitions", "actionables", "decisions",
         "watches", "content", "output-owners"]) {
         expectFailure(
           ["--roadmap", "testing", "--query", view],
           expectedIssue("E-SOURCE-MISSING", "tests/testing-roadmap.toml", "$", "declared source is missing", 1),
         );
       }
-      return pass("positive", ["summary", "references", "signals",
+      return pass("positive", ["summary", "references", "transitions",
         "actionables", "decisions", "watches", "content", "output-owners"]);
     }
     case "cli_no_args_rejected": expectFailure([], cliIssue("E-CLI-MODE", 0, "exactly one primary mode is required"), fakePorts(), true); return pass("negative");
@@ -638,7 +638,7 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
 
 function invalidDate(value: string): SelfTestResult {
   expectFailure(
-    ["--roadmap", "testing", "--query", "signals", "--as-of", value],
+    ["--roadmap", "testing", "--query", "transitions", "--as-of", value],
     cliIssue("E-CLI-AS-OF", 4, "--as-of must be an existing Gregorian date in YYYY-MM-DD form"),
     fakePorts(),
     true,
@@ -724,7 +724,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       assert(typeof matrixSummary?.record_count === "number" && matrixSummary.schema_version === 3,
         `live matrix summary did not expose its record inventory: ${JSON.stringify(payload)}`);
       const dashboards = new Map<string, Record<string, unknown>>();
-      for (const view of ["signals", "actionables", "decisions", "watches", "content"] as const) {
+      for (const view of ["transitions", "actionables", "decisions", "watches", "content"] as const) {
         const first = run(["--roadmap", "all", "--query", view, "--json"], bothAuthoritativePorts());
         const second = run(["--roadmap", "all", "--query", view, "--json"], bothAuthoritativePorts());
         assert(first.exit_code === 0 && second.exit_code === 0 && first.stderr.byteLength === 0 &&
@@ -738,19 +738,19 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         (decisions.held ?? []).every((row) => "rationale_md" in row && "reopening_signal" in row) &&
         (decisions.decided ?? []).every((row) => "rationale_md" in row && "authority_reference_id" in row),
       "decisions dashboard dropped its state-specific question/rationale/authority fields");
-      // Post-fold (Packet 3A-2) the signals dashboard carries only STANDALONE signal records;
+      // Post-fold (Packet 3A-2) the transitions dashboard carries only STANDALONE transition records;
       // the unblock/retirement kinds live nested on their owners and surface via actionables.
-      const signals = dashboards.get("signals")!.signals as Record<string, readonly Record<string, unknown>[]>;
-      assert(JSON.stringify(Object.keys(signals)) === JSON.stringify(["cadence", "evidence_freshness",
+      const transitions = dashboards.get("transitions")!.transitions as Record<string, readonly Record<string, unknown>[]>;
+      assert(JSON.stringify(Object.keys(transitions)) === JSON.stringify(["cadence", "evidence_freshness",
         "promotion_trigger", "reopening_signal", "watch_escalation"]),
-      "signals dashboard transition grouping changed");
+      "transitions dashboard transition grouping changed");
       for (const [kind, required] of [
         ["promotion_trigger", ["predicate", "action_on_fire_md"]],
         ["watch_escalation", ["capture_procedure_md", "response_md", "escalation_action_md", "retirement_semantics_md"]],
         ["cadence", ["period_or_event_md", "checklist_md", "missed_action_md", "due_on"]],
         ["evidence_freshness", ["claim_md", "reference_ids", "scope", "valid_through", "unprobed_remainder_md"]],
       ] as const) {
-        assert(signals[kind]!.length > 0 && required.every((field) => field in signals[kind]![0]!),
+        assert(transitions[kind]!.length > 0 && required.every((field) => field in transitions[kind]![0]!),
           `${kind} dashboard dropped required operational fields`);
       }
       const actionables = dashboards.get("actionables")!;
@@ -901,7 +901,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       return pass("positive");
     }
     case "cli_as_of_valid_leap_day": {
-      const result = run(["--roadmap", "testing", "--query", "signals", "--as-of", "2024-02-29", "--json"], validTestingPorts(context));
+      const result = run(["--roadmap", "testing", "--query", "transitions", "--as-of", "2024-02-29", "--json"], validTestingPorts(context));
       assert(result.exit_code === 0 && text(result.stdout).includes("2024-02-29"), "valid leap day was not carried into query output");
       return pass("positive");
     }
@@ -911,20 +911,20 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const date = id === "query_as_of_after_valid_through_stale" ? "2025-01-02" : "2025-01-01";
       const kind = id === "query_as_of_due_date_inclusive" ? "cadence" : "evidence";
       const result = run(
-        ["--roadmap", "testing", "--query", "signals", "--as-of", date, "--json"],
+        ["--roadmap", "testing", "--query", "transitions", "--as-of", date, "--json"],
         temporalTestingPorts(context, kind),
       );
       assert(result.exit_code === 0, `${id} service query failed: ${text(result.stderr)}`);
       const payload = JSON.parse(text(result.stdout));
-      const signalGroup = kind === "cadence" ? "cadence" : "evidence_freshness";
-      const signals = payload.signals?.[signalGroup];
+      const transitionGroup = kind === "cadence" ? "cadence" : "evidence_freshness";
+      const transitions = payload.transitions?.[transitionGroup];
       const expected = id === "query_as_of_due_date_inclusive"
         ? "due"
         : id === "query_as_of_valid_through_inclusive" ? "as_of" : "stale";
       assert(
         result.exit_code === 0 && result.stderr.byteLength === 0 && payload.evaluation_as_of === date &&
-          Array.isArray(signals) && signals.length === 1 && signals[0].id === "testing.fixture-small-semantic" &&
-          signals[0].evaluation === expected,
+          Array.isArray(transitions) && transitions.length === 1 && transitions[0].id === "testing.fixture-small-semantic" &&
+          transitions[0].evaluation === expected,
         `${id} did not derive ${expected} from the decoded service document: ${text(result.stdout)} ${text(result.stderr)}`,
       );
       return pass("positive");
@@ -937,13 +937,13 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         registry: valid.read.registryView,
         onReadPath: (path) => paths.push(path),
       });
-      const result = run(["--roadmap", "testing", "--query", "signals", "--json"], ports);
+      const result = run(["--roadmap", "testing", "--query", "transitions", "--json"], ports);
       assert(result.exit_code === 0, `no-as-of service query failed: ${text(result.stderr)}`);
       const payload = JSON.parse(text(result.stdout));
-      const signals = payload.signals?.cadence;
+      const transitions = payload.transitions?.cadence;
       assert(
-        result.exit_code === 0 && payload.evaluation_as_of === null && Array.isArray(signals) &&
-          signals.length === 1 && signals[0].evaluation === "unknown_no_as_of",
+        result.exit_code === 0 && payload.evaluation_as_of === null && Array.isArray(transitions) &&
+          transitions.length === 1 && transitions[0].evaluation === "unknown_no_as_of",
         "no-as-of query fabricated time or did not preserve the decoded unknown posture",
       );
       assert(!paths.includes("tests/TESTING_ROADMAP.md" as RepoPath), "query read the committed projection");

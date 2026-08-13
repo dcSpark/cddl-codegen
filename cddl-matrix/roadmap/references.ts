@@ -503,7 +503,7 @@ type ExpectedSemanticTarget =
       readonly work_kind?: "regression_gap";
       readonly transition_kinds?: readonly Extract<
         SemanticPayloadProviderFact["payload"],
-        { kind: "signal" }
+        { kind: "transition" }
       >["transition_kind"][];
       readonly control_state?: "live";
     };
@@ -542,16 +542,16 @@ function semanticTargetExpectation(
   }
   if (logicalPath.endsWith("control_ids")) return { payload_kind: "control" };
   if (logicalPath.endsWith("cadence_transition_id")) {
-    return { payload_kind: "signal", transition_kinds: ["cadence"] };
+    return { payload_kind: "transition", transition_kinds: ["cadence"] };
   }
   if (logicalPath.endsWith("reopening_transition_id")) {
-    return { payload_kind: "signal", transition_kinds: ["reopening_signal"] };
+    return { payload_kind: "transition", transition_kinds: ["reopening_signal"] };
   }
   if (logicalPath.endsWith("escalation_transition_id")) {
-    return { payload_kind: "signal", transition_kinds: ["watch_escalation"] };
+    return { payload_kind: "transition", transition_kinds: ["watch_escalation"] };
   }
   if (logicalPath.endsWith("transition_ids")) {
-    return { payload_kind: "signal", transition_kinds: [] };
+    return { payload_kind: "transition", transition_kinds: [] };
   }
   if (logicalPath.endsWith("regression_gap_ids")) return { payload_kind: "work", work_kind: "regression_gap" };
   if (logicalPath.endsWith("work_ids") || logicalPath.endsWith("work_id")) return { payload_kind: "work" };
@@ -591,7 +591,7 @@ export function validateSemanticRoadmapJoins(
       ));
       continue;
     }
-    const structuralKind = use.role === "parent_record" || use.role === "manifest_record"
+    const structuralKind = use.role === "parent_record" || use.role === "section_entry"
       ? "record"
       : undefined;
     if (structuralKind !== undefined && target.kind !== structuralKind) {
@@ -655,7 +655,7 @@ export function validateSemanticRoadmapJoins(
     if (
       expected.transition_kinds !== undefined &&
       (
-        payload.payload.kind !== "signal" ||
+        payload.payload.kind !== "transition" ||
         !expected.transition_kinds.includes(payload.payload.transition_kind)
       )
     ) {
@@ -683,7 +683,7 @@ export function validateSemanticRoadmapJoins(
   for (const provider of indexes.payload_records.values()) {
     const payload = provider.payload;
     // Post-fold (Packet 3A-2) the only remaining transition CITATION lists are deferred work's
-    // optional standalone-signal citation; when authored it must name exactly one target.
+    // optional standalone-transition citation; when authored it must name exactly one target.
     if (
       payload.kind === "work" && payload.work_state === "deferred" &&
       payload.transition_ids !== undefined && payload.transition_ids.length !== 1

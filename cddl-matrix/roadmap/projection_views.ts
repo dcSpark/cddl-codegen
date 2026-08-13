@@ -281,7 +281,7 @@ function transformWholePiece(
   if (piece.bindings.length !== 1 || binding === undefined || binding.start !== 0 ||
     binding.end !== piece.bytes.byteLength || transformed === undefined) {
     issues.push(issue(document, `projection.layout.${piece.owner.kind}.${piece.owner.id}`,
-      `curated layout transform ${transformation.kind} requires one exact whole-field source with its expected prefix`));
+      `layout transform ${transformation.kind} requires one exact whole-field source with its expected prefix`));
     return piece;
   }
   return { ...piece, bytes: transformed, bindings: [{ ...binding, transformation, start: 0, end: transformed.byteLength }] };
@@ -316,19 +316,19 @@ function generatedPiece(id: string, bytes: Uint8Array): Piece {
   return { owner: { kind: "generated", id, field: "generated" }, bytes, bindings: [] };
 }
 
-function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, issues: RoadmapIssue[]): Piece[] {
+function layoutPieces(document: RoadmapDocument, completed: CompletedRenderIr, issues: RoadmapIssue[]): Piece[] {
   let pieces = basePieces(completed);
   if (document.document.roadmap === "testing") {
-    // The curated testing transforms key on the live document's section vocabulary. Each applies
+    // The testing layout transforms key on the live document's section vocabulary. Each applies
     // exactly where its section exists (a synthetic document without one simply has nothing to
     // transform); more than one owner of a transform's section is still a hard error, and the
     // committed-projection drift comparison owns the live document's byte outcome.
     const nextSections = pieces.filter((piece) => piece.owner.kind === "section" && piece.owner.id === "next-priority");
     const standingSections = pieces.filter((piece) => piece.owner.kind === "section" && piece.owner.id === "standing-system");
     if (nextSections.length > 1) issues.push(issue(document, "projection.layout.next-priority",
-      `curated testing layout requires at most one next-priority section, found ${nextSections.length}`));
+      `testing layout requires at most one next-priority section, found ${nextSections.length}`));
     if (standingSections.length > 1) issues.push(issue(document, "projection.layout.standing-system",
-      `curated testing layout requires at most one standing-system section, found ${standingSections.length}`));
+      `testing layout requires at most one standing-system section, found ${standingSections.length}`));
     pieces = pieces.map((piece) => {
       if (piece === nextSections[0]) return transformWholePiece(document, piece,
         { kind: "testing_next_heading" }, issues);
@@ -340,7 +340,7 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
       if (aliases.length === 0) return piece;
       if (aliases.length !== 1) {
         issues.push(issue(document, `projection.layout.record.${piece.owner.id}`,
-          `curated testing Next-work record requires exactly one ordinal alias, found ${aliases.length}`));
+          `testing Next-work record requires exactly one ordinal alias, found ${aliases.length}`));
         return piece;
       }
       return transformWholePiece(document, piece,
@@ -349,7 +349,7 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
     const ordinals = document.records.flatMap((record) => record.legacy_aliases?.flatMap((alias) =>
       /^Next work ([0-9]+)$/u.exec(alias)?.[1] ?? []) ?? []);
     if (new Set(ordinals).size !== ordinals.length) issues.push(issue(document, "projection.layout.next-ordinals",
-      "curated testing Next-work ordinal aliases must be unique"));
+      "testing Next-work ordinal aliases must be unique"));
 
     const starts = pieces.flatMap((piece, index) =>
       piece.owner.kind === "section" && piece.owner.id === "operational-watches" ? [index] : []);
@@ -357,7 +357,7 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
     const end = start === undefined ? -1 : pieces.findIndex((piece, index) => index > start && piece.owner.kind === "section");
     if (starts.length > 1 || (start !== undefined && end <= start)) {
       issues.push(issue(document, "projection.layout.operational-watches",
-        "curated testing layout requires one bounded operational-watches section"));
+        "testing layout requires one bounded operational-watches section"));
     } else if (start !== undefined) {
       const buckets: Record<OperationalClass, Piece[]> = { systems: [], live: [], history: [] };
       let current: OperationalClass = "systems";
@@ -369,7 +369,7 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
         buckets[kind].length < OPERATIONAL_BUCKET_FLOORS[kind]
       ) {
         issues.push(issue(document, `projection.layout.operational-watches.${kind}`,
-          `curated testing operational bucket ${kind} has ${buckets[kind].length} pieces below floor ${OPERATIONAL_BUCKET_FLOORS[kind]}`));
+          `testing operational bucket ${kind} has ${buckets[kind].length} pieces below floor ${OPERATIONAL_BUCKET_FLOORS[kind]}`));
       }
       const headings: Readonly<Record<OperationalClass, Uint8Array>> = {
         systems: UTF8.encode("\n### Operational systems, controls, and resource work\n\n"),
@@ -395,7 +395,7 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
     return anchorPiece(piece);
   });
   if (anchored !== visible.size) issues.push(issue(document, "projection.layout.anchors",
-    `curated layout anchored ${anchored} records but ${visible.size} are section-placed`));
+    `layout anchored ${anchored} records but ${visible.size} are section-placed`));
   return [generatedPiece("layout-ownership-banner", UTF8.encode(
     `<!-- GENERATED FILE: owned by ${document.document.source_path}; edit that TOML source and run project_roadmaps.ts --write. -->\n\n`,
   )), ...pieces];
@@ -406,7 +406,7 @@ function materializeFull(
   completed: CompletedRenderIr,
   issues: RoadmapIssue[],
 ): { readonly bytes: Uint8Array; readonly bindings: readonly LocalBinding[] } {
-  const pieces = curatedPieces(document, completed, issues);
+  const pieces = layoutPieces(document, completed, issues);
   const bytes = concatenate(pieces.map((piece) => piece.bytes));
   const bindings: LocalBinding[] = [];
   let offset = 0;

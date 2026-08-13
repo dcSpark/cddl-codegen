@@ -1,8 +1,8 @@
 import type {
   LowercaseSlug,
-  NestedCadenceSignal,
+  NestedCadenceTransition,
   NestedRetirementPredicate,
-  NestedTriggerSignal,
+  NestedTransition,
   ReferenceId,
   RepoPath,
   SemanticPayloadBase,
@@ -55,7 +55,7 @@ export interface MatrixMaintenancePolicy extends SemanticPayloadBase {
   policy_kind: "maintenance_protocol";
   authority_reference_id: ReferenceId;
   protocol_md: Uint8Array;
-  cadence: NestedCadenceSignal;
+  cadence: NestedCadenceTransition;
 }
 
 export interface MatrixBoundaryPolicy extends SemanticPayloadBase {
@@ -64,7 +64,7 @@ export interface MatrixBoundaryPolicy extends SemanticPayloadBase {
   authority_reference_id: ReferenceId;
   rationale_md: Uint8Array;
   permanence: "permanent" | "reopenable";
-  reopening_signal?: NestedTriggerSignal;
+  reopening_signal?: NestedTransition;
 }
 
 export type MatrixPolicyPayload = MatrixMaintenancePolicy | MatrixBoundaryPolicy;

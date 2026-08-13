@@ -8,11 +8,29 @@ import type {
   RoadmapSelection,
 } from "./model/core.ts";
 
+/**
+ * The one list of query views. The usage text and the rejection message are DERIVED from it, so a
+ * view added or renamed here cannot leave a stale spelling behind in either — the `families` view
+ * deleted with the denominator machinery outlived itself in both until this pass.
+ */
+const QUERY_VIEWS = new Set<QueryView>([
+  "summary",
+  "references",
+  "transitions",
+  "actionables",
+  "decisions",
+  "watches",
+  "content",
+  "output-owners",
+]);
+
+const QUERY_VIEW_LIST = [...QUERY_VIEWS];
+
 export const ROADMAP_CLI_USAGE = `Usage:
   bun run project_roadmaps.ts --selftest
   bun run project_roadmaps.ts --roadmap matrix|testing|all --check
   bun run project_roadmaps.ts --roadmap matrix|testing --write
-  bun run project_roadmaps.ts --roadmap matrix|testing|all --query summary|references|actionables|signals|decisions|families|watches|content|output-owners [--json] [--as-of YYYY-MM-DD]
+  bun run project_roadmaps.ts --roadmap matrix|testing|all --query ${QUERY_VIEW_LIST.join("|")} [--json] [--as-of YYYY-MM-DD]
   bun run project_roadmaps.ts --format-source <declared-repository-relative-toml-path>
 `;
 
@@ -34,16 +52,6 @@ const VALUE_OPTIONS = new Set<ValueOption>([
   "--format-source",
 ]);
 const FLAG_OPTIONS = new Set<FlagOption>(["--selftest", "--check", "--write", "--json"]);
-const QUERY_VIEWS = new Set<QueryView>([
-  "summary",
-  "references",
-  "signals",
-  "actionables",
-  "decisions",
-  "watches",
-  "content",
-  "output-owners",
-]);
 const DECLARED_FORMAT_SOURCES = new Set<string>([
   "cddl-matrix/roadmap.toml",
   "tests/testing-roadmap.toml",
@@ -182,7 +190,7 @@ export function parseRoadmapCli(argv: readonly string[]): CliRequest {
       fail(
         "E-CLI-INCOMPATIBLE",
         query.index,
-        "--query must be summary, references, actionables, signals, decisions, families, watches, content, or output-owners",
+        `--query must be ${QUERY_VIEW_LIST.slice(0, -1).join(", ")}, or ${QUERY_VIEW_LIST.at(-1)}`,
       );
     }
     if (asOf !== undefined && !validCivilDate(asOf.value)) {

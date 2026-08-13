@@ -116,7 +116,7 @@ export type SelfTestCategory =
   | "schema"
   | "domain-matrix"
   | "domain-testing"
-  | "manifest-render"
+  | "section-render"
   | "identity-retirement"
   | "references-relations"
   | "output-ownership"
@@ -133,7 +133,7 @@ export const SELFTEST_CATEGORIES = Object.freeze([
   "schema",
   "domain-matrix",
   "domain-testing",
-  "manifest-render",
+  "section-render",
   "identity-retirement",
   "references-relations",
   "output-ownership",
@@ -250,9 +250,9 @@ const REFERENCE_KIND_SUBCASES = [
 
 /** Frozen named reviewer vectors. A case absent from this map must report no subcases. */
 export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
-  ["projection_views_layout_and_provenance", ["banner", "anchor", "curated_layout", "full_audit_separation", "fragment_scan", "fragment_duplicate", "fragment_malformed"]],
+  ["projection_views_layout_and_provenance", ["banner", "anchor", "layout", "full_audit_separation", "fragment_scan", "fragment_duplicate", "fragment_malformed"]],
   ["projection_views_content_exactly_once", ["exact", "missing", "duplicate", "mismatched_bytes"]],
-  ["outputs_slot_cardinality", ["status_zero_open", "status_two_open", "status_zero_close", "status_two_close", "reversed", "crossed", "manifest_zero", "manifest_two_declarations", "manifest_two_placements"]],
+  ["outputs_slot_cardinality", ["status_zero_open", "status_two_open", "status_zero_close", "status_two_close", "reversed", "crossed", "section_slot_zero", "section_slot_two_declarations", "section_slot_two_placements"]],
   ["outputs_interval_overlap", ["same_interval", "partial_left", "partial_right", "contained", "whole_vs_slot", "same_producer_overlap", "adjacent"]],
   ["status_projector_before_after_target_byte_parity", ["roadmap", "matrix_readme", "tests_readme"]],
   ["status_projector_before_after_mode_parity", ["default", "check", "write", "write_and_check_write_wins", "unrelated_arg_default"]],
@@ -273,7 +273,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["fixture_read_permission_exit_two", ["eacces", "eperm"]],
   ["cli_check_each_roadmap", ["matrix", "testing", "all"]],
   ["cli_write_each_single_roadmap", ["matrix", "testing"]],
-  ["cli_query_each_view", ["summary", "references", "signals", "actionables",
+  ["cli_query_each_view", ["summary", "references", "transitions", "actionables",
     "decisions", "watches", "content", "output-owners"]],
   ["dispatch_capability_narrowing", ["check_read_only", "query_read_only", "write_gets_atomic_replace", "format_gets_atomic_replace"]],
 ]);
@@ -296,7 +296,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["strict_unknown_top", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "unknown" }],
   ["v2_unsupported", { code: "E-SCHEMA-VERSION", logical_path: "document.schema_version" }],
   ["v3_retired_keys_rejected", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "document.authority" }],
-  ["signal_observable_arm_dependent", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "p.observable" }],
+  ["transition_observable_arm_dependent", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "p.observable" }],
   ["strict_unknown_nested_record", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "record[0].unknown" }],
   ["strict_unknown_reference", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "reference[0].unknown" }],
   ["strict_unknown_every_table", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "fixture_schema_unknown" }],
@@ -316,7 +316,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["domain_missing_system_admission_required", { code: "E-SCHEMA-STATE", logical_path: "p" }],
   ["domain_quantitative_scope_unit_required", { code: "E-SCHEMA-MISSING-KEY", logical_path: "p.predicate.unit" }],
   ["domain_fired_transition_not_parked", { code: "E-SCHEMA-STATE", logical_path: "record.matrix.fixture-task-g.transition_ids" }],
-  ["domain_already_met_signal_rejected", { code: "E-SCHEMA-STATE", logical_path: "record.matrix.fixture-task-f.promotion_trigger" }],
+  ["domain_already_met_transition_rejected", { code: "E-SCHEMA-STATE", logical_path: "record.matrix.fixture-task-f.promotion_trigger" }],
   ["evidence_point_requires_provenance", { code: "E-SCHEMA-STATE", logical_path: "p" }],
   ["evidence_negative_requires_enumeration", { code: "E-SCHEMA-STATE", logical_path: "p.enumerated_registry" }],
   ["evidence_generator_requires_harness_free", { code: "E-SCHEMA-STATE", logical_path: "record.matrix.fixture-task-a.evidence_ids" }],

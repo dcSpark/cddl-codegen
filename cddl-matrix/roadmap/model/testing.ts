@@ -11,7 +11,7 @@ export interface TestingCaptureStep {
   capture_md: Uint8Array;
 }
 
-/** Exactly one of `escalation_transition_id` (standalone-signal citation) or `watch_escalation`. */
+/** Exactly one of `escalation_transition_id` (standalone-transition citation) or `watch_escalation`. */
 interface TestingOperationalWatchBase extends SemanticPayloadBase {
   kind: "testing_operational_watch";
   watch_state: "watching" | "attributed" | "retire_pending";

@@ -994,7 +994,7 @@ id = "testing.component-js-probe.reopening-signal"
 title = "Reopening signal:"
 
 [record.payload]
-kind = "signal"
+kind = "transition"
 detail_md = '''  - **Reopening signal:** a consumer reporting a JS-side failure on one of those axes — the party
     running the browser build, the preserve posture or a newer jco is the only one who can see it
     first, and the report names which axis to probe. The gate's exact pins are what make such a
@@ -1099,7 +1099,7 @@ id = "testing.container-combinations.reopening-signal"
 title = "Reopening signal:"
 
 [record.payload]
-kind = "signal"
+kind = "transition"
 detail_md = '''    - **Reopening signal:** a THIRD construct joins the flat-walked set — countable in-tree as the
       explicit container mints in `generation/mod.rs` that exist because the conceptual visitor
       cannot see the composite (two today, both listed above). At three, per-construct hand cells
@@ -7641,7 +7641,7 @@ id = "testing.scratch-retention.reopening-signal"
 title = "Reopening signal"
 
 [record.payload]
-kind = "signal"
+kind = "transition"
 detail_md = '''  - **Reopening signal** (for a bounded named scratch root the tiers reuse and truncate, which
     retires debris by construction rather than by age): a disk-floor refusal or an ENOSPC gate death
     on a machine whose SAME run's sweep line reported nothing removed. Both halves are in the one
@@ -8237,7 +8237,7 @@ id = "testing.twin-implementation.comment-ast-change-cadence"
 title = "On the next `comment_ast` grammar change of ANY form (not just a new directive):"
 
 [record.payload]
-kind = "signal"
+kind = "transition"
 detail_md = '''  - *On the next `comment_ast` grammar change of ANY form (not just a new directive):* do the AST
     floor instead of hand-extending `DSL_TAGS` again — parse the comments with the real
     `comment_ast` via a small `examples/` binary, as the role floor already does with
@@ -8286,7 +8286,7 @@ id = "testing.twin-implementation.read-caught-instance-trigger"
 title = "On the next read-caught instance of the class:"
 
 [record.payload]
-kind = "signal"
+kind = "transition"
 detail_md = '''  - *On the next read-caught instance of the class:* build the mechanical layer — a
     same-construct differential sweep (emit one bounded/flagged construct per site class — member
     ctor/setter, wrapper `new()`/deserialize, primitive-deserialize `.and_then`, collection len
@@ -8750,7 +8750,7 @@ id = "testing.wasm-door-vocabulary.reopening-signal"
 title = "Reopening signal:"
 
 [record.payload]
-kind = "signal"
+kind = "transition"
 detail_md = '''    - **Reopening signal:** a consumer reporting a wasm member absent that the rust crate has. That
       reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose rust
       counterpart they can point at), and the count of silently-missing members is the dimension
@@ -8876,7 +8876,7 @@ id = "testing.workspace-wasip2.reopening-signal"
 title = "Reopening signal:"
 
 [record.payload]
-kind = "signal"
+kind = "transition"
 detail_md = '''  - **Reopening signal:** an upstream LLD fix reaching the pinned toolchain (re-measure BOTH
     matrix cells before believing it — a single green cell is what the 2026-08-08 correction was
     shipped on), or a consumer reporting the linker SIGSEGV from their own both-faces workspace's

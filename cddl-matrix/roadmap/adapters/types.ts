@@ -88,7 +88,7 @@ export type OutputClaim =
         kind: "binding";
         binding:
           | { kind: "status_header_markers"; marker_id: SlotId }
-          | { kind: "manifest_generated_slot"; roadmap: RoadmapName; slot_id: SlotId };
+          | { kind: "section_slot"; roadmap: RoadmapName; slot_id: SlotId };
         cardinality: { exact: 1 };
       };
     };
