@@ -451,18 +451,28 @@ export function validateRoadmapReferences(
 
   for (const use of indexes.reference_id_uses) {
     const reference = indexes.references.get(use.id);
+    const useConsumer = [...indexes.payload_records.values()].find((provider) =>
+      use.logical_path.startsWith(`${provider.logical_path}.`)
+    );
     if (reference === undefined) {
+      // Name the row an author has to mint, with the kinds this exact field accepts — required
+      // references were previously discoverable only by copying a sibling row's convention
+      // (first-authoring-run friction finding). The kind-specific fields are spelled by the
+      // decoder's own E-SCHEMA-MISSING-KEY inventory once the row exists.
+      const allowedHere = useConsumer === undefined ? [] : allowedReferenceKinds(
+        useConsumer.payload,
+        use.logical_path.slice(useConsumer.logical_path.length + 1),
+      );
+      const kindHint = allowedHere.length > 0 ? allowedHere.join("|") : "<kind>";
       issues.push(issue(
         "E-REFERENCE-UNRESOLVED",
         source,
         use.logical_path,
-        `reference ID ${JSON.stringify(use.id)} has no declared reference`,
+        `reference ID ${JSON.stringify(use.id)} has no declared reference; mint a row: [[reference]] with id = ${JSON.stringify(use.id)}, source = <owning record id>, kind = ${kindHint} (the kind's remaining fields are listed by the schema error on the new row)`,
       ));
       continue;
     }
-    const consumer = [...indexes.payload_records.values()].find((provider) =>
-      use.logical_path.startsWith(`${provider.logical_path}.`)
-    );
+    const consumer = useConsumer;
     if (consumer !== undefined) {
       const allowed = allowedReferenceKinds(
         consumer.payload,

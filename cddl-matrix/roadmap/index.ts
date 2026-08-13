@@ -46,7 +46,7 @@ import { queryText, queryValue, stableJsonValue } from "./query.ts";
 // RoadmapCliDispatchServices, so this module has no runtime edge into the selftest tree.
 import type { runSelfTests } from "./selftest.ts";
 import { applyProjectionWritePlan, createProjectionWritePlan } from "./write_plan.ts";
-import { sha256 } from "./kernel.ts";
+import { bytesEqual, sha256 } from "./kernel.ts";
 
 export { createNodeRoadmapCliPorts } from "./io.ts";
 
@@ -120,7 +120,9 @@ function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResul
   } else failure([issue("E-CLI-FORMAT-TARGET", "<cli>", "format_source", "format target is not declared", 2)]);
   const canonical = composeCanonicalDocument(document);
   ports.atomicReplace(path, canonical);
-  return success(`FORMAT OK source=${path} bytes=${canonical.byteLength} sha256=${sha256(canonical)} collected_references=${collected}\n`);
+  // `already_canonical=true` confirms a hand-authored edit needed no reformatting — the receipt
+  // used to be indistinguishable from a rewrite (first-authoring-run friction finding).
+  return success(`FORMAT OK source=${path} bytes=${canonical.byteLength} sha256=${sha256(canonical)} collected_references=${collected} already_canonical=${bytesEqual(source, canonical)}\n`);
 }
 
 function writeRoadmap(name: RoadmapName, ports: RoadmapWritePorts): RoadmapCliResult {

@@ -188,8 +188,33 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       assert(liveTestingViews(badHeadingDocument).projection.issues.some((entry) =>
         entry.logical_path === "projection.layout.section.next-priority"),
       "Next-heading source-prefix drift silently disabled its layout transform");
+      // Blank-line hygiene is render-side and record-attributed: butt one record's prose against
+      // the following section heading and the failure must name the butting owner, not a markdown
+      // lint coordinate (first-authoring-run friction finding).
+      const butting = fixture();
+      const buttingDocument: RoadmapDocumentV3 = {
+        ...butting.document,
+        sections: [
+          ...butting.document.sections,
+          { section_id: "second" as SectionId, title: "Second", body_md: bytes("## Second\n\n"), entries: [] },
+        ],
+      };
+      const buttingPlan = resolveSectionPlan(buttingDocument);
+      assert(buttingPlan.issues.length === 0, "blank-line fixture section plan is invalid");
+      const buttingCompleted = buildExpectedChunks(buttingDocument, buttingPlan.ops, {
+        renderSemanticRecord: renderCanonicalSemanticRecord,
+        resolveGeneratedSlot: () => undefined,
+      });
+      assert(buttingCompleted.build_issues.length === 0, "blank-line fixture failed to build");
+      const buttingIssues = buildProjectionViews(buttingDocument, buttingCompleted).issues;
+      assert(buttingIssues.some((entry) =>
+        entry.logical_path === "projection.layout.blank-line.section.second" &&
+        entry.message.includes('record "matrix.fixture-visible"')),
+      "record prose butting against the next heading did not fail naming the butting record");
+      assert(liveTestingViews().projection.issues.length === 0,
+        "live render violates its own blank-line hygiene");
       return pass(["banner", "anchor", "status_line", "layout", "full_audit_separation",
-        "fragment_scan", "fragment_duplicate", "fragment_malformed"]);
+        "fragment_scan", "fragment_duplicate", "fragment_malformed", "blank_line"]);
     },
   },
   {

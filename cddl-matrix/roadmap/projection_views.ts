@@ -454,14 +454,59 @@ function materializeFull(
   const bytes = concatenate(pieces.map((piece) => piece.bytes));
   const bindings: LocalBinding[] = [];
   let offset = 0;
+  const ownerRanges: { start: number; end: number; owner: Piece["owner"] }[] = [];
   for (const piece of pieces) {
     for (const binding of piece.bindings) bindings.push({ ...binding,
       start: binding.start + offset, end: binding.end + offset });
+    ownerRanges.push({ start: offset, end: offset + piece.bytes.byteLength, owner: piece.owner });
     offset += piece.bytes.byteLength;
   }
   if (offset !== bytes.byteLength) issues.push(issue(document, "projection.layout.bytes",
     "final projection bytes do not match their mechanically bound piece stream"));
+  issues.push(...headingBlankLineIssues(document, bytes, ownerRanges));
   return { bytes, bindings };
+}
+
+/**
+ * Render-side blank-line hygiene: an ATX heading in the FULL view must be preceded by a blank
+ * line (fenced code ignored, file start ok). The rule lives here — not in a downstream markdown
+ * lint — so the failure names the OWNING prose (record/section/part) whose trailing bytes butt
+ * against the next heading; the projection is a gitignored render no repository lint ever scans,
+ * and a decode-side rule could not see headings that layout transforms materialize.
+ */
+function headingBlankLineIssues(
+  document: RoadmapDocument,
+  bytes: Uint8Array,
+  ownerRanges: readonly { start: number; end: number; owner: Piece["owner"] }[],
+): RoadmapIssue[] {
+  const issues: RoadmapIssue[] = [];
+  const ownerAt = (byte: number): { path: string; label: string } => {
+    const range = ownerRanges.find((candidate) => byte >= candidate.start && byte < candidate.end);
+    if (range === undefined) return { path: "unowned", label: "unowned bytes" };
+    return {
+      path: `${range.owner.kind}.${range.owner.id}`,
+      label: `${range.owner.kind} ${JSON.stringify(range.owner.id)}`,
+    };
+  };
+  const lines = TEXT.decode(bytes).split("\n");
+  let inFence = false;
+  let byteOffset = 0;
+  let previousStart = 0;
+  for (const [index, line] of lines.entries()) {
+    const lineStart = byteOffset;
+    byteOffset += UTF8.encode(line).byteLength + 1;
+    const fenceDelimiter = /^\s*(```|~~~)/.test(line);
+    if (fenceDelimiter) inFence = !inFence;
+    if (
+      !fenceDelimiter && !inFence && index > 0 && /^\s{0,3}#{1,6}\s+\S/.test(line) &&
+      lines[index - 1]!.trim() !== ""
+    ) {
+      issues.push(issue(document, `projection.layout.blank-line.${ownerAt(lineStart).path}`,
+        `full-view line ${index + 1} starts a heading without a preceding blank line; the butting prose belongs to ${ownerAt(previousStart).label} — end that prose with a blank line`));
+    }
+    previousStart = lineStart;
+  }
+  return issues;
 }
 
 function auditProjection(fields: readonly AuthoredField[]): {

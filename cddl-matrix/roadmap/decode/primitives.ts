@@ -78,11 +78,16 @@ export function expectExactTable(
   }
   for (const key of schema.required) {
     if (!hasOwn(table, key)) {
+      // Spell the arm's complete key inventory so an author discovers the shape from the failure
+      // itself instead of copying a sibling record (first-authoring-run friction finding).
+      const optionalSuffix = (schema.optional ?? []).length === 0
+        ? ""
+        : `; optional: ${[...schema.optional!].join(", ")}`;
       schemaFail(
         ctx,
         "E-SCHEMA-MISSING-KEY",
         childLogicalPath(logicalPath, key),
-        `${schema.name} requires ${key}`,
+        `${schema.name} requires ${key} (required: ${schema.required.join(", ")}${optionalSuffix})`,
       );
     }
   }

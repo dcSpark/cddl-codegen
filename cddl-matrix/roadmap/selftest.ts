@@ -250,7 +250,7 @@ const REFERENCE_KIND_SUBCASES = [
 
 /** Frozen named reviewer vectors. A case absent from this map must report no subcases. */
 export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
-  ["projection_views_layout_and_provenance", ["banner", "anchor", "status_line", "layout", "full_audit_separation", "fragment_scan", "fragment_duplicate", "fragment_malformed"]],
+  ["projection_views_layout_and_provenance", ["banner", "anchor", "status_line", "layout", "full_audit_separation", "fragment_scan", "fragment_duplicate", "fragment_malformed", "blank_line"]],
   ["projection_views_content_exactly_once", ["exact", "missing", "duplicate", "mismatched_bytes"]],
   ["outputs_slot_cardinality", ["status_zero_open", "status_two_open", "status_zero_close", "status_two_close", "reversed", "crossed", "section_slot_zero", "section_slot_two_declarations", "section_slot_two_placements"]],
   ["outputs_interval_overlap", ["same_interval", "partial_left", "partial_right", "contained", "whole_vs_slot", "same_producer_overlap", "adjacent"]],
