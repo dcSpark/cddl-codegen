@@ -39,17 +39,19 @@ import {
   createCoreReferenceProviders,
   collectReferenceProviders,
   compareReferenceTargets,
-  extractRustTestSymbols,
-  gateFact,
-  headingFact,
   REFERENCE_KIND_REGISTRY,
-  scanRoadmapCitations,
-  scanRoadmapMarkdownFacts,
   validateSemanticRoadmapJoins,
   validateGuardedFamilyReopens,
   validateRoadmapReferences,
-  type TrackedTextInput,
 } from "../references.ts";
+import {
+  gateFact,
+  headingFact,
+  scanRoadmapCitations,
+  scanRoadmapMarkdownFacts,
+  type TrackedTextInput,
+} from "../repository_facts.ts";
+import { extractRustTestSymbols } from "../rust_symbols.ts";
 import { deriveRelationViews, validateRelations } from "../relations.ts";
 import {
   identityOwnerClaimKey,

@@ -35,10 +35,10 @@ import type {
 } from "./model/core.ts";
 import type { MatrixStatusInputs } from "./model/matrix.ts";
 import {
-  extractRustTestSymbols,
   scanRoadmapCitations,
   type TrackedTextInput,
-} from "./references.ts";
+} from "./repository_facts.ts";
+import { extractRustTestSymbols } from "./rust_symbols.ts";
 import { extractFixedValueSourceFacts } from "./source_facts.ts";
 import { deriveFixedValueCurrentGuards, fixedValueGuardActivationState } from "./fixed_value_guards.ts";
 import { FIXED_VALUE_DELIVERY_BASE } from "./fixed_value_guards.ts";

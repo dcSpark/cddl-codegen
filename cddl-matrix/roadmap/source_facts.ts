@@ -1,5 +1,5 @@
 import type { FixedValueSourceFacts, RustEnumVariantFact } from "./adapters/types.ts";
-import { matchingRustDelimiter, rustTokens, type RustToken } from "./references.ts";
+import { matchingRustDelimiter, rustTokens, type RustToken } from "./rust_symbols.ts";
 
 const cp = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
 

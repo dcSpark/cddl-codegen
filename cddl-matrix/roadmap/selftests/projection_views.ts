@@ -7,7 +7,7 @@ import { buildProjectionViews, validateContentReachability, validateLegacySpanPr
 import type { ProjectionLayout } from "../projection_layout.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/matrix.ts";
 import { TESTING_ADAPTER } from "../adapters/testing.ts";
-import { scanRoadmapMarkdownFacts } from "../references.ts";
+import { scanRoadmapMarkdownFacts } from "../repository_facts.ts";
 import { createImmutableByteView } from "../render_ir.ts";
 import { liveTestingLegacyProjection, liveTestingProjection, liveTestingV2Document } from "./live_testing.ts";
 import { sha256 } from "../kernel.ts";

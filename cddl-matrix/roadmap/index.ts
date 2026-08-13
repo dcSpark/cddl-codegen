@@ -61,7 +61,7 @@ import {
 } from "./render_ir.ts";
 import { buildProjectionViews, type ProjectionViews } from "./projection_views.ts";
 import { projectionLayout, projectionLayoutRank, validateProjectionLayoutDeclaration } from "./projection_layout.ts";
-import { scanRoadmapMarkdownFacts } from "./references.ts";
+import { scanRoadmapMarkdownFacts } from "./repository_facts.ts";
 // Type-only: the selftest runner VALUE is injected by the entry point through
 // RoadmapCliDispatchServices, so this module has no runtime edge into the selftest tree.
 import type { runSelfTests } from "./selftest.ts";
