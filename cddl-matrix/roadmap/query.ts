@@ -10,6 +10,7 @@ import type {
   SignalPayload,
 } from "./model/core.ts";
 import type { FinalizedRoadmap } from "./pipeline.ts";
+import { armQueryEntries } from "./payload_descriptors.ts";
 import { sha256 } from "./kernel.ts";
 
 const UTF8 = new TextEncoder();
@@ -82,29 +83,11 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
     case "signals": {
       const rows = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {
         if (payload.kind === "signal") {
+          // The row's shape is the arm's own field list (descriptor-derived); evaluation is the
+          // one computed value, so it and the discriminant stay explicit here.
           return [{ roadmap, id, transition_kind: payload.transition_kind,
             evaluation: evaluateTemporalPayload(payload, asOf),
-            ...(payload.transition_kind === "promotion_trigger" || payload.transition_kind === "reopening_signal"
-              ? { observer: payload.observer, dimension: payload.dimension,
-                ...(payload.observable === undefined ? {} : { observable: payload.observable }),
-                predicate: payload.predicate, action_on_fire_md: payload.action_on_fire_md }
-              : payload.transition_kind === "unblock_predicate"
-              ? { owner_reference_id: payload.owner_reference_id, event_md: payload.event_md,
-                check_procedure_md: payload.check_procedure_md, due_action_md: payload.due_action_md }
-              : payload.transition_kind === "watch_escalation"
-              ? { failure_signature_md: payload.failure_signature_md,
-                capture_procedure_md: payload.capture_procedure_md, response_md: payload.response_md,
-                escalation_action_md: payload.escalation_action_md,
-                retirement_semantics_md: payload.retirement_semantics_md }
-              : payload.transition_kind === "retirement_predicate"
-              ? { external_owner_reference_id: payload.external_owner_reference_id,
-                external_predicate_md: payload.external_predicate_md,
-                verification_md: payload.verification_md, due_action_md: payload.due_action_md }
-              : { owner_reference_id: payload.owner_reference_id, event_source: payload.event_source,
-                period_or_event_md: payload.period_or_event_md, checklist_md: payload.checklist_md,
-                missed_action_md: payload.missed_action_md,
-                last_completion_reference_id: payload.last_completion_reference_id ?? null,
-                due_on: payload.due_on ?? null, authored_as_of: payload.as_of ?? null }) }];
+            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "transition_kind", "evaluation"])) }];
         }
         if (payload.kind === "evidence" && payload.freshness === "as_of") {
           return [{
@@ -144,20 +127,13 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
           : { uncertainty_md: payload.uncertainty_md }),
         }]);
       const costs = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] =>
-        payload.kind !== "testing_cost" ? [] : [{ roadmap, id, cost_posture: payload.cost_posture,
-          unit: payload.unit, scope_md: payload.scope_md,
-          ...(payload.cost_posture === "live_registry" ? { gate_reference_id: payload.gate_reference_id }
-          : { value_min: payload.value_min, value_max: payload.value_max,
-            observed_at: payload.observed_at, environment_md: payload.environment_md,
-            evidence_ids: payload.evidence_ids }) }]);
+        payload.kind !== "testing_cost"
+          ? []
+          : [{ roadmap, id, ...Object.fromEntries(armQueryEntries(payload, ["detail_md"])) }]);
       const externalCloseouts = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] =>
-        payload.kind !== "matrix_external_closeout" ? [] : [{ roadmap, id,
-          closeout_state: payload.closeout_state, upstream_owner_reference_id: payload.upstream_owner_reference_id,
-          current_upstream_state_md: payload.current_upstream_state_md,
-          transition_ids: payload.transition_ids, verification_md: payload.verification_md,
-          prune_reference_ids: payload.prune_reference_ids ?? [], actions: payload.actions,
-          branches: payload.branches,
-          ...(payload.closeout_state === "blocked" ? { blocker_md: payload.blocker_md } : {}) }]);
+        payload.kind !== "matrix_external_closeout"
+          ? []
+          : [{ roadmap, id, ...Object.fromEntries(armQueryEntries(payload, ["detail_md"])) }]);
       const ready = rows.filter((row) => row.work_state === "ready");
       const armed = rows.filter((row) => row.work_state === "armed");
       const signalsById = new Map(payloadRows.flatMap(({ id, payload }) => payload.kind === "signal"
@@ -201,43 +177,30 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
         payload.kind !== "decision" ? [] : [{ roadmap, id, decision_state: payload.decision_state,
           permanence: payload.decision_state === "pending" ? "pending" : payload.permanence,
           transition_ids: "transition_ids" in payload ? payload.transition_ids ?? [] : [],
-          ...(payload.decision_state === "pending" ? { question_md: payload.question_md }
-          : payload.decision_state === "held" ? { rationale_md: payload.rationale_md }
-          : { rationale_md: payload.rationale_md,
-            authority_reference_id: payload.authority_reference_id }) }]);
+          ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "decision_state", "permanence", "transition_ids"])) }]);
       return { evaluation_as_of, decisions: groupQueryRows(rows, (row) => String(row.decision_state)) };
     }
     case "watches":
       return { evaluation_as_of,
         live: payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {
           if (payload.kind === "testing_operational_watch" && payload.watch_state === "watching") return [{
-            roadmap, id, payload_kind: payload.kind, signature_md: payload.signature_md, capture_steps: payload.capture_steps,
-            response_md: payload.response_md, escalation_transition_id: payload.escalation_transition_id,
-            retirement_semantics_md: payload.retirement_semantics_md,
+            roadmap, id, payload_kind: payload.kind,
+            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "watch_state"])),
           }];
           if (payload.kind === "testing_incident" && payload.incident_posture === "live") return [{
-            roadmap, id, payload_kind: payload.kind, signature_md: payload.signature_md, evidence_ids: payload.evidence_ids,
+            roadmap, id, payload_kind: payload.kind,
+            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "incident_posture"])),
           }];
           return [];
         }),
         attributed_history: payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {
           if (payload.kind === "testing_operational_watch" && payload.watch_state !== "watching") return [{
-            roadmap, id, payload_kind: payload.kind, posture: payload.watch_state, signature_md: payload.signature_md,
-            capture_steps: payload.capture_steps, response_md: payload.response_md,
-            escalation_transition_id: payload.escalation_transition_id,
-            retirement_semantics_md: payload.retirement_semantics_md,
-            attribution_md: payload.attribution_md,
-            operating_rule_reference_id: payload.operating_rule_reference_id,
-            ...(payload.watch_state === "retire_pending"
-              ? { retirement_reference_id: payload.retirement_reference_id } : {}),
+            roadmap, id, payload_kind: payload.kind, posture: payload.watch_state,
+            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "watch_state"])),
           }];
           if (payload.kind === "testing_incident" && payload.incident_posture !== "live") return [{
             roadmap, id, payload_kind: payload.kind, posture: payload.incident_posture,
-            signature_md: payload.signature_md, evidence_ids: payload.evidence_ids,
-            attribution_md: payload.attribution_md,
-            operating_rule_reference_id: payload.operating_rule_reference_id,
-            ...(payload.incident_posture === "historical"
-              ? { retirement_reference_id: payload.retirement_reference_id } : {}),
+            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "incident_posture"])),
           }];
           return [];
         }),

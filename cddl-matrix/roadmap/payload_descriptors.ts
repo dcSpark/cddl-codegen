@@ -785,6 +785,32 @@ export function fieldProperty(entry: PayloadField): string {
   return entry.value.t === "array_table" ? entry.value.prop : entry.name;
 }
 
+/**
+ * The arm's query-row entries: every field of the payload's arm in order, minus `kind` and the
+ * caller's exclusions, honoring the per-field query hints (renames; null / empty-array defaults
+ * for absent optionals).  View-specific computed values stay at the call site — this derives the
+ * SHAPE, so a new payload field appears in its arm's query rows without touching query code.
+ */
+export function armQueryEntries(
+  payload: SemanticPayload,
+  exclude: readonly string[] = [],
+): readonly (readonly [string, unknown])[] {
+  const arm = armOfPayload(payload);
+  const entries: (readonly [string, unknown])[] = [];
+  for (const entry of arm.fields) {
+    if (entry.value.t === "kind" || exclude.includes(entry.name)) continue;
+    const prop = fieldProperty(entry);
+    let value: unknown = (payload as unknown as Record<string, unknown>)[prop];
+    if (value === undefined) {
+      if (entry.query?.absent === "null") value = null;
+      else if (entry.query?.absent === "empty_array") value = [];
+      else continue;
+    }
+    entries.push([entry.query?.rename ?? prop, value] as const);
+  }
+  return entries;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Discriminator rows (pre-tables of the state machines; names are load-bearing in diagnostics).
 
