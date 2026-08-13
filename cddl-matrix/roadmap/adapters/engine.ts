@@ -11,6 +11,12 @@ import { sortRoadmapIssues as sortIssues } from "../errors.ts";
 import { buildRoadmapIndexes, type RoadmapIndexes, type SemanticPayloadProviderFact } from "../indexes.ts";
 import { namespaceOf } from "../ids.ts";
 import { concatenate } from "../kernel.ts";
+import {
+  armOfGroupValue,
+  armOfPayload,
+  fieldProperty,
+  type PayloadArm,
+} from "../payload_descriptors.ts";
 import type { RepoPath, RoadmapId, RoadmapName, SlotId } from "../model/core.ts";
 import type {
   RoadmapDocument,
@@ -84,98 +90,40 @@ export interface CanonicalSemanticMarkdownField {
   readonly bytes: Uint8Array;
 }
 
+/**
+ * The canonical Markdown field order derives from the payload descriptor table: the arm's field
+ * order filtered to Markdown fields, recursing into nested single tables (path-prefixed by the
+ * wire key) and array tables (path-prefixed by the decoded property name plus index).
+ */
 export function canonicalSemanticMarkdownFields(
   value: SemanticPayload,
 ): readonly CanonicalSemanticMarkdownField[] {
   const fields: CanonicalSemanticMarkdownField[] = [];
-  const add = (path: string, bytes: Uint8Array | undefined): void => {
-    if (bytes !== undefined) {
-      fields.push(Object.freeze({ logical_path: `payload.${path}`, bytes }));
+  const walk = (obj: object, arm: PayloadArm, prefix: string): void => {
+    for (const field of arm.fields) {
+      const spec = field.value;
+      const fieldValue = (obj as Record<string, unknown>)[fieldProperty(field)];
+      if (spec.t === "markdown") {
+        if (fieldValue !== undefined) {
+          fields.push(Object.freeze({
+            logical_path: `payload.${prefix}${field.name}`,
+            bytes: fieldValue as Uint8Array,
+          }));
+        }
+        continue;
+      }
+      if (spec.t === "table" && fieldValue !== undefined) {
+        walk(fieldValue as object, armOfGroupValue(spec.group, fieldValue), `${prefix}${field.name}.`);
+        continue;
+      }
+      if (spec.t === "array_table" && spec.flatten === undefined && fieldValue !== undefined) {
+        (fieldValue as readonly object[]).forEach((entry, index) =>
+          walk(entry, armOfGroupValue(spec.group, entry), `${prefix}${spec.prop}[${index}].`)
+        );
+      }
     }
   };
-  add("detail_md", value.detail_md);
-  switch (value.kind) {
-    case "work":
-      add("acceptance_md", value.acceptance_md);
-      if (value.work_state === "ready") add("priority_rationale_md", value.priority_rationale_md);
-      if (value.work_state === "blocked") add("blocker_md", value.blocker_md);
-      if (value.work_state === "delegated") add("return_condition_md", value.return_condition_md);
-      if (value.work_state === "pending_review") add("uncertainty_md", value.uncertainty_md);
-      break;
-    case "decision":
-      if (value.decision_state === "pending") add("question_md", value.question_md);
-      else add("rationale_md", value.rationale_md);
-      break;
-    case "signal":
-      if (value.transition_kind === "promotion_trigger" || value.transition_kind === "reopening_signal") {
-        add("action_on_fire_md", value.action_on_fire_md);
-        if (value.predicate.predicate_kind === "event") add("predicate.event_md", value.predicate.event_md);
-        if (value.predicate.predicate_kind === "manual") add("predicate.review_procedure_md", value.predicate.review_procedure_md);
-      } else if (value.transition_kind === "unblock_predicate") {
-        add("event_md", value.event_md);
-        add("check_procedure_md", value.check_procedure_md);
-        add("due_action_md", value.due_action_md);
-      } else if (value.transition_kind === "watch_escalation") {
-        add("failure_signature_md", value.failure_signature_md);
-        add("capture_procedure_md", value.capture_procedure_md);
-        add("response_md", value.response_md);
-        add("escalation_action_md", value.escalation_action_md);
-        add("retirement_semantics_md", value.retirement_semantics_md);
-      } else if (value.transition_kind === "retirement_predicate") {
-        add("external_predicate_md", value.external_predicate_md);
-        add("verification_md", value.verification_md);
-        add("due_action_md", value.due_action_md);
-      } else {
-        add("period_or_event_md", value.period_or_event_md);
-        add("checklist_md", value.checklist_md);
-        add("missed_action_md", value.missed_action_md);
-      }
-      break;
-    case "evidence":
-      add("claim_md", value.claim_md);
-      add("command_md", value.command_md);
-      add("result_md", value.result_md);
-      add("environment_md", value.environment_md);
-      add("unprobed_remainder_md", value.unprobed_remainder_md);
-      break;
-    case "control":
-      add("claim_md", value.claim_md);
-      add("boundary_md", value.boundary_md);
-      break;
-    case "matrix_external_closeout":
-      add("current_upstream_state_md", value.current_upstream_state_md);
-      if (value.closeout_state === "blocked") add("blocker_md", value.blocker_md);
-      add("verification_md", value.verification_md);
-      value.actions.forEach((entry, index) => add(`actions[${index}].action_md`, entry.action_md));
-      value.branches.forEach((entry, index) => add(`branches[${index}].predicate_md`, entry.predicate_md));
-      break;
-    case "matrix_policy":
-      if (value.policy_kind === "maintenance_protocol") add("protocol_md", value.protocol_md);
-      else add("rationale_md", value.rationale_md);
-      break;
-    case "testing_operational_watch":
-      add("signature_md", value.signature_md);
-      if (value.watch_state !== "watching") add("attribution_md", value.attribution_md);
-      add("response_md", value.response_md);
-      add("retirement_semantics_md", value.retirement_semantics_md);
-      value.capture_steps.forEach((entry, index) => add(`capture_steps[${index}].capture_md`, entry.capture_md));
-      break;
-    case "testing_incident":
-      add("signature_md", value.signature_md);
-      if (value.incident_posture !== "live") add("attribution_md", value.attribution_md);
-      break;
-    case "testing_cost":
-      add("scope_md", value.scope_md);
-      if (value.cost_posture === "historical_observation") add("environment_md", value.environment_md);
-      break;
-    case "testing_system_admission":
-      add("claim_md", value.claim_md);
-      break;
-    default: {
-      const exhaustive: never = value;
-      return exhaustive;
-    }
-  }
+  walk(value, armOfPayload(value), "");
   return Object.freeze(fields);
 }
 
