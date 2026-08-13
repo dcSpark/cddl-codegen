@@ -5,6 +5,7 @@ import { resolveSectionPlan } from "../section_plan.ts";
 import { buildExpectedChunks } from "../render_ir.ts";
 import { buildProjectionViews, validateContentReachability } from "../projection_views.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
+import { recordStatusFacts } from "../payload_descriptors.ts";
 import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import { scanRoadmapMarkdownFacts } from "../repository_facts.ts";
 import { createImmutableByteView } from "../render_ir.ts";
@@ -72,7 +73,10 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       assert(value.projection.issues.length === 0, "valid projection views reported issues");
       const text = TEXT.decode(value.projection.full);
       assert(text.startsWith("<!-- GENERATED FILE: owned by fixture/roadmap.toml;"), "ownership banner is absent");
-      assert(text.includes('<a id="roadmap-id-matrix.fixture-visible"></a>\n- **Visible record.**'), "stable anchor is absent or moved from its record");
+      assert(
+        text.includes('<a id="roadmap-id-matrix.fixture-visible"></a>\n<sub>work · work_state=ready · risk=false_pass_or_red</sub>\n- **Visible record.**'),
+        "stable anchor plus typed status line is absent or moved from its record",
+      );
       assert(!text.includes("Acceptance detail") && !text.includes("Relation audit note"), "audit-only prose leaked into full view");
       const facts = scanRoadmapMarkdownFacts(value.document.document.projection_path, createImmutableByteView(value.projection.full));
       assert(facts.issues.length === 0 && JSON.stringify(facts.stable_anchor_ids) === '["matrix.fixture-visible"]', "anchor scanner did not return the exact stable ID");
@@ -118,6 +122,7 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       const liveStart = liveText.indexOf("### Live operational watches");
       const nextSection = liveText.indexOf("\n## ", liveStart);
       const retainedMemory = '<a id="roadmap-id-testing.tier-memory.spend-measurements"></a>\n' +
+        "<sub>work · work_state=blocked · risk=resource_exhaustion</sub>\n" +
         "- **Spend the measurements.**";
       assert(liveText.includes(retainedMemory),
         "retained tier-memory work is absent or still nested under an unrelated operational record");
@@ -140,10 +145,31 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
         .filter((alias) => /^Next work [0-9]+$/u.test(alias)).sort();
       assert(aliases.length === 25 && !aliases.includes("Next work 9") && aliases.includes("Next work 26"),
         "live Next-work ordinal inventory changed or filled the intentional ordinal gap");
+      const handStatusLine = (record: (typeof live.document.records)[number]): string => {
+        const facts = recordStatusFacts(record.payload);
+        return `<sub>${[
+          String(facts.kind),
+          ...facts.discriminants.map(([path, value]) => `${path}=${value}`),
+          ...(facts.risk === undefined ? [] : [`risk=${facts.risk}`]),
+        ].join(" · ")}</sub>`;
+      };
       for (const record of live.document.records.filter((candidate) =>
         candidate.legacy_aliases?.some((alias) => /^Next work [0-9]+$/u.test(alias)))) {
-        const anchor = `<a id="roadmap-id-${record.id}"></a>\n- `;
-        assert(liveText.includes(anchor), `Next-work record ${record.id} did not become an anchored bullet`);
+        const anchor = `<a id="roadmap-id-${record.id}"></a>\n${handStatusLine(record)}\n- `;
+        assert(liveText.includes(anchor), `Next-work record ${record.id} did not become an anchored, status-lined bullet`);
+      }
+      // Status-line uniformity oracle: every section-placed record's anchor is immediately
+      // followed by a status line spelling exactly its typed facts (kind, arm discriminants,
+      // risk where the arm carries one) — hand-joined here so the oracle is independent of the
+      // renderer's own formatting helper.
+      for (const record of live.document.records.filter((candidate) => placedIds.has(String(candidate.id)))) {
+        const anchorText = `<a id="roadmap-id-${record.id}"></a>\n`;
+        const at = liveText.indexOf(anchorText);
+        assert(at !== -1, `record ${record.id} lost its stable anchor`);
+        const afterAnchor = liveText.slice(at + anchorText.length);
+        const following = afterAnchor.slice(0, afterAnchor.indexOf("\n"));
+        assert(following.trimStart() === handStatusLine(record) && /^ *$/u.test(following.slice(0, following.length - following.trimStart().length)),
+          `record ${record.id} lacks its typed status line behind its anchor`);
       }
       const liveFacts = scanRoadmapMarkdownFacts(live.document.document.projection_path,
         createImmutableByteView(live.projection.full));
@@ -161,7 +187,7 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       assert(liveTestingViews(badHeadingDocument).projection.issues.some((entry) =>
         entry.logical_path === "projection.layout.section.next-priority"),
       "Next-heading source-prefix drift silently disabled its layout transform");
-      return pass(["banner", "anchor", "layout", "full_audit_separation",
+      return pass(["banner", "anchor", "status_line", "layout", "full_audit_separation",
         "fragment_scan", "fragment_duplicate", "fragment_malformed"]);
     },
   },

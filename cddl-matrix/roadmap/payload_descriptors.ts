@@ -872,6 +872,42 @@ export function armForDiscriminants(
   return found;
 }
 
+export interface RecordStatusFacts {
+  readonly kind: SemanticPayload["kind"];
+  readonly discriminants: readonly (readonly [string, string])[];
+  readonly risk?: string;
+}
+
+/**
+ * Typed facts behind the rendered per-record status line (the `--query index` "state" derivation,
+ * per record): the payload's kind, its descriptor arm's non-kind discriminant chain resolved to
+ * the payload's own values, and `risk` where the arm carries one.  The renderer owns the line's
+ * layout syntax; deriving the FACTS here means a new arm or state reaches the status line with no
+ * renderer edit.
+ */
+export function recordStatusFacts(payload: SemanticPayload): RecordStatusFacts {
+  const arm = armOfPayload(payload);
+  const discriminants = arm.when
+    .filter(([path]) => path !== "kind")
+    .map(([path]) => {
+      const value = dottedValue(payload, path);
+      if (typeof value !== "string") {
+        throw new Error(`status discriminant ${path} of ${payload.kind} payload is not a string`);
+      }
+      return [path, value] as const;
+    });
+  const carriesRisk = arm.fields.some((field) => field.name === "risk" && field.value.t === "enum");
+  const risk = carriesRisk ? (payload as unknown as Record<string, unknown>).risk : undefined;
+  if (carriesRisk && typeof risk !== "string") {
+    throw new Error(`status risk of ${payload.kind} payload is not a string`);
+  }
+  return Object.freeze({
+    kind: payload.kind,
+    discriminants: Object.freeze(discriminants),
+    ...(typeof risk === "string" ? { risk } : {}),
+  });
+}
+
 /** Select a nested group's arm for a decoded nested value (single-arm groups match trivially). */
 export function armOfGroupValue(group: NestedGroup, value: unknown): PayloadArm {
   const found = group.arms.find((candidate) => armMatches(candidate, value));

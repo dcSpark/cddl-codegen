@@ -63,6 +63,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
 (deferred, so each names the observable that would reopen it).
 
 <a id="roadmap-id-matrix.named-group-reference-grid"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **Enumerate the named-group REFERENCE kind (`grpent.groupname`) across its container PLACEMENTS
   and member MODIFIERS — two explicit axes, not a "remaining roles" sweep.** Buildable now, and the
   payoff is measured: every defect yet found in this kind's cells was caught by per-delivery ad-hoc
@@ -154,6 +155,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
   targeted slice that does not wait for it.
 <a id="roadmap-id-matrix.grammar-derived-legality"></a>
+<sub>work · work_state=deferred · risk=false_pass_or_red</sub>
 - **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
@@ -168,6 +170,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   grid itself do not meet this signal: both sat in cells the corpus exercises and nothing models,
   which the grid now names `·`.
 <a id="roadmap-id-matrix.per-value-encoding-reachability"></a>
+<sub>work · work_state=deferred · risk=false_pass_or_red</sub>
 - **Per-VALUE encoding reachability.** A head argument that is fixed by the construct's own definition
   is not a judgment call: a prelude construct declares the exact cell its head lands in, and
   `build_matrix.ts` re-derives that from the pinned prelude, so `bigfloat` (tag 5, at every value)
@@ -183,6 +186,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   are writable up to `ai26` (a 64 KiB literal) and only `ai27` is out of reach, so today an author
   writes more than they dismiss.
 <a id="roadmap-id-matrix.emission-narrowing-fixture-floor"></a>
+<sub>work · work_state=deferred · risk=misleading_docs</sub>
 - **Narrowing at emission, in the golden fixture floor.** The per-construct section of
   `tests/golden_hex/COVERAGE.md` marks a construct exercised when a golden rule NAMES it, corrected
   for the prelude's plain aliases (derivable, so applied rather than disclaimed). Not corrected: a
@@ -198,6 +202,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   number of skewed rows rather than with the number of consumers. The entry records that the case
   exists; it records nobody having paid for it yet, so the signal can still fire.
 <a id="roadmap-id-matrix.tag-registry-boundary"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=reopenable</sub>
 - **Tag registry — deliberately not pinned or enumerated.** cddl-codegen is tag-parametric, so the tag
   NUMBER is a parameter of the `type2.tag` feature rather than a construct of its own, and the few
   codegen-distinct tags are already prelude rows; the reasoning is current state in `README.md`
@@ -209,6 +214,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
 ## Expansion (when relevant)
 
 <a id="roadmap-id-matrix.profile-version-scope"></a>
+<sub>matrix_policy · policy_kind=maintenance_protocol</sub>
 - **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + the IANA control-op registry (spans RFC
   8610/9090/9165/9741). The CDDL modules draft is now a pinned source
   (`sources/draft-ietf-cbor-cddl-modules-06.txt`; version-pinned URL — bump filename+URL+sum together)
@@ -219,9 +225,11 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   (`tests/TESTING_ROADMAP.md` § Deferred features tracks that decision); bump cddl-codegen's
   declared target profile if it updates its `cddl` dependency.
 <a id="roadmap-id-matrix.additional-tool-annotations"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=reopenable</sub>
 - **More tools:** the master is implementation-agnostic; add `annotations/<other-tool>.toml` if another
   consumer adopts it.
 <a id="roadmap-id-matrix.intra-alternative-variations"></a>
+<sub>matrix_policy · policy_kind=maintenance_protocol</sub>
 - **Intra-alternative variation rows (the enforcement-blind-spot class):** when a new variation axis
   appears *inside* one ABNF alternative (a new controller value class, a new literal lexeme, a new
   head-type × sign combination), enumerate it as a ROW with its `class="constraint"` boundary-violation
@@ -252,6 +260,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   `type2_to_fixed_value` lowering (a non-literal operand is a recorded rejection, so the panic
   class cannot return through a shape nobody enumerated).
 <a id="roadmap-id-matrix.control-host-placement-space"></a>
+<sub>work · work_state=deferred · risk=false_pass_or_red</sub>
 - **A supported control's HOST-PLACEMENT spelling space — one support example proves ONE point of
   it.** Distinct from the intra-alternative axis above (variation inside the controller): a
   control also varies by where its TARGET sits — occurrence (mandatory vs optional member),
@@ -276,6 +285,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
   host-placement point — measurable by whoever hits the break, and lying on the dimension the
   deferred cost grows along (the count of ops with proven multi-point breakage; `.default` is one).
 <a id="roadmap-id-matrix.refusal-spelling-space"></a>
+<sub>matrix_policy · policy_kind=maintenance_protocol</sub>
 - **A REFUSED construct's spelling space — a refusal probed on one spelling is not a refusal of
   the class.** The reject-side sibling of the two supported-op entries above: every layer that
   certifies a rejection (the matrix row's one `example`, the reject-catalog projection built from
@@ -323,6 +333,7 @@ continuation lines, headerless and invisible as an entry; no lint can tell that 
 entry, so the atomicity is the rule).
 
 <a id="roadmap-id-matrix.multi-choice-group-rule"></a>
+<sub>work · work_state=deferred · risk=valid_rejection</sub>
 - **A group RULE whose body carries multiple group choices is refused with two verified remedies —
   the honoring design (a choice of bodies) is the missing capability, not the guard.**
   `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
@@ -345,6 +356,7 @@ entry, so the atomicity is the rule).
   INSIDE one spec, so that count is the dimension to watch rather than a second consumer appearing.
   Not already met: today's evidence is synthetic probes, each with at most one reference site.
 <a id="roadmap-id-matrix.derived-variant-naming"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
   — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
   arm with no member key takes its variant name from the value's LEXEME, which fails two ways:
@@ -372,6 +384,7 @@ entry, so the atomicity is the rule).
   already met: today the evidence is synthetic probes only, and a synthetic probe writes no
   `@name`.
 <a id="roadmap-id-matrix.nominal-custom-pair-wrapper"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **No opt-in NOMINAL wrapper over a custom pair, so a pair's wire has no standalone entry point.**
   A pair-carrying transparent alias mints no rust type (that is what gives one CDDL name one wire
   form: a `pub type` there would carry the aliased type's built-in codec as a standalone wire
@@ -390,6 +403,7 @@ entry, so the atomicity is the rule).
   already met: the entry records that the hand-written route exists, not that anyone has been
   observed paying for it.
 <a id="roadmap-id-matrix.duplicate-rejection-diagnostics"></a>
+<sub>work · work_state=deferred · risk=misleading_docs</sub>
 - **Say each rejection once, so the count of messages is the count of problems.** A single
   offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
   `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
@@ -413,6 +427,7 @@ entry, so the atomicity is the rule).
   duplicates interleaved with genuinely different rejections — reported by someone reading that
   output to fix their own spec.
 <a id="roadmap-id-matrix.incremental-group-choice-extension"></a>
+<sub>work · work_state=blocked · risk=valid_rejection</sub>
 - **Incremental GROUP-choice extension (`//=`) stays refused; honoring it is blocked on the
   choice-of-bodies design, not on this seam.** The type half is done — `merge_incremental_type_choice_extensions`
   splices every `/=` statement's arms into the first statement's before `ParentVisitor` is built, so
@@ -428,6 +443,7 @@ entry, so the atomicity is the rule).
   choice-of-bodies entry's signal, since nothing here can move first.
 
 <a id="roadmap-id-matrix.heterogeneous-array.occurrence-bounds"></a>
+<sub>work · work_state=ready · risk=valid_rejection</sub>
 
 ### Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record fields.
 
@@ -446,6 +462,7 @@ A **final-position** `* t` after ≥1 fixed member is the loose open-array rest 
   spec-derived boundary vectors.
 
 <a id="roadmap-id-matrix.open-array.optional-adjacency"></a>
+<sub>work · work_state=blocked · risk=invalid_acceptance</sub>
 
 ### Resolve optional fields adjacent to open array tails or open-table rows
 
@@ -460,6 +477,7 @@ newly honored shape must prove that boundary through serialization/deserializati
 Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived-vector surfaces.
 
 <a id="roadmap-id-matrix.open-table.bounded-rest-rows"></a>
+<sub>work · work_state=ready · risk=valid_rejection</sub>
 
 ### Honor bounded occurrences on open-table rows
 
@@ -471,6 +489,7 @@ typed-row hardening question below and from zero-permitting fixed-key fields, wh
 lifecycle.
 
 <a id="roadmap-id-matrix.open-table.min-one-hardening"></a>
+<sub>work · work_state=deferred · risk=invalid_acceptance</sub>
 
 ### Harden an open table's min-1 typed row when an invalid value is observed
 
@@ -486,6 +505,7 @@ verbatim. Reopening signal: a consumer reporting a value that reached the wire �
 cross-crate boundary — with an empty typed row, i.e. the bypass observed rather than argued.
 
 <a id="roadmap-id-matrix.heterogeneous-array.atomic-bounds-handover"></a>
+<sub>work · work_state=ready · risk=wrong_public_api</sub>
 
 ### Atomically hand over bounded scalar and byte/text values to private-field newtypes
 
@@ -494,6 +514,7 @@ Value windows (`uint .le N`, `.size` ranges on bytes/text) need private-field ne
 sites).
 
 <a id="roadmap-id-matrix.fixed-bytes.static-representation"></a>
+<sub>work · work_state=ready · risk=wrong_public_api</sub>
 
 ### Fixed-byte representation optimization
 
@@ -502,6 +523,7 @@ sites).
 stays as the ergonomic entry point.
 
 <a id="roadmap-id-matrix.fixed-array.static-representation"></a>
+<sub>work · work_state=ready · risk=wrong_public_api</sub>
 
 ### Fixed-array representation optimization
 
@@ -519,6 +541,7 @@ and any wasm-boundary shape a new class mints must be enumerated in the wasm-ABI
 `SHAPES` in the same change (the "Keep EVERY matrix axis honest" rule).
 
 <a id="roadmap-id-matrix.keyed-struct-map.zero-permitting-fields"></a>
+<sub>work · work_state=ready · risk=valid_rejection</sub>
 
 ### Honor zero-permitting occurrences on keyed struct-map fields
 
@@ -533,6 +556,7 @@ gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,
   and spec-derived boundary vectors.
 
 <a id="roadmap-id-matrix.inline-group-occurrence-carrier"></a>
+<sub>work · work_state=ready · risk=valid_rejection</sub>
 
 ### Honor zero-permitting occurrences on inline parenthesized groups when a carrier exists
 
@@ -547,12 +571,14 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
 <a id="roadmap-id-matrix.cbor-any-boundary"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=permanent</sub>
 - **`cbor-any` is a decided permanent exclusion, not a candidate feature.** Its
   `#6.55799(any)` self-describe tag is a property of a complete serialized CBOR stream, not an
   ordinary value a generated wrapper can hold. Keep its role-neutral graceful refusal and the
   `tests/TESTING_ROADMAP.md` § North star exclusion; do not reopen it without an explicit maintainer
   decision.
 <a id="roadmap-id-matrix.anonymous-nested-map"></a>
+<sub>work · work_state=deferred · risk=valid_rejection</sub>
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). Every one of those shapes rejects gracefully
@@ -566,6 +592,7 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
   spec reaches 5 — hoisting is a mechanical per-occurrence edit, so the cost grows inside a single
   spec rather than across consumers, and the consumer can count it from their own rejection output.
 <a id="roadmap-id-matrix.inline-group-choice-arm"></a>
+<sub>work · work_state=deferred · risk=valid_rejection</sub>
 - **Real support for an inline group as a group-choice arm's sole entry**
   (`t = [ (uint, tstr) // bytes ]`, and the map-rep `t = { (a: uint) // b: tstr }`). Both reject
   gracefully, pointing at the equivalent named form
@@ -577,6 +604,7 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
   wire), so the reopening signal is the same magnitude one on a higher threshold: the count of
   inline group-choice arms a consumer must name to compile ONE committed spec reaches 10.
 <a id="roadmap-id-matrix.float-table-key-domain"></a>
+<sub>work · work_state=deferred · risk=compile_failure</sub>
 - Float-family table key domains are **rejected gracefully** at generation — a key domain that is
   (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or an `OrderedHashMap` bounded
   `K: Hash + Eq + Ord` under `--preserve-encodings`), and floats implement none of `Eq`/`Ord`/`Hash`,
@@ -589,6 +617,7 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
   Reopening signal: a consumer reports a spec whose table keys are floats in a wire format they do
   not control — i.e. the integer/text/bytes remedy is not theirs to apply.
 <a id="roadmap-id-matrix.fixed-map-key-kinds"></a>
+<sub>control</sub>
 - Bytes/nint/float fixed map keys are **rejected gracefully** — only uint and text fixed keys are
   implemented on the struct-map record path (pinned by
   `contain.map-key.memberkey.value.{nint,float}_colon_single`,
@@ -608,6 +637,7 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
   nint/float/special kinds above) remain graceful refusals until a dedicated key representation is
   designed. `fixed_key_arrow_single_entry_routes_to_record_path` pins the allowlist seam.
 <a id="roadmap-id-matrix.nint-capability"></a>
+<sub>work · work_state=deferred · risk=valid_rejection</sub>
 - **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration
   cells of the matrix, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully, its own entry; table domains and `@newtype` bounds — work; bare values, json,
@@ -627,6 +657,7 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
   runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
   flip the pinned rejection rows (record path first, then the group-choice arm).
 <a id="roadmap-id-matrix.wasm-extern-wrapper-demand"></a>
+<sub>work · work_state=deferred · risk=misleading_docs</sub>
 - **The wasm extern re-export glue demands a wrapper the wasm crate never uses.** Every in-crate
   `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule gets `pub use crate::<Name>;`
   emitted into the wasm crate's generated module, and the "Own-spec extern re-export contract"
@@ -647,6 +678,7 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
   the tool asked them to write — they can see it in their own build, which we cannot, and it is the
   same observable whether they hit it once or on twenty types.
 <a id="roadmap-id-matrix.extern-execution-multifile"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=permanent</sub>
 - **Corpus/matrix extern EXECUTION, and the multifile matrix's structural extern exclusion.** The
   COMPILE side of extern breadth is delivered and is now current state, documented where it is
   enforced rather than here: the matrix rows in `README.md` § "User-code rows are SEEDED, not
@@ -658,6 +690,7 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
     because the seed says so, which is why `feature_corpus_roundtrips_nondefault_profiles` skips
     those stems on an execution-side reason of its own rather than inheriting the compile floor's.
   <a id="roadmap-id-matrix.multifile.extern-shape-coverage"></a>
+  <sub>work · work_state=deferred · risk=compile_failure</sub>
   - The multifile matrix never enumerates extern/rawbytes shapes at all
     (`project_multifile_matrix.ts`'s `SHAPES`), so its exclusion is structural rather than a skip
     list. Extern PLACEMENT across scopes is covered by `tests/extern-generic-scoped` and
@@ -677,6 +710,7 @@ nothing here is a candidate fix — the code change already exists upstream or o
 remains is deleting the notes that explain why we do not have it yet.
 
 <a id="roadmap-id-matrix.prelude-number-float-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When a release ships the `90f66ff` prelude-`number` float fix (README gap #7): prune the
   fix-provenance notes (README gap #7, the `prelude-number-float-accepts` /
   `prelude-number-tstr-rejects` fingerprint probes' provenance wording). Separately citable while
@@ -689,20 +723,25 @@ remains is deleting the notes that explain why we do not have it yet.
   observations" in `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md` (local note) — the same
   candidate-upstream-report disposition, not yet filed.
 <a id="roadmap-id-matrix.float-key-null-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When a release ships the `707c038` float-key/null member-key fix (README gap #10): prune the
   fix-provenance notes (README gap #10, the `float-key-accepts` / `null-key-rejects` fingerprint
   probes' provenance wording).
 <a id="roadmap-id-matrix.uint-control-operator-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
   README gap #1's fix-provenance notes.
 <a id="roadmap-id-matrix.array-sequence-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
   crates.io: prune the fix-provenance notes (README gaps #2/#4, the draft repro table, the vector
   `reason` provenance).
 <a id="roadmap-id-matrix.non-uint-range-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending): prune the
   fix-provenance notes in README gap #3 and the rangeop vectors' `reason` provenance.
 <a id="roadmap-id-matrix.radix-literal-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When a release ships the `2c7548e` radix-literal lexer fix (upstream PR pending — fix +
   35-test suite on the fork): prune the fix-provenance notes in README gap #5. Separately track the
   WG spec question the fix spawned
@@ -711,6 +750,7 @@ remains is deleting the notes that explain why we do not have it yet.
   ruby oracle fix — ruby corroborates radix in value position only
   (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
 <a id="roadmap-id-matrix.signed-int-size-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=due</sub>
 - `.size` on a signed `int` — semantics CLARIFIED by the RFC author (cbor-wg/cddl#32): a control
   distributes over `int = uint / nint`, and an undefined application (`.size` on `nint`) is a
   per-value non-match, so `int .size N` matches exactly the `uint .size N` window. cddl-codegen
@@ -723,6 +763,7 @@ remains is deleting the notes that explain why we do not have it yet.
   mintable) and the rejection can be revisited. (2) When the clarification lands as erratum/spec
   text, cite it in the `current_capacities.mdx` note.
 <a id="roadmap-id-matrix.ruby-inline-controller-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=due</sub>
 - When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
   — gem 0.12.14 exit-65s at parse, so the whole containing spec becomes unjudgeable; repro +
   upstream steps in `cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md`): remove the
@@ -733,11 +774,13 @@ remains is deleting the notes that explain why we do not have it yet.
   controller type — same caveat class as the ruby radix-position deviations
   (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
 <a id="roadmap-id-matrix.bignum-key-tag-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When a release ships the `c2ebf9f` bignum map-key/value-tag fix (upstream PR pending — fix +
   30-test suite on the fork; README gap #6): prune the fix-provenance notes (README gap #6, the
   `RUST_ORACLE_SKIP` past-resident note, the two `bignint-*` fingerprint probes' provenance
   wording).
 <a id="roadmap-id-matrix.undefined-validator-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When the pinned rust `cddl` validator accepts `validate_cbor_from_slice("x = undefined",
   &[0xf7], None)` (README gap #16): the exact-signature stale probe in
   `ir_conformance_corpus` will fail first. Confirm the fixed behavior is the intended RFC 8949
@@ -749,6 +792,7 @@ remains is deleting the notes that explain why we do not have it yet.
   rejection signature is not a fix: investigate it and retain or revise the ledger only with a
   new exact probe; never promote this one-rule gap to fixture-level `RUST_ORACLE_SKIP`.
 <a id="roadmap-id-matrix.undefined-ciborium-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When ciborium's generic value decoder preserves CBOR `undefined` (`f7`) distinctly instead of
   returning `Value::Null`, `reference_codec_differential_self_check` should fail stale. Teach
   `ciborium_value_to_tree` the new variant, remove the sole
@@ -759,6 +803,7 @@ remains is deleting the notes that explain why we do not have it yet.
   accepts.
 
 <a id="roadmap-id-matrix.fixed-bytes.lowercase-base64-parser"></a>
+<sub>work · work_state=waiting_external · risk=valid_rejection</sub>
 
 ### When a `cddl` parser release accepts lowercase-hex and base64 fixed-byte literals
 
@@ -771,6 +816,7 @@ both newly parsed forms to lower to the same bytes as `h'CAFE'` and exercise the
 fixed-value surfaces; it is independent of the CBOR validator repair below.
 
 <a id="roadmap-id-matrix.fixed-bytes.validator-corroboration"></a>
+<sub>work · work_state=waiting_external · risk=false_pass_or_red</sub>
 
 ### When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17)
 
@@ -787,6 +833,7 @@ Confirm `h'CAFE'` and raw UTF-8 fixed-byte rules validate without a panic, then 
   pin; the missing independent oracle certification is explicit rather than inferred as `n/a`.
 
 <a id="roadmap-id-matrix.tag-map-key-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=due</sub>
 
 ### When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8)
 
@@ -798,6 +845,7 @@ re-mint the row it blocks (`--mint-decode-foreign --only=contain.map-key.type2.t
 in the same change so the row's evidence picks up the corroboration clause, and prune README gap #8
 plus that draft.
 <a id="roadmap-id-matrix.named-rule-map-key-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=due</sub>
 - When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
   #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
   multi-entry-composite-array-key observations, and prune steps in
@@ -810,6 +858,7 @@ plus that draft.
   re-mint `wasm_nested_alias.passthru_tags_map` and the `composite_map_key` fixture in the same
   change), and prune README gap #11 + that draft.
 <a id="roadmap-id-matrix.optional-closed-map-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=waiting</sub>
 - When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix (upstream
   PR pending — fix + regression tests + 21/12-cell differential grid on the fork; README gap #9):
   prune the fix-provenance notes (README gap #9 and the two `optional-entry`/`closed-map`
@@ -818,6 +867,7 @@ plus that draft.
   copy-paste, is since fork-fixed — README gap #10) — bundle them into the upstream conversation
   when convenient.
 <a id="roadmap-id-matrix.float-prelude-name-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=due</sub>
 - When the rust oracle starts distinguishing the float prelude names at all (README gap #12 — OPEN
   at the pinned `ac1b98e` rev: all six names collapse to one "is it a float" test). The ruby gem
   0.12.14 already implements the shortest-form partition head-independently, so this is a
@@ -833,6 +883,7 @@ plus that draft.
   rather than stale: the shortest-form partition reopens, and the writeup's own closing section
   says exactly what moves.
 <a id="roadmap-id-matrix.typed-tag-report-upstream"></a>
+<sub>matrix_external_closeout · closeout_state=due</sub>
 - File the prepared typed-tag report for README gap #14:
   `cddl-matrix/upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md` is committed and
   paste-ready, but no upstream issue has been filed. The catalog exemption remains deliberately
@@ -856,6 +907,7 @@ annotations-table row in `README.md` (`verify.ts`'s default-on `--wasm` probe); 
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
 <a id="roadmap-id-matrix.root-reference-placement"></a>
+<sub>work · work_state=deferred · risk=compile_failure</sub>
 - **Carry root-position references into the NON-structural reference positions.** The referencing
   module is now an axis: the `rootref` mode places the anon spelling in `lib.cddl` over the
   wrapper-minting shapes (`EXPECTED_ROOTREF_SHAPES`), so both halves of `mark_refs`' root behaviour
@@ -870,6 +922,7 @@ composition-space cross-check that complements this matrix's curated per-shape g
   dangling-import class (E0412/E0425/E0432) fixed BY HAND after a consumer's regen — an observable
   its owner reports by construction, and one the seven green `rootref` cells put at zero today.
 <a id="roadmap-id-matrix.periodic-coverage-honesty"></a>
+<sub>matrix_policy · policy_kind=maintenance_protocol</sub>
 - **Keep EVERY matrix axis honest (periodic).** Grid coverage equals the hand-curated lists the
   projections carry — `SHAPES` × `ROLES` in `project_wasm_matrix.ts`, `SHAPES` × reference MODE in
   `project_multifile_matrix.ts` — and a hole in ANY of them is silent, not a red cell. A wasm
@@ -907,6 +960,7 @@ composition-space cross-check that complements this matrix's curated per-shape g
   `project_multifile_matrix.ts --check` assert its `SHAPES` is a superset of the wasm projection's
   (minus its documented exclusions) instead of relying on review.
 <a id="roadmap-id-matrix.emission-input-mode-honesty"></a>
+<sub>matrix_policy · policy_kind=maintenance_protocol</sub>
 - **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
   SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
   flag-gated emission surface can still be built against single-file assumptions and break only
@@ -957,14 +1011,18 @@ composition-space cross-check that complements this matrix's curated per-shape g
 
 Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a concrete need surfaces):
 <a id="roadmap-id-matrix.matching-semantics-boundary"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=permanent</sub>
 - **F8 — matching semantics** (prioritized-choice ordering, greedy occurrence, implicit `:` cut): a
   validation concern, not a cddl-codegen serialization concern.
 <a id="roadmap-id-matrix.interaction-tuples-boundary"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=permanent</sub>
 - **F9 — interaction tuples** (A-in-B-in-role-C-with-operator-D): richer-than-binary containment; stretch
   query (Q7) only.
 <a id="roadmap-id-matrix.over-acceptance-ast-notes"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=permanent</sub>
 - **F10 / F11** — note-only (over-acceptance denominator; AST cross-check is weak corroboration).
 <a id="roadmap-id-matrix.wasm-macro-behavior-boundary"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=reopenable</sub>
 - **Behavioral wasm-surface rows for the `--wasm-*-macro` modes** — those flags replace the whole
   wrapper method surface with user-supplied macro definitions, so an assertion over that surface
   would judge the FIXTURE's macro bodies rather than the generator's output. The compile verdict
@@ -972,6 +1030,7 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
   2026-08-03. Reopening signal: a consumer-reported behavioral defect in a macro-mode wasm surface
   that the compile verdict passed.
 <a id="roadmap-id-matrix.extern-emitted-test-boundary"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=reopenable</sub>
 - **Behavioral emitted-test cells for extern / raw-bytes ctor args** — compile-verdict-permanent,
   decided 2026-08-04, same class as the `--wasm-*-macro` posture. This is about whether the
   AUTO-MINTER (`emit_tests`) learns these classes, NOT about the feature going untested: hand
@@ -991,6 +1050,7 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
   values (the request arrives carrying the valid-bytes knowledge the hint needs), or a
   consumer-reported wasm-boundary defect on such a ctor arg that the compile verdict passed.
 <a id="roadmap-id-matrix.extern-interface-sentinel-boundary"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=reopenable</sub>
 - **Extern-interface seam sentinels** — the `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and
   `; unexported:` records that `--extern-import` input files carry beyond the two `ext.*` sentinels
   (strictly parsed at the seam; comments to the grammar). They are tool-interchange rather than
@@ -1000,6 +1060,7 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
   would restate that enforcement as model surface for constructs no user authors. Reopening signal:
   a concrete matrix consumer query that needs vendor-sentinel rows.
 <a id="roadmap-id-matrix.inline-cbor-containment-boundary"></a>
+<sub>matrix_policy · policy_kind=boundary · permanence=reopenable</sub>
 - **A containment-matrix row for the INLINE nested `.cbor` self-composition**
   (`bytes .cbor (bytes .cbor T)`, beside the four existing `contain.cbor-payload.*` rows). Declined
   because a row's whole job — keeping the construct's support claim measured — is already done at
@@ -1015,6 +1076,7 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
 ## Pending decisions (need a human call)
 
 <a id="roadmap-id-matrix.over-acceptance-denominator"></a>
+<sub>decision · decision_state=pending</sub>
 - **Over-acceptance denominator:** the `class="over-acceptance"` vector class pins each CERTIFIED
   instance (the numerator; rows are enumerated per the "Intra-alternative variation rows" rule as
   instances surface). Still undecided is the DENOMINATOR for any completeness claim about that axis:

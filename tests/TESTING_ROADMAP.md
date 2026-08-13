@@ -41,6 +41,7 @@ remaining work on this axis is carried by the future items below.
 ## Pending maintainer action
 
 <a id="roadmap-id-testing.prettyplease-shelling-rustfmt"></a>
+<sub>decision · decision_state=pending</sub>
 - **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
   churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built
   transitively via the proc-macro derives). No longer just a churn mitigation: shelling to rustfmt
@@ -82,6 +83,7 @@ remaining work on this axis is carried by the future items below.
   surprises surface).
 
 <a id="roadmap-id-testing.rule-trailing.directive-classification"></a>
+<sub>work · work_state=blocked · risk=valid_rejection</sub>
 
 ### Adopt the parser's `RuleTrailing` anchor and classify that rule-only slot in one delivery — blocked on publishing the reviewed fork revision.
 
@@ -121,6 +123,7 @@ At the pinned cddl revision (`ac1b98ec`) a
 ## Next work
 
 <a id="roadmap-id-testing.grammar-fuzzer-escalations"></a>
+<sub>control</sub>
 - **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
    `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) + the
@@ -130,6 +133,7 @@ At the pinned cddl revision (`ac1b98ec`) a
    `ledger_key_shape_floor` key hygiene gate, and a promotion flow into the pinned collections).
    Residuals, in escalation order:
    <a id="roadmap-id-testing.grammar-fuzzer.embed-site-alias-roots"></a>
+   <sub>work · work_state=ready · risk=abort_or_panic</sub>
    - **Embed-site leg for alias-classifying roots — two proven escapes.** A composition whose ROOT
      rule classifies as a plain alias (`rcN = bytes .cbor {…}`, `bytes .cbor (int .ne N)`) emits its
      wrapper (de)serialize code only at an embed/USE site — a bare alias rule emits none — so the
@@ -169,10 +173,12 @@ At the pinned cddl revision (`ac1b98ec`) a
      third-instance trigger unchanged: it is a different instrument on a different failure class,
      and it still stands at two instances.
    <a id="roadmap-id-testing.grammar-fuzzer.arbitrary-supported-ast"></a>
+   <sub>work · work_state=deferred · risk=abort_or_panic</sub>
    - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).
    <a id="roadmap-id-testing.grammar-fuzzer.batch-masking-detector"></a>
+   <sub>work · work_state=armed · risk=false_pass_or_red</sub>
    - **Batch-masking detector for the layer-2 sweeps.** The ~40-rule batching means a green batch
      is not a per-composition guarantee for failure classes whose symptom is a missing CRATE-GLOBAL
      definition: `Int` is a crate-global extern emitted iff any rule registers a reference, so a
@@ -191,10 +197,12 @@ At the pinned cddl revision (`ac1b98ec`) a
      home profile — how this instance actually surfaced). (The observed-baseline comments beside
      these gates' floors have their own rot class — see the standing residual below.)
    <a id="roadmap-id-testing.grammar-fuzzer.real-world-corpus-differential"></a>
+   <sub>work · work_state=deferred · risk=abort_or_panic</sub>
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
 <a id="roadmap-id-testing.duplicates-policy-residuals"></a>
+<sub>control</sub>
 - **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
    `reject` (set/array uniqueness twins) and `preserve` (table pair-map twins), covering rust,
    preserve-encodings, canonical, JSON/schemars, wasm-bindgen, component/WIT, extern-interface
@@ -208,6 +216,7 @@ At the pinned cddl revision (`ac1b98ec`) a
      are now nominal wrapper types owning their `{tag, len, elem}` encodings. Three follow-ups
      outlive the delivery:
      <a id="roadmap-id-testing.duplicates.same-shape-set-conversion"></a>
+     <sub>work · work_state=deferred · risk=wrong_public_api</sub>
      - *`From` between same-shape set instantiations.* `set<xs_int>` and `set<[* uint]>` (where
        `xs_int = [* uint]`) mint DISTINCT nominals over the same wire shape by the
        spelling-is-identity rule; a member-wise-encoding `From` between two such structurally
@@ -219,6 +228,7 @@ At the pinned cddl revision (`ac1b98ec`) a
        `Extend`/`FromIterator`/`sort`, the twin refinement doors, `try_opt_from`) are inventoried
        in the user docs (`docs/docs/output_format.mdx` § "Nominal tag-258 set types").
      <a id="roadmap-id-testing.duplicates.occurrence-aware-generic-identity"></a>
+     <sub>work · work_state=deferred · risk=silent_wrong_bytes</sub>
      - *Occurrence-aware generic-instance identity.* The canonical instance ident still derives
        each argument from bounds-blind `for_variant()`: two uses of the SAME generic definition,
        `set<([* uint])>` and `set<([*5 uint])>`, both become `SetArrU64`, so the later registration
@@ -230,6 +240,7 @@ At the pinned cddl revision (`ac1b98ec`) a
        generation-only same-definition probe is insufficient because last-registration-wins can
        still exit 0 with the wrong carrier.
      <a id="roadmap-id-testing.duplicates.dedicated-generic-collision-message"></a>
+     <sub>work · work_state=armed · risk=misleading_docs</sub>
      - *Dedicated collision message for the generic-instantiation naming family.* An inline
        shape-derived nominal name colliding with a user rule or a structurally-different generic
        instantiation is refused with a set-specific message
@@ -240,6 +251,7 @@ At the pinned cddl revision (`ac1b98ec`) a
        detector structure) is message polish, deferred until a real collision makes the generic
        message actively wrong.
      <a id="roadmap-id-testing.duplicates.member-position-extension"></a>
+     <sub>work · work_state=deferred · risk=wrong_public_api</sub>
      - *Member-position `@duplicates` extension.* The inline opt-out is hoist-to-named-rule (no new
        DSL surface); a member-position `; @duplicates` directive on an inline set was DEFERRED until
        a real spec demands it. It looks one-line (the member-position rejection seam in `parsing.rs`
@@ -266,6 +278,7 @@ At the pinned cddl revision (`ac1b98ec`) a
      `tests/recursive-collection-ref/input.cddl`.)
 
 <a id="roadmap-id-testing.lint-provocation-shapes-generated-code-clippy-clean-partially"></a>
+<sub>work · work_state=ready · risk=compile_failure</sub>
 - **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
    on three cases (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
@@ -300,6 +313,7 @@ At the pinned cddl revision (`ac1b98ec`) a
    is why those two lints are allowed at the generated root rather than chased per-spec.
 
 <a id="roadmap-id-testing.rustfmt-seam-error-leg-still-witness-needs-subprocess"></a>
+<sub>work · work_state=deferred · risk=abort_or_panic</sub>
 - **One rustfmt-seam error leg still has no witness, and it is the one that needs a
    subprocess-scoped test harness.** The seam's non-0/3-exit-is-fatal contract — which both the
    width ladder (`integration_tuple_field_width_ladder_never_aborts_rustfmt`) and the
@@ -321,6 +335,7 @@ At the pinned cddl revision (`ac1b98ec`) a
    rather than the leg worth skipping.
 
 <a id="roadmap-id-testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
    gives the rustfmt-cycle sweep discovery power.**
    `preserve_fixtures_rustfmt_cycle_stability` holds the post-rustfmt on-disk fixed point over
@@ -345,6 +360,7 @@ At the pinned cddl revision (`ac1b98ec`) a
    those.
 
 <a id="roadmap-id-testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite"></a>
+<sub>work · work_state=deferred · risk=silent_wrong_bytes</sub>
 - **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
    SAME-VERSION suite by construction: every case's `old.rs` and `new.rs` agree on generated code
    bytes except where the fixture deliberately drifts one item, which is the shape a re-run of one
@@ -365,6 +381,7 @@ At the pinned cddl revision (`ac1b98ec`) a
    exactly how the no_std one was identified.
 
 <a id="roadmap-id-testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"></a>
+<sub>work · work_state=deferred · risk=compile_failure</sub>
 - **A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile
     coverage — its placement behaviour rests on one hand cell per construct.** Most of the IR's
     containers are `Map`/`Array` nodes a walk meets as composites; a few are assembled from inner
@@ -389,6 +406,7 @@ At the pinned cddl revision (`ac1b98ec`) a
       why the two above are hand cells. Extending that axis to record-embedded shapes is the
       concrete build.
     <a id="roadmap-id-testing.container-combinations.reopening-signal"></a>
+    <sub>transition · transition_kind=reopening_signal · predicate.predicate_kind=quantitative</sub>
     - **Reopening signal:** a THIRD construct joins the flat-walked set — countable in-tree as the
       explicit container mints in `generation/mod.rs` that exist because the conceptual visitor
       cannot see the composite (two today, both listed above). At three, per-construct hand cells
@@ -396,6 +414,7 @@ At the pinned cddl revision (`ac1b98ec`) a
       (placement × reference mode × profile) is coverage three constructs are each doing without.
 
 <a id="roadmap-id-testing.generated-local-collision-class-refused-mangled-refusal-s"></a>
+<sub>control</sub>
 - **The generated-local collision class is refused, not mangled — and the refusal's shape scope
     comes from a bounded probe matrix, so a position that matrix never touched can still ship an
     uncompilable crate.** A field whose emitted identifier is one of the fixed locals the generated
@@ -407,6 +426,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     `GENERATED_LOCAL_PROBED_SAFE`), and `generated_local_out_of_scope_crates_compile` (`#[ignore]`,
     full tier) compiles every out-of-scope cell per profile so a too-narrow scope cannot hide.
     <a id="roadmap-id-testing.generated-local-collision.general-mangling-remedy"></a>
+    <sub>work · work_state=deferred · risk=wrong_public_api</sub>
     - **Residual: mangling is still the general fix.** The shipped behavior takes the name away from
       the spec author instead of renaming the generator's own local, so a spec that genuinely wants
       a field called `raw` must carry a `; @name` comment. **Reopening signal, measurable by a party
@@ -414,6 +434,7 @@ At the pinned cddl revision (`ac1b98ec`) a
       upstream — where a `; @name` comment cannot be added at all — is refused by this check. They
       cannot apply the remedy, which is the only condition under which the cheap fix is not a fix.
     <a id="roadmap-id-testing.generated-local-collision.scope-wide-probe"></a>
+    <sub>work · work_state=armed · risk=compile_failure</sub>
     - **Residual: the scope is only as wide as the probe.** Membership and per-name
       `ReservedScope` were measured over five shapes (array-rep / map-rep / tagged record /
       embedded plain group / group-choice arm) × three profiles × two field types, plus a
@@ -425,6 +446,7 @@ At the pinned cddl revision (`ac1b98ec`) a
       binding, so the report arrives pre-diagnosed and says exactly which row to widen.
 
 <a id="roadmap-id-testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"></a>
+<sub>work · work_state=ready · risk=wrong_public_api</sub>
 - **The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust
     surface it mirrors.** `wasm_door_vocabulary_matches_the_posture_that_owes_it`
     (`src/tests/wasm_parity_tests.rs`) pins the six flag-conditional door members —
@@ -444,12 +466,14 @@ At the pinned cddl revision (`ac1b98ec`) a
       `From`/`AsRef` noise the exemption exists to remove; the generalization wants its own
       mechanism, keyed on the trait set the wasm face promises to mirror.
     <a id="roadmap-id-testing.wasm-door-vocabulary.reopening-signal"></a>
+    <sub>transition · transition_kind=reopening_signal · predicate.predicate_kind=event</sub>
     - **Reopening signal:** a consumer reporting a wasm member absent that the rust crate has. That
       reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose rust
       counterpart they can point at), and the count of silently-missing members is the dimension
       along which a hand-listed vocabulary stops being maintainable.
 
 <a id="roadmap-id-testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns"></a>
+<sub>decision · decision_state=pending</sub>
 - **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
     serialize error into a panic.** A `float16` member's carrier is `f32`, and a carrier value that
     is not f16-exact cannot be written at the one head the type declares — so `Serialize` returns
@@ -467,6 +491,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     reports the panic from production data (measurable by the party holding the inexact value).
 
 <a id="roadmap-id-testing.build-registration-class-reference-position-sweep-second-escape"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **Build the registration-class × reference-position sweep — the second escape makes it due.**
     The shipped incident pins and their exact coverage live in `tests/README.md` § “Recursive-type
     boundary — test map”; they are controls, not a substitute for this enumeration. Build a sibling
@@ -481,6 +506,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     recombination roles (no rule-level alias hop) could enumerate them.
 
 <a id="roadmap-id-testing.fixture-shape-evicted-over-known-defect-stale-guard"></a>
+<sub>work · work_state=deferred · risk=false_pass_or_red</sub>
 - **A fixture SHAPE evicted over a known defect has no stale-guard, so the fix never re-adds
     it.** Skip-listed gate rows are ledgered with citations and stale-guards; an eviction — a
     shape REMOVED from a fixture because it trips a known bug — is recorded only in prose, which
@@ -496,6 +522,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     which is when the ledger row would be written anyway.
 
 <a id="roadmap-id-testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"></a>
+<sub>work · work_state=ready · risk=compile_failure</sub>
 - **A minted-identifier spellability floor: every identifier the generator emits verbatim must
     satisfy `is_spellable_variant_name`'s two string properties, asserted at the emission side
     rather than per-minter.** The class this closes: a name-minting path whose output is not a
@@ -533,6 +560,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     registration seam that erased the evidence.
 
 <a id="roadmap-id-testing.rejection-message-s-remedy-string-executable-claim-pin"></a>
+<sub>work · work_state=ready · risk=misleading_docs</sub>
 - **A rejection message's remedy string is an executable claim — pin each one with a
     generates-green vector, and execute a findings entry's operative claims at pickup.** The
     `*_rejects_gracefully` family already pins message TEXT; this extends the convention so the
@@ -608,6 +636,7 @@ At the pinned cddl revision (`ac1b98ec`) a
       `fixed_table_value_rejection_advertises_executable_nominal_remedy`.
 
 <a id="roadmap-id-testing.directive-effect-round-trip-coherence-sweep-accepted-custom"></a>
+<sub>work · work_state=ready · risk=silent_wrong_bytes</sub>
 - **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
     executes write-then-read as an identity, with inverse stub codecs.** The class this catches is
     invisible to both existing systems: `no_silent_directive` measures whether a directive has an
@@ -648,6 +677,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     round trip.
 
 <a id="roadmap-id-testing.warm-up-refresh-dep-universe-lock-trust-fresh"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **The warm-up should REFRESH the dep-universe lock, not trust it: a fresh-resolving scratch
     crate outruns `tests/warmup/Cargo.lock` at every upstream release.** Proven 2026-08-06 (the
     stale-lock offline tail in § Operational watches, "Registry-fetch transients"): the
@@ -673,6 +703,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     re-resolve deliberately).
 
 <a id="roadmap-id-testing.check-merged-d-ts-name-collisions-two-halves"></a>
+<sub>work · work_state=ready · risk=compile_failure</sub>
 - **Check the merged `.d.ts` for name collisions BETWEEN its two halves.** `json-ts-types.js`
     appends the `<key>JSON` declarations to the wasm-pack bindings under the claim that the suffix
     cannot collide with a wasm class name — an assumption, not a check: `@name` can mint a wasm
@@ -691,6 +722,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     hand-laid harness.
 
 <a id="roadmap-id-testing.corpus-preserve-pair-map-key-value-self-encoding"></a>
+<sub>work · work_state=ready · risk=silent_wrong_bytes</sub>
 - **A corpus cell for the preserve pair-map whose key AND value are self-encoding — the one
     `@duplicates preserve` emission arm no committed snapshot pins.** The positional
     (non-canonical) pair-map serialize loop binds its `.enumerate()` index `i` when a per-entry
@@ -711,6 +743,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     `CORPUS_PARITY_INPUTS` row).
 
 <a id="roadmap-id-testing.same-named-generated-crates-silently-share-cargo-fingerprint"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **Same-named generated crates silently share one cargo fingerprint under a shared
     `CARGO_TARGET_DIR`, so a concurrent shard can report a non-compiling crate as `Finished`.**
     Every emitted rust crate is `cddl-lib v0.1.0`, and cargo's unit hash for the ROOT package of a
@@ -751,6 +784,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     the hazard live.
 
 <a id="roadmap-id-testing.corpus-c-style-enum-data-type-choice-arm"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **A corpus cell for a c-style enum as a DATA type-choice arm — the one inline-dispatch leg no
     corpus cell exercises.** The c-style-enum deserialize arm has two emission forms, and the form
     it picks is a frame decision: the IIFE (self-supplied frame) whenever the caller splices or —
@@ -777,6 +811,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     reaches it.
 
 <a id="roadmap-id-testing.execution-binary-wrappers-true-last-documented-flag-value"></a>
+<sub>work · work_state=ready · risk=silent_wrong_bytes</sub>
 - **An execution cell for `--binary-wrappers=true` — the last documented flag value whose only
     coverage is a compile smoke while its emission risk is byte-level.** The annotate=false
     delivery established the pattern for flag-conditioned emission branches whose failure is
@@ -800,6 +835,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     that delivered the annotate=false floors, not by grep vocabulary alone.
 
 <a id="roadmap-id-testing.synthetic-protocol-controls-component-probe-host-s-defensive"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm
     no generated component can reach never gets red-proven.** The matrix's generic wasmtime host
     (`cddl-matrix/component-probe-host/`) maps boundary outcomes to verdict tokens
@@ -817,6 +853,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     wrong fails the host's build, not a review. Small — the mapping is one match today.
 
 <a id="roadmap-id-testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **A lockstep drift gate for the rust↔TS kebab-ident mirror — today the pin is one-directional
     and the rust side can drift silently-soft.** `cddl-matrix/verify.ts::toKebabCase` mirrors
     `src/utils.rs::convert_to_kebab_case` to name the WIT resource the component leg's mint check
@@ -836,6 +873,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     precedent is the model.
 
 <a id="roadmap-id-testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **Pin the toolchain of verify.ts's nested cargo — its scratch-cwd spawns resolve the rustup
     DEFAULT toolchain, and the cache key claims otherwise.** Measured 2026-08-08, both halves:
     a `cargo` child of the repo's `cargo test` resolves the PIN even with a scratch cwd (the
@@ -859,6 +897,7 @@ At the pinned cddl revision (`ac1b98ec`) a
     gates or an explicit `rustup run` (the AGENTS unspelled-default rule's toolchain bullet).
 
 <a id="roadmap-id-testing.verify-ts-refuse-unknown-flag-silently-degrading-plain"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **verify.ts should refuse an unknown flag instead of silently degrading to a plain run.**
     Every mode flag is tested with a bare `process.argv.includes`, so a mistyped flag matches
     nothing and the run proceeds as an ordinary full verify — same exit 0, same `RESULT: PASS`,
@@ -905,6 +944,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 `check.ts` itself).
 
 <a id="roadmap-id-testing.gate-exists-registry-nowhere-tests-readme-md-hand"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **A gate exists in the registry but nowhere in `tests/README.md`, and a hand-written count of
   gates disagrees with the registry — no mechanism ties the two.** Two instances, so the trigger has
   fired on the count half and is one short on the catalogue half. *Instance 1 (count):* the
@@ -926,6 +966,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   registry by anyone who is not also editing `tests/README.md` in the same commit.
 
 <a id="roadmap-id-testing.lint-doc-citations-accepts-docs-heading-durable-citation"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **`lint_doc_citations` accepts "a docs section by heading" as a durable citation, but a section
   citation only proves the SECTION still exists — not that the claim cited from it does.** One
   instance, self-inflicted and caught in the same session that caused it. `current_capacities.mdx`
@@ -944,6 +985,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   from a section other docs cite into.
 
 <a id="roadmap-id-testing.representation-changing-directive-goes-live-new-container-ship"></a>
+<sub>work · work_state=armed · risk=wrong_public_api</sub>
 - **A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its
   extern-interface projection — the cross-crate skew class, invisible to every single-crate
   gate.** Proven instance (orchestrator code-read, not any gate): `@duplicates preserve` on
@@ -994,6 +1036,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   annotations this crate's own parse accepts — the version-skew shape the single-repo registry
   cannot see.
 <a id="roadmap-id-testing.emission-branch-generated-output-fixture-exercises-invisible-gate"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
   it can rot to uncompilable and hide behavioral bugs in both directions.** First of a family of
   three, each recorded separately below because each needs a different detector, and all three
@@ -1015,6 +1058,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   the corpus + suite generation runs, red on emission arms no fixture executes — the only layer
   that catches the class without knowing each branch by name.
 <a id="roadmap-id-testing.logic-tool-emits-source-text-outside-layer-reasons"></a>
+<sub>work · work_state=armed · risk=silent_wrong_bytes</sub>
 - **Logic the tool EMITS as source text is outside every layer that reasons about the tool's own
   code, so its only oracle is a hand vector chosen to DISTINGUISH a wrong implementation — and a
   vector that merely EXERCISES the logic certifies nothing.** Proven instance (orchestrator review,
@@ -1038,6 +1082,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   branch), regenerate one fixture per mutant, and require some gate to go red; expensive enough
   (a nested cargo run per mutant) that it earns its cost only once the class has recurred.
 <a id="roadmap-id-testing.value-anchor-rot-field-addition-delivery-grows-existing"></a>
+<sub>work · work_state=armed · risk=silent_wrong_bytes</sub>
 - **Value-anchor rot on field addition: a delivery that grows an existing type's fields leaves the
   type's existing hand-vector sweeps decoding the new data but asserting nothing about it — the
   EXECUTED-but-unasserted member of the fixture-blindness family, whose never-executed first
@@ -1058,6 +1103,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   round-tripped type's public fields ⊆ the fields its suite's asserts mention — buildable as a
   grep-level floor over `tests/*/tests.rs`), accepting its enumeration cost then, not before.
 <a id="roadmap-id-testing.corpus-wide-regen-over-prior-output-sweep-reaches"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **The corpus-wide regen-over-prior-output sweep reaches two emission profiles of four, and its
   user-EDIT leg reaches one.** `regen_over_prior_output_corpus` sweeps the static floor and the
   rule-DELETION variant under the default and `--preserve-encodings` profiles (the latter for
@@ -1072,6 +1118,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   regenerated tree — by a consumer or by any gate — in a file neither swept profile emits; the
   profile that produced it is then the one to add, not all of them.
 <a id="roadmap-id-testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not
   by any gate): the extern-only-scope undeclared-module finding was ledgered both in
@@ -1146,6 +1193,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   cheaper reproduce-at-parent/pickaxe-first alternatives — live in
   `draft/bisect-verdict-discipline.md`.
 <a id="roadmap-id-testing.finding-s-defect-side-attribution-recorded-narrative-plausibility"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **A finding's DEFECT-SIDE attribution recorded by narrative plausibility, not execution — the
   RECORDING-side twin of the closure-side reproduce-at-parent rule above.** First instance
   (caught at item pickup, cycle 10 of the burndown effort): the present-null-optional finding
@@ -1175,6 +1223,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   already re-probing premises under AGENTS.md's rule, so the observation arrives as a by-product
   of work being done anyway.
 <a id="roadmap-id-testing.gate-demands-premise-probed-against-gate-evidence-about"></a>
+<sub>work · work_state=ready · risk=false_pass_or_red</sub>
 - **A "no gate demands this" premise probed against ONE gate is not evidence about a gate in
   another TIER — and a full-tier gate is where such a premise survives longest, because CI runs
   `fast` only.** Proven instance: the `@no_json_schema_export` delivery deferred its cddl-matrix
@@ -1236,6 +1285,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   is real rather than requiring someone to think to ask. Nothing about this was prototyped; its own
   premise (that the set of tree-enumerating gates is small and stable enough to list) is unprobed.
 <a id="roadmap-id-testing.ruling-premise-gate-x-stays-green-must-probed"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **A ruling whose premise is "gate X stays green" must be probed in the state the ruling CREATES,
   not the state that precedes it.** This is the scope-the-claim discipline above applied to the
   ORDER of a probe rather than its breadth, and it is a ruling-protocol rule rather than a quirk of
@@ -1257,6 +1307,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   gate's own message: have the drift check name both inputs it compares in its GREEN line, so a
   reader of a passing run can tell which comparisons actually ran.
 <a id="roadmap-id-testing.observed-baseline-comments-beside-gate-floors-rot-silently"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
   informational and review-maintained by design (replacing them with exact gate-asserted counts
@@ -1272,6 +1323,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   ledger. Mechanical layer, on a stale baseline comment actually misleading triage: replace the
   comments with exact pinned counts asserted by the gate, accepting the churn.
 <a id="roadmap-id-testing.extreme-value-boundary-correctness-generation-time-encode-paths"></a>
+<sub>work · work_state=armed · risk=silent_wrong_bytes</sub>
 - **Extreme-value boundary correctness of generation-time encode paths: a value that FITS the
   type can still encode wrong at the type's boundary, and no fixture minted from "supported
   shapes" ever lands there.** Proven instance (read-caught during the `FixedValue` i128/u64
@@ -1295,6 +1347,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   encode/compare path is the trigger to build that boundary-vector sweep as a corpus/matrix
   axis rather than hand-pinning per instance.
 <a id="roadmap-id-testing.fixture-models-obsolete-user-contract-stays-green-real"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **A fixture that models an OBSOLETE user contract stays green while the real contract path is
   broken — the wrong-shape member of the fixture-blindness family headed by "An emission branch
   whose generated OUTPUT no fixture exercises is invisible to every gate".** Proven instance
@@ -1336,6 +1389,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   the class's second occurrence is the argument for building it on any further sighting rather
   than deferring again.
 <a id="roadmap-id-testing.panic-site-un-shadowing-converting-shallow-panic-graceful"></a>
+<sub>work · work_state=armed · risk=abort_or_panic</sub>
 - **Panic-site un-shadowing: converting a shallow panic to a graceful rejection exposes deeper
   panic sites for inputs that previously died early — and the outcome catalogs, which record
   CATEGORY only by design, cannot see a PANIC→PANIC site shift.** Proven instance: converting
@@ -1352,6 +1406,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   site goes unnoticed past its converting commit; building it now would trade the catalogs'
   deliberate refactor-stability for a fingerprint that churns on every panic-message edit.
 <a id="roadmap-id-testing.three-defect-classes-process-test-see-sharing-remedy"></a>
+<sub>control</sub>
 - **Three defect classes that no IN-PROCESS test can see, sharing one remedy: extend the corpus's
   INPUT.** `api::generated_strings` is the library API every in-process suite drives — the snapshot
   corpus, the robustness/panic/reject catalogs, `wasm_api_parity`, and
@@ -1379,6 +1434,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   is why a cited gate's mechanism is probed before a remedy is built on it.
   The three classes stay distinct in WHERE the failure lands, and each keeps its own trigger:
   <a id="roadmap-id-testing.process-boundary.rustc-after-panic-fix"></a>
+  <sub>work · work_state=armed · risk=compile_failure</sub>
   - ***rustc, after a PANIC→`ok` flip: a panic fix lands on the FIRST site that dispatches on a
     shape, not the last — the sites behind it ask the same question and each answers it in its own
     code.*** Proven instance: the `cbor_types` `_ => panic!()` over a nominal reference to a
@@ -1398,6 +1454,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     crate does not compile. Building it now would put a per-profile nested cargo build behind a
     catalog whose whole value is running in seconds on every `cargo test`.
   <a id="roadmap-id-testing.process-boundary.rustfmt-pre-rustc"></a>
+  <sub>work · work_state=armed · risk=abort_or_panic</sub>
   - ***rustfmt, so the code never reaches rustc at all.*** Not a duplicate of the class above: there
     the emitted crate reached rustc and was rejected, so any compile leg would catch it; here
     generation itself fails at the rustfmt merge step, so no compile leg can even receive a crate.
@@ -1423,6 +1480,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     needs nothing from us to notice it. That count is zero today, so the signal is unmet rather
     than pre-satisfied.
   <a id="roadmap-id-testing.process-boundary.another-profile-escape"></a>
+  <sub>work · work_state=deferred · risk=compile_failure</sub>
   - ***another profile, with no flip, no abort and no fix widening a reachable set — the shape always
     generated.*** A fixture certifies only the PROFILES it is generated under, so a shape added to a
     default-profile fixture is unexamined everywhere else. Proven instance (since fixed and given
@@ -1448,6 +1506,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     the input extension stops being optional.
 
 <a id="roadmap-id-testing.parallel-constructor-fixture-diversity-parser-over-external-input"></a>
+<sub>work · work_state=armed · risk=abort_or_panic</sub>
 - **Parallel-constructor fixture diversity: a parser over external input must span the ident-class
   matrix of REAL specs, not the feature spec's mental model.** Proven instance: the
   `--wrapper-requests` shape parser hand-built bare `Rust(ident)` element leaves instead of
@@ -1476,6 +1535,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `new` itself asserts through. Working rule reinforced: when a fix needs the same decision an
   existing function already makes, extract the decision, never mirror it.
 <a id="roadmap-id-testing.synthesized-name-referenced-never-minted-e0425-flavor"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **Synthesized-name residual: the referenced-but-never-minted (E0425) flavor.** The generator mints
   structural wasm idents (loose `{Elem}List` / `Map{K}To{V}` builders, restricted `NonEmpty*`
   wrappers, table `keys()` list wrappers) whose interactions with USER rule names and with EACH OTHER
@@ -1495,6 +1555,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   grid's per-mode wasm32 link floors, `tests/README.md`
   § "The wrapper-participation grid".)
 <a id="roadmap-id-testing.multifile-reference-position-coverage-two-position-keyed-escapes"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **Multifile reference-POSITION coverage: two position-keyed escapes down, one enumerated position
   still missing.** Two cross-module import bugs were invisible to `tests/matrix_multifile` because
   its field-embedding modes (`named`/`anon`/`anonb`/`unref`) all reference the shape as a `bholder`
@@ -1531,6 +1592,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   for three discriminating cells is tolerable, and stops being so the moment a fourth shape resolves
   through that path.
 <a id="roadmap-id-testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **Reason-keyed rejection evidence for the reject catalogs — one proven near-miss recorded, no
   machinery yet.** The robustness/matrix reject catalogs snapshot the OUTCOME label only
   (`error (graceful)`), so a fixture stays green when a NEW, earlier rejection absorbs the one it
@@ -1580,6 +1642,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   convert the rest rather than let the ratchet hold them: **that count rising**, or a wrong-reason
   vector surfacing in any file that still has a row.
 <a id="roadmap-id-testing.armed-idle-harness-arms-empty-head-ledgers-zero"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind
   gate branches) have untested first-use paths — seven review-caught instances recorded, no
   machinery yet.** The decode-conformance family deliberately keeps machinery armed for residents
@@ -1641,6 +1704,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   durable ledger pointer), and extending that lint's scan to catalog reason strings is the
   mechanical layer if it recurs.
 <a id="roadmap-id-testing.doubled-doc-comment-markers-emitted-docs-proven-instance"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **Doubled doc-comment markers in emitted docs — one proven instance recorded, no machinery
   yet.** The `codegen` builder fork prefixes EVERY newline-separated line of a doc string with
   the marker itself, so an emission-site string embedding a literal marker to "continue" a
@@ -1656,6 +1720,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   blessed diff, never accept blind, ESPECIALLY when snapshots were already red before your
   change (the diff then contains someone else's unreviewed delta interleaved with yours).
 <a id="roadmap-id-testing.emitted-shape-lint-classes-outside-clippy-all-beyond"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **Emitted-shape lint classes OUTSIDE `clippy::all` are beyond `generated_code_clippy_clean`'s
   reach — the wasm-boundary clone-of-owned class stays ledgered, no machinery yet.** The
   boundary ops (`from_wasm_boundary_clone`) clone every non-Copy expr regardless of the call
@@ -1673,6 +1738,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   deny only if it is currently green-able on every one of the gate's cases (nursery lints carry
   known false positives). Act on a second instance or a consumer report, not before.
 <a id="roadmap-id-testing.unused-imports-generated-crates-trait-import-class-name"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **`unused_imports` on generated crates — residual trait-import class the name-scan model cannot
   reach.** The rustc-warning DETECTOR is live and BROAD — the generated-code unused-import scan
   (`unused_generated_import_lines`) inside `feature_corpus_compiles` fails on ANY `unused import`
@@ -1799,6 +1865,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   the layer (port `unused_generated_import_lines` over the matrix probes' captured stderr): a
   SECOND warning-class finding whose only compiled home is a matrix cell.
 <a id="roadmap-id-testing.mechanical-layers-two-review-owned-design-rules-tests"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **Mechanical layers for the two review-owned design rules in `tests/README.md` § "Design
   rules" (invariant-softening, vacuity-floor witness) — build only if a class recurs.** The
   vacuity-floor detector is a scoped mutation sweep over the harness's emission helpers — a
@@ -1830,6 +1897,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   vacuous. Meanwhile the working rule when renaming emitted text: grep the test tree for needles
   pinning the old spelling in the same change.
 <a id="roadmap-id-testing.add-profile-wrapper-participation-grid-participation-differs-across"></a>
+<sub>decision · decision_state=decided · permanence=reopenable</sub>
 - **Add a PROFILE axis to the wrapper-participation grid only when participation differs across
   profiles.** The current default-profile table and its focused preserve controls are documented in
   `tests/README.md` § “The wrapper-participation grid”. A full preserve/JSON multiplication is
@@ -1841,6 +1909,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   here: the duplicate-ident backstop scans one crate's own files, while
   `synthesized_name_interaction_sweep` has no dependency-index cells.
 <a id="roadmap-id-testing.extern-deps-wasm-boundary-surface-packaging-json-gen"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor.**
   The split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) drives the
   generated wasm crate's cross-crate wrappers behaviorally: `tests/extern-deps-wasm/tests_wasm.rs`
@@ -1866,6 +1935,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   extern deps (such a crate now compiles precisely because the dep rows are skipped; the unprobed
   layer is the runtime over the surviving in-crate rows in that configuration).
 <a id="roadmap-id-testing.generic-raw-bytes-base-refused-generic-extern-base"></a>
+<sub>decision · decision_state=decided · permanence=permanent</sub>
 - **A generic RAW-BYTES base is refused, where a generic EXTERN base is recorded-and-skipped — the
   asymmetry is the decision, and only one direction of it is swept.** A raw-bytes type is exactly
   its own bytes and carries no element type a parameter could name, so
@@ -1886,6 +1956,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   (the count of hand-pinned marker directives is the magnitude that grows here, not the number of
   consumers).
 <a id="roadmap-id-testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"></a>
+<sub>work · work_state=armed · risk=silent_wrong_bytes</sub>
 - **Twin in-repo implementations of one semantic decision drifting apart (emission spellings,
   detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix
   pattern; only the directive-SET flavor has a firing detector so far.** The in-repo sibling of
@@ -1927,6 +1998,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   time, so `project_corpus` (fast tier, CI) fires the moment a directive is added or removed on
   either side. Remaining work, each piece behind its trigger:
   <a id="roadmap-id-testing.twin-implementation.read-caught-instance-trigger"></a>
+  <sub>transition · transition_kind=promotion_trigger · predicate.predicate_kind=event</sub>
   - *On the next read-caught instance of the class:* build the mechanical layer — a
     same-construct differential sweep (emit one bounded/flagged construct per site class — member
     ctor/setter, wrapper `new()`/deserialize, primitive-deserialize `.and_then`, collection len
@@ -1934,6 +2006,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     differences), plus the cheap grep half: a snapshot-wide wart scan (same-N `< N || > N`, dead
     `< 0` over unsigned/`len()` exprs) in the spirit of the doubled-doc-marker scan above.
   <a id="roadmap-id-testing.twin-implementation.comment-ast-change-cadence"></a>
+  <sub>transition · transition_kind=cadence</sub>
   - *On the next `comment_ast` grammar change of ANY form (not just a new directive):* do the AST
     floor instead of hand-extending `DSL_TAGS` again — parse the comments with the real
     `comment_ast` via a small `examples/` binary, as the role floor already does with
@@ -1945,6 +2018,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     exclusivity) — hand-mirrored consumption accreted without any `comment_ast` grammar change,
     which is why this trigger has correctly not fired yet.
   <a id="roadmap-id-testing.twin-implementation.own-reviewed-change-rule"></a>
+  <sub>control</sub>
   - *Its own reviewed change, never a drive-by:* unify the zero-min RangeCheck payload — the same
     authored zero-min bound reports `min: Some(0)` in wrapper payloads vs `min: None` at member
     sites because the drop-the-redundant-zero decision itself has multiple owners
@@ -1956,6 +2030,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     defensive-only — every zero lower bound is dropped upstream by the owners above before
     emission, so the corner is unreachable end-to-end and a fixture cannot pin it.
 <a id="roadmap-id-testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **Tree-wide sweeps over gitignored regeneration targets count DEAD files as product — one
   proven near-miss, no machinery (and none possible tool-side).** Proven instance (D1's Phase-0
   inventory, caught by classification discipline, not by any gate): a long-lived checkout's
@@ -1974,6 +2049,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   layer on a SECOND distorted-analysis instance: a sweep-preflight that regenerates the swept
   trees first, so the on-disk state IS the current write-site set.
 <a id="roadmap-id-testing.run-local-values-gate-cache-key-material-proven"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **Run-local values in gate-cache key material — one proven instance, no machinery yet.** The
   TS-side cache keys hashed the literal nested-cargo argv, which embeds the run's `mkdtempSync`
   probe dir — every key was unique to its run, so verify.ts could never hit its cache across runs
@@ -1989,6 +2065,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   entries PREDATE the running process (within-run hits excluded, so the floor actually measures
   cross-run keyability).
 <a id="roadmap-id-testing.control-bytes-committed-source-files-proven-instance-machinery"></a>
+<sub>work · work_state=armed · risk=silent_wrong_bytes</sub>
 - **Control bytes in committed source files — one proven instance, no machinery yet.** A committed
   TS script embedded a literal 0x00 byte in a template-string separator; grep/diff/review tooling
   then classifies the whole file as binary — silently exempting it from every text-shaped check
@@ -1999,6 +2076,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   UTF-8 with no control bytes outside tab/LF/CR (a one-command scan; natural sibling of
   `lint_doc_citations` in the local tier).
 <a id="roadmap-id-testing.gate-script-health-cache-staleness-key-fresh-worktree"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **Gate-script health is in no cache or staleness key — a fresh worktree/cold run is the only
   detector, and warm runs launder pre-split rot.** Proven instance: `fuzz/generate.sh` predated the
   thin-root split and still read generated serialization from the pre-split `src/serialization.rs`
@@ -2017,6 +2095,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   script-consumed-path staleness key that forces `generate.sh` to re-run when the generated layout
   changes) — the only layer that catches script rot without a human remembering to cold-run.
 <a id="roadmap-id-testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **A hand-maintained source→dependency mapping in a manifest changeset can silently under-assert:
   the tool exports source referencing a crate that no changeset op guarantees.** Proven instance
   (consumer-reported, not caught by any gate): the pre-crate-shaped `--export-static-dir` wrote the
@@ -2040,6 +2119,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   sibling of `warmup_manifest_covers_registry_dep_universe`, accepting the source-scan heuristics
   then, not before.
 <a id="roadmap-id-testing.dependency-swap-pass-compile-parity-existing-gate-silently"></a>
+<sub>work · work_state=armed · risk=silent_wrong_bytes</sub>
 - **A dependency swap can pass compile-parity and every existing gate while silently changing
   behavior our public API re-exposes — one proven near-miss, pins landed for the instance.**
   Proven instance (caught by orchestrator differential probing, not by any test): the
@@ -2075,6 +2155,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   in `pub` signatures/Deref targets), so the pin obligation is discovered by a gate rather than
   remembered by a rule.
 <a id="roadmap-id-testing.fixture-s-verdict-accident-cargo-feature-unification-harness"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **A fixture cell's verdict can be an accident of cargo feature unification: harness-spliced
   hand code needing a feature a dep reshape disabled stays green whenever a SIBLING dep in the
   same fixture graph re-enables that feature — so the red arrives on a later graph change, not on
@@ -2109,6 +2190,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   against an unchanged fixture), on the dimension the cost grows (the count of spliced hand
   fragments using reshaped-dep surfaces).
 <a id="roadmap-id-testing.profile-driven-compile-gate-covers-compositions-profiles-specs"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **A profile-driven compile gate covers the compositions its PROFILES' SPECS reach, and a runtime
   file emitted on an IR PREDICATE × a FLAG is reached only by their conjunction — the first
   consumer-reported no_std break lived exactly in that hole.** Every profile of the no_std drift gate
@@ -2131,6 +2213,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   runner's red cell naming a file no cell had compiled), on the dimension the cost grows (the count
   of conditionally-assembled fragments outside every profile's spec).
 <a id="roadmap-id-testing.alloc-imports-nested-inline-modules-hand-carried-design"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **The alloc imports of nested inline modules are hand-carried by design, and two of the eight
   `natural_any_cbor_*` adapters were missed — silent under `std`, six E0425s without it.** The
   alloc-import injector deliberately does not scan nested inline `mod X { … }` bodies: a file-top
@@ -2154,6 +2237,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   cost grows (recurrence of the class the hand pattern must cover). A new nested adapter added WITH
   its imports correct does not fire it — the signal is the pattern being missed, not the set growing.
 <a id="roadmap-id-testing.gate-cache-closure-audit-structurally-blind-gate-authored"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **The gate-cache closure audit is structurally blind to GATE-AUTHORED inputs parked in scratch:
   its allowed-read table admits everything under `$TMPDIR` on the justification "the generated tree
   is hashed", which is true only while every file a cached cell reads under scratch actually lives
@@ -2176,6 +2260,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   dimension the cost grows (the count of such gates, each a fresh chance to repeat the draft bug
   with no audit backstop).
 <a id="roadmap-id-testing.comment-residue-false-matches-text-scans-over-emitted"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **Comment-residue false matches in text scans over emitted/prior `.rs` output — one proven
   instance, no machinery yet.** Any diagnostic or decision that SCANS generated (or user-edited
   prior) Rust text for a code pattern shares one trap: the comment-preservation overlay and the
@@ -2198,6 +2283,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   bounded-exception diagnostics list in AGENTS.md is the seed inventory) with one residue fixture
   each, rather than trusting each new scan to remember the rule.
 <a id="roadmap-id-testing.directive-dependent-emitter-edge-case-triggering-shape-hand"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **A directive-dependent emitter edge case whose triggering SHAPE is in no hand fixture is
   invisible to every combinatorial layer — the recombination fuzzer skips ALL `dsl.*` features
   wholesale ("DSL comment in root RHS; not a clean reusable expression"), so no fuzz composition
@@ -2218,6 +2304,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `@duplicates` on collection templates), letting the existing generation sweep + layer-2
   compile gates see directive × shape products no hand fixture enumerates.
 <a id="roadmap-id-testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **A hand-enumerated ban-pattern list whose AUTHORITY lives in gitignored plan files lags the
   id scheme it bans — no in-repo lockstep is possible (the tracked side cannot read the
   authority in CI), so the list drifts one delivery-phase behind by construction.** Proven
@@ -2237,6 +2324,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   extract) and fail if any harvested id is matched by NO ephemeral pattern — lockstep with the
   authority exactly where the authority is present.
 <a id="roadmap-id-testing.extend-recombination-member-kind-table-optional-fixed-shape"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **Extend the recombination member-kind table to the OPTIONAL-FIXED shape.** `MEMBER_KINDS` now
   carries a per-kind aux-rule slot (`%A%`), so a kind that needs a named rule of its own is a one-row
   edit rather than a mechanism change — the `tagged_optional` row (`%K%: #6.10(%A%)` over
@@ -2255,6 +2343,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   reporter exists by construction).
 
 <a id="roadmap-id-testing.referencing-context-measured-wrapping-deep-honored-base-shape"></a>
+<sub>work · work_state=armed · risk=silent_wrong_bytes</sub>
 - **The referencing-context axis is measured one wrapping DEEP and at one honored base shape per
   directive; stacked wrappings and second base shapes are not.** The sweep that closed the
   directive-through-a-reference class — `src/tests/referencing_context_tests.rs`'s
@@ -2275,6 +2364,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   today, so the entry cannot already meet it.
 
 <a id="roadmap-id-testing.arm-position-s-classifier-compile-time-forcing-function"></a>
+<sub>control</sub>
 - **The arm-position axis's classifier is a compile-time forcing function, and losing it is the
   regression to watch for.** The axis itself is now enumerated: `no_silent_directive` sweeps a
   directive on a NON-LAST arm as two shapes of its own — `multi_choice_non_last_arm` and
@@ -2296,6 +2386,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   bound to `_` in that destructuring without a variant-position cell proving it is variant-legal.
 
 <a id="roadmap-id-testing.schema-document-s-name-injectivity-enforced-row-side"></a>
+<sub>control</sub>
 - **The schema document's name injectivity is enforced ROW-side, so the residue is everything the row
   set cannot see.** The document is written by a program we emit, so its content is a property of the
   RUN rather than of the emitted source, and the row-side guard that closes every collision with a row
@@ -2306,6 +2397,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `--json-schema-root` root on the LOSING side of a collision — if a consumer reports a collision they
   introduced through that flag. What remains — four holes, each needing its own mechanism:
   <a id="roadmap-id-testing.schema-name.collision-loser-no-row-same-id"></a>
+  <sub>work · work_state=armed · risk=wrong_public_api</sub>
   - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
     see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
     the kept-its-own-name check reads clean. Reaching it needs a way to enumerate what a row pulls in
@@ -2314,6 +2406,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     `schema_id`. The upstream lever is report-and-wait (`schemars` is a crates.io dependency, not a
     fork we pin like the `cddl` parser), so the document post-pass is the schedulable one.
   <a id="roadmap-id-testing.schema-name.cross-crate-same-id-collision"></a>
+  <sub>work · work_state=armed · risk=wrong_public_api</sub>
   - **A cross-crate collision whose `schema_id`s MATCH** — two crates' `add_schemas` threaded into
     one `SchemaGenerator` — escapes the ledger, which belongs to the registrar one crate's
     `add_schemas` opens. The
@@ -2331,6 +2424,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     consumer was told to call — so the ids-match merge is where a cross-crate report would have to
     land before either is worth doing.
   <a id="roadmap-id-testing.schema-name.percent-encoded-ref"></a>
+  <sub>work · work_state=ready · risk=wrong_public_api</sub>
   - **A `schema_name()` that `schemars` percent-encodes into its `$ref`** (anything outside
     `[A-Za-z0-9_]`, e.g. the static runtime's `OrderedHashMap<K, V>`) skips the kept-its-own-name
     check entirely: `schemars`' `encode_ref_name` lives in a private module (`mod encoding` in
@@ -2345,6 +2439,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     percent-escaped byte — `tests/README.md` § "JSON-schema document — Rust-side coverage
     (`run_test`'s per-fixture assertions + the emitted name guard)"), leaving a multi-byte UTF-8 name.
   <a id="roadmap-id-testing.schema-name.two-rowless-types-collide"></a>
+  <sub>work · work_state=armed · risk=wrong_public_api</sub>
   - **A collision between two types that BOTH lack rows** — each reached only transitively from some
     row'd type — is seen by neither check: the ledger holds rows, and "kept its own name" is asked
     only of a registered type. With distinct `schema_id`s both are emitted and one takes `<name>2`
@@ -2411,6 +2506,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   shape under another's name.
 
 <a id="roadmap-id-testing.directive-s-documented-sentence-stay-true-consumer-visible"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **A directive's documented sentence can stay true while its consumer-visible MEANING changes
   underneath it, because the artifact it controls changed shape.** `@no_json_schema_export` shipped
   meaning "no registration row for this type", pinned at the row level by
@@ -2449,6 +2545,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   ships, the layer to build is the same shape one rung out: a per-flag datum naming the artifact its
   documentation makes claims about.
 <a id="roadmap-id-testing.citation-resolves-naming-wrong-thing-invisible-citation-lint"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **A citation that RESOLVES while naming the wrong thing is invisible to every citation lint, and
   the claim it makes is the half a human reads.** The `KNOWN_PANIC_CLASSES` form of this is closed:
   each entry pairs a panic-message substring with prose naming the fixture that owns the class, and
@@ -2472,6 +2569,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   bounded-domain emit-tests fixture"); the general rule is that a tier verdict evidences a property
   only where that tier's corpus contains an instance of it.
 <a id="roadmap-id-testing.matrix-s-note-names-panic-site-aborts-nothing"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **A matrix cell's `note` names the panic site it aborts at, and nothing re-derives that name from
   a run either.** Recorded as a second INSTANCE of the class above, in a different artifact, so a
   cross-artifact evaluation has both in one place. The `note` fields of the `…type2.map` containment
@@ -2487,6 +2585,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   on a Rust test's `catch_unwind` capture, while a cell note is TOML consumed by TypeScript, so a
   single detector spanning both is a claim to establish, not to assume.
 <a id="roadmap-id-testing.nothing-asserts-how-many-times-rejection-message-emitted"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **Nothing asserts how MANY times a rejection message is emitted, and nested composites emit
   theirs twice.** `a = [x: [* 5]]` prints its refusal twice because the parse walk visits a nested
   composite twice; `a = [x: { uint => tstr }]` duplicates the same way, so the class predates the
@@ -2499,6 +2598,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   a catalog fixture whose refusal repeats a message THREE or more times (a deeper nest multiplies
   it again), at which point a user cannot tell one refusal from several.
 <a id="roadmap-id-testing.containment-note-s-stated-reason-go-false-any"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **A containment note's stated REASON can go false without any gate noticing — the note carries a
   behavioural claim, and only its `spec` and (via the annotation) its support verdict are checked.**
   Proven instance, since fixed: six containment notes justified their two-field examples with "a
@@ -2520,6 +2620,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   SECOND note found stating a behaviour the annotations contradict, which the next author to reuse
   a note's reasoning measures at the moment they inherit it.
 <a id="roadmap-id-testing.emit-tests-gate-asserts-round-trip-green-cannot"></a>
+<sub>work · work_state=armed · risk=silent_wrong_bytes</sub>
 - **An `--emit-tests` gate that asserts only "the round-trip is green" cannot tell an INTENDED
   minted value from a wrong one that happens to land in-window.** Proven by the bounded-map-key
   minter: choosing a `nint` key base in VALUE space emitted that base as a u64 MAGNITUDE, so
@@ -2542,6 +2643,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `nint_bounds_to_u64`); a SECOND such site means the working rule is being carried by hand in more
   than one place, and hand-carrying is what produced this instance.
 <a id="roadmap-id-testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible"></a>
+<sub>work · work_state=armed · risk=wrong_public_api</sub>
 - **An emitter that DROPS an overloadable parameter by building a fresh config is invisible to the
   lint that catches one which hardcodes the default.** The hardcoding half is covered:
   `snapshot_tests::emitter_overload_no_bare_default_tokens` (fast tier, current state in
@@ -2571,6 +2673,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `tests/README.md` § "Snapshot tests").
 
 <a id="roadmap-id-testing.cargo-feature-generated-crate-s-dependency-change-what"></a>
+<sub>work · work_state=armed · risk=silent_wrong_bytes</sub>
 - **A cargo FEATURE on a generated crate's dependency can change what emitted code MEANS, and no
   axis varies dependency features — compounded by every generated `Serialize` only ever being
   exercised through `serde_json`, the one serializer that cannot observe dishonesty in the serde
@@ -2608,6 +2711,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   this axis is next weighed.
 
 <a id="roadmap-id-testing.documented-flag-pairing-broken-fixture-stays-green-because"></a>
+<sub>work · work_state=armed · risk=false_pass_or_red</sub>
 - **A DOCUMENTED flag pairing can be broken while every fixture stays green, because a fixture
   satisfies the pairing's preconditions by accident.** Proven instance (found by reading the fixture,
   not by any gate; consumer-reported first): `command_line_flags.mdx`'s own `--extern-wasm-crate`
@@ -2624,6 +2728,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   complement of the class-level validation-smoke sweep in § Declined's flag-powerset entry (which
   asserts documented-INVALID values reject), and the two should be built together if either is.
 <a id="roadmap-id-testing.documented-failure-shape-exercises-prose-cross-crate-int"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **A documented failure SHAPE that no cell exercises is prose — the cross-crate `Int` channel has
   three, plus a hand mirror nothing cross-checks.** The shipped
   `Int`-under-`--common-import-override` coverage proves the positive paths and asserts row-ABSENCE
@@ -2644,6 +2749,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   reporting that the error they got was not the one the docs describe — or a generated-`Int` wire
   change landing while `extern_deps` stays green.
 <a id="roadmap-id-testing.dsl-position-tests-string-level-design-green-emitted"></a>
+<sub>work · work_state=armed · risk=compile_failure</sub>
 - **`dsl_position_tests` is string-level by design, so a cell can be GREEN while the emitted crate is
   broken.** Proven instance (caught by a hand-run end-to-end repro during review, not by any gate):
   the `@custom_json` record-struct cell first landed passing while the generated struct kept its
@@ -2656,6 +2762,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   premise of cheapness (it runs in ~1 s today; a compile leg is nested-cargo-priced and would need
   the gate cache), which is why the probe is scoped to those cells rather than to the grid.
 <a id="roadmap-id-testing.nothing-asserts-two-ir-sites-cannot-mint-same"></a>
+<sub>work · work_state=armed · risk=wrong_public_api</sub>
 - **Nothing asserts that two IR sites cannot mint the SAME `RustIdent`: `register_rust_struct` ends
   in a bare map insert, so a second claimant silently overwrites the first.** Proven instance
   (reported by a consumer as a panic, root-caused here): a multi-arm group-choice arm registers its
@@ -2687,6 +2794,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   wrong-shaped in, its generated crate.
 
 <a id="roadmap-id-testing.message-s-level-classification-review-owned-two-ways"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **A message's LEVEL classification is review-owned, and two ways of getting it wrong are
   invisible.** The verbosity delivery classified 63 emission sites across six macros
   (`src/log.rs`), and nothing mechanical checks that any of them landed at the right level. Two
@@ -2714,6 +2822,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   many sites exist).
 
 <a id="roadmap-id-testing.wac-composed-component-transpiled-jco-loses-cross-instance"></a>
+<sub>work · work_state=armed · risk=wrong_public_api</sub>
 - **A `wac`-composed component transpiled by jco loses cross-instance resource identity, and the
   worse half of that is SILENT.** jco 1.26.1 allocates a separate handle table per component
   *instance* for the same resource type and emits no transfer between them for a JS-held handle, so
@@ -2738,6 +2847,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   below 0.9, so a green run whose log does not name a `wac` version is silence, not evidence.
 
 <a id="roadmap-id-testing.make-fixture-comment-s-claimed-wire-bytes-executable"></a>
+<sub>work · work_state=armed · risk=misleading_docs</sub>
 - **Make a fixture comment's claimed WIRE BYTES executable, or stop writing them.** A robustness
   fixture's header comment may state the bytes its rule produces (`tests/robustness/`
   `cbor_payload_same_chain_alias.cddl` claimed `43 41 05` for the value 5; the crate writes
@@ -2758,6 +2868,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 ## Deferred features (build when a real consumer needs them)
 
 <a id="roadmap-id-testing.workspace-mode-wasm32-wasip2-build-gate-both-faces"></a>
+<sub>work · work_state=deferred · risk=compile_failure</sub>
 - **A workspace-mode `wasm32-wasip2` build gate for a BOTH-FACES tree.** `component_wasip2_build`
   builds component-only workspaces from the root over manifests exactly as emitted, which reaches
   the rust crate's own lib targets; a component-only tree is emitted `crate-type = ["rlib"]`, so no
@@ -2775,6 +2886,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   reproducer recipes and the full matrix is the gitignored `draft/` LLD-crash note (conclusion and
   numbers recorded here because that note is checkout-local).
   <a id="roadmap-id-testing.workspace-wasip2.reopening-signal"></a>
+  <sub>transition · transition_kind=reopening_signal · predicate.predicate_kind=event</sub>
   - **Reopening signal:** an upstream LLD fix reaching the pinned toolchain (re-measure BOTH
     matrix cells before believing it — a single green cell is what the 2026-08-08 correction was
     shipped on), or a consumer reporting the linker SIGSEGV from their own both-faces workspace's
@@ -2782,6 +2894,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     pre-diagnosed with the input that reproduces in their environment.
 
 <a id="roadmap-id-testing.probe-component-face-s-js-surface-axes-js"></a>
+<sub>work · work_state=deferred · risk=false_pass_or_red</sub>
 - **Probe the component face's JS surface on the axes the JS-host gate left untouched.** The
   `component_jco` gate drives one jco version (1.26.1) and one node version (22) over the default
   encoding posture, with no JSON doors, in node only — which is what its two reused fixtures carry.
@@ -2795,6 +2908,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   fixture-and-lockfile change rather than new machinery, so what is deferred is coverage breadth and
   the cold-run cost that buys it — none of the four sits on the path the motivating consumer takes.
   <a id="roadmap-id-testing.component-js-probe.reopening-signal"></a>
+  <sub>transition · transition_kind=reopening_signal · predicate.predicate_kind=event</sub>
   - **Reopening signal:** a consumer reporting a JS-side failure on one of those axes — the party
     running the browser build, the preserve posture or a newer jco is the only one who can see it
     first, and the report names which axis to probe. The gate's exact pins are what make such a
@@ -2803,6 +2917,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     have caught.
 
 <a id="roadmap-id-testing.crate-generates-json-schema-document-aggregate-package"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **A crate entry that generates only a JSON-schema document (the aggregate package).** An npm
   package composing several generated crates needs one schema document over their union, but is
   often not itself a generated crate — so it carries a hand-written json-gen crate transcribing what
@@ -2829,6 +2944,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   project publishing a second npm package over generated crates produces.
 
 <a id="roadmap-id-testing.wasm32-link-floor-deferred-reject-twin"></a>
+<sub>work · work_state=deferred · risk=compile_failure</sub>
 - **A wasm32 LINK floor for the deferred reject twin.** `workspace_dep_defers_reject_ordered_set_twins`
   compiles both generated crates on the HOST target, which is blind to the failure the deferral
   exists to remove: two `#[wasm_bindgen]` classes of one name are a `rust-lld: duplicate symbol`
@@ -2841,6 +2957,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   dependency, where a placement mistake stops being reproducible from the single-dep cells the
   host-target check covers.
 <a id="roadmap-id-testing.extern-interface-export-dialect-v2-candidates"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **Extern-interface export dialect v2 candidates.** Each bumps the seam header
   (`_CDDL_CODEGEN_EXTERN_INTERFACE_ v1` — unknown versions hard-error, pinned by
   `extern_import_unknown_version_hard_errors`), so batch them when one gets a real consumer:
@@ -2863,6 +2980,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   extern over `--extern-import` — its own spec cannot spell the instantiation, so the block is
   visible to the party that has it, not inferred by us.
 <a id="roadmap-id-testing.cddl-module-directives-draft-ietf-cbor-cddl-modules"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **CDDL module directives (draft-ietf-cbor-cddl-modules) with the draft's real inlining
   semantics, and `as`-namespacing.** Both forms are currently recognized and refused loudly
   (`module_directive_import_aborts` / `module_directive_include_aborts`;
@@ -2875,11 +2993,13 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   (scope-qualified `RustIdent` through the IR, dep_graph ordering, emitted-test glob imports,
   JSON schema naming).
 <a id="roadmap-id-testing.std-generated-crates"></a>
+<sub>work · work_state=deferred · risk=compile_failure</sub>
 - **no_std generated crates.** cbor_event supports no_std since 3.0.0, so a CLI flag (`cli.rs` +
   docs) emitting no_std-compatible crates is possible; the static runtime and generated code would
   need their own std-usage sweep (collections, error impls). The mechanical layer when a consumer
   asks: a no_std cross-compile gate over one generated crate.
 <a id="roadmap-id-testing.dependency-version-range-resolution-untested-generated-crates-float"></a>
+<sub>work · work_state=deferred · risk=false_pass_or_red</sub>
 - **Dependency version-RANGE resolution is untested: generated crates float on semver
   `cbor_event = "3.3.0"`, and nothing gates what that range actually resolves to over time.** In
   check.ts runs the nested-cargo cells now resolve OFFLINE from the cargo cache (the
@@ -2893,6 +3013,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `--minimal-versions`-style resolve check over one generated crate, red when the resolved
   `cbor_event` version drifts from the one the vectors were blessed against.
 <a id="roadmap-id-testing.transparent-tag-set-idiom-recognized-shape-boundary-request"></a>
+<sub>control</sub>
 - **Transparent tag-set idiom — recognized-shape boundary (REQUEST-08).** The collapse of a two-arm
   tagged-or-untagged collection choice into one transparent optionally-tagged alias
   (user doc: `docs/docs/current_capacities.mdx` § "Transparent tag-set idiom") is narrow by design;
@@ -2901,6 +3022,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   in `tests/README.md` § "Transparent tag-set idiom". The boundary shapes below stay unsupported,
   each with its reopening signal (a real consumer spec hitting it):
   <a id="roadmap-id-testing.tag-set.non-idiom-generic-boundary"></a>
+  <sub>decision · decision_state=decided · permanence=permanent</sub>
   - *Non-idiom choice-BODIED generic defs are refused, not supported.* The idiom is the ONLY
     choice-bodied generic def the generator can monomorphize — the collapse fires at parse time,
     before the generic machinery, and produces one struct to substitute into. Arms that do not
@@ -2910,10 +3032,12 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
     gracefully`). Remedy when the refusal bites: teach the generic machinery to substitute into an
     enum's arms, which is the same work a generic GROUP-choice def needs.
   <a id="roadmap-id-testing.tag-set.inline-anonymous-choice-boundary"></a>
+  <sub>work · work_state=deferred · risk=valid_rejection</sub>
   - *Inline/anonymous two-arm choices are not recognized.* Recognition lives at the
     `parse_type_choices` named-rule seam, so an inline `[x: #6.258([* uint]) / [* uint]]` stays a
     two-variant enum. Remedy when it bites: run the recognition on anonymous choices too.
 <a id="roadmap-id-testing.opt-rfc-faithful-total-cbor-json-rendering-json"></a>
+<sub>work · work_state=deferred · risk=silent_wrong_bytes</sub>
 - **Opt-in RFC 8949 §6.1-faithful total CBOR→JSON rendering (a `to_json_rfc8949`-style lossy
   flavor).** §6.1 is self-described "non-normative advice", and its non-injective rows are lossy
   by its own admission: byte strings become base64url JSON strings indistinguishable from text,
@@ -2933,6 +3057,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   signal: a real consumer needs a total natural-JSON view and neither the tagged codec nor the
   fallible natural `to_json` fits.
 <a id="roadmap-id-testing.edn-text-notation-round-trip-edn-edn-draft"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **EDN text-notation round-trip (`to_edn` / `from_edn`, draft-ietf-cbor-edn-literals).** EDN is
   the text notation that *can* be byte-faithful where JSON structurally cannot (encoding
   indicators, NaN payload bits — JSON's number model collapses both), making it the natural
@@ -2946,6 +3071,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   `from_edn(to_edn(x))` byte-identity against the existing span oracle
   (`src/tests/any_cbor_tests.rs`).
 <a id="roadmap-id-testing.project-json-gen-documents-run-test-fixture-writes"></a>
+<sub>work · work_state=deferred · risk=false_pass_or_red</sub>
 - **Project the json-gen documents that no `run_test` fixture writes.** The TS-projection oracle
   runs from `run_test`'s json-gen block, so it covers exactly the documents a `tests/<dir>/export`
   fixture produces. Six other sites run a generated json-gen crate to a successful document and
@@ -2964,6 +3090,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   its own, a cross-crate threaded row whose key is not an identifier), which is when its document
   stops being a simplification of a projected one.
 <a id="roadmap-id-testing.propagating-deliberately-unpublished-type-s-intent-json-ts"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **Propagating a deliberately-unpublished type's intent to the JSON → TS scripts.** A type whose
   CDDL rule carries `@no_json_schema_export` still mints a wasm class with `to_json_value(): any`
   (the directive removes the registration row, not the derives), so when nothing published
@@ -2982,6 +3109,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   deliberately-unpublished set is large enough that restating it on the script command line is a
   maintenance burden.
 <a id="roadmap-id-testing.json2ts-artifact-doc-comments-naming-undefined"></a>
+<sub>work · work_state=deferred · risk=misleading_docs</sub>
 - **json2ts artifact doc comments naming `undefined`.** The emitted `.d.ts` carries comments like
   "This interface was referenced by `undefined`'s JSON-Schema definition via the `patternProperty`
   …". The name in that comment is json2ts's own standalone name for the schema that OWNS the
@@ -2996,6 +3124,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   comments than named ones — i.e. nested rest regions dominate their surface, which is also the
   condition under which the hoisted-declaration cost is worth paying.
 <a id="roadmap-id-testing.file-listing-json-schema-root-values-flag-per"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **A file listing `--json-schema-root` values, instead of one flag per root.** The repeatable flag
   is what shipped, on the grounds that it matches every other repeatable flag and that the asking
   consumer's eight entries do not justify a new file format. A file-listing variant stays purely
@@ -3004,6 +3133,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   the right place for it. Note what such a file must NOT become — the paths are Rust, not CDDL, and
   routing them through the spec is the category error the flag exists to avoid.
 <a id="roadmap-id-testing.assert-hand-authored-json-schema-against-type-s"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **Assert a hand-authored JSON schema against the type's actual serialization.** Supplying the
   schema body needs neither new spec syntax nor a hand-written impl: `@custom_json` suppresses the
   `serde`/`schemars` derives while the type still gets a registration row, and `custom_schema_impl!`
@@ -3022,6 +3152,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   hazard instead of removing it. Reopening signal: the sample-value minting gets reused for this, or
   a consumer reports a shipped schema that contradicted its own serialization.
 <a id="roadmap-id-testing.composing-registration-rows-across-generation-passes-share-output"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **Composing registration rows across generation passes that share one output crate.** Two
   cddl-codegen passes targeting one output directory each own the json-gen crate's row set
   outright, so there is no supported way to have one json-gen crate publish both passes' types.
@@ -3032,6 +3163,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   statement of it is not in-tree.) Reopening signal: a consumer whose layout genuinely forces two
   passes into one json-gen crate and for whom the hand-written composition is not enough.
 <a id="roadmap-id-testing.machine-readable-ownership-co-owned-features-std-list"></a>
+<sub>work · work_state=deferred · risk=wrong_public_api</sub>
 - **A machine-readable ownership record for the co-owned `features.std` list.** The human half of
   the co-ownership contract is asserted in-band — the `# cddl-codegen:` comment block above the key
   (`STD_OWNERSHIP_COMMENT`, `cargo_manifest.rs`), re-written every run so it cannot rot — but a
@@ -3050,6 +3182,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 ### Operational systems, controls, and resource work
 
 <a id="roadmap-id-testing.gate-s-own-stdout-print-column-result-pass"></a>
+<sub>control</sub>
 - **A gate's own stdout can print a column-0 `RESULT: PASS (...)` line, so a log poll that greps
   for `RESULT:` (even line-anchored) reads a sub-check's verdict as the tier's.** Proven
   2026-08-07, twice in one cycle: a session polling a live `check-local-*.log` for the tier
@@ -3064,6 +3197,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   sub-check's output until the process has exited.
 
 <a id="roadmap-id-testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag"></a>
+<sub>control</sub>
 - **A no-flag `cddl-codegen` invocation is a WASM run — the `wasm` flag's PARSE default is true —
   so a "default profile" probe that does not spell `--wasm=false` attributes wasm-profile facts to
   the default profile.** Proven 2026-08-07 (the map rest-row refusal delivery): an implementation
@@ -3080,6 +3214,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   the probe-discipline consequence.)
 
 <a id="roadmap-id-testing.failing-snapshot-test-surfaces-mismatch-per-test-run"></a>
+<sub>control</sub>
 - **A failing snapshot test surfaces ONE mismatch per test run — the first assertion that panics —
   so a "N snapshots changed" count read off a single failure list understates multi-snapshot
   churn.** Proven 2026-08-08 (the component fallibility delivery): a `whole_program` fixture
@@ -3094,6 +3229,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   run is the only complete enumeration; one failure list never is.
 
 <a id="roadmap-id-testing.config-run-s-convergence-warning-name-crate-already"></a>
+<sub>work · work_state=deferred · risk=misleading_docs</sub>
 - **The config run's convergence warning can name a crate that already converged.** `Convergence`
   snapshots each consumed sidecar's bytes at the START of the run and compares them after, so any
   sidecar that CHANGED during the run marks its reader stale. That is right for the edge the check
@@ -3114,6 +3250,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   cannot become a spurious build failure.
 
 <a id="roadmap-id-testing.extern-interface-export-public-interchange-format"></a>
+<sub>control</sub>
 - **The extern-interface export is a public interchange format.** Once a consumer regenerates
   against a dep's committed `extern-interface/<dep>/**`, its dialect (header line, marker rows,
   `@rust_name` pins, `; unexported:` records) is cross-crate API: any change to what the emitter
@@ -3125,10 +3262,12 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   consumer tool meeting a NEW directive in an export still hard-errors — that asymmetry is the
   designed behavior, not a bug report.
 <a id="roadmap-id-testing.exclusion-reasons-informational-interchange"></a>
+<sub>decision · decision_state=decided · permanence=permanent</sub>
 - **Exclusion-record reasons are informational, not interchange.** Consumers never parse the text
   after `; unexported: <ident> — `; wording may change freely. If tooling ever wants to act on
   exclusion REASONS, that's a dialect v2 field, not a regex over prose.
   <a id="roadmap-id-testing.scratch-retention.reopening-signal"></a>
+  <sub>transition · transition_kind=watch_escalation</sub>
   - **Reopening signal** (for a bounded named scratch root the tiers reuse and truncate, which
     retires debris by construction rather than by age): a disk-floor refusal or an ENOSPC gate death
     on a machine whose SAME run's sweep line reported nothing removed. Both halves are in the one
@@ -3141,12 +3280,14 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
   destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
 <a id="roadmap-id-testing.tier-memory.spend-measurements"></a>
+<sub>work · work_state=blocked · risk=resource_exhaustion</sub>
 - **Spend the measurements.** The 4 GiB slot constant and the one-permit nested bound are
   deliberately pessimistic prices for unmeasured quantities, and the pessimism costs real wall
   time (nested children serialize per gate). Once accumulated `memory-peaks.jsonl` rows from
   real tiers bound a slot's true peak, re-derive both constants from the measurement and record
   the basis where the constants live.
 <a id="roadmap-id-testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"></a>
+<sub>work · work_state=armed · risk=resource_exhaustion</sub>
 - **A tier's DISK BANDWIDTH is unmeasured by anything — the scratch floor is a capacity check,
   not a rate one, and no incident has ever been attributable either way.** The third sibling of
   the two entries above, narrower than both: it names a candidate factor, not a proven one. Up to
@@ -3177,21 +3318,25 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   basis lines green in the run's own log) — the first bandwidth-attributed incident there has
   ever been, which buys the sampler's IO axis at minimum.
 <a id="roadmap-id-testing.gate-cache-costs"></a>
+<sub>control</sub>
 - **Gate-cache residual costs.** The nested-cargo gates (`feature_corpus_compiles`,
   `wasm_matrix_compiles`, `multifile_matrix_compiles`, the layer-2 recombination sweeps, and
   `verify.ts`) memoize per generated-tree content hash (the gate cache), so re-run wall-clock is a
   first-run price; what remains always-run:
   <a id="roadmap-id-testing.gate-cache.all-hit-cost"></a>
+  <sub>work · work_state=deferred · risk=false_pass_or_red</sub>
   - **Residual all-hit cost** — an all-hit `feature_corpus_compiles` still measures ~2.5 min of
     always-run work (177× generation + 177× `cargo generate-lockfile`); dedupe lockfile resolution
     per identical generated `Cargo.toml` within a run if that bites.
   <a id="roadmap-id-testing.gate-cache.coverage-extensions"></a>
+  <sub>work · work_state=deferred · risk=false_pass_or_red</sub>
   - **Coverage extensions** — the `run_test` fixture suites (uncached: reused export dirs already
     replay warm-incrementally through cargo, and their external path-dep closure is larger) and
     classified deterministic FAILs (expected-red skip-listed cells and unsupported `verify.ts`
     probes re-run every time; caching a *classified* compile-fail is the same soundness argument,
     but transient-env failures must stay uncacheable — needs a careful failure taxonomy first).
   <a id="roadmap-id-testing.gate-cache.closure-audit-traced-set-extension"></a>
+  <sub>work · work_state=deferred · risk=false_pass_or_red</sub>
   - **Closure-audit traced-set extension** — the input-closure audit gate
     (`gate_cache_closure_audit`; `tests/README.md` § "The gate cache" / "Soundness gates") traces
     ONE representative cached gate per run (`multifile_matrix_compiles` by default, the
@@ -3208,6 +3353,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 ### Live operational watches
 
 <a id="roadmap-id-testing.stale-pin-guard-cannot-distinguish-gap-closed-vector"></a>
+<sub>testing_operational_watch · watch_state=watching</sub>
 - **A stale-pin guard cannot distinguish "the gap closed" from "the vector that proved the gap went
   blunt" — and a wholesale re-mint of RANDOMLY GENERATED vectors produces the second while reporting
   the first.** Proven 2026-07-30 (native-float preserve delivery): adding one corpus rule required a
@@ -3232,6 +3378,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   still exposed to the class, which is why the watch stands.)
 
 <a id="roadmap-id-testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until"></a>
+<sub>testing_operational_watch · watch_state=watching</sub>
 - **Nested-cargo scratch retention: `/tmp/cddl*` leaks until the disk fills.** The nested-cargo
   gates and the in-process test suites mint per-run scratch dirs under the system temp dir
   (`cddl_codegen_test_*`, `cddl_codegen_corpus_compile_*`, `cddl_verify_*` — the verify wasm
@@ -3253,6 +3400,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   re-attributing — but read the run's own sweep line first, because a run that swept and still
   refused on the disk floor is reporting a different problem.
 <a id="roadmap-id-testing.registry-fetch-transients-nested-cargo-cells"></a>
+<sub>testing_operational_watch · watch_state=watching</sub>
 - **Registry-fetch transients in nested-cargo cells.** Nested-cargo cells used to resolve deps
   from crates.io per temp crate, so a flaky network/proxy (a proxy aborting ~1-in-6 CONNECTs to
   index.crates.io, a class cargo's own transient retry never engages on) killed otherwise-green
@@ -3293,6 +3441,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   pass — fail-fast SKIPS every downstream gate, so a tier-level claim needs the tier re-run (the
   gate cache keeps already-passed cells cheap).
 <a id="roadmap-id-testing.verify-cache-transparency-b-split-emission-profile-embed"></a>
+<sub>testing_operational_watch · watch_state=watching</sub>
 - **`verify_cache_transparency` A/B split on an emission-profile EMBED cell — intermittent, distinct
   from the ruby and registry classes.** Observed 2026-07-13: one `cache_transparency.ts` leg diverged
   on `prelude.tstr`'s `emission.preserve.evidence` — the synthetic-holder embed round-trip
@@ -3314,6 +3463,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 ## Declined (decided, with a reopening signal unless explicitly permanent)
 
 <a id="roadmap-id-testing.complete-cargo-mutants-sweep-will-never-run"></a>
+<sub>decision · decision_state=decided · permanence=permanent</sub>
 - **The complete `cargo-mutants` sweep will never be run.** The configured ~3% experiment
   (33/1040 mutants) was enough to establish its value profile: all six survivors were
   behaviorally-equivalent style-only mutations, while the work needed to finish and triage the
@@ -3323,6 +3473,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   no completion obligation.
 
 <a id="roadmap-id-testing.making-type-choice-path-reject-duplicated-explicit-name"></a>
+<sub>decision · decision_state=decided · permanence=reopenable</sub>
 - **Making the TYPE-CHOICE path reject a duplicated explicit `@name` the way the group-choice arm
   path does.** The two enum-producing paths now differ in policy: two group-choice arms of one rule
   given the same `; @name` are a graceful rejection (`reject_group_choice_arm_variant_name_collision`
@@ -3341,11 +3492,13 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   name — the harm this would prevent, observable by the party who has it, and distinct from the
   derived-name suffixing that is working as designed.
 <a id="roadmap-id-testing.msrv-declaration-os-matrix-generated-code"></a>
+<sub>decision · decision_state=decided · permanence=reopenable</sub>
 - **MSRV declaration / OS matrix for GENERATED code.** The templates' `edition = "2024"` already
   hard-floors the effective MSRV at rustc 1.85 with a self-explanatory compile error, and generated
   output has no platform-conditional code an OS matrix would exercise. Revisit only if a consumer
   reports an MSRV or platform break (dep-driven MSRV creep is the one real vector).
 <a id="roadmap-id-testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx"></a>
+<sub>decision · decision_state=decided · permanence=reopenable</sub>
 - **A docs-vs-behavior conformance harness for `comment_dsl.mdx` / `output_format.mdx`** (snippet
   extraction + output spot-checks): emitted output is already pinned by the snapshot corpus and
   DSL-name drift by the `cddl-matrix/verify.ts` forward lint; a doc-snippet system is heavy
@@ -3416,6 +3569,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   whoever fixes the next such defect: a second anchorless boundary sentence found to have
   documented a defect as intended, after this rule was in force.
 <a id="roadmap-id-testing.full-n-flag-powerset-pict-pairwise"></a>
+<sub>decision · decision_state=decided · permanence=reopenable</sub>
 - **Full `2^N` flag powerset / PICT pairwise** — the curated named profiles cover the flag
   *combinations* worth testing, so the full powerset stays out of scope. Escaped interactions earn
   their own standing cells rather than the whole powerset — four so far (the Fourth is recorded
@@ -3489,14 +3643,17 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   which emitted a non-compiling crate — a CLI rejection (`api::with_types`, pinned by
   `flag_value_rejects_canonical_without_preserve`).
 <a id="roadmap-id-testing.quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus"></a>
+<sub>control</sub>
 - **`quickcheck` alongside `proptest`; `goldenfile`/`expect-test` as a second corpus engine;
   `no-panic` lints; coverage instrumentation of *generated* code; `trybuild` for whole-crate
   compile-pass** (the corpus `cargo check` is simpler and broader).
 <a id="roadmap-id-testing.orphan-fixture-directory-meta-test"></a>
+<sub>decision · decision_state=decided · permanence=permanent</sub>
 - **An orphan-fixture-directory meta-test** (assert every `tests/<dir>/` is referenced by some gate):
   fixture dirs change rarely and a new gate's author touches the dir listing anyway; the failure
   mode (a committed fixture nothing runs) is caught by review at that rate.
 <a id="roadmap-id-testing.restructuring-features-std-tool-owned-sub-feature-cddl"></a>
+<sub>decision · decision_state=decided · permanence=permanent</sub>
 - **Restructuring `features.std` into a tool-owned sub-feature (a `_cddl-codegen-std` key
   referenced from a consumer-owned `std`).** Declined because the key layout cannot change the
   SEMANTICS, and its two legibility benefits are each dominated by a cheaper reversible channel.
@@ -3518,6 +3675,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   metadata deferral; a hand entry lost under the merge is a merge BUG. Nothing observable routes
   to the split itself.
 <a id="roadmap-id-testing.ownership-journal-making-dropped-std-forward-dep-converge"></a>
+<sub>decision · decision_state=decided · permanence=reopenable</sub>
 - **An ownership journal making a dropped `--std-forward-dep` converge (safe retraction).**
   Dropping the flag while keeping its `--rust-dep` leaves a stale-but-consistent pair today — the
   dep keeps `default-features = false`, the `<pkg>/std` forward union-survives beside it — safe,
@@ -3530,6 +3688,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   — they dropped the flag to STOP forwarding and the persistence harms their build — rather than
   the documented safe leftover.
 <a id="roadmap-id-testing.wrapper-name-user-set-name-synthesized-collection-wrapper"></a>
+<sub>decision · decision_state=decided · permanence=reopenable</sub>
 - **`@wrapper_name` — a user-set name for a synthesized collection wrapper.** Declined in favor of
   container-encoded structural names, which is what the wrapper-name collision class needed: a name
   carrying its container (`PairMapKToV` vs `MapKToV`) makes a same-shape/different-flavor claim
@@ -3555,6 +3714,7 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   misname one of them rather than merely restate it. (The one-concept flavor no longer fires this:
   it has a remedy that keeps the shared name.)
 <a id="roadmap-id-testing.checking-runtime-flavor-s-safety-condition-rather-stating"></a>
+<sub>decision · decision_state=decided · permanence=permanent</sub>
 - **Checking `[runtime] flavor-from`'s safety condition rather than stating it.** The `[runtime]`
   carrier derivation is a maintainer-CLOSED area (`AGENTS.md`), so this records the one build that
   would be defensible IF that area reopens — not an intent to build it. Shape: error only on a

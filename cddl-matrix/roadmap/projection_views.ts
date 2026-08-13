@@ -1,8 +1,9 @@
 import type { RoadmapIssue } from "./errors.ts";
-import type { RenderNodeKind, RoadmapDocument } from "./model/documents.ts";
+import type { RecordNode, RenderNodeKind, RoadmapDocument } from "./model/documents.ts";
 import type { CompletedRenderIr, ProjectedFieldSegment } from "./render_ir.ts";
 import { bytesEqual } from "./kernel.ts";
 import { concatenate } from "./kernel.ts";
+import { recordStatusFacts } from "./payload_descriptors.ts";
 import { placeholderFor } from "./slots.ts";
 
 export type ProjectionContentView = "full" | "audit";
@@ -287,11 +288,30 @@ function transformWholePiece(
   return { ...piece, bytes: transformed, bindings: [{ ...binding, transformation, start: 0, end: transformed.byteLength }] };
 }
 
-function anchorPiece(piece: Piece): Piece {
+/**
+ * The rendered status line: typed-state layout syntax over `recordStatusFacts`, so what it SHOWS
+ * is derived entirely from the descriptor table (kind, arm discriminants, risk where the arm
+ * carries one) and a new state can never silently miss it.  Only the joining/wrapping syntax
+ * lives here.
+ */
+function statusLineText(record: RecordNode): string {
+  const facts = recordStatusFacts(record.payload);
+  const parts = [
+    String(facts.kind),
+    ...facts.discriminants.map(([path, value]) => `${path}=${value}`),
+    ...(facts.risk === undefined ? [] : [`risk=${facts.risk}`]),
+  ];
+  return `<sub>${parts.join(" · ")}</sub>`;
+}
+
+/** Every section-placed record renders behind its stable anchor plus its typed status line. */
+function anchorPiece(piece: Piece, record: RecordNode): Piece {
   const text = TEXT.decode(piece.bytes);
   const indentation = /^( *)/u.exec(text)?.[1] ?? "";
   const gap = /^ *#{1,6} /u.test(text) ? "\n\n" : "\n";
-  const prefix = UTF8.encode(`${indentation}<a id="roadmap-id-${piece.owner.id}"></a>${gap}`);
+  const prefix = UTF8.encode(
+    `${indentation}<a id="roadmap-id-${piece.owner.id}"></a>\n${indentation}${statusLineText(record)}${gap}`,
+  );
   return { ...piece, bytes: concatenate([prefix, piece.bytes]), bindings: piece.bindings.map((binding) => ({
     ...binding, start: binding.start + prefix.byteLength, end: binding.end + prefix.byteLength,
   })) };
@@ -384,15 +404,17 @@ function layoutPieces(document: RoadmapDocument, completed: CompletedRenderIr, i
     }
   }
 
-  const recordIds = new Set(document.records.map((record) => String(record.id)));
+  const recordsById = new Map(document.records.map((record) => [String(record.id), record]));
   const visible = new Set(document.sections
     .flatMap((section) => [...section.entries])
-    .filter((id) => recordIds.has(id)));
+    .filter((id) => recordsById.has(id)));
   let anchored = 0;
   pieces = pieces.map((piece) => {
     if (piece.owner.kind !== "record" || !visible.has(piece.owner.id)) return piece;
+    const record = recordsById.get(piece.owner.id);
+    if (record === undefined) return piece; // unreachable (visible ⊆ declared records); trips the anchored-count issue below
     anchored++;
-    return anchorPiece(piece);
+    return anchorPiece(piece, record);
   });
   if (anchored !== visible.size) issues.push(issue(document, "projection.layout.anchors",
     `layout anchored ${anchored} records but ${visible.size} are section-placed`));
