@@ -18,6 +18,10 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
+// The gate registry is the join universe for `kind: "gate"` references. It is imported as the
+// exported value it is -- the same import `project_status_headers.ts` uses -- rather than scraped
+// out of check.ts's source text, where a reformat could silently drop rows.
+import { REGISTRY as CHECK_REGISTRY } from "../../check.ts";
 import type { RegistryView } from "./adapters/types.ts";
 import { decodeRoadmapSource } from "./decode/roadmap.ts";
 import {
@@ -728,20 +732,16 @@ function matrixStatusInputs(inputs: ReadonlyMap<string, Uint8Array>): MatrixStat
     catch { throw new RoadmapFailure(issue("E-TOML-PARSE", "tests/decode_conformance/catalog.toml", "registry-facts", "declared registry TOML is malformed", 1)); }
   })();
   const timings = parseJson<{ tiers?: readonly Record<string, unknown>[] }>(inputs, "tests/timings.json", {});
-  const checkSource = inputs.get("check.ts");
-  const gates: { id: string; kind: "cmd" | "cargo" | "stub"; ignored_test?: string }[] = [];
-  if (checkSource !== undefined) {
-    const source = UTF8.decode(checkSource);
-    const pattern = /\{\s*id:\s*"([^"]+)"[\s\S]{0,2500}?\bkind:\s*"(cmd|cargo|stub|fn)"([\s\S]{0,2500}?)\bdesc:/gu;
-    for (const match of source.matchAll(pattern)) {
-      const ignored = /\bignoredTest:\s*"([^"]+)"/u.exec(match[3] ?? "")?.[1];
-      gates.push({
-        id: match[1]!,
-        kind: match[2] === "stub" ? "stub" : match[2] === "cargo" ? "cargo" : "cmd",
-        ...(ignored === undefined ? {} : { ignored_test: ignored }),
-      });
-    }
-  }
+  // A revision that does not track check.ts declares no gates -- scratch fixture repositories are
+  // exactly that case, and they must keep seeing an empty gate universe.
+  const gates: { id: string; kind: "cmd" | "cargo" | "stub"; ignored_test?: string }[] =
+    inputs.get("check.ts") === undefined ? [] : CHECK_REGISTRY.map((gate) => ({
+      id: gate.id,
+      // A `fn` gate is a gate that runs in-process; the fact universe distinguishes only whether a
+      // gate is a real command or a declared stub, so `fn` and `cmd` share one representation.
+      kind: gate.kind === "stub" ? "stub" as const : "cmd" as const,
+      ...(gate.ignoredTest === undefined ? {} : { ignored_test: gate.ignoredTest }),
+    }));
   const strings = (rows: readonly { id?: unknown }[] | undefined): readonly string[] =>
     (rows ?? []).flatMap((row) => typeof row.id === "string" ? [row.id] : []).sort(codePointSort);
   const annotations = (matrix.annotations?.cddl_codegen ?? []).flatMap((row) =>
