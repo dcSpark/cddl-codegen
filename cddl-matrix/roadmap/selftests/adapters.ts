@@ -11,6 +11,7 @@ import {
   validateTestingRoadmapDocument,
 } from "../adapters/validation.ts";
 import type { FieldConsumer, RegistryView, RoadmapAdapter } from "../adapters/types.ts";
+import { documentSlots } from "../slots.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
 import type { SchemaDecodeTrace } from "../decode/primitives.ts";
 import type { IssueCollector, RoadmapIssue } from "../errors.ts";
@@ -460,11 +461,21 @@ function testFloors(bundle: AdapterFixtureBundle): void {
     requireFloorIssue(adapter, { ...document, document: { ...document.document, projection_path: projection as RepoPath } }, "document.projection_path", `${adapter.roadmap} accepted the wrong projection floor`);
   }
 
-  requireFloorIssue(MATRIX_ADAPTER, { ...matrix, generated_slots: matrix.generated_slots.slice(1) }, "generated_slot", "matrix accepted a missing slot");
-  requireFloorIssue(MATRIX_ADAPTER, { ...matrix, generated_slots: [...matrix.generated_slots, { ...matrix.generated_slots[0]!, slot_id: "extra" as SlotId }] }, "generated_slot", "matrix accepted an extra slot");
-  requireFloorIssue(MATRIX_ADAPTER, { ...matrix, generated_slots: matrix.generated_slots.map((slot, index) => index === 0 ? { ...slot, slot_id: "wrong" as SlotId } : slot) }, `generated_slot["constraint"].binding`, "matrix accepted a wrong slot ID");
-  requireFloorIssue(MATRIX_ADAPTER, { ...matrix, generated_slots: matrix.generated_slots.map((slot, index) => index === 0 ? { ...slot, binding: "wrong:binding" } : slot) }, `generated_slot["constraint"].binding`, "matrix accepted a wrong slot binding");
-  requireFloorIssue(TESTING_ADAPTER, { ...testing, generated_slots: [{ slot_id: "forbidden" as SlotId, binding: "wrong" }] }, "generated_slot", "testing accepted a generated slot");
+  const withSlots = (
+    document: RoadmapDocumentV3,
+    slots: readonly GeneratedSlot[] | undefined,
+  ): RoadmapDocumentV3 => ({
+    ...document,
+    sections: document.sections.map((section, index) =>
+      index === 0 ? { ...section, ...(slots === undefined ? {} : { slots }) } : section
+    ),
+  });
+  const matrixSlots = documentSlots(matrix.sections);
+  requireFloorIssue(MATRIX_ADAPTER, withSlots(matrix, matrixSlots.slice(1)), "section.slots", "matrix accepted a missing slot");
+  requireFloorIssue(MATRIX_ADAPTER, withSlots(matrix, [...matrixSlots, { ...matrixSlots[0]!, slot_id: "extra" as SlotId }]), "section.slots", "matrix accepted an extra slot");
+  requireFloorIssue(MATRIX_ADAPTER, withSlots(matrix, matrixSlots.map((slot, index) => index === 0 ? { ...slot, slot_id: "wrong" as SlotId } : slot)), "section.slots.constraint.binding", "matrix accepted a wrong slot ID");
+  requireFloorIssue(MATRIX_ADAPTER, withSlots(matrix, matrixSlots.map((slot, index) => index === 0 ? { ...slot, binding: "wrong:binding" } : slot)), "section.slots.constraint.binding", "matrix accepted a wrong slot binding");
+  requireFloorIssue(TESTING_ADAPTER, withSlots(testing, [{ slot_id: "forbidden" as SlotId, binding: "wrong" }]), "section.slots", "testing accepted a generated slot");
 }
 
 function testProviders(bundle: AdapterFixtureBundle): void {
@@ -892,7 +903,7 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
   for (const [roadmap, sourcePath, expectedPath, adapter, statusInputs, expectedLength] of [
     ["matrix", "positive/small-matrix-v3.toml", "positive/small-matrix-v3.expected.md", MATRIX_ADAPTER, statusCompatibilityInputs(), 48],
     ["testing", "positive/small-testing-v3.toml", "positive/small-testing-v3.expected.md", TESTING_ADAPTER, statusCompatibilityInputs(), 49],
-    ["matrix", "all-fields/matrix-v3.toml", "all-fields/matrix-v3.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 1654],
+    ["matrix", "all-fields/matrix-v3.toml", "all-fields/matrix-v3.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 1632],
     ["testing", "all-fields/testing-v3.toml", "all-fields/testing-v3.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 452],
   ] as const) {
     const document = decoded(bundle, sourcePath, roadmap);

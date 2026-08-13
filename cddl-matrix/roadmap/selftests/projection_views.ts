@@ -25,7 +25,7 @@ function fixture(): { document: RoadmapDocumentV3 } {
     document: { schema_version: 3, roadmap: "matrix",
       source_path: "fixture/roadmap.toml" as RepoPath, projection_path: "fixture/ROADMAP.md" as RepoPath },
     sections: [{ section_id: sectionId, title: "Fixture", body_md: section }],
-    fragments: [], parts: [], generated_slots: [],
+    parts: [],
     records: [{ id: recordId, title: "Visible record", projection_group: sectionId,
       legacy_aliases: ["Legacy item 1"],
       payload: { kind: "work", detail_md: record, work_state: "ready", work_intent: "build_system",

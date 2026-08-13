@@ -1,4 +1,5 @@
 import type { RoadmapSelfTestPorts } from "../io.ts";
+import { documentSlots, placeholderFor } from "../slots.ts";
 import type { ReadOnlyRoadmapPorts } from "../io.ts";
 import type {
   SelfTestCandidateCase as SelfTestCase,
@@ -86,7 +87,7 @@ import { sha256 } from "../kernel.ts";
 export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "manifest_duplicate_record",
   "manifest_missing_part",
-  "manifest_orphan_fragment",
+  "manifest_orphan_record",
   "manifest_unknown_id",
   "manifest_wrong_kind",
   "manifest_record_table_order_irrelevant",
@@ -125,6 +126,7 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "no_clock_without_as_of",
   "render_chunks_precede_consumption_validation",
   "render_slots_resolved_before_slot_validation",
+  "render_undeclared_slot_placeholder_rejected",
   "render_invalid_chunk_skips_projection_read",
   "render_committed_projection_read_last",
   "render_projection_mutation_changes_only_drift",
@@ -207,7 +209,6 @@ function bytes(value: string): Uint8Array {
 
 function asRoadmapId(value: string): RoadmapId { return value as RoadmapId; }
 function asSectionId(value: string): SectionId { return value as SectionId; }
-function asFragmentId(value: string): FragmentId { return value as FragmentId; }
 function asPartId(value: string): PartId { return value as PartId; }
 function asSlotId(value: string): SlotId { return value as SlotId; }
 function asRepoPath(value: string): RepoPath { return value as RepoPath; }
@@ -250,7 +251,7 @@ function expectedByteViewCrossChunk(): readonly string[] {
   const executed: string[] = [];
   const chunks: RenderChunk[] = ["a", "é", "🚀", "z"].map((value, manifest_index) => ({
     manifest_index,
-    owner: { kind: "fragment", id: `chunk-${manifest_index}`, field: "body_md" },
+    owner: { kind: "part", id: `chunk-${manifest_index}`, field: "body_md" },
     bytes: bytes(value),
     source_span_ids: [],
     consumed_fields: ["body_md"],
@@ -294,7 +295,7 @@ function expectedByteViewCrossChunk(): readonly string[] {
 function expectedByteViewIncrementalHash(): void {
   const chunks: RenderChunk[] = ["one\n", "two", "three\n"].map((value, manifest_index) => ({
     manifest_index,
-    owner: { kind: "fragment", id: `hash-${manifest_index}`, field: "body_md" },
+    owner: { kind: "part", id: `hash-${manifest_index}`, field: "body_md" },
     bytes: bytes(value),
     source_span_ids: [],
     consumed_fields: ["body_md"],
@@ -356,7 +357,7 @@ function expectedByteViewIncrementalHash(): void {
 function finalRenderHasNoImplicitBytes(): void {
   const chunks: RenderChunk[] = ["left", "right"].map((value, manifest_index) => ({
     manifest_index,
-    owner: { kind: "fragment", id: `render-${manifest_index}`, field: "body_md" },
+    owner: { kind: "part", id: `render-${manifest_index}`, field: "body_md" },
     bytes: bytes(value),
     source_span_ids: [],
     consumed_fields: ["body_md"],
@@ -379,8 +380,8 @@ function testManifestCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult 
       document = { ...document, manifest: document.manifest.filter((entry) => entry.kind !== "part") };
       expected = "E-MANIFEST-MISSING";
       break;
-    case "manifest_orphan_fragment":
-      document = { ...document, fragments: [{ ...document.fragments[0], projection_group: asSectionId("missing") }] };
+    case "manifest_orphan_record":
+      document = { ...document, records: [{ ...document.records[0], projection_group: asSectionId("missing") }] };
       expected = "E-MANIFEST-ORPHAN";
       break;
     case "manifest_unknown_id":
@@ -391,7 +392,7 @@ function testManifestCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult 
       break;
     case "manifest_wrong_kind":
       document = { ...document, manifest: document.manifest.map((entry) =>
-        entry.kind === "fragment" ? { kind: "fragment", fragment_id: asFragmentId(document.records[0].id) } : entry
+        entry.kind === "part" ? { kind: "part", part_id: asPartId(document.records[0].id) } : entry
       ) };
       expected = "E-MANIFEST-KIND";
       break;
@@ -415,7 +416,7 @@ function testManifestCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult 
     case "manifest_true_sequence_preserved": {
       const reversed = { ...document, manifest: [...document.manifest].reverse() };
       const resolved = resolveManifest(reversed);
-      if (resolved.ops[0]?.node.kind !== "generated_slot" || resolved.ops.at(-1)?.node.kind !== "section") {
+      if (resolved.ops[0]?.node.kind !== "part" || resolved.ops.at(-1)?.node.kind !== "section") {
         fail("manifest authored sequence was reordered");
       }
       return pass();
@@ -489,16 +490,13 @@ function semanticFixture(
   readonly renderCalls: { value: number };
 } {
   const sectionId = asSectionId("heading");
-  const fragmentId = asFragmentId("fragment");
   const recordId = asRoadmapId("matrix.fixture-work");
   const partId = asPartId("part");
   const slotId = asSlotId("status-slot");
   const manifest: ManifestEntry[] = [
     { kind: "section", section_id: sectionId },
-    { kind: "fragment", fragment_id: fragmentId },
     { kind: "record", record_id: recordId },
     { kind: "part", part_id: partId },
-    { kind: "generated_slot", slot_id: slotId },
   ];
   const document: RoadmapDocument = {
     document: {
@@ -510,12 +508,8 @@ function semanticFixture(
     sections: [{
       section_id: sectionId,
       title: "Heading",
-      body_md: bytes("H"),
-    }],
-    fragments: [{
-      fragment_id: fragmentId,
-      projection_group: sectionId,
-      body_md: bytes("F"),
+      body_md: bytes(`H${placeholderFor(slotId)}F`),
+      slots: [{ slot_id: slotId, binding: "fixture-status" }],
     }],
     records: [{
       id: recordId,
@@ -538,7 +532,6 @@ function semanticFixture(
       parent_record_id: recordId,
       body_md: bytes("P"),
     }],
-    generated_slots: [{ slot_id: slotId, binding: "fixture-status" }],
     manifest,
     relations: [],
     references: [],
@@ -697,6 +690,26 @@ function testRenderCase(
     requireIssue(validateCompletedChunks(fixture.document, placement.ops, completed), "E-OUTPUT-SLOT");
     return pass("negative");
   }
+  if (id === "render_undeclared_slot_placeholder_rejected") {
+    // The other half of the bijection: prose may not place a slot nothing declared, or the
+    // placeholder would survive verbatim into the projection.
+    const fixture = semanticFixture("exact");
+    const section = fixture.document.sections[0]!;
+    const document: RoadmapDocument = {
+      ...fixture.document,
+      sections: [{
+        ...section,
+        body_md: bytes(`H${placeholderFor(asSlotId("status-slot"))}F${placeholderFor(asSlotId("absent"))}`),
+      }],
+    };
+    const placement = resolveManifest(document);
+    const completed = buildExpectedChunks(document, placement.ops, {
+      renderSemanticRecord: () => new Uint8Array(),
+      resolveGeneratedSlot(slot) { return { binding: slot.binding, bytes: bytes("G") }; },
+    });
+    requireIssue(completed.build_issues, "E-OUTPUT-SLOT");
+    return pass("negative");
+  }
   if (id === "render_invalid_chunk_skips_projection_read") {
     const fixture = semanticFixture("exact");
     const completed = complete(fixture.document).completed;
@@ -748,7 +761,7 @@ function testRenderCase(
   const completed = complete(fixture.document).completed;
   const first = renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
   const second = renderValidatedChunks(completed.chunks, [], completed.expected_bytes);
-  if (new TextDecoder().decode(first) !== "HFDETPG") fail(`${id}: exact render differs`);
+  if (new TextDecoder().decode(first) !== "HGFDETP") fail(`${id}: exact render differs`);
   if (id === "render_prior_projection_irrelevant") {
     const stale = renderThenCheckCommittedProjection(
       completed.chunks,
@@ -1025,7 +1038,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     const fixture = semanticFixture("exact");
     const completed = complete(fixture.document).completed;
     const facts = collectManifestSlotBindingFacts(fixture.document, completed);
-    const slot = fixture.document.generated_slots[0].slot_id;
+    const slot = documentSlots(fixture.document.sections)[0]!.slot_id;
     const manifestClaim: OutputClaim = {
       kind: "slot",
       producer: "roadmap-projector",
@@ -1043,9 +1056,13 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       targets: new Map(),
       manifest_slots: facts,
     });
-    const slotChunkIndex = completed.chunks.findIndex((chunk) => chunk.owner.kind === "generated_slot");
-    const slotStart = completed.expected_bytes.prefix_offsets[slotChunkIndex]!;
-    const slotEnd = completed.expected_bytes.prefix_offsets[slotChunkIndex + 1]!;
+    const resolution = completed.slot_resolutions[0]!;
+    const sectionChunkIndex = completed.chunks.findIndex((chunk) =>
+      chunk.owner.kind === "section" && chunk.owner.id === resolution.section_id
+    );
+    const chunkStart = completed.expected_bytes.prefix_offsets[sectionChunkIndex]!;
+    const slotStart = chunkStart + resolution.start_in_chunk;
+    const slotEnd = chunkStart + resolution.end_in_chunk;
     if (
       resolved.issues.length !== 0 || resolved.resolved.length !== 1 ||
       resolved.resolved[0].interval.start_byte !== slotStart ||
@@ -1359,7 +1376,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
 
     const fixture = semanticFixture("exact");
     const completed = complete(fixture.document).completed;
-    const slot = fixture.document.generated_slots[0].slot_id;
+    const slot = documentSlots(fixture.document.sections)[0]!.slot_id;
     const manifestClaim: OutputClaim = {
       kind: "slot",
       producer: "roadmap-projector",
@@ -1372,20 +1389,22 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       },
     };
     const manifestRegistry = closedOutputRegistry([manifestClaim]);
-    const declaration = fixture.document.generated_slots[0];
-    const placement = fixture.document.manifest.find((entry) =>
-      entry.kind === "generated_slot" && entry.slot_id === slot
-    ) ?? fail("fixture generated-slot placement is missing");
+    const declaringSection = fixture.document.sections[0]!;
+    const declaration = (declaringSection.slots ?? [])[0]!;
+    const withSection = (section: RoadmapDocument["sections"][number]): RoadmapDocument => ({
+      ...fixture.document,
+      sections: [section],
+    });
     const manifestCases: readonly [string, RoadmapDocument][] = [
-      ["manifest_zero", { ...fixture.document, generated_slots: [] }],
+      ["manifest_zero", withSection({ ...declaringSection, slots: undefined })],
       ["manifest_two_declarations", {
         ...fixture.document,
-        generated_slots: [declaration, { ...declaration }],
+        sections: [declaringSection, { ...declaringSection, section_id: asSectionId("second") }],
       }],
-      ["manifest_two_placements", {
-        ...fixture.document,
-        manifest: [...fixture.document.manifest, { ...placement }],
-      }],
+      ["manifest_two_placements", withSection({
+        ...declaringSection,
+        body_md: bytes(`H${placeholderFor(declaration.slot_id)}${placeholderFor(declaration.slot_id)}F`),
+      })],
     ] as const;
     for (const [label, mutatedDocument] of manifestCases) {
       requireIssue(resolveOutputClaims({
@@ -1762,14 +1781,13 @@ function testDeterminismCase(id: RequiredProjectionSelfTestCaseId): SelfTestResu
     const fixture = semanticFixture("exact");
     const orphaned = {
       ...fixture.document,
-      fragments: fixture.document.fragments.map((fragment) => ({ ...fragment, projection_group: asSectionId("missing") })),
       records: fixture.document.records.map((record) => ({ ...record, projection_group: asSectionId("missing") })),
     };
     const forward = resolveManifest(orphaned).issues;
     const reverse = resolveManifest({ ...orphaned, records: [...orphaned.records].reverse() }).issues;
     const coordinates = (issues: readonly RoadmapIssue[]): string =>
       issues.map((value) => `${value.code}:${value.logical_path}`).join("|");
-    if (coordinates(forward) !== coordinates(reverse) || !coordinates(forward).includes("fragment")) {
+    if (coordinates(forward) !== coordinates(reverse) || !coordinates(forward).includes("record")) {
       fail("issue order depends on source table insertion order");
     }
     return pass();
@@ -1826,7 +1844,7 @@ interface ProjectionCaseSpec {
 const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: ProjectionCaseSpec } = {
   manifest_duplicate_record: { category: "manifest-render", run: testManifestCase },
   manifest_missing_part: { category: "manifest-render", run: testManifestCase },
-  manifest_orphan_fragment: { category: "manifest-render", run: testManifestCase },
+  manifest_orphan_record: { category: "manifest-render", run: testManifestCase },
   manifest_unknown_id: { category: "manifest-render", run: testManifestCase },
   manifest_wrong_kind: { category: "manifest-render", run: testManifestCase },
   manifest_record_table_order_irrelevant: { category: "manifest-render", run: testManifestCase },
@@ -1865,6 +1883,7 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   no_clock_without_as_of: { category: "determinism-purity", run: testDeterminismCase },
   render_chunks_precede_consumption_validation: { category: "manifest-render", run: testRenderCase },
   render_slots_resolved_before_slot_validation: { category: "manifest-render", run: testRenderCase },
+  render_undeclared_slot_placeholder_rejected: { category: "manifest-render", run: testRenderCase },
   render_invalid_chunk_skips_projection_read: { category: "manifest-render", run: testRenderCase },
   render_committed_projection_read_last: { category: "manifest-render", run: testRenderCase },
   render_projection_mutation_changes_only_drift: { category: "manifest-render", run: testRenderCase },

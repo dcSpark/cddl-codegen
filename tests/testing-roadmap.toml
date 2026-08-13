@@ -91,6 +91,8 @@ the signal that would reopen the decision.
 section_id = "sources"
 title = "Sources"
 body_md = """## Sources
+- Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
+- Per-dimension expert write-ups: `draft/testing-recommendations/*.md`
 """
 
 [[section]]
@@ -127,20 +129,6 @@ full record stays in place below: \"A \"no gate demands this\" premise probed ag
 is not evidence about a gate in another TIER\" (the mechanical half is a maintainer call — it edits
 `check.ts` itself).
 
-"""
-
-[[fragment]]
-fragment_id = "sources-exhaustive-menu"
-projection_group = "sources"
-title = "Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`"
-body_md = """- Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
-"""
-
-[[fragment]]
-fragment_id = "sources-expert-writeups"
-projection_group = "sources"
-title = "Per-dimension expert write-ups: `draft/testing-recommendations/*.md`"
-body_md = """- Per-dimension expert write-ups: `draft/testing-recommendations/*.md`
 """
 
 [[record]]
@@ -10153,14 +10141,6 @@ record_id = "testing.checking-runtime-flavor-s-safety-condition-rather-stating"
 [[manifest.entry]]
 kind = "section"
 section_id = "sources"
-
-[[manifest.entry]]
-kind = "fragment"
-fragment_id = "sources-exhaustive-menu"
-
-[[manifest.entry]]
-kind = "fragment"
-fragment_id = "sources-expert-writeups"
 
 [[relation]]
 source = "testing.add-profile-wrapper-participation-grid-participation-differs-across"

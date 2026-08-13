@@ -190,7 +190,6 @@ interface FixtureIndexExpectation {
 }
 
 const EMPTY_SUBORDINATE: ExactGroups = {
-  fragment: [],
   generated_slot: [],
   part: [],
   reference: [],
@@ -405,7 +404,6 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
   },
   aliases: [],
   subordinate: {
-    fragment: ["fixture-fragment"],
     generated_slot: ["constraint", "counts", "emission", "ops"],
     part: ["fixture-part"],
     reference: [
@@ -710,12 +708,6 @@ function assertFixtureIndexes(
     (section) => section.section_id,
     groupValues(expected.subordinate, "section"),
     `${label} section index`,
-  );
-  assertIdentityMap(
-    indexes.fragments,
-    (fragment) => fragment.fragment_id,
-    groupValues(expected.subordinate, "fragment"),
-    `${label} fragment index`,
   );
   assertIdentityMap(
     indexes.parts,
@@ -1509,7 +1501,7 @@ function citationCase(id: JoinSelfTestCaseId): boolean {
         expectedBytes.subarray(5),
       ].map((chunk, manifest_index): RenderChunk => ({
         manifest_index,
-        owner: { kind: "fragment", id: `expected-${manifest_index}`, field: "body_md" },
+        owner: { kind: "part", id: `expected-${manifest_index}`, field: "body_md" },
         bytes: chunk,
         consumed_fields: ["body_md"],
       })));
@@ -2005,8 +1997,7 @@ function c5Document(
       source_path: c5SourcePath(roadmap),
       projection_path: c5Path(roadmap),
     },
-    sections: [], fragments: [], records: [...records], parts: [],
-    generated_slots: [],
+    sections: [], records: [...records], parts: [],
     manifest: records.flatMap((record) =>
       record.payload.detail_md === undefined
         ? []

@@ -4,6 +4,7 @@ import type {
   ProductionOutputStage,
   ResolvedOutputClaim,
 } from "./adapters/types.ts";
+import { documentSlots, planSectionBody } from "./slots.ts";
 import type { RoadmapIssue } from "./errors.ts";
 import type { RepoPath, RoadmapName, SlotId } from "./model/core.ts";
 import type { RoadmapDocument } from "./model/documents.ts";
@@ -436,42 +437,37 @@ export function collectManifestSlotBindingFacts(
   completed: CompletedRenderIr,
 ): readonly ManifestSlotBindingFact[] {
   const facts: ManifestSlotBindingFact[] = [];
-  for (const slotId of new Set(document.generated_slots.map((slot) => slot.slot_id))) {
-    const declarations = document.generated_slots.filter((slot) => slot.slot_id === slotId);
-    const placements = document.manifest.filter((entry) =>
-      entry.kind === "generated_slot" && entry.slot_id === slotId
-    );
-    const chunks = completed.chunks.filter((chunk) =>
-      chunk.owner.kind === "generated_slot" && chunk.owner.id === slotId &&
-      chunk.owner.field === "generated"
+  const declared = documentSlots(document.sections);
+  for (const slotId of new Set(declared.map((slot) => slot.slot_id))) {
+    const declarations = declared.filter((slot) => slot.slot_id === slotId);
+    // A placement is one `{{slot:<id>}}` occurrence in the declaring section's prose; the plan
+    // reports it only for a declared slot, so declaration/placement counts are the bijection.
+    const placements = document.sections.flatMap((section) =>
+      planSectionBody(section).placements.filter((placement) => placement.slot.slot_id === slotId)
     );
     const resolutions = completed.slot_resolutions.filter((item) => item.slot.slot_id === slotId);
-    const placementIndex = document.manifest.findIndex((entry) =>
-      entry.kind === "generated_slot" && entry.slot_id === slotId
-    );
-    const chunkIndex = chunks.length === 1 ? completed.chunks.indexOf(chunks[0]) : -1;
-    const chunkInterval = chunkIndex >= 0
-      ? {
-        start_byte: completed.expected_bytes.prefix_offsets[chunkIndex],
-        end_byte: completed.expected_bytes.prefix_offsets[chunkIndex + 1],
-      }
-      : undefined;
     const declaration = declarations.length === 1 ? declarations[0] : undefined;
     const resolutionItem = resolutions.length === 1 ? resolutions[0] : undefined;
     const resolution = resolutionItem?.resolution;
+    const chunkIndex = resolutionItem === undefined
+      ? -1
+      : completed.chunks.findIndex((chunk) =>
+        chunk.manifest_index === resolutionItem.manifest_index &&
+        chunk.owner.kind === "section" && chunk.owner.id === resolutionItem.section_id
+      );
+    const chunkStart = chunkIndex >= 0 ? completed.expected_bytes.prefix_offsets[chunkIndex] : undefined;
     const resolverIsExact =
       declaration !== undefined && resolutionItem !== undefined && resolution !== undefined &&
-      placements.length === 1 && chunks.length === 1 && placementIndex >= 0 &&
-      resolutionItem.manifest_index === placementIndex && chunks[0].manifest_index === placementIndex &&
+      placements.length === 1 && chunkStart !== undefined &&
       resolutionItem.slot.binding === declaration.binding &&
       resolution.binding === declaration.binding && resolution.bytes.byteLength > 0 &&
-      resolution.bytes.byteLength === chunks[0].bytes.byteLength &&
-      resolution.bytes.every((value, index) => value === chunks[0].bytes[index]);
-    const resolvedInterval =
-      resolverIsExact && chunkInterval !== undefined &&
-        chunkInterval.start_byte < chunkInterval.end_byte
-        ? Object.freeze(chunkInterval)
-        : undefined;
+      resolutionItem.end_in_chunk - resolutionItem.start_in_chunk === resolution.bytes.byteLength;
+    const resolvedInterval = resolverIsExact && chunkStart !== undefined
+      ? Object.freeze({
+        start_byte: chunkStart + resolutionItem!.start_in_chunk,
+        end_byte: chunkStart + resolutionItem!.end_in_chunk,
+      })
+      : undefined;
     facts.push(Object.freeze({
       roadmap: document.document.roadmap,
       path: document.document.projection_path,

@@ -24,6 +24,7 @@ import {
   type DecodedRoadmapValidationOptions,
   type DecodedRoadmapValidationResult,
 } from "./engine.ts";
+import { documentSlots } from "../slots.ts";
 
 const issue = payloadFactIssue;
 
@@ -40,9 +41,9 @@ function usesLiveMatrixInlineSlots(doc: RoadmapDocument): boolean {
   if (
     doc.document.source_path !== MATRIX_SOURCE_PATH ||
     doc.document.projection_path !== MATRIX_PROJECTION_PATH ||
-    doc.generated_slots.length !== SLOT_BINDINGS.length
+    documentSlots(doc.sections).length !== SLOT_BINDINGS.length
   ) return false;
-  const slots = new Map(doc.generated_slots.map((slot) => [slot.slot_id, slot]));
+  const slots = new Map(documentSlots(doc.sections).map((slot) => [slot.slot_id, slot]));
   return slots.size === SLOT_BINDINGS.length && SLOT_BINDINGS.every(
     ([slotId, binding]) => slots.get(slotId)?.binding === binding,
   );

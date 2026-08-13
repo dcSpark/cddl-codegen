@@ -8,14 +8,20 @@ projection_path = "cddl-matrix/roadmap/fixtures/all-fields/matrix-v3.expected.md
 section_id = "fixture"
 title = "Matrix all-fields fixture"
 body_md = """# Matrix all-fields fixture
+{{slot:counts}}{{slot:ops}}{{slot:emission}}{{slot:constraint}}
 """
 
-[[fragment]]
-fragment_id = "fixture-fragment"
-projection_group = "fixture"
-title = "Raw fragment placement"
-body_md = """RAW FRAGMENT PLACEMENT
-"""
+[section.slots.constraint]
+binding = "status_header_markers:roadmap-constraint"
+
+[section.slots.counts]
+binding = "status_header_markers:roadmap-counts"
+
+[section.slots.emission]
+binding = "status_header_markers:roadmap-emission"
+
+[section.slots.ops]
+binding = "status_header_markers:roadmap-ops"
 
 [[record]]
 id = "matrix.fixture-choice-a"
@@ -642,7 +648,7 @@ as_of = "2026-08-11"
 id = "matrix.fixture-raw-owner"
 title = "Raw authority sentinel"
 projection_group = "fixture"
-tags = ["coverage:closeout_state:blocked", "coverage:closeout_state:due", "coverage:closeout_state:waiting", "coverage:comparator:eq", "coverage:comparator:ge", "coverage:comparator:gt", "coverage:comparator:le", "coverage:comparator:lt", "coverage:control_kind:consumer_ci", "coverage:control_kind:fixture", "coverage:control_kind:gate", "coverage:control_kind:operator_procedure", "coverage:control_kind:review_rule", "coverage:control_kind:test", "coverage:control_kind:upstream_issue", "coverage:control_state:live", "coverage:control_state:proposed", "coverage:control_state:stale", "coverage:decision_arm:decided_permanent", "coverage:decision_arm:decided_reopenable", "coverage:decision_arm:held_reopenable", "coverage:decision_arm:pending", "coverage:decision_state:decided", "coverage:decision_state:held", "coverage:decision_state:pending", "coverage:evidence_kind:committed_vector", "coverage:evidence_kind:consumer_report", "coverage:evidence_kind:decision", "coverage:evidence_kind:execution_probe", "coverage:evidence_kind:external_commit", "coverage:evidence_kind:external_issue", "coverage:evidence_kind:gate", "coverage:evidence_kind:harness_free_repro", "coverage:evidence_kind:incident", "coverage:evidence_kind:registry_enumeration", "coverage:evidence_kind:regression_pin", "coverage:evidence_kind:source_read", "coverage:evidence_kind:spec_read", "coverage:evidence_verdict:confirmed", "coverage:evidence_verdict:falsified", "coverage:evidence_verdict:inapplicable", "coverage:evidence_verdict:proposed", "coverage:evidence_verdict:unknown", "coverage:freshness:as_of", "coverage:freshness:historical", "coverage:freshness:live", "coverage:freshness:stale", "coverage:manifest_kind:fragment", "coverage:manifest_kind:generated_slot", "coverage:manifest_kind:part", "coverage:manifest_kind:record", "coverage:manifest_kind:section", "coverage:payload_kind:control", "coverage:payload_kind:decision", "coverage:payload_kind:evidence", "coverage:payload_kind:matrix_external_closeout", "coverage:payload_kind:matrix_policy", "coverage:payload_kind:signal", "coverage:payload_kind:work", "coverage:permanence:permanent", "coverage:permanence:reopenable", "coverage:policy_kind:boundary", "coverage:policy_kind:maintenance_protocol", "coverage:predicate_kind:event", "coverage:predicate_kind:manual", "coverage:predicate_kind:quantitative", "coverage:priority_band:critical", "coverage:priority_band:high", "coverage:priority_band:low", "coverage:priority_band:normal", "coverage:reference_kind:consumer_report", "coverage:reference_kind:external_commit", "coverage:reference_kind:external_issue", "coverage:reference_kind:external_release", "coverage:reference_kind:file_heading", "coverage:reference_kind:gate", "coverage:reference_kind:matrix_cell", "coverage:reference_kind:matrix_feature", "coverage:reference_kind:matrix_role", "coverage:reference_kind:roadmap", "coverage:reference_kind:spec_passage", "coverage:reference_kind:test_symbol", "coverage:relation_kind:blocked_by", "coverage:relation_kind:complements", "coverage:relation_kind:delegates_to", "coverage:relation_kind:depends_on", "coverage:relation_kind:overlaps", "coverage:relation_kind:parent_of", "coverage:relation_kind:related", "coverage:relation_kind:reopens", "coverage:relation_kind:split_from", "coverage:relation_kind:supersedes", "coverage:risk:abort_or_panic", "coverage:risk:compile_failure", "coverage:risk:cosmetic", "coverage:risk:false_pass_or_red", "coverage:risk:invalid_acceptance", "coverage:risk:misleading_docs", "coverage:risk:resource_exhaustion", "coverage:risk:silent_wrong_bytes", "coverage:risk:valid_rejection", "coverage:risk:wrong_public_api", "coverage:schema_version:3", "coverage:signal_evaluation:met", "coverage:signal_evaluation:stale", "coverage:signal_evaluation:unknown", "coverage:signal_evaluation:unmet", "coverage:transition_kind:cadence", "coverage:transition_kind:promotion_trigger", "coverage:transition_kind:reopening_signal", "coverage:transition_kind:retirement_predicate", "coverage:transition_kind:unblock_predicate", "coverage:transition_kind:watch_escalation", "coverage:work_intent:add_regression", "coverage:work_intent:build_capability", "coverage:work_intent:build_system", "coverage:work_intent:change_documentation", "coverage:work_intent:establish_honest_refusal", "coverage:work_intent:optimize", "coverage:work_intent:repair", "coverage:work_kind:coverage_cell", "coverage:work_kind:defect", "coverage:work_kind:documentation_integrity", "coverage:work_kind:feature", "coverage:work_kind:infrastructure", "coverage:work_kind:missing_system", "coverage:work_kind:optimization", "coverage:work_kind:regression_gap", "coverage:work_state:armed", "coverage:work_state:blocked", "coverage:work_state:deferred", "coverage:work_state:delegated", "coverage:work_state:ready", "coverage:work_state:waiting_external"]
+tags = ["coverage:closeout_state:blocked", "coverage:closeout_state:due", "coverage:closeout_state:waiting", "coverage:comparator:eq", "coverage:comparator:ge", "coverage:comparator:gt", "coverage:comparator:le", "coverage:comparator:lt", "coverage:control_kind:consumer_ci", "coverage:control_kind:fixture", "coverage:control_kind:gate", "coverage:control_kind:operator_procedure", "coverage:control_kind:review_rule", "coverage:control_kind:test", "coverage:control_kind:upstream_issue", "coverage:control_state:live", "coverage:control_state:proposed", "coverage:control_state:stale", "coverage:decision_arm:decided_permanent", "coverage:decision_arm:decided_reopenable", "coverage:decision_arm:held_reopenable", "coverage:decision_arm:pending", "coverage:decision_state:decided", "coverage:decision_state:held", "coverage:decision_state:pending", "coverage:evidence_kind:committed_vector", "coverage:evidence_kind:consumer_report", "coverage:evidence_kind:decision", "coverage:evidence_kind:execution_probe", "coverage:evidence_kind:external_commit", "coverage:evidence_kind:external_issue", "coverage:evidence_kind:gate", "coverage:evidence_kind:harness_free_repro", "coverage:evidence_kind:incident", "coverage:evidence_kind:registry_enumeration", "coverage:evidence_kind:regression_pin", "coverage:evidence_kind:source_read", "coverage:evidence_kind:spec_read", "coverage:evidence_verdict:confirmed", "coverage:evidence_verdict:falsified", "coverage:evidence_verdict:inapplicable", "coverage:evidence_verdict:proposed", "coverage:evidence_verdict:unknown", "coverage:freshness:as_of", "coverage:freshness:historical", "coverage:freshness:live", "coverage:freshness:stale", "coverage:manifest_kind:part", "coverage:manifest_kind:record", "coverage:manifest_kind:section", "coverage:payload_kind:control", "coverage:payload_kind:decision", "coverage:payload_kind:evidence", "coverage:payload_kind:matrix_external_closeout", "coverage:payload_kind:matrix_policy", "coverage:payload_kind:signal", "coverage:payload_kind:work", "coverage:permanence:permanent", "coverage:permanence:reopenable", "coverage:policy_kind:boundary", "coverage:policy_kind:maintenance_protocol", "coverage:predicate_kind:event", "coverage:predicate_kind:manual", "coverage:predicate_kind:quantitative", "coverage:priority_band:critical", "coverage:priority_band:high", "coverage:priority_band:low", "coverage:priority_band:normal", "coverage:reference_kind:consumer_report", "coverage:reference_kind:external_commit", "coverage:reference_kind:external_issue", "coverage:reference_kind:external_release", "coverage:reference_kind:file_heading", "coverage:reference_kind:gate", "coverage:reference_kind:matrix_cell", "coverage:reference_kind:matrix_feature", "coverage:reference_kind:matrix_role", "coverage:reference_kind:roadmap", "coverage:reference_kind:spec_passage", "coverage:reference_kind:test_symbol", "coverage:relation_kind:blocked_by", "coverage:relation_kind:complements", "coverage:relation_kind:delegates_to", "coverage:relation_kind:depends_on", "coverage:relation_kind:overlaps", "coverage:relation_kind:parent_of", "coverage:relation_kind:related", "coverage:relation_kind:reopens", "coverage:relation_kind:split_from", "coverage:relation_kind:supersedes", "coverage:risk:abort_or_panic", "coverage:risk:compile_failure", "coverage:risk:cosmetic", "coverage:risk:false_pass_or_red", "coverage:risk:invalid_acceptance", "coverage:risk:misleading_docs", "coverage:risk:resource_exhaustion", "coverage:risk:silent_wrong_bytes", "coverage:risk:valid_rejection", "coverage:risk:wrong_public_api", "coverage:schema_version:3", "coverage:signal_evaluation:met", "coverage:signal_evaluation:stale", "coverage:signal_evaluation:unknown", "coverage:signal_evaluation:unmet", "coverage:transition_kind:cadence", "coverage:transition_kind:promotion_trigger", "coverage:transition_kind:reopening_signal", "coverage:transition_kind:retirement_predicate", "coverage:transition_kind:unblock_predicate", "coverage:transition_kind:watch_escalation", "coverage:work_intent:add_regression", "coverage:work_intent:build_capability", "coverage:work_intent:build_system", "coverage:work_intent:change_documentation", "coverage:work_intent:establish_honest_refusal", "coverage:work_intent:optimize", "coverage:work_intent:repair", "coverage:work_kind:coverage_cell", "coverage:work_kind:defect", "coverage:work_kind:documentation_integrity", "coverage:work_kind:feature", "coverage:work_kind:infrastructure", "coverage:work_kind:missing_system", "coverage:work_kind:optimization", "coverage:work_kind:regression_gap", "coverage:work_state:armed", "coverage:work_state:blocked", "coverage:work_state:deferred", "coverage:work_state:delegated", "coverage:work_state:ready", "coverage:work_state:waiting_external"]
 
 [record.payload]
 kind = "work"
@@ -1299,22 +1305,6 @@ title = "Raw part placement"
 body_md = """RAW PART PLACEMENT
 """
 
-[[generated_slot]]
-slot_id = "constraint"
-binding = "status_header_markers:roadmap-constraint"
-
-[[generated_slot]]
-slot_id = "counts"
-binding = "status_header_markers:roadmap-counts"
-
-[[generated_slot]]
-slot_id = "emission"
-binding = "status_header_markers:roadmap-emission"
-
-[[generated_slot]]
-slot_id = "ops"
-binding = "status_header_markers:roadmap-ops"
-
 [[manifest.entry]]
 kind = "section"
 section_id = "fixture"
@@ -1322,10 +1312,6 @@ section_id = "fixture"
 [[manifest.entry]]
 kind = "record"
 record_id = "matrix.fixture-upstream-c"
-
-[[manifest.entry]]
-kind = "fragment"
-fragment_id = "fixture-fragment"
 
 [[manifest.entry]]
 kind = "part"
@@ -1538,22 +1524,6 @@ record_id = "matrix.fixture-choice-b"
 [[manifest.entry]]
 kind = "record"
 record_id = "matrix.fixture-choice-a"
-
-[[manifest.entry]]
-kind = "generated_slot"
-slot_id = "counts"
-
-[[manifest.entry]]
-kind = "generated_slot"
-slot_id = "ops"
-
-[[manifest.entry]]
-kind = "generated_slot"
-slot_id = "emission"
-
-[[manifest.entry]]
-kind = "generated_slot"
-slot_id = "constraint"
 
 [[relation]]
 source = "matrix.fixture-task-a"

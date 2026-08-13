@@ -1,4 +1,5 @@
 import type { RegistryView } from "../adapters/types.ts";
+import { documentSlots } from "../slots.ts";
 import { ROADMAP_CLI_USAGE } from "../cli.ts";
 import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
@@ -862,15 +863,14 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
     case "live_subordinate_lifecycle_dispositions": {
       const matrix = liveMatrixV3Document();
       const testing = liveTestingV3Document();
-      for (const [name, document, expectedFragments, expectedParts] of [
-        ["matrix", matrix, 5, 9],
-        ["testing", testing, 2, 27],
+      for (const [name, document, expectedSlots, expectedParts] of [
+        ["matrix", matrix, 4, 9],
+        ["testing", testing, 0, 27],
       ] as const) {
-        assert(document.fragments.every((fragment) => fragment.body_md.byteLength > 0),
-          `${name} fragment prose is empty`);
         assert(document.parts.every((part) => part.body_md.byteLength > 0),
           `${name} part prose is empty`);
-        assert(document.fragments.length === expectedFragments && document.parts.length === expectedParts,
+        assert(documentSlots(document.sections).length === expectedSlots &&
+          document.parts.length === expectedParts,
           `${name} subordinate denominator drifted`);
       }
       const testingNested = testing.parts.find((part) => part.part_id === "part-nested-cargo-test");

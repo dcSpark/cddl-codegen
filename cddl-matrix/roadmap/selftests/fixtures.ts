@@ -91,7 +91,7 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
   evidence_verdict: ["confirmed", "falsified", "inapplicable", "proposed", "unknown"],
   freshness: ["as_of", "historical", "live", "stale"],
   incident_posture: ["attributed", "historical", "live"],
-  manifest_kind: ["fragment", "generated_slot", "part", "record", "section"],
+  manifest_kind: ["part", "record", "section"],
   payload_kind: [
     "control",
     "decision",

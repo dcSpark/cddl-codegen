@@ -8,13 +8,11 @@ import type {
   RoadmapDocument,
   RoadmapDocumentV3,
   SemanticAuthorityRecord,
-  SemanticFragment,
   SemanticPart,
   SemanticPayload,
   SemanticSection,
 } from "../model/documents.ts";
 import type {
-  FragmentId,
   PartId,
   SectionId,
   SlotId,
@@ -48,7 +46,7 @@ import { shieldTomlMarkdown, type MarkdownBindings } from "./raw_markdown.ts";
 import { decodeSharedSemanticPayload } from "./semantic.ts";
 import { decodeTestingPayload } from "./testing.ts";
 
-const STRUCTURAL_KINDS = ["section", "fragment", "record", "part", "generated_slot"] as const;
+const STRUCTURAL_KINDS = ["section", "record", "part"] as const;
 
 export const ROADMAP_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "schema_version", values: ["3"] },
@@ -63,15 +61,14 @@ export const ROADMAP_ENUM_FIELDS: readonly EnumSchemaField[] = [
  * deliberately absent: a row list that is edited by hand cannot safely be addressed by offset.
  */
 export const ROADMAP_ROW = {
-  root: { name: "roadmap v3 root", required: ["document", "section", "record", "manifest"], optional: ["fragment", "part", "generated_slot", "relation", "reference"] },
+  root: { name: "roadmap v3 root", required: ["document", "section", "record", "manifest"], optional: ["part", "relation", "reference"] },
   document: { name: "roadmap v3 document", required: ["schema_version", "roadmap", "source_path", "projection_path"] },
-  section: { name: "semantic section", required: ["section_id", "title", "body_md"], optional: ["legacy_aliases"] },
-  fragment: { name: "semantic fragment", required: ["fragment_id", "projection_group", "body_md"], optional: ["title", "legacy_aliases"] },
+  section: { name: "semantic section", required: ["section_id", "title", "body_md"], optional: ["legacy_aliases", "slots"] },
+  section_slot: { name: "section slot declaration", required: ["binding"] },
   record: { name: "semantic record", required: ["id", "title", "projection_group", "payload"], optional: ["legacy_aliases", "tags"] },
   part: { name: "semantic part", required: ["part_id", "parent_record_id", "body_md"], optional: ["title"] },
-  generated_slot: { name: "generated slot", required: ["slot_id", "binding"] },
   manifest_table: { name: "manifest table", required: ["entry"] },
-  manifest_entry: { name: "manifest entry", required: ["kind"], optional: ["section_id", "fragment_id", "record_id", "part_id", "slot_id"] },
+  manifest_entry: { name: "manifest entry", required: ["kind"], optional: ["section_id", "record_id", "part_id"] },
   relation: { name: "relation", required: ["source", "kind", "target"], optional: ["note_md"] },
   reference_discriminator: { name: "reference discriminator", required: ["id", "source", "kind"], optional: ["target_id", "feature_id", "role_id", "cell_id", "gate_id", "test_id", "symbol", "path", "heading", "document", "passage", "repository", "issue", "commit", "project", "release", "consumer", "report_reference"] },
 } as const satisfies Readonly<Record<string, ExactSchemaRow>>;
@@ -95,10 +92,8 @@ const REFERENCE_REMAINING: Readonly<Record<Reference["kind"], readonly string[]>
 
 const MANIFEST_TARGET: Readonly<Record<(typeof STRUCTURAL_KINDS)[number], string>> = {
   section: "section_id",
-  fragment: "fragment_id",
   record: "record_id",
   part: "part_id",
-  generated_slot: "slot_id",
 };
 
 export const MANIFEST_SCHEMA_ROWS: readonly ExactSchemaRow[] = STRUCTURAL_KINDS.map((kind) => ({
@@ -190,6 +185,23 @@ function decodeDocumentMeta(ctx: DecodeContext, raw: unknown): DocumentMetaV3 {
   };
 }
 
+function decodeSectionSlots(ctx: DecodeContext, raw: unknown, path: string): GeneratedSlot[] {
+  const slotPath = p(path, "slots");
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    schemaFail(ctx, "E-SCHEMA-TYPE", slotPath, "section slots must be a table of slot declarations");
+  }
+  const declared = Object.keys(raw as object);
+  if (declared.length === 0) {
+    schemaFail(ctx, "E-SCHEMA-FLOOR", slotPath, "section slots table cannot be empty");
+  }
+  return declared.map((key) => {
+    const entryPath = p(slotPath, key);
+    const slotId = expectSubordinateId(ctx, key, entryPath) as SlotId;
+    const table = expectExactTable(ctx, (raw as Record<string, unknown>)[key], entryPath, ROADMAP_ROW.section_slot);
+    return { slot_id: slotId, binding: expectString(ctx, requiredValue(table, "binding"), p(entryPath, "binding")) };
+  }).sort((left, right) => (left.slot_id < right.slot_id ? -1 : left.slot_id > right.slot_id ? 1 : 0));
+}
+
 function decodeSection(ctx: DecodeContext, raw: unknown, path: string): SemanticSection {
   const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.section);
   return {
@@ -197,17 +209,7 @@ function decodeSection(ctx: DecodeContext, raw: unknown, path: string): Semantic
     title: expectString(ctx, requiredValue(table, "title"), p(path, "title")),
     ...aliases(ctx, table, path),
     body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")),
-  };
-}
-
-function decodeFragment(ctx: DecodeContext, raw: unknown, path: string): SemanticFragment {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.fragment);
-  return {
-    fragment_id: expectSubordinateId(ctx, requiredValue(table, "fragment_id"), p(path, "fragment_id")) as FragmentId,
-    projection_group: expectSubordinateId(ctx, requiredValue(table, "projection_group"), p(path, "projection_group")) as SectionId,
-    ...title(ctx, table, path),
-    ...aliases(ctx, table, path),
-    body_md: expectMarkdown(ctx, requiredValue(table, "body_md"), p(path, "body_md")),
+    ...(hasOwn(table, "slots") ? { slots: decodeSectionSlots(ctx, optionalValue(table, "slots"), path) } : {}),
   };
 }
 
@@ -239,11 +241,6 @@ function decodePart(ctx: DecodeContext, raw: unknown, path: string, roadmap: Roa
   };
 }
 
-function decodeSlot(ctx: DecodeContext, raw: unknown, path: string): GeneratedSlot {
-  const table = expectExactTable(ctx, raw, path, ROADMAP_ROW.generated_slot);
-  return { slot_id: expectSubordinateId(ctx, requiredValue(table, "slot_id"), p(path, "slot_id")) as SlotId, binding: expectString(ctx, requiredValue(table, "binding"), p(path, "binding")) };
-}
-
 function decodeManifest(ctx: DecodeContext, raw: unknown): ManifestEntry[] {
   const table = expectExactTable(ctx, raw, "manifest", ROADMAP_ROW.manifest_table);
   return expectNonemptyArray(ctx, expectArrayOf(ctx, requiredValue(table, "entry"), "manifest.entry", (entry, path) => {
@@ -255,9 +252,7 @@ function decodeManifest(ctx: DecodeContext, raw: unknown): ManifestEntry[] {
     if (kind === "record") return { kind, record_id: expectRoadmapId(ctx, rawId, p(path, target)) };
     const id = expectSubordinateId(ctx, rawId, p(path, target));
     if (kind === "section") return { kind, section_id: id as SectionId };
-    if (kind === "fragment") return { kind, fragment_id: id as FragmentId };
-    if (kind === "part") return { kind, part_id: id as PartId };
-    return { kind, slot_id: id as SlotId };
+    return { kind, part_id: id as PartId };
   }), "manifest.entry");
 }
 
@@ -346,7 +341,7 @@ export function decodeRoadmapFromBindings(
   schemaTrace?: SchemaDecodeTrace,
 ): RoadmapDocument {
   const ctx: DecodeContext = { source: bindings.source, bindings, schema_trace: schemaTrace };
-  const rootPre = expectExactTable(ctx, bindings.parsed, "$", { name: "roadmap root discriminator", required: ["document"], optional: ["section", "fragment", "record", "part", "generated_slot", "manifest", "relation", "reference"] });
+  const rootPre = expectExactTable(ctx, bindings.parsed, "$", { name: "roadmap root discriminator", required: ["document"], optional: ["section", "record", "part", "manifest", "relation", "reference"] });
   const meta = decodeDocumentMeta(ctx, requiredValue(rootPre, "document"));
   if (expectedRoadmap !== undefined && meta.roadmap !== expectedRoadmap) schemaFail(ctx, "E-ID-NAMESPACE", "document.roadmap", `expected ${expectedRoadmap} roadmap source`);
   const root = expectExactTable(ctx, bindings.parsed, "$", ROADMAP_ROW.root);
@@ -354,10 +349,8 @@ export function decodeRoadmapFromBindings(
   const doc: RoadmapDocumentV3 = {
     document: meta,
     sections: sortBy(optionalRows(ctx, root, "section", (raw, path) => decodeSection(ctx, raw, path)), (value) => value.section_id),
-    fragments: sortBy(optionalRows(ctx, root, "fragment", (raw, path) => decodeFragment(ctx, raw, path)), (value) => value.fragment_id),
     records: sortBy(optionalRows(ctx, root, "record", (raw, path) => decodeRecord(ctx, raw, path, roadmap)), (value) => value.id),
     parts: sortBy(optionalRows(ctx, root, "part", (raw, path) => decodePart(ctx, raw, path, roadmap)), (value) => value.part_id),
-    generated_slots: sortBy(optionalRows(ctx, root, "generated_slot", (raw, path) => decodeSlot(ctx, raw, path)), (value) => value.slot_id),
     manifest: decodeManifest(ctx, requiredValue(root, "manifest")),
     relations: sortBy(
       optionalRows(ctx, root, "relation", (raw, path) => decodeRelation(ctx, raw, path, roadmap)),

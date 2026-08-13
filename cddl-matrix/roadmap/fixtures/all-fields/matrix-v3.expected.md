@@ -1,6 +1,10 @@
 # Matrix all-fields fixture
+123 features (95 RFC8610 + 1 RFC9682 + 27 `CDDL_CODEGEN` vendor profile), 136 containment cells, and 293 cddl-codegen annotations
+all 37 IANA ops probed
+6 divergences, all `preserve`-side
+96 `class="constraint"` enforcement reject vectors over 20 enforce-green rows
+
 Matrix external closeout blocked.
-RAW FRAGMENT PLACEMENT
 RAW PART PLACEMENT
 Matrix external closeout due.
 Matrix external closeout waiting.
@@ -55,7 +59,3 @@ Decision d: decided and reopenable.
 Decision c: decided.
 Decision b: held.
 Decision a: pending.
-123 features (95 RFC8610 + 1 RFC9682 + 27 `CDDL_CODEGEN` vendor profile), 136 containment cells, and 293 cddl-codegen annotations
-all 37 IANA ops probed
-6 divergences, all `preserve`-side
-96 `class="constraint"` enforcement reject vectors over 20 enforce-green rows

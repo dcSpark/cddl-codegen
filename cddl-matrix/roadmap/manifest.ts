@@ -1,7 +1,5 @@
 import type { RoadmapIssue } from "./errors.ts";
 import type {
-  Fragment,
-  GeneratedSlot,
   ManifestEntry,
   Part,
   RecordNode,
@@ -12,10 +10,8 @@ import { codePointSort } from "./kernel.ts";
 
 export type RenderNode =
   | { kind: "section"; id: string; value: Section }
-  | { kind: "fragment"; id: string; value: Fragment }
   | { kind: "record"; id: string; value: RecordNode }
-  | { kind: "part"; id: string; value: Part }
-  | { kind: "generated_slot"; id: string; value: GeneratedSlot };
+  | { kind: "part"; id: string; value: Part };
 
 export interface RenderOp {
   readonly manifest_index: number;
@@ -46,24 +42,16 @@ function issue(
 function entryTarget(entry: ManifestEntry): { kind: ManifestEntry["kind"]; id: string } {
   switch (entry.kind) {
     case "section": return { kind: entry.kind, id: entry.section_id };
-    case "fragment": return { kind: entry.kind, id: entry.fragment_id };
     case "record": return { kind: entry.kind, id: entry.record_id };
     case "part": return { kind: entry.kind, id: entry.part_id };
-    case "generated_slot": return { kind: entry.kind, id: entry.slot_id };
   }
 }
 
 function declaredNodes(document: RoadmapDocument): RenderNode[] {
   return [
     ...document.sections.map((value) => ({ kind: "section" as const, id: value.section_id, value })),
-    ...document.fragments.map((value) => ({ kind: "fragment" as const, id: value.fragment_id, value })),
     ...document.records.map((value) => ({ kind: "record" as const, id: value.id, value })),
     ...document.parts.map((value) => ({ kind: "part" as const, id: value.part_id, value })),
-    ...document.generated_slots.map((value) => ({
-      kind: "generated_slot" as const,
-      id: value.slot_id,
-      value,
-    })),
   ];
 }
 
@@ -107,16 +95,6 @@ export function resolveManifest(document: RoadmapDocument): ManifestResolution {
 
   const sectionIds = new Set(document.sections.map((section) => String(section.section_id)));
   const recordIds = new Set(document.records.map((record) => String(record.id)));
-  for (const fragment of document.fragments) {
-    if (!sectionIds.has(fragment.projection_group)) {
-      issues.push(issue(
-        document,
-        "E-MANIFEST-ORPHAN",
-        `fragment[${JSON.stringify(fragment.fragment_id)}].projection_group`,
-        `fragment refers to missing section ${JSON.stringify(fragment.projection_group)}`,
-      ));
-    }
-  }
   for (const record of document.records) {
     if (!sectionIds.has(record.projection_group)) {
       issues.push(issue(

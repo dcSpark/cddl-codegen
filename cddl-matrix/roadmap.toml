@@ -104,6 +104,78 @@ body_md = """## Pending decisions (need a human call)
 """
 
 [[section]]
+section_id = "preamble"
+title = "Matrix roadmap preamble"
+body_md = """# CDDL master matrix — roadmap (remaining work + findings)
+
+Read `README.md` first (the model + current state, including the durable gotchas and the
+upstream-oracle-gap state). This doc is strictly the FUTURE state: matrix-side work, the
+open-findings ledger, upstream close-outs, and pending decisions. The blow-by-blow of *how* done work landed lives in git history (this
+doc is actively pruned of it; the project already did the same with the scale report + cold-critique).
+Running the gates is not a roadmap concern either: `check.ts` at the repo root is the self-enforcing
+gate registry + entry point, `tests/README.md` § \"Running everything\" is the prose overview, each
+script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
+
+One authoring rule for this file: a sentence asserting COVERAGE — \"gate X exercises Y\", or the
+negative \"nothing exercises Z\" — must name the pin/gate it rests on (for a negative claim, the
+enumerated registry or mechanism it was established against). A named identifier dangles greppably
+when its referent moves and `lint_doc_citations` asserts it resolves; an unnamed coverage claim
+reads as fact indefinitely — a \"the json-gen runner gate is single-file-only\" sentence here
+outlived the contrary always-on test (`multifile_json_preserve`, executing json-gen over
+cross-module input since 2023) until a pickup probe caught it. Pickup re-probing stays the
+enforcement (a prose rule cannot enforce itself); naming the pin is what gives the probe a target
+and the reader a checkable referent.
+
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->{{slot:counts}}<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->{{slot:ops}}<!-- /gen:sh:roadmap-ops -->):
+\"supported\" requires the generated crate's `--emit-tests`
+round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
+mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
+(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->{{slot:emission}}<!-- /gen:sh:roadmap-emission --> —
+see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->{{slot:constraint}}<!-- /gen:sh:roadmap-constraint --> — the enforcement
+axis carries four temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
+every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
+the pinned rust-cddl validator panic prevents all three fixed-byte member rows plus the top-level
+feature row from gaining independently certified reject vectors until upstream gap #17 closes.
+For homogeneous tables, `*` is loose, `+`/`1*` is non-empty, and every other occurrence window
+(including omitted exact-once) is checked: unique keys use `BoundedMap`, while duplicate-preserving
+tables use entry-ordered `BoundedPairMap`. Only bounded rows in open-table/open-struct contexts remain
+rejected.
+The green, four-row unverified, and over-accepts (empty) sets are
+each pinned exactly by `query_q4_directional.ts --check` (the over-acceptance vector class stays armed
+for the next certified instance).
+Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
+`corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), `query_q1_gaps.ts`
+(the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1), and
+`project_status_headers.ts` (the countable status-header prose in these docs + `tests/README.md`,
+including this paragraph's own counts). **Every consumer query
+Q1–Q6 is answered by a standing script** (`QUERIES.md` § \"Definition of done\").
+
+> **North star.** Do the hard per-construct coverage work **once** and *project* it into the **many** docs
+> that need it, instead of hand-maintaining (and re-sweating) each. `docs/docs/current_capacities.mdx`'s
+> **Limitations** section projects Q1's support gaps (`query_q1_gaps.ts`); more docs follow. The matrix is
+> \"good enough\" when regenerating a real hand doc from it is a **clear win**.
+
+> **Findings ledger (F#)**: F-numbered items are the cold critique's ledger (full write-up in git
+> history). The only ones still cited are **F8–F11, out of scope** (bottom); the machinery the rest
+> produced is current state in `README.md` (execution-gated support, § \"Directional support
+> evidence\", § \"Upstream oracle gaps\").
+
+"""
+
+[section.slots.constraint]
+binding = "status_header_markers:roadmap-constraint"
+
+[section.slots.counts]
+binding = "status_header_markers:roadmap-counts"
+
+[section.slots.emission]
+binding = "status_header_markers:roadmap-emission"
+
+[section.slots.ops]
+binding = "status_header_markers:roadmap-ops"
+
+[[section]]
 section_id = "related"
 title = "Related"
 body_md = """## Related
@@ -137,91 +209,6 @@ test module\", § \"rust↔wasm API-surface parity\", § \"multifile placement m
 annotations-table row in `README.md` (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer's wasm leg
 (`recombination_wasm_crates_check`, `tests/README.md` § \"Shape-recombination fuzzer\") is the
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
-
-"""
-
-[[fragment]]
-fragment_id = "document-constraint-prefix"
-projection_group = "matrix-side-work"
-title = "Document preamble before constraint"
-body_md = """<!-- /gen:sh:roadmap-emission --> —
-see § findings) and supported rows carry decode-foreign corroboration clauses (plus <!-- gen:sh:roadmap-constraint -->"""
-
-[[fragment]]
-fragment_id = "document-counts-prefix"
-projection_group = "matrix-side-work"
-title = "Document preamble before counts"
-body_md = """# CDDL master matrix — roadmap (remaining work + findings)
-
-Read `README.md` first (the model + current state, including the durable gotchas and the
-upstream-oracle-gap state). This doc is strictly the FUTURE state: matrix-side work, the
-open-findings ledger, upstream close-outs, and pending decisions. The blow-by-blow of *how* done work landed lives in git history (this
-doc is actively pruned of it; the project already did the same with the scale report + cold-critique).
-Running the gates is not a roadmap concern either: `check.ts` at the repo root is the self-enforcing
-gate registry + entry point, `tests/README.md` § \"Running everything\" is the prose overview, each
-script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
-
-One authoring rule for this file: a sentence asserting COVERAGE — \"gate X exercises Y\", or the
-negative \"nothing exercises Z\" — must name the pin/gate it rests on (for a negative claim, the
-enumerated registry or mechanism it was established against). A named identifier dangles greppably
-when its referent moves and `lint_doc_citations` asserts it resolves; an unnamed coverage claim
-reads as fact indefinitely — a \"the json-gen runner gate is single-file-only\" sentence here
-outlived the contrary always-on test (`multifile_json_preserve`, executing json-gen over
-cross-module input since 2023) until a pickup probe caught it. Pickup re-probing stays the
-enforcement (a prose rule cannot enforce itself); naming the pin is what gives the probe a target
-and the reader a checkable referent.
-
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->"""
-
-[[fragment]]
-fragment_id = "document-emission-prefix"
-projection_group = "matrix-side-work"
-title = "Document preamble before emission"
-body_md = """<!-- /gen:sh:roadmap-ops -->):
-\"supported\" requires the generated crate's `--emit-tests`
-round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
-mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
-(every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->"""
-
-[[fragment]]
-fragment_id = "document-ops-prefix"
-projection_group = "matrix-side-work"
-title = "Document preamble before ops"
-body_md = """<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
-execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->"""
-
-[[fragment]]
-fragment_id = "document-tail"
-projection_group = "matrix-side-work"
-title = "Document preamble after generated facts"
-body_md = """<!-- /gen:sh:roadmap-constraint --> — the enforcement
-axis carries four temporarily unverified fixed-byte rows and NO certified over-acceptances at HEAD:
-every other supported row with a rejectable constraint projects `enforce = yes (bounded-reject)`;
-the pinned rust-cddl validator panic prevents all three fixed-byte member rows plus the top-level
-feature row from gaining independently certified reject vectors until upstream gap #17 closes.
-For homogeneous tables, `*` is loose, `+`/`1*` is non-empty, and every other occurrence window
-(including omitted exact-once) is checked: unique keys use `BoundedMap`, while duplicate-preserving
-tables use entry-ordered `BoundedPairMap`. Only bounded rows in open-table/open-struct contexts remain
-rejected.
-The green, four-row unverified, and over-accepts (empty) sets are
-each pinned exactly by `query_q4_directional.ts --check` (the over-acceptance vector class stays armed
-for the next certified instance).
-Four projections GENERATE their hand docs and drift-check: `golden_hex` (encoding axis, Q3), the
-`corpus` projection (feature axis Q2 + per-cell **role × feature** coverage), `query_q1_gaps.ts`
-(the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1), and
-`project_status_headers.ts` (the countable status-header prose in these docs + `tests/README.md`,
-including this paragraph's own counts). **Every consumer query
-Q1–Q6 is answered by a standing script** (`QUERIES.md` § \"Definition of done\").
-
-> **North star.** Do the hard per-construct coverage work **once** and *project* it into the **many** docs
-> that need it, instead of hand-maintaining (and re-sweating) each. `docs/docs/current_capacities.mdx`'s
-> **Limitations** section projects Q1's support gaps (`query_q1_gaps.ts`); more docs follow. The matrix is
-> \"good enough\" when regenerating a real hand doc from it is a **clear win**.
-
-> **Findings ledger (F#)**: F-numbered items are the cold critique's ledger (full write-up in git
-> history). The only ones still cited are **F8–F11, out of scope** (bottom); the machinery the rest
-> produced is current state in `README.md` (execution-gated support, § \"Directional support
-> evidence\", § \"Upstream oracle gaps\").
 
 """
 
@@ -3046,57 +3033,9 @@ body_md = """  - The `--wasm-*-macro` modes × directory input are compile-gated
     (§ \"Explicitly out of scope\") rather than adding a behavioral row.
 """
 
-[[generated_slot]]
-slot_id = "constraint"
-binding = "status_header_markers:roadmap-constraint"
-
-[[generated_slot]]
-slot_id = "counts"
-binding = "status_header_markers:roadmap-counts"
-
-[[generated_slot]]
-slot_id = "emission"
-binding = "status_header_markers:roadmap-emission"
-
-[[generated_slot]]
-slot_id = "ops"
-binding = "status_header_markers:roadmap-ops"
-
 [[manifest.entry]]
-kind = "fragment"
-fragment_id = "document-counts-prefix"
-
-[[manifest.entry]]
-kind = "generated_slot"
-slot_id = "counts"
-
-[[manifest.entry]]
-kind = "fragment"
-fragment_id = "document-ops-prefix"
-
-[[manifest.entry]]
-kind = "generated_slot"
-slot_id = "ops"
-
-[[manifest.entry]]
-kind = "fragment"
-fragment_id = "document-emission-prefix"
-
-[[manifest.entry]]
-kind = "generated_slot"
-slot_id = "emission"
-
-[[manifest.entry]]
-kind = "fragment"
-fragment_id = "document-constraint-prefix"
-
-[[manifest.entry]]
-kind = "generated_slot"
-slot_id = "constraint"
-
-[[manifest.entry]]
-kind = "fragment"
-fragment_id = "document-tail"
+kind = "section"
+section_id = "preamble"
 
 [[manifest.entry]]
 kind = "section"

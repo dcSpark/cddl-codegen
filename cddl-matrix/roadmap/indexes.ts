@@ -1,7 +1,6 @@
 import type { Indexes as AdapterIndexes } from "./adapters/types.ts";
 import type { RoadmapIssue } from "./errors.ts";
 import type {
-  FragmentId,
   PartId,
   ReferenceId,
   RoadmapId,
@@ -10,7 +9,6 @@ import type {
   SlotId,
 } from "./model/core.ts";
 import type {
-  Fragment,
   GeneratedSlot,
   Part,
   RecordNode,
@@ -28,6 +26,7 @@ import {
   fieldProperty,
   type PayloadArm,
 } from "./payload_descriptors.ts";
+import { documentSlots } from "./slots.ts";
 import { codePointSort } from "./kernel.ts";
 import { sortRoadmapIssues as sortIssues } from "./errors.ts";
 
@@ -44,7 +43,7 @@ export interface RoadmapIdProviderFact {
   readonly value: FirstClassIdProviderValue;
 }
 
-export type AliasOwnerKind = "section" | "fragment" | "record";
+export type AliasOwnerKind = "section" | "record";
 
 export interface AliasProviderFact {
   readonly alias: string;
@@ -56,14 +55,12 @@ export interface AliasProviderFact {
 
 export type SubordinateIdProviderKind =
   | "section"
-  | "fragment"
   | "part"
   | "generated_slot"
   | "reference";
 
 export type SubordinateIdProviderValue =
   | Section
-  | Fragment
   | Part
   | GeneratedSlot
   | Reference;
@@ -130,7 +127,6 @@ export interface RoadmapIndexes extends AdapterIndexes {
   readonly payload_records: ReadonlyMap<RoadmapId, SemanticPayloadProviderFact>;
   readonly evidence_records: ReadonlyMap<RoadmapId, SemanticPayloadProviderFact>;
   readonly sections: ReadonlyMap<SectionId, Section>;
-  readonly fragments: ReadonlyMap<FragmentId, Fragment>;
   readonly parts: ReadonlyMap<PartId, Part>;
   readonly generated_slots: ReadonlyMap<SlotId, GeneratedSlot>;
   readonly relations: readonly Relation[];
@@ -146,7 +142,6 @@ export interface RoadmapIndexBuildResult {
 
 const SUBORDINATE_ID_FIELD: Readonly<Record<SubordinateIdProviderKind, string>> = {
   section: "section_id",
-  fragment: "fragment_id",
   part: "part_id",
   generated_slot: "slot_id",
   reference: "id",
@@ -343,7 +338,6 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
   const namespace = document.document.roadmap;
   const recordNodes: readonly RecordNode[] = document.records;
   const sections: readonly Section[] = document.sections;
-  const fragments: readonly Fragment[] = document.fragments;
   const parts: readonly Part[] = document.parts;
   const references: readonly Reference[] = "references" in document ? document.references : [];
   const documentRelations: readonly Relation[] = "relations" in document ? document.relations : [];
@@ -384,11 +378,6 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
     addSubordinate("section", value.section_id, path, value);
     addAlias("section", value.section_id, value.legacy_aliases, path);
   }
-  for (const value of fragments) {
-    const path = `fragment[${quoted(value.fragment_id)}]`;
-    addSubordinate("fragment", value.fragment_id, path, value);
-    addAlias("fragment", value.fragment_id, value.legacy_aliases, path);
-  }
   for (const value of parts) {
     const path = `part[${quoted(value.part_id)}]`;
     addSubordinate("part", value.part_id, path, value);
@@ -399,13 +388,15 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
       expected_namespace: namespace,
     });
   }
-  for (const value of document.generated_slots) {
-    addSubordinate(
-      "generated_slot",
-      value.slot_id,
-      `generated_slot[${quoted(value.slot_id)}]`,
-      value,
-    );
+  for (const section of sections) {
+    for (const value of section.slots ?? []) {
+      addSubordinate(
+        "generated_slot",
+        value.slot_id,
+        `section[${quoted(section.section_id)}].slots.${value.slot_id}`,
+        value,
+      );
+    }
   }
 
   const payloadProviders: SemanticPayloadProviderFact[] = [];
@@ -525,7 +516,6 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
   >();
   const subordinateKinds = [
     "section",
-    "fragment",
     "part",
     "generated_slot",
     "reference",
@@ -577,9 +567,8 @@ export function buildRoadmapIndexes(document: RoadmapDocument): RoadmapIndexBuil
       (provider) => provider.record.id,
     ),
     sections: mapValues(sections, (value) => value.section_id),
-    fragments: mapValues(fragments, (value) => value.fragment_id),
     parts: mapValues(parts, (value) => value.part_id),
-    generated_slots: mapValues(document.generated_slots, (value) => value.slot_id),
+    generated_slots: mapValues(documentSlots(sections), (value) => value.slot_id),
     references: mapValues(references, (reference) => reference.id),
     relations,
     relations_by_source: groupedRelations(relations, (relation) => relation.source),

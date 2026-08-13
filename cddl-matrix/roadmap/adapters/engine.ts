@@ -36,6 +36,7 @@ import type {
   RegistryView,
   RoadmapAdapter,
 } from "./types.ts";
+import { documentSlots } from "../slots.ts";
 
 /**
  * Domain payload-fact issue factory: the logical path is always the fact's own path plus the field
@@ -179,16 +180,17 @@ export function createRoadmapFloorValidator(
     if (doc.records.length === 0 || doc.manifest.length === 0) {
       out.add(floor(source, "$", `${spec.roadmap} roadmap requires records and manifest placements`));
     }
-    const slots = new Map(doc.generated_slots.map((slot) => [slot.slot_id, slot]));
-    if (doc.generated_slots.length !== spec.slot_bindings.length || slots.size !== spec.slot_bindings.length) {
-      out.add(floor(source, "generated_slot", spec.slot_inventory_message));
+    const declared = documentSlots(doc.sections);
+    const slots = new Map(declared.map((slot) => [slot.slot_id, slot]));
+    if (declared.length !== spec.slot_bindings.length || slots.size !== spec.slot_bindings.length) {
+      out.add(floor(source, "section.slots", spec.slot_inventory_message));
     }
     for (const [slotId, binding] of spec.slot_bindings) {
       const slot = slots.get(slotId);
       if (slot === undefined || slot.binding !== binding) {
         out.add(floor(
           source,
-          `generated_slot[${JSON.stringify(slotId)}].binding`,
+          `section.slots.${slotId}.binding`,
           `${spec.roadmap} slot ${slotId} must declare binding ${binding}`,
         ));
       }

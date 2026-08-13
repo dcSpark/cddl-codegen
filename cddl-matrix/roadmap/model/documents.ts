@@ -1,5 +1,4 @@
 import type {
-  FragmentId,
   PartId,
   ReferenceId,
   RepoPath,
@@ -25,19 +24,23 @@ export interface DocumentMetaV3 {
   projection_path: RepoPath;
 }
 
+/**
+ * A generated span the section's prose interleaves. The declaration owns the binding; the prose
+ * owns the position through a `{{slot:<id>}}` placeholder. Resolution starts from the declaration
+ * list — prose is never scanned to discover a slot — and the two must be a bijection.
+ */
+export interface GeneratedSlot {
+  slot_id: SlotId;
+  binding: string;
+}
+
 export interface SemanticSection {
   section_id: SectionId;
   title: string;
   legacy_aliases?: string[];
   body_md: Uint8Array;
-}
-
-export interface SemanticFragment {
-  fragment_id: FragmentId;
-  projection_group: SectionId;
-  title?: string;
-  legacy_aliases?: string[];
-  body_md: Uint8Array;
+  /** Declared slots, sorted by `slot_id`; absent when the section's prose interleaves nothing. */
+  slots?: readonly GeneratedSlot[];
 }
 
 export interface CommonEnvelope {
@@ -66,23 +69,15 @@ export interface SemanticPart {
 }
 
 export type Section = SemanticSection;
-export type Fragment = SemanticFragment;
 export type RecordNode = SemanticAuthorityRecord;
 export type Part = SemanticPart;
 export type SemanticRecord<P extends SemanticPayload = SemanticPayload> =
   SemanticAuthorityRecord<P>;
 
-export interface GeneratedSlot {
-  slot_id: SlotId;
-  binding: string;
-}
-
 export type ManifestEntry =
   | { kind: "section"; section_id: SectionId }
-  | { kind: "fragment"; fragment_id: FragmentId }
   | { kind: "record"; record_id: RoadmapId }
-  | { kind: "part"; part_id: PartId }
-  | { kind: "generated_slot"; slot_id: SlotId };
+  | { kind: "part"; part_id: PartId };
 
 export type RelationKind =
   | "parent_of"
@@ -125,10 +120,8 @@ export type Reference =
 export interface RoadmapDocumentV3 {
   document: DocumentMetaV3;
   sections: SemanticSection[];
-  fragments: SemanticFragment[];
   records: SemanticAuthorityRecord[];
   parts: SemanticPart[];
-  generated_slots: GeneratedSlot[];
   manifest: ManifestEntry[];
   relations: Relation[];
   references: Reference[];

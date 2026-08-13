@@ -9,6 +9,7 @@ import type {
   SemanticPayload,
 } from "./model/documents.ts";
 import { bytesEqual, codePointSort } from "./kernel.ts";
+import { documentSlots, planSectionBody, type SectionSlotPlan } from "./slots.ts";
 
 export interface RenderChunk {
   readonly manifest_index: number;
@@ -32,7 +33,7 @@ export interface FieldConsumptionLedgerEntry {
 }
 
 export interface ProjectedFieldSegment {
-  readonly owner_kind: Exclude<ManifestEntry["kind"], "generated_slot">;
+  readonly owner_kind: ManifestEntry["kind"];
   readonly owner_id: string;
   readonly logical_path: string;
   readonly start_in_chunk: number;
@@ -42,7 +43,11 @@ export interface ProjectedFieldSegment {
 
 export interface CompletedSlotResolution {
   readonly manifest_index: number;
+  /** The section whose `body_md` placed this slot; slots have no standalone render node. */
+  readonly section_id: string;
   readonly slot: GeneratedSlot;
+  readonly start_in_chunk: number;
+  readonly end_in_chunk: number;
   readonly resolution?: GeneratedSlotResolution;
 }
 
@@ -64,7 +69,7 @@ export interface CompletedRenderIr {
 export function exactProjectedFieldSegment(
   completed: CompletedRenderIr,
   chunk: RenderChunk,
-  ownerKind: Exclude<ManifestEntry["kind"], "generated_slot">,
+  ownerKind: ManifestEntry["kind"],
   ownerId: string,
   logicalPath: string,
   startByte: number,
@@ -580,6 +585,36 @@ function immutableChunk(chunk: RenderChunk): RenderChunk {
   });
 }
 
+type BodyEvent =
+  | { readonly kind: "run"; readonly start_in_body: number; readonly end_in_body: number }
+  | { readonly kind: "slot"; readonly start_in_body: number; readonly slot: GeneratedSlot };
+
+/** The section body in projection order: literal runs and slot placements, ascending. */
+function bodyEvents(body: Uint8Array, plan: SectionSlotPlan | undefined): readonly BodyEvent[] {
+  if (plan === undefined) {
+    return [{ kind: "run", start_in_body: 0, end_in_body: body.byteLength }];
+  }
+  const events: BodyEvent[] = [
+    ...plan.runs.map((run) => ({ kind: "run" as const, ...run })),
+    ...plan.placements.map((placement) => ({
+      kind: "slot" as const,
+      start_in_body: placement.start_in_body,
+      slot: placement.slot,
+    })),
+  ];
+  return events.sort((left, right) => left.start_in_body - right.start_in_body);
+}
+
+function concatBytes(pieces: readonly Uint8Array[], total: number): Uint8Array {
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const piece of pieces) {
+    out.set(piece, offset);
+    offset += piece.byteLength;
+  }
+  return out;
+}
+
 /** Build every chunk and ledger entry before reporting field/span/slot validation failures. */
 export function buildExpectedChunks(
   document: RoadmapDocument,
@@ -594,35 +629,6 @@ export function buildExpectedChunks(
 
   for (const op of ops) {
     const { node } = op;
-    if (node.kind === "generated_slot") {
-      let resolution: GeneratedSlotResolution | undefined;
-      try {
-        resolution = services.resolveGeneratedSlot(node.value);
-      } catch (error) {
-        buildIssues.push(issue(
-          document,
-          "E-OUTPUT-SLOT",
-          `generated_slot[${JSON.stringify(node.id)}]`,
-          `slot resolver failed: ${error instanceof Error ? error.message : String(error)}`,
-        ));
-      }
-      slotResolutions.push(Object.freeze({
-        manifest_index: op.manifest_index,
-        slot: node.value,
-        resolution: resolution === undefined ? undefined : {
-          binding: resolution.binding,
-          bytes: cloneBytes(resolution.bytes),
-        },
-      }));
-      chunks.push(immutableChunk({
-        manifest_index: op.manifest_index,
-        owner: { kind: node.kind, id: node.id, field: "generated" },
-        bytes: resolution?.bytes ?? new Uint8Array(),
-        consumed_fields: ["generated"],
-      }));
-      continue;
-    }
-
     if (node.kind === "record") {
       const tracked = createFieldConsumer(node.kind, node.id, node.value.payload);
       let rendered: Uint8Array = new Uint8Array();
@@ -666,7 +672,7 @@ export function buildExpectedChunks(
       continue;
     }
 
-    const rendered = (node.value as { body_md: Uint8Array }).body_md;
+    const body = (node.value as { body_md: Uint8Array }).body_md;
     const ledger: FieldConsumptionLedgerEntry = Object.freeze({
       owner_kind: node.kind,
       owner_id: node.id,
@@ -677,27 +683,67 @@ export function buildExpectedChunks(
       mismatched_fields: Object.freeze([]),
     });
     fieldConsumption.push(ledger);
-    if (rendered.byteLength === 0) {
+    if (body.byteLength === 0) {
       buildIssues.push(issue(
         document,
         "E-FIELD-CONSUMPTION",
         `${node.kind}[${JSON.stringify(node.id)}].body_md`,
         "semantic structural output requires non-empty body_md bytes",
       ));
-    } else {
-      projectedFieldSegments.push(Object.freeze({
-        owner_kind: node.kind,
-        owner_id: node.id,
-        logical_path: "body_md",
-        start_in_chunk: 0,
-        end_in_chunk: rendered.byteLength,
-        bytes: cloneBytes(rendered),
+    }
+    const plan = node.kind === "section" ? planSectionBody(node.value) : undefined;
+    for (const planIssue of plan?.issues ?? []) {
+      buildIssues.push(issue(document, "E-OUTPUT-SLOT", planIssue.logical_path, planIssue.message));
+    }
+    const pieces: Uint8Array[] = [];
+    let offset = 0;
+    for (const event of bodyEvents(body, plan)) {
+      if (event.kind === "run") {
+        const bytes = body.subarray(event.start_in_body, event.end_in_body);
+        if (bytes.byteLength > 0) {
+          projectedFieldSegments.push(Object.freeze({
+            owner_kind: node.kind,
+            owner_id: node.id,
+            logical_path: "body_md",
+            start_in_chunk: offset,
+            end_in_chunk: offset + bytes.byteLength,
+            bytes: cloneBytes(bytes),
+          }));
+        }
+        pieces.push(bytes);
+        offset += bytes.byteLength;
+        continue;
+      }
+      let resolution: GeneratedSlotResolution | undefined;
+      try {
+        resolution = services.resolveGeneratedSlot(event.slot);
+      } catch (error) {
+        buildIssues.push(issue(
+          document,
+          "E-OUTPUT-SLOT",
+          `section[${JSON.stringify(node.id)}].slots.${event.slot.slot_id}`,
+          `slot resolver failed: ${error instanceof Error ? error.message : String(error)}`,
+        ));
+      }
+      const bytes = resolution?.bytes ?? new Uint8Array();
+      slotResolutions.push(Object.freeze({
+        manifest_index: op.manifest_index,
+        section_id: node.id,
+        slot: event.slot,
+        start_in_chunk: offset,
+        end_in_chunk: offset + bytes.byteLength,
+        resolution: resolution === undefined ? undefined : {
+          binding: resolution.binding,
+          bytes: cloneBytes(bytes),
+        },
       }));
+      pieces.push(bytes);
+      offset += bytes.byteLength;
     }
     chunks.push(immutableChunk({
       manifest_index: op.manifest_index,
       owner: { kind: node.kind, id: node.id, field: "body_md" },
-      bytes: rendered,
+      bytes: concatBytes(pieces, offset),
       consumed_fields: ["body_md"],
     }));
   }
@@ -764,14 +810,20 @@ function fieldLedgerKey(kind: ManifestEntry["kind"], id: string): string {
   return JSON.stringify([kind, id]);
 }
 
+/** One projected `body_md` segment per non-empty prose run; a slotless owner has exactly one. */
+function nonEmptyRunCount(op: RenderOp, plan: SectionSlotPlan | undefined): readonly number[] {
+  const body = (op.node.value as { body_md?: Uint8Array }).body_md;
+  if (plan === undefined) return body !== undefined && body.byteLength > 0 ? [0] : [];
+  return plan.runs.flatMap((run, index) => run.end_in_body > run.start_in_body ? [index] : []);
+}
+
 function payloadLedgerFields(payload: SemanticPayload): readonly string[] {
   const expected = new Map<string, Uint8Array>();
   collectMarkdownFields(payload, "payload", expected);
   return Object.freeze([...expected.keys()].sort(codePointSort));
 }
 
-function expectedLedgerFields(op: RenderOp): readonly string[] | undefined {
-  if (op.node.kind === "generated_slot") return undefined;
+function expectedLedgerFields(op: RenderOp): readonly string[] {
   if (op.node.kind === "record") return payloadLedgerFields(op.node.value.payload);
   return Object.freeze(["body_md"]);
 }
@@ -795,14 +847,20 @@ export function validateCompletedChunks(
     ));
   }
   const expectedFieldLedgers = new Map<string, readonly string[]>();
-  const expectedSlotLedgers = new Map<string, Extract<RenderOp["node"], { kind: "generated_slot" }>["value"]>();
+  const expectedSlotLedgers = new Map<string, GeneratedSlot>();
   const placedRecordIds = new Set<string>();
+  const sectionPlans = new Map<number, SectionSlotPlan>();
   for (const op of ops) {
-    const fields = expectedLedgerFields(op);
-    if (fields !== undefined) expectedFieldLedgers.set(fieldLedgerKey(op.node.kind, op.node.id), fields);
+    expectedFieldLedgers.set(fieldLedgerKey(op.node.kind, op.node.id), expectedLedgerFields(op));
     if (op.node.kind === "record") placedRecordIds.add(op.node.id);
-    if (op.node.kind === "generated_slot") {
-      expectedSlotLedgers.set(JSON.stringify([op.manifest_index, op.node.id]), op.node.value);
+    if (op.node.kind !== "section") continue;
+    const plan = planSectionBody(op.node.value);
+    sectionPlans.set(op.manifest_index, plan);
+    for (const placement of plan.placements) {
+      expectedSlotLedgers.set(
+        JSON.stringify([op.manifest_index, placement.slot.slot_id]),
+        placement.slot,
+      );
     }
   }
   for (const record of document.records) {
@@ -844,7 +902,7 @@ export function validateCompletedChunks(
     }
   }
 
-  const semanticOps = ops.filter((op) => expectedLedgerFields(op) !== undefined);
+  const semanticOps = ops;
   for (const segment of completed.projected_field_segments) {
     const owners = semanticOps.filter((op) =>
       op.node.kind === segment.owner_kind && op.node.id === segment.owner_id
@@ -863,7 +921,10 @@ export function validateCompletedChunks(
     const segments = completed.projected_field_segments.filter((segment) =>
       segment.owner_kind === op.node.kind && segment.owner_id === op.node.id
     );
-    const expectedPaths = op.node.kind === "record" ? ["payload.detail_md"] : ["body_md"];
+    const plan = op.node.kind === "section" ? sectionPlans.get(op.manifest_index) : undefined;
+    const expectedPaths = op.node.kind === "record"
+      ? ["payload.detail_md"]
+      : nonEmptyRunCount(op, plan).map(() => "body_md");
     const actualPaths = segments.map((segment) => segment.logical_path);
     const ledger = completed.field_consumption.filter((entry) =>
       entry.owner_kind === op.node.kind && entry.owner_id === op.node.id
@@ -878,23 +939,40 @@ export function validateCompletedChunks(
     }
     const chunkIndex = ops.indexOf(op);
     const chunk = completed.chunks[chunkIndex];
+    // A section's chunk tiles as authored prose runs plus the resolved bytes of the slots its
+    // prose places; every other owner tiles as its single rendering field.
+    const tiles = [
+      ...segments.map((segment) => ({
+        logical_path: segment.logical_path,
+        start: segment.start_in_chunk,
+        end: segment.end_in_chunk,
+        bytes: segment.bytes,
+      })),
+      ...completed.slot_resolutions
+        .filter((item) => item.manifest_index === op.manifest_index)
+        .map((item) => ({
+          logical_path: `slots.${item.slot.slot_id}`,
+          start: item.start_in_chunk,
+          end: item.end_in_chunk,
+          bytes: item.resolution?.bytes ?? new Uint8Array(),
+        })),
+    ].sort((left, right) => left.start - right.start);
     let offset = 0;
-    for (const segment of segments) {
-      const validCoordinates = Number.isSafeInteger(segment.start_in_chunk) &&
-        Number.isSafeInteger(segment.end_in_chunk) && segment.start_in_chunk === offset &&
-        segment.end_in_chunk > segment.start_in_chunk &&
-        segment.end_in_chunk - segment.start_in_chunk === segment.bytes.byteLength;
-      const validBytes = chunk !== undefined && segment.end_in_chunk <= chunk.bytes.byteLength &&
-        bytesEqual(chunk.bytes.subarray(segment.start_in_chunk, segment.end_in_chunk), segment.bytes);
+    for (const tile of tiles) {
+      const validCoordinates = Number.isSafeInteger(tile.start) &&
+        Number.isSafeInteger(tile.end) && tile.start === offset &&
+        tile.end > tile.start && tile.end - tile.start === tile.bytes.byteLength;
+      const validBytes = chunk !== undefined && tile.end <= chunk.bytes.byteLength &&
+        bytesEqual(chunk.bytes.subarray(tile.start, tile.end), tile.bytes);
       if (!validCoordinates || !validBytes) {
         issues.push(issue(
           document,
           "E-RENDER-AUTHORITY",
           logicalPath,
-          `projected field ${JSON.stringify(segment.logical_path)} does not exactly match its contiguous chunk interval`,
+          `projected field ${JSON.stringify(tile.logical_path)} does not exactly match its contiguous chunk interval`,
         ));
       }
-      offset = segment.end_in_chunk;
+      offset = tile.end;
     }
     if (chunk === undefined || offset !== chunk.bytes.byteLength) {
       issues.push(issue(
@@ -956,25 +1034,6 @@ export function validateCompletedChunks(
         "chunk does not positionally match its manifest operation and exact owner",
       ));
     }
-    if (op.node.kind === "generated_slot") {
-      const resolution = completed.slot_resolutions.filter((value) =>
-        value.manifest_index === chunk.manifest_index && value.slot.slot_id === op.node.id
-      );
-      if (
-        chunk.owner.field !== "generated" ||
-        !stringArraysEqual(chunk.consumed_fields, ["generated"]) ||
-        resolution.length !== 1 || resolution[0].resolution === undefined ||
-        !bytesEqual(chunk.bytes, resolution[0].resolution.bytes)
-      ) {
-        issues.push(issue(
-          document,
-          "E-OUTPUT-SLOT",
-          logicalPath,
-          "generated chunk does not exactly match its completed resolver result",
-        ));
-      }
-      continue;
-    }
     if (op.node.kind === "record") {
       const ledger = completed.field_consumption.filter((value) =>
         value.owner_kind === "record" && value.owner_id === op.node.id
@@ -993,12 +1052,15 @@ export function validateCompletedChunks(
       continue;
     }
     const value = (op.node.value as { body_md: Uint8Array }).body_md;
+    const plan = op.node.kind === "section" ? sectionPlans.get(op.manifest_index) : undefined;
     const ledger = completed.field_consumption.filter((candidate) =>
       candidate.owner_kind === op.node.kind && candidate.owner_id === op.node.id
     );
+    // Only a slotless body is verbatim: the tiling check above owns the interleaved case.
+    const verbatim = (plan?.placements.length ?? 0) === 0;
     if (
-      chunk.owner.field !== "body_md" || !bytesEqual(chunk.bytes, value) || ledger.length !== 1 ||
-      !stringArraysEqual(chunk.consumed_fields, ["body_md"])
+      chunk.owner.field !== "body_md" || (verbatim && !bytesEqual(chunk.bytes, value)) ||
+      ledger.length !== 1 || !stringArraysEqual(chunk.consumed_fields, ["body_md"])
     ) {
       issues.push(issue(
         document,
@@ -1033,7 +1095,7 @@ export function validateCompletedChunks(
   const slotCount = new Map<string, number>();
   for (const item of completed.slot_resolutions) {
     slotCount.set(item.slot.slot_id, (slotCount.get(item.slot.slot_id) ?? 0) + 1);
-    const logicalPath = `generated_slot[${JSON.stringify(item.slot.slot_id)}]`;
+    const logicalPath = `section[${JSON.stringify(item.section_id)}].slots.${item.slot.slot_id}`;
     if (item.resolution === undefined) {
       issues.push(issue(document, "E-OUTPUT-SLOT", logicalPath, "slot has no resolver result"));
       continue;
@@ -1050,12 +1112,12 @@ export function validateCompletedChunks(
       issues.push(issue(document, "E-OUTPUT-SLOT", logicalPath, "slot resolver returned an empty payload"));
     }
   }
-  for (const slot of document.generated_slots) {
+  for (const slot of documentSlots(document.sections)) {
     if ((slotCount.get(slot.slot_id) ?? 0) !== 1) {
       issues.push(issue(
         document,
         "E-OUTPUT-SLOT",
-        `generated_slot[${JSON.stringify(slot.slot_id)}]`,
+        `section.slots.${slot.slot_id}`,
         `slot resolves ${slotCount.get(slot.slot_id) ?? 0} times, expected exactly once`,
       ));
     }

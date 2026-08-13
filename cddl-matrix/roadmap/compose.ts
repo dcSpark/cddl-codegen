@@ -1,6 +1,4 @@
 import type {
-  Fragment,
-  GeneratedSlot,
   ManifestEntry,
   Part,
   RecordNode,
@@ -116,21 +114,13 @@ function writeSemanticPayload(
   writeArmFields(writer, payload, armOfPayload(payload), prefix);
 }
 
-function writeGeneratedSlot(writer: CanonicalTomlWriter, slot: GeneratedSlot): void {
-  writer.arrayTable("generated_slot");
-  writer.string("slot_id", slot.slot_id);
-  writer.string("binding", slot.binding);
-}
-
 function writeManifestEntry(writer: CanonicalTomlWriter, entry: ManifestEntry): void {
   writer.arrayTable("manifest.entry");
   writer.string("kind", entry.kind);
   switch (entry.kind) {
     case "section": writer.string("section_id", entry.section_id); break;
-    case "fragment": writer.string("fragment_id", entry.fragment_id); break;
     case "record": writer.string("record_id", entry.record_id); break;
     case "part": writer.string("part_id", entry.part_id); break;
-    case "generated_slot": writer.string("slot_id", entry.slot_id); break;
   }
 }
 
@@ -188,16 +178,10 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.string("title", section.title);
     optionalStrings(writer, "legacy_aliases", section.legacy_aliases);
     writer.markdown("body_md", section.body_md);
-  }
-
-  const fragments: readonly Fragment[] = document.fragments;
-  for (const fragment of sorted(fragments, (value) => value.fragment_id)) {
-    writer.arrayTable("fragment");
-    writer.string("fragment_id", fragment.fragment_id);
-    writer.string("projection_group", fragment.projection_group);
-    optionalString(writer, "title", fragment.title);
-    optionalStrings(writer, "legacy_aliases", fragment.legacy_aliases);
-    writer.markdown("body_md", fragment.body_md);
+    for (const slot of sorted(section.slots ?? [], (value) => value.slot_id)) {
+      writer.table(`section.slots.${slot.slot_id}`);
+      writer.string("binding", slot.binding);
+    }
   }
 
   const records: readonly RecordNode[] = document.records;
@@ -221,7 +205,6 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
     writer.markdown("body_md", part.body_md);
   }
 
-  for (const slot of sorted(document.generated_slots, (value) => value.slot_id)) writeGeneratedSlot(writer, slot);
   for (const entry of document.manifest) writeManifestEntry(writer, entry);
   {
     const relations = [...document.relations].sort((left, right) =>

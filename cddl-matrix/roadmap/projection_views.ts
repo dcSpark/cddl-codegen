@@ -3,10 +3,16 @@ import type { ManifestEntry, RoadmapDocument } from "./model/documents.ts";
 import type { CompletedRenderIr, ProjectedFieldSegment } from "./render_ir.ts";
 import { bytesEqual } from "./kernel.ts";
 import { concatenate } from "./kernel.ts";
+import { placeholderFor } from "./slots.ts";
 
 export type ProjectionContentView = "full" | "audit";
 export type ContentTransformation =
   | { readonly kind: "identity" }
+  /** A section body with its declared `{{slot:<id>}}` placeholders replaced by resolved bytes. */
+  | {
+    readonly kind: "section_slots";
+    readonly resolved: readonly { readonly slot_id: string; readonly bytes: Uint8Array }[];
+  }
   | { readonly kind: "testing_next_heading" }
   | { readonly kind: "testing_standing_heading" }
   | { readonly kind: "testing_next_ordinal"; readonly ordinal: string };
@@ -44,7 +50,11 @@ interface LocalBinding extends AuthoredContentCoordinate {
   readonly end: number;
 }
 interface Piece {
-  readonly owner: CompletedRenderIr["chunks"][number]["owner"];
+  readonly owner: {
+    readonly kind: ManifestEntry["kind"] | "generated";
+    readonly id: string;
+    readonly field: string;
+  };
   readonly bytes: Uint8Array;
   readonly bindings: readonly LocalBinding[];
 }
@@ -85,7 +95,7 @@ function markdownFields(value: unknown, logicalPath: string, add: (path: string,
 
 function authoredFields(document: RoadmapDocument): readonly AuthoredField[] {
   const fields: AuthoredField[] = [];
-  const structural = (ownerKind: "section" | "fragment" | "part", ownerId: string,
+  const structural = (ownerKind: "section" | "part", ownerId: string,
     value: object): void => {
     markdownFields(value, "", (path, bytes) => {
       if (path === ".body_md") fields.push({ owner_kind: ownerKind,
@@ -93,7 +103,6 @@ function authoredFields(document: RoadmapDocument): readonly AuthoredField[] {
     });
   };
   document.sections.forEach((value) => structural("section", value.section_id, value));
-  document.fragments.forEach((value) => structural("fragment", value.fragment_id, value));
   document.parts.forEach((value) => structural("part", value.part_id, value));
   for (const record of document.records) {
     markdownFields(record.payload, "payload", (path, bytes) => fields.push({ owner_kind: "record",
@@ -111,6 +120,20 @@ function transformedBytes(transformation: ContentTransformation, authored: Uint8
   const text = TEXT.decode(authored);
   switch (transformation.kind) {
     case "identity": return new Uint8Array(authored);
+    case "section_slots": {
+      let out = authored;
+      for (const item of transformation.resolved) {
+        const placeholder = UTF8.encode(placeholderFor(item.slot_id));
+        const at = indexOfBytes(out, placeholder);
+        if (at === -1 || indexOfBytes(out, placeholder, at + 1) !== -1) return undefined;
+        out = concatenate([
+          out.subarray(0, at),
+          item.bytes,
+          out.subarray(at + placeholder.byteLength),
+        ]);
+      }
+      return out;
+    }
     case "testing_next_heading": {
       const from = "## Next work items, in priority order";
       if (!text.startsWith(`${from}\n`) || text.indexOf(from, from.length) !== -1) return undefined;
@@ -182,26 +205,69 @@ export function validateContentReachability(
   return Object.freeze(issues);
 }
 
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array, from = 0): number {
+  outer: for (let index = from; index + needle.byteLength <= haystack.byteLength; index++) {
+    for (let offset = 0; offset < needle.byteLength; offset++) {
+      if (haystack[index + offset] !== needle[offset]) continue outer;
+    }
+    return index;
+  }
+  return -1;
+}
+
 function chunkSegments(completed: CompletedRenderIr, owner: Piece["owner"]): readonly ProjectedFieldSegment[] {
-  if (owner.kind === "generated_slot") return [];
+  if (owner.kind === "generated") return [];
   return completed.projected_field_segments.filter((segment) =>
     segment.owner_kind === owner.kind && segment.owner_id === owner.id
   );
 }
 
+/**
+ * One chunk becomes one piece. A section whose prose places slots binds its authored `body_md`
+ * ONCE, over the whole resolved chunk, through the `section_slots` transformation — the interleaved
+ * runs are not separate authored coordinates, so exactly-once reachability is unchanged.
+ */
 function basePieces(completed: CompletedRenderIr): Piece[] {
-  return completed.chunks.map((chunk) => ({
-    owner: chunk.owner,
-    bytes: new Uint8Array(chunk.bytes),
-    bindings: chunkSegments(completed, chunk.owner).map((segment) => ({
-      owner_kind: segment.owner_kind,
-      owner_id: segment.owner_id,
-      logical_path: segment.logical_path,
-      transformation: IDENTITY,
-      start: segment.start_in_chunk,
-      end: segment.end_in_chunk,
-    })),
-  }));
+  return completed.chunks.map((chunk, chunkIndex) => {
+    const resolutions = completed.slot_resolutions.filter((item) =>
+      item.manifest_index === completed.chunks[chunkIndex]!.manifest_index &&
+      item.section_id === chunk.owner.id
+    );
+    if (resolutions.length > 0) {
+      return {
+        owner: chunk.owner,
+        bytes: new Uint8Array(chunk.bytes),
+        bindings: [{
+          owner_kind: chunk.owner.kind,
+          owner_id: chunk.owner.id,
+          logical_path: "body_md",
+          transformation: {
+            kind: "section_slots" as const,
+            resolved: Object.freeze([...resolutions]
+              .sort((left, right) => left.start_in_chunk - right.start_in_chunk)
+              .map((item) => Object.freeze({
+                slot_id: String(item.slot.slot_id),
+                bytes: new Uint8Array(item.resolution?.bytes ?? new Uint8Array()),
+              }))),
+          },
+          start: 0,
+          end: chunk.bytes.byteLength,
+        }],
+      };
+    }
+    return {
+      owner: chunk.owner,
+      bytes: new Uint8Array(chunk.bytes),
+      bindings: chunkSegments(completed, chunk.owner).map((segment) => ({
+        owner_kind: segment.owner_kind,
+        owner_id: segment.owner_id,
+        logical_path: segment.logical_path,
+        transformation: IDENTITY,
+        start: segment.start_in_chunk,
+        end: segment.end_in_chunk,
+      })),
+    };
+  });
 }
 
 function transformWholePiece(
@@ -247,7 +313,7 @@ function operationalClass(document: RoadmapDocument, ownerId: string): Operation
 }
 
 function generatedPiece(id: string, bytes: Uint8Array): Piece {
-  return { owner: { kind: "generated_slot", id, field: "generated" }, bytes, bindings: [] };
+  return { owner: { kind: "generated", id, field: "generated" }, bytes, bindings: [] };
 }
 
 function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, issues: RoadmapIssue[]): Piece[] {
