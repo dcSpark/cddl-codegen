@@ -93,13 +93,17 @@ const FIXTURE_PATHS = Object.freeze([
   "positive/mixed-matrix-v1.toml",
   "positive/mixed-testing-v1.expected.md",
   "positive/mixed-testing-v1.toml",
+  "positive/small-matrix-v2.expected.md",
+  "positive/small-matrix-v2.toml",
+  "positive/small-testing-v2.expected.md",
+  "positive/small-testing-v2.toml",
   "status-compat/roadmap.after.md",
   "status-compat/roadmap.before.md",
 ] as const);
 type AdapterFixturePath = (typeof FIXTURE_PATHS)[number];
 
 export interface AdapterFixtureBundle {
-  readonly file_count: 14;
+  readonly file_count: 18;
 }
 
 const fixtureFiles = new WeakMap<object, ReadonlyMap<AdapterFixturePath, Uint8Array>>();
@@ -140,14 +144,14 @@ function combineBytes(values: readonly Uint8Array[]): Uint8Array {
 export function createAdapterFixtureBundle(
   files: ReadonlyMap<AdapterFixturePath, Uint8Array>,
 ): AdapterFixtureBundle {
-  assert(files.size === FIXTURE_PATHS.length, "adapter fixture bundle must contain exactly fourteen files");
+  assert(files.size === FIXTURE_PATHS.length, "adapter fixture bundle must contain exactly eighteen files");
   const snapshots = new Map<AdapterFixturePath, Uint8Array>();
   for (const path of FIXTURE_PATHS) {
     const value = files.get(path);
     assert(value !== undefined && value.byteLength > 0, `adapter fixture bundle is missing ${path}`);
     snapshots.set(path, new Uint8Array(value));
   }
-  const bundle: AdapterFixtureBundle = Object.freeze({ file_count: 14 });
+  const bundle: AdapterFixtureBundle = Object.freeze({ file_count: 18 });
   fixtureFiles.set(bundle, snapshots);
   return bundle;
 }
@@ -411,7 +415,10 @@ function requireSemantic(
   document: RoadmapDocument,
   predicate: (payload: SemanticPayload) => boolean,
 ): SemanticRecord {
-  assert(document.document.schema_version === 1, "adapter fixture must be v1");
+  assert(
+    document.document.schema_version === 1 || document.document.schema_version === 2,
+    "adapter fixture must carry semantic authority",
+  );
   const record = document.records.find((candidate) =>
     "render_authority" in candidate &&
     candidate.render_authority === "semantic" && predicate(candidate.payload)
@@ -1614,6 +1621,8 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
   for (const [roadmap, sourcePath, expectedPath, adapter, statusInputs, expectedLength] of [
     ["matrix", "positive/mixed-matrix-v1.toml", "positive/mixed-matrix-v1.expected.md", MATRIX_ADAPTER, statusCompatibilityInputs(), 93],
     ["testing", "positive/mixed-testing-v1.toml", "positive/mixed-testing-v1.expected.md", TESTING_ADAPTER, statusCompatibilityInputs(), 96],
+    ["matrix", "positive/small-matrix-v2.toml", "positive/small-matrix-v2.expected.md", MATRIX_ADAPTER, statusCompatibilityInputs(), 73],
+    ["testing", "positive/small-testing-v2.toml", "positive/small-testing-v2.expected.md", TESTING_ADAPTER, statusCompatibilityInputs(), 75],
     ["matrix", "all-fields/matrix-v1.toml", "all-fields/matrix-v1.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 3051],
     ["testing", "all-fields/testing-v1.toml", "all-fields/testing-v1.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 697],
     ["matrix", "all-fields/matrix-v2.toml", "all-fields/matrix-v2.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 1737],
@@ -1641,10 +1650,12 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
   for (const [roadmap, path, adapter] of [
     ["matrix", "positive/mixed-matrix-v1.toml", MATRIX_ADAPTER],
     ["testing", "positive/mixed-testing-v1.toml", TESTING_ADAPTER],
+    ["matrix", "positive/small-matrix-v2.toml", MATRIX_ADAPTER],
+    ["testing", "positive/small-testing-v2.toml", TESTING_ADAPTER],
   ] as const) {
     const document = decoded(bundle, path, roadmap);
     const record = requireSemantic(document, (payload) => payload.kind === "work");
-    assertCanonicalFieldInventory(record.payload, `${roadmap} mixed semantic work`);
+    assertCanonicalFieldInventory(record.payload, `${path} semantic work`);
     const expectedOrder = expectedCanonicalFieldOrder(record.payload);
     const expectedInputs = markdownByteMap(record.payload);
     const normal = fieldSpy();
@@ -1653,7 +1664,7 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
     assert(normal.calls.every((call) => call.bytes === expectedInputs.get(call.path)), `${roadmap} renderer did not pass each exact decoded byte object to FieldConsumer`);
     const reversedPayload = Object.fromEntries(Object.entries(record.payload).reverse()) as SemanticPayload;
     const reversed = { ...record, payload: reversedPayload } as SemanticRecord;
-    assertCanonicalFieldInventory(reversedPayload, `${roadmap} reversed mixed semantic work`);
+    assertCanonicalFieldInventory(reversedPayload, `${path} reversed semantic work`);
     const reversedSpy = fieldSpy();
     assert(bytesEqual(normalBytes, adapter.renderSemantic(reversed, reversedSpy.consumer)), `${roadmap} rendering depends on payload property construction order`);
     assert(normal.calls.map((call) => call.path).join("|") === reversedSpy.calls.map((call) => call.path).join("|"), `${roadmap} field traversal order changed with object construction order`);

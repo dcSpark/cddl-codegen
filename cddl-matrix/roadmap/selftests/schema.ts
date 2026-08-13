@@ -259,6 +259,7 @@ function fixtureIdentity(context: SelfTestContext): void {
   const paths: readonly [string, RoadmapName][] = [
     ["positive/minimal-matrix-v0.toml", "matrix"], ["positive/minimal-testing-v0.toml", "testing"],
     ["positive/mixed-matrix-v1.toml", "matrix"], ["positive/mixed-testing-v1.toml", "testing"],
+    ["positive/small-matrix-v2.toml", "matrix"], ["positive/small-testing-v2.toml", "testing"],
     ["irregular/matrix-v0.toml", "matrix"], ["irregular/testing-v0.toml", "testing"],
     ["all-fields/matrix-v1.toml", "matrix"], ["all-fields/testing-v1.toml", "testing"],
     ["all-fields/matrix-v2.toml", "matrix"], ["all-fields/testing-v2.toml", "testing"],

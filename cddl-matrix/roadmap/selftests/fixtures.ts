@@ -350,6 +350,7 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
   const expectedIds = [
     "fixture_codec_leading_eof", "fixture_codec_no_eof", "fixture_codec_controls",
     "fixture_minimal_matrix_v0", "fixture_minimal_testing_v0", "fixture_mixed_matrix_v1", "fixture_mixed_testing_v1",
+    "fixture_small_matrix_v2", "fixture_small_testing_v2",
     "fixture_all_fields_matrix_v1", "fixture_all_fields_testing_v1",
     "fixture_all_fields_matrix_v2", "fixture_all_fields_testing_v2",
     "fixture_irregular_matrix_v0", "fixture_irregular_testing_v0", "fixture_status_compat",
@@ -367,6 +368,8 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
     "fixture_minimal_testing_v0|positive|positive/minimal-testing-v0.toml|positive/minimal-testing-v0.expected.md|testing|0|none",
     "fixture_mixed_matrix_v1|positive|positive/mixed-matrix-v1.toml|positive/mixed-matrix-v1.expected.md|matrix|1|lf",
     "fixture_mixed_testing_v1|positive|positive/mixed-testing-v1.toml|positive/mixed-testing-v1.expected.md|testing|1|none",
+    "fixture_small_matrix_v2|positive|positive/small-matrix-v2.toml|positive/small-matrix-v2.expected.md|matrix|2|lf",
+    "fixture_small_testing_v2|positive|positive/small-testing-v2.toml|positive/small-testing-v2.expected.md|testing|2|none",
     "fixture_all_fields_matrix_v1|all_fields|all-fields/matrix-v1.toml|all-fields/matrix-v1.expected.md|matrix|1|lf",
     "fixture_all_fields_testing_v1|all_fields|all-fields/testing-v1.toml|all-fields/testing-v1.expected.md|testing|1|lf",
     "fixture_all_fields_matrix_v2|all_fields|all-fields/matrix-v2.toml|all-fields/matrix-v2.expected.md|matrix|2|lf",
@@ -476,9 +479,9 @@ function executeFixtureCase(id: RequiredFixtureSelfTestCaseId, context: SelfTest
     const decoded = registry(context);
     const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
     assert(decoded.issues.length === 0, decoded.issues.join("; "));
-    assert(decoded.rows.length === 14, `fixture registry has ${decoded.rows.length} rows instead of 14`);
-    assert(decoded.declared_paths.length === 35, `fixture registry binds ${decoded.declared_paths.length} files instead of 35`);
-    assert(inventory.length === 36, `fixture inventory has ${inventory.length} files including cases.toml instead of 36`);
+    assert(decoded.rows.length === 16, `fixture registry has ${decoded.rows.length} rows instead of 16`);
+    assert(decoded.declared_paths.length === 39, `fixture registry binds ${decoded.declared_paths.length} files instead of 39`);
+    assert(inventory.length === 40, `fixture inventory has ${inventory.length} files including cases.toml instead of 40`);
   } else if (id === "fixture_registry_missing_file") {
     const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
     const decoded = registry(context);

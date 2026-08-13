@@ -975,14 +975,14 @@ function withCrossRoadmapTestingExternTarget(source: Uint8Array): Uint8Array {
     "testing",
     true,
   );
-  assert(document.document.schema_version === 1, "cross-roadmap testing target fixture must be v1");
-  const v1 = document as RoadmapDocumentV1;
-  if (v1.records.some((record) => record.id === CROSS_ROADMAP_TESTING_EXTERN_TARGET)) return source;
-  const projectionGroup = v1.sections[0]?.section_id;
+  assert(document.document.schema_version === 2, "cross-roadmap testing target fixture must be v2");
+  const base = document as RoadmapDocumentV2;
+  if (base.records.some((record) => record.id === CROSS_ROADMAP_TESTING_EXTERN_TARGET)) return source;
+  const projectionGroup = base.sections[0]?.section_id;
   assert(projectionGroup !== undefined, "cross-roadmap testing target fixture lacks a projection group");
   return composeRoadmapDocument({
-    ...v1,
-    records: [...v1.records, {
+    ...base,
+    records: [...base.records, {
       id: CROSS_ROADMAP_TESTING_EXTERN_TARGET,
       title: "Cross-roadmap extern execution owner",
       projection_group: projectionGroup,
@@ -1010,9 +1010,9 @@ function temporalTestingPorts(
 ): RoadmapCliPorts {
   const sourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const projectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
-  const base = text(fixture(context, "positive/mixed-testing-v1.toml"))
-    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.toml", sourcePath)
-    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.expected.md", projectionPath);
+  const base = text(fixture(context, "positive/small-testing-v2.toml"))
+    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v2.toml", sourcePath)
+    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v2.expected.md", projectionPath);
   const payload = kind === "cadence"
     ? `[record.payload]
 kind = "signal"
@@ -1048,18 +1048,25 @@ unprobed_remainder_md = """No timeless claim is made."""
 [record.payload.scope]
 surfaces = ["fixture"]
 `;
-  const source = withCrossRoadmapTestingExternTarget(UTF8.encode(base.replace(
+  // `String.prototype.replace` silently returns the input when the anchor does not match, which
+  // would leave this port serving the unmodified work payload under a temporal case name.
+  const spliced = base.replace(
     /\[record\.payload\]\n[\s\S]*?(?=\n\[\[record\.source_replacement\]\])/,
     payload,
-  ) + `
+  );
+  assert(
+    spliced !== base && spliced.includes(payload),
+    "temporal payload splice matched nothing: the fixture no longer places [record.payload] before [[record.source_replacement]]",
+  );
+  const source = withCrossRoadmapTestingExternTarget(UTF8.encode(spliced + `
 [[reference]]
 id = "temporal-owner"
-source = "testing.fixture-mixed-semantic"
+source = "testing.fixture-small-semantic"
 kind = "external_commit"
 repository = "fixture/repository"
 commit = "1111111111111111111111111111111111111111"
 `));
-  const projection = fixture(context, "positive/mixed-testing-v1.expected.md");
+  const projection = fixture(context, "positive/small-testing-v2.expected.md");
   return fakePorts({
     read(path) {
       if (path === sourcePath) return new Uint8Array(source);
@@ -1255,13 +1262,13 @@ function authoritativeProjectionReferencePorts(
 ): RoadmapCliPorts {
   const sourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const projectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
-  const sourceFixture = text(fixture(context, "positive/mixed-testing-v1.toml"))
-    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.toml", sourcePath)
-    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.expected.md", projectionPath);
+  const sourceFixture = text(fixture(context, "positive/small-testing-v2.toml"))
+    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v2.toml", sourcePath)
+    .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v2.expected.md", projectionPath);
   const sourceBytes = UTF8.encode(
     `${sourceFixture}\n[[reference]]
 id = "selftest-fresh-projection-heading"
-source = "testing.fixture-mixed-semantic"
+source = "testing.fixture-small-semantic"
 kind = "file_heading"
 path = "${projectionPath}"
 heading = ${JSON.stringify(referencedHeading)}
@@ -2079,7 +2086,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         : id === "query_as_of_valid_through_inclusive" ? "as_of" : "stale";
       assert(
         result.exit_code === 0 && result.stderr.byteLength === 0 && payload.evaluation_as_of === date &&
-          Array.isArray(signals) && signals.length === 1 && signals[0].id === "testing.fixture-mixed-semantic" &&
+          Array.isArray(signals) && signals.length === 1 && signals[0].id === "testing.fixture-small-semantic" &&
           signals[0].evaluation === expected,
         `${id} did not derive ${expected} from the decoded service document: ${text(result.stdout)} ${text(result.stderr)}`,
       );
@@ -2120,7 +2127,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
     }
     case "cli_authoritative_fresh_projection_reference_provenance": {
       const subcases: string[] = [];
-      const projection = fixture(context, "positive/mixed-testing-v1.expected.md");
+      const projection = fixture(context, "positive/small-testing-v2.expected.md");
       const freshHeading = uniqueProjectionHeading(projection);
 
       const freshReads = { value: 0 };
