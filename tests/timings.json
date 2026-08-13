@@ -114,9 +114,9 @@
     },
     {
       "gate": "component_corpus_compiles",
-      "warm_ms": 74000,
-      "n": 13,
-      "measured": "2026-08-10",
+      "warm_ms": 89000,
+      "n": 11,
+      "measured": "2026-08-13",
       "machine": "86216c55",
       "history": [
         {
@@ -130,6 +130,10 @@
         {
           "date": "2026-08-10",
           "warm_ms": 74000
+        },
+        {
+          "date": "2026-08-13",
+          "warm_ms": 89000
         }
       ]
     },
@@ -938,15 +942,11 @@
     },
     {
       "gate": "roadmap_projection_check",
-      "warm_ms": 134000,
+      "warm_ms": 79000,
       "n": 20,
       "measured": "2026-08-13",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-12",
-          "warm_ms": 30000
-        },
         {
           "date": "2026-08-12",
           "warm_ms": 49000
@@ -962,6 +962,10 @@
         {
           "date": "2026-08-13",
           "warm_ms": 134000
+        },
+        {
+          "date": "2026-08-13",
+          "warm_ms": 79000
         }
       ]
     },
