@@ -2,7 +2,7 @@ import { RoadmapWireError, bytesEqual, encodeMarkdownString } from "../markdown_
 import type { RoadmapIssue } from "../errors.ts";
 import type { RepoPath, RoadmapName } from "../model/core.ts";
 import type { RoadmapDocumentV2 } from "../model/documents.ts";
-import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
+import type { SelfTestCandidateCase as SelfTestCase, SelfTestCategory, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import { compareAllFieldsCoverageTags } from "./fixtures.ts";
 import { observeSelfTestIssue } from "./observations.ts";
 import { composeRoadmapDocument } from "../compose.ts";
@@ -1083,102 +1083,99 @@ function failure(id: string, error: unknown): RoadmapIssue {
   return { code: "E-SELFTEST-CASE", source: "<selftest>", logical_path: id, message: error instanceof Error ? error.message : String(error), exit: 1 };
 }
 
-const POSITIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
-  "all_fields_identity",
-  "v2_semantic_identity",
-  "v2_migration_escape_hatches_rejected",
-  "toml_terminal_newline",
-  "domain_matrix_all_tags",
-  "domain_testing_all_tags",
-  "domain_transition_each_kind",
-  "domain_manual_not_auto_boolean",
-  "domain_stale_unknown_visible",
-  "schema_exact_keys_every_structural_arm",
-  "schema_shared_payload_exact_keys_every_arm",
-  "schema_matrix_payload_exact_keys_every_arm",
-  "schema_testing_payload_exact_keys_every_arm",
-  "schema_systematic_exact_keys_every_arm",
-  "schema_reference_exact_keys_every_arm",
-  "schema_canonical_key_order_every_arm",
-  "systematic_illegal_coordinate_is_exclusion",
-  "schema_priority_band_closed_enum",
-];
+interface SchemaCaseSpec {
+  readonly category: SelfTestCategory;
+  readonly polarity: "positive" | "negative";
+  readonly subcases?: readonly string[];
+}
 
-const NEGATIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
-  "strict_unknown_top",
-  "strict_unknown_nested_record",
-  "strict_unknown_reference",
-  "strict_unknown_every_table",
-  "strict_enum_every_field",
-  "strict_unknown_kind",
-  "strict_unknown_enum",
-  "strict_missing_discriminator",
-  "strict_generic_state_rejected",
-  "strict_generic_disposition_rejected",
-  "missing_manifest",
-  "empty_records_floor",
-  "truncated_span_read",
-  "noncanonical_literal_string",
-  "noncanonical_table_order",
-  "noncanonical_set_order",
-  "v3_unsupported",
-  "schema_lifecycle_semantic_requires_reviewed",
-  "schema_lifecycle_cross_kind_rejected",
-  "schema_projection_visibility_document_arm",
-  "schema_projection_visibility_semantic_only_arm",
-  "domain_state_required_forbidden",
-  "domain_defect_regression_required",
-  "domain_missing_system_admission_required",
-  "domain_quantitative_scope_unit_required",
-  "domain_fired_transition_not_parked",
-  "domain_already_met_signal_rejected",
-  "evidence_point_requires_provenance",
-  "evidence_negative_requires_enumeration",
-  "evidence_generator_requires_harness_free",
-  "evidence_timing_join_structural",
-  "evidence_draft_log_rejected",
-  "schema_duplicate_assignment_rejected",
-  "schema_duplicate_table_rejected",
-  "schema_duplicate_nested_payload_rejected",
-  "noncanonical_comment",
-  "noncanonical_inline_table",
-  "systematic_illegal_cell_rejected",
-  "systematic_unmodelled_coordinate_not_cell",
-  "schema_observed_at_civil_date",
-  "schema_held_permanent_rejected",
-  "schema_due_on_valid_through_postures",
-];
+/**
+ * One row per registered case: the category it counts toward, its declared polarity, and the exact
+ * subcase labels it reports.  The mapped key type keeps the table total over the frozen ID
+ * inventory, so a renamed case is a typecheck failure rather than a substring match silently
+ * re-filing it under another category.
+ */
+const SCHEMA_CASES: { readonly [K in RequiredSchemaSelfTestCaseId]: SchemaCaseSpec } = {
+  strict_unknown_top: { category: "schema", polarity: "negative" },
+  strict_unknown_nested_record: { category: "schema", polarity: "negative" },
+  strict_unknown_reference: { category: "schema", polarity: "negative" },
+  strict_unknown_every_table: { category: "schema", polarity: "negative" },
+  strict_unknown_kind: { category: "schema", polarity: "negative" },
+  strict_unknown_enum: { category: "schema", polarity: "negative" },
+  strict_enum_every_field: { category: "schema", polarity: "negative" },
+  strict_missing_discriminator: { category: "schema", polarity: "negative" },
+  strict_generic_state_rejected: { category: "schema", polarity: "negative" },
+  strict_generic_disposition_rejected: { category: "schema", polarity: "negative" },
+  missing_manifest: { category: "schema", polarity: "negative" },
+  empty_records_floor: { category: "schema", polarity: "negative" },
+  truncated_span_read: { category: "schema", polarity: "negative" },
+  all_fields_identity: { category: "schema", polarity: "positive" },
+  v2_semantic_identity: { category: "schema", polarity: "positive" },
+  v2_migration_escape_hatches_rejected: { category: "schema", polarity: "positive", subcases: ["semantic_conversion", "frozen_legacy_span_ids", "semantic_owner_raw_fields", "raw_span"] },
+  v3_unsupported: { category: "schema", polarity: "negative" },
+  noncanonical_literal_string: { category: "schema", polarity: "negative" },
+  noncanonical_table_order: { category: "schema", polarity: "negative" },
+  noncanonical_set_order: { category: "schema", polarity: "negative" },
+  toml_terminal_newline: { category: "schema", polarity: "positive" },
+  schema_lifecycle_semantic_requires_reviewed: { category: "schema", polarity: "negative" },
+  schema_lifecycle_cross_kind_rejected: { category: "schema", polarity: "negative" },
+  schema_projection_visibility_document_arm: { category: "schema", polarity: "negative" },
+  schema_projection_visibility_semantic_only_arm: { category: "schema", polarity: "negative" },
+  domain_matrix_all_tags: { category: "domain-matrix", polarity: "positive" },
+  domain_testing_all_tags: { category: "domain-testing", polarity: "positive" },
+  domain_state_required_forbidden: { category: "domain-matrix", polarity: "negative" },
+  domain_defect_regression_required: { category: "domain-testing", polarity: "negative" },
+  domain_missing_system_admission_required: { category: "schema", polarity: "negative" },
+  domain_transition_each_kind: { category: "schema", polarity: "positive" },
+  domain_quantitative_scope_unit_required: { category: "schema", polarity: "negative" },
+  domain_manual_not_auto_boolean: { category: "schema", polarity: "positive" },
+  domain_fired_transition_not_parked: { category: "schema", polarity: "negative" },
+  domain_already_met_signal_rejected: { category: "schema", polarity: "negative" },
+  domain_stale_unknown_visible: { category: "schema", polarity: "positive" },
+  evidence_point_requires_provenance: { category: "schema", polarity: "negative" },
+  evidence_negative_requires_enumeration: { category: "schema", polarity: "negative" },
+  evidence_generator_requires_harness_free: { category: "schema", polarity: "negative" },
+  evidence_timing_join_structural: { category: "schema", polarity: "negative" },
+  evidence_draft_log_rejected: { category: "schema", polarity: "negative" },
+  schema_exact_keys_every_structural_arm: { category: "schema", polarity: "positive" },
+  schema_shared_payload_exact_keys_every_arm: { category: "schema", polarity: "positive" },
+  schema_matrix_payload_exact_keys_every_arm: { category: "domain-matrix", polarity: "positive" },
+  schema_testing_payload_exact_keys_every_arm: { category: "domain-testing", polarity: "positive" },
+  schema_systematic_exact_keys_every_arm: { category: "schema", polarity: "positive" },
+  schema_reference_exact_keys_every_arm: { category: "schema", polarity: "positive" },
+  schema_canonical_key_order_every_arm: { category: "schema", polarity: "positive" },
+  schema_duplicate_assignment_rejected: { category: "schema", polarity: "negative" },
+  schema_duplicate_table_rejected: { category: "schema", polarity: "negative" },
+  schema_duplicate_nested_payload_rejected: { category: "schema", polarity: "negative" },
+  noncanonical_comment: { category: "schema", polarity: "negative" },
+  noncanonical_inline_table: { category: "schema", polarity: "negative" },
+  systematic_illegal_cell_rejected: { category: "schema", polarity: "negative" },
+  systematic_illegal_coordinate_is_exclusion: { category: "schema", polarity: "positive" },
+  systematic_unmodelled_coordinate_not_cell: { category: "schema", polarity: "negative" },
+  schema_priority_band_closed_enum: { category: "schema", polarity: "positive" },
+  schema_observed_at_civil_date: { category: "schema", polarity: "negative" },
+  schema_held_permanent_rejected: { category: "schema", polarity: "negative" },
+  schema_due_on_valid_through_postures: { category: "schema", polarity: "negative" },
+};
 
-const SCHEMA_CASE_POLARITY = new Map<RequiredSchemaSelfTestCaseId, "positive" | "negative">([
-  ...POSITIVE_SCHEMA_CASE_IDS.map((id) => [id, "positive"] as const),
-  ...NEGATIVE_SCHEMA_CASE_IDS.map((id) => [id, "negative"] as const),
-]);
-assert(POSITIVE_SCHEMA_CASE_IDS.length + NEGATIVE_SCHEMA_CASE_IDS.length === REQUIRED_SCHEMA_SELFTEST_CASE_IDS.length, "schema case polarity metadata must declare each ID once");
-assert(SCHEMA_CASE_POLARITY.size === REQUIRED_SCHEMA_SELFTEST_CASE_IDS.length, "schema case polarity metadata must cover each ID exactly once");
-for (const id of REQUIRED_SCHEMA_SELFTEST_CASE_IDS) assert(SCHEMA_CASE_POLARITY.has(id), `missing explicit polarity for ${id}`);
-
-export const SCHEMA_SELFTEST_CASES: readonly SelfTestCase[] = REQUIRED_SCHEMA_SELFTEST_CASE_IDS.map((id) => ({
-  id,
-  category: id === "domain_state_required_forbidden" || id.includes("matrix")
-    ? "domain-matrix" as const
-    : id === "domain_defect_regression_required" || id.includes("testing")
-    ? "domain-testing" as const
-    : "schema" as const,
-  run(context): SelfTestResult {
-    const polarity = SCHEMA_CASE_POLARITY.get(id)!;
-    try {
-      execute(id, context);
-      return {
-        ok: true,
-        polarity,
-        ...(id === "v2_migration_escape_hatches_rejected"
-          ? { subcases: ["semantic_conversion", "frozen_legacy_span_ids", "semantic_owner_raw_fields", "raw_span"] }
-          : {}),
-      };
-    }
-    catch (error) { return { ok: false, polarity, issues: [failure(id, error)] }; }
-  },
-}));
+export const SCHEMA_SELFTEST_CASES: readonly SelfTestCase[] = REQUIRED_SCHEMA_SELFTEST_CASE_IDS.map((id) => {
+  const spec = SCHEMA_CASES[id];
+  return {
+    id,
+    category: spec.category,
+    run(context): SelfTestResult {
+      try {
+        execute(id, context);
+        return {
+          ok: true,
+          polarity: spec.polarity,
+          ...(spec.subcases === undefined ? {} : { subcases: spec.subcases }),
+        };
+      }
+      catch (error) { return { ok: false, polarity: spec.polarity, issues: [failure(id, error)] }; }
+    },
+  };
+});
 
 const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "strict_unknown_every_table",

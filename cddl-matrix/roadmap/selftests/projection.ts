@@ -252,15 +252,6 @@ function fixtureBytes(bundle: ProjectionFixtureBundle, path: ProjectionFixturePa
   return new Uint8Array(value);
 }
 
-const FIXTURE_REQUIRED_CASES = new Set<RequiredProjectionSelfTestCaseId>([
-  "status_facts_derive_fixture_parity",
-  "status_projector_before_after_target_byte_parity",
-  "status_projector_before_after_mode_parity",
-  "status_projector_before_after_message_parity",
-  "status_projector_preflight_no_partial_write",
-  "status_projector_after_matrix_handoff",
-]);
-
 const encoder = new TextEncoder();
 
 function bytes(value: string): Uint8Array {
@@ -2725,10 +2716,7 @@ function testStatusCase(
   fail(`${id} is not a status case`);
 }
 
-function testDeterminismCase(
-  id: RequiredProjectionSelfTestCaseId,
-  fixtureBundle?: ProjectionFixtureBundle,
-): SelfTestResult {
+function testDeterminismCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
   if (id === "issues_sorted") {
     const fixture = semanticFixture("exact");
     const brokenSpans = fixture.document.spans.map((span, index) =>
@@ -2779,48 +2767,138 @@ function testDeterminismCase(
     } finally { Date.now = original; }
     return pass();
   }
-  return testRenderCase(id, fixtureBundle);
+  fail(`${id} is not a determinism case`);
 }
 
-const CASE_CATEGORY: Readonly<Partial<Record<RequiredProjectionSelfTestCaseId, SelfTestCategory>>> = {
-  span_expected_byte_view_cross_chunk: "spans",
-  span_expected_byte_view_incremental_hash: "spans",
-  render_no_implicit_lf: "manifest-render",
-};
-
-function runNamedCase(
+type ProjectionCaseExecutor = (
   id: RequiredProjectionSelfTestCaseId,
   fixtureBundle?: ProjectionFixtureBundle,
-): SelfTestResult {
-  if (id.startsWith("manifest_")) return testManifestCase(id);
-  if (id.startsWith("span_")) return testSpanCase(id);
-  if (id.startsWith("debt_")) return testDebtCase(id);
-  if (id.startsWith("outputs_") || id.startsWith("write_") || id === "format_source_single_explicit" || id === "atomic_write_failure_preserves_target") {
-    return testOutputCase(id);
-  }
-  if (id.startsWith("status_")) return testStatusCase(id, fixtureBundle);
-  if (id.startsWith("render_") || id === "two_clean_renders_equal" || id === "issues_sorted" || id === "json_sorted_keys" || id === "lexical_not_locale_sort" || id === "no_clock_without_as_of") {
-    return testDeterminismCase(id, fixtureBundle);
-  }
-  return fail(`unrouted projection selftest ${id}`);
+) => SelfTestResult;
+
+interface ProjectionCaseSpec {
+  readonly category: SelfTestCategory;
+  readonly run: ProjectionCaseExecutor;
+  /** Set on the cases whose bodies read the committed status-compatibility fixture bundle. */
+  readonly fixture?: true;
 }
 
+/**
+ * Every registered case names its category and its executor here, once.  The mapped key type makes
+ * the table total over the frozen ID inventory, so a renamed, added, or removed case is a
+ * typecheck failure instead of a silent reroute into whichever executor a name prefix happened to
+ * select.
+ */
+const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: ProjectionCaseSpec } = {
+  manifest_duplicate_record: { category: "manifest-render", run: testManifestCase },
+  manifest_missing_part: { category: "manifest-render", run: testManifestCase },
+  manifest_orphan_fragment: { category: "manifest-render", run: testManifestCase },
+  manifest_unknown_id: { category: "manifest-render", run: testManifestCase },
+  manifest_wrong_kind: { category: "manifest-render", run: testManifestCase },
+  manifest_duplicate_legacy_marker: { category: "manifest-render", run: testManifestCase },
+  manifest_record_table_order_irrelevant: { category: "manifest-render", run: testManifestCase },
+  manifest_true_sequence_preserved: { category: "manifest-render", run: testManifestCase },
+  manifest_duplicate_not_tiebroken: { category: "manifest-render", run: testManifestCase },
+  manifest_semantic_only_is_not_placed: { category: "manifest-render", run: testManifestCase },
+  span_gap: { category: "spans", run: testSpanCase },
+  span_overlap: { category: "spans", run: testSpanCase },
+  span_wrong_digest: { category: "spans", run: testSpanCase },
+  span_wrong_owner: { category: "spans", run: testSpanCase },
+  span_wrong_kind: { category: "spans", run: testSpanCase },
+  span_wrong_status: { category: "spans", run: testSpanCase },
+  span_out_of_bounds: { category: "spans", run: testSpanCase },
+  span_reversed: { category: "spans", run: testSpanCase },
+  span_utf8_byte_offsets: { category: "spans", run: testSpanCase },
+  span_mid_scalar_boundary: { category: "spans", run: testSpanCase },
+  span_final_eof_owner: { category: "spans", run: testSpanCase },
+  span_empty_vacuity: { category: "spans", run: testSpanCase },
+  span_partial_prefix_rejected: { category: "spans", run: testSpanCase },
+  span_single_snapshot: { category: "spans", run: testSpanCase },
+  span_source_change_digest_rejected: { category: "spans", run: testSpanCase },
+  debt_independent_set_growth_rejected: { category: "debt", run: testDebtCase },
+  debt_category_hiding_rejected: { category: "debt", run: testDebtCase },
+  debt_unrelated_base_rejected: { category: "debt", run: testDebtCase },
+  render_zero_chunks_rejected: { category: "manifest-render", run: testRenderCase },
+  render_no_implicit_lf: { category: "manifest-render", run: testRenderCase },
+  render_semantic_consumption_once: { category: "manifest-render", run: testRenderCase },
+  render_semantic_only_zero_byte_consumption: { category: "manifest-render", run: testRenderCase },
+  render_semantic_only_identity_debt: { category: "manifest-render", run: testRenderCase },
+  render_semantic_only_span_prohibition: { category: "manifest-render", run: testRenderCase },
+  render_semantic_exact_field_binding_swapped_labels: { category: "manifest-render", run: testRenderCase },
+  render_semantic_exact_field_binding_partial: { category: "manifest-render", run: testRenderCase },
+  render_semantic_exact_field_binding_duplicate: { category: "manifest-render", run: testRenderCase },
+  render_semantic_replacement_rows_order_independent: { category: "manifest-render", run: testRenderCase },
+  render_structural_exact_field_binding_all_kinds: { category: "manifest-render", run: testRenderCase },
+  render_structural_exact_field_binding_rejections: { category: "manifest-render", run: testRenderCase },
+  render_prior_projection_irrelevant: { category: "manifest-render", run: testRenderCase },
+  outputs_duplicate_whole: { category: "output-ownership", run: testOutputCase },
+  outputs_whole_vs_slot: { category: "output-ownership", run: testOutputCase },
+  outputs_duplicate_slot: { category: "output-ownership", run: testOutputCase },
+  outputs_duplicate_binding: { category: "output-ownership", run: testOutputCase },
+  outputs_overlapping_slots: { category: "output-ownership", run: testOutputCase },
+  outputs_path_escape: { category: "output-ownership", run: testOutputCase },
+  outputs_empty_inventory: { category: "output-ownership", run: testOutputCase },
+  outputs_legacy_status_inventory_no_whole_file_claim: { category: "output-ownership", run: testOutputCase },
+  outputs_matrix_handoff_collision: { category: "output-ownership", run: testOutputCase },
+  outputs_projection_path_floor: { category: "output-ownership", run: testOutputCase },
+  outputs_slot_cardinality: { category: "output-ownership", run: testOutputCase },
+  write_check_read_only_port: { category: "output-ownership", run: testOutputCase },
+  write_query_read_only_port: { category: "output-ownership", run: testOutputCase },
+  write_projection_rejects_toml: { category: "output-ownership", run: testOutputCase },
+  write_projection_rejects_authority_files: { category: "output-ownership", run: testOutputCase },
+  write_all_rejected: { category: "output-ownership", run: testOutputCase },
+  format_source_single_explicit: { category: "output-ownership", run: testOutputCase },
+  atomic_write_failure_preserves_target: { category: "output-ownership", run: testOutputCase },
+  issues_sorted: { category: "determinism-purity", run: testDeterminismCase },
+  json_sorted_keys: { category: "determinism-purity", run: testDeterminismCase },
+  lexical_not_locale_sort: { category: "determinism-purity", run: testDeterminismCase },
+  two_clean_renders_equal: { category: "determinism-purity", run: testRenderCase },
+  no_clock_without_as_of: { category: "determinism-purity", run: testDeterminismCase },
+  debt_structured_owner_every_kind: { category: "debt", run: testDebtCase },
+  debt_same_textual_id_different_kind_distinct: { category: "debt", run: testDebtCase },
+  debt_owner_field_rename_requires_witness: { category: "debt", run: testDebtCase },
+  debt_unmodelled_coordinate_subset: { category: "debt", run: testDebtCase },
+  debt_semantic_authority_pending_both: { category: "debt", run: testDebtCase },
+  debt_progress_record_reversal_deterministic: { category: "debt", run: testDebtCase },
+  debt_progress_semantic_only_excluded: { category: "debt", run: testDebtCase },
+  debt_progress_exact_replacement_coverage: { category: "debt", run: testDebtCase },
+  debt_progress_swapped_replacement_not_covered: { category: "debt", run: testDebtCase },
+  debt_progress_typed_stale_unknown_visible: { category: "debt", run: testDebtCase },
+  debt_progress_completion_category_policy: { category: "debt", run: testDebtCase },
+  render_chunks_precede_consumption_validation: { category: "manifest-render", run: testRenderCase },
+  render_chunks_precede_span_validation: { category: "manifest-render", run: testRenderCase },
+  render_slots_resolved_before_slot_validation: { category: "manifest-render", run: testRenderCase },
+  render_invalid_chunk_skips_projection_read: { category: "manifest-render", run: testRenderCase },
+  render_committed_projection_read_last: { category: "manifest-render", run: testRenderCase },
+  render_projection_mutation_changes_only_drift: { category: "manifest-render", run: testRenderCase },
+  outputs_interval_overlap: { category: "output-ownership", run: testOutputCase },
+  outputs_interval_utf8_bytes: { category: "output-ownership", run: testOutputCase },
+  outputs_manifest_binding_owner: { category: "output-ownership", run: testOutputCase },
+  outputs_live_status_claims_all_twelve: { category: "output-ownership", run: testOutputCase },
+  outputs_production_stage_inventories: { category: "output-ownership", run: testOutputCase },
+  outputs_production_stage_required: { category: "output-ownership", run: testOutputCase },
+  outputs_production_whole_authority: { category: "output-ownership", run: testOutputCase },
+  status_facts_derive_fixture_parity: { category: "status-compat", run: testStatusCase, fixture: true },
+  status_projector_before_after_target_byte_parity: { category: "status-compat", run: testStatusCase, fixture: true },
+  status_projector_before_after_mode_parity: { category: "status-compat", run: testStatusCase, fixture: true },
+  status_projector_before_after_message_parity: { category: "status-compat", run: testStatusCase, fixture: true },
+  status_projector_preflight_no_partial_write: { category: "status-compat", run: testStatusCase, fixture: true },
+  status_projector_after_matrix_handoff: { category: "status-compat", run: testStatusCase, fixture: true },
+  span_expected_byte_view_cross_chunk: { category: "spans", run: testSpanCase },
+  span_expected_byte_view_incremental_hash: { category: "spans", run: testSpanCase },
+};
+
 export const PROJECTION_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
-  REQUIRED_PROJECTION_SELFTEST_CASE_IDS.map((id) => ({
-    id,
-    category: CASE_CATEGORY[id] ?? (
-      id.startsWith("manifest_") || id.startsWith("render_") ? "manifest-render"
-        : id.startsWith("span_") ? "spans"
-          : id.startsWith("debt_") ? "debt"
-            : id.startsWith("status_") ? "status-compat"
-              : id.startsWith("outputs_") || id.startsWith("write_") || id === "format_source_single_explicit" || id === "atomic_write_failure_preserves_target" ? "output-ownership"
-                : "determinism-purity"
-    ),
-    run: (context: SelfTestContext) => runNamedCase(
+  REQUIRED_PROJECTION_SELFTEST_CASE_IDS.map((id) => {
+    const spec = PROJECTION_CASES[id];
+    return {
       id,
-      FIXTURE_REQUIRED_CASES.has(id) ? projectionFixtureBundleFromPorts(context.ports) : undefined,
-    ),
-  })),
+      category: spec.category,
+      run: (context: SelfTestContext) => spec.run(
+        id,
+        spec.fixture === true ? projectionFixtureBundleFromPorts(context.ports) : undefined,
+      ),
+    };
+  }),
 );
 
 function projectionFixtureBundleFromPorts(ports: RoadmapSelfTestPorts): ProjectionFixtureBundle {
