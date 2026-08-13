@@ -5,8 +5,7 @@ import type { RoadmapDocumentV1, RoadmapDocumentV2 } from "../model/documents.ts
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
 import { compareAllFieldsCoverageTags } from "./fixtures.ts";
 import { observeSelfTestIssue } from "./observations.ts";
-import { composeCampaignDocument, composeRetiredIdsDocument, composeRoadmapDocument } from "../compose.ts";
-import { decodeCampaignSource, CAMPAIGN_ENUM_FIELDS, CAMPAIGN_SCHEMA_ROWS } from "../decode/campaign.ts";
+import { composeRoadmapDocument } from "../compose.ts";
 import { decodeMatrixPayload, MATRIX_ENUM_FIELDS, MATRIX_SCHEMA_ROWS } from "../decode/matrix.ts";
 import {
   expectExactTable,
@@ -32,7 +31,6 @@ import {
   SHARED_SEMANTIC_SCHEMA_ROWS,
 } from "../decode/semantic.ts";
 import { decodeTestingPayload, TESTING_ENUM_FIELDS, TESTING_SCHEMA_ROWS } from "../decode/testing.ts";
-import { decodeRetiredSource, RETIRED_ENUM_FIELDS, RETIRED_SCHEMA_ROWS } from "../decode/retired.ts";
 import { childLogicalPath, shieldTomlMarkdown } from "../decode/raw_markdown.ts";
 import { syntheticClosedDenominatorV2Source } from "./denominator.ts";
 import {
@@ -45,7 +43,7 @@ const text = (value: string): Uint8Array => UTF8.encode(value);
 const ZERO_HASH = "0".repeat(64);
 
 export const REQUIRED_SCHEMA_SELFTEST_CASE_IDS = [
-  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_campaign", "strict_unknown_retired", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "v0_missing_manifest", "v0_empty_records_floor", "truncated_span_read", "campaign_missing_root", "campaign_empty_valid", "campaign_impossible_authority_tuple_rejected", "retired_missing_root", "retired_empty_valid", "v0_all_fields_identity", "v1_all_fields_identity", "v2_semantic_identity", "v2_migration_escape_hatches_rejected", "v2_intrinsic_completion", "v2_unresolved_migration_reference_rejected", "v3_unsupported", "campaign_all_fields_identity", "retired_all_fields_identity", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "v0_rejects_semantics", "v0_rejects_authoritative", "v1_raw_requires_frozen_span", "v1_new_raw_rejected", "v1_raw_shadow_nonrendering", "v1_semantic_forbids_raw", "schema_lifecycle_raw_omission_historical", "schema_lifecycle_raw_review_arms", "schema_lifecycle_semantic_requires_reviewed", "schema_lifecycle_cross_kind_rejected", "schema_lifecycle_v0_forbidden", "schema_projection_visibility_document_arm", "schema_projection_visibility_semantic_only_arm", "schema_projection_visibility_forbidden_nonsemantic_arms", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "domain_closed_denominator_rejected", "schema_v0_exact_keys_every_table", "schema_v1_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_campaign_retired_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "schema_campaign_authority_keys", "schema_campaign_reservation_exact_keys", "schema_campaign_selection_binding_keys_forbidden", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "campaign_inline_legacy_binding_rejected", "schema_priority_band_closed_enum", "schema_campaign_slug_grammars", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
+  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "v0_missing_manifest", "v0_empty_records_floor", "truncated_span_read", "v0_all_fields_identity", "v1_all_fields_identity", "v2_semantic_identity", "v2_migration_escape_hatches_rejected", "v2_intrinsic_completion", "v2_unresolved_migration_reference_rejected", "v3_unsupported", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "v0_rejects_semantics", "v0_rejects_authoritative", "v1_raw_requires_frozen_span", "v1_new_raw_rejected", "v1_raw_shadow_nonrendering", "v1_semantic_forbids_raw", "schema_lifecycle_raw_omission_historical", "schema_lifecycle_raw_review_arms", "schema_lifecycle_semantic_requires_reviewed", "schema_lifecycle_cross_kind_rejected", "schema_lifecycle_v0_forbidden", "schema_projection_visibility_document_arm", "schema_projection_visibility_semantic_only_arm", "schema_projection_visibility_forbidden_nonsemantic_arms", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "domain_closed_denominator_rejected", "schema_v0_exact_keys_every_table", "schema_v1_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_systematic_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "systematic_illegal_cell_rejected", "systematic_illegal_coordinate_is_exclusion", "systematic_unmodelled_coordinate_not_cell", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
 ] as const;
 
 export type RequiredSchemaSelfTestCaseId = (typeof REQUIRED_SCHEMA_SELFTEST_CASE_IDS)[number];
@@ -59,8 +57,6 @@ const ALL_SCHEMA_ROWS = [
   ...SEMANTIC_V2_SCHEMA_ROWS,
   ...MATRIX_SCHEMA_ROWS,
   ...TESTING_SCHEMA_ROWS,
-  ...CAMPAIGN_SCHEMA_ROWS,
-  ...RETIRED_SCHEMA_ROWS,
 ] as const;
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -223,14 +219,6 @@ function subordinateRoadmap(
   return `[document]\nschema_version = ${version}\nauthority = "${authority}"\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\nfrozen_source_sha256 = "${ZERO_HASH}"\nfrozen_source_byte_length = 4\nfrozen_source_line_count = 1\nfrozen_source_eof = "none"\n${frozen}\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\n${render(false)}source_block_md = """S\n"""\nspan_ids = ["section"]\n\n[[fragment]]\nfragment_id = "fragment"\nprojection_group = "fixture"\n${render(!rawFragment)}${disposition("fragment", fragment)}${fragmentBody}\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\nprojection_group = "fixture"\n${render(false)}source_block_md = """R\n"""\nspan_ids = ["record"]\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\n${render(!rawPart)}${disposition("part", part)}${partBody}\n\n[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n\n[[manifest.entry]]\nkind = "fragment"\nfragment_id = "fragment"\n\n[[manifest.entry]]\nkind = "record"\nrecord_id = "matrix.fixture-record"\n\n[[manifest.entry]]\nkind = "part"\npart_id = "part"\n\n[[source_span]]\nid = "section"\nstart_byte = 0\nend_byte = 1\nsha256 = "${ZERO_HASH}"\nsource_kind = "section"\nowner_id = "fixture"\nowner_field = "source_block_md"\nmigration_status = "raw"\n\n[[source_span]]\nid = "fragment"\nstart_byte = 1\nend_byte = 2\nsha256 = "${ZERO_HASH}"\nsource_kind = "fragment"\nowner_id = "fragment"\nowner_field = "${rawFragment ? "source_block_md" : "body_md"}"\nmigration_status = "${rawFragment ? "raw" : "replaced"}"\n\n[[source_span]]\nid = "record"\nstart_byte = 2\nend_byte = 3\nsha256 = "${ZERO_HASH}"\nsource_kind = "record"\nowner_id = "matrix.fixture-record"\nowner_field = "source_block_md"\nmigration_status = "raw"\n\n[[source_span]]\nid = "part"\nstart_byte = 3\nend_byte = 4\nsha256 = "${ZERO_HASH}"\nsource_kind = "part"\nowner_id = "part"\nowner_field = "${rawPart ? "source_block_md" : "body_md"}"\nmigration_status = "${rawPart ? "raw" : "replaced"}\"\n`;
 }
 
-function emptyCampaign(): Uint8Array {
-  return text('[campaign]\nschema_version = 1\nmatrix_authority = "legacy_markdown"\ntesting_authority = "legacy_markdown"\n');
-}
-
-function emptyRetired(): Uint8Array {
-  return text("[retired_ids]\nschema_version = 1\n");
-}
-
 function decodePayload(body: string, roadmap: RoadmapName, position: "shadow" | "authority" = "shadow"): unknown {
   const bindings = shieldTomlMarkdown(text(`[p]\n${body}`), "<payload>");
   const ctx: DecodeContext = { source: bindings.source, bindings };
@@ -317,25 +305,13 @@ function canonicalRoadmapFixture(
   return reparsed;
 }
 
-function canonicalCampaignFixture(context: SelfTestContext, relative: string): void {
-  const decoded = decodeCampaignSource(readFixture(context, relative), relative, false);
-  const canonical = composeCampaignDocument(decoded);
-  assert(bytesEqual(composeCampaignDocument(decodeCampaignSource(canonical, `${relative}#canonical`)), canonical), `${relative} canonical campaign identity`);
-}
-
-function canonicalRetiredFixture(context: SelfTestContext, relative: string): void {
-  const decoded = decodeRetiredSource(readFixture(context, relative), relative, false);
-  const canonical = composeRetiredIdsDocument(decoded);
-  assert(bytesEqual(composeRetiredIdsDocument(decodeRetiredSource(canonical, `${relative}#canonical`)), canonical), `${relative} canonical retired identity`);
-}
-
-type SchemaGroupName = "roadmap" | "manifest" | "reference" | "semantic" | "matrix" | "testing" | "campaign" | "retired";
-type EnumGroupName = "roadmap" | "semantic" | "matrix" | "testing" | "campaign" | "retired";
+type SchemaGroupName = "roadmap" | "manifest" | "reference" | "semantic" | "matrix" | "testing";
+type EnumGroupName = "roadmap" | "semantic" | "matrix" | "testing";
 
 interface FixtureSource {
   readonly path: string;
   readonly bytes: Uint8Array;
-  readonly kind: "roadmap" | "campaign" | "retired";
+  readonly kind: "roadmap";
   readonly roadmap?: RoadmapName;
   readonly enum_groups: readonly EnumGroupName[];
 }
@@ -400,8 +376,6 @@ const SCHEMA_ROW_GROUPS: readonly { readonly name: SchemaGroupName; readonly row
   { name: "semantic", rows: SEMANTIC_V2_SCHEMA_ROWS },
   { name: "matrix", rows: MATRIX_SCHEMA_ROWS },
   { name: "testing", rows: TESTING_SCHEMA_ROWS },
-  { name: "campaign", rows: CAMPAIGN_SCHEMA_ROWS },
-  { name: "retired", rows: RETIRED_SCHEMA_ROWS },
 ];
 
 const ENUM_FIELD_GROUPS: readonly { readonly name: EnumGroupName; readonly fields: readonly EnumSchemaField[] }[] = [
@@ -409,8 +383,6 @@ const ENUM_FIELD_GROUPS: readonly { readonly name: EnumGroupName; readonly field
   { name: "semantic", fields: SEMANTIC_ENUM_FIELDS },
   { name: "matrix", fields: MATRIX_ENUM_FIELDS },
   { name: "testing", fields: TESTING_ENUM_FIELDS },
-  { name: "campaign", fields: CAMPAIGN_ENUM_FIELDS },
-  { name: "retired", fields: RETIRED_ENUM_FIELDS },
 ];
 
 const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
@@ -433,10 +405,6 @@ const ENUM_KEY_OVERRIDES: Readonly<Record<string, string>> = {
   "matrix:matrix_semantic_kind": "kind",
   "matrix:policy_permanence": "permanence",
   "testing:testing_semantic_kind": "kind",
-  "campaign:reservation_roadmap_path": "roadmap_path",
-  "campaign:selection_target_kind": "target_kind",
-  "campaign:campaign_cost_posture": "posture",
-  "retired:replacement_kind": "kind",
 };
 
 function injectV0StructuralFixture(bytes: Uint8Array): Uint8Array {
@@ -542,12 +510,6 @@ function productionFixtureSources(context: SelfTestContext): { fixtures: readonl
     roadmap: "matrix",
     enum_groups: ["roadmap", "semantic", "matrix"],
   });
-  for (const path of ["all-fields/campaign-pre-cutover.toml", "all-fields/campaign-matrix-cutover.toml", "all-fields/campaign-both-cut-over.toml"] as const) {
-    fixtures.push({ path, bytes: read(path), kind: "campaign", enum_groups: ["campaign"] });
-  }
-  const retiredPath = "all-fields/retired-ids-v1.toml";
-  fixtures.push({ path: retiredPath, bytes: read(retiredPath), kind: "retired", enum_groups: ["retired"] });
-
   const v0 = fixtures.find((fixture) => fixture.path === "irregular/matrix-v0.toml")!;
   fixtures.push({ ...v0, path: `${v0.path}#injected-structural-arms`, bytes: injectV0StructuralFixture(v0.bytes) });
   const v1 = fixtures.find((fixture) => fixture.path === "all-fields/matrix-v1.toml")!;
@@ -556,13 +518,7 @@ function productionFixtureSources(context: SelfTestContext): { fixtures: readonl
 }
 
 function loadFixtureSource(fixture: FixtureSource, bytes: Uint8Array, trace?: SchemaDecodeTrace): void {
-  if (fixture.kind === "roadmap") {
-    decodeRoadmapSource(bytes, fixture.path, fixture.roadmap, false, trace);
-  } else if (fixture.kind === "campaign") {
-    decodeCampaignSource(bytes, fixture.path, false, trace);
-  } else {
-    decodeRetiredSource(bytes, fixture.path, false, trace);
-  }
+  decodeRoadmapSource(bytes, fixture.path, fixture.roadmap, false, trace);
 }
 
 function resolveHeaderPath(components: readonly string[], currentIndices: ReadonlyMap<string, number>): string {
@@ -927,8 +883,6 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
   switch (id) {
     case "strict_unknown_top": expectFailure(() => decodeRoadmapSource(text(`unknown = 1\n\n${new TextDecoder().decode(minimalRoadmap(0))}`), "<unknown-top>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY"], "unknown"); return;
     case "strict_unknown_nested_record": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('span_ids = ["record"]', 'span_ids = ["record"]\nunknown = 1')), "<unknown-record>", "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]); return;
-    case "strict_unknown_campaign": expectFailure(() => decodeCampaignSource(text(new TextDecoder().decode(emptyCampaign()) + "unknown = 1\n"), "<campaign>"), ["E-SCHEMA-UNKNOWN-KEY"]); return;
-    case "strict_unknown_retired": expectFailure(() => decodeRetiredSource(text(new TextDecoder().decode(emptyRetired()) + "unknown = 1\n"), "<retired>"), ["E-SCHEMA-UNKNOWN-KEY"]); return;
     case "strict_unknown_every_table": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), ALL_SCHEMA_ROWS);
@@ -956,67 +910,12 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     case "v0_missing_manifest": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace(/\n\[\[manifest\.entry\]\][\s\S]*?(?=\n\[\[source_span\]\])/, "")), "<missing-manifest>", "matrix"), ["E-SCHEMA-MISSING-KEY"]); return;
     case "v0_empty_records_floor": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace(/\n\[\[record\]\][\s\S]*?(?=\n\[\[manifest\.entry\]\])/, "")), "<empty-records>", "matrix"), ["E-SCHEMA-MISSING-KEY", "E-SCHEMA-FLOOR"]); return;
     case "truncated_span_read": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace("start_byte = 1\nend_byte = 2", "start_byte = 1\nend_byte = 3")), "<truncated-span>", "matrix"), ["E-SPAN-BOUNDS"], "source_span[1].end_byte"); return;
-    case "campaign_missing_root": expectFailure(() => decodeCampaignSource(text("selection = []\n"), "<campaign>"), ["E-SCHEMA-MISSING-KEY"]); return;
-    case "campaign_empty_valid": { const bytes = emptyCampaign(); assert(bytesEqual(composeCampaignDocument(decodeCampaignSource(bytes, "<campaign>")), bytes), "empty campaign identity"); return; }
-    case "campaign_impossible_authority_tuple_rejected": {
-      for (const [matrixAuthority, testingAuthority] of [
-        ["legacy_markdown", "shadow"],
-        ["legacy_markdown", "authoritative"],
-        ["shadow", "authoritative"],
-      ] as const) {
-        expectFailure(() => decodeCampaignSource(text(`[campaign]\nschema_version = 1\nmatrix_authority = "${matrixAuthority}"\ntesting_authority = "${testingAuthority}"\n`), "<campaign-authority>"), ["E-SCHEMA-STATE"], "campaign.testing_authority");
-      }
-      return;
-    }
-    case "retired_missing_root": expectFailure(() => decodeRetiredSource(text(""), "<retired>"), ["E-SCHEMA-MISSING-KEY"]); return;
-    case "retired_empty_valid": { const bytes = emptyRetired(); assert(bytesEqual(composeRetiredIdsDocument(decodeRetiredSource(bytes, "<retired>")), bytes), "empty retired identity"); return; }
     case "v0_all_fields_identity": case "v1_all_fields_identity":
       assert(context !== undefined, `${id} requires fixture ports`); fixtureIdentity(context); return;
     case "domain_matrix_all_tags": case "domain_testing_all_tags":
       assert(context !== undefined, `${id} requires fixture ports`); allFieldsCoverage(context); return;
-    case "campaign_all_fields_identity": {
-      assert(context !== undefined, `${id} requires fixture ports`);
-      for (const path of ["all-fields/campaign-pre-cutover.toml", "all-fields/campaign-matrix-cutover.toml", "all-fields/campaign-both-cut-over.toml"]) {
-        const bytes = readFixture(context, path); assert(bytesEqual(composeCampaignDocument(decodeCampaignSource(bytes, path)), bytes), path);
-      }
-      const bounded = fixtureText(context, "all-fields/campaign-both-cut-over.toml");
-      expectFailure(
-        () => decodeCampaignSource(text(bounded.replace(
-          'implementation_units = ["fixture-implementation"]',
-          "implementation_units = []",
-        )), "<empty-campaign-cost-set>"),
-        ["E-SCHEMA-FLOOR"],
-        "selection[1].cost_bound.implementation_units",
-      );
-      expectFailure(
-        () => decodeCampaignSource(text(bounded.replace(
-          'implementation_units = ["fixture-implementation"]',
-          'implementation_units = ["fixture-implementation", "fixture-implementation"]',
-        )), "<duplicate-campaign-cost-set>"),
-        ["E-SCHEMA-TYPE"],
-        "selection[1].cost_bound.implementation_units",
-      );
-      expectFailure(
-        () => decodeCampaignSource(text(bounded.replace(
-          'validation_units = ["fixture-validation"]',
-          'validation_units = ["fixture-implementation"]',
-        )), "<overlapping-campaign-cost-sets>"),
-        ["E-SCHEMA-STATE"],
-        "selection[1].cost_bound.validation_units",
-      );
-      expectFailure(
-        () => decodeCampaignSource(text(bounded.replace(
-          'assumption_md = """The fixture bounds one reviewed implementation unit and one validation unit."""',
-          'assumption_md = """"""',
-        )), "<empty-campaign-cost-assumption>"),
-        ["E-SCHEMA-FLOOR"],
-        "selection[1].cost_bound.assumption_md",
-      );
-      return;
-    }
-    case "retired_all_fields_identity": { assert(context !== undefined, `${id} requires fixture ports`); const path = "all-fields/retired-ids-v1.toml"; const bytes = readFixture(context, path); assert(bytesEqual(composeRetiredIdsDocument(decodeRetiredSource(bytes, path)), bytes), path); return; }
     case "noncanonical_comment": expectFailure(() => decodeRoadmapSource(text(`# comment\n${new TextDecoder().decode(minimalRoadmap(0))}`), "<comment>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
-    case "noncanonical_inline_table": expectFailure(() => decodeRetiredSource(text(`[retired_ids]\nschema_version = 1\n\n[[retired_ids.entry]]\nid = "matrix.fixture-retired"\nlast_active_at = "${"0".repeat(40)}"\nreplacement = { kind = "gate", gate_id = "fixture", claim_md = """Claim.""" }\n`), "<inline-table>"), ["E-TOML-NONCANONICAL"]); return;
+    case "noncanonical_inline_table": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('[[manifest.entry]]\nkind = "section"\nsection_id = "fixture"\n', '[manifest]\nentry = [{ kind = "section", section_id = "fixture" }]\n\n')), "<inline-table>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
     case "noncanonical_literal_string": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('source_block_md = """S\n"""', "source_block_md = '''S\n'''")), "<literal>", "matrix"), ["E-CODEC-PLACEHOLDER"]); return;
     case "noncanonical_set_order": {
       expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap(0)).replace('title = "Fixture"', 'title = "Fixture"\nlegacy_aliases = ["z", "a"]')), "<set-order>", "matrix"), ["E-TOML-NONCANONICAL"]);
@@ -1326,7 +1225,6 @@ expires_at = "2026-08-12"
       return;
     }
     case "schema_observed_at_civil_date": expectFailure(() => decodePayload('kind = "testing_cost"\nsummary_md = """Cost."""\ncost_posture = "historical_observation"\nunit = "ms"\nscope_md = """Scope."""\nvalue_min = 1\nvalue_max = 2\nobserved_at = "2025-02-29"\nenvironment_md = """Env."""\nevidence_ids = ["testing.fixture-evidence"]\n', "testing"), ["E-SCHEMA-TYPE"]); return;
-    case "schema_campaign_slug_grammars": expectFailure(() => decodeCampaignSource(text(`${new TextDecoder().decode(emptyCampaign())}\n[[selection]]\nitem_id = "matrix.fixture-item"\ntarget_kind = "active_id"\nselected_state = "selected"\npriority_class = "High"\nselection_reason_md = """Reason."""\ncycle = "cycle-one"\nremaining_scope_md = """Remain."""\n`), "<slug>"), ["E-SCHEMA-TYPE"]); return;
     case "schema_duplicate_assignment_rejected": duplicateParseRejected(new TextDecoder().decode(minimalRoadmap(0)).replace("schema_version = 0", "schema_version = 0\nschema_version = 0")); return;
     case "schema_duplicate_table_rejected": duplicateParseRejected(new TextDecoder().decode(minimalRoadmap(0)).replace("\n[[section]]", "\n[document]\n\n[[section]]")); return;
     case "schema_duplicate_nested_payload_rejected": {
@@ -1404,28 +1302,6 @@ expires_at = "2026-08-12"
       canonicalRoadmapFixture(context, "all-fields/matrix-v1.toml", "matrix");
       return;
     }
-    case "schema_campaign_retired_exact_keys_every_arm": {
-      assert(context !== undefined, `${id} requires fixture ports`);
-      assertRowMutationCoverage(fixtureMutationProof(context), [...CAMPAIGN_SCHEMA_ROWS, ...RETIRED_SCHEMA_ROWS]);
-      canonicalCampaignFixture(context, "all-fields/campaign-pre-cutover.toml");
-      canonicalRetiredFixture(context, "all-fields/retired-ids-v1.toml");
-      return;
-    }
-    case "schema_campaign_authority_keys": case "schema_campaign_reservation_exact_keys": {
-      assert(context !== undefined, `${id} requires fixture ports`);
-      assertRowMutationCoverage(fixtureMutationProof(context), CAMPAIGN_SCHEMA_ROWS);
-      canonicalCampaignFixture(context, "all-fields/campaign-pre-cutover.toml");
-      canonicalCampaignFixture(context, "all-fields/campaign-matrix-cutover.toml");
-      canonicalCampaignFixture(context, "all-fields/campaign-both-cut-over.toml");
-      return;
-    }
-    case "schema_campaign_selection_binding_keys_forbidden": case "campaign_inline_legacy_binding_rejected": {
-      assert(context !== undefined, `${id} requires fixture ports`);
-      const proof = fixtureMutationProof(context);
-      assertRowMutationCoverage(proof, [CAMPAIGN_SCHEMA_ROWS[3], CAMPAIGN_SCHEMA_ROWS[4]]);
-      observeProofIssue(proof, (issue) => issue.code === "E-SCHEMA-FORBIDDEN-KEY" && issue.logical_path.includes("selection"));
-      return;
-    }
     case "schema_due_on_valid_through_postures": {
       expectFailure(() => decodePayload('kind = "signal"\nsummary_md = """Unblock."""\ntransition_kind = "unblock_predicate"\nowner_reference_id = "owner"\nevent_md = """Event."""\ncheck_procedure_md = """Check."""\ndue_action_md = """Act."""\ndue_on = "2026-08-11"\nevaluation = "unknown"\n', "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]);
       expectFailure(() => decodePayload('kind = "evidence"\nsummary_md = """Historical."""\nevidence_kind = "source_read"\nclaim_md = """Claim."""\nevidence_verdict = "confirmed"\nfreshness = "historical"\nreference_ids = ["source"]\nobserved_at = "2026-08-11"\nvalid_through = "2026-08-12"\nenvironment_md = """Env."""\nunprobed_remainder_md = """None."""\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix"), ["E-SCHEMA-FORBIDDEN-KEY", "E-SCHEMA-STATE"]);
@@ -1441,8 +1317,6 @@ expires_at = "2026-08-12"
         ["irregular/matrix-v0.toml", "matrix"], ["irregular/testing-v0.toml", "testing"],
         ["all-fields/matrix-v1.toml", "matrix"], ["all-fields/testing-v1.toml", "testing"],
       ] as const) canonicalRoadmapFixture(context, path, roadmap);
-      for (const path of ["all-fields/campaign-pre-cutover.toml", "all-fields/campaign-matrix-cutover.toml", "all-fields/campaign-both-cut-over.toml"]) canonicalCampaignFixture(context, path);
-      canonicalRetiredFixture(context, "all-fields/retired-ids-v1.toml");
       const matrix = composeRoadmapDocument(decodeRoadmapSource(readFixture(context, "all-fields/matrix-v1.toml"), "<work-order>", "matrix", false));
       const matrixText = new TextDecoder().decode(matrix);
       const workStart = matrixText.indexOf('[[record]]\nid = "matrix.fixture-task-a"');
@@ -1456,7 +1330,7 @@ expires_at = "2026-08-12"
         "control_ids = ",
         "regression_evidence_ids = ",
         "regression_gap_ids = ",
-      ], "WP0 ready-work key universe");
+      ], "ready-work key universe");
       return;
     }
     case "domain_transition_each_kind": {
@@ -1474,15 +1348,11 @@ function failure(id: string, error: unknown): RoadmapIssue {
 }
 
 const POSITIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
-  "campaign_empty_valid",
-  "retired_empty_valid",
   "v0_all_fields_identity",
   "v1_all_fields_identity",
   "v2_semantic_identity",
   "v2_migration_escape_hatches_rejected",
   "v2_intrinsic_completion",
-  "campaign_all_fields_identity",
-  "retired_all_fields_identity",
   "toml_terminal_newline",
   "v1_raw_shadow_nonrendering",
   "schema_lifecycle_raw_omission_historical",
@@ -1499,10 +1369,7 @@ const POSITIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "schema_testing_payload_exact_keys_every_arm",
   "schema_systematic_exact_keys_every_arm",
   "schema_reference_exact_keys_every_arm",
-  "schema_campaign_retired_exact_keys_every_arm",
   "schema_canonical_key_order_every_arm",
-  "schema_campaign_authority_keys",
-  "schema_campaign_reservation_exact_keys",
   "systematic_illegal_coordinate_is_exclusion",
   "schema_priority_band_closed_enum",
 ];
@@ -1511,8 +1378,6 @@ const NEGATIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "strict_unknown_top",
   "strict_unknown_nested_record",
   "strict_unknown_reference",
-  "strict_unknown_campaign",
-  "strict_unknown_retired",
   "strict_unknown_every_table",
   "strict_enum_every_field",
   "strict_unknown_kind",
@@ -1523,9 +1388,6 @@ const NEGATIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "v0_missing_manifest",
   "v0_empty_records_floor",
   "truncated_span_read",
-  "campaign_missing_root",
-  "campaign_impossible_authority_tuple_rejected",
-  "retired_missing_root",
   "noncanonical_literal_string",
   "noncanonical_table_order",
   "noncanonical_set_order",
@@ -1557,13 +1419,10 @@ const NEGATIVE_SCHEMA_CASE_IDS: readonly RequiredSchemaSelfTestCaseId[] = [
   "schema_duplicate_assignment_rejected",
   "schema_duplicate_table_rejected",
   "schema_duplicate_nested_payload_rejected",
-  "schema_campaign_selection_binding_keys_forbidden",
   "noncanonical_comment",
   "noncanonical_inline_table",
   "systematic_illegal_cell_rejected",
   "systematic_unmodelled_coordinate_not_cell",
-  "campaign_inline_legacy_binding_rejected",
-  "schema_campaign_slug_grammars",
   "schema_observed_at_civil_date",
   "schema_held_permanent_rejected",
   "schema_due_on_valid_through_postures",
@@ -1609,8 +1468,6 @@ const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "strict_unknown_every_table",
   "v0_all_fields_identity",
   "v1_all_fields_identity",
-  "campaign_all_fields_identity",
-  "retired_all_fields_identity",
   "v1_raw_shadow_nonrendering",
   "domain_matrix_all_tags",
   "domain_testing_all_tags",
@@ -1627,12 +1484,7 @@ const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "schema_testing_payload_exact_keys_every_arm",
   "schema_systematic_exact_keys_every_arm",
   "schema_reference_exact_keys_every_arm",
-  "schema_campaign_retired_exact_keys_every_arm",
   "schema_canonical_key_order_every_arm",
-  "schema_campaign_authority_keys",
-  "schema_campaign_reservation_exact_keys",
-  "schema_campaign_selection_binding_keys_forbidden",
-  "campaign_inline_legacy_binding_rejected",
   "schema_priority_band_closed_enum",
   "systematic_unmodelled_coordinate_not_cell",
 ]);

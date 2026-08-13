@@ -1,4 +1,4 @@
-; Dependency spec for the @duplicates-reject --extern-import fixture (WP4). Its minted
+; Dependency spec for the @duplicates-reject --extern-import fixture. Its minted
 ; extern-interface export MUST carry the `@duplicates reject` directive on each collection rule so a
 ; consumer regenerating from the export rebuilds the SAME uniqueness twins (OrderedSet /
 ; NonEmptyOrderedSet) — without the projected directive the consumer would embed a preserve-mode

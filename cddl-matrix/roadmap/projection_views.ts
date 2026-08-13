@@ -382,9 +382,9 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
         history: UTF8.encode("\n### Attributed and historical operating guidance\n\n"),
       };
       const replacement = (["systems", "live", "history"] as const).flatMap((kind) =>
-        buckets[kind].length === 0 ? [] : [generatedPiece(`wp7-operational-${kind}`, headings[kind]), ...buckets[kind]]
+        buckets[kind].length === 0 ? [] : [generatedPiece(`layout-operational-${kind}`, headings[kind]), ...buckets[kind]]
       );
-      replacement.push(generatedPiece("wp7-operational-tail", UTF8.encode("\n")));
+      replacement.push(generatedPiece("layout-operational-tail", UTF8.encode("\n")));
       pieces.splice(start + 1, end - start - 1, ...replacement);
     }
   }
@@ -400,7 +400,7 @@ function curatedPieces(document: RoadmapDocument, completed: CompletedRenderIr, 
   });
   if (anchored !== visible.size) issues.push(issue(document, "projection.layout.anchors",
     `curated layout anchored ${anchored} records but ${visible.size} are document-visible`));
-  return rank < 1 ? pieces : [generatedPiece("wp7-ownership-banner", UTF8.encode(
+  return rank < 1 ? pieces : [generatedPiece("layout-ownership-banner", UTF8.encode(
     `<!-- GENERATED FILE: owned by ${document.document.source_path}; edit that TOML source and run project_roadmaps.ts --write. -->\n\n`,
   )), ...pieces];
 }

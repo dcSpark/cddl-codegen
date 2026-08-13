@@ -102,7 +102,7 @@ spec = "allowed"
 note = "A three-arm type choice whose two FIXED arms share a CBOR major type (`t = true / null / tstr`): `true` and `null` are both major 7 specials, so the arm discriminant cannot be the wire major. Dispatch path: BRUTE-FORCE try-each-arm — the emitted deserialize anchors `raw.position()`, runs each arm's reader in source order (the `true` arm verifying its constant as `FixedValueMismatch`, the `null` arm as `ExpectedNull`) and rewinds to the anchor after each failure, ending in `NoVariantMatchedWithCauses`. That is a DISTINCT emission site from the type-match dispatch every other fixed-arm cell in this matrix takes (`contain.group-choice-arm.type2.value.map` and its array-rep siblings), which is why the kind axis has to be probed on both: a fixed kind proven on one path certifies nothing about the other. Deliberately three arms — the two-arm `true / null` is not this shape at all: it now uses the nominal fixed/null Option lowering pinned by `contain.choice-member.type2.value.fixed_null`. Executed under the flag that reaches the site by `fixed_special_type_choice_brute` in `tests/preserve-encodings/input.cddl`. RFC8610 §2.2.2, App. D."
 example = "t = true / null / tstr"
 
-# Closed WP9 representative-by-kind slice. These rows enumerate one deliberately reviewed canonical
+# Closed representative-by-kind slice. These rows enumerate one deliberately reviewed canonical
 # literal for every `FixedValue` IR variant reachable as a bare rule-level type-choice arm. They do
 # NOT claim every literal of a kind behaves alike: for example, the canonical text representative
 # `"x"` is supported while the separately pinned keyword-minting text `"self"` is gracefully refused.

@@ -542,7 +542,7 @@ function matrixSlotResolvers(
           // and migration progress do not change the surrounding raw layout owned by other nodes.
           return [`status_header_markers:${payload.slot_id}`, payload.bytes] as const;
         }
-        // WP1 compatibility fixtures model a slot as a complete standalone projection line.
+        // Compatibility fixtures model a slot as a complete standalone projection line.
         const line = new Uint8Array(payload.bytes.byteLength + 1);
         line.set(payload.bytes);
         line[payload.bytes.byteLength] = 0x0a;

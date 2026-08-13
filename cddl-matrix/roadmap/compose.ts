@@ -1,5 +1,4 @@
 import type {
-  CampaignDocumentV1,
   Fragment,
   GeneratedSlot,
   ManifestEntry,
@@ -8,7 +7,6 @@ import type {
   RecordNode,
   Reference,
   Relation,
-  RetiredIdsDocumentV1,
   RoadmapDocument,
   Section,
   SemanticPayload,
@@ -688,73 +686,8 @@ export function composeRoadmapDocument(document: RoadmapDocument): Uint8Array {
   return writer.finish();
 }
 
-export function composeCampaignDocument(document: CampaignDocumentV1): Uint8Array {
-  const writer = new CanonicalTomlWriter();
-  writer.table("campaign");
-  writer.integer("schema_version", document.campaign.schema_version);
-  writer.string("matrix_authority", document.campaign.matrix_authority);
-  writer.string("testing_authority", document.campaign.testing_authority);
-  for (const reservation of sorted(document.legacy_markdown_reservations, (value) => value.id)) {
-    writer.arrayTable("legacy_markdown_reservation");
-    writer.string("id", reservation.id);
-    writer.string("work_kind", reservation.work_kind);
-    writer.string("roadmap_path", reservation.roadmap_path);
-    writer.string("source_title", reservation.source_title);
-    writer.integer("source_start_byte", reservation.source_start_byte);
-    writer.integer("source_end_byte", reservation.source_end_byte);
-    writer.string("source_sha256", reservation.source_sha256);
-    writer.string("whole_source_sha256", reservation.whole_source_sha256);
-  }
-  for (const selection of sorted(document.selections, (value) => value.item_id)) {
-    writer.arrayTable("selection");
-    writer.string("item_id", selection.item_id);
-    writer.string("target_kind", selection.target_kind);
-    writer.string("selected_state", selection.selected_state);
-    writer.string("priority_class", selection.priority_class);
-    writer.markdown("selection_reason_md", selection.selection_reason_md);
-    writer.string("cycle", selection.cycle);
-    writer.markdown("remaining_scope_md", selection.remaining_scope_md);
-    optionalString(writer, "assignee", selection.assignee);
-    optionalString(writer, "pickup_commit", selection.pickup_commit);
-    if (selection.cost_bound !== undefined) {
-      writer.table("selection.cost_bound");
-      writer.string("posture", selection.cost_bound.posture);
-      writer.strings("implementation_units", selection.cost_bound.implementation_units, true);
-      writer.strings("validation_units", selection.cost_bound.validation_units, true);
-      writer.markdown("assumption_md", selection.cost_bound.assumption_md);
-    }
-  }
-  return writer.finish();
-}
-
-export function composeRetiredIdsDocument(document: RetiredIdsDocumentV1): Uint8Array {
-  const writer = new CanonicalTomlWriter();
-  writer.table("retired_ids");
-  writer.integer("schema_version", document.retired_ids.schema_version);
-  for (const entry of sorted(document.entries, (value) => value.id)) {
-    writer.arrayTable("retired_ids.entry");
-    writer.string("id", entry.id);
-    writer.string("last_active_at", entry.last_active_at);
-    writer.table("retired_ids.entry.replacement");
-    writer.string("kind", entry.replacement.kind);
-    if (entry.replacement.kind === "gate") {
-      writer.string("gate_id", entry.replacement.gate_id);
-    } else if (entry.replacement.kind === "test_symbol") {
-      writer.string("test_id", entry.replacement.test_id);
-      writer.string("symbol", entry.replacement.symbol);
-    } else {
-      writer.string("path", entry.replacement.path);
-      writer.string("heading", entry.replacement.heading);
-    }
-    writer.markdown("claim_md", entry.replacement.claim_md);
-  }
-  return writer.finish();
-}
-
-export type CanonicalTomlDocument = RoadmapDocument | CampaignDocumentV1 | RetiredIdsDocumentV1;
+export type CanonicalTomlDocument = RoadmapDocument;
 
 export function composeCanonicalDocument(document: CanonicalTomlDocument): Uint8Array {
-  if ("campaign" in document) return composeCampaignDocument(document);
-  if ("retired_ids" in document) return composeRetiredIdsDocument(document);
   return composeRoadmapDocument(document);
 }

@@ -445,12 +445,12 @@ export const TESTING_ADAPTER: RoadmapAdapter<SemanticPayload> = Object.freeze({
     }, indexes, out);
   },
   renderSemantic: renderCanonicalSemanticRecord,
-  // Testing has no domain-specific reference universe in WP1. Gate/test/file providers are shared
+  // Testing has no domain-specific reference universe. Gate/test/file providers are shared
   // joins, and an empty adapter member list is an explicit contract rather than a missing registry.
   referenceProviders(_view: RegistryView) {
     return [];
   },
-  // Testing has no generated roadmap slots in WP1. Synthetic transport fixtures inject their own
+  // Testing has no generated roadmap slots. Synthetic transport fixtures inject their own
   // resolver at the render-service seam and do not expand production adapter authority.
   slotResolvers(_view: RegistryView, _document: RoadmapDocument): ReadonlyMap<SlotId, GeneratedSlotResolver> {
     return new Map<SlotId, GeneratedSlotResolver>();
@@ -498,7 +498,7 @@ export const TESTING_ADAPTER: RoadmapAdapter<SemanticPayload> = Object.freeze({
         code: "E-SCHEMA-FLOOR",
         source: doc.document.source_path,
         logical_path: "generated_slot",
-        message: "testing roadmap declares exactly zero generated slots in WP1",
+        message: "testing roadmap declares exactly zero generated slots",
         exit: 1,
       });
     }

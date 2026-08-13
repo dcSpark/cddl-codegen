@@ -523,7 +523,7 @@ function testProviders(bundle: AdapterFixtureBundle): void {
   const view = registryView(bundle, matrix);
   const providers = MATRIX_ADAPTER.referenceProviders(view);
   assert(providers.map((provider) => provider.kind).join("|") === "matrix_cell|matrix_feature|matrix_role", "matrix provider order is not code-point deterministic");
-  assert(TESTING_ADAPTER.referenceProviders(view).length === 0, "testing domain provider list must be explicitly empty in WP1");
+  assert(TESTING_ADAPTER.referenceProviders(view).length === 0, "testing domain provider list must be explicitly empty");
 
   const core = createCoreReferenceProviders(built.indexes.first_class, authority.authority);
   const allKinds = [...core, ...providers].map((provider) => provider.kind).sort(codePointSort);
@@ -668,7 +668,7 @@ function testCrossRoadmapJoinSubstrate(bundle: AdapterFixtureBundle): void {
   const target = [...testingBuilt.payload_records.values()].find((provider) => provider.payload.kind === "evidence");
   assert(source !== undefined && target !== undefined, "cross-roadmap fixture lacks work/evidence endpoints");
   const foreignReference: Reference = {
-    id: "wp5c-cross-roadmap" as ReferenceId,
+    id: "cross-roadmap" as ReferenceId,
     source: source.record.id,
     kind: "roadmap",
     target_id: target.record.id,
@@ -705,22 +705,22 @@ function testCrossRoadmapJoinSubstrate(bundle: AdapterFixtureBundle): void {
     validateRoadmapReferences(scoped, registryView(bundle, matrix), {
       providers: MATRIX_ADAPTER.referenceProviders(registryView(bundle, matrix)),
       first_class: combined.first_class,
-    }).length === 0, "combined WP5C universe did not resolve the foreign semantic/relation/reference tuple");
+    }).length === 0, "combined cross-roadmap universe did not resolve the foreign semantic/relation/reference tuple");
   const absentCombined: SemanticJoinUniverse = {
     first_class: matrixBuilt.first_class,
     payload_records: matrixBuilt.payload_records,
   };
   assert(validateSemanticRoadmapJoins(scoped, absentCombined, "<combined-missing>").some((entry) =>
     entry.code === "E-REFERENCE-UNRESOLVED" && entry.logical_path === sourcePath
-  ), "combined WP5C universe accepted a missing foreign semantic target");
+  ), "combined cross-roadmap universe accepted a missing foreign semantic target");
   assert(validateRelations(scoped.relations, absentCombined.first_class, "<combined-missing>").some((entry) =>
     entry.code === "E-RELATION-ENDPOINT" && entry.logical_path.endsWith(".target")
-  ), "combined WP5C universe accepted a missing foreign relation target");
+  ), "combined cross-roadmap universe accepted a missing foreign relation target");
   assert(validateRoadmapReferences(scoped, registryView(bundle, matrix), {
     providers: MATRIX_ADAPTER.referenceProviders(registryView(bundle, matrix)),
     first_class: absentCombined.first_class,
   }).some((entry) => entry.code === "E-REFERENCE-UNRESOLVED"),
-  "combined WP5C universe accepted a missing foreign roadmap reference target");
+  "combined cross-roadmap universe accepted a missing foreign roadmap reference target");
   assert(validateCombinedRoadmapReferences(scoped, absentCombined.first_class, "<combined-missing>").some((entry) =>
     entry.code === "E-REFERENCE-UNRESOLVED"
   ), "production combined reference seam accepted a missing foreign roadmap target");
@@ -799,7 +799,7 @@ function testSlots(bundle: AdapterFixtureBundle): void {
     expectThrows(() => resolver.resolve({ ...slot, binding: `readme_payload:${slotId}` }, view), `resolver ${slotId} accepted a wrong binding kind`);
   }
   assert(projected === new TextDecoder("utf-8", { fatal: true }).decode(afterBytes), "the four resolver marker interiors do not transform committed status-compat before bytes into exact after bytes");
-  assert(TESTING_ADAPTER.slotResolvers(view, testingDocument).size === 0, "testing generated-slot registry must be declared empty in WP1");
+  assert(TESTING_ADAPTER.slotResolvers(view, testingDocument).size === 0, "testing generated-slot registry must be declared empty");
   const emptyStatus: MatrixStatusInputs = {
     matrix: { annotations: [], features: [], containment_ids: [], control_operator_ids: [] },
     catalog: { rows: [] },

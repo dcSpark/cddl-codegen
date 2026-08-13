@@ -10,7 +10,7 @@ export function projectionLayoutRank(layout: ProjectionLayout): number {
   return PROJECTION_LAYOUTS.indexOf(layout);
 }
 
-/** Omitted schema-v2 metadata means the historical WP6 byte layout, never the newest layout. */
+/** Omitted schema-v2 metadata means the historical byte layout, never the newest layout. */
 export function projectionLayout(document: RoadmapDocument): ProjectionLayout {
   return document.document.schema_version === 2
     ? document.document.projection_layout ?? "legacy_v1"

@@ -87,38 +87,6 @@ projection_eof = "lf"
 
 [[case]]
 kind = "single_file"
-id = "fixture_campaign_pre_cutover"
-class = "all_fields"
-input = "all-fields/campaign-pre-cutover.toml"
-adapter = "campaign"
-schema_version = 1
-
-[[case]]
-kind = "single_file"
-id = "fixture_campaign_matrix_cutover"
-class = "all_fields"
-input = "all-fields/campaign-matrix-cutover.toml"
-adapter = "campaign"
-schema_version = 1
-
-[[case]]
-kind = "single_file"
-id = "fixture_campaign_both_cut_over"
-class = "all_fields"
-input = "all-fields/campaign-both-cut-over.toml"
-adapter = "campaign"
-schema_version = 1
-
-[[case]]
-kind = "single_file"
-id = "fixture_retired_ids_v1"
-class = "all_fields"
-input = "all-fields/retired-ids-v1.toml"
-adapter = "retired"
-schema_version = 1
-
-[[case]]
-kind = "single_file"
 id = "fixture_irregular_matrix_v0"
 class = "irregular"
 input = "irregular/matrix-v0.toml"

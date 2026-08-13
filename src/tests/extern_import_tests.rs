@@ -206,7 +206,7 @@ fn extern_import_matches_pinless_hand_stub_byte_for_byte() {
     }
 }
 
-/// WP4 (duplicates policy): `@duplicates reject` MUST project into the dep's extern-interface export,
+/// Duplicates policy: `@duplicates reject` MUST project into the dep's extern-interface export,
 /// so a consumer regenerating from the export rebuilds the SAME uniqueness twins. Without the
 /// projected directive the consumer would embed a preserve-mode `Vec`/`NonEmptyVec` that silently
 /// ACCEPTS the duplicates the dep rejects — the exact cross-crate skew this seam exists to kill.

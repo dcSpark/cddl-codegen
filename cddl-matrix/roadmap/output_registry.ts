@@ -6,9 +6,8 @@ import type {
 } from "./adapters/types.ts";
 import type { RoadmapIssue } from "./errors.ts";
 import type { RepoPath, RoadmapName, SlotId } from "./model/core.ts";
-import type { CampaignDocumentV1, RoadmapDocument } from "./model/documents.ts";
+import type { RoadmapDocument } from "./model/documents.ts";
 import type { CompletedRenderIr } from "./render_ir.ts";
-import { campaignAuthorityTupleIsReachable } from "./campaign_authority.ts";
 
 export type {
   ByteInterval,
@@ -256,19 +255,12 @@ const PRODUCTION_OUTPUT_INVENTORIES: Readonly<Record<ProductionOutputStage, Prod
     both_authoritative: fixedProductionInventory("both_authoritative"),
   });
 
-/** Select the only reachable production ownership stage from canonical campaign authority. */
-export function productionOutputStage(
-  campaign?: Pick<CampaignDocumentV1, "campaign">,
-): ProductionOutputStage {
-  if (campaign !== undefined && !campaignAuthorityTupleIsReachable(
-    campaign.campaign.matrix_authority,
-    campaign.campaign.testing_authority,
-  )) {
-    throw new Error("internal: testing campaign authority cannot exceed matrix campaign authority");
-  }
-  if (campaign?.campaign.testing_authority === "authoritative") return "both_authoritative";
-  if (campaign?.campaign.matrix_authority === "authoritative") return "matrix_authoritative";
-  return "pre_cutover";
+/**
+ * The one production ownership stage. Both roadmaps project from their TOML source, so the
+ * projector owns both whole-file projections alongside the README/tests status slots.
+ */
+export function productionOutputStage(): ProductionOutputStage {
+  return "both_authoritative";
 }
 
 export function productionOutputInventory(stage: ProductionOutputStage): ProductionOutputInventory {
@@ -279,9 +271,8 @@ export function productionOutputInventory(stage: ProductionOutputStage): Product
 export const LEGACY_STATUS_OUTPUT_REGISTRY = PRODUCTION_OUTPUT_INVENTORIES.pre_cutover.registry;
 
 /**
- * Revalidate an injected revision view against the campaign-selected closed production ownership
- * inventory for that exact revision. The stage is mandatory: claim shape cannot infer campaign
- * authority.
+ * Revalidate an injected revision view against the closed production ownership inventory for that
+ * exact revision. The stage stays mandatory: claim shape alone cannot infer ownership authority.
  */
 export function validateProductionOutputRegistry(
   claims: readonly OutputClaim[],

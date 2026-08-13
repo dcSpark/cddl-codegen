@@ -11,10 +11,10 @@ tests/testing-roadmap.toml`, validate both roadmap projections with `bun run pro
 --roadmap all --check`, and regenerate the testing projection only with `bun run project_roadmaps.ts
 --roadmap testing --write`. Never hand-edit the generated `tests/TESTING_ROADMAP.md`.
 
-Campaign selection and pickup state remain solely owned by `roadmap-campaign.toml`; roadmap entries
-must not duplicate them. To roll back this testing-authority cutover, revert the complete WP4T
-cutover commit. The matrix roadmap and campaign authority remain in effect. Do not manually reverse
-the testing authority field or reactivate its legacy reservation.
+Selection and pickup state — which entries are picked up, by whom, and in what order — is
+plan-internal and is not tracked in the repository at all: it lives in the gitignored `draft/`
+directory, and no committed file records it and no gate reads it. Roadmap entries record only
+durable facts about the work itself.
 
 ## Running everything
 
@@ -24,7 +24,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~59s<!-- /gen:sh:tests-tier-fast --> |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~1.2 min<!-- /gen:sh:tests-tier-fast --> |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~13 min<!-- /gen:sh:tests-tier-local --> |
 | `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~49 min<!-- /gen:sh:tests-tier-full --> |
 

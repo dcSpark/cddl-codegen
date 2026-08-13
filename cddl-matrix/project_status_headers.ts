@@ -2,19 +2,18 @@
 /**
  * Status-header count projection — pure committed-file reads, no cargo and no external oracles.
  *
- * The campaign-stage-owned marker payloads are derived and planned by the pure roadmap
+ * The status-slot marker payloads are derived and planned by the pure roadmap
  * compatibility seam. This file classifies argv before it can read a Markdown target, snapshots
  * each still-owned target once for check/write, and applies a successful write plan in historical
- * order. Once matrix authority cuts over, ROADMAP.md is no longer in this writer's inventory.
+ * order. ROADMAP.md is projected from its TOML source and is not in this writer's inventory.
  *
  * Run from cddl-matrix/:
  *   bun run project_status_headers.ts           -> readable count report
  *   bun run project_status_headers.ts --check   -> derivation/marker/drift gate
  *   bun run project_status_headers.ts --write   -> preflight all targets, then rewrite all spans
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { REGISTRY } from "../check.ts";
-import { decodeCampaignSource } from "./roadmap/decode/campaign.ts";
 import {
   classifyLegacyStatusHeaderInvocation,
   planLegacyStatusHeaderRun,
@@ -120,16 +119,7 @@ function deriveInputs(): MatrixStatusInputs {
 const argv = process.argv.slice(2);
 const mode = classifyLegacyStatusHeaderInvocation(argv);
 const inputs = deriveInputs();
-const campaignRelative = "../roadmap-campaign.toml";
-const campaignAbsolute = pathOf(campaignRelative);
-const campaign = existsSync(campaignAbsolute)
-  ? decodeCampaignSource(
-    new Uint8Array(readFileSync(campaignAbsolute)),
-    "roadmap-campaign.toml",
-    true,
-  )
-  : undefined;
-const outputStage = productionOutputStage(campaign);
+const outputStage = productionOutputStage();
 const ownedPaths = new Set(
   productionOutputInventory(outputStage).status_claims.map((claim) => claim.path),
 );

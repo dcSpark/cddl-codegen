@@ -21,7 +21,7 @@ body_md = """## Declined (decided, with a reopening signal unless explicitly per
 [[section.source_replacement]]
 span_id = "span-section-declined-boundaries"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact section bytes are semantic document prose.
+review_note_md = """Exact section bytes are semantic document prose.
 """
 
 [[section]]
@@ -35,7 +35,7 @@ body_md = """## Deferred features (build when a real consumer needs them)
 [[section.source_replacement]]
 span_id = "span-section-deferred-features"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact section bytes are semantic document prose.
+review_note_md = """Exact section bytes are semantic document prose.
 """
 
 [[section]]
@@ -49,7 +49,7 @@ body_md = """## Next work items, in priority order
 [[section.source_replacement]]
 span_id = "span-section-next-priority"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact section bytes are semantic document prose.
+review_note_md = """Exact section bytes are semantic document prose.
 """
 
 [[section]]
@@ -78,7 +78,7 @@ remaining work on this axis is carried by the future items below.
 [[section.source_replacement]]
 span_id = "span-section-north-star"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact section bytes are semantic document prose.
+review_note_md = """Exact section bytes are semantic document prose.
 """
 
 [[section]]
@@ -92,7 +92,7 @@ body_md = """## Operational watches
 [[section.source_replacement]]
 span_id = "span-section-operational-watches"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact section bytes are semantic document prose.
+review_note_md = """Exact section bytes are semantic document prose.
 """
 
 [[section]]
@@ -106,7 +106,7 @@ body_md = """## Pending maintainer action
 [[section.source_replacement]]
 span_id = "span-section-pending-maintainer"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact section bytes are semantic document prose.
+review_note_md = """Exact section bytes are semantic document prose.
 """
 
 [[section]]
@@ -139,7 +139,7 @@ the signal that would reopen the decision.
 [[section.source_replacement]]
 span_id = "span-section-preamble"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact section bytes are semantic document prose.
+review_note_md = """Exact section bytes are semantic document prose.
 """
 
 [[section]]
@@ -152,7 +152,7 @@ body_md = """## Sources
 [[section.source_replacement]]
 span_id = "span-section-sources"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact section bytes are semantic document prose.
+review_note_md = """Exact section bytes are semantic document prose.
 """
 
 [[section]]
@@ -195,7 +195,7 @@ is not evidence about a gate in another TIER\" (the mechanical half is a maintai
 [[section.source_replacement]]
 span_id = "span-section-standing-system"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact section bytes are semantic document prose.
+review_note_md = """Exact section bytes are semantic document prose.
 """
 
 [[fragment]]
@@ -210,7 +210,7 @@ body_md = """- Full exhaustive menu (24 ranked items + blind spots): `draft/test
 [[fragment.source_replacement]]
 span_id = "span-fragment-sources-exhaustive-menu"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact fragment bytes are semantic document prose.
+review_note_md = """Exact fragment bytes are semantic document prose.
 """
 
 [[fragment]]
@@ -225,7 +225,7 @@ body_md = """- Per-dimension expert write-ups: `draft/testing-recommendations/*.
 [[fragment.source_replacement]]
 span_id = "span-fragment-sources-expert-writeups"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact fragment bytes are semantic document prose.
+review_note_md = """Exact fragment bytes are semantic document prose.
 """
 
 [[record]]
@@ -260,7 +260,7 @@ transition_ids = ["testing.trigger.add-profile-wrapper-participation-grid-partic
 [[record.source_replacement]]
 span_id = "span-record-add-profile-wrapper-participation-grid-participation-differs-across"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -441,7 +441,7 @@ transition_ids = ["testing.trigger.alloc-imports-nested-inline-modules-hand-carr
 [[record.source_replacement]]
 span_id = "span-record-alloc-imports-nested-inline-modules-hand-carried-design"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -487,7 +487,7 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record.source_replacement]]
 span_id = "span-record-arm-position-s-classifier-compile-time-forcing-function"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -573,7 +573,7 @@ transition_ids = ["testing.trigger.armed-idle-harness-arms-empty-head-ledgers-ze
 [[record.source_replacement]]
 span_id = "span-record-armed-idle-harness-arms-empty-head-ledgers-zero"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -615,7 +615,7 @@ transition_ids = ["testing.trigger.assert-hand-authored-json-schema-against-type
 [[record.source_replacement]]
 span_id = "span-record-assert-hand-authored-json-schema-against-type-s"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -651,14 +651,14 @@ risk = "false_pass_or_red"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.build-registration-class-reference-position-sweep-second-escape's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 admission_ids = ["testing.admission-path.build-registration-class-reference-position-sweep-second-escape"]
 
 [[record.source_replacement]]
 span_id = "span-record-build-registration-class-reference-position-sweep-second-escape"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -720,7 +720,7 @@ transition_ids = ["testing.trigger.cargo-feature-generated-crate-s-dependency-ch
 [[record.source_replacement]]
 span_id = "span-record-cargo-feature-generated-crate-s-dependency-change-what"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -756,7 +756,7 @@ transition_ids = ["testing.trigger.cddl-module-directives-draft-ietf-cbor-cddl-m
 [[record.source_replacement]]
 span_id = "span-record-cddl-module-directives-draft-ietf-cbor-cddl-modules"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -796,13 +796,13 @@ risk = "compile_failure"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.check-merged-d-ts-name-collisions-two-halves's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 
 [[record.source_replacement]]
 span_id = "span-record-check-merged-d-ts-name-collisions-two-halves"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -850,7 +850,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "span-record-checking-runtime-flavor-s-safety-condition-rather-stating"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -898,7 +898,7 @@ transition_ids = ["testing.trigger.citation-resolves-naming-wrong-thing-invisibl
 [[record.source_replacement]]
 span_id = "span-record-citation-resolves-naming-wrong-thing-invisible-citation-lint"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -945,7 +945,7 @@ transition_ids = ["testing.trigger.comment-residue-false-matches-text-scans-over
 [[record.source_replacement]]
 span_id = "span-record-comment-residue-false-matches-text-scans-over-emitted"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -977,7 +977,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "span-record-complete-cargo-mutants-sweep-will-never-run"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1018,7 +1018,7 @@ evidence_ids = ["testing.source-observation.component-js-probe-reopening-signal"
 [[record.source_replacement]]
 span_id = "span-part-part-reopening-signal-probe"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1052,7 +1052,7 @@ transition_ids = ["testing.trigger.composing-registration-rows-across-generation
 [[record.source_replacement]]
 span_id = "span-record-composing-registration-rows-across-generation-passes-share-output"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1097,7 +1097,7 @@ regression_gap_ids = ["testing.proof-gap.config-run-s-convergence-warning-name-c
 [[record.source_replacement]]
 span_id = "span-record-config-run-s-convergence-warning-name-crate-already"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1140,7 +1140,7 @@ as_of = "2026-08-12"
 [[record.source_replacement]]
 span_id = "span-part-part-reopening-signal"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1176,7 +1176,7 @@ transition_ids = ["testing.container-combinations.reopening-signal"]
 [[record.source_replacement]]
 span_id = "span-record-container-construct-conceptual-type-visitor-walks-flat-combinatorial"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1222,7 +1222,7 @@ transition_ids = ["testing.trigger.containment-note-s-stated-reason-go-false-any
 [[record.source_replacement]]
 span_id = "span-record-containment-note-s-stated-reason-go-false-any"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1257,7 +1257,7 @@ transition_ids = ["testing.trigger.control-bytes-committed-source-files-proven-i
 [[record.source_replacement]]
 span_id = "span-record-control-bytes-committed-source-files-proven-instance-machinery"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1305,13 +1305,13 @@ risk = "false_pass_or_red"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.corpus-c-style-enum-data-type-choice-arm's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 
 [[record.source_replacement]]
 span_id = "span-record-corpus-c-style-enum-data-type-choice-arm"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1353,13 +1353,13 @@ risk = "silent_wrong_bytes"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.corpus-preserve-pair-map-key-value-self-encoding's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 
 [[record.source_replacement]]
 span_id = "span-record-corpus-preserve-pair-map-key-value-self-encoding"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1398,7 +1398,7 @@ transition_ids = ["testing.trigger.corpus-wide-regen-over-prior-output-sweep-rea
 [[record.source_replacement]]
 span_id = "span-record-corpus-wide-regen-over-prior-output-sweep-reaches"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1448,7 +1448,7 @@ transition_ids = ["testing.trigger.crate-generates-json-schema-document-aggregat
 [[record.source_replacement]]
 span_id = "span-record-crate-generates-json-schema-document-aggregate-package"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1493,7 +1493,7 @@ transition_ids = ["testing.trigger.cross-version-preserve-vectors-beyond-std-all
 [[record.source_replacement]]
 span_id = "span-record-cross-version-preserve-vectors-beyond-std-alloc-rewrite"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1553,7 +1553,7 @@ transition_ids = ["testing.trigger.dependency-swap-pass-compile-parity-existing-
 [[record.source_replacement]]
 span_id = "span-record-dependency-swap-pass-compile-parity-existing-gate-silently"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1590,7 +1590,7 @@ transition_ids = ["testing.trigger.dependency-version-range-resolution-untested-
 [[record.source_replacement]]
 span_id = "span-record-dependency-version-range-resolution-untested-generated-crates-float"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1635,7 +1635,7 @@ transition_ids = ["testing.trigger.directive-dependent-emitter-edge-case-trigger
 [[record.source_replacement]]
 span_id = "span-record-directive-dependent-emitter-edge-case-triggering-shape-hand"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1697,14 +1697,14 @@ risk = "silent_wrong_bytes"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.directive-effect-round-trip-coherence-sweep-accepted-custom's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 admission_ids = ["testing.admission-path.directive-effect-round-trip-coherence-sweep-accepted-custom"]
 
 [[record.source_replacement]]
 span_id = "span-record-directive-effect-round-trip-coherence-sweep-accepted-custom"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1767,7 +1767,7 @@ transition_ids = ["testing.trigger.directive-s-documented-sentence-stay-true-con
 [[record.source_replacement]]
 span_id = "span-record-directive-s-documented-sentence-stay-true-consumer-visible"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1861,7 +1861,7 @@ transition_ids = ["testing.trigger.docs-vs-behavior-conformance-harness-comment-
 [[record.source_replacement]]
 span_id = "span-record-docs-vs-behavior-conformance-harness-comment-dsl-mdx"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1906,7 +1906,7 @@ transition_ids = ["testing.trigger.documented-failure-shape-exercises-prose-cros
 [[record.source_replacement]]
 span_id = "span-record-documented-failure-shape-exercises-prose-cross-crate-int"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1947,7 +1947,7 @@ transition_ids = ["testing.trigger.documented-flag-pairing-broken-fixture-stays-
 [[record.source_replacement]]
 span_id = "span-record-documented-flag-pairing-broken-fixture-stays-green-because"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1987,7 +1987,7 @@ transition_ids = ["testing.trigger.doubled-doc-comment-markers-emitted-docs-prov
 [[record.source_replacement]]
 span_id = "span-record-doubled-doc-comment-markers-emitted-docs-proven-instance"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2024,7 +2024,7 @@ transition_ids = ["testing.trigger.dsl-position-tests-string-level-design-green-
 [[record.source_replacement]]
 span_id = "span-record-dsl-position-tests-string-level-design-green-emitted"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2059,7 +2059,7 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record.source_replacement]]
 span_id = "span-record-duplicates-policy-residuals"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2094,7 +2094,7 @@ transition_ids = ["testing.trigger.duplicates-dedicated-generic-collision-messag
 [[record.source_replacement]]
 span_id = "span-part-part-dedicated-collision-message-generic-instantiation-naming"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2131,7 +2131,7 @@ transition_ids = ["testing.trigger.duplicates-member-position-extension"]
 [[record.source_replacement]]
 span_id = "span-part-part-member-position-duplicates-extension"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2166,7 +2166,7 @@ transition_ids = ["testing.trigger.duplicates-occurrence-aware-generic-identity"
 [[record.source_replacement]]
 span_id = "span-part-part-occurrence-aware-generic-instance-identity"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2201,7 +2201,7 @@ transition_ids = ["testing.trigger.duplicates-same-shape-set-conversion"]
 [[record.source_replacement]]
 span_id = "span-part-part-same-shape-set-instantiations"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2238,7 +2238,7 @@ transition_ids = ["testing.trigger.edn-text-notation-round-trip-edn-edn-draft"]
 [[record.source_replacement]]
 span_id = "span-record-edn-text-notation-round-trip-edn-edn-draft"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2284,7 +2284,7 @@ transition_ids = ["testing.trigger.emission-branch-generated-output-fixture-exer
 [[record.source_replacement]]
 span_id = "span-record-emission-branch-generated-output-fixture-exercises-invisible-gate"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2331,7 +2331,7 @@ transition_ids = ["testing.trigger.emit-tests-gate-asserts-round-trip-green-cann
 [[record.source_replacement]]
 span_id = "span-record-emit-tests-gate-asserts-round-trip-green-cannot"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2373,7 +2373,7 @@ transition_ids = ["testing.trigger.emitted-shape-lint-classes-outside-clippy-all
 [[record.source_replacement]]
 span_id = "span-record-emitted-shape-lint-classes-outside-clippy-all-beyond"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2427,7 +2427,7 @@ transition_ids = ["testing.trigger.emitter-drops-overloadable-parameter-building
 [[record.source_replacement]]
 span_id = "span-record-emitter-drops-overloadable-parameter-building-fresh-config-invisible"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2454,7 +2454,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "span-record-exclusion-reasons-informational-interchange"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2481,13 +2481,13 @@ risk = "silent_wrong_bytes"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.execution-binary-wrappers-true-last-documented-flag-value's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 
 [[record.source_replacement]]
 span_id = "span-record-execution-binary-wrappers-true-last-documented-flag-value"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2530,7 +2530,7 @@ transition_ids = ["testing.trigger.extend-recombination-member-kind-table-option
 [[record.source_replacement]]
 span_id = "span-record-extend-recombination-member-kind-table-optional-fixed-shape"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2580,7 +2580,7 @@ transition_ids = ["testing.trigger.extern-deps-wasm-boundary-surface-packaging-j
 [[record.source_replacement]]
 span_id = "span-record-extern-deps-wasm-boundary-surface-packaging-json-gen"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2626,7 +2626,7 @@ transition_ids = ["testing.trigger.extern-interface-export-dialect-v2-candidates
 [[record.source_replacement]]
 span_id = "span-record-extern-interface-export-dialect-v2-candidates"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2662,7 +2662,7 @@ boundary_md = """This control owns the public interchange-format boundary and do
 [[record.source_replacement]]
 span_id = "span-record-extern-interface-export-public-interchange-format"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2710,7 +2710,7 @@ transition_ids = ["testing.trigger.extreme-value-boundary-correctness-generation
 [[record.source_replacement]]
 span_id = "span-record-extreme-value-boundary-correctness-generation-time-encode-paths"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2749,7 +2749,7 @@ boundary_md = """This procedure owns its exact operating surface and does not in
 [[record.source_replacement]]
 span_id = "span-record-failing-snapshot-test-surfaces-mismatch-per-test-run"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2781,7 +2781,7 @@ transition_ids = ["testing.trigger.file-listing-json-schema-root-values-flag-per
 [[record.source_replacement]]
 span_id = "span-record-file-listing-json-schema-root-values-flag-per"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2835,7 +2835,7 @@ transition_ids = ["testing.trigger.finding-s-defect-side-attribution-recorded-na
 [[record.source_replacement]]
 span_id = "span-record-finding-s-defect-side-attribution-recorded-narrative-plausibility"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2901,7 +2901,7 @@ transition_ids = ["testing.trigger.fixture-models-obsolete-user-contract-stays-g
 [[record.source_replacement]]
 span_id = "span-record-fixture-models-obsolete-user-contract-stays-green-real"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2960,7 +2960,7 @@ transition_ids = ["testing.trigger.fixture-s-verdict-accident-cargo-feature-unif
 [[record.source_replacement]]
 span_id = "span-record-fixture-s-verdict-accident-cargo-feature-unification-harness"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3000,7 +3000,7 @@ transition_ids = ["testing.trigger.fixture-shape-evicted-over-known-defect-stale
 [[record.source_replacement]]
 span_id = "span-record-fixture-shape-evicted-over-known-defect-stale-guard"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3041,7 +3041,7 @@ boundary_md = """This procedure owns its exact operating surface and does not in
 [[record.source_replacement]]
 span_id = "span-record-flag-cddl-codegen-invocation-wasm-run-wasm-flag"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3138,7 +3138,7 @@ transition_ids = ["testing.trigger.full-n-flag-powerset-pict-pairwise"]
 [[record.source_replacement]]
 span_id = "span-record-full-n-flag-powerset-pict-pairwise"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3185,7 +3185,7 @@ transition_ids = ["testing.trigger.gate-cache-closure-audit-structurally-blind-g
 [[record.source_replacement]]
 span_id = "span-record-gate-cache-closure-audit-structurally-blind-gate-authored"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3215,7 +3215,7 @@ boundary_md = """This procedure owns its exact operating surface and does not in
 [[record.source_replacement]]
 span_id = "span-record-gate-cache-costs"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3243,7 +3243,7 @@ transition_ids = ["testing.trigger.gate-cache-all-hit-cost"]
 [[record.source_replacement]]
 span_id = "span-part-part-all-hit-cost"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3277,7 +3277,7 @@ transition_ids = ["testing.trigger.gate-cache-closure-audit-traced-set-extension
 [[record.source_replacement]]
 span_id = "span-part-part-closure-audit-traced-set-extension"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3307,7 +3307,7 @@ transition_ids = ["testing.trigger.gate-cache-coverage-extensions"]
 [[record.source_replacement]]
 span_id = "span-part-part-coverage-extensions"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3396,7 +3396,7 @@ admission_ids = ["testing.admission-path.gate-demands-premise-probed-against-gat
 [[record.source_replacement]]
 span_id = "span-record-gate-demands-premise-probed-against-gate-evidence-about"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3442,7 +3442,7 @@ transition_ids = ["testing.trigger.gate-exists-registry-nowhere-tests-readme-md-
 [[record.source_replacement]]
 span_id = "span-record-gate-exists-registry-nowhere-tests-readme-md-hand"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3481,7 +3481,7 @@ boundary_md = """This procedure owns its exact operating surface and does not in
 [[record.source_replacement]]
 span_id = "span-record-gate-s-own-stdout-print-column-result-pass"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3524,7 +3524,7 @@ transition_ids = ["testing.trigger.gate-script-health-cache-staleness-key-fresh-
 [[record.source_replacement]]
 span_id = "span-record-gate-script-health-cache-staleness-key-fresh-worktree"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3561,7 +3561,7 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record.source_replacement]]
 span_id = "span-record-generated-local-collision-class-refused-mangled-refusal-s"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3592,7 +3592,7 @@ transition_ids = ["testing.trigger.generated-local-collision-general-mangling-re
 [[record.source_replacement]]
 span_id = "span-part-part-mangling-still-general-fix"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3628,7 +3628,7 @@ transition_ids = ["testing.trigger.generated-local-collision-scope-wide-probe"]
 [[record.source_replacement]]
 span_id = "span-part-part-scope-wide-probe"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3671,7 +3671,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "span-record-generic-raw-bytes-base-refused-generic-extern-base"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3706,7 +3706,7 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record.source_replacement]]
 span_id = "span-record-grammar-fuzzer-escalations"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3734,7 +3734,7 @@ transition_ids = ["testing.trigger.grammar-fuzzer-arbitrary-supported-ast"]
 [[record.source_replacement]]
 span_id = "span-part-part-arbitrary-derived-supported-cddl-ast-generation"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3777,7 +3777,7 @@ transition_ids = ["testing.trigger.grammar-fuzzer-batch-masking-detector"]
 [[record.source_replacement]]
 span_id = "span-part-part-batch-masking-detector-layer-sweeps"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3837,14 +3837,14 @@ risk = "abort_or_panic"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.grammar-fuzzer.embed-site-alias-roots's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 admission_ids = ["testing.admission-path.grammar-fuzzer-embed-site-alias-roots"]
 
 [[record.source_replacement]]
 span_id = "span-part-part-embed-site-leg-alias-classifying-roots-two-proven"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3872,7 +3872,7 @@ transition_ids = ["testing.trigger.grammar-fuzzer-real-world-corpus-differential
 [[record.source_replacement]]
 span_id = "span-part-part-real-world-corpus-differential"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -5398,7 +5398,7 @@ transition_ids = ["testing.trigger.hand-enumerated-ban-pattern-list-authority-li
 [[record.source_replacement]]
 span_id = "span-record-hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -5446,7 +5446,7 @@ transition_ids = ["testing.trigger.hand-maintained-source-dependency-mapping-man
 [[record.source_replacement]]
 span_id = "span-record-hand-maintained-source-dependency-mapping-manifest-changeset-silently"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -5928,7 +5928,7 @@ transition_ids = ["testing.trigger.json2ts-artifact-doc-comments-naming-undefine
 [[record.source_replacement]]
 span_id = "span-record-json2ts-artifact-doc-comments-naming-undefined"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -5971,7 +5971,7 @@ transition_ids = ["testing.trigger.lint-doc-citations-accepts-docs-heading-durab
 [[record.source_replacement]]
 span_id = "span-record-lint-doc-citations-accepts-docs-heading-durable-citation"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6027,13 +6027,13 @@ risk = "compile_failure"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.lint-provocation-shapes-generated-code-clippy-clean-partially's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 
 [[record.source_replacement]]
 span_id = "span-record-lint-provocation-shapes-generated-code-clippy-clean-partially"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6074,13 +6074,13 @@ risk = "false_pass_or_red"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 
 [[record.source_replacement]]
 span_id = "span-record-lockstep-drift-gate-rust-ts-kebab-ident-mirror"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6128,7 +6128,7 @@ transition_ids = ["testing.trigger.logic-tool-emits-source-text-outside-layer-re
 [[record.source_replacement]]
 span_id = "span-record-logic-tool-emits-source-text-outside-layer-reasons"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6165,7 +6165,7 @@ transition_ids = ["testing.trigger.machine-readable-ownership-co-owned-features-
 [[record.source_replacement]]
 span_id = "span-record-machine-readable-ownership-co-owned-features-std-list"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6205,7 +6205,7 @@ transition_ids = ["testing.predicate.convenience-cbor-bytes-ruling"]
 [[record.source_replacement]]
 span_id = "span-record-maintainer-ruling-force-convenience-cbor-bytes-door-turns"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6248,7 +6248,7 @@ transition_ids = ["testing.trigger.make-fixture-comment-s-claimed-wire-bytes-exe
 [[record.source_replacement]]
 span_id = "span-record-make-fixture-comment-s-claimed-wire-bytes-executable"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6290,7 +6290,7 @@ transition_ids = ["testing.trigger.making-type-choice-path-reject-duplicated-exp
 [[record.source_replacement]]
 span_id = "span-record-making-type-choice-path-reject-duplicated-explicit-name"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6330,7 +6330,7 @@ transition_ids = ["testing.trigger.matrix-s-note-names-panic-site-aborts-nothing
 [[record.source_replacement]]
 span_id = "span-record-matrix-s-note-names-panic-site-aborts-nothing"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6386,7 +6386,7 @@ transition_ids = ["testing.trigger.mechanical-layers-two-review-owned-design-rul
 [[record.source_replacement]]
 span_id = "span-record-mechanical-layers-two-review-owned-design-rules-tests"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6438,7 +6438,7 @@ transition_ids = ["testing.trigger.message-s-level-classification-review-owned-t
 [[record.source_replacement]]
 span_id = "span-record-message-s-level-classification-review-owned-two-ways"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6497,14 +6497,14 @@ risk = "compile_failure"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 admission_ids = ["testing.admission-path.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"]
 
 [[record.source_replacement]]
 span_id = "span-record-minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6533,7 +6533,7 @@ transition_ids = ["testing.trigger.msrv-declaration-os-matrix-generated-code"]
 [[record.source_replacement]]
 span_id = "span-record-msrv-declaration-os-matrix-generated-code"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6594,7 +6594,7 @@ transition_ids = ["testing.trigger.multifile-reference-position-coverage-two-pos
 [[record.source_replacement]]
 span_id = "span-record-multifile-reference-position-coverage-two-position-keyed-escapes"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6651,7 +6651,7 @@ capture_md = """Record the full untruncated log or consumer report, command, ful
 [[record.source_replacement]]
 span_id = "span-record-nested-cargo-scratch-retention-tmp-cddl-leaks-until"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6688,7 +6688,7 @@ transition_ids = ["testing.trigger.nothing-asserts-how-many-times-rejection-mess
 [[record.source_replacement]]
 span_id = "span-record-nothing-asserts-how-many-times-rejection-message-emitted"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6744,7 +6744,7 @@ transition_ids = ["testing.trigger.nothing-asserts-two-ir-sites-cannot-mint-same
 [[record.source_replacement]]
 span_id = "span-record-nothing-asserts-two-ir-sites-cannot-mint-same"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6784,7 +6784,7 @@ transition_ids = ["testing.trigger.observed-baseline-comments-beside-gate-floors
 [[record.source_replacement]]
 span_id = "span-record-observed-baseline-comments-beside-gate-floors-rot-silently"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6827,7 +6827,7 @@ transition_ids = ["testing.trigger.opt-rfc-faithful-total-cbor-json-rendering-js
 [[record.source_replacement]]
 span_id = "span-record-opt-rfc-faithful-total-cbor-json-rendering-json"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6854,7 +6854,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "span-record-orphan-fixture-directory-meta-test"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6890,7 +6890,7 @@ transition_ids = ["testing.trigger.ownership-journal-making-dropped-std-forward-
 [[record.source_replacement]]
 span_id = "span-record-ownership-journal-making-dropped-std-forward-dep-converge"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6931,7 +6931,7 @@ transition_ids = ["testing.trigger.panic-site-un-shadowing-converting-shallow-pa
 [[record.source_replacement]]
 span_id = "span-record-panic-site-un-shadowing-converting-shallow-panic-graceful"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -6984,7 +6984,7 @@ transition_ids = ["testing.trigger.parallel-constructor-fixture-diversity-parser
 [[record.source_replacement]]
 span_id = "span-record-parallel-constructor-fixture-diversity-parser-over-external-input"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7029,14 +7029,14 @@ risk = "false_pass_or_red"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.pin-toolchain-verify-ts-s-nested-cargo-scratch's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 regression_evidence_ids = ["testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"]
 
 [[record.source_replacement]]
 span_id = "span-record-pin-toolchain-verify-ts-s-nested-cargo-scratch"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7082,14 +7082,14 @@ risk = "false_pass_or_red"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 admission_ids = ["testing.admission-path.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"]
 
 [[record.source_replacement]]
 span_id = "span-record-positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7257,7 +7257,7 @@ transition_ids = ["testing.predicate.prettyplease-formatting-ruling"]
 [[record.source_replacement]]
 span_id = "span-record-prettyplease-shelling-rustfmt"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7294,7 +7294,7 @@ transition_ids = ["testing.component-js-probe.reopening-signal"]
 [[record.source_replacement]]
 span_id = "span-record-probe-component-face-s-js-surface-axes-js"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7343,7 +7343,7 @@ transition_ids = ["testing.trigger.process-boundary-another-profile-escape"]
 [[record.source_replacement]]
 span_id = "span-part-part-another-profile-flip-abort-fix-widening-reachable-set"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7387,7 +7387,7 @@ transition_ids = ["testing.trigger.process-boundary-rustc-after-panic-fix"]
 [[record.source_replacement]]
 span_id = "span-part-part-rustc-after-panic-ok-flip-panic-fix-lands"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7437,7 +7437,7 @@ transition_ids = ["testing.trigger.process-boundary-rustfmt-pre-rustc"]
 [[record.source_replacement]]
 span_id = "span-part-part-rustfmt-code-never-reaches-rustc-all"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7484,7 +7484,7 @@ transition_ids = ["testing.trigger.profile-driven-compile-gate-covers-compositio
 [[record.source_replacement]]
 span_id = "span-record-profile-driven-compile-gate-covers-compositions-profiles-specs"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7526,7 +7526,7 @@ transition_ids = ["testing.trigger.project-json-gen-documents-run-test-fixture-w
 [[record.source_replacement]]
 span_id = "span-record-project-json-gen-documents-run-test-fixture-writes"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7748,7 +7748,7 @@ transition_ids = ["testing.trigger.propagating-deliberately-unpublished-type-s-i
 [[record.source_replacement]]
 span_id = "span-record-propagating-deliberately-unpublished-type-s-intent-json-ts"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7777,7 +7777,7 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record.source_replacement]]
 span_id = "span-record-quickcheck-alongside-proptest-goldenfile-expect-test-second-corpus"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7851,7 +7851,7 @@ transition_ids = ["testing.trigger.reason-keyed-rejection-evidence-reject-catalo
 [[record.source_replacement]]
 span_id = "span-record-reason-keyed-rejection-evidence-reject-catalogs-proven-near"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7896,7 +7896,7 @@ transition_ids = ["testing.trigger.referencing-context-measured-wrapping-deep-ho
 [[record.source_replacement]]
 span_id = "span-record-referencing-context-measured-wrapping-deep-honored-base-shape"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7942,7 +7942,7 @@ capture_md = """Record the full untruncated log or consumer report, command, ful
 [[record.source_replacement]]
 span_id = "span-record-registry-fetch-transients-nested-cargo-cells"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -7978,14 +7978,14 @@ risk = "misleading_docs"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.rejection-message-s-remedy-string-executable-claim-pin's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 admission_ids = ["testing.admission-path.rejection-message-s-remedy-string-executable-claim-pin"]
 
 [[record.source_replacement]]
 span_id = "span-record-rejection-message-s-remedy-string-executable-claim-pin"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8060,7 +8060,7 @@ transition_ids = ["testing.trigger.representation-changing-directive-goes-live-n
 [[record.source_replacement]]
 span_id = "span-record-representation-changing-directive-goes-live-new-container-ship"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8104,7 +8104,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "span-record-restructuring-features-std-tool-owned-sub-feature-cddl"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8167,7 +8167,7 @@ transition_ids = ["testing.predicate.rule-trailing-conjunctive-unblock"]
 [[record.source_replacement]]
 span_id = "span-record-rule-trailing-directive-classification"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8232,7 +8232,7 @@ transition_ids = ["testing.trigger.ruling-premise-gate-x-stays-green-must-probed
 [[record.source_replacement]]
 span_id = "span-record-ruling-premise-gate-x-stays-green-must-probed"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8272,7 +8272,7 @@ transition_ids = ["testing.trigger.run-local-values-gate-cache-key-material-prov
 [[record.source_replacement]]
 span_id = "span-record-run-local-values-gate-cache-key-material-proven"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8318,7 +8318,7 @@ transition_ids = ["testing.trigger.rustfmt-seam-error-leg-still-witness-needs-su
 [[record.source_replacement]]
 span_id = "span-record-rustfmt-seam-error-leg-still-witness-needs-subprocess"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8380,14 +8380,14 @@ risk = "false_pass_or_red"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.same-named-generated-crates-silently-share-cargo-fingerprint's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 admission_ids = ["testing.admission-path.same-named-generated-crates-silently-share-cargo-fingerprint"]
 
 [[record.source_replacement]]
 span_id = "span-record-same-named-generated-crates-silently-share-cargo-fingerprint"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8419,7 +8419,7 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record.source_replacement]]
 span_id = "span-record-schema-document-s-name-injectivity-enforced-row-side"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8452,7 +8452,7 @@ transition_ids = ["testing.trigger.schema-name-collision-loser-no-row-same-id"]
 [[record.source_replacement]]
 span_id = "span-part-part-collision-loser-row-schema-id-s-match"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8494,7 +8494,7 @@ transition_ids = ["testing.trigger.schema-name-cross-crate-same-id-collision"]
 [[record.source_replacement]]
 span_id = "span-part-part-cross-crate-collision-schema-id-s-match"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8535,7 +8535,7 @@ priority_rationale_md = """The former independent part identifies the remaining 
 [[record.source_replacement]]
 span_id = "span-part-part-schema-name-schemars-percent-encodes-ref"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8613,7 +8613,7 @@ transition_ids = ["testing.trigger.schema-name-two-rowless-types-collide"]
 [[record.source_replacement]]
 span_id = "span-part-part-collision-two-types-both-lack-rows"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -8655,7 +8655,7 @@ evaluation = "unknown"
 [[record.source_replacement]]
 span_id = "span-part-part-reopening-signal-nested"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -11638,7 +11638,7 @@ transition_ids = ["testing.trigger.stale-known-limitation-prose-surviving-fix-fi
 [[record.source_replacement]]
 span_id = "span-record-stale-known-limitation-prose-surviving-fix-finding-ledgered"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -11698,7 +11698,7 @@ capture_md = """Record the full untruncated log or consumer report, command, ful
 [[record.source_replacement]]
 span_id = "span-record-stale-pin-guard-cannot-distinguish-gap-closed-vector"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -11727,7 +11727,7 @@ transition_ids = ["testing.trigger.std-generated-crates"]
 [[record.source_replacement]]
 span_id = "span-record-std-generated-crates"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -11771,7 +11771,7 @@ transition_ids = ["testing.trigger.synthesized-name-referenced-never-minted-e042
 [[record.source_replacement]]
 span_id = "span-record-synthesized-name-referenced-never-minted-e0425-flavor"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -11810,13 +11810,13 @@ risk = "false_pass_or_red"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.synthetic-protocol-controls-component-probe-host-s-defensive's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 
 [[record.source_replacement]]
 span_id = "span-record-synthetic-protocol-controls-component-probe-host-s-defensive"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -11844,7 +11844,7 @@ transition_ids = ["testing.trigger.tag-set-inline-anonymous-choice-boundary"]
 [[record.source_replacement]]
 span_id = "span-part-part-inline-anonymous-two-arm-choices-recognized"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -11876,7 +11876,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "span-part-part-non-idiom-choice-bodied-generic-defs-refused-supported"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -11928,7 +11928,7 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record.source_replacement]]
 span_id = "span-record-three-defect-classes-process-test-see-sharing-remedy"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -11960,7 +11960,7 @@ transition_ids = ["testing.predicate.tier-memory-durable-measurements"]
 [[record.source_replacement]]
 span_id = "span-record-tier-memory-spend-measurements"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -12015,7 +12015,7 @@ transition_ids = ["testing.trigger.tier-s-disk-bandwidth-unmeasured-anything-scr
 [[record.source_replacement]]
 span_id = "span-record-tier-s-disk-bandwidth-unmeasured-anything-scratch-floor"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -12133,7 +12133,7 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record.source_replacement]]
 span_id = "span-record-transparent-tag-set-idiom-recognized-shape-boundary-request"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -12176,7 +12176,7 @@ transition_ids = ["testing.trigger.tree-wide-sweeps-over-gitignored-regeneration
 [[record.source_replacement]]
 span_id = "span-record-tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15095,7 +15095,7 @@ evaluation = "unknown"
 [[record.source_replacement]]
 span_id = "span-part-part-comment-ast-grammar-change-any-form-just-new"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15127,7 +15127,7 @@ boundary_md = """This control owns current containment only. It does not claim t
 [[record.source_replacement]]
 span_id = "span-part-part-own-reviewed-change-never-drive"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15167,7 +15167,7 @@ evidence_ids = ["testing.source-observation.twin-implementation-read-caught-inst
 [[record.source_replacement]]
 span_id = "span-part-part-read-caught-instance-class"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15233,7 +15233,7 @@ transition_ids = ["testing.trigger.twin-repo-implementations-semantic-drifting-a
 [[record.source_replacement]]
 span_id = "span-record-twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15384,7 +15384,7 @@ transition_ids = ["testing.trigger.unused-imports-generated-crates-trait-import-
 [[record.source_replacement]]
 span_id = "span-record-unused-imports-generated-crates-trait-import-class-name"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15429,7 +15429,7 @@ transition_ids = ["testing.trigger.value-anchor-rot-field-addition-delivery-grow
 [[record.source_replacement]]
 span_id = "span-record-value-anchor-rot-field-addition-delivery-grows-existing"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15483,7 +15483,7 @@ capture_md = """Record the full untruncated log or consumer report, command, ful
 [[record.source_replacement]]
 span_id = "span-record-verify-cache-transparency-b-split-emission-profile-embed"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15519,14 +15519,14 @@ risk = "false_pass_or_red"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.verify-ts-refuse-unknown-flag-silently-degrading-plain's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 regression_gap_ids = ["testing.proof-gap.verify-ts-refuse-unknown-flag-silently-degrading-plain"]
 
 [[record.source_replacement]]
 span_id = "span-record-verify-ts-refuse-unknown-flag-silently-degrading-plain"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15575,7 +15575,7 @@ transition_ids = ["testing.trigger.wac-composed-component-transpiled-jco-loses-c
 [[record.source_replacement]]
 span_id = "span-record-wac-composed-component-transpiled-jco-loses-cross-instance"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15622,14 +15622,14 @@ risk = "false_pass_or_red"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.warm-up-refresh-dep-universe-lock-trust-fresh's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 regression_evidence_ids = ["testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"]
 
 [[record.source_replacement]]
 span_id = "span-record-warm-up-refresh-dep-universe-lock-trust-fresh"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15668,7 +15668,7 @@ evidence_ids = ["testing.source-observation.wasm-door-vocabulary-reopening-signa
 [[record.source_replacement]]
 span_id = "span-part-part-reopening-signal-wasm"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15698,13 +15698,13 @@ risk = "wrong_public_api"
 family_classification = "none_reviewed"
 acceptance_md = """Complete exactly the operative work, validation, and bounded exclusions stated in testing.wasm-face-s-door-vocabulary-hand-listed-mechanism's payload.detail_md; do not widen adjacent future work.
 """
-priority_rationale_md = """The source owner places this item in Next priority order; WP5T preserves that authored pickup posture without deriving priority from its numeric alias.
+priority_rationale_md = """The source owner places this item in Next priority order.
 """
 
 [[record.source_replacement]]
 span_id = "span-record-wasm-face-s-door-vocabulary-hand-listed-mechanism"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15740,7 +15740,7 @@ transition_ids = ["testing.trigger.wasm32-link-floor-deferred-reject-twin"]
 [[record.source_replacement]]
 span_id = "span-record-wasm32-link-floor-deferred-reject-twin"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15781,7 +15781,7 @@ transition_ids = ["testing.workspace-wasip2.reopening-signal"]
 [[record.source_replacement]]
 span_id = "span-record-workspace-mode-wasm32-wasip2-build-gate-both-faces"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15821,7 +15821,7 @@ evidence_ids = ["testing.source-observation.workspace-wasip2-reopening-signal"]
 [[record.source_replacement]]
 span_id = "span-part-part-reopening-signal-workspace"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -15870,7 +15870,7 @@ transition_ids = ["testing.trigger.wrapper-name-user-set-name-synthesized-collec
 [[record.source_replacement]]
 span_id = "span-record-wrapper-name-user-set-name-synthesized-collection-wrapper"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5T source-owner review: the whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
+review_note_md = """The whole legacy block remains byte-exact semantic detail; typed fields own lifecycle and joins.
 """
 
 [[part]]
@@ -15887,7 +15887,7 @@ body_md = """    - EVERY advice-shaped spelling a message prints is a remedy str
 [[part.source_replacement]]
 span_id = "span-part-part-advice-shaped-spelling-message-prints-remedy-string-strings"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -15908,7 +15908,7 @@ body_md = """    - The anonymous-group rejection's \"give it a name using the `@
 [[part.source_replacement]]
 span_id = "span-part-part-anonymous-group-rejection-s-give-name-using-name"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -15927,7 +15927,7 @@ body_md = """    - The bare fixed-table-VALUE refusal continued to say a named f
 [[part.source_replacement]]
 span_id = "span-part-part-bare-fixed-table-value-refusal-continued-say-named"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -15945,7 +15945,7 @@ body_md = """    - Both `@ignore` rejections printed \"`{ 1: a, * k => v } ; @ig
 [[part.source_replacement]]
 span_id = "span-part-part-both-ignore-rejections-printed-k-v-ignore-valid"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -15965,7 +15965,7 @@ body_md = """    - **The cheap system is a matrix of shape PAIRS compiled wasm-s
 [[part.source_replacement]]
 span_id = "span-part-part-cheap-system-matrix-shape-pairs-compiled-wasm-side"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -15986,7 +15986,7 @@ body_md = """    - The `.default` head-refusal's remedy list offered bare `int` 
 [[part.source_replacement]]
 span_id = "span-part-part-default-head-refusal-s-remedy-list-offered-bare"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16003,7 +16003,7 @@ body_md = """  + the emitted name guard)\". Mint the one cell that section recor
 [[part.source_replacement]]
 span_id = "span-part-part-emitted-name-guard-mint-records-unminted-extra"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16030,7 +16030,7 @@ body_md = """  + the emitted name guard)\" — and neither closes the holes abov
 [[part.source_replacement]]
 span_id = "span-part-part-emitted-name-guard-neither-closes-holes-above-two"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16050,7 +16050,7 @@ body_md = """    - When a findings entry couples to carriers, at least one carri
 [[part.source_replacement]]
 span_id = "span-part-part-findings-couples-carriers-least-carrier-executes-s-headline"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16068,7 +16068,7 @@ body_md = """    - A findings entry's DESCRIPTION claimed the shape's standalone
 [[part.source_replacement]]
 span_id = "span-part-part-findings-s-description-claimed-shape-s-standalone-codec"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16085,7 +16085,7 @@ body_md = """    - A findings entry's recommended remedy (`{ c: [kv] }` for the 
 [[part.source_replacement]]
 span_id = "span-part-part-findings-s-recommended-remedy-c-kv-keyed-plain"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16107,7 +16107,7 @@ body_md = """    - The generics-repeat refusal's first drafted remedy advertised
 [[part.source_replacement]]
 span_id = "span-part-part-generics-repeat-refusal-s-first-drafted-remedy-advertised"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16124,7 +16124,7 @@ body_md = """    - The inline group-choice rejection's remedy (\"`g = (a // b)`,
 [[part.source_replacement]]
 span_id = "span-part-part-inline-group-choice-rejection-s-remedy-g-b"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16151,7 +16151,7 @@ body_md = """   - (The per-role wasm-ABI/multifile grid rows for both flavors ar
 [[part.source_replacement]]
 span_id = "span-part-part-md-mdmap"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16183,7 +16183,7 @@ body_md = """    + nested `cargo test`
 [[part.source_replacement]]
 span_id = "span-part-part-nested-cargo-test"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16201,7 +16201,7 @@ body_md = """  - *Non-item, recorded so it isn't re-litigated as a coverage gap:
 [[part.source_replacement]]
 span_id = "span-part-part-non-recorded-isn-t-re-litigated-coverage-gap"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16218,7 +16218,7 @@ body_md = """  - The pre-cache remedies stay valid if the UNCACHED path ever bit
 [[part.source_replacement]]
 span_id = "span-part-part-pre-cache-remedies-stay-valid-if-uncached-path"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16235,7 +16235,7 @@ body_md = """    - A refusal's first predicate refused the exact remedy its own 
 [[part.source_replacement]]
 span_id = "span-part-part-refusal-s-first-predicate-refused-exact-remedy-own"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16253,7 +16253,7 @@ body_md = """    - A remedy pin is per message PER TRIGGERING CONSTRUCT CLASS, o
 [[part.source_replacement]]
 span_id = "span-part-part-remedy-pin-per-message-per-triggering-construct-class"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16269,7 +16269,7 @@ body_md = """    - A remedy string is executable wherever it lives — in an emi
 [[part.source_replacement]]
 span_id = "span-part-part-remedy-string-executable-wherever-lives-emitted-message-gets"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16287,7 +16287,7 @@ body_md = """   - **Set-nominalization residuals (Delivery 2 of the set-architec
 [[part.source_replacement]]
 span_id = "span-part-part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16319,7 +16319,7 @@ body_md = """  - **A sighting under an offline gate run is a NEW class**, not th
 [[part.source_replacement]]
 span_id = "span-part-part-sighting-offline-gate-run-new-class"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16340,7 +16340,7 @@ body_md = """  - **Surfaces still online**: standalone script/gate runs outside 
 [[part.source_replacement]]
 span_id = "span-part-part-surfaces-still-online"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16356,7 +16356,7 @@ body_md = """    - A tagged remedy spelling was imprecise (`[#6.5(coords)]` for 
 [[part.source_replacement]]
 span_id = "span-part-part-tagged-remedy-spelling-was-imprecise-coords-faithful-coords"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16375,7 +16375,7 @@ body_md = """  - **verify.ts evidence absorber stays**: a transient null replay 
 [[part.source_replacement]]
 span_id = "span-part-part-verify-ts-evidence-absorber-stays"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16396,7 +16396,7 @@ body_md = """    - **What one hand cell per construct does not buy, established 
 [[part.source_replacement]]
 span_id = "span-part-part-what-hand-per-construct-buy-established-escape-produced"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[part]]
@@ -16421,7 +16421,7 @@ body_md = """    - **Why the parity gate cannot host the generalization.** `wasm
 [[part.source_replacement]]
 span_id = "span-part-part-why-parity-gate-cannot-host-generalization"
 replacement_field = "body_md"
-review_note_md = """WP5T source-owner review: exact supporting-part bytes remain parent prose.
+review_note_md = """Exact supporting-part bytes remain parent prose.
 """
 
 [[manifest.entry]]

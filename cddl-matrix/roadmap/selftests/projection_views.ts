@@ -129,7 +129,7 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       const curatedText = stageTexts.get("curated_v1")!;
       assert(legacyText === TEXT.decode(liveTestingLegacyProjection()) &&
         !legacyText.includes("<!-- GENERATED FILE:") && !legacyText.includes('id="roadmap-id-'),
-      "legacy_v1 did not preserve the exact pre-WP7 projection");
+      "legacy_v1 did not preserve the exact pre-anchor-layout projection");
       assert(anchorsText.startsWith("<!-- GENERATED FILE: owned by tests/testing-roadmap.toml;") &&
         anchorsText.includes('id="roadmap-id-testing.') &&
         anchorsText.includes("## Next work items, in priority order") &&

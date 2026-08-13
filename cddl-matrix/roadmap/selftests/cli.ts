@@ -2,14 +2,8 @@ import type { RegistryView } from "../adapters/types.ts";
 import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
 import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import { ROADMAP_CLI_USAGE } from "../cli.ts";
-import { buildBurndownFourReport, burndownStableSetDelta } from "../burndown.ts";
 import { composeRoadmapDocument } from "../compose.ts";
-import { composeCampaignDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
-import { decodeCampaignSource } from "../decode/campaign.ts";
-import { decodeRetiredSource } from "../decode/retired.ts";
-import liveCampaignText from "../../../roadmap-campaign.toml" with { type: "text" };
-import liveRetiredText from "../../../roadmap-retired-ids.toml" with { type: "text" };
 import { RoadmapFailure } from "../errors.ts";
 import type { IssueCode } from "../errors.ts";
 import {
@@ -27,17 +21,9 @@ import type {
   ScratchGitHarnessPorts,
 } from "../io.ts";
 import type { FixtureRelativePath, RepoPath, RepositoryRevision, RoadmapId } from "../model/core.ts";
-import type { RoadmapDocumentV0, RoadmapDocumentV1, RoadmapDocumentV2, SemanticPayload } from "../model/documents.ts";
-import type { CurrentFamilyGuard, FixedValueClosureAuthorityFact } from "../model/documents.ts";
-import {
-  NORTH_STAR_STRUCTURAL_RELOCATION_GUARDS,
-  WP8_RETIRED_RELOCATION_GUARDS,
-  WP8_RETIRED_STRUCTURAL_PART_RELOCATION_GUARDS,
-} from "../relocation.ts";
-import {
-  FIXED_VALUE_DELIVERY_BASE,
-  FIXED_VALUE_FAMILY_ROOT,
-} from "../fixed_value_guards.ts";
+import type { RoadmapDocumentV1, RoadmapDocumentV2, SemanticPayload } from "../model/documents.ts";
+import type { CurrentFamilyGuard } from "../model/documents.ts";
+import { FIXED_VALUE_FAMILY_ROOT } from "../fixed_value_guards.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
 import { resolveManifest } from "../manifest.ts";
 import {
@@ -52,7 +38,6 @@ import {
   type ProjectionLayout,
 } from "../projection_layout.ts";
 import { buildExpectedChunks, validateCompletedChunks } from "../render_ir.ts";
-import { validateSelectedLifecycleContext } from "../transaction.ts";
 import { observeSelfTestIssue } from "./observations.ts";
 import {
   liveMatrixAuthoritativeDocument,
@@ -83,7 +68,6 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_write_authoritative_matrix",
   "cli_write_authoritative_testing",
   "cli_query_each_view",
-  "query_burndown_four_missing_cost_bound_rejected",
   "cli_format_declared_source",
   "cli_no_args_rejected",
   "cli_unknown_option",
@@ -118,34 +102,11 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "query_debt_live_migration_floors",
   "query_debt_scoped_does_not_load_other_roadmap",
   "query_debt_all_reports_both",
-  "query_debt_duplicate_campaign_selection_rejected",
-  "query_debt_unselected_duplicate_selection_rejected",
-  "query_debt_unselected_duplicate_reservation_rejected",
-  "query_debt_selected_shadow_reservation_coalesces",
-  "query_debt_selected_shadow_title_binding_rejected",
-  "query_debt_unselected_legacy_selection_missing_reservation_rejected",
-  "query_debt_unselected_active_reservation_rejected",
-  "query_debt_unselected_reservation_guard_tombstone_rejected",
-  "query_debt_selected_alias_reservation_rejected",
-  "query_debt_invalid_campaign_target_rejected",
-  "query_debt_invalid_campaign_state_rejected",
-  "query_debt_authoritative_reservation_rejected",
-  "query_debt_active_tombstone_collision_rejected",
-  "query_debt_active_guard_collision_rejected",
-  "query_debt_active_reservation_collision_rejected",
-  "query_debt_invalid_guard_pin_rejected",
-  "query_debt_authority_mismatch_rejected",
-  "query_debt_missing_campaign_root_rejected",
-  "query_debt_missing_retired_root_rejected",
-  "query_debt_invalid_retired_pin_rejected",
-  "query_debt_stage_mismatch_rejected",
   "failure_stdout_empty",
   "success_receipt_nonvacuous",
   "cli_against_matrix_check_allowed",
   "cli_against_testing_check_allowed",
   "cli_against_all_check_allowed",
-  "cli_wp4m_mixed_authority_all",
-  "cli_shadow_authoritative_markdown_provenance",
   "cli_authoritative_fresh_projection_reference_provenance",
   "cli_against_missing_value",
   "cli_against_duplicate_value",
@@ -182,17 +143,10 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_against_part_to_record_all_simultaneous",
   "cli_against_part_to_record_other_base_not_loaded",
   "cli_semantic_conversion_current_omission_rejected",
-  "cli_against_v2_atomic_promotion",
-  "cli_against_v2_mixed_promotion_rejected",
+  "cli_against_projection_layout_promotion",
   "cli_against_v2_scoped_promotion_rejected",
-  "cli_against_v2_semantic_drift_rejected",
-  "cli_against_v2_incomplete_base_rejected",
-  "cli_against_v2_downgrade_rejected",
-  "cli_against_v2_preexisting_mixed_rejected",
-  "cli_against_v2_campaign_drift_rejected",
-  "cli_against_v2_retired_drift_rejected",
   "cli_summary_open_family_lower_bound_only",
-  "live_wp6_projection_pre_anchor_baseline",
+  "live_projection_pre_anchor_baseline",
 ] as const;
 
 export type RequiredCliSelfTestCaseId = (typeof REQUIRED_CLI_SELFTEST_CASE_IDS)[number];
@@ -317,32 +271,10 @@ function liveRegistry(revision: RepositoryRevision): RegistryView {
       liveMatrixAuthoritativeDocument(),
       liveTestingAuthoritativeDocument(),
     ]);
-  const relocation = [
-    ...NORTH_STAR_STRUCTURAL_RELOCATION_GUARDS,
-    ...WP8_RETIRED_RELOCATION_GUARDS,
-    ...WP8_RETIRED_STRUCTURAL_PART_RELOCATION_GUARDS,
-  ];
-  const relocationHeadings = [...new Map(relocation.map((guard) => {
-    const key = JSON.stringify([guard.path, guard.heading]);
-    const claims = relocation.filter((candidate) =>
-      candidate.path === guard.path && candidate.heading === guard.heading && candidate.claim_text !== undefined
-    ).map((candidate) => candidate.claim_text).join("\n");
-    return [key, {
-      path: guard.path as RepoPath,
-      heading: guard.heading,
-      span: { start_byte: 0, end_byte: 1 },
-      section_text: `${guard.heading}\n${claims}\n`,
-    }] as const;
-  })).values()];
   return {
     ...cachedLiveRegistry,
     revision,
-    current_guards: burndownGuards(),
-    tracked_headings: [...new Map(
-      [...cachedLiveRegistry.tracked_headings, ...relocationHeadings].map((fact) =>
-        [JSON.stringify([fact.path, fact.heading]), fact] as const
-      ),
-    ).values()],
+    current_guards: fixedValueClosureGuards(),
   };
 }
 
@@ -782,15 +714,11 @@ function promotionPorts(
 ): RoadmapCliPorts {
   const matrix = promotionDocuments(context, "matrix", options);
   const testing = promotionDocuments(context, "testing", options);
-  const campaign = UTF8.encode(`[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`);
-  const retired = UTF8.encode(`[retired_ids]\nschema_version = 1\n`);
   const candidate = new Map<RepoPath, Uint8Array>([
     ["cddl-matrix/roadmap.toml" as RepoPath, selection === "testing" ? composeRoadmapDocument(matrix.base) : composeRoadmapDocument(matrix.candidate)],
     ["tests/testing-roadmap.toml" as RepoPath, selection === "matrix" ? composeRoadmapDocument(testing.base) : composeRoadmapDocument(testing.candidate)],
     ["cddl-matrix/ROADMAP.md" as RepoPath, matrix.projection],
     ["tests/TESTING_ROADMAP.md" as RepoPath, testing.projection],
-    ["roadmap-campaign.toml" as RepoPath, campaign],
-    ["roadmap-retired-ids.toml" as RepoPath, retired],
   ]);
   const historical = (document: RoadmapDocumentV1): RoadmapDocumentV1 => ({
     ...document,
@@ -801,8 +729,6 @@ function promotionPorts(
     ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(historical(testing.base))],
     ["cddl-matrix/ROADMAP.md" as RepoPath, matrix.projection],
     ["tests/TESTING_ROADMAP.md" as RepoPath, testing.projection],
-    ["roadmap-campaign.toml" as RepoPath, campaign],
-    ["roadmap-retired-ids.toml" as RepoPath, retired],
   ]);
   const readMap = (values: ReadonlyMap<RepoPath, Uint8Array>, path: RepoPath): Uint8Array => {
     const value = values.get(path);
@@ -832,9 +758,7 @@ type V2PromotionMutation =
   | "semantic_drift"
   | "incomplete_base"
   | "downgrade"
-  | "preexisting_mixed"
-  | "campaign_drift"
-  | "retired_drift";
+  | "preexisting_mixed";
 
 function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
   let baseMatrix: RoadmapDocumentV1 | RoadmapDocumentV2 = liveMatrixAuthoritativeDocument();
@@ -872,29 +796,17 @@ function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
     baseTesting = liveTestingAuthoritativeDocument();
     candidateTesting = liveTestingAuthoritativeDocument();
   }
-  const campaign = UTF8.encode(`[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`);
-  const retired = UTF8.encode(`[retired_ids]\nschema_version = 1\n`);
-  const candidateCampaign = mutation === "campaign_drift"
-    ? UTF8.encode(`${text(campaign)}\n[[selection]]\nitem_id = "matrix.additional-tool-annotations"\ntarget_kind = "active_id"\nselected_state = "selected"\npriority_class = "normal"\nselection_reason_md = """Drift.\n"""\ncycle = "wp6"\nremaining_scope_md = """Drift.\n"""\n`)
-    : campaign;
-  const candidateRetired = mutation === "retired_drift"
-    ? UTF8.encode(`[retired_ids]\nschema_version = 1\n\n[[retired_ids.entry]]\nid = "matrix.fixture-retired-drift"\nlast_active_at = "${HASH}"\n\n[retired_ids.entry.replacement]\nkind = "gate"\ngate_id = "gate-0"\nclaim_md = """Replacement.\n"""\n`)
-    : retired;
   const candidate = new Map<RepoPath, Uint8Array>([
     ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(candidateMatrix)],
     ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(candidateTesting)],
     ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixCurrentLegacyProjection()],
     ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingLegacyProjection()],
-    ["roadmap-campaign.toml" as RepoPath, candidateCampaign],
-    ["roadmap-retired-ids.toml" as RepoPath, candidateRetired],
   ]);
   const base = new Map<RepoPath, Uint8Array>([
     ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(baseMatrix)],
     ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(baseTesting)],
     ["cddl-matrix/ROADMAP.md" as RepoPath, liveMatrixCurrentLegacyProjection()],
     ["tests/TESTING_ROADMAP.md" as RepoPath, liveTestingLegacyProjection()],
-    ["roadmap-campaign.toml" as RepoPath, campaign],
-    ["roadmap-retired-ids.toml" as RepoPath, retired],
   ]);
   const readMap = (values: ReadonlyMap<RepoPath, Uint8Array>, path: RepoPath): Uint8Array => {
     const value = values.get(path);
@@ -915,7 +827,7 @@ function v2PromotionPorts(mutation: V2PromotionMutation): RoadmapCliPorts {
   });
 }
 
-type Wp7LayoutMutation = "exact" | "content_drift" | "reference_drift";
+type LayoutMutation = "exact" | "content_drift" | "reference_drift";
 
 function withLayout(document: RoadmapDocumentV2, layout: ProjectionLayout): RoadmapDocumentV2 {
   const nextHeading = projectionLayoutRank(layout) >= projectionLayoutRank("unnumbered_v1")
@@ -941,14 +853,14 @@ function projectionForLayout(document: RoadmapDocumentV2, registry: RegistryView
     resolveGeneratedSlot: (slot) => resolvers.get(slot.slot_id)?.resolve(slot, registry),
   });
   const renderIssues = [...manifest.issues, ...validateCompletedChunks(document, manifest.ops, completed)];
-  assert(renderIssues.length === 0, `WP7 stage projection failed render validation: ${JSON.stringify(renderIssues)}`);
+  assert(renderIssues.length === 0, `layout stage projection failed render validation: ${JSON.stringify(renderIssues)}`);
   const legacy = document.document.roadmap === "matrix" ? liveMatrixCurrentLegacyProjection() : liveTestingLegacyProjection();
   const views = buildProjectionViews(document, completed, legacy);
-  assert(views.issues.length === 0, `WP7 stage projection failed view validation: ${JSON.stringify(views.issues)}`);
+  assert(views.issues.length === 0, `layout stage projection failed view validation: ${JSON.stringify(views.issues)}`);
   return views.full;
 }
 
-const wp7StageProjectionCache = new Map<string, Uint8Array>();
+const layoutStageProjectionCache = new Map<string, Uint8Array>();
 
 function liveProjectionForLayout(
   roadmap: "matrix" | "testing",
@@ -956,18 +868,18 @@ function liveProjectionForLayout(
   registry: RegistryView,
 ): Uint8Array {
   const key = `${roadmap}:${layout}`;
-  const cached = wp7StageProjectionCache.get(key);
+  const cached = layoutStageProjectionCache.get(key);
   if (cached !== undefined) return new Uint8Array(cached);
   const document = withLayout(roadmap === "matrix" ? liveMatrixV2Document() : liveTestingV2Document(), layout);
   const projection = projectionForLayout(document, registry);
-  wp7StageProjectionCache.set(key, projection);
+  layoutStageProjectionCache.set(key, projection);
   return new Uint8Array(projection);
 }
 
-function wp7LayoutPorts(
+function layoutPorts(
   baseLayout: ProjectionLayout,
   candidateLayout: ProjectionLayout,
-  mutation: Wp7LayoutMutation = "exact",
+  mutation: LayoutMutation = "exact",
   v1Base = false,
 ): RoadmapCliPorts {
   let baseMatrix: RoadmapDocumentV1 | RoadmapDocumentV2 = v1Base
@@ -990,8 +902,6 @@ function wp7LayoutPorts(
       ? { ...reference, source: candidateTesting.records[1]!.id }
       : reference),
   };
-  const campaign = UTF8.encode(`[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`);
-  const retired = UTF8.encode(`[retired_ids]\nschema_version = 1\n`);
   const registry = {
     ...liveRegistry({ kind: "worktree" }),
     production_output_stage: "both_authoritative" as const,
@@ -1011,16 +921,12 @@ function wp7LayoutPorts(
     ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(candidateTesting)],
     ["cddl-matrix/ROADMAP.md" as RepoPath, candidateMatrixProjection],
     ["tests/TESTING_ROADMAP.md" as RepoPath, candidateTestingProjection],
-    ["roadmap-campaign.toml" as RepoPath, campaign],
-    ["roadmap-retired-ids.toml" as RepoPath, retired],
   ]);
   const base = new Map<RepoPath, Uint8Array>([
     ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(baseMatrix)],
     ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(baseTesting)],
     ["cddl-matrix/ROADMAP.md" as RepoPath, baseMatrixProjection],
     ["tests/TESTING_ROADMAP.md" as RepoPath, baseTestingProjection],
-    ["roadmap-campaign.toml" as RepoPath, campaign],
-    ["roadmap-retired-ids.toml" as RepoPath, retired],
   ]);
   const readMap = (values: ReadonlyMap<RepoPath, Uint8Array>, path: RepoPath): Uint8Array => {
     const value = values.get(path);
@@ -1059,25 +965,25 @@ function validTestingPorts(context: SelfTestContext, atomic?: FakeOptions["atomi
   });
 }
 
-const WP5C_TESTING_EXTERN_TARGET =
+const CROSS_ROADMAP_TESTING_EXTERN_TARGET =
   "testing.extern-deps-wasm-boundary-surface-packaging-json-gen" as RoadmapId;
 
-function withWp5cTestingExternTarget(source: Uint8Array): Uint8Array {
+function withCrossRoadmapTestingExternTarget(source: Uint8Array): Uint8Array {
   const document = decodeRoadmapSource(
     source,
     "tests/testing-roadmap.toml" as RepoPath,
     "testing",
     true,
   );
-  assert(document.document.schema_version === 1, "WP5C testing target fixture must be v1");
+  assert(document.document.schema_version === 1, "cross-roadmap testing target fixture must be v1");
   const v1 = document as RoadmapDocumentV1;
-  if (v1.records.some((record) => record.id === WP5C_TESTING_EXTERN_TARGET)) return source;
+  if (v1.records.some((record) => record.id === CROSS_ROADMAP_TESTING_EXTERN_TARGET)) return source;
   const projectionGroup = v1.sections[0]?.section_id;
-  assert(projectionGroup !== undefined, "WP5C testing target fixture lacks a projection group");
+  assert(projectionGroup !== undefined, "cross-roadmap testing target fixture lacks a projection group");
   return composeRoadmapDocument({
     ...v1,
     records: [...v1.records, {
-      id: WP5C_TESTING_EXTERN_TARGET,
+      id: CROSS_ROADMAP_TESTING_EXTERN_TARGET,
       title: "Cross-roadmap extern execution owner",
       projection_group: projectionGroup,
       render_authority: "semantic",
@@ -1090,7 +996,7 @@ function withWp5cTestingExternTarget(source: Uint8Array): Uint8Array {
         work_kind: "infrastructure",
         risk: "compile_failure",
         family_classification: "none_reviewed",
-        acceptance_md: UTF8.encode("The combined WP5C universe resolves this exact target."),
+        acceptance_md: UTF8.encode("The combined cross-roadmap universe resolves this exact target."),
         priority_rationale_md: UTF8.encode("Fixture-only counterpart for the live matrix delegation."),
       },
       source_replacements: [],
@@ -1142,7 +1048,7 @@ unprobed_remainder_md = """No timeless claim is made."""
 [record.payload.scope]
 surfaces = ["fixture"]
 `;
-  const source = withWp5cTestingExternTarget(UTF8.encode(base.replace(
+  const source = withCrossRoadmapTestingExternTarget(UTF8.encode(base.replace(
     /\[record\.payload\]\n[\s\S]*?(?=\n\[\[record\.source_replacement\]\])/,
     payload,
   ) + `
@@ -1154,22 +1060,12 @@ repository = "fixture/repository"
 commit = "1111111111111111111111111111111111111111"
 `));
   const projection = fixture(context, "positive/mixed-testing-v1.expected.md");
-  const campaign = UTF8.encode(`[campaign]
-schema_version = 1
-matrix_authority = "authoritative"
-testing_authority = "authoritative"
-`);
-  const retired = UTF8.encode(`[retired_ids]
-schema_version = 1
-`);
   return fakePorts({
     read(path) {
       if (path === sourcePath) return new Uint8Array(source);
       if (path === projectionPath) return new Uint8Array(projection);
       if (path === "cddl-matrix/roadmap.toml") return liveMatrixAuthoritativeSource();
       if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
-      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
-      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     registry(revision) {
@@ -1179,26 +1075,6 @@ schema_version = 1
         output_claims: productionOutputInventory("both_authoritative").claims,
         matrix_status_inputs: liveMatrixStatusInputs(),
       };
-    },
-  });
-}
-
-function decodedCampaignPorts(): RoadmapCliPorts {
-  const campaign = UTF8.encode(`[campaign]
-schema_version = 1
-matrix_authority = "legacy_markdown"
-testing_authority = "legacy_markdown"
-`);
-  const retired = UTF8.encode(`[retired_ids]
-schema_version = 1
-`);
-  return fakePorts({
-    read(path) {
-      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
-      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
-      if (path === "cddl-matrix/ROADMAP.md") return UTF8.encode("# Matrix legacy authority\n");
-      if (path === "tests/TESTING_ROADMAP.md") return UTF8.encode("# Testing legacy authority\n");
-      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
   });
 }
@@ -1279,7 +1155,7 @@ function validGenericAllPorts(_context: SelfTestContext): RoadmapCliPorts {
   });
 }
 
-function wp4BootstrapSource(roadmap: "matrix" | "testing"): Uint8Array {
+function shadowBootstrapSource(roadmap: "matrix" | "testing"): Uint8Array {
   const shadow = roadmap === "matrix" ? liveMatrixShadowV0Document() : liveTestingShadowV0Document();
   const completed = roadmap === "matrix" ? liveMatrixAuthoritativeDocument() : liveTestingAuthoritativeDocument();
   const partPrefix = roadmap === "matrix" ? "part-" : "span-part-";
@@ -1319,22 +1195,12 @@ function wp4BootstrapSource(roadmap: "matrix" | "testing"): Uint8Array {
 }
 
 function bothAuthoritativePorts(atomic?: FakeOptions["atomic"]): RoadmapCliPorts {
-  const campaign = UTF8.encode(`[campaign]
-schema_version = 1
-matrix_authority = "authoritative"
-testing_authority = "authoritative"
-`);
-  const retired = UTF8.encode(`[retired_ids]
-schema_version = 1
-`);
   return fakePorts({
     read(path) {
       if (path === "cddl-matrix/roadmap.toml") return liveMatrixAuthoritativeSource();
       if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
       if (path === "tests/testing-roadmap.toml") return liveTestingAuthoritativeSource();
       if (path === "tests/TESTING_ROADMAP.md") return liveTestingProjection();
-      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
-      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     registry(revision) {
@@ -1349,7 +1215,7 @@ schema_version = 1
   });
 }
 
-const BURNDOWN_GUARD_ROLES = Object.freeze([
+const FIXED_VALUE_CLOSURE_GUARD_ROLES = Object.freeze([
   [FIXED_VALUE_FAMILY_ROOT, "closed_family_root"],
   ["matrix.fixed-value-representative-kind", "family_axis"],
   ...["bool", "bytes", "float", "nint", "null", "text", "uint", "undefined"].map((value) =>
@@ -1362,8 +1228,8 @@ const BURNDOWN_GUARD_ROLES = Object.freeze([
   ),
 ] as const);
 
-function burndownGuards(): readonly CurrentFamilyGuard[] {
-  return BURNDOWN_GUARD_ROLES.map(([id, guard_role]) => ({
+function fixedValueClosureGuards(): readonly CurrentFamilyGuard[] {
+  return FIXED_VALUE_CLOSURE_GUARD_ROLES.map(([id, guard_role]) => ({
     id: id as RoadmapId,
     guard_role,
     family_root_id: FIXED_VALUE_FAMILY_ROOT,
@@ -1372,66 +1238,6 @@ function burndownGuards(): readonly CurrentFamilyGuard[] {
       kind: "gate", gate_id: "roadmap_projection_check", claim_md: UTF8.encode("Delivered closure."),
     },
   }));
-}
-
-interface BurndownQueryMutation {
-  readonly campaign?: Uint8Array;
-  readonly testing?: RoadmapDocumentV2;
-  readonly closure?: FixedValueClosureAuthorityFact;
-}
-
-function burndownQueryPorts(mutation: BurndownQueryMutation = {}): RoadmapCliPorts {
-  const matrix = liveMatrixV2Document();
-  const testing = mutation.testing ?? liveTestingV2Document();
-  const guards = burndownGuards();
-  const cellIds = new Set(guards.filter((guard) => guard.guard_role === "family_cell").map((guard) => guard.id));
-  const retainedEvidenceIds = matrix.records.flatMap((record) => {
-    const payload = record.payload;
-    return payload.kind === "evidence" && payload.scope.cell_ids?.some((id: RoadmapId) => cellIds.has(id))
-      ? [record.id]
-      : [];
-  }).sort();
-  const closure: FixedValueClosureAuthorityFact = mutation.closure ?? {
-    baseline_commit: FIXED_VALUE_DELIVERY_BASE,
-    expected_guards: BURNDOWN_GUARD_ROLES.map(([id, guard_role]) => ({ id: id as RoadmapId, guard_role })),
-    retained_evidence_ids: retainedEvidenceIds,
-    legal_cell_count: 8,
-    evidence_coordinate_count: 36,
-  };
-  const campaign = mutation.campaign ?? UTF8.encode(liveCampaignText);
-  const retired = UTF8.encode(liveRetiredText);
-  const matrixSource = composeRoadmapDocument(matrix);
-  const testingSource = composeRoadmapDocument(testing);
-  return fakePorts({
-    read(path) {
-      if (path === "cddl-matrix/roadmap.toml") return matrixSource;
-      if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
-      if (path === "tests/testing-roadmap.toml") return testingSource;
-      if (path === "tests/TESTING_ROADMAP.md") return liveTestingProjection();
-      if (path === "roadmap-campaign.toml") return campaign;
-      if (path === "roadmap-retired-ids.toml") return retired;
-      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
-    },
-    readAtCommit(path) {
-      if (path === "roadmap-campaign.toml") return UTF8.encode(liveCampaignText);
-      if (path === "roadmap-retired-ids.toml") return retired;
-      if (path === "cddl-matrix/roadmap.toml") return matrixSource;
-      if (path === "cddl-matrix/ROADMAP.md") return liveMatrixProjection();
-      if (path === "tests/testing-roadmap.toml") return composeRoadmapDocument(liveTestingV2Document());
-      if (path === "tests/TESTING_ROADMAP.md") return liveTestingProjection();
-      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
-    },
-    registry(revision) {
-      return {
-        ...liveRegistry(revision),
-        production_output_stage: "both_authoritative",
-        output_claims: productionOutputInventory("both_authoritative").claims,
-        matrix_status_inputs: liveMatrixStatusInputs(),
-        current_guards: guards,
-        fixed_value_closure: closure,
-      };
-    },
-  });
 }
 
 function uniqueProjectionHeading(projection: Uint8Array): string {
@@ -1463,8 +1269,6 @@ heading = ${JSON.stringify(referencedHeading)}
   );
   const priorProjection = UTF8.encode(`# ${priorHeading}\n`);
   const priorHeadingBytes = UTF8.encode(priorHeading).byteLength;
-  const campaign = UTF8.encode(`[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`);
-  const retired = UTF8.encode(`[retired_ids]\nschema_version = 1\n`);
   return fakePorts({
     read(path) {
       if (path === sourcePath) return new Uint8Array(sourceBytes);
@@ -1472,8 +1276,6 @@ heading = ${JSON.stringify(referencedHeading)}
         projectionReads.value += 1;
         return new Uint8Array(priorProjection);
       }
-      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
-      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     registry(revision) {
@@ -1494,68 +1296,18 @@ heading = ${JSON.stringify(referencedHeading)}
   });
 }
 
-const SCOPED_CAMPAIGN_ROOT = `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "authoritative"\n`;
-
-function scopedSelection(id: string, extra = ""): string {
-  return `\n[[selection]]\nitem_id = "${id}"\ntarget_kind = "active_id"\nselected_state = "selected"\npriority_class = "fixture"\nselection_reason_md = """Reason."""\ncycle = "fixture"\nremaining_scope_md = """Scope."""${extra}\n`;
-}
-
-function scopedLegacySelection(id: string): string {
-  return `\n[[selection]]\nitem_id = "${id}"\ntarget_kind = "legacy_markdown_reservation"\nselected_state = "selected"\npriority_class = "fixture"\nselection_reason_md = """Reason."""\ncycle = "fixture"\nremaining_scope_md = """Scope."""\n`;
-}
-
-function scopedReservation(id: string, roadmapPath: "cddl-matrix/ROADMAP.md" | "tests/TESTING_ROADMAP.md"): string {
-  return `\n[[legacy_markdown_reservation]]\nid = "${id}"\nwork_kind = "feature"\nroadmap_path = "${roadmapPath}"\nsource_title = "Fixture"\nsource_start_byte = 0\nsource_end_byte = 1\nsource_sha256 = "${"0".repeat(64)}"\nwhole_source_sha256 = "${"0".repeat(64)}"\n`;
-}
-
-function selectedShadowCampaignFixture(
-  mutatedTitle?: string,
-): { readonly campaign: string; readonly source: Uint8Array } {
-  const originalSource = liveMatrixShadowV0Source();
-  const document = decodeRoadmapSource(
-    originalSource,
-    "cddl-matrix/roadmap.toml" as RepoPath,
-    "matrix",
-    true,
-  );
-  assert(document.document.schema_version === 0, "selected shadow fixture did not decode as v0");
-  const shadow = document as RoadmapDocumentV0;
-  const record = shadow.records[0]!;
-  const spans = record.span_ids.map((id) => shadow.spans.find((span) => span.id === id)!);
-  const start = Math.min(...spans.map((span) => span.start_byte));
-  const end = Math.max(...spans.map((span) => span.end_byte));
-  const sourceSha = new Bun.CryptoHasher("sha256").update(record.source_block_md).digest("hex");
-  const title = mutatedTitle ?? record.title;
-  return {
-    source: originalSource,
-    campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "shadow"\ntesting_authority = "shadow"\n\n[[legacy_markdown_reservation]]\nid = "${record.id}"\nwork_kind = "feature"\nroadmap_path = "cddl-matrix/ROADMAP.md"\nsource_title = ${JSON.stringify(title)}\nsource_start_byte = ${start}\nsource_end_byte = ${end}\nsource_sha256 = "${sourceSha}"\nwhole_source_sha256 = "${shadow.document.frozen_source_sha256}"\n`,
-  };
-}
-
 interface ScopedDebtMutation {
-  readonly campaign?: string | null;
-  readonly retired?: string | null;
-  readonly source?: Uint8Array;
-  readonly guards?: RegistryView["current_guards"];
-  readonly gates?: RegistryView["gates"];
   readonly stage?: RegistryView["production_output_stage"];
 }
 
 function scopedDebtMutationPorts(mutation: ScopedDebtMutation): RoadmapCliPorts {
-  const campaign = mutation.campaign === undefined ? SCOPED_CAMPAIGN_ROOT : mutation.campaign;
-  const retired = mutation.retired === undefined ? `[retired_ids]\nschema_version = 1\n` : mutation.retired;
   return fakePorts({
     read(path) {
-      if (path === "cddl-matrix/roadmap.toml") return mutation.source ?? liveMatrixAuthoritativeSource();
-      if (path === "roadmap-campaign.toml" && campaign !== null) return UTF8.encode(campaign);
-      if (path === "roadmap-retired-ids.toml" && retired !== null) return UTF8.encode(retired);
+      if (path === "cddl-matrix/roadmap.toml") return liveMatrixAuthoritativeSource();
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     registry(revision) {
       const registry = liveRegistry(revision);
-      const gates = mutation.gates === undefined
-        ? registry.gates
-        : [...new Map([...registry.gates, ...mutation.gates].map((gate) => [gate.id, gate])).values()];
       return {
         ...registry,
         production_output_stage: mutation.stage ?? "both_authoritative",
@@ -1563,67 +1315,12 @@ function scopedDebtMutationPorts(mutation: ScopedDebtMutation): RoadmapCliPorts 
         matrix_status_inputs: mutation.stage === "pre_cutover"
           ? legacyMatrixStatusInputs()
           : liveMatrixStatusInputs(),
-        current_guards: mutation.guards === undefined
-          ? registry.current_guards
-          : [...registry.current_guards, ...mutation.guards],
-        gates,
       };
     },
   });
 }
 
-function wp4mBootstrapProbePorts(
-  context: SelfTestContext,
-  onBaseRead: (path: RepoPath) => void,
-): RoadmapCliPorts {
-  const preRoots = validGenericAllPorts(context);
-  const candidateMatrix = wp4BootstrapSource("matrix");
-  const baseMatrix = liveMatrixShadowV0Source();
-  const matrixProjection = liveMatrixLegacyProjection();
-  const shadowTesting = liveTestingShadowV0Source();
-  const testingProjection = liveTestingLegacyProjection();
-  const campaign = UTF8.encode(`[campaign]
-schema_version = 1
-matrix_authority = "authoritative"
-testing_authority = "shadow"
-`);
-  const retired = UTF8.encode(`[retired_ids]
-schema_version = 1
-`);
-  return fakePorts({
-    read(path) {
-      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
-      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
-      if (path === "cddl-matrix/roadmap.toml") return new Uint8Array(candidateMatrix);
-      if (path === "cddl-matrix/ROADMAP.md") return new Uint8Array(matrixProjection);
-      if (path === "tests/testing-roadmap.toml") return new Uint8Array(shadowTesting);
-      if (path === "tests/TESTING_ROADMAP.md") return new Uint8Array(testingProjection);
-      return preRoots.read.readDeclared(path);
-    },
-    readAtCommit(path) {
-      onBaseRead(path);
-      if (path === "roadmap-campaign.toml" || path === "roadmap-retired-ids.toml") {
-        throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
-      }
-      if (path === "cddl-matrix/roadmap.toml") return new Uint8Array(baseMatrix);
-      if (path === "cddl-matrix/ROADMAP.md") return new Uint8Array(matrixProjection);
-      if (path === "tests/testing-roadmap.toml") return new Uint8Array(shadowTesting);
-      if (path === "tests/TESTING_ROADMAP.md") return new Uint8Array(testingProjection);
-      return preRoots.read.readDeclared(path);
-    },
-    registry(revision) {
-      const stage = revision.kind === "worktree" ? "matrix_authoritative" : "pre_cutover";
-      return {
-        ...preRoots.read.registryView(revision),
-        production_output_stage: stage,
-        output_claims: productionOutputInventory(stage).claims,
-        matrix_status_inputs: legacyMatrixStatusInputs(),
-      };
-    },
-  });
-}
-
-function wp4mMixedAuthorityPorts(
+function matrixMixedAuthorityPorts(
   context: SelfTestContext,
   candidateReads: RepoPath[],
   baseReads: RepoPath[],
@@ -1633,25 +1330,15 @@ function wp4mMixedAuthorityPorts(
   const testingSourcePath = "tests/testing-roadmap.toml" as RepoPath;
   const testingProjectionPath = "tests/TESTING_ROADMAP.md" as RepoPath;
   const baseMatrixSource = liveMatrixShadowV0Source();
-  const candidateMatrixSource = wp4BootstrapSource("matrix");
+  const candidateMatrixSource = shadowBootstrapSource("matrix");
   const candidateProjection = liveMatrixLegacyProjection();
   const testingMarkdown = UTF8.encode("# Testing legacy authority\n");
-  const campaign = UTF8.encode(`[campaign]
-schema_version = 1
-matrix_authority = "authoritative"
-testing_authority = "legacy_markdown"
-`);
-  const retired = UTF8.encode(`[retired_ids]
-schema_version = 1
-`);
   return fakePorts({
     read(path) {
       candidateReads.push(path);
       if (path === matrixSourcePath) return new Uint8Array(candidateMatrixSource);
       if (path === matrixProjectionPath) return new Uint8Array(candidateProjection);
       if (path === testingProjectionPath) return new Uint8Array(testingMarkdown);
-      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
-      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
       throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
     },
     readAtCommit(path) {
@@ -1659,10 +1346,10 @@ schema_version = 1
       if (path === matrixSourcePath) return new Uint8Array(baseMatrixSource);
       if (path === matrixProjectionPath) return new Uint8Array(candidateProjection);
       if (path === testingProjectionPath) return new Uint8Array(testingMarkdown);
-      if (path === testingSourcePath || path === "roadmap-campaign.toml" || path === "roadmap-retired-ids.toml") {
+      if (path === testingSourcePath) {
         throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
       }
-      throw new Error(`unexpected WP4M base read ${path}`);
+      throw new Error(`unexpected matrix_authoritative base read ${path}`);
     },
     registry(revision) {
       const stage = revision.kind === "worktree" ? "matrix_authoritative" : "pre_cutover";
@@ -1675,108 +1362,6 @@ schema_version = 1
       };
     },
   });
-}
-
-function shadowLifecyclePorts(
-  projection: Uint8Array,
-  reads: RepoPath[],
-): RoadmapCliPorts {
-  const matrixSourcePath = "cddl-matrix/roadmap.toml" as RepoPath;
-  const matrixProjectionPath = "cddl-matrix/ROADMAP.md" as RepoPath;
-  const matrixSource = liveMatrixShadowV0Source();
-  const campaign = UTF8.encode(`[campaign]
-schema_version = 1
-matrix_authority = "shadow"
-testing_authority = "legacy_markdown"
-`);
-  const retired = UTF8.encode(`[retired_ids]
-schema_version = 1
-`);
-  return fakePorts({
-    read(path) {
-      reads.push(path);
-      if (path === "roadmap-campaign.toml") return new Uint8Array(campaign);
-      if (path === "roadmap-retired-ids.toml") return new Uint8Array(retired);
-      if (path === matrixSourcePath) return new Uint8Array(matrixSource);
-      if (path === matrixProjectionPath) return new Uint8Array(projection);
-      if (path === "tests/TESTING_ROADMAP.md") return UTF8.encode("# Testing legacy authority\n");
-      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
-    },
-    registry(revision) {
-      return { ...emptyRegistry(revision), matrix_status_inputs: legacyMatrixStatusInputs() };
-    },
-  });
-}
-
-function scopedCandidateCollisionProbe(context: SelfTestContext): {
-  readonly ports: RoadmapCliPorts;
-  readonly candidate_reads: RepoPath[];
-  readonly base_reads: RepoPath[];
-  readonly collision_id: string;
-} {
-  const testingSourcePath = "tests/testing-roadmap.toml" as RepoPath;
-  const testingSource = withWp5cTestingExternTarget(UTF8.encode(text(fixture(context, "positive/mixed-testing-v1.toml"))
-    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.toml", testingSourcePath)
-    .replace("cddl-matrix/roadmap/fixtures/positive/mixed-testing-v1.expected.md", "tests/TESTING_ROADMAP.md")));
-  const matrixSource = liveMatrixAuthoritativeSource();
-  const matrixMarkdown = liveMatrixProjection();
-  const collisionId = "matrix.additional-tool-annotations";
-  const campaign = UTF8.encode(`[campaign]
-schema_version = 1
-matrix_authority = "authoritative"
-testing_authority = "authoritative"
-`);
-  const retired = UTF8.encode(`[retired_ids]
-schema_version = 1
-
-[[retired_ids.entry]]
-id = "${collisionId}"
-last_active_at = "1111111111111111111111111111111111111111"
-
-[retired_ids.entry.replacement]
-kind = "gate"
-gate_id = "durable-gate"
-claim_md = """The durable gate owns the replacement claim."""
-`);
-  const candidateReads: RepoPath[] = [];
-  const baseReads: RepoPath[] = [];
-  const candidateSources = new Map<RepoPath, Uint8Array>([
-    [testingSourcePath, testingSource],
-    ["cddl-matrix/roadmap.toml" as RepoPath, matrixSource],
-    ["cddl-matrix/ROADMAP.md" as RepoPath, matrixMarkdown],
-    ["roadmap-campaign.toml" as RepoPath, campaign],
-    ["roadmap-retired-ids.toml" as RepoPath, retired],
-  ]);
-  const ports = fakePorts({
-    read(path) {
-      candidateReads.push(path);
-      const value = candidateSources.get(path);
-      if (value !== undefined) return new Uint8Array(value);
-      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
-    },
-    readAtCommit(path) {
-      baseReads.push(path);
-      if (path === testingSourcePath) return new Uint8Array(testingSource);
-      throw new Error(`single-roadmap comparison read unselected base path ${path}`);
-    },
-    registry(revision) {
-      const stage = "both_authoritative";
-      const registry = liveRegistry(revision);
-      return {
-        ...registry,
-        production_output_stage: stage,
-        output_claims: productionOutputInventory(stage).claims,
-        gates: [...registry.gates, { id: "durable-gate", kind: "cmd", stub: false }],
-        matrix_status_inputs: liveMatrixStatusInputs(),
-      };
-    },
-  });
-  return {
-    ports,
-    candidate_reads: candidateReads,
-    base_reads: baseReads,
-    collision_id: collisionId,
-  };
 }
 
 function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
@@ -1795,7 +1380,7 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
           result.exit_code === 0 && result.stderr.byteLength === 0 && stdout.includes("CHECK OK\n") &&
             (roadmap === "testing" || stdout.includes("source=cddl-matrix/roadmap.toml")) &&
             (roadmap === "matrix" || stdout.includes("source=tests/testing-roadmap.toml")),
-          `pre-WP4M ${roadmap} check did not succeed without campaign/retired roots: ${text(result.stderr)}`,
+          `${roadmap} check did not succeed over its exact selected roadmap sources: ${text(result.stderr)}`,
         );
       }
       return pass("positive", ["matrix", "testing", "all"]);
@@ -1813,7 +1398,7 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
       const candidateReads: RepoPath[] = [];
       const baseReads: RepoPath[] = [];
       const replacements: { path: RepoPath; bytes: Uint8Array }[] = [];
-      const fixturePorts = wp4mMixedAuthorityPorts(context, candidateReads, baseReads);
+      const fixturePorts = matrixMixedAuthorityPorts(context, candidateReads, baseReads);
       const ports = fakePorts({
         read: fixturePorts.read.readDeclared,
         readAtCommit: (path) => fixturePorts.read.readDeclaredAtCommit(HASH as import("../model/core.ts").FullCommitId, path),
@@ -1858,178 +1443,7 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
           expectedIssue("E-SOURCE-MISSING", "tests/testing-roadmap.toml", "$", "declared source is missing", 1),
         );
       }
-      const campaign = run(["--roadmap", "testing", "--query", "campaign", "--json"]);
-      assert(
-        campaign.exit_code === 0 && campaign.stderr.byteLength === 0 &&
-          JSON.parse(text(campaign.stdout)).state === "not_activated",
-        "pre-WP4M campaign query did not return the explicit inactive-stage payload",
-      );
-      const decodedCampaign = run(
-        ["--roadmap", "all", "--query", "campaign", "--json"],
-        decodedCampaignPorts(),
-      );
-      const decoded = JSON.parse(text(decodedCampaign.stdout));
-      assert(
-        decodedCampaign.exit_code === 0 && decodedCampaign.stderr.byteLength === 0 &&
-          decoded.campaign.campaign.schema_version === 1 &&
-          decoded.campaign.campaign.matrix_authority === "legacy_markdown" &&
-          decoded.campaign.campaign.testing_authority === "legacy_markdown",
-        `campaign query did not expose the decoded lifecycle document: ${text(decodedCampaign.stderr)}`,
-      );
-      const alpha = "testing.fixture-alpha" as RoadmapId;
-      const beta = "testing.fixture-beta" as RoadmapId;
-      const gamma = "testing.fixture-gamma" as RoadmapId;
-      const stable = burndownStableSetDelta([alpha, beta], [alpha, beta]);
-      const drifted = burndownStableSetDelta([alpha, beta], [alpha, gamma]);
-      assert(stable.stable && !drifted.stable && drifted.missing[0] === beta &&
-        drifted.unexpected[0] === gamma,
-      "burndown cohort deltas must expose exact stable, missing, and unexpected sets");
-      const queryBurndown = (ports: RoadmapCliPorts): Record<string, any> => {
-        const result = run(["--roadmap", "all", "--query", "burndown", "--json"], ports);
-        assert(result.exit_code === 0 && result.stderr.byteLength === 0,
-          `burndown query failed: ${text(result.stderr)}`);
-        return JSON.parse(text(result.stdout));
-      };
-      const burndown = queryBurndown(burndownQueryPorts());
-      assert(burndown.cohort.stable_set_delta.stable === true &&
-        burndown.cohort.current_items.length === 7 &&
-        burndown.cohort.current_items.every((item: any) =>
-          item.work_state === "ready" && item.admission_status === "not_applicable" &&
-          item.structured_cost.status === "bounded"
-        ) &&
-        burndown.retired_family.current.guarded === true &&
-        burndown.retired_family.current.total_guard_count === 20 &&
-        burndown.retired_family.current.retained_evidence_count === 8 &&
-        burndown.retired_family.deltas.active_items === -1 &&
-        burndown.retired_family.deltas.active_cells === -8 &&
-        burndown.retired_family.deltas.active_evidence_coordinates === -36 &&
-        burndown.retired_family.verification_cost_envelope.status === "bounded" &&
-        burndown.retired_family.verification_cost_envelope.legal_cell_count === 8 &&
-        burndown.retired_family.verification_cost_envelope.evidence_coordinate_count === 36 &&
-        burndown.retired_family.verification_cost_envelope.typed_guard_count === 20 &&
-        burndown.retired_family.verification_cost_envelope.retained_evidence_count === 8 &&
-        burndown.active_open_families.every((family: any) =>
-          Number.isInteger(family.observed_lower_bound) && !("percentage" in family)
-        ) &&
-        burndown.structured_costs.status === "bounded" &&
-        burndown.structured_costs.implementation_unit_count === 9 &&
-        burndown.structured_costs.validation_unit_count === 13 &&
-        burndown.structured_costs.total_unit_count === 22 &&
-        burndown.structured_costs.missing_selection_ids.length === 0,
-      "end-to-end burndown query omitted a cohort/family/delta/lower-bound/admission/cost contract");
-
-      const decodedCampaignDocument = decodeCampaignSource(
-        UTF8.encode(liveCampaignText), "roadmap-campaign.toml", true,
-      );
-      const directPorts = burndownQueryPorts();
-      const directFacts = {
-        campaign: decodedCampaignDocument,
-        retired: decodeRetiredSource(UTF8.encode(liveRetiredText), "roadmap-retired-ids.toml", true),
-        registry: directPorts.read.registryView({ kind: "worktree" } as const),
-        documents: [liveMatrixV2Document(), liveTestingV2Document()],
-      };
-      const defensivelyUnboundedCampaign = {
-        ...decodedCampaignDocument,
-        selections: decodedCampaignDocument.selections.map((selection, index) =>
-          index === 0 ? { ...selection, cost_bound: undefined } : selection
-        ),
-      };
-      const defensivelyUnbounded = buildBurndownFourReport(directFacts, {
-        ...directFacts,
-        campaign: defensivelyUnboundedCampaign,
-      }) as any;
-      assert(
-        defensivelyUnbounded.structured_costs.status === "missing" &&
-          defensivelyUnbounded.structured_costs.missing_selection_ids.length === 1 &&
-          defensivelyUnbounded.structured_costs.missing_selection_ids[0] ===
-            decodedCampaignDocument.selections[0]!.item_id &&
-          defensivelyUnbounded.cohort.current_items[0].structured_cost.status === "missing",
-        "burndown report must expose a missing structured cost defensively before lifecycle validation",
-      );
-      const missingCohort = composeCampaignDocument({
-        ...decodedCampaignDocument,
-        selections: decodedCampaignDocument.selections.slice(1),
-      });
-      const missingReport = queryBurndown(burndownQueryPorts({ campaign: missingCohort }));
-      assert(missingReport.cohort.stable_set_delta.stable === false &&
-        missingReport.cohort.stable_set_delta.missing.length === 1,
-      "end-to-end burndown query must expose a missing cohort member");
-
-      const targetId = decodedCampaignDocument.selections[0]!.item_id;
-      const testing = liveTestingV2Document();
-      const stateRecords = testing.records.map((record) => {
-        if (record.id !== targetId || record.payload.kind !== "work" || record.payload.work_state !== "ready") return record;
-        const {
-          acceptance_md: _acceptance,
-          priority_rationale_md: _priority,
-          priority_band: _band,
-          ...rest
-        } = record.payload;
-        return { ...record, payload: {
-          ...rest,
-          work_state: "blocked" as const,
-          blocker_md: UTF8.encode("Blocked mutation."),
-          transition_ids: ["testing.predicate.convenience-cbor-bytes-ruling" as RoadmapId],
-        } };
-      });
-      const stateReport = queryBurndown(burndownQueryPorts({
-        testing: { ...testing, records: stateRecords },
-      }));
-      assert(stateReport.cohort.current_items.find((item: any) => item.id === targetId)?.work_state === "blocked",
-        "end-to-end burndown query must report current work state");
-
-      const reopeningRecords = testing.records.map((record) => {
-        if (record.id !== targetId || record.payload.kind !== "work") return record;
-        const { family_classification: _classification, ...payload } = record.payload;
-        return { ...record, payload: { ...payload, family_id: FIXED_VALUE_FAMILY_ROOT } };
-      });
-      const reopeningReport = queryBurndown(burndownQueryPorts({ testing: {
-        ...testing,
-        records: reopeningRecords,
-        relations: [...testing.relations, {
-          source: targetId, kind: "reopens" as const, target: FIXED_VALUE_FAMILY_ROOT,
-        }],
-      } }));
-      assert(reopeningReport.retired_family.same_family_reopening_rows.length === 1 &&
-        reopeningReport.retired_family.same_family_reopening_rows[0].source_work_id === targetId,
-      "end-to-end burndown query must report paired same-family reopening rows");
-
-      const admissionId = testing.records.find((record) =>
-        record.payload.kind === "testing_system_admission"
-      )?.id;
-      assert(admissionId !== undefined, "live testing roadmap lacks an admission fixture");
-      const admissionRecords = testing.records.map((record) =>
-        record.id === targetId && record.payload.kind === "work"
-          ? { ...record, payload: {
-            ...record.payload,
-            work_kind: "missing_system" as const,
-            admission_ids: [admissionId],
-          } }
-          : record
-      );
-      const admissionReport = queryBurndown(burndownQueryPorts({
-        testing: { ...testing, records: admissionRecords },
-      }));
-      assert(admissionReport.cohort.current_items.find((item: any) => item.id === targetId)?.admission_status === "admitted",
-        "end-to-end burndown query must report qualifying missing-system admission");
-
-      const changedClosure = {
-        ...burndownQueryPorts().read.registryView({ kind: "worktree" }).fixed_value_closure!,
-        retained_evidence_ids: burndownQueryPorts().read.registryView({ kind: "worktree" })
-          .fixed_value_closure!.retained_evidence_ids.slice(1),
-        legal_cell_count: 9,
-        evidence_coordinate_count: 37,
-      };
-      const changedDeltaReport = queryBurndown(burndownQueryPorts({ closure: changedClosure }));
-      assert(changedDeltaReport.retired_family.current.retained_evidence_count === 7 &&
-        changedDeltaReport.retired_family.deltas.active_cells === -9 &&
-        changedDeltaReport.retired_family.deltas.active_evidence_coordinates === -37 &&
-        changedDeltaReport.retired_family.verification_cost_envelope.legal_cell_count === 9 &&
-        changedDeltaReport.retired_family.verification_cost_envelope.evidence_coordinate_count === 37 &&
-        changedDeltaReport.retired_family.verification_cost_envelope.typed_guard_count === 20 &&
-        changedDeltaReport.retired_family.verification_cost_envelope.retained_evidence_count === 7,
-      "end-to-end burndown query must derive exact retained evidence membership and cell/evidence deltas from authority facts");
-      return pass("positive", ["summary", "debt", "references", "campaign", "burndown", "signals",
+      return pass("positive", ["summary", "debt", "references", "signals",
         "actionables", "decisions", "families", "watches", "content", "output-owners"]);
     }
     case "cli_no_args_rejected": expectFailure([], cliIssue("E-CLI-MODE", 0, "exactly one primary mode is required"), fakePorts(), true); return pass("negative");
@@ -2172,58 +1586,9 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
           mismatch(source, stage, matrixStatusInputs),
         );
       }
-      const lifecycle = wp4mMixedAuthorityPorts(context, [], []);
-      const recognizedWrongStage = fakePorts({
-        read: lifecycle.read.readDeclared,
-        registry: (revision) => ({
-          ...lifecycle.read.registryView(revision),
-          production_output_stage: "both_authoritative",
-          output_claims: productionOutputInventory("both_authoritative").claims,
-        }),
-      });
-      for (const argv of [
-        ["--roadmap", "matrix", "--query", "summary"],
-        ["--roadmap", "matrix", "--check"],
-        ["--format-source", "cddl-matrix/roadmap.toml"],
-      ]) {
-        expectFailure(
-          argv,
-          expectedIssue(
-            "E-OUTPUT-CLAIM",
-            "<output-registry>",
-            "production_output_stage",
-            "revision registry stage both_authoritative does not match campaign stage matrix_authoritative",
-            1,
-          ),
-          recognizedWrongStage,
-        );
-      }
-      const preActivationWrongStage = mismatch(
-        liveMatrixAuthoritativeSource(),
-        "both_authoritative",
-        liveMatrixStatusInputs(),
-      );
-      for (const argv of [
-        ["--roadmap", "matrix", "--query", "summary"],
-        ["--roadmap", "matrix", "--check"],
-      ]) {
-        expectFailure(
-          argv,
-          expectedIssue(
-            "E-OUTPUT-CLAIM",
-            "<output-registry>",
-            "production_output_stage",
-            "pre-activation registry stage both_authoritative does not match canonical stage pre_cutover",
-            1,
-          ),
-          preActivationWrongStage,
-        );
-      }
       return pass("negative", [
         "authoritative_without_claim",
         "shadow_with_claim",
-        "recognized_wrong_stage",
-        "preactivation_recognized_wrong_stage",
       ]);
     }
     case "failure_stdout_empty": {
@@ -2237,251 +1602,6 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
 
 function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
   switch (id) {
-    case "query_debt_selected_shadow_reservation_coalesces": {
-      const fixture = selectedShadowCampaignFixture();
-      const result = run(
-        ["--roadmap", "matrix", "--query", "debt", "--json"],
-        scopedDebtMutationPorts({
-          campaign: fixture.campaign,
-          source: fixture.source,
-          stage: "pre_cutover",
-        }),
-      );
-      assert(
-        result.exit_code === 0 && result.stderr.byteLength === 0 &&
-          JSON.parse(text(result.stdout)).roadmaps[0].roadmap === "matrix",
-        `selected shadow reservation did not coalesce with its same-ID shadow: ${text(result.stderr)}`,
-      );
-      return pass("positive");
-    }
-    case "query_debt_selected_shadow_title_binding_rejected": {
-      const fixture = selectedShadowCampaignFixture("Mutated fixture title");
-      const recordId = "matrix.additional-tool-annotations";
-      const decoded = decodeRoadmapSource(
-        fixture.source,
-        "cddl-matrix/roadmap.toml" as RepoPath,
-        "matrix",
-        true,
-      );
-      assert(decoded.document.schema_version === 0, "selected shadow title repro did not decode as v0");
-      const document = {
-        ...decoded,
-        records: decoded.records.map((record) => record.id === recordId
-          ? { ...record, title: "Mutated fixture title" }
-          : record),
-      } as RoadmapDocumentV0;
-      const issues = validateSelectedLifecycleContext({
-        selection: "matrix",
-        campaign: decodeCampaignSource(UTF8.encode(fixture.campaign), "roadmap-campaign.toml" as RepoPath, true),
-        retired: { retired_ids: { schema_version: 1 }, entries: [] },
-        document,
-        registry: scopedDebtMutationPorts({ stage: "pre_cutover" }).read.registryView({ kind: "worktree" }),
-      });
-      assert(issues.some((issue) =>
-        issue.code === "E-CAMPAIGN-TARGET" && issue.logical_path === `record[${JSON.stringify(recordId)}]`
-      ), `${id} accepted mutated record title plus matching reservation source_title`);
-      observeSelfTestIssue({ code: "E-CAMPAIGN-TARGET", logical_path: `record[${JSON.stringify(recordId)}]` });
-      return pass("negative");
-    }
-    case "query_burndown_four_missing_cost_bound_rejected": {
-      const campaign = decodeCampaignSource(
-        UTF8.encode(liveCampaignText), "roadmap-campaign.toml" as RepoPath, true,
-      );
-      const missingBound = composeCampaignDocument({
-        ...campaign,
-        selections: campaign.selections.map((selection, index) =>
-          index === 0 ? { ...selection, cost_bound: undefined } : selection
-        ),
-      });
-      const result = run(
-        ["--roadmap", "all", "--check"],
-        burndownQueryPorts({ campaign: missingBound }),
-      );
-      const diagnostic = "FAIL [E-CAMPAIGN-STATE] roadmap-campaign.toml#selection[0].cost_bound: " +
-        "burndown-four selection requires one reviewed structured cost bound\n";
-      assert(
-        result.exit_code === 1 && result.stdout.byteLength === 0 && text(result.stderr).includes(diagnostic),
-        `normal all-roadmap check did not enforce the reviewed bound: ${text(result.stderr)}`,
-      );
-      observeSelfTestIssue({ code: "E-CAMPAIGN-STATE", logical_path: "selection[0].cost_bound" });
-      return pass("negative");
-    }
-    case "query_debt_duplicate_campaign_selection_rejected":
-    case "query_debt_unselected_duplicate_selection_rejected":
-    case "query_debt_unselected_duplicate_reservation_rejected":
-    case "query_debt_unselected_legacy_selection_missing_reservation_rejected":
-    case "query_debt_unselected_active_reservation_rejected":
-    case "query_debt_unselected_reservation_guard_tombstone_rejected":
-    case "query_debt_selected_alias_reservation_rejected":
-    case "query_debt_invalid_campaign_target_rejected":
-    case "query_debt_invalid_campaign_state_rejected":
-    case "query_debt_authoritative_reservation_rejected":
-    case "query_debt_active_tombstone_collision_rejected":
-    case "query_debt_active_guard_collision_rejected":
-    case "query_debt_active_reservation_collision_rejected":
-    case "query_debt_invalid_guard_pin_rejected":
-    case "query_debt_authority_mismatch_rejected":
-    case "query_debt_missing_campaign_root_rejected":
-    case "query_debt_missing_retired_root_rejected":
-    case "query_debt_invalid_retired_pin_rejected":
-    case "query_debt_stage_mismatch_rejected": {
-      const activeId = "matrix.fixed-array.static-representation";
-      const validGate = { id: "fixture-durable", kind: "cmd", stub: false } as const;
-      const retired = (recordId: string, gateId: string): string => `[retired_ids]\nschema_version = 1\n\n[[retired_ids.entry]]\nid = "${recordId}"\nlast_active_at = "${"a".repeat(40)}"\n\n[retired_ids.entry.replacement]\nkind = "gate"\ngate_id = "${gateId}"\nclaim_md = """Replacement."""\n`;
-      let mutation: ScopedDebtMutation = {};
-      let expected: { code: IssueCode; source: string; path: string };
-      switch (id) {
-        case "query_debt_duplicate_campaign_selection_rejected":
-          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + scopedSelection(activeId) + scopedSelection(activeId) };
-          expected = { code: "E-CAMPAIGN-DUPLICATE", source: "roadmap-campaign.toml", path: "selection[1]" };
-          break;
-        case "query_debt_unselected_duplicate_selection_rejected":
-          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + scopedSelection("testing.fixture-unselected") + scopedSelection("testing.fixture-unselected") };
-          expected = { code: "E-CAMPAIGN-DUPLICATE", source: "roadmap-campaign.toml", path: "selection[1]" };
-          break;
-        case "query_debt_unselected_duplicate_reservation_rejected": {
-          const reservation = `\n[[legacy_markdown_reservation]]\nid = "testing.fixture-reserved"\nwork_kind = "feature"\nroadmap_path = "tests/TESTING_ROADMAP.md"\nsource_title = "Fixture"\nsource_start_byte = 0\nsource_end_byte = 1\nsource_sha256 = "${"0".repeat(64)}"\nwhole_source_sha256 = "${"0".repeat(64)}"\n`;
-          mutation = { campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n${reservation}${reservation}`, stage: "matrix_authoritative" };
-          expected = { code: "E-CAMPAIGN-DUPLICATE", source: "roadmap-campaign.toml", path: "legacy_markdown_reservation[1]" };
-          break;
-        }
-        case "query_debt_unselected_legacy_selection_missing_reservation_rejected":
-          mutation = {
-            campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n` +
-              scopedLegacySelection("testing.fixture-unselected"),
-            stage: "matrix_authoritative",
-          };
-          expected = { code: "E-CAMPAIGN-TARGET", source: "roadmap-campaign.toml", path: "selection[0]" };
-          break;
-        case "query_debt_unselected_active_reservation_rejected": {
-          const reservedId = "testing.fixture-reserved";
-          mutation = {
-            campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n` +
-              scopedReservation(reservedId, "tests/TESTING_ROADMAP.md") + scopedSelection(reservedId),
-            stage: "matrix_authoritative",
-          };
-          expected = { code: "E-CAMPAIGN-TARGET", source: "roadmap-campaign.toml", path: "selection[0]" };
-          break;
-        }
-        case "query_debt_unselected_reservation_guard_tombstone_rejected": {
-          const reservedId = "testing.fixture-reserved";
-          const campaign = `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n` +
-            scopedReservation(reservedId, "tests/TESTING_ROADMAP.md");
-          const guard = {
-            id: reservedId as import("../model/core.ts").RoadmapId,
-            owner_registry: "fixture",
-            guard_role: "generic" as const,
-            replacement_pin: { kind: "gate" as const, gate_id: validGate.id, claim_md: UTF8.encode("Pin.") },
-          };
-          for (const [subcase, collision] of [
-            ["guard", { guards: [guard], gates: [validGate] }],
-            ["tombstone", { retired: retired(reservedId, validGate.id), gates: [validGate] }],
-          ] as const) {
-            const result = run(
-              ["--roadmap", "matrix", "--query", "debt", "--json"],
-              scopedDebtMutationPorts({ campaign, stage: "matrix_authoritative", ...collision }),
-            );
-            const prefix = `FAIL [E-OWNER-DUPLICATE] <identity>#owner[${JSON.stringify(reservedId)}]:`;
-            assert(
-              result.exit_code === 1 && result.stdout.byteLength === 0 && text(result.stderr).includes(prefix),
-              `${id}/${subcase} did not reject at ${prefix}: ${text(result.stderr)}`,
-            );
-          }
-          observeSelfTestIssue({ code: "E-OWNER-DUPLICATE", logical_path: `owner[${JSON.stringify(reservedId)}]` });
-          return pass("negative", ["guard", "tombstone"]);
-        }
-        case "query_debt_selected_alias_reservation_rejected": {
-          const reservedId = "testing.fixture-reserved";
-          const source = UTF8.encode(text(liveMatrixAuthoritativeSource()).replace(
-            `id = "matrix.additional-tool-annotations"\ntitle = "More tools:"\nprojection_group = "expansion"\n`,
-            `id = "matrix.additional-tool-annotations"\ntitle = "More tools:"\nprojection_group = "expansion"\nlegacy_aliases = ["${reservedId}"]\n`,
-          ));
-          assert(text(source).includes(`legacy_aliases = ["${reservedId}"]`), "selected alias fixture mutation missed its target");
-          mutation = {
-            campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "authoritative"\ntesting_authority = "shadow"\n` +
-              scopedReservation(reservedId, "tests/TESTING_ROADMAP.md"),
-            source,
-            stage: "matrix_authoritative",
-          };
-          expected = { code: "E-ALIAS-COLLISION", source: "<identity>", path: `alias[${JSON.stringify(reservedId)}]` };
-          break;
-        }
-        case "query_debt_invalid_campaign_target_rejected":
-          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + scopedSelection("matrix.fixture-missing") };
-          expected = { code: "E-CAMPAIGN-TARGET", source: "roadmap-campaign.toml", path: "selection[0]" };
-          break;
-        case "query_debt_invalid_campaign_state_rejected":
-        {
-          const validCampaign = decodeCampaignSource(
-            UTF8.encode(SCOPED_CAMPAIGN_ROOT + scopedSelection(activeId)),
-            "roadmap-campaign.toml" as RepoPath,
-            true,
-          );
-          const directIssues = validateSelectedLifecycleContext({
-            selection: "matrix",
-            campaign: {
-              ...validCampaign,
-              selections: validCampaign.selections.map((selection) => ({
-                ...selection,
-                pickup_commit: "a".repeat(40) as import("../model/core.ts").FullCommitId,
-              })),
-            },
-            retired: { retired_ids: { schema_version: 1 }, entries: [] },
-            document: decodeRoadmapSource(liveMatrixAuthoritativeSource(), "cddl-matrix/roadmap.toml" as RepoPath, "matrix", true),
-            registry: scopedDebtMutationPorts({}).read.registryView({ kind: "worktree" }),
-          });
-          assert(directIssues.some((issue) => issue.code === "E-CAMPAIGN-STATE" && issue.logical_path === "selection[0]"), "selected-scope validator accepted a programmatic invalid campaign state");
-          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + scopedSelection(activeId, `\npickup_commit = "${"a".repeat(40)}"`) };
-          expected = { code: "E-SCHEMA-FORBIDDEN-KEY", source: "roadmap-campaign.toml", path: "selection[0].pickup_commit" };
-          break;
-        }
-        case "query_debt_authoritative_reservation_rejected":
-          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + `\n[[legacy_markdown_reservation]]\nid = "testing.fixture-reserved"\nwork_kind = "feature"\nroadmap_path = "tests/TESTING_ROADMAP.md"\nsource_title = "Fixture"\nsource_start_byte = 0\nsource_end_byte = 1\nsource_sha256 = "${"0".repeat(64)}"\nwhole_source_sha256 = "${"0".repeat(64)}"\n` };
-          expected = { code: "E-CAMPAIGN-TARGET-EXPIRED", source: "roadmap-campaign.toml", path: "legacy_markdown_reservation[0]" };
-          break;
-        case "query_debt_active_tombstone_collision_rejected":
-          mutation = { retired: retired(activeId, validGate.id), gates: [validGate] };
-          expected = { code: "E-OWNER-DUPLICATE", source: "<identity>", path: `owner[${JSON.stringify(activeId)}]` };
-          break;
-        case "query_debt_active_guard_collision_rejected":
-          mutation = { gates: [validGate], guards: [{ id: activeId as import("../model/core.ts").RoadmapId, owner_registry: "fixture", guard_role: "generic", replacement_pin: { kind: "gate", gate_id: validGate.id, claim_md: UTF8.encode("Pin.") } }] };
-          expected = { code: "E-OWNER-DUPLICATE", source: "<identity>", path: `owner[${JSON.stringify(activeId)}]` };
-          break;
-        case "query_debt_active_reservation_collision_rejected":
-          mutation = { campaign: SCOPED_CAMPAIGN_ROOT + `\n[[legacy_markdown_reservation]]\nid = "${activeId}"\nwork_kind = "optimization"\nroadmap_path = "cddl-matrix/ROADMAP.md"\nsource_title = "Fixture"\nsource_start_byte = 0\nsource_end_byte = 1\nsource_sha256 = "${"0".repeat(64)}"\nwhole_source_sha256 = "${"0".repeat(64)}"\n` };
-          expected = { code: "E-OWNER-DUPLICATE", source: "<identity>", path: `owner[${JSON.stringify(activeId)}]` };
-          break;
-        case "query_debt_invalid_guard_pin_rejected":
-          mutation = { guards: [{ id: "matrix.fixture-guard" as import("../model/core.ts").RoadmapId, owner_registry: "fixture", guard_role: "generic", replacement_pin: { kind: "gate", gate_id: "missing", claim_md: UTF8.encode("Pin.") } }] };
-          expected = { code: "E-TRANSACTION-GUARD", source: "<transaction>", path: `guard["matrix.fixture-guard"]` };
-          break;
-        case "query_debt_authority_mismatch_rejected":
-          mutation = { campaign: `[campaign]\nschema_version = 1\nmatrix_authority = "shadow"\ntesting_authority = "shadow"\n` };
-          expected = { code: "E-SCHEMA-STATE", source: "roadmap-campaign.toml", path: "campaign.matrix_authority" };
-          break;
-        case "query_debt_missing_campaign_root_rejected":
-          mutation = { campaign: null };
-          expected = { code: "E-SOURCE-MISSING", source: "roadmap-campaign.toml", path: "$" };
-          break;
-        case "query_debt_missing_retired_root_rejected":
-          mutation = { retired: null };
-          expected = { code: "E-SOURCE-MISSING", source: "roadmap-retired-ids.toml", path: "$" };
-          break;
-        case "query_debt_invalid_retired_pin_rejected":
-          mutation = { retired: retired("matrix.fixture-retired", "missing") };
-          expected = { code: "E-RETIRED-REPLACEMENT", source: "roadmap-retired-ids.toml", path: "retired_ids.entry[0].replacement" };
-          break;
-        case "query_debt_stage_mismatch_rejected":
-          mutation = { stage: "matrix_authoritative" };
-          expected = { code: "E-OUTPUT-CLAIM", source: "<output-registry>", path: "production_output_stage" };
-          break;
-      }
-      const result = run(["--roadmap", "matrix", "--query", "debt", "--json"], scopedDebtMutationPorts(mutation));
-      const prefix = `FAIL [${expected.code}] ${expected.source}#${expected.path}:`;
-      assert(result.exit_code === 1 && result.stdout.byteLength === 0 && text(result.stderr).includes(prefix), `${id} did not reject at ${prefix}: ${text(result.stderr)}`);
-      observeSelfTestIssue({ code: expected.code, logical_path: expected.path });
-      return pass("negative");
-    }
     case "cli_against_semantic_promotion_scoped_matrix":
     case "cli_against_semantic_promotion_scoped_testing":
     case "cli_against_semantic_promotion_all_simultaneous":
@@ -2552,18 +1672,13 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       }
       return pass("positive");
     }
-    case "cli_against_v2_atomic_promotion": {
-      const result = run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("exact"));
-      assert(
-        result.exit_code === 0 && result.stderr.byteLength === 0 && text(result.stdout).includes("CHECK OK\n"),
-        `exact atomic v1-complete to v2 promotion failed: ${text(result.stderr)}`,
-      );
+    case "cli_against_projection_layout_promotion": {
       const layouts = ["legacy_v1", "anchors_v1", "standing_v1", "unnumbered_v1", "curated_v1"] as const;
       for (let index = 0; index < layouts.length - 1; index++) {
         const baseLayout = layouts[index]!;
         const candidateLayout = layouts[index + 1]!;
         const layout = run(["--check", "--roadmap", "all", "--against", HASH],
-          wp7LayoutPorts(baseLayout, candidateLayout));
+          layoutPorts(baseLayout, candidateLayout));
         assert(layout.exit_code === 0 && layout.stderr.byteLength === 0 && text(layout.stdout).includes("CHECK OK\n"),
           `exact adjacent ${baseLayout} to ${candidateLayout} projection-only promotion failed: ${text(layout.stderr)}`);
       }
@@ -2572,10 +1687,10 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         ["standing_v1", "unnumbered_v1", "reference_drift", "testing.document.projection_layout", "unrelated reference drift", false],
         ["legacy_v1", "standing_v1", "exact", "matrix.document.projection_layout", "skipped layout stage", false],
         ["legacy_v1", "curated_v1", "exact", "matrix.document.projection_layout", "direct legacy-to-curated layout", false],
-        ["legacy_v1", "curated_v1", "exact", "matrix.document.schema_version", "direct v1-to-curated layout", true],
+        ["legacy_v1", "curated_v1", "exact", "matrix", "direct v1-to-curated layout", true],
       ] as const) {
         const rejected = run(["--check", "--roadmap", "all", "--against", HASH],
-          wp7LayoutPorts(baseLayout, candidateLayout, mutation, v1Base));
+          layoutPorts(baseLayout, candidateLayout, mutation, v1Base));
         assert(rejected.exit_code === 1 && rejected.stdout.byteLength === 0 &&
           text(rejected.stderr).includes(`#${path}:`),
         `${label} did not reject at its exact projection-layout boundary: ${text(rejected.stderr)}`);
@@ -2595,53 +1710,11 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       }
       return pass("positive");
     }
-    case "cli_against_v2_mixed_promotion_rejected":
-      return assertV2TransactionRejection(
-        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("mixed")),
-        "document.schema_version",
-        "mixed v1/v2 promotion",
-      );
     case "cli_against_v2_scoped_promotion_rejected":
       return assertV2TransactionRejection(
         run(["--check", "--roadmap", "matrix", "--against", HASH], v2PromotionPorts("exact")),
         "matrix",
         "scoped v2 promotion",
-      );
-    case "cli_against_v2_semantic_drift_rejected":
-      return assertV2TransactionRejection(
-        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("semantic_drift")),
-        "matrix.document.schema_version",
-        "v2 promotion with semantic drift",
-      );
-    case "cli_against_v2_incomplete_base_rejected":
-      return assertV2TransactionRejection(
-        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("incomplete_base")),
-        "matrix.document.schema_version",
-        "v2 promotion from an incomplete base",
-      );
-    case "cli_against_v2_downgrade_rejected":
-      return assertV2TransactionRejection(
-        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("downgrade")),
-        "matrix.document.schema_version",
-        "v2 to v1 downgrade",
-      );
-    case "cli_against_v2_preexisting_mixed_rejected":
-      return assertV2TransactionRejection(
-        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("preexisting_mixed")),
-        "base.document.schema_version",
-        "preexisting mixed v1/v2 pair",
-      );
-    case "cli_against_v2_campaign_drift_rejected":
-      return assertV2TransactionRejection(
-        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("campaign_drift")),
-        "campaign",
-        "campaign drift during v2 promotion",
-      );
-    case "cli_against_v2_retired_drift_rejected":
-      return assertV2TransactionRejection(
-        run(["--check", "--roadmap", "all", "--against", HASH], v2PromotionPorts("retired_drift")),
-        "retired_ids",
-        "retired-ID drift during v2 promotion",
       );
     case "cli_summary_open_family_lower_bound_only": {
       const result = run(["--roadmap", "matrix", "--query", "summary", "--json"], bothAuthoritativePorts());
@@ -2783,16 +1856,16 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       "content dashboard does not expose audit-only prose plus metadata-only exact reachability");
       return pass("positive");
     }
-    case "live_wp6_projection_pre_anchor_baseline": {
+    case "live_projection_pre_anchor_baseline": {
       for (const [name, projection] of [
         ["matrix", liveMatrixLegacyProjection()],
         ["testing", liveTestingLegacyProjection()],
       ] as const) {
         const source = text(projection);
-        assert(!source.includes('id="roadmap-'), `${name} WP6 projection already renders stable-ID anchors`);
+        assert(!source.includes('id="roadmap-'), `${name} legacy projection already renders stable-ID anchors`);
         assert(
           !/this document is generated|generated from .*roadmap\.toml|edit .*roadmap\.toml/iu.test(source),
-          `${name} WP6 projection already renders a WP7 ownership banner`,
+          `${name} legacy projection already renders an ownership banner`,
         );
       }
       return pass("positive");
@@ -2926,7 +1999,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           matrix.migration_progress.replacement_coverage.denominator === (complete ? 85 : 0) &&
           matrix.migration_progress.replacement_coverage.numerator === (complete ? 85 : 0) &&
           matrix.migration_progress.completion_audit.lane_blockers.length === (complete ? 0 : 321) &&
-          matrix.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
+          matrix.migration_progress.completion_audit.join_blockers.length === 0,
         "matrix exact completed migration facts drifted",
       );
       assert(
@@ -2938,7 +2011,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           testing.migration_progress.replacement_coverage.denominator === (complete ? 198 : 0) &&
           testing.migration_progress.replacement_coverage.numerator === (complete ? 198 : 0) &&
           testing.migration_progress.completion_audit.lane_blockers.length === (complete ? 0 : 792) &&
-          testing.migration_progress.completion_audit.wp5c_join_blockers.length === 0,
+          testing.migration_progress.completion_audit.join_blockers.length === 0,
         "testing exact completed migration facts drifted",
       );
       for (const row of [matrix, testing]) {
@@ -2967,9 +2040,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const rows = JSON.parse(text(result.stdout)).roadmaps;
       assert(rows.length === 1 && rows[0].roadmap === "matrix", "scoped debt query returned another roadmap");
       assert(
-        JSON.stringify(reads) === JSON.stringify([
-          "cddl-matrix/roadmap.toml", "roadmap-campaign.toml", "roadmap-retired-ids.toml",
-        ]),
+        JSON.stringify(reads) === JSON.stringify(["cddl-matrix/roadmap.toml"]),
         `scoped debt query read set drifted or loaded unselected TOML/Markdown: ${JSON.stringify(reads)}`,
       );
       return pass("positive");
@@ -3047,69 +2118,6 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       assert(result.exit_code === 0 && git === 0, "--as-of selected a Git revision");
       return pass("positive");
     }
-    case "cli_wp4m_mixed_authority_all": {
-      const candidateReads: RepoPath[] = [];
-      const baseReads: RepoPath[] = [];
-      const ports = wp4mMixedAuthorityPorts(context, candidateReads, baseReads);
-      const checked = run(["--check", "--roadmap", "all", "--against", HASH], ports);
-      assert(
-        checked.exit_code === 0 && checked.stderr.byteLength === 0 &&
-          text(checked.stdout).includes("source=cddl-matrix/roadmap.toml") &&
-          !text(checked.stdout).includes("source=tests/testing-roadmap.toml"),
-        `valid WP4M mixed-authority bootstrap did not check only its structured roadmap: ${text(checked.stderr)}`,
-      );
-      assert(
-        candidateReads.filter((path) => path === "tests/testing-roadmap.toml").length === 2 &&
-          baseReads.filter((path) => path === "tests/testing-roadmap.toml").length === 1,
-        `mixed-authority check did not prove testing TOML absence without preparing it: candidate=${JSON.stringify(candidateReads)} base=${JSON.stringify(baseReads)}`,
-      );
-
-      candidateReads.length = 0;
-      baseReads.length = 0;
-      const queried = run(["--roadmap", "all", "--query", "summary", "--json"], ports);
-      const payload = JSON.parse(text(queried.stdout));
-      assert(
-        queried.exit_code === 0 && queried.stderr.byteLength === 0 && payload.roadmaps.length === 1 &&
-          payload.roadmaps[0].roadmap === "matrix" && payload.roadmaps[0].authority === "authoritative",
-        `mixed-authority query all did not return exactly its activated structured roadmap: ${text(queried.stderr)}`,
-      );
-      assert(
-        candidateReads.filter((path) => path === "tests/testing-roadmap.toml").length === 1 && baseReads.length === 0,
-        `mixed-authority query prepared the absent testing TOML or consulted a base: candidate=${JSON.stringify(candidateReads)} base=${JSON.stringify(baseReads)}`,
-      );
-      return pass("positive");
-    }
-    case "cli_shadow_authoritative_markdown_provenance": {
-      const validProjection = liveMatrixLegacyProjection();
-      const validReads: RepoPath[] = [];
-      const valid = run(
-        ["--roadmap", "all", "--query", "summary", "--json"],
-        shadowLifecyclePorts(validProjection, validReads),
-      );
-      assert(valid.exit_code === 0, `matching shadow Markdown did not validate: ${text(valid.stderr)}`);
-      assert(
-        validReads.filter((path) => path === "cddl-matrix/ROADMAP.md").length === 1,
-        `matching shadow Markdown was not read exactly once: ${JSON.stringify(validReads)}`,
-      );
-      const driftedProjection = new Uint8Array(validProjection.byteLength + 1);
-      driftedProjection.set(validProjection);
-      driftedProjection[driftedProjection.byteLength - 1] = 0x21;
-      const driftReads: RepoPath[] = [];
-      const drifted = run(
-        ["--roadmap", "all", "--query", "summary", "--json"],
-        shadowLifecyclePorts(driftedProjection, driftReads),
-      );
-      assert(
-        drifted.exit_code === 1 && drifted.stdout.byteLength === 0 &&
-          text(drifted.stderr).startsWith("FAIL [E-PROJECTION-DRIFT] cddl-matrix/ROADMAP.md#projection:"),
-        `shadow query did not reject bytes from authoritative Markdown: ${text(drifted.stderr)}`,
-      );
-      assert(
-        driftReads.filter((path) => path === "cddl-matrix/ROADMAP.md").length === 1,
-        `drifted shadow Markdown was not read exactly once: ${JSON.stringify(driftReads)}`,
-      );
-      return pass("positive");
-    }
     case "cli_authoritative_fresh_projection_reference_provenance": {
       const subcases: string[] = [];
       const projection = fixture(context, "positive/mixed-testing-v1.expected.md");
@@ -3175,61 +2183,13 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
     case "cli_against_testing_check_allowed":
     case "cli_against_all_check_allowed": {
       const roadmap = id.includes("matrix") ? "matrix" : id.includes("testing") ? "testing" : "all";
-      if (roadmap === "all") {
-        const result = run(["--check", "--roadmap", "all", "--against", HASH], fakePorts());
-        assert(
-          result.exit_code === 1 && result.stdout.byteLength === 0 &&
-            text(result.stderr) ===
-              "FAIL [E-SOURCE-MISSING] roadmap-campaign.toml#$: declared source is missing\n" +
-              "FAIL [E-SOURCE-MISSING] roadmap-retired-ids.toml#$: declared source is missing\n" +
-              "FAILED: 2 issue(s)\n",
-          `all-roadmap allowed coordinate lost its exact two-root diagnostic: ${text(result.stderr)}`,
-        );
-        const baseReads: RepoPath[] = [];
-        const probe = wp4mBootstrapProbePorts(context, (path) => baseReads.push(path));
-        const transaction = run(["--check", "--roadmap", "all", "--against", HASH], probe);
-        assert(
-          transaction.exit_code === 0 && transaction.stderr.byteLength === 0 &&
-            text(transaction.stdout).includes("CHECK OK\n"),
-          `valid bootstrap probe fixture did not complete the allowed all-roadmap comparison: ${text(transaction.stderr)}`,
-        );
-        assert(
-          baseReads.includes("roadmap-campaign.toml" as RepoPath) &&
-            baseReads.includes("roadmap-retired-ids.toml" as RepoPath) &&
-            baseReads.includes("tests/testing-roadmap.toml" as RepoPath),
-          `WP4M bootstrap did not prove both roots absent and load testing v0 for shadow authority: ${JSON.stringify(baseReads)}`,
-        );
-        return pass("positive");
-      }
+      // --roadmap all fans the scoped comparison over matrix first, so its first unreadable
+      // declared source is the matrix TOML.
       const source = roadmap === "testing" ? "tests/testing-roadmap.toml" : "cddl-matrix/roadmap.toml";
       expectFailure(
         ["--check", "--roadmap", roadmap, "--against", HASH],
         expectedIssue("E-SOURCE-MISSING", source, "$", "declared source is missing", 1),
       );
-      if (roadmap === "testing") {
-        const probe = scopedCandidateCollisionProbe(context);
-        const collision = run(["--check", "--roadmap", "testing", "--against", HASH], probe.ports);
-        assert(
-          collision.exit_code === 1 && collision.stdout.byteLength === 0 &&
-            text(collision.stderr) ===
-              `FAIL [E-OWNER-DUPLICATE] <identity>#owner[${JSON.stringify(probe.collision_id)}]: global ID ${JSON.stringify(probe.collision_id)} has 2 claims (first_class, tombstone)\n` +
-              "FAILED: 1 issue(s)\n",
-          `single-roadmap service did not reject the unselected candidate/tombstone collision: ${text(collision.stderr)}`,
-        );
-        assert(
-          JSON.stringify(probe.candidate_reads) === JSON.stringify([
-            "tests/testing-roadmap.toml",
-            "roadmap-campaign.toml",
-            "roadmap-retired-ids.toml",
-            "cddl-matrix/roadmap.toml",
-          ]),
-          `single-roadmap service did not read the exact full candidate authority universe: ${JSON.stringify(probe.candidate_reads)}`,
-        );
-        assert(
-          JSON.stringify(probe.base_reads) === JSON.stringify(["tests/testing-roadmap.toml"]),
-          `single-roadmap service read more than the selected base roadmap: ${JSON.stringify(probe.base_reads)}`,
-        );
-      }
       return pass("positive");
     }
     case "cli_production_port_factory_smoke": {
@@ -3259,7 +2219,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       );
       assert(
         result.exit_code === 0 && result.stderr.byteLength === 0 && anchorReads === 1 &&
-          fixtureCount >= 35 && fixtureBytes > 0 &&
+          fixtureCount >= 31 && fixtureBytes > 0 &&
           text(result.stdout) === `SELFTEST OK production_factory fixtures=${fixtureCount}\n`,
         `direct frozen seam did not lazily initialize once from its absolute anchor: exit=${result.exit_code} anchor_reads=${anchorReads} fixtures=${fixtureCount} fixture_bytes=${fixtureBytes} stdout=${JSON.stringify(text(result.stdout))} stderr=${JSON.stringify(text(result.stderr))}`,
       );

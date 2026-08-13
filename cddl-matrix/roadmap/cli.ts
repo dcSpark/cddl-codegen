@@ -13,7 +13,7 @@ export const ROADMAP_CLI_USAGE = `Usage:
   bun run project_roadmaps.ts --selftest
   bun run project_roadmaps.ts --roadmap matrix|testing|all --check [--against <full-lowercase-commit-id>]
   bun run project_roadmaps.ts --roadmap matrix|testing --write
-  bun run project_roadmaps.ts --roadmap matrix|testing|all --query summary|debt|references|campaign|burndown|actionables|signals|decisions|families|watches|content|output-owners [--json] [--as-of YYYY-MM-DD]
+  bun run project_roadmaps.ts --roadmap matrix|testing|all --query summary|debt|references|actionables|signals|decisions|families|watches|content|output-owners [--json] [--as-of YYYY-MM-DD]
   bun run project_roadmaps.ts --format-source <declared-repository-relative-toml-path>
 `;
 
@@ -40,8 +40,6 @@ const QUERY_VIEWS = new Set<QueryView>([
   "summary",
   "debt",
   "references",
-  "campaign",
-  "burndown",
   "signals",
   "actionables",
   "decisions",
@@ -53,8 +51,6 @@ const QUERY_VIEWS = new Set<QueryView>([
 const DECLARED_FORMAT_SOURCES = new Set<string>([
   "cddl-matrix/roadmap.toml",
   "tests/testing-roadmap.toml",
-  "roadmap-campaign.toml",
-  "roadmap-retired-ids.toml",
 ]);
 
 interface TokenizedCli {
@@ -198,7 +194,7 @@ export function parseRoadmapCli(argv: readonly string[]): CliRequest {
       fail(
         "E-CLI-INCOMPATIBLE",
         query.index,
-        "--query must be summary, debt, references, campaign, actionables, signals, decisions, families, watches, content, or output-owners",
+        "--query must be summary, debt, references, actionables, signals, decisions, families, watches, content, or output-owners",
       );
     }
     if (asOf !== undefined && !validCivilDate(asOf.value)) {

@@ -1476,7 +1476,7 @@ mod tests {
         // bare `pub type` alias with no ctor/deserialize, silently dropping the bounds (and the tag).
 
         // top_level_neg_range = -10..-3, an i64 wrapper. Its deserializer reads BOTH CBOR sign arms
-        // and checks the whole window over i64, so this is also a WP1 full-window regression.
+        // and checks the whole window over i64, so this is also a full-window regression.
         let neg = |v: i128| TopLevelNegRange::from_cbor_bytes(&cbor_int(v, cbor_event::Sz::Eight));
         assert!(neg(5).is_err()); // any uint is out of an all-negative window
         assert!(neg(-11).is_err()); // below lower

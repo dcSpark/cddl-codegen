@@ -54,7 +54,7 @@ export interface ReferenceValidationOptions {
   readonly providers?: readonly ReferenceProviderLike[];
   /** Global first-class view; defaults to the selected document for single-roadmap validation. */
   readonly first_class?: ReadonlyMap<RoadmapId, RoadmapIdProviderFact>;
-  /** Scoped lanes defer only well-formed opposite-namespace RoadmapId targets to WP5C. */
+  /** Scoped lanes defer only well-formed opposite-namespace RoadmapId targets to the cross-roadmap join. */
   readonly defer_foreign_roadmap_joins?: "matrix" | "testing";
 }
 

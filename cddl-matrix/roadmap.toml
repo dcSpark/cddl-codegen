@@ -21,7 +21,7 @@ body_md = """## Expansion (when relevant)
 [[section.source_replacement]]
 span_id = "section-expansion"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[section]]
@@ -36,7 +36,7 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
 [[section.source_replacement]]
 span_id = "section-explicit-boundaries"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[section]]
@@ -74,7 +74,7 @@ entry, so the atomicity is the rule).
 [[section.source_replacement]]
 span_id = "section-findings-open"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[section]]
@@ -115,7 +115,7 @@ held exactly by `recombination_generation_sweep` — see `tests/README.md`'s rec
 [[section.source_replacement]]
 span_id = "section-maintenance"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[section]]
@@ -134,7 +134,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
 [[section.source_replacement]]
 span_id = "section-matrix-side-work"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[section]]
@@ -148,7 +148,7 @@ body_md = """## Pending decisions (need a human call)
 [[section.source_replacement]]
 span_id = "section-pending-decisions"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[section]]
@@ -164,7 +164,7 @@ Broader testing work (clear-wins, roadmap items, the trailing-bytes runtime chan
 [[section.source_replacement]]
 span_id = "section-related"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[section]]
@@ -184,7 +184,7 @@ remains is deleting the notes that explain why we do not have it yet.
 [[section.source_replacement]]
 span_id = "section-upstream-closeouts"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[section]]
@@ -206,7 +206,7 @@ composition-space cross-check that complements this matrix's curated per-shape g
 [[section.source_replacement]]
 span_id = "section-wasm-abi-multifile"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[fragment]]
@@ -221,7 +221,7 @@ see § findings) and supported rows carry decode-foreign corroboration clauses (
 [[fragment.source_replacement]]
 span_id = "fragment-document-constraint-prefix"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[fragment]]
@@ -255,7 +255,7 @@ and the reader a checkable referent.
 [[fragment.source_replacement]]
 span_id = "fragment-document-counts-prefix"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[fragment]]
@@ -273,7 +273,7 @@ mint no test surface (recorded honestly in the evidence). The orthogonal **emiss
 [[fragment.source_replacement]]
 span_id = "fragment-document-emission-prefix"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[fragment]]
@@ -288,7 +288,7 @@ execution-gated support **per-feature, per-cell (role × feature), and per-contr
 [[fragment.source_replacement]]
 span_id = "fragment-document-ops-prefix"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[fragment]]
@@ -331,7 +331,7 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § \"Definition of done
 [[fragment.source_replacement]]
 span_id = "fragment-document-tail"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[record]]
@@ -358,7 +358,7 @@ reopening_transition_id = "matrix.trigger.additional-tool-annotations"
 [[record.source_replacement]]
 span_id = "record-additional-tool-annotations"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -395,7 +395,7 @@ transition_ids = ["matrix.trigger.anonymous-nested-map-demand"]
 [[record.source_replacement]]
 span_id = "record-anonymous-nested-map"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -416,7 +416,7 @@ detail_md = """- When a release ships the `773b723` array-sequence fix and the `
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-array-sequence-upstream-upstream"
-current_upstream_state_md = """The behavior is fixed on local-fixes at 773b723; no fresh release-and-pin check was performed by WP5M.
+current_upstream_state_md = """The behavior is fixed on local-fixes at 773b723; no fresh release-and-pin check has been performed.
 """
 transition_ids = ["matrix.retirement.array-sequence-upstream"]
 verification_md = """Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
@@ -425,7 +425,7 @@ verification_md = """Probe sole, preceded-sibling, exactly-once, bounded, zero-o
 [[record.source_replacement]]
 span_id = "record-array-sequence-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -447,7 +447,7 @@ detail_md = """- When a release ships the `c2ebf9f` bignum map-key/value-tag fix
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-bignum-key-tag-upstream-upstream"
-current_upstream_state_md = """The fix and test suite are on local-fixes; no fresh published-release check was performed by WP5M.
+current_upstream_state_md = """The fix and test suite are on local-fixes; no fresh published-release check has been performed.
 """
 transition_ids = ["matrix.retirement.bignum-key-tag-upstream"]
 verification_md = """Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
@@ -456,7 +456,7 @@ verification_md = """Run bignint-key-empty-map-accepts and bignint-wrong-tag-rej
 [[record.source_replacement]]
 span_id = "record-bignum-key-tag-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -613,7 +613,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "record-cbor-any-boundary"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -661,7 +661,7 @@ transition_ids = ["matrix.trigger.control-host-placement-space"]
 [[record.source_replacement]]
 span_id = "record-control-host-placement-space"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -731,7 +731,7 @@ transition_ids = ["matrix.trigger.derived-variant-naming-demand"]
 [[record.source_replacement]]
 span_id = "record-derived-variant-naming"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -778,7 +778,7 @@ transition_ids = ["matrix.trigger.duplicate-rejection-diagnostics"]
 [[record.source_replacement]]
 span_id = "record-duplicate-rejection-diagnostics"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -813,7 +813,7 @@ cadence_transition_id = "matrix.cadence.emission-input-mode-honesty"
 [[record.source_replacement]]
 span_id = "record-emission-input-mode-honesty"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -852,7 +852,7 @@ transition_ids = ["matrix.trigger.emission-narrowing-fixture-floor"]
 [[record.source_replacement]]
 span_id = "record-emission-narrowing-fixture-floor"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1103,7 +1103,7 @@ reopening_transition_id = "matrix.trigger.extern-emitted-test-boundary"
 [[record.source_replacement]]
 span_id = "record-extern-emitted-test-boundary"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1133,7 +1133,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "record-extern-execution-multifile"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1166,7 +1166,7 @@ reopening_transition_id = "matrix.trigger.extern-interface-sentinel-boundary"
 [[record.source_replacement]]
 span_id = "record-extern-interface-sentinel-boundary"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1203,7 +1203,7 @@ priority_rationale_md = """The fixed-array representation remains explicitly sel
 [[record.source_replacement]]
 span_id = "record-fixed-array-static-representation"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1239,7 +1239,7 @@ external_owner_reference_id = "ref-matrix-fixed-bytes-lowercase-base64-parser-up
 [[record.source_replacement]]
 span_id = "record-fixed-bytes-lowercase-base64-parser"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1274,7 +1274,7 @@ priority_rationale_md = """The exact byte-array representation carries its lengt
 [[record.source_replacement]]
 span_id = "part-fixed-byte-representation"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1315,7 +1315,7 @@ external_owner_reference_id = "ref-matrix-fixed-bytes-validator-corroboration-up
 [[record.source_replacement]]
 span_id = "record-fixed-bytes-validator-corroboration"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1359,7 +1359,7 @@ boundary_md = """This control owns current enforcement only. Nint feature work b
 [[record.source_replacement]]
 span_id = "record-fixed-map-key-kinds"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1380,7 +1380,7 @@ detail_md = """- When a release ships the `707c038` float-key/null member-key fi
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-float-key-null-upstream-upstream"
-current_upstream_state_md = """The fix is on local-fixes; no fresh published-release check was performed by WP5M.
+current_upstream_state_md = """The fix is on local-fixes; no fresh published-release check has been performed.
 """
 transition_ids = ["matrix.retirement.float-key-null-upstream"]
 verification_md = """Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
@@ -1389,7 +1389,7 @@ verification_md = """Run float-key-accepts and null-key-rejects against occurren
 [[record.source_replacement]]
 span_id = "record-float-key-null-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1461,7 +1461,7 @@ action_id = "validator-rules-common-set"
 [[record.source_replacement]]
 span_id = "record-float-prelude-name-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1497,7 +1497,7 @@ transition_ids = ["matrix.trigger.float-table-key-demand"]
 [[record.source_replacement]]
 span_id = "record-float-table-key-domain"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1535,7 +1535,7 @@ transition_ids = ["matrix.trigger.grammar-derived-legality"]
 [[record.source_replacement]]
 span_id = "record-grammar-derived-legality"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1570,7 +1570,7 @@ priority_rationale_md = """The invariant currently has multiple enforcement site
 [[record.source_replacement]]
 span_id = "part-atomic-bounds-handover"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1615,7 +1615,7 @@ priority_rationale_md = """Spec-valid middle repetitions and bounded heterogeneo
 [[record.source_replacement]]
 span_id = "record-heterogeneous-array-occurrence-bounds"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1694,7 +1694,7 @@ transition_ids = ["matrix.predicate.incremental-group-choice-extension"]
 [[record.source_replacement]]
 span_id = "record-incremental-group-choice-extension"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1731,7 +1731,7 @@ reopening_transition_id = "matrix.trigger.inline-cbor-containment-boundary"
 [[record.source_replacement]]
 span_id = "record-inline-cbor-containment-boundary"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1766,7 +1766,7 @@ transition_ids = ["matrix.trigger.inline-group-choice-arm-demand"]
 [[record.source_replacement]]
 span_id = "record-inline-group-choice-arm"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1807,7 +1807,7 @@ priority_rationale_md = """The work is sound and unblocked, but the named-group 
 [[record.source_replacement]]
 span_id = "record-inline-group-occurrence-carrier"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1834,7 +1834,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "record-interaction-tuples-boundary"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1887,7 +1887,7 @@ cadence_transition_id = "matrix.cadence.intra-alternative-variations"
 [[record.source_replacement]]
 span_id = "record-intra-alternative-variations"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1928,7 +1928,7 @@ priority_rationale_md = """Zero-permitting keyed struct-map fields are valid inp
 [[record.source_replacement]]
 span_id = "record-keyed-struct-map-zero-permitting-fields"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -1955,7 +1955,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "record-matching-semantics-boundary"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2001,7 +2001,7 @@ transition_ids = ["matrix.trigger.multi-choice-group-demand"]
 [[record.source_replacement]]
 span_id = "record-multi-choice-group-rule"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2036,7 +2036,7 @@ transition_ids = ["matrix.trigger.multifile-extern-shape-coverage"]
 [[record.source_replacement]]
 span_id = "part-multifile-extern-exclusion"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2155,7 +2155,7 @@ priority_rationale_md = """The source marks this buildable now and records silen
 [[record.source_replacement]]
 span_id = "record-named-group-reference-grid"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2184,7 +2184,7 @@ detail_md = """- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice 
 """
 closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-named-rule-map-key-upstream-upstream"
-current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue has been filed, and WP5M did not query the repository.
+current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue has been filed, and the repository has not been queried.
 """
 transition_ids = ["matrix.retirement.named-rule-map-key-upstream"]
 verification_md = """Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
@@ -2198,7 +2198,7 @@ action_md = """Create and file a durable report.
 [[record.source_replacement]]
 span_id = "record-named-rule-map-key-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2241,7 +2241,7 @@ transition_ids = ["matrix.trigger.nint-capability-demand"]
 [[record.source_replacement]]
 span_id = "record-nint-capability"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2283,7 +2283,7 @@ transition_ids = ["matrix.trigger.nominal-custom-pair-demand"]
 [[record.source_replacement]]
 span_id = "record-nominal-custom-pair-wrapper"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2303,7 +2303,7 @@ detail_md = """- When a release ships the `885c61c` non-uint-endpoint range fix 
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-non-uint-range-upstream-upstream"
-current_upstream_state_md = """The behavior is fixed on local-fixes at 885c61c; no fresh published-release check was performed by WP5M.
+current_upstream_state_md = """The behavior is fixed on local-fixes at 885c61c; no fresh published-release check has been performed.
 """
 transition_ids = ["matrix.retirement.non-uint-range-upstream"]
 verification_md = """Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
@@ -2312,7 +2312,7 @@ verification_md = """Re-probe and re-mint the inclusive and exclusive int, nint,
 [[record.source_replacement]]
 span_id = "record-non-uint-range-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2351,7 +2351,7 @@ transition_ids = ["matrix.predicate.open-array-optional-adjacency"]
 [[record.source_replacement]]
 span_id = "record-open-array-optional-adjacency"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2389,7 +2389,7 @@ priority_rationale_md = """Bounded typed and catch-all rows remain selected beca
 [[record.source_replacement]]
 span_id = "record-open-table-bounded-rest-rows"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2427,7 +2427,7 @@ transition_ids = ["matrix.trigger.open-table-min-one-hardening"]
 [[record.source_replacement]]
 span_id = "part-open-table-min-one-hardening"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2452,7 +2452,7 @@ detail_md = """- When a release ships the `3d56d8e` optional-entry/closed-map/JS
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-optional-closed-map-upstream-upstream"
-current_upstream_state_md = """The combined fix is on local-fixes; three adjacent future issues remain independent; no fresh release check was performed by WP5M.
+current_upstream_state_md = """The combined fix is on local-fixes; three adjacent future issues remain independent; no fresh release check has been performed.
 """
 transition_ids = ["matrix.retirement.optional-closed-map-upstream"]
 verification_md = """Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
@@ -2474,7 +2474,7 @@ action_id = "adjacent-map-matching"
 [[record.source_replacement]]
 span_id = "record-optional-closed-map-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2500,7 +2500,7 @@ permanence = "permanent"
 [[record.source_replacement]]
 span_id = "record-over-acceptance-ast-notes"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2533,7 +2533,7 @@ transition_ids = ["matrix.predicate.denominator-ruling"]
 [[record.source_replacement]]
 span_id = "record-over-acceptance-denominator"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2572,7 +2572,7 @@ transition_ids = ["matrix.trigger.per-value-encoding-reachability"]
 [[record.source_replacement]]
 span_id = "record-per-value-encoding-reachability"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2607,7 +2607,7 @@ cadence_transition_id = "matrix.cadence.periodic-coverage-honesty"
 [[record.source_replacement]]
 span_id = "record-periodic-coverage-honesty"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2734,7 +2734,7 @@ action_id = "tag-leniency"
 [[record.source_replacement]]
 span_id = "record-prelude-number-float-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2767,7 +2767,7 @@ cadence_transition_id = "matrix.cadence.profile-version-scope"
 [[record.source_replacement]]
 span_id = "record-profile-version-scope"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2792,7 +2792,7 @@ detail_md = """- When a release ships the `2c7548e` radix-literal lexer fix (ups
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-radix-literal-upstream-upstream"
-current_upstream_state_md = """The parser fix is on local-fixes at 2c7548e; WG issue 33 and ruby non-value-position deviations remain independent; no fresh release check was performed by WP5M.
+current_upstream_state_md = """The parser fix is on local-fixes at 2c7548e; WG issue 33 and ruby non-value-position deviations remain independent; no fresh release check has been performed.
 """
 transition_ids = ["matrix.retirement.radix-literal-upstream"]
 verification_md = """Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
@@ -2827,7 +2827,7 @@ action_id = "wg-radix-mantissa"
 [[record.source_replacement]]
 span_id = "record-radix-literal-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -2871,7 +2871,7 @@ cadence_transition_id = "matrix.cadence.refusal-spelling-space"
 [[record.source_replacement]]
 span_id = "record-refusal-spelling-space"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3329,7 +3329,7 @@ transition_ids = ["matrix.trigger.root-reference-placement"]
 [[record.source_replacement]]
 span_id = "record-root-reference-placement"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3355,7 +3355,7 @@ detail_md = """- When a ruby `cddl` gem release parses inline/composite type2 co
 """
 closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-ruby-inline-controller-upstream-upstream"
-current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue is named, and WP5M did not query the repository.
+current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue is named, and the repository has not been queried.
 """
 transition_ids = ["matrix.retirement.ruby-inline-controller-upstream"]
 verification_md = """Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
@@ -3369,7 +3369,7 @@ action_md = """Create and file a durable ruby report.
 [[record.source_replacement]]
 span_id = "record-ruby-inline-controller-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -3397,7 +3397,7 @@ detail_md = """- `.size` on a signed `int` — semantics CLARIFIED by the RFC au
 """
 closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-signed-int-size-upstream-upstream"
-current_upstream_state_md = """WG issue 32 clarifies semantics, but the validator fix/report and erratum are not complete; WP5M performed no fresh upstream query.
+current_upstream_state_md = """WG issue 32 clarifies semantics, but the validator fix/report and erratum are not complete; no fresh upstream query has been performed.
 """
 transition_ids = ["matrix.retirement.signed-int-size-upstream"]
 verification_md = """Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
@@ -3437,7 +3437,7 @@ action_id = "validator-release"
 [[record.source_replacement]]
 span_id = "record-signed-int-size-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -4029,7 +4029,7 @@ summary_md = """Close out rust cddl mixed-map string-key rest occurrence validat
 """
 closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-string-key-mixed-rest-upstream-upstream"
-current_upstream_state_md = """README gap 13 contains the durable conclusion, but no durable report or upstream issue has been filed and WP5M did not query the repository.
+current_upstream_state_md = """README gap 13 contains the durable conclusion, but no durable report or upstream issue has been filed and the repository has not been queried.
 """
 transition_ids = ["matrix.retirement.string-key-mixed-rest-upstream"]
 verification_md = """Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
@@ -4214,7 +4214,7 @@ plus that draft.
 """
 closeout_state = "due"
 upstream_owner_reference_id = "ref-matrix-tag-map-key-upstream-upstream"
-current_upstream_state_md = """The diagnosis is complete but no durable upstream report or issue has been filed; WP5M did not query the repository.
+current_upstream_state_md = """The diagnosis is complete but no durable upstream report or issue has been filed; the repository has not been queried.
 """
 transition_ids = ["matrix.retirement.tag-map-key-upstream"]
 verification_md = """Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
@@ -4228,7 +4228,7 @@ action_md = """Create and file the durable report.
 [[record.source_replacement]]
 span_id = "record-tag-map-key-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -4261,7 +4261,7 @@ reopening_transition_id = "matrix.trigger.tag-registry-boundary"
 [[record.source_replacement]]
 span_id = "record-tag-registry-boundary"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -4965,7 +4965,7 @@ action_id = "tag-only-changes"
 [[record.source_replacement]]
 span_id = "record-typed-tag-report-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -4985,7 +4985,7 @@ detail_md = """- When a rust `cddl` release ships the uint-target control-op fix
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-uint-control-operator-upstream-upstream"
-current_upstream_state_md = """The fix is submitted upstream; no fresh published-release check was performed by WP5M.
+current_upstream_state_md = """The fix is submitted upstream; no fresh published-release check has been performed.
 """
 transition_ids = ["matrix.retirement.uint-control-operator-upstream"]
 verification_md = """Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
@@ -4994,7 +4994,7 @@ verification_md = """Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne,
 [[record.source_replacement]]
 span_id = "record-uint-control-operator-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -5020,7 +5020,7 @@ detail_md = """- When ciborium's generic value decoder preserves CBOR `undefined
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-undefined-ciborium-upstream-upstream"
-current_upstream_state_md = """The current generic decoder collapses f7 to Null; no fresh release check was performed by WP5M.
+current_upstream_state_md = """The current generic decoder collapses f7 to Null; no fresh release check has been performed.
 """
 transition_ids = ["matrix.retirement.undefined-ciborium-upstream"]
 verification_md = """Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
@@ -5029,7 +5029,7 @@ verification_md = """Confirm reference_codec_differential_self_check fails stale
 [[record.source_replacement]]
 span_id = "record-undefined-ciborium-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -5057,7 +5057,7 @@ detail_md = """- When the pinned rust `cddl` validator accepts `validate_cbor_fr
 """
 closeout_state = "waiting"
 upstream_owner_reference_id = "ref-matrix-undefined-validator-upstream-upstream"
-current_upstream_state_md = """The pinned validator rejects f7 as Null; no fresh published-release check was performed by WP5M.
+current_upstream_state_md = """The pinned validator rejects f7 as Null; no fresh published-release check has been performed.
 """
 transition_ids = ["matrix.retirement.undefined-validator-upstream"]
 verification_md = """Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
@@ -5079,7 +5079,7 @@ action_id = "signature-only-change"
 [[record.source_replacement]]
 span_id = "record-undefined-validator-upstream"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -5123,7 +5123,7 @@ transition_ids = ["matrix.trigger.wasm-extern-wrapper-demand"]
 [[record.source_replacement]]
 span_id = "record-wasm-extern-wrapper-demand"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[record]]
@@ -5154,7 +5154,7 @@ reopening_transition_id = "matrix.trigger.wasm-macro-behavior-boundary"
 [[record.source_replacement]]
 span_id = "record-wasm-macro-behavior-boundary"
 replacement_field = "payload.detail_md"
-review_note_md = """WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
+review_note_md = """The complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.
 """
 
 [[part]]
@@ -5172,7 +5172,7 @@ body_md = """  - **Hand-patched generated output in a consumer** — hand-added 
 [[part.source_replacement]]
 span_id = "part-consumer-hand-patch"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[part]]
@@ -5189,7 +5189,7 @@ body_md = """  - `--emit-tests-conformance` × directory input is executed by `i
 [[part.source_replacement]]
 span_id = "part-emitted-conformance-directory"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[part]]
@@ -5219,7 +5219,7 @@ body_md = """  - **The EXCLUSION comments, not just the missing rows** — a sha
 [[part.source_replacement]]
 span_id = "part-exclusion-comment-audit"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[part]]
@@ -5237,7 +5237,7 @@ body_md = """  - EXECUTION of user-code cells — running the emitted round-trip
 [[part.source_replacement]]
 span_id = "part-extern-execution"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[part]]
@@ -5253,7 +5253,7 @@ body_md = """  - **Fix-review reach analysis** — after a fix, ask which OTHER 
 [[part.source_replacement]]
 span_id = "part-fix-review-reach"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[part]]
@@ -5294,7 +5294,7 @@ body_md = """  - EXECUTION of the generated json-gen crate (`wasm/json-gen`) ove
 [[part.source_replacement]]
 span_id = "part-json-gen-cross-module-execution"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[part]]
@@ -5315,7 +5315,7 @@ and any wasm-boundary shape a new class mints must be enumerated in the wasm-ABI
 [[part.source_replacement]]
 span_id = "part-shared-carrier-delivery-requirements"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[part]]
@@ -5332,7 +5332,7 @@ body_md = """  - **A steering comment in a test** — a test that deliberately p
 [[part.source_replacement]]
 span_id = "part-test-steering-comment"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[part]]
@@ -5351,7 +5351,7 @@ body_md = """  - The `--wasm-*-macro` modes × directory input are compile-gated
 [[part.source_replacement]]
 span_id = "part-wasm-macro-directory"
 replacement_field = "body_md"
-review_note_md = """WP5M source-owner review: the complete legacy structural block is retained byte-for-byte as semantic body prose.
+review_note_md = """The complete legacy structural block is retained byte-for-byte as semantic body prose.
 """
 
 [[generated_slot]]

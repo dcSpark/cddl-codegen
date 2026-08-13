@@ -19,7 +19,8 @@
  *      that had been renumbered away). Titles are the stable citation form.
  *   5. Ephemeral-reference ban: durable docs/code/tests must not point at gitignored, plan-internal
  *      material (delivery ruling ids in either the `ruling R<n>` or the `<letter>-R<n>` phase form,
- *      the `<letter>-spec` WP-backing spec files, per-WP "outcome header" prose, `PROBE-<letter><n>`
+ *      bare work-packet ids, the `<letter>-spec` work-packet-backing spec files, per-packet
+ *      "outcome header" prose, `PROBE-<letter><n>`
  *      probe ids, the `draft/loose-cbor/` scratchpad home). Such references resolve
  *      only inside gitignored `draft/` files, so they dangle silently to any future reader — state
  *      the constraint inline with a durable citation instead. See EPHEMERAL_PATTERNS.
@@ -193,8 +194,9 @@ function md022Problems(rel: string, text: string): string[] {
 }
 
 // Ephemeral-reference ban: durable docs/code/tests must not point at gitignored, plan-internal
-// material — delivery ruling ids (`ruling R<n>` and the `<letter>-R<n>` phase form), work-package
-// numbers' backing `<letter>-spec` files, per-WP "outcome header" prose, `PROBE-<letter><n>` probe
+// material — delivery ruling ids (`ruling R<n>` and the `<letter>-R<n>` phase form), bare
+// work-packet ids and their backing `<letter>-spec` files, per-packet "outcome header" prose,
+// `PROBE-<letter><n>` probe
 // ids, and the `draft/loose-cbor/` scratchpad home. Those resolve only
 // inside gitignored `draft/` files, so to a future reader they dangle silently (no existence check
 // can flag a reference whose target is not tracked). The fix is to state the constraint inline with
@@ -206,7 +208,10 @@ function md022Problems(rel: string, text: string): string[] {
 // (`PROBE-B<n>` -> `PROBE-C<n>`, `ruling R<n>` -> the `<letter>-R<n>` ruling-id form), so the patterns
 // match every phase's letter rather than the one the current delivery happens to use. A phase-specific
 // spelling (only the launching phase's letter) is exactly how one phase's ids slipped through while
-// another phase's tree stayed clean by luck.
+// another phase's tree stayed clean by luck. The bare work-packet id is number-generic for the same
+// reason: it matches every packet number and the optional per-roadmap suffix letter (`WP4M`,
+// `WP5C`), because a packet id is meaningless without the gitignored plan that numbered it, and the
+// numbering restarts each campaign. Its own canary is why this file exempts itself below.
 const EPHEMERAL_PATTERNS: { re: RegExp; canary: string }[] = [
   { re: /draft\/loose-cbor/g, canary: "see draft/loose-cbor/b-spec.md" },
   { re: /\b[a-z][0-9]*-spec\b/g, canary: "per the b-spec" },
@@ -215,6 +220,7 @@ const EPHEMERAL_PATTERNS: { re: RegExp; canary: string }[] = [
   { re: /ruling §/g, canary: "ruling §10.8" },
   { re: /outcome header/gi, canary: "the WP4 outcome header" },
   { re: /PROBE-[A-Z][0-9]/g, canary: "PROBE-C1 confirmed" },
+  { re: /\bWP[0-9]+[A-Z]?\b/g, canary: "delivered by WP4M" },
 ];
 
 function ephemeralReferenceProblems(file: TrackedFile): string[] {

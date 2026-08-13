@@ -7,7 +7,6 @@ import type {
   CurrentFamilyGuard,
   FixedValueClosureAuthorityFact,
   ReplacementPin,
-  RetiredIdsDocumentV1,
   RoadmapDocument,
   SemanticPayload,
 } from "./model/documents.ts";
@@ -28,22 +27,19 @@ function payloadOf(record: RoadmapDocument["records"][number] | undefined): Sema
   return "semantic_shadow" in record ? record.semantic_shadow : undefined;
 }
 
-function activationState(
-  document: RoadmapDocument | undefined,
-  retired: RetiredIdsDocumentV1 | undefined,
-): boolean {
+/**
+ * The delivered FixedValue family and its work item left the live roadmap at
+ * FIXED_VALUE_DELIVERY_BASE. Guards activate exactly when both names are absent from the current
+ * authoritative document, which is decidable from that document alone.
+ */
+function activationState(document: RoadmapDocument | undefined): boolean {
   if (document === undefined || document.document.schema_version === 0) return false;
   const ids = new Set(document.records.map((record) => record.id));
-  const workTombstone = retired?.entries.find((entry) => entry.id === FIXED_VALUE_WORK);
-  return !ids.has(FIXED_VALUE_FAMILY_ROOT) && !ids.has(FIXED_VALUE_WORK) &&
-    workTombstone?.last_active_at === FIXED_VALUE_DELIVERY_BASE;
+  return !ids.has(FIXED_VALUE_FAMILY_ROOT) && !ids.has(FIXED_VALUE_WORK);
 }
 
-export function fixedValueGuardActivationState(
-  document: RoadmapDocument | undefined,
-  retired: RetiredIdsDocumentV1 | undefined,
-): boolean {
-  return activationState(document, retired);
+export function fixedValueGuardActivationState(document: RoadmapDocument | undefined): boolean {
+  return activationState(document);
 }
 
 function closureError(message: string): never {
@@ -60,7 +56,7 @@ export function retainedClosurePayloadsEqual(
 }
 
 /**
- * Revalidate the exact WP9 family against the CURRENT live authority while substituting the
+ * Revalidate the exact closed family against the CURRENT live authority while substituting the
  * CURRENT retained evidence/control records. This transfers the complete closed-family proof —
  * IDs, applicability, outcomes, evidence scopes and all 36 binding coordinates — rather than
  * merely remembering that twenty names once existed.
@@ -170,10 +166,9 @@ const replacementPin = (): ReplacementPin => Object.freeze({
 export function deriveFixedValueCurrentGuards(
   current: RoadmapDocument | undefined,
   baseline: RoadmapDocument | undefined,
-  retired: RetiredIdsDocumentV1 | undefined,
   registry: RegistryView,
 ): { readonly guards: readonly CurrentFamilyGuard[]; readonly closure?: FixedValueClosureAuthorityFact } {
-  if (!activationState(current, retired)) return Object.freeze({ guards: Object.freeze([]) });
+  if (!activationState(current)) return Object.freeze({ guards: Object.freeze([]) });
   if (baseline === undefined || current === undefined) return closureError("baseline/current source is missing");
   const closure = deriveFixedValueClosureAuthority(baseline, current, registry);
   const pin = replacementPin();

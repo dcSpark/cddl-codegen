@@ -21,7 +21,6 @@ import type {
   RoadmapDocument,
   RoadmapDocumentV1,
   SemanticPayload,
-  TombstoneOwnerFact,
 } from "./model/documents.ts";
 import { validateRoadmapId } from "./ids.ts";
 import {
@@ -116,11 +115,6 @@ export type DebtTransitionFactsInput =
   | ValidatedDebtTransitionFacts
   | readonly ValidatedDebtTransitionFacts[];
 
-export type TombstoneEligibleIdentityOwnerFact = Extract<
-  IdentityOwnerFact,
-  { owner_kind: "active_record" | "current_guard" | "legacy_markdown_reservation" }
->;
-
 export interface DebtDocumentSourceFingerprint {
   readonly source_path: RepoPath;
   readonly sha256: string;
@@ -128,17 +122,6 @@ export interface DebtDocumentSourceFingerprint {
 }
 
 export type DebtReplacementResolutionFact = GateFact | TestSymbolFact | FileHeadingFact;
-
-export interface DebtRetirementTransitionRequest {
-  readonly base_owner: TombstoneEligibleIdentityOwnerFact;
-  readonly removed_debt_owners: readonly DebtOwnerKey[];
-  readonly base_commit: FullCommitId;
-  readonly base_source: DebtDocumentSourceFingerprint;
-  readonly candidate_source: DebtDocumentSourceFingerprint;
-  readonly candidate_identity_facts: readonly IdentityOwnerFact[];
-  readonly candidate_tombstone: TombstoneOwnerFact;
-  readonly candidate_replacement_fact?: DebtReplacementResolutionFact;
-}
 
 export interface DebtGuardTransferRequest {
   /** Must name the exact family record object held by `base_document`. */
@@ -232,7 +215,7 @@ export interface MigrationProgressReport {
   };
   readonly completion_audit: {
     readonly lane_blockers: readonly MigrationProgressBlocker[];
-    readonly wp5c_join_blockers: readonly MigrationProgressBlocker[];
+    readonly join_blockers: readonly MigrationProgressBlocker[];
   };
 }
 
@@ -258,7 +241,7 @@ export const LANE_BLOCKING_INDEPENDENT_CATEGORIES = Object.freeze([
   "unrendered_fields",
 ] as const satisfies readonly IndependentDebtCategory[]);
 
-export const WP5C_JOIN_BLOCKING_INDEPENDENT_CATEGORIES = Object.freeze([
+export const JOIN_BLOCKING_INDEPENDENT_CATEGORIES = Object.freeze([
   "unresolved_references",
 ] as const satisfies readonly IndependentDebtCategory[]);
 
@@ -1852,161 +1835,6 @@ function documentSystematicProviders(document: RoadmapDocument): readonly System
   return Object.freeze(providers);
 }
 
-function activeRecordIsEligible(
-  owner: Extract<TombstoneEligibleIdentityOwnerFact, { owner_kind: "active_record" }>,
-  document: RoadmapDocument,
-): boolean {
-  if (!document.records.some((record) => record === owner.record && record.id === owner.id)) return false;
-  const record = owner.record;
-  if ("payload" in record) return record.payload.kind !== "family";
-  if ("semantic_shadow" in record && record.semantic_shadow !== undefined) {
-    return record.semantic_shadow.kind !== "family";
-  }
-  return true;
-}
-
-function reservationIsEligible(
-  owner: Extract<TombstoneEligibleIdentityOwnerFact, { owner_kind: "legacy_markdown_reservation" }>,
-  document: RoadmapDocument,
-): boolean {
-  const reservation = owner.reservation;
-  if (
-    reservation.id !== owner.id || reservation.work_kind !== owner.work_kind ||
-    reservation.roadmap_path !== document.document.projection_path ||
-    reservation.whole_source_sha256 !== document.document.frozen_source_sha256 ||
-    reservation.source_start_byte < 0 || reservation.source_start_byte >= reservation.source_end_byte ||
-    reservation.source_end_byte > document.document.frozen_source_byte_length
-  ) return false;
-  const exactSpan = document.spans.some((span) =>
-    span.start_byte === reservation.source_start_byte && span.end_byte === reservation.source_end_byte &&
-    span.sha256 === reservation.source_sha256
-  );
-  if (!exactSpan) return false;
-  const shadow = owner.corroborating_shadow;
-  return shadow === undefined || (
-    shadow.id === owner.id && shadow.namespace === owner.namespace &&
-    shadow.source_path === document.document.source_path && shadow.legacy_span_ids.length > 0 &&
-    shadow.legacy_span_ids.every((spanId) => document.spans.some((span) => span.id === spanId))
-  );
-}
-
-function eligibleBaseLifecycleOwner(
-  owner: IdentityOwnerFact,
-  document: RoadmapDocument,
-): owner is TombstoneEligibleIdentityOwnerFact {
-  if (
-    owner.owner_kind !== "active_record" && owner.owner_kind !== "current_guard" &&
-    owner.owner_kind !== "legacy_markdown_reservation"
-  ) return false;
-  if (
-    owner.namespace !== document.document.roadmap || owner.id !== (owner.owner_kind === "current_guard" ? owner.guard.id : owner.owner_kind === "legacy_markdown_reservation" ? owner.reservation.id : owner.record.id) ||
-    !String(owner.id).startsWith(`${owner.namespace}.`)
-  ) return false;
-  if (owner.owner_kind === "active_record") return activeRecordIsEligible(owner, document);
-  if (owner.owner_kind === "legacy_markdown_reservation") return reservationIsEligible(owner, document);
-  return owner.guard.id === owner.id && pinIndex(owner.guard.replacement_pin).length > 0;
-}
-
-function exactRemovedDebtIndexes(
-  base: MigrationDebt,
-  candidate: MigrationDebt,
-  owner: TombstoneEligibleIdentityOwnerFact,
-): readonly string[] {
-  return [...base.owners].filter(([, value]) =>
-    value.key.roadmap === owner.namespace && value.key.owner_kind === "record" &&
-    value.key.owner_id === owner.id && !candidate.owners.has(debtOwnerIndex(value.key))
-  ).map(([index]) => index).sort(codePointSort);
-}
-
-/**
- * C5-facing retirement seam. It validates lifecycle eligibility and candidate identity/replacement
- * joins itself, then mints the private comparison brand; caller-shaped coordinates are inert.
- */
-export function validateDebtRetirementFacts(
-  base: MigrationDebt,
-  candidate: MigrationDebt,
-  options: Pick<DebtComparisonOptions, "base_document" | "candidate_document">,
-  requests: readonly DebtRetirementTransitionRequest[],
-): DebtTransitionFactResult {
-  const comparisonOptions: DebtComparisonOptions = options;
-  const issues: RoadmapIssue[] = [];
-  const removed = new Set<string>();
-  const added = new Set<string>();
-  if (requests.length === 0) {
-    issues.push(issue(comparisonOptions, "E-DEBT-OWNER-REGRESSION", "retirement", "retirement transition fact set is empty"));
-  }
-  for (const [requestIndex, request] of requests.entries()) {
-    const logicalPath = `retirement[${requestIndex}]`;
-    const baseOwner = request.base_owner as IdentityOwnerFact;
-    const eligible = eligibleBaseLifecycleOwner(baseOwner, options.base_document);
-    const sameIdCandidate = request.candidate_identity_facts.filter((fact) => fact.id === baseOwner.id);
-    const tombstone = request.candidate_tombstone;
-    const tombstoneJoined = sameIdCandidate.length === 1 && sameIdCandidate[0].owner_kind === "tombstone" &&
-      sameIdCandidate[0] === tombstone && tombstone.id === baseOwner.id &&
-      tombstone.namespace === baseOwner.namespace && tombstone.tombstone.id === baseOwner.id &&
-      tombstone.tombstone.last_active_at === request.base_commit && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(request.base_commit) &&
-      replacementResolves(tombstone.tombstone.replacement, request.candidate_replacement_fact);
-    const guardPinJoined = baseOwner.owner_kind !== "current_guard" ||
-      pinIndex(baseOwner.guard.replacement_pin) === pinIndex(tombstone.tombstone.replacement);
-    const expectedRemoved = eligible ? exactRemovedDebtIndexes(base, candidate, baseOwner) : [];
-    const requestedRemoved = request.removed_debt_owners.map(debtOwnerIndex).sort(codePointSort);
-    const removalsExact = expectedRemoved.length === requestedRemoved.length &&
-      expectedRemoved.every((index, position) => index === requestedRemoved[position]) &&
-      request.removed_debt_owners.every((key) =>
-        key.owner_kind === "record" && key.owner_id === baseOwner.id && key.roadmap === baseOwner.namespace &&
-        base.owners.has(debtOwnerIndex(key)) && !candidate.owners.has(debtOwnerIndex(key)) &&
-        documentHasOwner(options.base_document, key) && !documentHasOwner(options.candidate_document, key)
-      );
-    if (
-      !eligible || !fingerprintMatches(request.base_source, options.base_document) ||
-      !fingerprintMatches(request.candidate_source, options.candidate_document) || !tombstoneJoined ||
-      !guardPinJoined || !removalsExact ||
-      (baseOwner.owner_kind !== "current_guard" && expectedRemoved.length === 0) ||
-      requestedRemoved.some((index) => removed.has(index))
-    ) {
-      issues.push(issue(
-        comparisonOptions,
-        "E-DEBT-OWNER-REGRESSION",
-        logicalPath,
-        "retirement lacks one eligible lifecycle owner or exact source/tombstone/guard/replacement/debt joins",
-      ));
-      continue;
-    }
-    for (const removedIndex of requestedRemoved) {
-      removed.add(removedIndex);
-      const removedKey = base.owners.get(removedIndex)?.key;
-      if (removedKey === undefined) continue;
-      for (const spanId of ownerSpans(options.base_document, removedKey)) {
-        const spanIndex = debtOwnerIndex({
-          roadmap: removedKey.roadmap,
-          owner_kind: "source_span",
-          owner_id: spanId,
-          owner_field: "coverage",
-        });
-        if (base.owners.has(spanIndex) && !candidate.owners.has(spanIndex)) removed.add(spanIndex);
-      }
-    }
-  }
-  if (issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
-  const facts: ValidatedDebtTransitionFacts = Object.freeze({
-    restructure_count: 0,
-    retirement_count: requests.length,
-  });
-  validatedDebtTransitions.set(facts, {
-    base,
-    candidate,
-    base_document: options.base_document,
-    candidate_document: options.candidate_document,
-    base_signature: debtSignature(base),
-    candidate_signature: debtSignature(candidate),
-    base_document_signature: documentTransitionSignature(options.base_document),
-    candidate_document_signature: documentTransitionSignature(options.candidate_document),
-    removed,
-    added,
-  });
-  return Object.freeze({ ok: true, facts, issues: Object.freeze([]) as readonly [] });
-}
-
 /**
  * C5 family-to-guard seam. Removed debt coordinates and systematic child IDs are derived from the
  * exact base family object; callers cannot nominate either set.
@@ -2458,9 +2286,9 @@ export function migrationProgressReport(
       subject: independentDebtIndex(item),
     })),
   ].sort(progressBlockerSort);
-  const wp5cJoinBlockers: MigrationProgressBlocker[] = independent
+  const joinBlockers: MigrationProgressBlocker[] = independent
     .filter((item) =>
-      WP5C_JOIN_BLOCKING_INDEPENDENT_CATEGORIES.some((category) => category === item.category)
+      JOIN_BLOCKING_INDEPENDENT_CATEGORIES.some((category) => category === item.category)
     )
     .map((item) => ({ category: item.category, subject: independentDebtIndex(item) }))
     .sort(progressBlockerSort);
@@ -2485,7 +2313,7 @@ export function migrationProgressReport(
     }),
     completion_audit: Object.freeze({
       lane_blockers: Object.freeze(laneBlockers),
-      wp5c_join_blockers: Object.freeze(wp5cJoinBlockers),
+      join_blockers: Object.freeze(joinBlockers),
     }),
   });
 }

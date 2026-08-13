@@ -29,7 +29,7 @@ export const REQUIRED_SEMANTIC_CONVERSION_SELFTEST_CASE_IDS = [
   "completion_rejects_pending_family_classification",
   "completion_rejects_unrendered_field",
   "completion_allows_typed_stale_unknown_and_unmodelled",
-  "completion_reports_unresolved_wp5c_join",
+  "completion_reports_unresolved_cross_roadmap_join",
   "completion_accepts_zero_debt",
   "completion_transition_forward_allowed",
   "completion_transition_stable_allowed",
@@ -226,7 +226,7 @@ function run(id: string): SelfTestResult {
         debt([], [independent("unmodelled_coordinates")]),
         completed,
       );
-      expect(audit.blockers.length === 0 && JSON.stringify(audit.wp5c_join_blockers) === "[]" &&
+      expect(audit.blockers.length === 0 && JSON.stringify(audit.join_blockers) === "[]" &&
         progress.typed_semantic_state.signals.unknown_record_ids.length === 1 &&
         progress.typed_semantic_state.evidence.unknown_record_ids.length === 1 &&
         progress.typed_semantic_state.evidence.stale_record_ids.length === 1 &&
@@ -234,10 +234,10 @@ function run(id: string): SelfTestResult {
       "typed stale/unknown/unmodelled state must not block complete");
       return pass();
     }
-    case "completion_reports_unresolved_wp5c_join": {
+    case "completion_reports_unresolved_cross_roadmap_join": {
       const audit = semanticConversionCompletionAudit(document(), debt([], [independent("unresolved_references")]), completed);
-      expect(audit.blockers.length === 0 && audit.wp5c_join_blockers.length === 1,
-        "unresolved reference must be deferred from lane completion and reported for WP5C");
+      expect(audit.blockers.length === 0 && audit.join_blockers.length === 1,
+        "unresolved reference must be deferred from lane completion and reported as a cross-roadmap join blocker");
       return pass();
     }
     case "completion_accepts_zero_debt":

@@ -17577,7 +17577,7 @@ fn workspace_borrowed_wrapper_collision_is_a_hard_error() {
     gen_scope.record_borrowed_wrapper(&ident, "dep", "{* a_to_b => c}");
 }
 
-/// WP4 (duplicates policy) — the `--wrapper-requests` DEP-hosting path for the `@duplicates reject`
+/// Duplicates policy — the `--wrapper-requests` DEP-hosting path for the `@duplicates reject`
 /// uniqueness twins. A consumer that borrows a reject set from a workspace dep records it in
 /// `borrowed_collections.rs` with the `@duplicates reject` shape marker; the dep must rebuild the
 /// SAME twin (an `OrderedSet` / `NonEmptyOrderedSet` wrapper with the checked `add` + `try_from`

@@ -761,7 +761,7 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "tag_set_idiom.int_set": ["4", "6"],
   "tag_set_idiom.text_set": ["4", "6"],
   "tag_set_near_miss.near_miss": ["4", "6"],
-  // `@duplicates reject` set idiom (WP2): same two-arm WIRE spelling as the preserve idiom above
+  // `@duplicates reject` set idiom: same two-arm WIRE spelling as the preserve idiom above
   // (`#6.258([..]) / [..]`) — the policy is invisible to the oracle, so the same per-arm floor holds.
   "tag_set_reject.int_neset": ["4", "6"],
   "tag_set_reject.int_set": ["4", "6"],

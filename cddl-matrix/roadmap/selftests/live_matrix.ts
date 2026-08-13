@@ -65,7 +65,7 @@ function withRetiredFixedValueLegacyFloor(authoritative: RoadmapDocumentV1): Roa
     source_replacements: [{
       span_id: retiredSpanId,
       replacement_field: "payload.detail_md",
-      review_note_md: UTF8.encode("WP5M source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.\n"),
+      review_note_md: UTF8.encode("Source-owner review: the complete legacy block is retained byte-for-byte as semantic detail while typed fields own lifecycle and joins.\n"),
     }],
   };
   const recordIndex = authoritative.records.findIndex((entry) => entry.id === grammarId);
@@ -134,7 +134,7 @@ export function liveMatrixLegacyV2Document(): RoadmapDocumentV2 {
   return { ...decoded, document: { ...decoded.document, projection_layout: "legacy_v1" } };
 }
 
-/** Historical complete-v1 view retained for WP4/WP5 transition fixtures after the live WP6 cutover. */
+/** Historical complete-v1 view retained for v0/v1 transition fixtures after the live v2 cutover. */
 export function liveMatrixAuthoritativeDocument(): RoadmapDocumentV1 {
   const decoded = liveMatrixV2Document();
   const { projection_layout: _projectionLayout, ...document } = decoded.document;
@@ -158,7 +158,7 @@ export function liveMatrixProjection(): Uint8Array {
   return UTF8.encode(liveMatrixProjectionText);
 }
 
-/** Current authored bytes with only the WP7 ownership/anchor layout removed. */
+/** Current authored bytes with only the ownership/anchor layout removed. */
 export function liveMatrixCurrentLegacyProjection(): Uint8Array {
   return UTF8.encode(liveMatrixProjectionText
     .replace(
@@ -169,10 +169,10 @@ export function liveMatrixCurrentLegacyProjection(): Uint8Array {
     .replace(/^ *<a id="roadmap-id-[^"]+"><\/a>\n/gmu, ""));
 }
 
-/** Frozen pre-WP7 projection used only by historical v0/v1 transition fixtures. */
+/** Frozen pre-anchor-layout projection used only by historical v0/v1 transition fixtures. */
 export function liveMatrixLegacyProjection(): Uint8Array {
-  const withoutWp7Layout = new TextDecoder().decode(liveMatrixCurrentLegacyProjection());
-  const projection = UTF8.encode(withoutWp7Layout
+  const withoutAnchorLayout = new TextDecoder().decode(liveMatrixCurrentLegacyProjection());
+  const projection = UTF8.encode(withoutAnchorLayout
     .replace(
       "144 containment cells, and 301 cddl-codegen annotations",
       "136 containment cells, and 293 cddl-codegen annotations",

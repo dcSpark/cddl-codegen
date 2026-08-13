@@ -321,7 +321,7 @@ export function planLegacyStatusHeaderRun(
     inspections.set(JSON.stringify([payload.path, payload.slot_id]), inspectStatusMarkerBinding(snapshot, payload.slot_id));
   }
 
-  // Resolve the complete status-writer subset for this campaign-selected production stage before
+  // Resolve the complete status-writer subset for this production output stage before
   // either mode can decide to write. The resolver is deliberately fed only the immutable target
   // snapshots above; callers cannot make a later claim observe different bytes.
   const resolution = resolveOutputClaims({

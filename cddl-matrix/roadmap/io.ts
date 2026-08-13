@@ -19,9 +19,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import type { RegistryView } from "./adapters/types.ts";
-import { decodeCampaignSource } from "./decode/campaign.ts";
 import { decodeRoadmapSource } from "./decode/roadmap.ts";
-import { decodeRetiredSource } from "./decode/retired.ts";
 import {
   classifyRoadmapIoError,
   RoadmapFailure,
@@ -116,8 +114,6 @@ const PROJECTION_PATHS = new Set(["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADM
 const SOURCE_PATHS = new Set([
   "cddl-matrix/roadmap.toml",
   "tests/testing-roadmap.toml",
-  "roadmap-campaign.toml",
-  "roadmap-retired-ids.toml",
 ]);
 const codePointSort = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -887,11 +883,7 @@ function headingFacts(inputs: readonly TrackedTextInput[]): HeadingFactResult {
 function buildRegistryView(root: string, revision: RepositoryRevision): RegistryView {
   const tracked = readAllTracked(root, revision);
   const byPath = new Map(tracked.flatMap((input) => input.bytes === undefined ? [] : [[input.source, input.bytes] as const]));
-  const campaignBytes = byPath.get("roadmap-campaign.toml" as RepoPath);
-  const campaign = campaignBytes === undefined
-    ? undefined
-    : decodeCampaignSource(campaignBytes, "roadmap-campaign.toml", true);
-  const outputInventory = productionOutputInventory(productionOutputStage(campaign));
+  const outputInventory = productionOutputInventory(productionOutputStage());
   // Projection files are supplied later from the lifecycle stage-selected immutable view. Every
   // other tracked regular, non-draft path participates regardless of extension or corpus role.
   const citationInputs = tracked.filter((input) => !PROJECTION_PATHS.has(input.source));
@@ -988,11 +980,7 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
   const matrixRoadmap = matrixRoadmapBytes === undefined
     ? undefined
     : optionalDecode(() => decodeRoadmapSource(matrixRoadmapBytes, "cddl-matrix/roadmap.toml", "matrix", true));
-  const retiredBytes = byPath.get("roadmap-retired-ids.toml" as RepoPath);
-  const retired = retiredBytes === undefined
-    ? undefined
-    : optionalDecode(() => decodeRetiredSource(retiredBytes, "roadmap-retired-ids.toml", true));
-  const baselineRoadmapBytes = !fixedValueGuardActivationState(matrixRoadmap, retired)
+  const baselineRoadmapBytes = !fixedValueGuardActivationState(matrixRoadmap)
     ? undefined
     : readTracked(root, { kind: "commit", commit: FIXED_VALUE_DELIVERY_BASE }, "cddl-matrix/roadmap.toml" as RepoPath);
   const baselineRoadmap = baselineRoadmapBytes === undefined
@@ -1001,7 +989,6 @@ function buildRegistryView(root: string, revision: RepositoryRevision): Registry
   const fixedValue = deriveFixedValueCurrentGuards(
     matrixRoadmap,
     baselineRoadmap,
-    retired,
     registryWithoutGuards,
   );
   return Object.freeze({

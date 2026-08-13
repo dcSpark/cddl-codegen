@@ -51,7 +51,7 @@ function appendUnicodeEscape(out: string[], byte: number): void {
   out.push("\\u", byte.toString(16).padStart(4, "0"));
 }
 
-/** Encode one Markdown byte value using WP0's sole canonical TOML spelling. */
+/** Encode one Markdown byte value using the sole canonical TOML spelling. */
 export function encodeMarkdownString(bytes: Uint8Array, source = "<markdown>"): string {
   decodeFatalUtf8Lf(bytes, source);
   const out: string[] = ['"""'];

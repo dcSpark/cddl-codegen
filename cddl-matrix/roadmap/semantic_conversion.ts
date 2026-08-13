@@ -89,12 +89,12 @@ export interface SemanticConversionCompletionAudit {
   readonly declared: DeclaredSemanticConversionState;
   readonly effective: SemanticConversionState | "not_applicable";
   readonly blockers: readonly MigrationProgressBlocker[];
-  readonly wp5c_join_blockers: readonly MigrationProgressBlocker[];
+  readonly join_blockers: readonly MigrationProgressBlocker[];
 }
 
 /**
  * Complete is the irreversible per-roadmap lane declaration. Its blockers intentionally reuse the
- * exported lane-category registry; unresolved-reference joins remain visible for WP5C and do not
+ * exported lane-category registry; unresolved cross-roadmap joins remain visible and do not
  * reopen a completed semantic-conversion lane.
  */
 export function semanticConversionCompletionAudit(
@@ -107,7 +107,7 @@ export function semanticConversionCompletionAudit(
   return Object.freeze({
     ...state,
     blockers: progress.completion_audit.lane_blockers,
-    wp5c_join_blockers: progress.completion_audit.wp5c_join_blockers,
+    join_blockers: progress.completion_audit.join_blockers,
   });
 }
 

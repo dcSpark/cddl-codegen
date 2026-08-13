@@ -63,7 +63,6 @@ import {
   independentDebtIndex,
   migrationDebtReport,
   migrationProgressReport,
-  validateDebtRetirementFacts,
   validateSemanticConversionFacts,
   validateDebtTransitionFacts,
   type DebtOwnerKey,
@@ -151,7 +150,6 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "debt_candidate_only_document_rejected",
   "debt_candidate_only_semantic_only_allowed",
   "debt_semantic_promotion_rejection_matrix",
-  "debt_semantic_promotion_retirement_composes",
   "debt_semantic_promotion_swapped_segment_rejected",
   "debt_semantic_promotion_capability_mutation_rejected",
   "debt_structural_promotion_exact",
@@ -979,7 +977,6 @@ function testDebtCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     id === "debt_semantic_promotion_span_rejected" || id === "debt_semantic_promotion_visibility_rejected" ||
     id === "debt_candidate_only_document_rejected" || id === "debt_candidate_only_semantic_only_allowed" ||
     id === "debt_semantic_promotion_rejection_matrix"
-    || id === "debt_semantic_promotion_retirement_composes"
     || id === "debt_semantic_promotion_swapped_segment_rejected"
     || id === "debt_semantic_promotion_capability_mutation_rejected"
     || id === "debt_structural_promotion_exact"
@@ -1184,9 +1181,9 @@ function testDebtCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     const report = migrationProgressReport(document, deriveMigrationDebt(document, completed, extras), completed);
     if (!report.completion_audit.lane_blockers.some((blocker) =>
       blocker.category === "inferred_transitions" && blocker.subject.includes("lane")
-    ) || !report.completion_audit.wp5c_join_blockers.some((blocker) =>
+    ) || !report.completion_audit.join_blockers.some((blocker) =>
       blocker.category === "unresolved_references" && blocker.subject.includes("join")
-    ) || [...report.completion_audit.lane_blockers, ...report.completion_audit.wp5c_join_blockers].some((blocker) =>
+    ) || [...report.completion_audit.lane_blockers, ...report.completion_audit.join_blockers].some((blocker) =>
       blocker.category === "unmodelled_coordinates"
     ) || !report.independent_debt.items.some((item) =>
       item.category === "unmodelled_coordinates" && item.subject === "visible"
@@ -1397,97 +1394,6 @@ function testDebtCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       transition_facts: { restructure_count: 1, retirement_count: 0 },
     });
     requireIssue(forged, "E-DEBT-BASE-MISMATCH");
-
-    const retirementBase = debt([[recordRaw, "raw_unclassified"]], [], [spanKey]);
-    const retirementCandidate = debt([], [], [spanKey]);
-    const retirementCandidateDocument: RoadmapDocumentV1 = { ...v1, records: [] };
-    const replacementPin = { kind: "gate" as const, gate_id: "retirement-gate", claim_md: bytes("resolved") };
-    const candidateTombstone = {
-      owner_kind: "tombstone" as const,
-      id: asRoadmapId("matrix.fixture-work"),
-      namespace: "matrix" as const,
-      tombstone: {
-        id: asRoadmapId("matrix.fixture-work"),
-        last_active_at: "a".repeat(40) as FullCommitId,
-        replacement: replacementPin,
-      },
-    };
-    const retirementRequest = {
-      base_owner: {
-        owner_kind: "active_record" as const,
-        id: asRoadmapId("matrix.fixture-work"),
-        namespace: "matrix" as const,
-        record: v1.records[0],
-      },
-      removed_debt_owners: [recordRaw],
-      base_commit: "a".repeat(40) as FullCommitId,
-      base_source: {
-        source_path: v1.document.source_path,
-        sha256: v1.document.frozen_source_sha256,
-        byte_length: v1.document.frozen_source_byte_length,
-      },
-      candidate_source: {
-        source_path: retirementCandidateDocument.document.source_path,
-        sha256: retirementCandidateDocument.document.frozen_source_sha256,
-        byte_length: retirementCandidateDocument.document.frozen_source_byte_length,
-      },
-      candidate_identity_facts: [candidateTombstone],
-      candidate_tombstone: candidateTombstone,
-      candidate_replacement_fact: { id: "retirement-gate", kind: "cargo", stub: false },
-    };
-    const emptyRetirement = validateDebtRetirementFacts(
-      retirementBase,
-      retirementCandidate,
-      { base_document: v1, candidate_document: retirementCandidateDocument },
-      [],
-    );
-    if (emptyRetirement.ok) fail("empty retirement fact set authorized owner deletion");
-    const ineligibleSectionRetirement = validateDebtRetirementFacts(
-      retirementBase,
-      retirementCandidate,
-      { base_document: v1, candidate_document: retirementCandidateDocument },
-      [{
-        ...retirementRequest,
-        base_owner: {
-          owner_kind: "section",
-          id: asRoadmapId("matrix.fixture-work"),
-          namespace: "matrix",
-        } as never,
-        removed_debt_owners: [owner("section", "heading", "source_block_md")],
-      }],
-    );
-    if (ineligibleSectionRetirement.ok) fail("ineligible section owner minted retirement authority");
-    const missingCandidateJoins = validateDebtRetirementFacts(
-      retirementBase,
-      retirementCandidate,
-      { base_document: v1, candidate_document: retirementCandidateDocument },
-      [{ ...retirementRequest, candidate_identity_facts: [], candidate_replacement_fact: undefined }],
-    );
-    if (missingCandidateJoins.ok) fail("invented eligible owner without candidate joins minted retirement authority");
-    const retirement = validateDebtRetirementFacts(
-      retirementBase,
-      retirementCandidate,
-      { base_document: v1, candidate_document: retirementCandidateDocument },
-      [retirementRequest],
-    );
-    if (!retirement.ok) fail(`legitimate retirement fact rejected: ${retirement.issues.map((value) => value.message).join(";")}`);
-    const retirementOptions: DebtComparisonOptions = {
-      base_document: v1,
-      candidate_document: retirementCandidateDocument,
-      transition_facts: retirement.facts,
-    };
-    const retired = compareMigrationDebt(retirementBase, retirementCandidate, retirementOptions);
-    if (retired.length !== 0) fail(`validated retirement did not authorize removal: ${retired.map((value) => value.code).join(",")}`);
-    requireIssue(compareMigrationDebt(retirementBase, retirementCandidate, {
-      base_document: v1,
-      candidate_document: retirementCandidateDocument,
-      transition_facts: { restructure_count: 0, retirement_count: 1 },
-    }), "E-DEBT-BASE-MISMATCH");
-    const changedOwners = retirementCandidate.owners as Map<string, { key: DebtOwnerKey; state: "semantic" }>;
-    const changedKey = owner("record", "changed", "payload.summary_md");
-    changedOwners.set(debtOwnerIndex(changedKey), { key: changedKey, state: "semantic" });
-    requireIssue(compareMigrationDebt(retirementBase, retirementCandidate, retirementOptions), "E-DEBT-BASE-MISMATCH");
-    changedOwners.delete(debtOwnerIndex(changedKey));
   }
   return pass("negative");
 }
@@ -2839,79 +2745,6 @@ function testRenderCase(
     }
     return pass("negative", executed);
   }
-  if (id === "debt_semantic_promotion_retirement_composes") {
-    const promotion = semanticPromotionFixture();
-    const retiringId = asRoadmapId("matrix.fixture-retiring-alongside-promotion");
-    const retiring = {
-      ...promotion.candidate.records.find((record) => "payload" in record)!,
-      id: retiringId,
-      projection_visibility: "semantic_only" as const,
-      source_replacements: [],
-    };
-    if (!("payload" in retiring)) fail("retirement composition fixture lacks semantic record");
-    const base: RoadmapDocumentV1 = {
-      ...promotion.base,
-      records: [...promotion.base.records, retiring],
-    };
-    const candidate: RoadmapDocumentV1 = promotion.candidate;
-    const baseCompleted = completeSemantic(base, { value: 0 });
-    const candidateCompleted = promotion.candidateCompleted;
-    const baseDebt = deriveMigrationDebt(base, baseCompleted);
-    const candidateDebt = deriveMigrationDebt(candidate, candidateCompleted);
-    const converted = validateSemanticConversionFacts(baseDebt, candidateDebt, {
-      base_document: base,
-      candidate_document: candidate,
-      base_completed: baseCompleted,
-      candidate_completed: candidateCompleted,
-    });
-    if (!converted.ok || converted.facts === undefined) fail("composition promotion capability did not mint");
-    const replacementPin = { kind: "gate" as const, gate_id: "promotion-retirement-gate", claim_md: bytes("resolved") };
-    const tombstone = {
-      owner_kind: "tombstone" as const,
-      id: retiringId,
-      namespace: "matrix" as const,
-      tombstone: {
-        id: retiringId,
-        last_active_at: "a".repeat(40) as FullCommitId,
-        replacement: replacementPin,
-      },
-    };
-    const retired = validateDebtRetirementFacts(baseDebt, candidateDebt, {
-      base_document: base,
-      candidate_document: candidate,
-    }, [{
-      base_owner: { owner_kind: "active_record", id: retiringId, namespace: "matrix", record: retiring },
-      removed_debt_owners: [...baseDebt.owners.values()].filter(({ key }) =>
-        key.owner_kind === "record" && key.owner_id === retiringId
-      ).map(({ key }) => key),
-      base_commit: "a".repeat(40) as FullCommitId,
-      base_source: {
-        source_path: base.document.source_path,
-        sha256: base.document.frozen_source_sha256,
-        byte_length: base.document.frozen_source_byte_length,
-      },
-      candidate_source: {
-        source_path: candidate.document.source_path,
-        sha256: candidate.document.frozen_source_sha256,
-        byte_length: candidate.document.frozen_source_byte_length,
-      },
-      candidate_identity_facts: [tombstone],
-      candidate_tombstone: tombstone,
-      candidate_replacement_fact: { id: "promotion-retirement-gate", kind: "cargo", stub: false },
-    }]);
-    if (!retired.ok) fail(`composition retirement capability did not mint: ${retired.issues.map((value) => value.message).join(";")}`);
-    for (const facts of [[converted.facts, retired.facts], [retired.facts, converted.facts]]) {
-      const issues = compareMigrationDebt(baseDebt, candidateDebt, {
-        base_document: base,
-        candidate_document: candidate,
-        base_completed: baseCompleted,
-        candidate_completed: candidateCompleted,
-        transition_facts: facts,
-      });
-      if (issues.length !== 0) fail(`promotion+retirement facts failed to compose: ${issues.map((value) => value.message).join(";")}`);
-    }
-    return pass();
-  }
   if (id === "debt_semantic_promotion_rejection_matrix") {
     const original = semanticPromotionFixture();
     const promoted = original.candidate.records.find((record) => "payload" in record);
@@ -4105,37 +3938,25 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       fail("pre-cutover production inventory is not the exact twelve legacy status slots");
     }
     if (matrix.claims.length !== 9 || matrix.status_claims.length !== 8 || matrix.registry.claim_count !== 9) {
-      fail("WP4M production inventory is not eight README slots plus one matrix whole-file claim");
+      fail("matrix_authoritative production inventory is not eight README slots plus one matrix whole-file claim");
     }
     if (both.claims.length !== 10 || both.status_claims.length !== 8 || both.registry.claim_count !== 10) {
-      fail("WP4T production inventory is not eight README slots plus both whole-file claims");
+      fail("both_authoritative production inventory is not eight README slots plus both whole-file claims");
     }
     const wholePaths = (inventory: typeof matrix): string[] => inventory.claims.flatMap((claim) =>
       claim.kind === "whole_file" ? [claim.path] : []
     );
     if (JSON.stringify(wholePaths(matrix)) !== JSON.stringify(["cddl-matrix/ROADMAP.md"])) {
-      fail("WP4M whole-file inventory does not name exactly the matrix projection");
+      fail("matrix_authoritative whole-file inventory does not name exactly the matrix projection");
     }
     if (JSON.stringify(wholePaths(both)) !== JSON.stringify(["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADMAP.md"])) {
-      fail("WP4T whole-file inventory does not name exactly both projections");
+      fail("both_authoritative whole-file inventory does not name exactly both projections");
     }
-    const campaign = (matrixAuthority: "legacy_markdown" | "shadow" | "authoritative", testingAuthority: "legacy_markdown" | "shadow" | "authoritative") => ({
-      campaign: { schema_version: 1 as const, matrix_authority: matrixAuthority, testing_authority: testingAuthority },
-    });
-    if (
-      productionOutputStage() !== "pre_cutover" ||
-      productionOutputStage(campaign("shadow", "shadow")) !== "pre_cutover" ||
-      productionOutputStage(campaign("authoritative", "shadow")) !== "matrix_authoritative" ||
-      productionOutputStage(campaign("authoritative", "authoritative")) !== "both_authoritative"
-    ) fail("campaign authority did not select the canonical production output stage");
-    try {
-      productionOutputStage(campaign("shadow", "authoritative"));
-      fail("an impossible campaign authority tuple selected a production output stage");
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes("cannot exceed")) throw error;
+    if (productionOutputStage() !== "both_authoritative") {
+      fail("the canonical production output stage is not both_authoritative");
     }
     if (validateProductionOutputRegistry(matrix.claims, "pre_cutover").ok) {
-      fail("a WP4M inventory validated against the pre-cutover revision stage");
+      fail("a matrix_authoritative inventory validated against the pre-cutover revision stage");
     }
     if (!validateProductionOutputRegistry([...both.claims].reverse(), "both_authoritative").ok) {
       fail("closed production inventory validation became order-sensitive");
@@ -4165,7 +3986,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     const claim = inventory.claims.find((value) =>
       value.kind === "whole_file" && value.path === "cddl-matrix/ROADMAP.md"
     );
-    if (claim === undefined) fail("WP4M inventory omitted matrix whole-file ownership");
+    if (claim === undefined) fail("matrix_authoritative inventory omitted matrix whole-file ownership");
     const resolution = resolveOutputClaims({
       registry: inventory.registry,
       claims: [claim],
@@ -4174,7 +3995,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
     if (resolution.issues.length !== 0 || resolution.authority === undefined ||
       resolution.resolved.length !== 1 || resolution.resolved[0].interval.start_byte !== 0 ||
       resolution.resolved[0].interval.end_byte !== bytes("committed projection\n").byteLength) {
-      fail("WP4M whole-file claim did not resolve to one opaque complete production interval");
+      fail("matrix_authoritative whole-file claim did not resolve to one opaque complete production interval");
     }
     return pass();
   }
@@ -4402,24 +4223,24 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       document = { ...fixture, document: { ...fixture.document, projection_path: asRepoPath("fixture/source.toml") } };
     } else if (id === "write_projection_rejects_authority_files") {
       const fixture = authoritativeFixture().document;
-      document = { ...fixture, document: { ...fixture.document, projection_path: asRepoPath("roadmap-campaign.toml") } };
+      document = { ...fixture, document: { ...fixture.document, projection_path: asRepoPath("draft/roadmap-notes.md") } };
     } else {
       document = id === "write_shadow_rejected" || id === "outputs_shadow_no_claim"
         ? rawFixture().document
         : authoritativeFixture().document;
     }
-    let actualWp1Authority: ValidatedOutputAuthority | undefined;
+    let actualLegacyStatusAuthority: ValidatedOutputAuthority | undefined;
     if (id === "outputs_shadow_no_claim") {
       if (
         LEGACY_STATUS_OUTPUT_CLAIMS.some((value) =>
           value.kind === "whole_file" || value.producer === "roadmap-projector"
         )
       ) {
-        fail("WP1 production inventory unexpectedly contains a whole-file/projector claim");
+        fail("legacy status production inventory unexpectedly contains a whole-file/projector claim");
       }
       const claimsByPath = new Map<RepoPath, Extract<OutputClaim, { kind: "slot" }>[]>();
       for (const value of LEGACY_STATUS_OUTPUT_CLAIMS) {
-        if (value.kind !== "slot") fail("WP1 status inventory contains a non-slot claim");
+        if (value.kind !== "slot") fail("legacy status inventory contains a non-slot claim");
         const values = claimsByPath.get(value.path) ?? [];
         values.push(value);
         claimsByPath.set(value.path, values);
@@ -4436,12 +4257,12 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
         targets,
       });
       if (resolution.issues.length !== 0 || resolution.authority === undefined) {
-        fail("actual WP1 production status inventory did not resolve");
+        fail("actual legacy production status inventory did not resolve");
       }
-      actualWp1Authority = resolution.authority;
+      actualLegacyStatusAuthority = resolution.authority;
     }
     const authority = id === "outputs_shadow_no_claim"
-      ? actualWp1Authority as ValidatedOutputAuthority
+      ? actualLegacyStatusAuthority as ValidatedOutputAuthority
       : id === "outputs_projection_path_floor"
         ? wholeFileAuthority(asRepoPath("fixture/other-projection.md"))
         : wholeFileAuthority(document.document.projection_path);
@@ -4465,7 +4286,7 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       !result.issues.some((value) =>
         value.logical_path === "output_claims" && value.message.includes("lacks an opaque validated whole-file authority")
       )
-    ) fail("actual WP1 inventory did not prove the projection has no whole-file claim");
+    ) fail("actual legacy status inventory did not prove the projection has no whole-file claim");
     const intendedCoordinate = id === "write_all_rejected" ? "document.roadmap"
       : id === "format_source_single_explicit" ? "write_coordinate"
         : id === "write_shadow_rejected" ? "document.authority"
@@ -4741,7 +4562,7 @@ function testStatusCase(
       resolutions !== 8 || spy.reads.size !== 2 || [...spy.reads.values()].some((count) => count !== 1) ||
       plan.writes.some((write) => write.path === roadmapPath) ||
       new TextDecoder().decode(plan.stdout) !== "status-headers: wrote 8 generated span(s) across 2 file(s).\n"
-    ) fail("WP4M status writer retained a matrix ROADMAP read, claim, or write");
+    ) fail("matrix_authoritative status writer retained a matrix ROADMAP read, claim, or write");
     return pass();
   }
   fail(`${id} is not a status case`);

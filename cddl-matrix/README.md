@@ -127,19 +127,12 @@ resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` ho
 > the hand docs (a numbered heading invites `§ <N>` citations, which silently retarget on
 > renumbering), and requires a blank line before headings.
 
-> **Campaign authority (effective with this cutover).** `roadmap-campaign.toml` is now the sole
-> authority for roadmap selection, deselection, assignment, pickup state, cycle, priority class,
-> selection reason, and remaining scope. Every `draft/burndown*/queue.md` file and every other draft
-> queue is historical, non-authoritative migration material: do not update it to change campaign
-> state, do not cite it as durable evidence, and do not make a gate or tool read it. Make every
-> campaign change in `roadmap-campaign.toml` together with any required authoritative-roadmap,
-> reservation, or retirement transaction.
->
-> **Rollback.** Revert the complete WP4M cutover commit. That revert restores the byte-identical
-> hand-authored matrix Markdown, its prior status-slot ownership, and the pre-cutover operational
-> board at the exact cutover baseline; testing authority is unaffected. Do not partially remove the
-> campaign or retired-ID roots, manually reactivate a draft queue, or reverse an authority field in a
-> forward commit.
+> **Selection state is not tracked in the repository.** Which roadmap entries are picked up, by whom,
+> and in what order is plan-internal state, and it lives in the gitignored `draft/` directory — the
+> containment boundary that keeps ephemeral work-packet vocabulary out of committed files. No
+> committed file records it and no gate reads it, so nothing under `draft/` may be cited as durable
+> evidence. `cddl-matrix/roadmap.toml` records only durable facts about the work itself: its state,
+> its consequence, and the observable that would change it.
 
 Why this shape: the (construct × variation × nesting × encoding) cross-product is intractable and mostly
 meaningless. Normalizing keeps each fact in one place — e.g. "tags are supported but **nested** tags are

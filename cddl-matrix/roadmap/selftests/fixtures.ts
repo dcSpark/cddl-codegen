@@ -313,17 +313,14 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
       const expectedKeys = ["kind", "id", "class", "input", ...(hasExpected ? ["expected"] : []), "adapter", ...(hasSchema ? ["schema_version"] : []), ...(hasEof ? ["projection_eof"] : [])];
       if (!exactKeys(row, expectedKeys)) issues.push(`${String(id)} has unknown or noncanonical keys`);
       const validClass = row.class === "codec" || row.class === "positive" || row.class === "all_fields" || row.class === "irregular";
-      const validAdapter = row.adapter === "codec" || row.adapter === "matrix" || row.adapter === "testing" || row.adapter === "campaign" || row.adapter === "retired";
+      const validAdapter = row.adapter === "codec" || row.adapter === "matrix" || row.adapter === "testing";
       if (!validClass || !validAdapter || typeof row.input !== "string") issues.push(`${String(id)} has an invalid single-file binding`);
       else {
         bindPath(row.input, `${String(id)}.input`);
         if (typeof row.expected === "string") bindPath(row.expected, `${String(id)}.expected`);
         const codec = row.class === "codec";
-        const global = row.class === "all_fields" && (row.adapter === "campaign" || row.adapter === "retired");
         if (codec) {
           if (row.adapter !== "codec" || typeof row.expected !== "string" || row.schema_version !== undefined || (row.projection_eof !== "lf" && row.projection_eof !== "none")) issues.push(`${String(id)} violates codec binding rules`);
-        } else if (global) {
-          if (row.expected !== undefined || row.schema_version !== 1 || row.projection_eof !== undefined) issues.push(`${String(id)} violates global all-fields binding rules`);
         } else if (
           (row.adapter !== "matrix" && row.adapter !== "testing") || typeof row.expected !== "string" ||
           (row.schema_version !== 0 && row.schema_version !== 1) || (row.projection_eof !== "lf" && row.projection_eof !== "none")
@@ -353,8 +350,7 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
   const expectedIds = [
     "fixture_codec_leading_eof", "fixture_codec_no_eof", "fixture_codec_controls",
     "fixture_minimal_matrix_v0", "fixture_minimal_testing_v0", "fixture_mixed_matrix_v1", "fixture_mixed_testing_v1",
-    "fixture_all_fields_matrix_v1", "fixture_all_fields_testing_v1", "fixture_campaign_pre_cutover",
-    "fixture_campaign_matrix_cutover", "fixture_campaign_both_cut_over", "fixture_retired_ids_v1",
+    "fixture_all_fields_matrix_v1", "fixture_all_fields_testing_v1",
     "fixture_irregular_matrix_v0", "fixture_irregular_testing_v0", "fixture_status_compat",
   ];
   if (JSON.stringify(rows.map((row) => row.id)) !== JSON.stringify(expectedIds)) issues.push("fixture case IDs/order differ from the frozen row registry");
@@ -372,10 +368,6 @@ function decodeFixtureRegistry(bytes: Uint8Array, inventory: readonly string[]):
     "fixture_mixed_testing_v1|positive|positive/mixed-testing-v1.toml|positive/mixed-testing-v1.expected.md|testing|1|none",
     "fixture_all_fields_matrix_v1|all_fields|all-fields/matrix-v1.toml|all-fields/matrix-v1.expected.md|matrix|1|lf",
     "fixture_all_fields_testing_v1|all_fields|all-fields/testing-v1.toml|all-fields/testing-v1.expected.md|testing|1|lf",
-    "fixture_campaign_pre_cutover|all_fields|all-fields/campaign-pre-cutover.toml|-|campaign|1|-",
-    "fixture_campaign_matrix_cutover|all_fields|all-fields/campaign-matrix-cutover.toml|-|campaign|1|-",
-    "fixture_campaign_both_cut_over|all_fields|all-fields/campaign-both-cut-over.toml|-|campaign|1|-",
-    "fixture_retired_ids_v1|all_fields|all-fields/retired-ids-v1.toml|-|retired|1|-",
     "fixture_irregular_matrix_v0|irregular|irregular/matrix-v0.toml|irregular/matrix-v0.expected.md|matrix|0|lf",
     "fixture_irregular_testing_v0|irregular|irregular/testing-v0.toml|irregular/testing-v0.expected.md|testing|0|none",
   ];
@@ -481,9 +473,9 @@ function executeFixtureCase(id: RequiredFixtureSelfTestCaseId, context: SelfTest
     const decoded = registry(context);
     const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
     assert(decoded.issues.length === 0, decoded.issues.join("; "));
-    assert(decoded.rows.length === 16, `fixture registry has ${decoded.rows.length} rows instead of 16`);
-    assert(decoded.declared_paths.length === 35, `fixture registry binds ${decoded.declared_paths.length} files instead of 35`);
-    assert(inventory.length === 36, `fixture inventory has ${inventory.length} files including cases.toml instead of 36`);
+    assert(decoded.rows.length === 12, `fixture registry has ${decoded.rows.length} rows instead of 12`);
+    assert(decoded.declared_paths.length === 31, `fixture registry binds ${decoded.declared_paths.length} files instead of 31`);
+    assert(inventory.length === 32, `fixture inventory has ${inventory.length} files including cases.toml instead of 32`);
   } else if (id === "fixture_registry_missing_file") {
     const inventory = context.ports.fixtures.enumerateFixtureFiles(FIXTURE_ROOT);
     const decoded = registry(context);
@@ -505,7 +497,7 @@ function executeFixtureCase(id: RequiredFixtureSelfTestCaseId, context: SelfTest
   } else if (id === "fixture_family_floors") {
     const rows = registry(context).rows;
     const count = (kind: string) => rows.filter((row) => row.class === kind).length;
-    assert(count("codec") >= 2 && count("positive") >= 4 && count("all_fields") >= 4 && count("irregular") >= 2 && count("status-compat") >= 1, "fixture family floor failed");
+    assert(count("codec") >= 2 && count("positive") >= 4 && count("all_fields") >= 2 && count("irregular") >= 2 && count("status-compat") >= 1, "fixture family floor failed");
   } else if (id === "slot_resolver_four_matrix_slots") {
     assert(JSON.stringify(MATRIX_GENERATED_SLOT_BINDINGS) === JSON.stringify([
       ["constraint", "status_header_markers:roadmap-constraint"],

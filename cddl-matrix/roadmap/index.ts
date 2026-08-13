@@ -2,7 +2,6 @@ import { MATRIX_ADAPTER, validateMatrixRoadmapDocument } from "./adapters/matrix
 import { TESTING_ADAPTER, validateTestingRoadmapDocument } from "./adapters/testing.ts";
 import type { RegistryView, RoadmapAdapter } from "./adapters/types.ts";
 import { parseRoadmapCli, ROADMAP_CLI_USAGE, RoadmapCliParseError } from "./cli.ts";
-import { createImmutableByteView, validateLegacyTitleBinding } from "./campaign.ts";
 import { composeCanonicalDocument } from "./compose.ts";
 import {
   deriveMigrationDebt,
@@ -10,8 +9,6 @@ import {
   migrationProgressReport,
   type MigrationDebt,
 } from "./debt.ts";
-import { decodeCampaignSource } from "./decode/campaign.ts";
-import { decodeRetiredSource } from "./decode/retired.ts";
 import { decodeRoadmapSource } from "./decode/roadmap.ts";
 import {
   failureFromUnknown,
@@ -42,14 +39,8 @@ import type {
   RoadmapSelection,
   SignalPayload,
 } from "./model/core.ts";
-import type {
-  CampaignDocumentV1,
-  RetiredIdsDocumentV1,
-  RoadmapDocument,
-  SemanticPayload,
-} from "./model/documents.ts";
+import type { RoadmapDocument, SemanticPayload } from "./model/documents.ts";
 import {
-  productionOutputStage,
   resolveOutputClaims,
   validateProductionOutputRegistry,
 } from "./output_registry.ts";
@@ -59,7 +50,12 @@ import {
   renderValidatedChunks,
   RenderValidationError,
 } from "./render.ts";
-import { buildExpectedChunks, validateCompletedChunks, type CompletedRenderIr } from "./render_ir.ts";
+import {
+  buildExpectedChunks,
+  createImmutableByteView,
+  validateCompletedChunks,
+  type CompletedRenderIr,
+} from "./render_ir.ts";
 import { buildProjectionViews, type ProjectionViews } from "./projection_views.ts";
 import { projectionLayout, projectionLayoutRank, validateProjectionLayoutDeclaration } from "./projection_layout.ts";
 import { scanRoadmapMarkdownFacts } from "./references.ts";
@@ -71,27 +67,15 @@ import {
 } from "./semantic_conversion.ts";
 import { runSelfTests } from "./selftest.ts";
 import { validateSourceSpans } from "./spans.ts";
-import {
-  validateLifecycleRevision,
-  validateSelectedLifecycleContext,
-  validateTransaction,
-  type LifecycleRevisionInput,
-} from "./transaction.ts";
+import { validateTransaction } from "./transaction.ts";
 import { applyProjectionWritePlan, createProjectionWritePlan } from "./write_plan.ts";
 import { MATRIX_DENOMINATOR_AUTHORITIES } from "./fixed_value_authority.ts";
-import {
-  buildBurndownFourReport,
-  BURNDOWN_FOUR_BASE,
-  type BurndownLifecycleFacts,
-} from "./burndown.ts";
 
 export { createNodeRoadmapCliPorts } from "./io.ts";
 
 const UTF8 = new TextEncoder();
 const MATRIX_SOURCE = "cddl-matrix/roadmap.toml" as RepoPath;
 const TESTING_SOURCE = "tests/testing-roadmap.toml" as RepoPath;
-const CAMPAIGN_SOURCE = "roadmap-campaign.toml" as RepoPath;
-const RETIRED_SOURCE = "roadmap-retired-ids.toml" as RepoPath;
 const SOURCE_BY_ROADMAP: Readonly<Record<RoadmapName, RepoPath>> = Object.freeze({
   matrix: MATRIX_SOURCE,
   testing: TESTING_SOURCE,
@@ -282,57 +266,6 @@ function prepareDecodedRoadmapCore(
   });
 }
 
-function validatePreActivationOutputStage(registry: RegistryView): void {
-  const stage = productionOutputStage();
-  if (registry.production_output_stage !== stage) {
-    failure([issue(
-      "E-OUTPUT-CLAIM",
-      "<output-registry>",
-      "production_output_stage",
-      `pre-activation registry stage ${registry.production_output_stage} does not match canonical stage ${stage}`,
-    )]);
-  }
-}
-
-/** Validate activated roots and selected authority without loading the unselected roadmap lane. */
-function validateScopedDebtQueryContext(
-  selection: RoadmapName,
-  core: ValidatedRoadmapCore,
-  reader: RevisionReader,
-): void {
-  const campaignBytes = readOptionalSource(reader, CAMPAIGN_SOURCE);
-  const retiredBytes = readOptionalSource(reader, RETIRED_SOURCE);
-  if (campaignBytes === undefined && retiredBytes === undefined) {
-    validatePreActivationOutputStage(core.registry);
-    return;
-  }
-  if (campaignBytes === undefined) {
-    failure([issue("E-SOURCE-MISSING", CAMPAIGN_SOURCE, "$", "declared source is missing")]);
-  }
-  if (retiredBytes === undefined) {
-    failure([issue("E-SOURCE-MISSING", RETIRED_SOURCE, "$", "declared source is missing")]);
-  }
-  const campaign = decodeCampaignSource(campaignBytes, CAMPAIGN_SOURCE, true);
-  const retired = decodeRetiredSource(retiredBytes, RETIRED_SOURCE, true);
-  const contextIssues = validateSelectedLifecycleContext({
-    selection,
-    campaign,
-    retired,
-    document: core.document,
-    registry: core.registry,
-  });
-  if (contextIssues.length > 0) failure(contextIssues);
-  const stage = productionOutputStage(campaign);
-  if (core.registry.production_output_stage !== stage) {
-    failure([issue(
-      "E-OUTPUT-CLAIM",
-      "<output-registry>",
-      "production_output_stage",
-      `revision registry stage ${core.registry.production_output_stage} does not match campaign stage ${stage}`,
-    )]);
-  }
-}
-
 function finalizeRoadmap(core: ValidatedRoadmapCore): FinalizedRoadmap {
   return Object.freeze({
     ...core,
@@ -356,7 +289,7 @@ function roadmapReceipt(prepared: FinalizedRoadmap): string {
     prepared.debt,
     prepared.completed,
   );
-  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} authority=${prepared.document.document.authority} semantic_conversion_declared=${completion.declared} semantic_conversion_effective=${completion.effective} completion_blockers=${completion.blockers.length} wp5c_join_blockers=${completion.wp5c_join_blockers.length} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} manifest=${prepared.document.manifest.length} spans=${prepared.document.spans.length} debt_owners=${owners} debt_independent=${independent} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
+  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} authority=${prepared.document.document.authority} semantic_conversion_declared=${completion.declared} semantic_conversion_effective=${completion.effective} completion_blockers=${completion.blockers.length} join_blockers=${completion.join_blockers.length} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} manifest=${prepared.document.manifest.length} spans=${prepared.document.spans.length} debt_owners=${owners} debt_independent=${independent} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
 }
 
 function success(stdout: string | Uint8Array): RoadmapCliResult {
@@ -367,41 +300,6 @@ function checkRoadmaps(
   selection: RoadmapSelection,
   ports: ReadOnlyRoadmapPorts,
 ): RoadmapCliResult {
-  const reader = worktreeReader(ports);
-  if (selection !== "all") {
-    const core = prepareRoadmapCore(selection, reader);
-    const lifecycle = loadActivatedLifecycle(
-      reader,
-      selection === "matrix" ? { matrix: core } : { testing: core },
-    );
-    if (lifecycle !== undefined) {
-      const validated = validateLifecycleRevision(lifecycle);
-      if (validated.issues.length > 0) failure(validated.issues);
-      const lifecycleCore = preparedRoadmapsFromLifecycle(lifecycle, selection)[0];
-      if (lifecycleCore === undefined) {
-        failure([issue("E-SCHEMA-STATE", core.document.document.source_path, "document", `${selection} lifecycle omitted its selected structured roadmap`)]);
-      }
-      const checked = lifecycleCore.document.document.authority === "shadow"
-        ? finalizeRoadmap(lifecycleCore)
-        : checkCommittedProjection(lifecycleCore, ports);
-      return success(`CHECK OK\n${roadmapReceipt(checked)}\n`);
-    }
-    validatePreActivationOutputStage(core.registry);
-    return success(`CHECK OK\n${roadmapReceipt(checkCommittedProjection(core, ports))}\n`);
-  }
-  const lifecycle = loadActivatedLifecycle(reader);
-  if (lifecycle !== undefined) {
-    const validated = validateLifecycleRevision(lifecycle);
-    if (validated.issues.length > 0) failure(validated.issues);
-    const receipts = preparedRoadmapsFromLifecycle(lifecycle).map((core) => {
-      if (core.document.document.authority === "shadow") {
-        return roadmapReceipt(finalizeRoadmap(core));
-      }
-      return roadmapReceipt(checkCommittedProjection(core, ports));
-    });
-    return success(`CHECK OK\n${receipts.join("\n")}\n`);
-  }
-  validatePreActivationOutputStage(reader.registry());
   const receipts: string[] = [];
   for (const name of selectedRoadmaps(selection)) {
     const core = prepareRoadmapCore(name, worktreeReader(ports));
@@ -725,10 +623,6 @@ function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryView, asOf
       })) };
     case "output-owners":
       return { evaluation_as_of, claims: prepared.flatMap((item) => item.registry.output_claims) };
-    case "campaign":
-      return { evaluation_as_of, campaign: null, state: "not_loaded_without_lifecycle_scope" };
-    case "burndown":
-      return { evaluation_as_of, burndown: null, state: "not_loaded_without_lifecycle_scope" };
   }
 }
 
@@ -745,97 +639,11 @@ function queryRoadmaps(
   ports: ReadOnlyRoadmapPorts,
   json = false,
 ): Uint8Array {
-  if (view === "burndown") {
-    if (selection !== "all") {
-      failure([issue("E-CLI-INCOMPATIBLE", "<cli>", "--roadmap", "burndown query requires --roadmap all", 2)]);
-    }
-    const current = loadActivatedLifecycle(worktreeReader(ports));
-    const baseline = loadActivatedLifecycle(commitReader(ports, BURNDOWN_FOUR_BASE));
-    if (current === undefined || baseline === undefined || current.campaign === undefined ||
-      baseline.campaign === undefined || current.retired === undefined || baseline.retired === undefined) {
-      failure([issue("E-SOURCE-MISSING", "<burndown>", "$", "burndown requires activated current and baseline lifecycle roots", 1)]);
-    }
-    const currentValidation = validateLifecycleRevision(current);
-    const baselineValidation = validateLifecycleRevision(baseline);
-    if (currentValidation.issues.length > 0) failure(currentValidation.issues);
-    if (baselineValidation.issues.length > 0) failure(baselineValidation.issues);
-    const facts = (lifecycle: LifecycleRevisionInput): BurndownLifecycleFacts => ({
-      campaign: lifecycle.campaign!,
-      retired: lifecycle.retired!,
-      registry: lifecycle.registry,
-      documents: (["matrix", "testing"] as const).flatMap((roadmap) =>
-        lifecycle.roadmaps[roadmap].document === undefined
-          ? []
-          : [lifecycle.roadmaps[roadmap].document!]
-      ),
-    });
-    const value = stableJsonValue({
-      evaluation_as_of: asOf ?? null,
-      ...buildBurndownFourReport(facts(baseline), facts(current)),
-    });
-    return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
-  }
-  if (view === "campaign") {
-    const lifecycle = loadActivatedLifecycle(worktreeReader(ports));
-    if (lifecycle === undefined) {
-      const value = stableJsonValue({ evaluation_as_of: asOf ?? null, campaign: null, state: "not_activated" });
-      return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
-    }
-    const validated = validateLifecycleRevision(lifecycle);
-    if (validated.issues.length > 0) failure(validated.issues);
-    const value = stableJsonValue({ evaluation_as_of: asOf ?? null, campaign: lifecycle.campaign });
-    return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
-  }
-  const reader = worktreeReader(ports);
-  if (selection !== "all") {
-    const core = prepareRoadmapCore(selection, reader);
-    if (view === "debt") {
-      validateScopedDebtQueryContext(selection, core, reader);
-      const value = stableJsonValue(queryValue([finalizeRoadmap(core)], view, asOf));
-      return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
-    }
-    const lifecycle = loadActivatedLifecycle(
-      reader,
-      selection === "matrix" ? { matrix: core } : { testing: core },
-    );
-    if (lifecycle !== undefined) {
-      const validated = validateLifecycleRevision(lifecycle);
-      if (validated.issues.length > 0) failure(validated.issues);
-    } else {
-      validatePreActivationOutputStage(core.registry);
-    }
-    const value = stableJsonValue(queryValue([finalizeRoadmap(core)], view, asOf));
-    return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
-  }
-  const lifecycle = loadActivatedLifecycle(reader);
-  if (lifecycle !== undefined) {
-    const validated = validateLifecycleRevision(lifecycle);
-    if (validated.issues.length > 0) failure(validated.issues);
-    const value = stableJsonValue(queryValue(
-      preparedRoadmapsFromLifecycle(lifecycle).map(finalizeRoadmap),
-      view,
-      asOf,
-    ));
-    return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
-  }
-  validatePreActivationOutputStage(reader.registry());
-  const prepared = selectedRoadmaps(selection).map((name) =>
-    finalizeRoadmap(prepareRoadmapCore(name, worktreeReader(ports)))
-  );
+  const prepared = selectedRoadmaps(selection).map((name) => {
+    return finalizeRoadmap(prepareRoadmapCore(name, worktreeReader(ports)));
+  });
   const value = stableJsonValue(queryValue(prepared, view, asOf));
   return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
-}
-
-function preparedRoadmapsFromLifecycle(
-  lifecycle: LifecycleRevisionInput,
-  selection: RoadmapSelection = "all",
-): readonly ValidatedRoadmapCore[] {
-  return selectedRoadmaps(selection).flatMap((name) => {
-    const document = lifecycle.roadmaps[name].document;
-    return document === undefined
-      ? []
-      : [prepareDecodedRoadmapCore(name, document, lifecycle.registry)];
-  });
 }
 
 function identityFor(prepared: ValidatedRoadmapCore) {
@@ -846,36 +654,21 @@ function identityFor(prepared: ValidatedRoadmapCore) {
   });
 }
 
-function scopedCandidateIdentity(
-  reader: RevisionReader,
-  selected: RoadmapName,
-  prepared: ValidatedRoadmapCore,
-) {
-  const lifecycle = loadLifecycle(reader, { [selected]: prepared });
-  const validated = validateLifecycleRevision(lifecycle);
-  return {
-    registry: lifecycle.registry,
-    identity: Object.freeze({
-      ...validated.identity,
-      // A scoped comparison cannot authorize lifecycle changes, but its candidate must still be a
-      // valid member of the current global authority/identity universe. Carry every current-tree
-      // lifecycle issue through the identity result consumed by the scoped transaction.
-      issues: validated.issues,
-    }),
-  };
+/**
+ * The candidate side of a scoped comparison: the selected roadmap's own identity universe over the
+ * worktree registry. There is no cross-roadmap lifecycle root, so this is the complete authority.
+ */
+function scopedCandidateIdentity(prepared: ValidatedRoadmapCore) {
+  return { registry: prepared.registry, identity: identityFor(prepared) };
 }
 
-function validateChange(
-  selection: RoadmapSelection,
+function validateOneRoadmapChange(
+  selection: RoadmapName,
   against: FullCommitId,
   ports: ReadOnlyRoadmapPorts,
 ): readonly RoadmapIssue[] {
-  if (selection === "all") {
-    return validateAllChange(against, ports);
-  }
-  const candidateReader = worktreeReader(ports);
-  const candidate = prepareRoadmapCore(selection, candidateReader);
-  const candidateGlobal = scopedCandidateIdentity(candidateReader, selection, candidate);
+  const candidate = prepareRoadmapCore(selection, worktreeReader(ports));
+  const candidateGlobal = scopedCandidateIdentity(candidate);
   const baseReader = commitReader(ports, against);
   const result = validateTransaction({
     scope: selection,
@@ -899,82 +692,14 @@ function validateChange(
   return result.issues;
 }
 
-function sourceIsMissing(error: unknown, path: RepoPath): boolean {
-  return isRoadmapFailure(error) && error.issues.length > 0 &&
-    error.issues.every((value) => value.code === "E-SOURCE-MISSING" && value.source === path);
-}
-
-function readOptionalSource(reader: RevisionReader, path: RepoPath): Uint8Array | undefined {
-  try {
-    return reader.read(path);
-  } catch (error) {
-    if (sourceIsMissing(error, path)) return undefined;
-    throw error;
-  }
-}
-
-function loadActivatedLifecycle(
-  reader: RevisionReader,
-  prepared: Partial<Readonly<Record<RoadmapName, ValidatedRoadmapCore>>> = {},
-): LifecycleRevisionInput | undefined {
-  const campaignBytes = readOptionalSource(reader, CAMPAIGN_SOURCE);
-  const retiredBytes = readOptionalSource(reader, RETIRED_SOURCE);
-  if (campaignBytes === undefined && retiredBytes === undefined) return undefined;
-  if (campaignBytes === undefined) {
-    failure([issue("E-SOURCE-MISSING", CAMPAIGN_SOURCE, "$", "declared source is missing")]);
-  }
-  if (retiredBytes === undefined) {
-    failure([issue("E-SOURCE-MISSING", RETIRED_SOURCE, "$", "declared source is missing")]);
-  }
-  const campaign = decodeCampaignSource(campaignBytes, CAMPAIGN_SOURCE, true);
-  const retired = decodeRetiredSource(retiredBytes, RETIRED_SOURCE, true);
-  return assembleLifecycle(reader, campaign, retired, prepared);
-}
-
-function loadLifecycle(
-  reader: RevisionReader,
-  prepared: Partial<Readonly<Record<RoadmapName, ValidatedRoadmapCore>>> = {},
-): LifecycleRevisionInput {
-  const loaded = loadActivatedLifecycle(reader, prepared);
-  if (loaded === undefined) {
-    failure([
-      issue("E-SOURCE-MISSING", CAMPAIGN_SOURCE, "$", "declared source is missing"),
-      issue("E-SOURCE-MISSING", RETIRED_SOURCE, "$", "declared source is missing"),
-    ]);
-  }
-  return loaded;
-}
-
-function readLegacyMarkdown(reader: RevisionReader, name: RoadmapName) {
-  const path = ADAPTER_BY_ROADMAP[name].projection_path;
-  try {
-    return createImmutableByteView(reader.read(path));
-  } catch (error) {
-    if (isRoadmapFailure(error)) {
-      const remapped = error.issues.map((value) => value.code === "E-PROJECTION-MISSING"
-        ? { ...value, code: "E-SOURCE-MISSING" as const, source: path }
-        : value);
-      failure(remapped);
-    }
-    throw error;
-  }
-}
-
-function readAndValidateShadowMarkdown(
-  reader: RevisionReader,
-  name: RoadmapName,
-  core: ValidatedRoadmapCore,
-) {
-  const authoritativeMarkdown = readLegacyMarkdown(reader, name);
-  const checked = renderThenCheckCommittedProjection(
-    core.completed.chunks,
-    [],
-    core.completed.expected_bytes,
-    ADAPTER_BY_ROADMAP[name].projection_path,
-    () => authoritativeMarkdown.sliceBytes(0, authoritativeMarkdown.byte_length),
-  );
-  if (checked.issues.length > 0) failure(checked.issues);
-  return authoritativeMarkdown;
+function validateChange(
+  selection: RoadmapSelection,
+  against: FullCommitId,
+  ports: ReadOnlyRoadmapPorts,
+): readonly RoadmapIssue[] {
+  return sortRoadmapIssues(selectedRoadmaps(selection).flatMap((name) =>
+    validateOneRoadmapChange(name, against, ports)
+  ));
 }
 
 function registryWithRoadmapMarkdownFact(
@@ -984,7 +709,7 @@ function registryWithRoadmapMarkdownFact(
 ): RegistryView {
   const facts = scanRoadmapMarkdownFacts(path, markdown);
   if (facts.issues.length > 0) failure(facts.issues);
-  // Replace, rather than append, this projection's facts. Besides keeping lifecycle revalidation
+  // Replace, rather than append, this projection's facts. Besides keeping revalidation
   // idempotent, this fails closed if an injected registry ever contains stale prior-projection
   // facts: only the selected immutable view can describe the current projection path.
   const citations = [
@@ -1024,167 +749,19 @@ function validateProjectionAnchors(document: RoadmapDocument, projection: Uint8A
   )]);
 }
 
-function registryWithRoadmapMarkdownFacts(
-  registry: RegistryView,
-  roadmaps: LifecycleRevisionInput["roadmaps"],
-): RegistryView {
-  return (["matrix", "testing"] as const).reduce(
-    (current, name) => registryWithRoadmapMarkdownFact(
-      current,
-      ADAPTER_BY_ROADMAP[name].projection_path,
-      createImmutableByteView(roadmaps[name].markdown),
-    ),
-    registry,
-  );
-}
-
-function assembleLifecycle(
-  reader: RevisionReader,
-  campaign: CampaignDocumentV1,
-  retired: RetiredIdsDocumentV1,
-  prepared: Partial<Readonly<Record<RoadmapName, ValidatedRoadmapCore>>> = {},
-): LifecycleRevisionInput {
-  const roadmap = (name: RoadmapName): ValidatedRoadmapCore | undefined => {
-    const authority = name === "matrix" ? campaign.campaign.matrix_authority : campaign.campaign.testing_authority;
-    if (authority !== "legacy_markdown") return prepared[name] ?? prepareRoadmapCore(name, reader);
-    if (readOptionalSource(reader, SOURCE_BY_ROADMAP[name]) === undefined) return undefined;
-    failure([issue(
-      "E-SCHEMA-STATE",
-      SOURCE_BY_ROADMAP[name],
-      "document",
-      `${name} authority legacy_markdown forbids a roadmap TOML source`,
-    )]);
-  };
-  const matrix = roadmap("matrix");
-  const testing = roadmap("testing");
-  const markdown = (name: RoadmapName, value: ValidatedRoadmapCore | undefined) => {
-    const authority = name === "matrix" ? campaign.campaign.matrix_authority : campaign.campaign.testing_authority;
-    if (authority === "authoritative") return createImmutableByteView(value!.projection_views.full);
-    return authority === "shadow"
-      ? readAndValidateShadowMarkdown(reader, name, value!)
-      : readLegacyMarkdown(reader, name);
-  };
-  const roadmaps: LifecycleRevisionInput["roadmaps"] = {
-    matrix: { markdown: markdown("matrix", matrix), ...(matrix === undefined ? {} : { document: matrix.document }) },
-    testing: { markdown: markdown("testing", testing), ...(testing === undefined ? {} : { document: testing.document }) },
-  };
-  const legacyTitleBindings = campaign.legacy_markdown_reservations.flatMap((reservation) => {
-    const name = reservation.id.startsWith("matrix.") ? "matrix" : "testing";
-    const binding = validateLegacyTitleBinding(reservation, roadmaps[name].markdown);
-    return binding === undefined ? [] : [binding];
-  });
-  const registry = registryWithRoadmapMarkdownFacts(reader.registry(), roadmaps);
-  const campaignOutputStage = productionOutputStage(campaign);
-  if (registry.production_output_stage !== campaignOutputStage) {
-    failure([issue(
-      "E-OUTPUT-CLAIM",
-      "<output-registry>",
-      "production_output_stage",
-      `revision registry stage ${registry.production_output_stage} does not match campaign stage ${campaignOutputStage}`,
-    )]);
-  }
-  const productionOutput = validateProductionOutputRegistry(
-    registry.output_claims,
-    registry.production_output_stage,
-  );
-  if (!productionOutput.ok) failure(productionOutput.issues);
-  return {
-    campaign,
-    retired,
-    roadmaps,
-    registry,
-    legacy_title_bindings: Object.freeze(legacyTitleBindings),
-    debt: {
-      ...(matrix === undefined ? {} : { matrix: matrix.debt }),
-      ...(testing === undefined ? {} : { testing: testing.debt }),
-    },
-    completed: {
-      ...(matrix === undefined ? {} : { matrix: matrix.completed }),
-      ...(testing === undefined ? {} : { testing: testing.completed }),
-    },
-  };
-}
-
-function validateAllChange(against: FullCommitId, ports: ReadOnlyRoadmapPorts): readonly RoadmapIssue[] {
-  const candidate = loadLifecycle(worktreeReader(ports));
-  const baseReader = commitReader(ports, against);
-  const baseLifecycle = loadActivatedLifecycle(baseReader);
-  if (baseLifecycle !== undefined) {
-    const base = baseLifecycle;
-    return validateTransaction({ scope: "all", against, base, candidate }).issues;
-  }
-  const matrix = prepareRoadmapCore("matrix", baseReader);
-  const testingAuthority = candidate.campaign === undefined
-    ? undefined
-    : candidate.campaign.campaign.testing_authority;
-  const testing = testingAuthority === "shadow" ? prepareRoadmapCore("testing", baseReader) : undefined;
-  if (testingAuthority === "legacy_markdown" && readOptionalSource(baseReader, TESTING_SOURCE) !== undefined) {
-    failure([issue("E-SCHEMA-STATE", TESTING_SOURCE, "document", "testing bootstrap legacy authority forbids a roadmap TOML source")]);
-  }
-  const roadmaps: LifecycleRevisionInput["roadmaps"] = {
-    matrix: { markdown: readAndValidateShadowMarkdown(baseReader, "matrix", matrix), document: matrix.document },
-    testing: testing === undefined
-      ? { markdown: readLegacyMarkdown(baseReader, "testing") }
-      : { markdown: readAndValidateShadowMarkdown(baseReader, "testing", testing), document: testing.document },
-  };
-  const base: LifecycleRevisionInput = {
-    roadmaps,
-    registry: registryWithRoadmapMarkdownFacts(baseReader.registry(), roadmaps),
-    debt: { matrix: matrix.debt, ...(testing === undefined ? {} : { testing: testing.debt }) },
-    completed: {
-      matrix: matrix.completed,
-      ...(testing === undefined ? {} : { testing: testing.completed }),
-    },
-  };
-  return validateTransaction({ scope: "all", against, base, candidate, bootstrap: true }).issues;
-}
-
 function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResult {
   const source = new Uint8Array(ports.readDeclared(path));
   strictSource(source, path);
-  let document: RoadmapDocument | CampaignDocumentV1 | RetiredIdsDocumentV1;
-  if (path === MATRIX_SOURCE) {
-    document = decodeRoadmapSource(source, path, "matrix", false);
+  let document: RoadmapDocument;
+  if (path === MATRIX_SOURCE || path === TESTING_SOURCE) {
+    const name: RoadmapName = path === MATRIX_SOURCE ? "matrix" : "testing";
+    document = decodeRoadmapSource(source, path, name, false);
     const declarationIssues = [
       ...validateSemanticConversionDeclaration(document, false),
       ...validateProjectionLayoutDeclaration(document, false),
     ];
     if (declarationIssues.length > 0) failure(declarationIssues);
-    const core = prepareDecodedRoadmapCore("matrix", document, ports.registryView({ kind: "worktree" }));
-    const lifecycle = loadActivatedLifecycle(worktreeReader(ports), { matrix: core });
-    if (lifecycle !== undefined) {
-      const validated = validateLifecycleRevision(lifecycle);
-      if (validated.issues.length > 0) failure(validated.issues);
-    } else {
-      validatePreActivationOutputStage(core.registry);
-    }
-  } else if (path === TESTING_SOURCE) {
-    document = decodeRoadmapSource(source, path, "testing", false);
-    const declarationIssues = [
-      ...validateSemanticConversionDeclaration(document, false),
-      ...validateProjectionLayoutDeclaration(document, false),
-    ];
-    if (declarationIssues.length > 0) failure(declarationIssues);
-    const core = prepareDecodedRoadmapCore("testing", document, ports.registryView({ kind: "worktree" }));
-    const lifecycle = loadActivatedLifecycle(worktreeReader(ports), { testing: core });
-    if (lifecycle !== undefined) {
-      const validated = validateLifecycleRevision(lifecycle);
-      if (validated.issues.length > 0) failure(validated.issues);
-    } else {
-      validatePreActivationOutputStage(core.registry);
-    }
-  } else if (path === CAMPAIGN_SOURCE) {
-    document = decodeCampaignSource(source, path, false);
-    const retiredBytes = ports.readDeclared(RETIRED_SOURCE);
-    const retired = decodeRetiredSource(retiredBytes, RETIRED_SOURCE, true);
-    const validated = validateLifecycleRevision(assembleLifecycle(worktreeReader(ports), document, retired));
-    if (validated.issues.length > 0) failure(validated.issues);
-  } else if (path === RETIRED_SOURCE) {
-    document = decodeRetiredSource(source, path, false);
-    const campaignBytes = ports.readDeclared(CAMPAIGN_SOURCE);
-    const campaign = decodeCampaignSource(campaignBytes, CAMPAIGN_SOURCE, true);
-    const validated = validateLifecycleRevision(assembleLifecycle(worktreeReader(ports), campaign, document));
-    if (validated.issues.length > 0) failure(validated.issues);
+    prepareDecodedRoadmapCore(name, document, ports.registryView({ kind: "worktree" }));
   } else failure([issue("E-CLI-FORMAT-TARGET", "<cli>", "format_source", "format target is not declared", 2)]);
   const canonical = composeCanonicalDocument(document);
   ports.atomicReplace(path, canonical);
@@ -1218,36 +795,12 @@ function validateAgainst(candidate: string, ports: ReadOnlyRoadmapPorts): FullCo
 
 function writeRoadmap(name: RoadmapName, ports: RoadmapWritePorts): RoadmapCliResult {
   const reader = worktreeReader(ports);
-  const lifecycle = loadActivatedLifecycle(reader);
-  if (lifecycle === undefined) {
-    const prepared = finalizeRoadmap(prepareRoadmapCore(name, reader));
-    validatePreActivationOutputStage(prepared.registry);
-    const unavailable = createProjectionWritePlan({
-      write_coordinate: "projection",
-      roadmap: name,
-      document: prepared.document,
-      projection_bytes: prepared.projection,
-      validation_issues: Object.freeze([]),
-    });
-    if (!unavailable.ok) failure(unavailable.issues);
-    throw new Error("internal: pre-cutover roadmap unexpectedly minted a projection write plan");
-  }
-  const validatedLifecycle = validateLifecycleRevision(lifecycle);
-  if (validatedLifecycle.issues.length > 0) failure(validatedLifecycle.issues);
-  const prepared = preparedRoadmapsFromLifecycle(lifecycle).find((core) =>
-    core.document.document.roadmap === name
-  );
-  if (prepared === undefined) {
-    failure([issue(
-      "E-OUTPUT-AUTHORITY",
-      SOURCE_BY_ROADMAP[name],
-      "document.authority",
-      "projection write requires an activated structured roadmap",
-    )]);
-  }
+  const prepared = prepareRoadmapCore(name, reader);
   const finalized = finalizeRoadmap(prepared);
-  const stage = productionOutputStage(lifecycle.campaign);
-  const productionOutput = validateProductionOutputRegistry(prepared.registry.output_claims, stage);
+  const productionOutput = validateProductionOutputRegistry(
+    prepared.registry.output_claims,
+    prepared.registry.production_output_stage,
+  );
   if (!productionOutput.ok) failure(productionOutput.issues);
   const projectionClaim = productionOutput.claims.find((claim) =>
     claim.kind === "whole_file" && claim.path === prepared.document.document.projection_path

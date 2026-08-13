@@ -53,7 +53,7 @@ export interface DocumentMetaV2 extends FrozenSourceMeta {
   schema_version: 2;
   authority: "authoritative";
   roadmap: RoadmapName;
-  /** Historical WP6 v2 sources omit this and retain the byte-identical legacy projection. */
+  /** Historical v2 sources omit this and retain the byte-identical legacy projection. */
   projection_layout?: "legacy_v1" | "anchors_v1" | "standing_v1" | "unnumbered_v1" | "curated_v1";
 }
 
@@ -303,59 +303,6 @@ export interface RoadmapDocumentV2 {
 
 export type AuthoritativeRoadmapDocument = RoadmapDocumentV1 | RoadmapDocumentV2;
 export type RoadmapDocument = RoadmapDocumentV0 | AuthoritativeRoadmapDocument;
-export type RoadmapAuthorityState = "legacy_markdown" | "shadow" | "authoritative";
-
-export interface CampaignDocumentV1 {
-  campaign: {
-    schema_version: 1;
-    matrix_authority: RoadmapAuthorityState;
-    testing_authority: RoadmapAuthorityState;
-  };
-  legacy_markdown_reservations: LegacyMarkdownReservationV1[];
-  selections: CampaignSelectionV1[];
-}
-
-export interface LegacyMarkdownReservationV1 {
-  id: RoadmapId;
-  work_kind: WorkKind;
-  roadmap_path: "cddl-matrix/ROADMAP.md" | "tests/TESTING_ROADMAP.md";
-  source_title: string;
-  source_start_byte: number;
-  source_end_byte: number;
-  source_sha256: string;
-  whole_source_sha256: string;
-}
-
-export interface CampaignSelectionV1 {
-  item_id: RoadmapId;
-  target_kind: "active_id" | "legacy_markdown_reservation";
-  selected_state: "selected" | "in_progress";
-  priority_class: LowercaseSlug;
-  selection_reason_md: Uint8Array;
-  cycle: LowercaseSlug;
-  remaining_scope_md: Uint8Array;
-  assignee?: string;
-  pickup_commit?: FullCommitId;
-  cost_bound?: CampaignSelectionCostBoundV1;
-}
-
-export interface CampaignSelectionCostBoundV1 {
-  posture: "reviewed_scope";
-  implementation_units: LowercaseSlug[];
-  validation_units: LowercaseSlug[];
-  assumption_md: Uint8Array;
-}
-
-export interface RetiredIdsDocumentV1 {
-  retired_ids: { schema_version: 1 };
-  entries: RetiredIdV1[];
-}
-
-export interface RetiredIdV1 {
-  id: RoadmapId;
-  last_active_at: FullCommitId;
-  replacement: ReplacementPin;
-}
 
 export type ReplacementPin =
   | { kind: "gate"; gate_id: string; claim_md: Uint8Array }
@@ -406,22 +353,6 @@ export interface ActiveRecordOwnerFact {
   record: RawAuthorityRecordV1 | SemanticAuthorityRecordV1;
 }
 
-export interface LegacyMarkdownOwnerFact {
-  owner_kind: "legacy_markdown_reservation";
-  id: RoadmapId;
-  namespace: RoadmapName;
-  work_kind: WorkKind;
-  reservation: LegacyMarkdownReservationV1;
-  corroborating_shadow?: ShadowRecordClaim;
-}
-
-export interface ShadowRecordOwnerFact {
-  owner_kind: "shadow_record_reservation";
-  id: RoadmapId;
-  namespace: RoadmapName;
-  claim: ShadowRecordClaim;
-}
-
 export interface CurrentGuardOwnerFact {
   owner_kind: "current_guard";
   id: RoadmapId;
@@ -429,29 +360,4 @@ export interface CurrentGuardOwnerFact {
   guard: CurrentGuard;
 }
 
-export interface TombstoneOwnerFact {
-  owner_kind: "tombstone";
-  id: RoadmapId;
-  namespace: RoadmapName;
-  tombstone: RetiredIdV1;
-}
-
-export type IdentityOwnerFact =
-  | ActiveRecordOwnerFact
-  | LegacyMarkdownOwnerFact
-  | ShadowRecordOwnerFact
-  | CurrentGuardOwnerFact
-  | TombstoneOwnerFact;
-
-export interface ShadowRecordClaim {
-  id: RoadmapId;
-  namespace: RoadmapName;
-  source_path: RepoPath;
-  logical_path: string;
-  legacy_span_ids: readonly SpanId[];
-}
-
-export type TombstoneEligibleBaseOwner =
-  | "active_record"
-  | "current_guard"
-  | "legacy_markdown_reservation";
+export type IdentityOwnerFact = ActiveRecordOwnerFact | CurrentGuardOwnerFact;

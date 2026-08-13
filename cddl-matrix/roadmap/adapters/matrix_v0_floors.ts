@@ -7,7 +7,7 @@ export type MatrixV0RecordFloor = readonly [RoadmapId, string, SpanId, number, n
 export type MatrixV0PartFloor = readonly [PartId, RoadmapId, string, SpanId, number, number, string];
 export type MatrixV0SlotFloor = readonly [SlotId, string, SpanId, number, number, string];
 
-/** Reviewed WP2M pickup identity, title, ownership, boundary, and digest bindings. */
+/** Reviewed matrix v0 pickup identity, title, ownership, boundary, and digest bindings. */
 export const MATRIX_V0_RECORD_FLOORS: readonly MatrixV0RecordFloor[] = Object.freeze([
   ["matrix.additional-tool-annotations" as RoadmapId, "More tools:", "record-additional-tool-annotations" as SpanId, 19603, 19729, "d8d9563f876538f7fe655360b70598c40de459c3fc76d3ab4934d0ab0b87b0d9"],
   ["matrix.anonymous-nested-map" as RoadmapId, "Real support for the anonymous nested MAP in a type position", "record-anonymous-nested-map" as SpanId, 45375, 46504, "4c68f3a5ed479f87cb2dbb7dec808a478d31de182ac82d20415e7664e1b8fb01"],

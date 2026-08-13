@@ -59,7 +59,7 @@ export function liveTestingLegacyV2Document(): RoadmapDocumentV2 {
   };
 }
 
-/** Historical complete-v1 view retained for WP4/WP5 transition fixtures after the live WP6 cutover. */
+/** Historical complete-v1 view retained for v0/v1 transition fixtures after the live v2 cutover. */
 export function liveTestingAuthoritativeDocument(): RoadmapDocumentV1 {
   const decoded = liveTestingV2Document();
   const { projection_layout: _projectionLayout, ...document } = decoded.document;
@@ -87,7 +87,7 @@ export function liveTestingProjection(): Uint8Array {
   return UTF8.encode(liveTestingProjectionText);
 }
 
-/** Frozen pre-WP7 projection used only by historical v0/v1 transition fixtures. */
+/** Frozen pre-anchor-layout projection used only by historical v0/v1 transition fixtures. */
 export function liveTestingLegacyProjection(): Uint8Array {
   const document = liveTestingV2Document();
   const placement = resolveManifest(document);

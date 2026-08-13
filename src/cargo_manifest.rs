@@ -1785,7 +1785,7 @@ linked-hash-map = \"0.5.6\"
 
     #[test]
     fn merge_git_source_assertion_drops_stale_version() {
-        // The WP0 skew class: a git-carrying tool spec onto a plain-string pin must NOT leave the
+        // The skew class: a git-carrying tool spec onto a plain-string pin must NOT leave the
         // stale version requirement beside the git source (`^2.4.0` fails resolution against a
         // 3.x checkout).
         let line = merged_dep(

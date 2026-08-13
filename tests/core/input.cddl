@@ -346,7 +346,7 @@ sign_bounds = [
 ; Literal-headed top-level range rules must WRAP (not emit a bare `pub type` alias) so their
 ; standalone to/from_cbor_bytes enforces the window — and, when tagged, writes the tag. Mirrors the
 ; `int .op`-headed top-level wrappers; the exact-collapse canaries (u32, i8 above) stay bare aliases.
-top_level_neg_range = -10 .. -3          ; all-negative window (i64 wrapper; also a WP1 full-window regression)
+top_level_neg_range = -10 .. -3          ; all-negative window (i64 wrapper; also a full-window regression)
 top_level_pos_range = 3 .. 10            ; positive window (u64 wrapper)
 top_level_tagged_range = #6.5(3 .. 10)   ; tagged positive window: the wrapper must write tag 5
 
