@@ -119,7 +119,6 @@ export type SelfTestCategory =
   | "domain-testing"
   | "manifest-render"
   | "spans"
-  | "debt"
   | "identity-retirement"
   | "references-relations"
   | "output-ownership"
@@ -139,7 +138,6 @@ export const SELFTEST_CATEGORIES = Object.freeze([
   "domain-testing",
   "manifest-render",
   "spans",
-  "debt",
   "identity-retirement",
   "references-relations",
   "output-ownership",
@@ -271,7 +269,6 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ]],
   ["render_structural_exact_field_binding_all_kinds", [
     "section", "fragment", "legacy_marker", "record", "part", "semantic_only_zero_segments",
-    "progress_coverage",
   ]],
   ["render_structural_exact_field_binding_rejections", [
     "missing_segment", "duplicate_segment", "same_id_wrong_kind", "wrong_owner_id", "wrong_logical_path",
@@ -300,7 +297,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["fixture_read_permission_exit_two", ["eacces", "eperm"]],
   ["cli_check_each_roadmap", ["matrix", "testing", "all"]],
   ["cli_write_each_single_roadmap", ["matrix", "testing"]],
-  ["cli_query_each_view", ["summary", "debt", "references", "signals", "actionables",
+  ["cli_query_each_view", ["summary", "references", "signals", "actionables",
     "decisions", "families", "watches", "content", "output-owners"]],
   ["dispatch_capability_narrowing", ["check_read_only", "query_read_only", "write_gets_atomic_replace", "format_gets_atomic_replace"]],
 ]);
@@ -381,12 +378,8 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["span_empty_vacuity", { code: "E-SPAN-EMPTY", logical_path: "source_span" }],
   ["span_partial_prefix_rejected", { code: "E-SPAN-COVERAGE", logical_path: "source_span" }],
   ["span_source_change_digest_rejected", { code: "E-SOURCE-DIGEST", logical_path: "document.frozen_source_sha256" }],
-  ["debt_independent_set_growth_rejected", { code: "E-DEBT-SET-GROWTH", logical_path: "independent.[\"matrix\",\"inferred_transitions\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"transition\"]" }],
-  ["debt_category_hiding_rejected", { code: "E-DEBT-CATEGORY-HIDE", logical_path: "independent.[\"matrix\",\"unmodelled_coordinates\",\"record\",\"matrix.fixture-work\",\"source_block_md\",\"transition\"]" }],
-  ["debt_unrelated_base_rejected", { code: "E-DEBT-BASE-MISMATCH", logical_path: "document" }],
   ["render_zero_chunks_rejected", { code: "E-SELFTEST-CASE", logical_path: "render_zero_chunks_rejected" }],
   ["render_semantic_consumption_once", { code: "E-FIELD-CONSUMPTION", logical_path: "record[\"matrix.fixture-work\"]" }],
-  ["render_semantic_only_identity_debt", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-work\"].projection_visibility" }],
   ["render_semantic_only_span_prohibition", { code: "E-SPAN-OWNER", logical_path: "source_span[\"span-summary\"]" }],
   ["render_semantic_exact_field_binding_swapped_labels", { code: "E-SPAN-OWNER", logical_path: "source_span[\"span-summary\"]" }],
   ["render_semantic_exact_field_binding_partial", { code: "E-SPAN-OWNER", logical_path: "source_span[\"span-summary\"]" }],
@@ -409,7 +402,6 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["write_all_rejected", { code: "E-OUTPUT-AUTHORITY", logical_path: "output_claims.scope" }],
   ["format_source_single_explicit", { code: "E-OUTPUT-AUTHORITY", logical_path: "output_claims.scope" }],
   ["atomic_write_failure_preserves_target", { code: "E-SELFTEST-CASE", logical_path: "atomic_write_failure_preserves_target" }],
-  ["debt_owner_field_rename_requires_witness", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "owners.[\"matrix\",\"record\",\"matrix.fixture-work\",\"payload.summary_md\"]" }],
   ["render_chunks_precede_consumption_validation", { code: "E-FIELD-CONSUMPTION", logical_path: "record[\"matrix.fixture-work\"]" }],
   ["render_chunks_precede_span_validation", { code: "E-SPAN-EMPTY", logical_path: "source_span" }],
   ["render_slots_resolved_before_slot_validation", { code: "E-OUTPUT-SLOT", logical_path: "generated_slot[\"status-slot\"]" }],
@@ -439,11 +431,6 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["citation_inventory_tracked_missing_rejected", { code: "E-SOURCE-MISSING", logical_path: "tracked-text" }],
   ["test_symbol_fact_missing_declared_file_rejected", { code: "E-SOURCE-MISSING", logical_path: "test-symbol-registry" }],
   ["test_symbol_fact_duplicate_id_rejected", { code: "E-ID-DUPLICATE", logical_path: "rust-test:cddl-codegen#tests::sample::works" }],
-  ["transaction_single_roadmap_owner_removal_rejected", { code: "E-TRANSACTION-OWNER", logical_path: "owner[\"matrix.fixture-lifecycle\"]" }],
-  ["against_forged_debt_transition_facts_ignored", { code: "E-DEBT-OWNER-REGRESSION", logical_path: "record[\"matrix.fixture-lifecycle\"]" }],
-  ["against_per_roadmap_candidate_global_collision_rejected", { code: "E-OWNER-DUPLICATE", logical_path: "owner[\"matrix.fixture-lifecycle\"]" }],
-  ["against_per_roadmap_absent_selected_source_rejected", { code: "E-TRANSACTION-BASE", logical_path: "matrix" }],
-  ["against_per_roadmap_owner_change_requires_all", { code: "E-TRANSACTION-OWNER", logical_path: "owner[\"matrix.fixture-lifecycle\"]" }],
   ["fixture_registry_missing_file", { code: "E-FIXTURE-REGISTRY", logical_path: "fixture-registry.missing" }],
   ["fixture_registry_unlisted_file", { code: "E-FIXTURE-REGISTRY", logical_path: "fixture-registry.unlisted" }],
   ["fixture_registry_duplicate_id", { code: "E-FIXTURE-REGISTRY", logical_path: "fixture-registry.duplicate-id" }],
@@ -462,16 +449,9 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["cli_roadmap_required", { code: "E-CLI-ROADMAP", logical_path: "argv[0]" }],
   ["cli_roadmap_forbidden_on_format", { code: "E-CLI-INCOMPATIBLE", logical_path: "argv[2]" }],
   ["cli_write_all_rejected", { code: "E-CLI-INCOMPATIBLE", logical_path: "argv[1]" }],
-  ["cli_against_requires_check", { code: "E-CLI-AGAINST", logical_path: "argv[3]" }],
-  ["cli_against_write_rejected", { code: "E-CLI-AGAINST", logical_path: "argv[3]" }],
-  ["cli_against_query_rejected", { code: "E-CLI-AGAINST", logical_path: "argv[4]" }],
-  ["cli_against_selftest_rejected", { code: "E-CLI-AGAINST", logical_path: "argv[1]" }],
-  ["cli_against_format_rejected", { code: "E-CLI-AGAINST", logical_path: "argv[2]" }],
   ["cli_json_requires_query", { code: "E-CLI-INCOMPATIBLE", logical_path: "argv[3]" }],
   ["cli_as_of_requires_query", { code: "E-CLI-INCOMPATIBLE", logical_path: "argv[3]" }],
   ["cli_format_target_declared_only", { code: "E-CLI-FORMAT-TARGET", logical_path: "argv[0]" }],
-  ["cli_unresolved_base_exit_two", { code: "E-GIT-BASE-LOOKUP", logical_path: "against" }],
-  ["cli_noncommit_base_exit_two", { code: "E-GIT-BASE-LOOKUP", logical_path: "against" }],
   ["exit_declared_source_enoent_one", { code: "E-SOURCE-MISSING", logical_path: "$" }],
   ["exit_declared_projection_enoent_one", { code: "E-PROJECTION-MISSING", logical_path: "projection" }],
   ["exit_declared_source_eacces_two", { code: "E-IO-PERMISSION", logical_path: "$" }],
@@ -483,13 +463,6 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["parse_error_stable_prefix", { code: "E-TOML-PARSE", logical_path: "$" }],
   ["exit_authority_stage_mismatch_one", { code: "E-OUTPUT-AUTHORITY", logical_path: "document.authority" }],
   ["failure_stdout_empty", { code: "E-CLI-MODE", logical_path: "argv[0]" }],
-  ["cli_against_missing_value", { code: "E-CLI-MISSING-VALUE", logical_path: "argv[3]" }],
-  ["cli_against_duplicate_value", { code: "E-CLI-DUPLICATE-OPTION", logical_path: "argv[5]" }],
-  ["cli_against_bad_length_git_format_no_usage", { code: "E-GIT-BASE-FORMAT", logical_path: "against" }],
-  ["cli_against_uppercase_git_format_no_usage", { code: "E-GIT-BASE-FORMAT", logical_path: "against" }],
-  ["cli_against_nonhex_git_format_no_usage", { code: "E-GIT-BASE-FORMAT", logical_path: "against" }],
-  ["cli_against_unresolved_git_lookup_no_usage", { code: "E-GIT-BASE-LOOKUP", logical_path: "against" }],
-  ["cli_against_incompatible_precedes_bad_format", { code: "E-CLI-AGAINST", logical_path: "argv[3]" }],
   ["cli_as_of_invalid_leap_day", { code: "E-CLI-AS-OF", logical_path: "argv[4]" }],
   ["cli_as_of_year_zero_rejected", { code: "E-CLI-AS-OF", logical_path: "argv[4]" }],
   ["cli_as_of_short_component_rejected", { code: "E-CLI-AS-OF", logical_path: "argv[4]" }],

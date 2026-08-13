@@ -52,21 +52,9 @@ import {
   renderThenCheckCommittedProjection,
   renderValidatedChunks,
 } from "../render.ts";
+import { stableJsonValue } from "../query.ts";
 import { validateSourceSpans } from "../spans.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
-import {
-  compareMigrationDebt,
-  debtOwnerIndex,
-  deriveMigrationDebt,
-  independentDebtIndex,
-  migrationDebtReport,
-  migrationProgressReport,
-  validateRecordOwnerTransition,
-  type DebtOwnerKey,
-  type DebtComparisonOptions,
-  type IndependentDebtKey,
-  type MigrationDebt,
-} from "../debt.ts";
 import {
   LEGACY_STATUS_OUTPUT_CLAIMS,
   LEGACY_STATUS_OUTPUT_REGISTRY,
@@ -125,14 +113,10 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "span_partial_prefix_rejected",
   "span_single_snapshot",
   "span_source_change_digest_rejected",
-  "debt_independent_set_growth_rejected",
-  "debt_category_hiding_rejected",
-  "debt_unrelated_base_rejected",
   "render_zero_chunks_rejected",
   "render_no_implicit_lf",
   "render_semantic_consumption_once",
   "render_semantic_only_zero_byte_consumption",
-  "render_semantic_only_identity_debt",
   "render_semantic_only_span_prohibition",
   "render_semantic_exact_field_binding_swapped_labels",
   "render_semantic_exact_field_binding_partial",
@@ -164,17 +148,6 @@ export const REQUIRED_PROJECTION_SELFTEST_CASE_IDS = [
   "lexical_not_locale_sort",
   "two_clean_renders_equal",
   "no_clock_without_as_of",
-  "debt_structured_owner_every_kind",
-  "debt_same_textual_id_different_kind_distinct",
-  "debt_owner_field_rename_requires_witness",
-  "debt_unmodelled_coordinate_subset",
-  "debt_semantic_authority_pending_both",
-  "debt_progress_record_reversal_deterministic",
-  "debt_progress_semantic_only_excluded",
-  "debt_progress_exact_replacement_coverage",
-  "debt_progress_swapped_replacement_not_covered",
-  "debt_progress_typed_stale_unknown_visible",
-  "debt_progress_completion_category_policy",
   "render_chunks_precede_consumption_validation",
   "render_chunks_precede_span_validation",
   "render_slots_resolved_before_slot_validation",
@@ -669,297 +642,6 @@ function testSpanCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
   return pass("negative");
 }
 
-function owner(
-  owner_kind: DebtOwnerKey["owner_kind"],
-  owner_id: string,
-  owner_field: string,
-): DebtOwnerKey {
-  return {
-    roadmap: "matrix",
-    owner_kind,
-    owner_id,
-    owner_field,
-  } as DebtOwnerKey;
-}
-
-function debt(
-  entries: readonly (readonly [DebtOwnerKey, "semantic"])[],
-  independent: readonly IndependentDebtKey[] = [],
-): MigrationDebt {
-  return {
-    owners: new Map(entries.map(([key, state]) => [debtOwnerIndex(key), { key, state }])),
-    independent: new Map(independent.map((key) => [independentDebtIndex(key), key])),
-  };
-}
-
-function testDebtCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
-  if (id === "debt_semantic_authority_pending_both") {
-    const fixture = semanticFixture("exact");
-    const record = fixture.document.records[0];
-    if (record === undefined) fail("semantic pending fixture lacks authority record");
-    const payload: SemanticPayload = {
-      kind: "work",
-      summary_md: bytes("Pending."),
-      work_state: "pending_review",
-      work_intent: "build_capability",
-      work_kind: "feature",
-      risk: "cosmetic",
-      family_classification: "pending",
-      uncertainty_md: bytes("Review."),
-    };
-    const document: RoadmapDocument = {
-      ...fixture.document,
-      records: fixture.document.records.map((candidate) => candidate === record ? { ...record, payload } : candidate),
-    };
-    const original = completeSemantic(fixture.document, fixture.renderCalls);
-    const completed: CompletedRenderIr = {
-      ...original,
-      field_consumption: original.field_consumption.map((entry) => entry.owner_id === record.id ? {
-        ...entry,
-        expected_fields: ["payload.summary_md", "payload.uncertainty_md"],
-        consumed_fields: ["payload.summary_md", "payload.uncertainty_md"],
-      } : entry),
-    };
-    const derived = deriveMigrationDebt(document, completed);
-    const tuples = [...derived.independent.values()].filter((item) =>
-      item.category === "inferred_transitions" || item.category === "pending_family_classifications"
-    );
-    if (tuples.length !== 2 || tuples.some((item) => item.owner.owner_field !== "payload.summary_md") ||
-      !tuples.some((item) => item.subject === "payload.work_state") ||
-      !tuples.some((item) => item.subject === "payload.family_classification")) {
-      fail("semantic authority did not derive both separate pending tuples on a semantic owner");
-    }
-    return pass();
-  }
-  if (id === "debt_progress_record_reversal_deterministic") {
-    const fixture = semanticFixture("exact");
-    const completed = completeSemantic(fixture.document, fixture.renderCalls);
-    const reversed: RoadmapDocument = {
-      ...fixture.document,
-      records: [...fixture.document.records].reverse(),
-      spans: [...fixture.document.spans].reverse(),
-    };
-    const reversedCompleted = completeSemantic(reversed, { value: 0 });
-    const forward = JSON.stringify(migrationProgressReport(
-      fixture.document,
-      deriveMigrationDebt(fixture.document, completed),
-      completed,
-    ));
-    const backward = JSON.stringify(migrationProgressReport(
-      reversed,
-      deriveMigrationDebt(reversed, reversedCompleted),
-      reversedCompleted,
-    ));
-    if (forward !== backward) fail("migration progress JSON depends on record/span insertion order");
-    return pass();
-  }
-  if (id === "debt_progress_semantic_only_excluded") {
-    const fixture = semanticFixture("exact");
-    const baseCompleted = completeSemantic(fixture.document, fixture.renderCalls);
-    const sourceRecord = fixture.document.records[0];
-    if (sourceRecord === undefined) fail("semantic-only progress fixture lacks source");
-    const added = {
-      ...sourceRecord,
-      id: asRoadmapId("matrix.fixture-progress-only"),
-      projection_visibility: "semantic_only" as const,
-      source_replacements: [],
-    };
-    const candidate: RoadmapDocument = {
-      ...fixture.document,
-      records: [...fixture.document.records, added],
-    };
-    const completed = completeSemantic(candidate, { value: 0 });
-    const baseProgress = migrationProgressReport(
-      fixture.document,
-      deriveMigrationDebt(fixture.document, baseCompleted),
-      baseCompleted,
-    );
-    const candidateProgress = migrationProgressReport(candidate, deriveMigrationDebt(candidate, completed), completed);
-    if (candidateProgress.replacement_coverage.denominator !== baseProgress.replacement_coverage.denominator ||
-      candidateProgress.replacement_coverage.numerator !== baseProgress.replacement_coverage.numerator ||
-      JSON.stringify(candidateProgress.completion_audit) !== JSON.stringify(baseProgress.completion_audit)) {
-      fail("semantic-only record inflated a replacement migration denominator or a completion blocker");
-    }
-    return pass();
-  }
-  if (id === "debt_progress_exact_replacement_coverage" || id === "debt_progress_swapped_replacement_not_covered") {
-    const fixture = semanticFixture("exact");
-    const completed = completeSemantic(fixture.document, fixture.renderCalls);
-    let document = fixture.document;
-    if (id === "debt_progress_swapped_replacement_not_covered") {
-      const record = document.records[0];
-      if (record === undefined || record.source_replacements.length < 2) {
-        fail("swapped progress fixture lacks replacement rows");
-      }
-      const left = record.source_replacements[0]!;
-      const right = record.source_replacements[1]!;
-      const fields = new Map([[left.span_id, right.replacement_field], [right.span_id, left.replacement_field]]);
-      document = {
-        ...document,
-        records: document.records.map((candidate) => candidate === record ? {
-          ...record,
-          source_replacements: record.source_replacements.map((replacement) => ({
-            ...replacement,
-            replacement_field: fields.get(replacement.span_id) ?? replacement.replacement_field,
-          })),
-        } : candidate),
-        spans: document.spans.map((span) => ({ ...span, owner_field: fields.get(span.id) ?? span.owner_field })),
-      };
-    }
-    const report = migrationProgressReport(document, deriveMigrationDebt(document, completed), completed);
-    const denominator = document.spans.filter((span) => span.migration_status === "replaced").length;
-    if (denominator !== 7) fail("replacement denominator drifted from the seven replaced fixture spans");
-    const expected = id === "debt_progress_exact_replacement_coverage" ? denominator : denominator - 2;
-    if (report.replacement_coverage.denominator !== denominator || report.replacement_coverage.numerator !== expected ||
-      report.replacement_coverage.covered_span_ids.length !== expected) {
-      fail(`${id}: exact replacement coverage drifted`);
-    }
-    return pass();
-  }
-  if (id === "debt_progress_typed_stale_unknown_visible") {
-    const fixture = semanticFixture("exact").document;
-    const probe = (payload: SemanticPayload) => {
-      const document: RoadmapDocument = {
-        ...fixture,
-        records: fixture.records.map((record) => ({ ...record, payload })),
-      };
-      const completed = complete(document).completed;
-      return migrationProgressReport(document, deriveMigrationDebt(document, completed), completed).typed_semantic_state;
-    };
-    const signalUnknown = probe({
-      kind: "signal", summary_md: bytes("Unknown."), transition_kind: "watch_escalation",
-      failure_signature_md: bytes("Fail."), capture_procedure_md: bytes("Capture."),
-      response_md: bytes("Respond."), escalation_action_md: bytes("Escalate."),
-      retirement_semantics_md: bytes("Retire."), evaluation: "unknown",
-    });
-    const signalStale = probe({
-      kind: "signal", summary_md: bytes("Stale."), transition_kind: "watch_escalation",
-      failure_signature_md: bytes("Fail."), capture_procedure_md: bytes("Capture."),
-      response_md: bytes("Respond."), escalation_action_md: bytes("Escalate."),
-      retirement_semantics_md: bytes("Retire."), evaluation: "stale",
-    });
-    const evidence = probe({
-      kind: "evidence", summary_md: bytes("Evidence."), evidence_kind: "source_read",
-      claim_md: bytes("Claim."), evidence_verdict: "unknown", freshness: "stale", reference_ids: [],
-      unprobed_remainder_md: bytes("Remainder."), scope: {},
-    });
-    const control = probe({
-      kind: "control", summary_md: bytes("Control."), control_kind: "review_rule", control_state: "stale",
-      reference_ids: [], claim_md: bytes("Claim."), boundary_md: bytes("Boundary."),
-    });
-    if (signalUnknown.signals.unknown_record_ids.length !== 1 || signalStale.signals.stale_record_ids.length !== 1 ||
-      evidence.evidence.unknown_record_ids.length !== 1 || evidence.evidence.stale_record_ids.length !== 1 ||
-      control.controls.stale_record_ids.length !== 1 ||
-      JSON.stringify(control.unrepresentable_coordinates) !== JSON.stringify(["controls.unknown"])) {
-      fail("typed stale/unknown semantic state is not fully visible");
-    }
-    return pass();
-  }
-  if (id === "debt_progress_completion_category_policy") {
-    const document = semanticFixture("exact").document;
-    const completed = complete(document).completed;
-    const recordOwner = owner("record", "matrix.fixture-work", "payload.summary_md");
-    const extras: IndependentDebtKey[] = [
-      { roadmap: "matrix", category: "inferred_transitions", owner: recordOwner, subject: "lane" },
-      { roadmap: "matrix", category: "unmodelled_coordinates", owner: recordOwner, subject: "visible" },
-    ];
-    const report = migrationProgressReport(document, deriveMigrationDebt(document, completed, extras), completed);
-    if (!report.completion_audit.lane_blockers.some((blocker) =>
-      blocker.category === "inferred_transitions" && blocker.subject.includes("lane")
-    ) || report.completion_audit.join_blockers.length !== 0 ||
-      [...report.completion_audit.lane_blockers, ...report.completion_audit.join_blockers].some((blocker) =>
-        blocker.category === "unmodelled_coordinates"
-      ) || !report.independent_debt.items.some((item) =>
-        item.category === "unmodelled_coordinates" && item.subject === "visible"
-      )) {
-      fail("completion audit category policy hid or misclassified independent state");
-    }
-    return pass();
-  }
-  const document = semanticFixture("exact").document;
-  const recordRaw = owner("record", "matrix.fixture-work", "source_block_md");
-  const recordSemantic = owner("record", "matrix.fixture-work", "payload.summary_md");
-  const options: DebtComparisonOptions = { base_document: document, candidate_document: document };
-  let base = debt([[recordRaw, "semantic"]]);
-  let candidate = debt([[recordRaw, "semantic"]]);
-  let expected: RoadmapIssue["code"] | undefined;
-  let compareOptions: DebtComparisonOptions = options;
-  switch (id) {
-    case "debt_owner_field_rename_requires_witness":
-      candidate = debt([[recordSemantic, "semantic"]]);
-      expected = "E-DEBT-OWNER-REGRESSION";
-      break;
-    case "debt_independent_set_growth_rejected": {
-      const independentKey: IndependentDebtKey = {
-        roadmap: "matrix", category: "inferred_transitions", owner: recordRaw, subject: "transition",
-      };
-      candidate = debt([[recordRaw, "semantic"]], [independentKey]);
-      expected = "E-DEBT-SET-GROWTH";
-      break;
-    }
-    case "debt_category_hiding_rejected": {
-      const oldKey: IndependentDebtKey = {
-        roadmap: "matrix", category: "inferred_transitions", owner: recordRaw, subject: "transition",
-      };
-      const hiddenKey: IndependentDebtKey = { ...oldKey, category: "unmodelled_coordinates" };
-      base = debt([[recordRaw, "semantic"]], [oldKey]);
-      candidate = debt([[recordRaw, "semantic"]], [hiddenKey]);
-      expected = "E-DEBT-CATEGORY-HIDE";
-      break;
-    }
-    case "debt_unrelated_base_rejected":
-      compareOptions = {
-        base_document: { ...document, document: { ...document.document, source_path: asRepoPath("other.toml") } },
-        candidate_document: document,
-      };
-      expected = "E-DEBT-BASE-MISMATCH";
-      break;
-    case "debt_structured_owner_every_kind": {
-      const kinds: DebtOwnerKey["owner_kind"][] = ["record", "section", "fragment", "part", "legacy_marker", "source_span"];
-      const derived = deriveMigrationDebt(document, complete(document).completed);
-      const observedKinds = new Set([...derived.owners.values()].map((value) => value.key.owner_kind));
-      for (const kind of kinds) if (!observedKinds.has(kind)) fail(`derived debt omitted ${kind}`);
-      const report = migrationDebtReport(derived);
-      if (report.owners.length < kinds.length) fail("debt report omitted derived owner atoms");
-      return pass();
-    }
-    case "debt_same_textual_id_different_kind_distinct": {
-      const section = owner("section", "same", "body_md");
-      const fragment = owner("fragment", "same", "body_md");
-      if (debtOwnerIndex(section) === debtOwnerIndex(fragment)) fail("textual IDs collapsed across kinds");
-      return pass();
-    }
-    case "debt_unmodelled_coordinate_subset": {
-      const key: IndependentDebtKey = {
-        roadmap: "matrix", category: "unmodelled_coordinates", owner: recordRaw, subject: "axis-x",
-      };
-      base = debt([[recordRaw, "semantic"]], [key]);
-      candidate = debt([[recordRaw, "semantic"]]);
-      break;
-    }
-    default:
-      fail(`${id} is not a debt case`);
-  }
-  const issues = compareMigrationDebt(base, candidate, compareOptions);
-  if (expected === undefined) {
-    if (issues.length !== 0) fail(`${id}: unexpected debt issue ${issues.map((value) => value.code).join(",")}`);
-    return pass();
-  }
-  requireIssue(issues, expected);
-  if (id === "debt_owner_field_rename_requires_witness") {
-    // A renamed owner field is BOTH a candidate-only owner and a disappeared base owner. The only
-    // accepted candidate-only witness is a brand-new semantic-only record, which an already-present
-    // record can never be, so neither half is waivable by owner counts.
-    if (!issues.some((value) => value.logical_path === `owners.${debtOwnerIndex(recordRaw)}`)) {
-      fail("renamed owner field did not report its disappeared base owner");
-    }
-    if (compareMigrationDebt(base, candidate, compareOptions).length !== issues.length) {
-      fail("owner rename rejection is not stable under replay");
-    }
-  }
-  return pass("negative");
-}
-
 function semanticFixture(
   mode: "exact" | "missing" | "duplicate" = "exact",
 ): {
@@ -1249,27 +931,6 @@ function testRenderCase(
     }
     return pass();
   }
-  if (id === "render_semantic_only_identity_debt") {
-    const { document, record, placement, completed } = semanticOnlyCompletion();
-    if (placement.ops.some((op) => op.node.kind === "record" && op.node.id === record.id) ||
-      !buildRoadmapIndexes(document).indexes.first_class.has(record.id)) {
-      fail("semantic-only record did not retain identity outside the manifest");
-    }
-    const semanticDebt = deriveMigrationDebt(document, completed);
-    if ([...semanticDebt.owners.values()].filter(({ key }) => key.owner_kind === "record" && key.owner_id === record.id).length !== 3) {
-      fail("semantic-only fields did not retain semantic debt owner atoms");
-    }
-    // Semantic-only visibility is admissible ONLY for a candidate-only record. An already-published
-    // document-visible record that turns semantic-only is a visibility regression, and no counts-only
-    // witness can authorize it.
-    const base = semanticFixture("exact").document;
-    requireExactIssue(
-      validateRecordOwnerTransition({ base_document: base, candidate_document: document }),
-      "E-DEBT-OWNER-REGRESSION",
-      `record[${JSON.stringify(record.id)}].projection_visibility`,
-    );
-    return pass("negative");
-  }
   if (id === "render_semantic_only_span_prohibition") {
     const { document, record, completed } = semanticOnlyCompletion();
     requireIssue(validateSourceSpans({ document, completed }), "E-SPAN-OWNER");
@@ -1436,14 +1097,6 @@ function testRenderCase(
       segment.owner_kind === "record" && segment.owner_id === semanticOnly.record.id
     )) fail("semantic-only record minted a projected field segment");
     executed.push("semantic_only_zero_segments");
-    const debt = deriveMigrationDebt(fixture.document, fixture.completed);
-    const report = migrationProgressReport(fixture.document, debt, fixture.completed);
-    const replaced = fixture.document.spans.filter((span) => span.migration_status === "replaced");
-    if (report.replacement_coverage.denominator !== replaced.length ||
-      report.replacement_coverage.numerator !== replaced.length) {
-      fail("structural exact segments did not count as exact migration coverage");
-    }
-    executed.push("progress_coverage");
     return pass("positive", Object.freeze(executed));
   }
   if (id === "render_structural_exact_field_binding_rejections") {
@@ -1536,14 +1189,6 @@ function testRenderCase(
       sectionSpan.start_byte,
       sectionSpan.end_byte,
     ) !== undefined) fail("proper non-empty structural prefix satisfied full-field binding");
-    const partialReport = migrationProgressReport(
-      fixture.document,
-      deriveMigrationDebt(fixture.document, partialCompleted),
-      partialCompleted,
-    );
-    if (partialReport.replacement_coverage.covered_span_ids.includes(sectionSpan.id)) {
-      fail("proper structural prefix counted as complete migration coverage");
-    }
     executed.push("partial_full_field");
     const unsafeSegment = {
       ...segment,
@@ -1627,12 +1272,6 @@ function testRenderCase(
     executed.push("wrong_replacement_field");
     const noSegment = withSegments(without);
     requireIssue(validateSourceSpans({ document: fixture.document, completed: noSegment }), "E-SPAN-OWNER");
-    const debt = deriveMigrationDebt(fixture.document, noSegment);
-    const report = migrationProgressReport(fixture.document, debt, noSegment);
-    if (report.replacement_coverage.covered_span_ids.includes(sectionSpan.id) ||
-      !report.completion_audit.lane_blockers.some((blocker) =>
-        blocker.category === "uncovered_replacement_span" && blocker.subject === sectionSpan.id
-      )) fail("whole structural chunk bypassed the missing projected-segment proof");
     executed.push("whole_chunk_without_segment");
     return pass("negative", Object.freeze(executed));
   }
@@ -2498,8 +2137,8 @@ function testOutputCase(id: RequiredProjectionSelfTestCaseId): SelfTestResult {
       );
       if (checked.issues.length !== 0) fail("read-only check unexpectedly drifted");
     } else {
-      const report = migrationDebtReport(debt([[owner("record", "query", "payload.summary_md"), "semantic"]]));
-      if (report.owners.length !== 1) fail("read-only query omitted its structured result");
+      const value = stableJsonValue(new Map([["query", { owner_id: "query" }]])) as Record<string, unknown>;
+      if (Object.keys(value).length !== 1) fail("read-only query omitted its structured result");
     }
     if (writeCapabilityReads !== 0 || "atomicReplace" in readOnly) fail("read-only path exposed or requested write authority");
     return pass();
@@ -2738,14 +2377,12 @@ function testDeterminismCase(id: RequiredProjectionSelfTestCaseId): SelfTestResu
     return pass();
   }
   if (id === "json_sorted_keys") {
-    const entries = ["z", "ä", "a"].map((value) =>
-      [owner("record", value, "payload.summary_md"), "semantic"] as const
-    );
-    const forward = JSON.stringify(migrationDebtReport(debt(entries)));
-    const reverse = JSON.stringify(migrationDebtReport(debt([...entries].reverse())));
-    if (forward !== reverse || !(forward.indexOf('"owner_id":"a"') < forward.indexOf('"owner_id":"z"')) ||
-      !(forward.indexOf('"owner_id":"z"') < forward.indexOf('"owner_id":"ä"'))) {
-      fail("structured debt JSON arrays do not have canonical key order");
+    const entries = ["z", "ä", "a"].map((value) => [value, { owner_id: value }] as const);
+    const forward = JSON.stringify(stableJsonValue(new Map(entries)));
+    const reverse = JSON.stringify(stableJsonValue(new Map([...entries].reverse())));
+    if (forward !== reverse || !(forward.indexOf('"a"') < forward.indexOf('"z"')) ||
+      !(forward.indexOf('"z"') < forward.indexOf('"ä"'))) {
+      fail("structured query JSON objects do not have canonical key order");
     }
     return pass();
   }
@@ -2814,14 +2451,10 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   span_partial_prefix_rejected: { category: "spans", run: testSpanCase },
   span_single_snapshot: { category: "spans", run: testSpanCase },
   span_source_change_digest_rejected: { category: "spans", run: testSpanCase },
-  debt_independent_set_growth_rejected: { category: "debt", run: testDebtCase },
-  debt_category_hiding_rejected: { category: "debt", run: testDebtCase },
-  debt_unrelated_base_rejected: { category: "debt", run: testDebtCase },
   render_zero_chunks_rejected: { category: "manifest-render", run: testRenderCase },
   render_no_implicit_lf: { category: "manifest-render", run: testRenderCase },
   render_semantic_consumption_once: { category: "manifest-render", run: testRenderCase },
   render_semantic_only_zero_byte_consumption: { category: "manifest-render", run: testRenderCase },
-  render_semantic_only_identity_debt: { category: "manifest-render", run: testRenderCase },
   render_semantic_only_span_prohibition: { category: "manifest-render", run: testRenderCase },
   render_semantic_exact_field_binding_swapped_labels: { category: "manifest-render", run: testRenderCase },
   render_semantic_exact_field_binding_partial: { category: "manifest-render", run: testRenderCase },
@@ -2853,17 +2486,6 @@ const PROJECTION_CASES: { readonly [K in RequiredProjectionSelfTestCaseId]: Proj
   lexical_not_locale_sort: { category: "determinism-purity", run: testDeterminismCase },
   two_clean_renders_equal: { category: "determinism-purity", run: testRenderCase },
   no_clock_without_as_of: { category: "determinism-purity", run: testDeterminismCase },
-  debt_structured_owner_every_kind: { category: "debt", run: testDebtCase },
-  debt_same_textual_id_different_kind_distinct: { category: "debt", run: testDebtCase },
-  debt_owner_field_rename_requires_witness: { category: "debt", run: testDebtCase },
-  debt_unmodelled_coordinate_subset: { category: "debt", run: testDebtCase },
-  debt_semantic_authority_pending_both: { category: "debt", run: testDebtCase },
-  debt_progress_record_reversal_deterministic: { category: "debt", run: testDebtCase },
-  debt_progress_semantic_only_excluded: { category: "debt", run: testDebtCase },
-  debt_progress_exact_replacement_coverage: { category: "debt", run: testDebtCase },
-  debt_progress_swapped_replacement_not_covered: { category: "debt", run: testDebtCase },
-  debt_progress_typed_stale_unknown_visible: { category: "debt", run: testDebtCase },
-  debt_progress_completion_category_policy: { category: "debt", run: testDebtCase },
   render_chunks_precede_consumption_validation: { category: "manifest-render", run: testRenderCase },
   render_chunks_precede_span_validation: { category: "manifest-render", run: testRenderCase },
   render_slots_resolved_before_slot_validation: { category: "manifest-render", run: testRenderCase },

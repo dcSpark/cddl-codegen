@@ -10,12 +10,6 @@ import type {
   SignalPayload,
 } from "./model/core.ts";
 import type { FinalizedRoadmap } from "./pipeline.ts";
-import {
-  migrationCompletionAudit,
-  migrationDebtReport,
-  migrationProgressReport,
-  MIGRATION_COMPLETION_STATE,
-} from "./debt.ts";
 import { sha256 } from "./kernel.ts";
 
 const UTF8 = new TextEncoder();
@@ -76,7 +70,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
           roadmap: item.document.document.roadmap,
           schema_version: item.document.document.schema_version,
           authority: item.document.document.authority,
-          semantic_conversion: MIGRATION_COMPLETION_STATE,
           record_count: item.document.records.length,
           families: item.document.records.flatMap((record) => {
             const payload = record.payload;
@@ -93,13 +86,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
           projection_sha256: sha256(item.projection),
         })),
       };
-    case "debt":
-      return { evaluation_as_of, roadmaps: prepared.map((item) => ({
-        roadmap: item.document.document.roadmap,
-        semantic_conversion: migrationCompletionAudit(item.document, item.debt, item.completed),
-        ...migrationDebtReport(item.debt),
-        migration_progress: migrationProgressReport(item.document, item.debt, item.completed),
-      })) };
     case "references":
       return { evaluation_as_of, roadmaps: prepared.map((item) => ({
         roadmap: item.document.document.roadmap,

@@ -41,21 +41,3 @@ export function validateProjectionLayoutDeclaration(
     "current roadmap schema v2 requires an explicit projection_layout; only historical commit sources may omit it",
   )]);
 }
-
-/** A curated projection cannot silently regress to the legacy layout in a later revision. */
-export function validateProjectionLayoutTransition(
-  base: RoadmapDocument,
-  candidate: RoadmapDocument,
-): readonly RoadmapIssue[] {
-  if (base.document.schema_version !== 2 || candidate.document.schema_version !== 2 ||
-    projectionLayoutRank(projectionLayout(candidate)) >= projectionLayoutRank(projectionLayout(base))) {
-    return Object.freeze([]);
-  }
-  return Object.freeze([{
-    code: "E-TRANSACTION-BASE",
-    source: "<transaction>",
-    logical_path: `${candidate.document.roadmap}.document.projection_layout`,
-    message: `projection layout is irreversible: ${projectionLayout(base)} cannot regress to ${projectionLayout(candidate)}`,
-    exit: 1,
-  }]);
-}

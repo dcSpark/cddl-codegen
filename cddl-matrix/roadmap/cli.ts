@@ -2,7 +2,6 @@ import type { RoadmapIssue } from "./errors.ts";
 import type {
   AsOfDate,
   CliRequest,
-  FullCommitId,
   QueryView,
   RepoPath,
   RoadmapName,
@@ -11,9 +10,9 @@ import type {
 
 export const ROADMAP_CLI_USAGE = `Usage:
   bun run project_roadmaps.ts --selftest
-  bun run project_roadmaps.ts --roadmap matrix|testing|all --check [--against <full-lowercase-commit-id>]
+  bun run project_roadmaps.ts --roadmap matrix|testing|all --check
   bun run project_roadmaps.ts --roadmap matrix|testing --write
-  bun run project_roadmaps.ts --roadmap matrix|testing|all --query summary|debt|references|actionables|signals|decisions|families|watches|content|output-owners [--json] [--as-of YYYY-MM-DD]
+  bun run project_roadmaps.ts --roadmap matrix|testing|all --query summary|references|actionables|signals|decisions|families|watches|content|output-owners [--json] [--as-of YYYY-MM-DD]
   bun run project_roadmaps.ts --format-source <declared-repository-relative-toml-path>
 `;
 
@@ -24,21 +23,19 @@ export class RoadmapCliParseError extends Error {
   }
 }
 
-type ValueOption = "--roadmap" | "--query" | "--against" | "--as-of" | "--format-source";
+type ValueOption = "--roadmap" | "--query" | "--as-of" | "--format-source";
 type FlagOption = "--selftest" | "--check" | "--write" | "--json";
 type KnownOption = ValueOption | FlagOption;
 
 const VALUE_OPTIONS = new Set<ValueOption>([
   "--roadmap",
   "--query",
-  "--against",
   "--as-of",
   "--format-source",
 ]);
 const FLAG_OPTIONS = new Set<FlagOption>(["--selftest", "--check", "--write", "--json"]);
 const QUERY_VIEWS = new Set<QueryView>([
   "summary",
-  "debt",
   "references",
   "signals",
   "actionables",
@@ -162,10 +159,6 @@ export function parseRoadmapCli(argv: readonly string[]): CliRequest {
     incompatible(tokenized, "--roadmap", "--roadmap is forbidden for this mode");
   }
 
-  const against = tokenized.values.get("--against");
-  if (against !== undefined && mode !== "--check") {
-    fail("E-CLI-AGAINST", against.index, "--against is valid only with --check");
-  }
   if (tokenized.flags.has("--json") && mode !== "--query") {
     incompatible(tokenized, "--json", "--json is valid only with --query");
   }
@@ -176,11 +169,7 @@ export function parseRoadmapCli(argv: readonly string[]): CliRequest {
 
   if (mode === "--selftest") return { mode: "selftest" };
   if (mode === "--check") {
-    return {
-      mode: "check",
-      roadmap: roadmap as RoadmapSelection,
-      ...(against === undefined ? {} : { against: against.value as FullCommitId }),
-    };
+    return { mode: "check", roadmap: roadmap as RoadmapSelection };
   }
   if (mode === "--write") {
     if (roadmap === "all") {
@@ -194,7 +183,7 @@ export function parseRoadmapCli(argv: readonly string[]): CliRequest {
       fail(
         "E-CLI-INCOMPATIBLE",
         query.index,
-        "--query must be summary, debt, references, actionables, signals, decisions, families, watches, content, or output-owners",
+        "--query must be summary, references, actionables, signals, decisions, families, watches, content, or output-owners",
       );
     }
     if (asOf !== undefined && !validCivilDate(asOf.value)) {

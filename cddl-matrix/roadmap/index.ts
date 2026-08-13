@@ -1,4 +1,3 @@
-import { migrationCompletionAudit, migrationDebtReport } from "./debt.ts";
 import { parseRoadmapCli, ROADMAP_CLI_USAGE, RoadmapCliParseError } from "./cli.ts";
 import { composeCanonicalDocument } from "./compose.ts";
 import { decodeRoadmapSource } from "./decode/roadmap.ts";
@@ -9,8 +8,6 @@ import {
   sortRoadmapIssues,
   type RoadmapIssue,
 } from "./errors.ts";
-import { validateGlobalIdentity } from "./identity.ts";
-import { buildRoadmapIndexes } from "./indexes.ts";
 import {
   type RoadmapCliPorts,
   type RoadmapWritePorts,
@@ -20,7 +17,6 @@ import { RoadmapWireError } from "./markdown_codec.ts";
 import type {
   AsOfDate,
   CliRequest,
-  FullCommitId,
   QueryView,
   RepoPath,
   RoadmapName,
@@ -37,7 +33,6 @@ import {
   RenderValidationError,
 } from "./render.ts";
 import {
-  commitReader,
   failure,
   finalizeRoadmap,
   issue,
@@ -55,7 +50,6 @@ import { validateProjectionLayoutDeclaration } from "./projection_layout.ts";
 // Type-only: the selftest runner VALUE is injected by the entry point through
 // RoadmapCliDispatchServices, so this module has no runtime edge into the selftest tree.
 import type { runSelfTests } from "./selftest.ts";
-import { validateTransaction } from "./transaction.ts";
 import { applyProjectionWritePlan, createProjectionWritePlan } from "./write_plan.ts";
 import { sha256 } from "./kernel.ts";
 
@@ -74,18 +68,10 @@ function selectedRoadmaps(selection: RoadmapSelection): readonly RoadmapName[] {
 }
 
 function roadmapReceipt(prepared: FinalizedRoadmap): string {
-  const debt = migrationDebtReport(prepared.debt);
-  const independent = Object.values(debt.independent_counts).reduce((sum, value) => sum + value, 0);
-  const owners = Object.values(debt.owner_counts).reduce((sum, value) => sum + value, 0);
   const projectionOwner = prepared.registry.output_claims.find((claim) =>
     claim.kind === "whole_file" && claim.path === prepared.document.document.projection_path
   )?.producer ?? "unclaimed";
-  const completion = migrationCompletionAudit(
-    prepared.document,
-    prepared.debt,
-    prepared.completed,
-  );
-  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} authority=${prepared.document.document.authority} semantic_conversion_declared=${completion.declared} semantic_conversion_effective=${completion.effective} completion_blockers=${completion.blockers.length} join_blockers=${completion.join_blockers.length} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} manifest=${prepared.document.manifest.length} spans=${prepared.document.spans.length} debt_owners=${owners} debt_independent=${independent} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
+  return `source=${prepared.document.document.source_path} schema=${prepared.document.document.schema_version} authority=${prepared.document.document.authority} projection_bytes=${prepared.projection.byteLength} projection_sha256=${sha256(prepared.projection)} manifest=${prepared.document.manifest.length} spans=${prepared.document.spans.length} output_claims=${prepared.registry.output_claims.length} projection_owner=${projectionOwner}`;
 }
 
 function success(stdout: string | Uint8Array): RoadmapCliResult {
@@ -141,62 +127,6 @@ function queryRoadmaps(
   return json ? UTF8.encode(`${JSON.stringify(value)}\n`) : queryText(value);
 }
 
-function identityFor(prepared: ValidatedRoadmapCore) {
-  const indexes = buildRoadmapIndexes(prepared.document).indexes;
-  return validateGlobalIdentity({
-    documents: [indexes.identity_inputs],
-    current_guards: prepared.registry.current_guards,
-  });
-}
-
-/**
- * The candidate side of a scoped comparison: the selected roadmap's own identity universe over the
- * worktree registry. There is no cross-roadmap lifecycle root, so this is the complete authority.
- */
-function scopedCandidateIdentity(prepared: ValidatedRoadmapCore) {
-  return { registry: prepared.registry, identity: identityFor(prepared) };
-}
-
-function validateOneRoadmapChange(
-  selection: RoadmapName,
-  against: FullCommitId,
-  ports: ReadOnlyRoadmapPorts,
-): readonly RoadmapIssue[] {
-  const candidate = prepareRoadmapCore(selection, worktreeReader(ports));
-  const candidateGlobal = scopedCandidateIdentity(candidate);
-  const baseReader = commitReader(ports, against);
-  const result = validateTransaction({
-    scope: selection,
-    against,
-    load_base: () => {
-      const base = prepareRoadmapCore(selection, baseReader);
-      return {
-        document: base.document,
-        debt: base.debt,
-        completed: base.completed,
-        identity: identityFor(base),
-        registry: base.registry,
-      };
-    },
-    candidate_document: candidate.document,
-    candidate_debt: candidate.debt,
-    candidate_completed: candidate.completed,
-    candidate_registry: candidateGlobal.registry,
-    candidate_global_identity: candidateGlobal.identity,
-  });
-  return result.issues;
-}
-
-function validateChange(
-  selection: RoadmapSelection,
-  against: FullCommitId,
-  ports: ReadOnlyRoadmapPorts,
-): readonly RoadmapIssue[] {
-  return sortRoadmapIssues(selectedRoadmaps(selection).flatMap((name) =>
-    validateOneRoadmapChange(name, against, ports)
-  ));
-}
-
 function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResult {
   const source = new Uint8Array(ports.readDeclared(path));
   strictSource(source, path);
@@ -211,31 +141,6 @@ function formatSource(path: RepoPath, ports: RoadmapWritePorts): RoadmapCliResul
   const canonical = composeCanonicalDocument(document);
   ports.atomicReplace(path, canonical);
   return success(`FORMAT OK source=${path} bytes=${canonical.byteLength} sha256=${sha256(canonical)}\n`);
-}
-
-function validateAgainst(candidate: string, ports: ReadOnlyRoadmapPorts): FullCommitId {
-  const format = ports.repositoryObjectFormat();
-  const length = format === "sha1" ? 40 : 64;
-  if (!(new RegExp(`^[0-9a-f]{${length}}$`).test(candidate))) {
-    failure([issue(
-      "E-GIT-BASE-FORMAT",
-      "<git>",
-      "against",
-      `--against must be exactly ${length} lowercase hexadecimal characters for repository object format ${format}`,
-      2,
-    )]);
-  }
-  let resolved: FullCommitId;
-  try {
-    resolved = ports.resolveFullCommit(candidate);
-  } catch (error) {
-    if (isRoadmapFailure(error)) throw error;
-    failure([issue("E-GIT-BASE-LOOKUP", "<git>", "against", "--against names no commit object with that exact object ID", 2)]);
-  }
-  if (resolved !== candidate) {
-    failure([issue("E-GIT-BASE-LOOKUP", "<git>", "against", "--against names no commit object with that exact object ID", 2)]);
-  }
-  return resolved;
 }
 
 function writeRoadmap(name: RoadmapName, ports: RoadmapWritePorts): RoadmapCliResult {
@@ -321,12 +226,7 @@ function dispatchRoadmapCliRequest(
       return success(result.stdout);
     }
     case "check": {
-      const against = request.against === undefined ? undefined : validateAgainst(request.against, ports.read);
       const selftest = services.run_selftests(ports.selftest);
-      if (against !== undefined) {
-        const transactionIssues = validateChange(request.roadmap, against, ports.read);
-        if (transactionIssues.length > 0) failure(transactionIssues);
-      }
       const checked = checkRoadmaps(request.roadmap, ports.read);
       const stdout = new Uint8Array(selftest.stdout.byteLength + checked.stdout.byteLength);
       stdout.set(selftest.stdout);

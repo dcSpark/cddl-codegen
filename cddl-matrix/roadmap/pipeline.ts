@@ -13,8 +13,9 @@ import { MATRIX_ADAPTER } from "./adapters/matrix.ts";
 import { TESTING_ADAPTER } from "./adapters/testing.ts";
 import { validateMatrixRoadmapDocument, validateTestingRoadmapDocument } from "./adapters/validation.ts";
 import type { RegistryView, RoadmapAdapter } from "./adapters/types.ts";
-import { deriveMigrationDebt, validateMigrationCompletion, type MigrationDebt } from "./debt.ts";
 import { decodeRoadmapSource } from "./decode/roadmap.ts";
+import { validateGlobalIdentity } from "./identity.ts";
+import { buildRoadmapIndexes } from "./indexes.ts";
 import {
   RoadmapFailure,
   sortRoadmapIssues,
@@ -23,7 +24,6 @@ import {
 import type { ReadOnlyRoadmapPorts } from "./io.ts";
 import { resolveManifest, type ManifestResolution } from "./manifest.ts";
 import type {
-  FullCommitId,
   RepoPath,
   RepositoryRevision,
   RoadmapName,
@@ -57,7 +57,6 @@ export interface ValidatedRoadmapCore {
   readonly document: RoadmapDocument;
   readonly registry: RegistryView;
   readonly completed: CompletedRenderIr;
-  readonly debt: MigrationDebt;
   readonly projection_views: ProjectionViews;
 }
 
@@ -99,15 +98,6 @@ export function worktreeReader(ports: ReadOnlyRoadmapPorts): RevisionReader {
   };
 }
 
-export function commitReader(ports: ReadOnlyRoadmapPorts, commit: FullCommitId): RevisionReader {
-  const revision: RepositoryRevision = { kind: "commit", commit };
-  return {
-    revision,
-    read: (path) => ports.readDeclaredAtCommit(commit, path),
-    registry: () => ports.registryView(revision),
-  };
-}
-
 export function decodeAt(name: RoadmapName, reader: RevisionReader): { document: RoadmapDocument; source: Uint8Array } {
   const path = SOURCE_BY_ROADMAP[name];
   const source = new Uint8Array(reader.read(path));
@@ -140,7 +130,6 @@ interface CoreStageState {
   manifest?: ManifestResolution;
   completed?: CompletedRenderIr;
   projection_views?: ProjectionViews;
-  debt?: MigrationDebt;
 }
 
 interface CoreStage {
@@ -239,13 +228,18 @@ const CORE_PIPELINE: readonly CoreStage[] = Object.freeze([
     },
   },
   {
-    name: "derive-migration-debt",
+    // Per-document owner/alias identity enforcement (E-OWNER-DUPLICATE / E-ALIAS-COLLISION).
+    // Until the `--against` transaction surface was retired this validation ran only on the
+    // comparison path; the `--check` contract keeps identity validation, so it runs here always.
+    name: "validate-global-identity",
     run(state) {
-      const completed = staged(state.completed, "build-expected-bytes");
-      const debt = deriveMigrationDebt(state.document, completed);
-      const completionIssues = validateMigrationCompletion(state.document, debt, completed);
-      if (completionIssues.length > 0) failure(completionIssues);
-      state.debt = debt;
+      const built = buildRoadmapIndexes(state.document);
+      if (built.issues.length > 0) failure(built.issues);
+      const identity = validateGlobalIdentity({
+        documents: [built.indexes.identity_inputs],
+        current_guards: state.registry.current_guards,
+      });
+      if (identity.issues.length > 0) failure(identity.issues);
     },
   },
   {
@@ -287,7 +281,6 @@ export function prepareDecodedRoadmapCore(
     document,
     registry: state.registry,
     completed: staged(state.completed, "build-expected-bytes"),
-    debt: staged(state.debt, "derive-migration-debt"),
     projection_views: staged(state.projection_views, "build-projection-views"),
   });
 }

@@ -19,7 +19,6 @@ export type FixtureRelativePath = Brand<string, "FixtureRelativePath">;
 
 export type QueryView =
   | "summary"
-  | "debt"
   | "references"
   | "signals"
   | "actionables"
@@ -31,7 +30,7 @@ export type QueryView =
 
 export type CliRequest =
   | { mode: "selftest" }
-  | { mode: "check"; roadmap: RoadmapSelection; against?: FullCommitId }
+  | { mode: "check"; roadmap: RoadmapSelection }
   | { mode: "write"; roadmap: RoadmapName }
   | {
       mode: "query";

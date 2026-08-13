@@ -1,6 +1,4 @@
 import type { RegistryView } from "../adapters/types.ts";
-import { MATRIX_ADAPTER } from "../adapters/matrix.ts";
-import { TESTING_ADAPTER } from "../adapters/testing.ts";
 import { ROADMAP_CLI_USAGE } from "../cli.ts";
 import { composeRoadmapDocument } from "../compose.ts";
 import { decodeRoadmapSource } from "../decode/roadmap.ts";
@@ -23,29 +21,19 @@ import type {
 import type { FixtureRelativePath, RepoPath, RepositoryRevision, RoadmapId } from "../model/core.ts";
 import type { RoadmapDocumentV2, SemanticPayload } from "../model/documents.ts";
 import type { MatrixStatusInputs } from "../model/matrix.ts";
-import { resolveManifest } from "../manifest.ts";
 import {
   LEGACY_STATUS_OUTPUT_CLAIMS,
   productionOutputInventory,
 } from "../output_registry.ts";
 import type { SelfTestCandidateCase as SelfTestCase, SelfTestContext, SelfTestCandidateResult as SelfTestResult } from "../selftest.ts";
-import { buildProjectionViews } from "../projection_views.ts";
-import {
-  projectionLayoutRank,
-  validateProjectionLayoutTransition,
-  type ProjectionLayout,
-} from "../projection_layout.ts";
-import { buildExpectedChunks, validateCompletedChunks } from "../render_ir.ts";
 import { observeSelfTestIssue } from "./observations.ts";
 import {
   liveMatrixAuthoritativeSource,
-  liveMatrixCurrentLegacyProjection,
   liveMatrixProjection,
   liveMatrixV2Document,
 } from "./live_matrix.ts";
 import {
   liveTestingAuthoritativeSource,
-  liveTestingLegacyProjection,
   liveTestingProjection,
   liveTestingV2Document,
 } from "./live_testing.ts";
@@ -65,16 +53,9 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "cli_roadmap_required",
   "cli_roadmap_forbidden_on_format",
   "cli_write_all_rejected",
-  "cli_against_requires_check",
-  "cli_against_write_rejected",
-  "cli_against_query_rejected",
-  "cli_against_selftest_rejected",
-  "cli_against_format_rejected",
   "cli_json_requires_query",
   "cli_as_of_requires_query",
   "cli_format_target_declared_only",
-  "cli_unresolved_base_exit_two",
-  "cli_noncommit_base_exit_two",
   "exit_declared_source_enoent_one",
   "exit_declared_projection_enoent_one",
   "exit_declared_source_eacces_two",
@@ -87,22 +68,9 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "parse_error_stable_prefix",
   "query_stdout_payload_only",
   "live_subordinate_lifecycle_dispositions",
-  "query_debt_live_migration_floors",
-  "query_debt_scoped_does_not_load_other_roadmap",
-  "query_debt_all_reports_both",
   "failure_stdout_empty",
   "success_receipt_nonvacuous",
-  "cli_against_matrix_check_allowed",
-  "cli_against_testing_check_allowed",
-  "cli_against_all_check_allowed",
   "cli_authoritative_fresh_projection_reference_provenance",
-  "cli_against_missing_value",
-  "cli_against_duplicate_value",
-  "cli_against_bad_length_git_format_no_usage",
-  "cli_against_uppercase_git_format_no_usage",
-  "cli_against_nonhex_git_format_no_usage",
-  "cli_against_unresolved_git_lookup_no_usage",
-  "cli_against_incompatible_precedes_bad_format",
   "cli_as_of_valid_leap_day",
   "cli_as_of_invalid_leap_day",
   "cli_as_of_year_zero_rejected",
@@ -116,7 +84,6 @@ export const REQUIRED_CLI_SELFTEST_CASE_IDS = [
   "query_as_of_does_not_select_git_revision",
   "cli_production_port_factory_smoke",
   "dispatch_capability_narrowing",
-  "cli_against_projection_layout_promotion",
   "cli_summary_open_family_lower_bound_only",
 ] as const;
 
@@ -125,7 +92,6 @@ export type RequiredCliSelfTestCaseId = (typeof REQUIRED_CLI_SELFTEST_CASE_IDS)[
 const UTF8 = new TextEncoder();
 const DECODER = new TextDecoder();
 const FIXTURE_ROOT = "cddl-matrix/roadmap/fixtures" as RepoPath;
-const HASH = "a".repeat(40);
 
 function pass(polarity: "positive" | "negative", subcases?: readonly string[]): SelfTestResult {
   return { ok: true, polarity, ...(subcases === undefined ? {} : { subcases }) };
@@ -345,112 +311,6 @@ function fixture(context: SelfTestContext, path: string): Uint8Array {
   return context.ports.fixtures.readFixtureFile(FIXTURE_ROOT, path as FixtureRelativePath);
 }
 
-type LayoutMutation = "exact" | "content_drift" | "reference_drift";
-
-function withLayout(document: RoadmapDocumentV2, layout: ProjectionLayout): RoadmapDocumentV2 {
-  const nextHeading = projectionLayoutRank(layout) >= projectionLayoutRank("unnumbered_v1")
-    ? "Next work"
-    : "Next work items, in priority order";
-  return {
-    ...document,
-    document: { ...document.document, projection_layout: layout },
-    references: document.references.map((reference) => reference.kind === "file_heading" &&
-        reference.path === "tests/TESTING_ROADMAP.md" &&
-        (reference.heading === "Next work" || reference.heading === "Next work items, in priority order")
-      ? { ...reference, heading: nextHeading }
-      : reference),
-  };
-}
-
-function projectionForLayout(document: RoadmapDocumentV2, registry: RegistryView): Uint8Array {
-  const adapter = document.document.roadmap === "matrix" ? MATRIX_ADAPTER : TESTING_ADAPTER;
-  const manifest = resolveManifest(document);
-  const resolvers = adapter.slotResolvers(registry, document);
-  const completed = buildExpectedChunks(document, manifest.ops, {
-    renderSemanticRecord: (record, fields) => adapter.renderSemantic(record, fields),
-    resolveGeneratedSlot: (slot) => resolvers.get(slot.slot_id)?.resolve(slot, registry),
-  });
-  const renderIssues = [...manifest.issues, ...validateCompletedChunks(document, manifest.ops, completed)];
-  assert(renderIssues.length === 0, `layout stage projection failed render validation: ${JSON.stringify(renderIssues)}`);
-  const legacy = document.document.roadmap === "matrix" ? liveMatrixCurrentLegacyProjection() : liveTestingLegacyProjection();
-  const views = buildProjectionViews(document, completed, legacy);
-  assert(views.issues.length === 0, `layout stage projection failed view validation: ${JSON.stringify(views.issues)}`);
-  return views.full;
-}
-
-const layoutStageProjectionCache = new Map<string, Uint8Array>();
-
-function liveProjectionForLayout(
-  roadmap: "matrix" | "testing",
-  layout: ProjectionLayout,
-  registry: RegistryView,
-): Uint8Array {
-  const key = `${roadmap}:${layout}`;
-  const cached = layoutStageProjectionCache.get(key);
-  if (cached !== undefined) return new Uint8Array(cached);
-  const document = withLayout(roadmap === "matrix" ? liveMatrixV2Document() : liveTestingV2Document(), layout);
-  const projection = projectionForLayout(document, registry);
-  layoutStageProjectionCache.set(key, projection);
-  return new Uint8Array(projection);
-}
-
-function layoutPorts(
-  baseLayout: ProjectionLayout,
-  candidateLayout: ProjectionLayout,
-  mutation: LayoutMutation = "exact",
-): RoadmapCliPorts {
-  let baseMatrix: RoadmapDocumentV2 = withLayout(liveMatrixV2Document(), baseLayout);
-  let baseTesting: RoadmapDocumentV2 = withLayout(liveTestingV2Document(), baseLayout);
-  let candidateMatrix = withLayout(liveMatrixV2Document(), candidateLayout);
-  let candidateTesting = withLayout(liveTestingV2Document(), candidateLayout);
-  if (mutation === "content_drift") candidateMatrix = {
-    ...candidateMatrix,
-    records: candidateMatrix.records.map((record, index) => index === 0
-      ? { ...record, title: `${record.title} illicit layout-rider` }
-      : record),
-  };
-  if (mutation === "reference_drift") candidateTesting = {
-    ...candidateTesting,
-    references: candidateTesting.references.map((reference, index) => index === 0
-      ? { ...reference, source: candidateTesting.records[1]!.id }
-      : reference),
-  };
-  const registry = {
-    ...liveRegistry({ kind: "worktree" }),
-    production_output_stage: "both_authoritative" as const,
-    output_claims: productionOutputInventory("both_authoritative").claims,
-    matrix_status_inputs: liveMatrixStatusInputs(),
-  };
-  const candidateMatrixProjection = liveProjectionForLayout("matrix", candidateLayout, registry);
-  const candidateTestingProjection = liveProjectionForLayout("testing", candidateLayout, registry);
-  const baseMatrixProjection = liveProjectionForLayout("matrix", baseLayout, registry);
-  const baseTestingProjection = liveProjectionForLayout("testing", baseLayout, registry);
-  const candidate = new Map<RepoPath, Uint8Array>([
-    ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(candidateMatrix)],
-    ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(candidateTesting)],
-    ["cddl-matrix/ROADMAP.md" as RepoPath, candidateMatrixProjection],
-    ["tests/TESTING_ROADMAP.md" as RepoPath, candidateTestingProjection],
-  ]);
-  const base = new Map<RepoPath, Uint8Array>([
-    ["cddl-matrix/roadmap.toml" as RepoPath, composeRoadmapDocument(baseMatrix)],
-    ["tests/testing-roadmap.toml" as RepoPath, composeRoadmapDocument(baseTesting)],
-    ["cddl-matrix/ROADMAP.md" as RepoPath, baseMatrixProjection],
-    ["tests/TESTING_ROADMAP.md" as RepoPath, baseTestingProjection],
-  ]);
-  const readMap = (values: ReadonlyMap<RepoPath, Uint8Array>, path: RepoPath): Uint8Array => {
-    const value = values.get(path);
-    if (value === undefined) throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
-    return new Uint8Array(value);
-  };
-  return fakePorts({
-    read: (path) => readMap(candidate, path),
-    readAtCommit: (path) => readMap(base, path),
-    registry(revision) {
-      return { ...registry, revision };
-    },
-  });
-}
-
 function validTestingPorts(context: SelfTestContext, atomic?: FakeOptions["atomic"]): RoadmapCliPorts {
   const generic = validGenericAllPorts(context);
   return fakePorts({
@@ -619,18 +479,6 @@ function liveMatrixStatusInputs(): MatrixStatusInputs {
   };
 }
 
-function legacyMatrixStatusInputs(): MatrixStatusInputs {
-  const current = liveMatrixStatusInputs();
-  return {
-    ...current,
-    matrix: {
-      ...current.matrix,
-      annotations: current.matrix.annotations.slice(0, 293),
-      containment_ids: current.matrix.containment_ids.slice(0, 136),
-    },
-  };
-}
-
 /**
  * The generic all-roadmap ports serve the committed v2 sources, whose references resolve only
  * against the live registry view; an empty view was sufficient only while these ports served a
@@ -717,30 +565,6 @@ heading = ${JSON.stringify(referencedHeading)}
   });
 }
 
-interface ScopedDebtMutation {
-  readonly stage?: RegistryView["production_output_stage"];
-}
-
-function scopedDebtMutationPorts(mutation: ScopedDebtMutation): RoadmapCliPorts {
-  return fakePorts({
-    read(path) {
-      if (path === "cddl-matrix/roadmap.toml") return liveMatrixAuthoritativeSource();
-      throw roadmapFailure("E-SOURCE-MISSING", path, "$", "declared source is missing", 1);
-    },
-    registry(revision) {
-      const registry = liveRegistry(revision);
-      return {
-        ...registry,
-        production_output_stage: mutation.stage ?? "both_authoritative",
-        output_claims: productionOutputInventory(mutation.stage ?? "both_authoritative").claims,
-        matrix_status_inputs: mutation.stage === "pre_cutover"
-          ? legacyMatrixStatusInputs()
-          : liveMatrixStatusInputs(),
-      };
-    },
-  });
-}
-
 function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
   switch (id) {
     case "cli_selftest_exact": {
@@ -793,14 +617,14 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
       return pass("positive");
     }
     case "cli_query_each_view": {
-      for (const view of ["summary", "debt", "references", "signals", "actionables", "decisions",
+      for (const view of ["summary", "references", "signals", "actionables", "decisions",
         "families", "watches", "content", "output-owners"]) {
         expectFailure(
           ["--roadmap", "testing", "--query", view],
           expectedIssue("E-SOURCE-MISSING", "tests/testing-roadmap.toml", "$", "declared source is missing", 1),
         );
       }
-      return pass("positive", ["summary", "debt", "references", "signals",
+      return pass("positive", ["summary", "references", "signals",
         "actionables", "decisions", "families", "watches", "content", "output-owners"]);
     }
     case "cli_no_args_rejected": expectFailure([], cliIssue("E-CLI-MODE", 0, "exactly one primary mode is required"), fakePorts(), true); return pass("negative");
@@ -811,16 +635,9 @@ function grammarCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): S
     case "cli_roadmap_required": expectFailure(["--check"], cliIssue("E-CLI-ROADMAP", 0, "--roadmap is required for this mode"), fakePorts(), true); return pass("negative");
     case "cli_roadmap_forbidden_on_format": expectFailure(["--format-source", "cddl-matrix/roadmap.toml", "--roadmap", "matrix"], cliIssue("E-CLI-INCOMPATIBLE", 2, "--roadmap is forbidden for this mode"), fakePorts(), true); return pass("negative");
     case "cli_write_all_rejected": expectFailure(["--write", "--roadmap", "all"], cliIssue("E-CLI-INCOMPATIBLE", 1, "--write requires matrix or testing, not all"), fakePorts(), true); return pass("negative");
-    case "cli_against_requires_check":
-    case "cli_against_write_rejected": expectFailure(["--write", "--roadmap", "matrix", "--against", "bad"], cliIssue("E-CLI-AGAINST", 3, "--against is valid only with --check"), fakePorts(), true); return pass("negative");
-    case "cli_against_query_rejected": expectFailure(["--query", "summary", "--roadmap", "matrix", "--against", "bad"], cliIssue("E-CLI-AGAINST", 4, "--against is valid only with --check"), fakePorts(), true); return pass("negative");
-    case "cli_against_selftest_rejected": expectFailure(["--selftest", "--against", "bad"], cliIssue("E-CLI-AGAINST", 1, "--against is valid only with --check"), fakePorts(), true); return pass("negative");
-    case "cli_against_format_rejected": expectFailure(["--format-source", "cddl-matrix/roadmap.toml", "--against", "bad"], cliIssue("E-CLI-AGAINST", 2, "--against is valid only with --check"), fakePorts(), true); return pass("negative");
     case "cli_json_requires_query": expectFailure(["--check", "--roadmap", "matrix", "--json"], cliIssue("E-CLI-INCOMPATIBLE", 3, "--json is valid only with --query"), fakePorts(), true); return pass("negative");
     case "cli_as_of_requires_query": expectFailure(["--check", "--roadmap", "matrix", "--as-of", "2024-01-01"], cliIssue("E-CLI-INCOMPATIBLE", 3, "--as-of is valid only with --query"), fakePorts(), true); return pass("negative");
     case "cli_format_target_declared_only": expectFailure(["--format-source", "draft/roadmap.toml"], cliIssue("E-CLI-FORMAT-TARGET", 0, "--format-source must name a declared roadmap TOML source"), fakePorts(), true); return pass("negative");
-    case "cli_against_missing_value": expectFailure(["--check", "--roadmap", "matrix", "--against"], cliIssue("E-CLI-MISSING-VALUE", 3, "--against requires a value"), fakePorts(), true); return pass("negative");
-    case "cli_against_duplicate_value": expectFailure(["--check", "--roadmap", "matrix", "--against", HASH, "--against", HASH], cliIssue("E-CLI-DUPLICATE-OPTION", 5, "--against may occur exactly once"), fakePorts(), true); return pass("negative");
     case "cli_as_of_invalid_leap_day": return invalidDate("2023-02-29");
     case "cli_as_of_year_zero_rejected": return invalidDate("0000-01-01");
     case "cli_as_of_short_component_rejected": return invalidDate("2024-2-01");
@@ -842,46 +659,6 @@ function invalidDate(value: string): SelfTestResult {
 
 function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
   switch (id) {
-    case "cli_against_bad_length_git_format_no_usage":
-      expectFailure(["--check", "--roadmap", "matrix", "--against", "abc"], expectedIssue("E-GIT-BASE-FORMAT", "<git>", "against", "--against must be exactly 40 lowercase hexadecimal characters for repository object format sha1", 2)); return pass("negative");
-    case "cli_against_uppercase_git_format_no_usage":
-      expectFailure(["--check", "--roadmap", "matrix", "--against", "A".repeat(40)], expectedIssue("E-GIT-BASE-FORMAT", "<git>", "against", "--against must be exactly 40 lowercase hexadecimal characters for repository object format sha1", 2)); return pass("negative");
-    case "cli_against_nonhex_git_format_no_usage":
-      expectFailure(["--check", "--roadmap", "matrix", "--against", "z".repeat(40)], expectedIssue("E-GIT-BASE-FORMAT", "<git>", "against", "--against must be exactly 40 lowercase hexadecimal characters for repository object format sha1", 2)); return pass("negative");
-    case "cli_unresolved_base_exit_two": {
-      let lookups = 0;
-      expectFailure(
-        ["--check", "--roadmap", "matrix", "--against", HASH],
-        expectedIssue("E-GIT-BASE-LOOKUP", "<git>", "against", "--against names no commit object with that exact object ID", 2),
-        fakePorts({ resolve: () => { lookups += 1; throw new Error("unresolved object"); } }),
-      );
-      assert(lookups === 1, "unresolved Git vector did not perform exactly one lookup");
-      return pass("negative");
-    }
-    case "cli_noncommit_base_exit_two": {
-      const NONCOMMIT = "b".repeat(40);
-      let lookups = 0;
-      expectFailure(
-        ["--check", "--roadmap", "testing", "--against", NONCOMMIT],
-        expectedIssue("E-GIT-BASE-LOOKUP", "<git>", "against", "--against names no commit object with that exact object ID", 2),
-        fakePorts({ resolve: () => { lookups += 1; throw new Error("object is not a commit"); } }),
-      );
-      assert(lookups === 1, "noncommit Git vector did not perform exactly one independent lookup");
-      return pass("negative");
-    }
-    case "cli_against_unresolved_git_lookup_no_usage":
-      expectFailure(
-        ["--check", "--roadmap", "matrix", "--against", HASH],
-        expectedIssue("E-GIT-BASE-LOOKUP", "<git>", "against", "--against names no commit object with that exact object ID", 2),
-        fakePorts({ resolve: () => "b".repeat(40) }),
-      );
-      return pass("negative");
-    case "cli_against_incompatible_precedes_bad_format": {
-      let objectReads = 0;
-      expectFailure(["--write", "--roadmap", "matrix", "--against", "bad"], cliIssue("E-CLI-AGAINST", 3, "--against is valid only with --check"), fakePorts({ objectFormat: () => { objectReads++; return "sha1"; } }), true);
-      assert(objectReads === 0, "incompatible --against consulted Git format");
-      return pass("negative");
-    }
     case "exit_declared_source_enoent_one": expectFailure(["--query", "summary", "--roadmap", "matrix"], expectedIssue("E-SOURCE-MISSING", "cddl-matrix/roadmap.toml", "$", "declared source is missing", 1)); return pass("negative");
     case "exit_declared_projection_enoent_one": {
       const valid = validTestingPorts(context);
@@ -950,43 +727,6 @@ function gitAndExitCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext)
 
 function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestContext): SelfTestResult | undefined {
   switch (id) {
-    case "cli_against_projection_layout_promotion": {
-      const layouts = ["legacy_v1", "anchors_v1", "standing_v1", "unnumbered_v1", "curated_v1"] as const;
-      for (let index = 0; index < layouts.length - 1; index++) {
-        const baseLayout = layouts[index]!;
-        const candidateLayout = layouts[index + 1]!;
-        const layout = run(["--check", "--roadmap", "all", "--against", HASH],
-          layoutPorts(baseLayout, candidateLayout));
-        assert(layout.exit_code === 0 && layout.stderr.byteLength === 0 && text(layout.stdout).includes("CHECK OK\n"),
-          `exact adjacent ${baseLayout} to ${candidateLayout} projection-only promotion failed: ${text(layout.stderr)}`);
-      }
-      for (const [baseLayout, candidateLayout, mutation, path, label] of [
-        ["legacy_v1", "anchors_v1", "content_drift", "matrix.document.projection_layout", "content drift"],
-        ["standing_v1", "unnumbered_v1", "reference_drift", "testing.document.projection_layout", "unrelated reference drift"],
-        ["legacy_v1", "standing_v1", "exact", "matrix.document.projection_layout", "skipped layout stage"],
-        ["legacy_v1", "curated_v1", "exact", "matrix.document.projection_layout", "direct legacy-to-curated layout"],
-      ] as const) {
-        const rejected = run(["--check", "--roadmap", "all", "--against", HASH],
-          layoutPorts(baseLayout, candidateLayout, mutation));
-        assert(rejected.exit_code === 1 && rejected.stdout.byteLength === 0 &&
-          text(rejected.stderr).includes(`#${path}:`),
-        `${label} did not reject at its exact projection-layout boundary: ${text(rejected.stderr)}`);
-      }
-      for (let baseIndex = 1; baseIndex < layouts.length; baseIndex++) {
-        for (let candidateIndex = 0; candidateIndex < baseIndex; candidateIndex++) {
-          const baseLayout = layouts[baseIndex]!;
-          const candidateLayout = layouts[candidateIndex]!;
-          const issues = validateProjectionLayoutTransition(
-            withLayout(liveMatrixV2Document(), baseLayout),
-            withLayout(liveMatrixV2Document(), candidateLayout),
-          );
-          assert(issues.length === 1 && issues[0]!.code === "E-TRANSACTION-BASE" &&
-            issues[0]!.logical_path === "matrix.document.projection_layout",
-          `${baseLayout} to ${candidateLayout} reversal did not reject exactly`);
-        }
-      }
-      return pass("positive");
-    }
     case "cli_summary_open_family_lower_bound_only": {
       const result = run(["--roadmap", "matrix", "--query", "summary", "--json"], bothAuthoritativePorts());
       assert(result.exit_code === 0 && result.stderr.byteLength === 0, `live matrix summary failed: ${text(result.stderr)}`);
@@ -1172,80 +912,6 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         "testing nested-cargo source classification exception drifted");
       return pass("positive");
     }
-    case "query_debt_live_migration_floors": {
-      const result = run(["--roadmap", "all", "--query", "debt", "--json"], bothAuthoritativePorts());
-      assert(result.exit_code === 0 && result.stderr.byteLength === 0, `live debt query failed: ${text(result.stderr)}`);
-      const rows = JSON.parse(text(result.stdout)).roadmaps as readonly Record<string, any>[];
-      const matrix = rows.find((row) => row.roadmap === "matrix");
-      const testing = rows.find((row) => row.roadmap === "testing");
-      assert(matrix !== undefined && testing !== undefined, "live debt query omitted a roadmap");
-      const independentTotal = (row: Record<string, any>): number =>
-        Object.values(row.independent_counts as Record<string, number>).reduce((sum, value) => sum + value, 0);
-      const sorted = (values: readonly unknown[], key: (value: any) => string): boolean => {
-        const keys = values.map(key);
-        return JSON.stringify(keys) === JSON.stringify([...keys].sort((left, right) => left < right ? -1 : left > right ? 1 : 0));
-      };
-      assert(independentTotal(matrix) === 0, `matrix migration debt drifted: ${independentTotal(matrix)}`);
-      assert(independentTotal(testing) === 0, `testing migration debt drifted: ${independentTotal(testing)}`);
-      const zeroCounts = {
-        inferred_transitions: 0, pending_family_classifications: 0,
-        unmodelled_coordinates: 0, unrendered_fields: 0,
-      };
-      assert(JSON.stringify(matrix.independent_counts) === JSON.stringify(zeroCounts), "matrix category vector drifted");
-      assert(JSON.stringify(testing.independent_counts) === JSON.stringify(zeroCounts), "testing category vector drifted");
-      assert(
-        matrix.migration_progress.replacement_coverage.denominator === 85 &&
-          matrix.migration_progress.replacement_coverage.numerator === 85 &&
-          matrix.migration_progress.completion_audit.lane_blockers.length === 0 &&
-          matrix.migration_progress.completion_audit.join_blockers.length === 0,
-        "matrix exact completed migration facts drifted",
-      );
-      assert(
-        testing.migration_progress.replacement_coverage.denominator === 198 &&
-          testing.migration_progress.replacement_coverage.numerator === 198 &&
-          testing.migration_progress.completion_audit.lane_blockers.length === 0 &&
-          testing.migration_progress.completion_audit.join_blockers.length === 0,
-        "testing exact completed migration facts drifted",
-      );
-      for (const row of [matrix, testing]) {
-        const progress = row.migration_progress;
-        assert(progress.independent_debt.items.filter((item: any) => item.category === "unmodelled_coordinates").length === 0, `${row.roadmap} visible unmodelled coordinate floor drifted`);
-        assert(sorted(progress.replacement_coverage.covered_span_ids, String),
-          `${row.roadmap} covered span IDs are not canonical`);
-      }
-      return pass("positive");
-    }
-    case "query_debt_scoped_does_not_load_other_roadmap": {
-      const source = bothAuthoritativePorts();
-      const reads: RepoPath[] = [];
-      const ports = fakePorts({
-        read(path) {
-          reads.push(path);
-          return source.read.readDeclared(path);
-        },
-        registry: source.read.registryView,
-      });
-      const result = run(["--roadmap", "matrix", "--query", "debt", "--json"], ports);
-      assert(result.exit_code === 0 && result.stderr.byteLength === 0, `scoped debt query failed: ${text(result.stderr)}`);
-      const rows = JSON.parse(text(result.stdout)).roadmaps;
-      assert(rows.length === 1 && rows[0].roadmap === "matrix", "scoped debt query returned another roadmap");
-      assert(
-        JSON.stringify(reads) === JSON.stringify(["cddl-matrix/roadmap.toml"]),
-        `scoped debt query read set drifted or loaded unselected TOML/Markdown: ${JSON.stringify(reads)}`,
-      );
-      return pass("positive");
-    }
-    case "query_debt_all_reports_both": {
-      const result = run(["--roadmap", "all", "--query", "debt", "--json"], bothAuthoritativePorts());
-      assert(result.exit_code === 0 && result.stderr.byteLength === 0, `all debt query failed: ${text(result.stderr)}`);
-      const rows = JSON.parse(text(result.stdout)).roadmaps;
-      assert(
-        JSON.stringify(rows.map((row: { roadmap: string }) => row.roadmap)) === JSON.stringify(["matrix", "testing"]) &&
-          rows.every((row: Record<string, unknown>) => "migration_progress" in row),
-        "all debt query did not report both roadmap progress views in canonical order",
-      );
-      return pass("positive");
-    }
     case "cli_as_of_valid_leap_day": {
       const result = run(["--roadmap", "testing", "--query", "signals", "--as-of", "2024-02-29", "--json"], validTestingPorts(context));
       assert(result.exit_code === 0 && text(result.stdout).includes("2024-02-29"), "valid leap day was not carried into query output");
@@ -1315,7 +981,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
 
       const freshReads = { value: 0 };
       const fresh = run(
-        ["--roadmap", "testing", "--query", "debt", "--json"],
+        ["--roadmap", "testing", "--query", "summary", "--json"],
         authoritativeProjectionReferencePorts(
           context,
           freshHeading,
@@ -1332,7 +998,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const driftedHeading = `${freshHeading} (prior spelling)`;
       const driftedReads = { value: 0 };
       const drifted = run(
-        ["--roadmap", "testing", "--query", "debt", "--json"],
+        ["--roadmap", "testing", "--query", "summary", "--json"],
         authoritativeProjectionReferencePorts(context, driftedHeading, driftedHeading, driftedReads),
       );
       assert(
@@ -1347,7 +1013,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const missingHeading = "Selftest heading absent from every projection view";
       const missingReads = { value: 0 };
       const missing = run(
-        ["--roadmap", "testing", "--query", "debt", "--json"],
+        ["--roadmap", "testing", "--query", "summary", "--json"],
         authoritativeProjectionReferencePorts(
           context,
           missingHeading,
@@ -1368,19 +1034,6 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         logical_path: `reference["selftest-fresh-projection-heading"]`,
       });
       return pass("positive", subcases);
-    }
-    case "cli_against_matrix_check_allowed":
-    case "cli_against_testing_check_allowed":
-    case "cli_against_all_check_allowed": {
-      const roadmap = id.includes("matrix") ? "matrix" : id.includes("testing") ? "testing" : "all";
-      // --roadmap all fans the scoped comparison over matrix first, so its first unreadable
-      // declared source is the matrix TOML.
-      const source = roadmap === "testing" ? "tests/testing-roadmap.toml" : "cddl-matrix/roadmap.toml";
-      expectFailure(
-        ["--check", "--roadmap", roadmap, "--against", HASH],
-        expectedIssue("E-SOURCE-MISSING", source, "$", "declared source is missing", 1),
-      );
-      return pass("positive");
     }
     case "cli_production_port_factory_smoke": {
       let anchorReads = 0;

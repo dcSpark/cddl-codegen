@@ -57,8 +57,6 @@ import {
   identityOwnerClaimKey,
   validateGlobalIdentity,
 } from "../identity.ts";
-import { validateTransaction } from "../transaction.ts";
-import { debtOwnerIndex, type MigrationDebt } from "../debt.ts";
 import { buildExpectedChunks, createExpectedByteView, type CompletedRenderIr, type RenderChunk } from "../render_ir.ts";
 import { resolveManifest } from "../manifest.ts";
 import { renderCanonicalSemanticRecord } from "../adapters/engine.ts";
@@ -151,14 +149,6 @@ export const REQUIRED_IDENTITY_SELFTEST_CASE_IDS = [
   "test_symbol_fact_id_derivation_exact",
   "test_symbol_fact_duplicate_id_rejected",
   "test_symbol_fact_base_revision_isolated",
-  "transaction_single_roadmap_owner_removal_rejected",
-  "against_matrix_scoped_debt_allowed",
-  "against_testing_scoped_debt_allowed",
-  "against_per_roadmap_does_not_load_other_base",
-  "against_per_roadmap_candidate_global_collision_rejected",
-  "against_per_roadmap_absent_selected_source_rejected",
-  "against_per_roadmap_owner_change_requires_all",
-  "against_forged_debt_transition_facts_ignored",
 ] as const;
 
 export type RequiredIdentitySelfTestCaseId =
@@ -2295,241 +2285,6 @@ function c5Document(
   };
 }
 
-/**
- * Intrinsic v2 migration completion is audited against a complete candidate render IR, so every
- * scoped transaction vector supplies one for its synthetic document.
- */
-function c5Completed(document: RoadmapDocumentV2): CompletedRenderIr {
-  const placement = resolveManifest(document);
-  return buildExpectedChunks(document, placement.ops, {
-    renderSemanticRecord: renderCanonicalSemanticRecord,
-    resolveGeneratedSlot: (slot) => ({ binding: slot.binding, bytes: new Uint8Array() }),
-  });
-}
-
-function c5Registry(
-  revision: RegistryView["revision"],
-  overrides: Partial<RegistryView> = {},
-): RegistryView {
-  return fakeRegistryView({ revision, ...overrides });
-}
-
-function c5EmptyDebt(): MigrationDebt {
-  return { owners: new Map(), independent: new Map() };
-}
-
-function c5Debt(document: RoadmapDocument): MigrationDebt {
-  const owners = new Map<string, { key: Parameters<typeof debtOwnerIndex>[0]; state: "semantic" }>();
-  const add = (key: Parameters<typeof debtOwnerIndex>[0]): void => {
-    owners.set(debtOwnerIndex(key), { key, state: "semantic" });
-  };
-  const collectMarkdown = (value: unknown, path: string, out: string[]): void => {
-    if (value instanceof Uint8Array) {
-      if (path.endsWith("_md")) out.push(path);
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach((item, index) => collectMarkdown(item, `${path}[${index}]`, out));
-      return;
-    }
-    if (value !== null && typeof value === "object") {
-      for (const key of Object.keys(value).sort()) {
-        collectMarkdown((value as Record<string, unknown>)[key], `${path}.${key}`, out);
-      }
-    }
-  };
-  for (const record of document.records) {
-    const fields: string[] = [];
-    collectMarkdown(record.payload, "payload", fields);
-    for (const field of fields.sort()) add({
-      roadmap: document.document.roadmap,
-      owner_kind: "record",
-      owner_id: record.id,
-      owner_field: field,
-    });
-  }
-  for (const span of document.spans) {
-    add({
-      roadmap: document.document.roadmap,
-      owner_kind: "source_span",
-      owner_id: span.id,
-      owner_field: "coverage",
-    });
-  }
-  return { owners, independent: new Map() };
-}
-
-function assertIssue(values: readonly { code: string; logical_path?: string }[], code: string, message: string): void {
-  const matched = values.find((value) => value.code === code);
-  assert(matched !== undefined, `${message}: ${JSON.stringify(values)}`);
-  if (matched.logical_path !== undefined) {
-    observeSelfTestIssue(matched as { code: import("../errors.ts").IssueCode; logical_path: string });
-  }
-}
-
-/** The one transaction obligation that a single-roadmap scope must refuse outright. */
-function c5TransactionCase(id: C5SelfTestCaseId): boolean {
-  if (!id.startsWith("transaction_")) return false;
-  const active = c5Document("matrix", [c5ReadyRecord(C5_ID)]);
-  const empty = c5Document("matrix");
-  switch (id) {
-    case "transaction_single_roadmap_owner_removal_rejected": {
-      const baseIdentity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(active).indexes.identity_inputs] });
-      const candidateIdentity = validateGlobalIdentity({ documents: [] });
-      const result = validateTransaction({
-        scope: "matrix", against: C5_BASE,
-        load_base: () => ({
-          document: active, debt: c5Debt(active), identity: baseIdentity,
-          registry: c5Registry({ kind: "commit", commit: C5_BASE }),
-        }),
-        candidate_document: empty, candidate_debt: c5Debt(empty), candidate_completed: c5Completed(empty),
-        candidate_registry: c5Registry({ kind: "worktree" }),
-        candidate_global_identity: candidateIdentity,
-      });
-      assertIssue(result.issues, "E-TRANSACTION-OWNER", "single-roadmap scope cannot authorize owner removal");
-      return true;
-    }
-  }
-  return false;
-}
-
-/** Single-roadmap (`--roadmap <name>`) transaction scope: the base loader, the candidate
- * global-identity join, and the per-roadmap debt comparison. */
-function c5AgainstCase(id: C5SelfTestCaseId): boolean {
-  if (!id.startsWith("against_")) return false;
-  const roadmap: RoadmapName = id.includes("testing") ? "testing" : "matrix";
-  const activeId = roadmap === "matrix" ? C5_ID : C5_TESTING_ID;
-  const document = c5Document(roadmap, [c5ReadyRecord(activeId)]);
-  const identity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(document).indexes.identity_inputs] });
-  const baseFacts = {
-    document,
-    debt: c5Debt(document),
-    identity,
-    registry: c5Registry({ kind: "commit", commit: C5_BASE }),
-  };
-  const scoped = () => validateTransaction({
-    scope: roadmap,
-    against: C5_BASE,
-    load_base: () => baseFacts,
-    candidate_document: document,
-    candidate_debt: c5Debt(document),
-    candidate_completed: c5Completed(document),
-    candidate_registry: c5Registry({ kind: "worktree" }),
-    candidate_global_identity: identity,
-  });
-  switch (id) {
-    case "against_matrix_scoped_debt_allowed":
-    case "against_testing_scoped_debt_allowed":
-      assert(scoped().issues.length === 0, `${id} selected-only authoritative debt comparison must pass without another base roadmap`);
-      return true;
-    case "against_per_roadmap_does_not_load_other_base": {
-      const other: RoadmapName = roadmap === "matrix" ? "testing" : "matrix";
-      const byRoadmap = new Proxy({ [roadmap]: baseFacts } as Record<RoadmapName, typeof baseFacts>, {
-        get(target, property, receiver) {
-          if (property === other) throw new Error("unselected base read");
-          return Reflect.get(target, property, receiver);
-        },
-      });
-      const loaded: RoadmapName[] = [];
-      const result = validateTransaction({
-        scope: roadmap, against: C5_BASE,
-        load_base: (selected) => {
-          loaded.push(selected);
-          return byRoadmap[selected];
-        },
-        candidate_document: document, candidate_debt: c5Debt(document), candidate_completed: c5Completed(document),
-        candidate_registry: c5Registry({ kind: "worktree" }), candidate_global_identity: identity,
-      });
-      assert(result.issues.length === 0 && loaded.length === 1 && loaded[0] === roadmap, "selected scope must call only the selected pure base loader once");
-      return true;
-    }
-    case "against_per_roadmap_candidate_global_collision_rejected": {
-      const guard: CurrentGuard = {
-        id: activeId,
-        replacement_pin: { kind: "gate", gate_id: "roadmap_projection_check", claim_md: bytes("pin") },
-        owner_registry: "fixture-guards",
-        guard_role: "generic",
-      };
-      const collision = validateGlobalIdentity({
-        documents: [buildRoadmapIndexes(document).indexes.identity_inputs], current_guards: [guard],
-      });
-      const result = validateTransaction({
-        scope: roadmap, against: C5_BASE, load_base: () => baseFacts, candidate_document: document,
-        candidate_debt: c5Debt(document), candidate_completed: c5Completed(document),
-        candidate_registry: c5Registry({ kind: "worktree" }),
-        candidate_global_identity: collision,
-      });
-      assertIssue(result.issues, "E-OWNER-DUPLICATE", "candidate global collision must fail selected scope");
-      return true;
-    }
-    case "against_per_roadmap_absent_selected_source_rejected": {
-      const result = validateTransaction({
-        scope: roadmap, against: C5_BASE,
-        load_base: () => baseFacts,
-        candidate_debt: c5EmptyDebt(),
-        candidate_registry: c5Registry({ kind: "worktree" }),
-        candidate_global_identity: validateGlobalIdentity({ documents: [] }),
-      });
-      assertIssue(result.issues, "E-TRANSACTION-BASE", "selected scope requires an authoritative source");
-      return true;
-    }
-    case "against_per_roadmap_owner_change_requires_all": {
-      const result = validateTransaction({
-        scope: roadmap, against: C5_BASE, load_base: () => baseFacts, candidate_document: c5Document(roadmap),
-        candidate_debt: c5Debt(c5Document(roadmap)), candidate_completed: c5Completed(c5Document(roadmap)),
-        candidate_registry: c5Registry({ kind: "worktree" }),
-        candidate_global_identity: validateGlobalIdentity({ documents: [] }),
-      });
-      assertIssue(result.issues, "E-TRANSACTION-OWNER", "owner change requires all scope");
-      return true;
-    }
-    case "against_forged_debt_transition_facts_ignored": {
-      const rawId = activeId;
-      const semantic = c5ReadyRecord(rawId);
-      // A candidate-only record that claims document visibility is exactly the owner transition no
-      // caller-shaped fact may authorize.
-      const documentVisible: RoadmapDocumentV2["records"][number] = {
-        ...semantic,
-        projection_visibility: "document",
-      };
-      const baseDocument = c5Document(roadmap);
-      const candidateDocument = c5Document(roadmap, [documentVisible]);
-      const baseIdentity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(baseDocument).indexes.identity_inputs] });
-      const candidateIdentity = validateGlobalIdentity({ documents: [buildRoadmapIndexes(candidateDocument).indexes.identity_inputs] });
-      const forged = {
-        scope: roadmap,
-        against: C5_BASE,
-        load_base: () => ({
-          document: baseDocument,
-          debt: c5Debt(baseDocument),
-          identity: baseIdentity,
-          registry: c5Registry({ kind: "commit", commit: C5_BASE }),
-        }),
-        candidate_document: candidateDocument,
-        candidate_debt: c5Debt(candidateDocument),
-        candidate_registry: c5Registry({ kind: "worktree" }),
-        candidate_global_identity: candidateIdentity,
-        debt_transition_facts: { restructure_count: 1, retirement_count: 0 },
-      } as Parameters<typeof validateTransaction>[0];
-      const result = validateTransaction(forged);
-      const rejected = result.issues.find((issue) =>
-        issue.code === "E-DEBT-OWNER-REGRESSION" && issue.logical_path === `record[${JSON.stringify(rawId)}]`
-      );
-      assert(rejected !== undefined, `caller-shaped transition facts must be ignored by the public transaction input: ${JSON.stringify(result.issues)}`);
-      observeSelfTestIssue(rejected);
-      return true;
-    }
-  }
-  return false;
-}
-
-function executeC5(id: C5SelfTestCaseId): void {
-  assert(
-    c5TransactionCase(id) || c5AgainstCase(id),
-    `C5 case ${id} has no executable proof`,
-  );
-}
-
 const CASE_POLARITY = new Map<PermanentIdSelfTestCaseId, "positive" | "negative">([
   ["id_grammar_accept", "positive"],
   ["id_reserved_tokens", "negative"],
@@ -2542,11 +2297,7 @@ assert(CASE_POLARITY.size === PERMANENT_ID_SELFTEST_CASE_IDS.length, "permanent-
 
 const JOIN_CASE_IDS = REQUIRED_IDENTITY_SELFTEST_CASE_IDS.slice(
   PERMANENT_ID_SELFTEST_CASE_IDS.length,
-  40,
 ) as readonly JoinSelfTestCaseId[];
-
-const C5_CASE_IDS = REQUIRED_IDENTITY_SELFTEST_CASE_IDS.slice(40);
-type C5SelfTestCaseId = (typeof C5_CASE_IDS)[number];
 
 const POSITIVE_JOIN_CASES = new Set<JoinSelfTestCaseId>([
   "reference_each_kind",
@@ -2612,37 +2363,6 @@ const JOIN_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(JOIN_CASE_IDS
   },
 })));
 
-/** Every surviving C5 case is a single-roadmap (`--roadmap <name>`) transaction proof. */
-const POSITIVE_C5_CASES = new Set<C5SelfTestCaseId>([
-  "against_matrix_scoped_debt_allowed",
-  "against_testing_scoped_debt_allowed",
-  "against_per_roadmap_does_not_load_other_base",
-]);
-
-const C5_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(C5_CASE_IDS.map((id) => ({
-  id,
-  category: "identity-retirement" as const,
-  run(): SelfTestResult {
-    const polarity = POSITIVE_C5_CASES.has(id) ? "positive" as const : "negative" as const;
-    try {
-      executeC5(id);
-      return { ok: true, polarity };
-    } catch (error) {
-      return {
-        ok: false,
-        polarity,
-        issues: [{
-          code: "E-SELFTEST-CASE",
-          source: "<selftest>",
-          logical_path: id,
-          message: error instanceof Error ? error.message : String(error),
-          exit: 1,
-        }],
-      };
-    }
-  },
-})));
-
 export const IDENTITY_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
   [...PERMANENT_ID_SELFTEST_CASE_IDS.map((id) => ({
     id,
@@ -2671,6 +2391,6 @@ export const IDENTITY_SELFTEST_CASES: readonly SelfTestCase[] = Object.freeze(
         };
       }
     },
-  })), ...JOIN_SELFTEST_CASES, ...C5_SELFTEST_CASES],
+  })), ...JOIN_SELFTEST_CASES],
 );
 
