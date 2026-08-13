@@ -12,7 +12,6 @@ body_md = '''# Testing all-fields fixture
 '''
 entries = [
   "testing.fixture-task-ready",
-  "testing.fixture-signal-escalation",
   "testing.fixture-operational-watching",
   "testing.fixture-operational-retire-pending",
   "testing.fixture-operational-attributed",
@@ -56,7 +55,7 @@ evidence_ids = ["testing.fixture-evidence-gate"]
 [[record]]
 id = "testing.fixture-all-fields-raw"
 title = "All-fields raw owner"
-tags = ["coverage:admission_kind:independent_recurrence", "coverage:admission_kind:silent_corruption", "coverage:cost_posture:historical_observation", "coverage:cost_posture:live_registry", "coverage:incident_posture:attributed", "coverage:incident_posture:historical", "coverage:incident_posture:live", "coverage:payload_kind:testing_cost", "coverage:payload_kind:testing_incident", "coverage:payload_kind:testing_operational_watch", "coverage:payload_kind:testing_system_admission", "coverage:watch_state:attributed", "coverage:watch_state:retire_pending", "coverage:watch_state:watching"]
+tags = ["coverage:admission_kind:independent_recurrence", "coverage:admission_kind:silent_corruption", "coverage:cost_posture:historical_observation", "coverage:cost_posture:live_registry", "coverage:incident_posture:attributed", "coverage:incident_posture:historical", "coverage:incident_posture:live", "coverage:payload_kind:testing_cost", "coverage:payload_kind:testing_incident", "coverage:payload_kind:testing_operational_watch", "coverage:payload_kind:testing_system_admission", "coverage:transition_kind:watch_escalation", "coverage:watch_state:attributed", "coverage:watch_state:retire_pending", "coverage:watch_state:watching"]
 
 [record.payload]
 kind = "work"
@@ -254,28 +253,19 @@ detail_md = '''Watching operational watch.
 watch_state = "watching"
 signature_md = '''Synthetic watching signature.'''
 response_md = '''Capture the failure before responding.'''
-escalation_transition_id = "testing.fixture-signal-escalation"
 retirement_semantics_md = '''Retire after the watch predicate remains clear.'''
 
-[[record.payload.capture_step]]
-step_id = "capture"
-capture_md = '''Capture the full synthetic diagnostic.'''
-
-[[record]]
-id = "testing.fixture-signal-escalation"
-title = "Watch escalation"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Watch escalation signal.
-'''
-transition_kind = "watch_escalation"
+[record.payload.watch_escalation]
 failure_signature_md = '''The synthetic watch signature recurs.'''
 capture_procedure_md = '''Capture the exact fixture output.'''
 response_md = '''Attribute or quarantine the recurrence.'''
 escalation_action_md = '''Promote the watch to active repair work.'''
 retirement_semantics_md = '''Retire after the recurrence remains absent.'''
-evaluation = "unknown"
+evaluation = "met"
+
+[[record.payload.capture_step]]
+step_id = "capture"
+capture_md = '''Capture the full synthetic diagnostic.'''
 
 [[record]]
 id = "testing.fixture-task-ready"

@@ -6,8 +6,8 @@
 import type {
   AsOfDate,
   EvidencePayload,
+  NestedCadenceTransition,
   QueryView,
-  TransitionPayload,
 } from "./model/core.ts";
 import type { FinalizedRoadmap } from "./pipeline.ts";
 import { armOfPayload, armQueryEntries } from "./payload_descriptors.ts";
@@ -34,15 +34,9 @@ export function stableJsonValue(value: unknown): unknown {
 
 /** Derive only date-bearing query labels; authored qualitative/manual states stay authored. */
 function evaluateTemporalPayload(
-  payload: TransitionPayload | EvidencePayload,
+  payload: EvidencePayload,
   asOf: AsOfDate | undefined,
 ): string {
-  if (payload.kind === "transition") {
-    if (payload.transition_kind !== "cadence") return payload.evaluation;
-    if (payload.due_on === undefined) return "unknown";
-    if (asOf === undefined) return "unknown_no_as_of";
-    return asOf >= payload.due_on ? "due" : "not_due";
-  }
   if (payload.freshness !== "as_of") return payload.freshness;
   if (payload.valid_through === undefined) return "unknown";
   if (asOf === undefined) return "unknown_no_as_of";
@@ -145,13 +139,30 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
         references: item.document.references,
       })) };
     case "transitions": {
+      // Standalone transition records are unrepresentable (Phase 4 fold): the qualitative nested
+      // kinds ride their owners in the actionables/decisions/watches views, and this view keeps
+      // exactly the TEMPORAL rows an as-of date can move — nested cadences (surfaced under their
+      // owner's id) and as-of evidence freshness.
+      const evaluateCadence = (cadence: NestedCadenceTransition): string => {
+        if (cadence.due_on === undefined) return "unknown";
+        if (asOf === undefined) return "unknown_no_as_of";
+        return asOf >= cadence.due_on ? "due" : "not_due";
+      };
       const rows = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] => {
-        if (payload.kind === "transition") {
-          // The row's shape is the arm's own field list (descriptor-derived); evaluation is the
-          // one computed value, so it and the discriminant stay explicit here.
-          return [{ roadmap, id, transition_kind: payload.transition_kind,
-            evaluation: evaluateTemporalPayload(payload, asOf),
-            ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "transition_kind", "evaluation"])) }];
+        const cadence = payload.kind === "work" && payload.work_state === "armed"
+          ? payload.cadence
+          : payload.kind === "matrix_policy" && payload.policy_kind === "maintenance_protocol"
+          ? payload.cadence
+          : undefined;
+        if (cadence !== undefined) {
+          return [{
+            roadmap, id, transition_kind: "cadence", evaluation: evaluateCadence(cadence),
+            owner_reference_id: cadence.owner_reference_id, event_source: cadence.event_source,
+            period_or_event_md: cadence.period_or_event_md, checklist_md: cadence.checklist_md,
+            missed_action_md: cadence.missed_action_md,
+            last_completion_reference_id: cadence.last_completion_reference_id ?? null,
+            due_on: cadence.due_on ?? null, authored_as_of: cadence.as_of ?? null,
+          }];
         }
         if (payload.kind === "evidence" && payload.freshness === "as_of") {
           return [{
@@ -201,8 +212,6 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
           : [{ roadmap, id, ...Object.fromEntries(armQueryEntries(payload, ["detail_md"])) }]);
       const ready = rows.filter((row) => row.work_state === "ready");
       const armed = rows.filter((row) => row.work_state === "armed");
-      const transitionsById = new Map(payloadRows.flatMap(({ id, payload }) => payload.kind === "transition"
-        ? [[String(id), payload] as const] : []));
       const relations = prepared.flatMap((item) => item.document.relations);
       const blockedOrOwned = rows.filter((row) => ["blocked", "waiting_external", "delegated"].includes(String(row.work_state)))
         .map((row) => {
@@ -239,8 +248,7 @@ export function queryValue(prepared: readonly FinalizedRoadmap[], view: QueryVie
       const rows = payloadRows.flatMap(({ roadmap, id, payload }): readonly Record<string, unknown>[] =>
         payload.kind !== "decision" ? [] : [{ roadmap, id, decision_state: payload.decision_state,
           permanence: payload.decision_state === "pending" ? "pending" : payload.permanence,
-          transition_ids: "transition_ids" in payload ? payload.transition_ids ?? [] : [],
-          ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "decision_state", "permanence", "transition_ids"])) }]);
+          ...Object.fromEntries(armQueryEntries(payload, ["detail_md", "decision_state", "permanence"])) }]);
       return { evaluation_as_of, decisions: groupQueryRows(rows, (row) => String(row.decision_state)) };
     }
     case "watches":

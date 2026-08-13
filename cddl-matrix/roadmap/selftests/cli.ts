@@ -365,11 +365,30 @@ function temporalTestingPorts(
   const base = text(fixture(context, "positive/small-testing-v3.toml"))
     .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.toml", sourcePath)
     .replace("cddl-matrix/roadmap/fixtures/positive/small-testing-v3.expected.md", projectionPath);
+  // The cadence flavor rides an armed work owner: nested tables are a cadence's only remaining
+  // packaging (Phase 4 fold), and armed work is its testing-side home. The armed contract pulls
+  // in a live control, whose upstream_issue kind needs no registry-resolved reference.
   const payload = kind === "cadence"
     ? `[record.payload]
-kind = "transition"
+kind = "work"
 detail_md = '''Semantic testing detail.'''
-transition_kind = "cadence"
+work_state = "armed"
+work_intent = "build_system"
+work_kind = "infrastructure"
+risk = "false_pass_or_red"
+control_ids = ["testing.fixture-small-control"]
+
+[record.payload.promotion_trigger]
+observer = "operator"
+dimension = "count"
+action_on_fire_md = '''Act on the fixture trigger.'''
+evaluation = "unknown"
+
+[record.payload.promotion_trigger.predicate]
+predicate_kind = "event"
+event_md = '''A fixture event fires.'''
+
+[record.payload.cadence]
 owner_reference_id = "temporal-owner"
 event_source = "fixture-calendar"
 period_or_event_md = '''Review on the fixture date.'''
@@ -377,6 +396,18 @@ checklist_md = '''Check the decoded cadence.'''
 missed_action_md = '''Escalate the missed fixture cadence.'''
 due_on = "2025-01-01"
 evaluation = "unknown"
+
+[[record]]
+id = "testing.fixture-small-control"
+title = "Temporal fixture control"
+
+[record.payload]
+kind = "control"
+control_kind = "upstream_issue"
+control_state = "live"
+reference_ids = ["temporal-issue"]
+claim_md = '''The fixture issue control stays live.'''
+boundary_md = '''It covers only the temporal fixture.'''
 `
     : `[record.payload]
 kind = "evidence"
@@ -404,14 +435,31 @@ surfaces = ["fixture"]
     spliced !== base && spliced.includes(payload),
     "temporal payload splice matched nothing: the fixture no longer ends with [record.payload]",
   );
-  const source = withCrossRoadmapTestingExternTarget(UTF8.encode(spliced + `
+  // The splice appends records/references out of canonical order, so recompose canonically
+  // before the extern-target pass (which preserves already-canonical bytes).
+  const splicedCanonical = composeRoadmapDocument(decodeRoadmapSource(
+    UTF8.encode(spliced + `
 [[reference]]
 id = "temporal-owner"
 source = "testing.fixture-small-semantic"
 kind = "external_commit"
 repository = "fixture/repository"
 commit = "1111111111111111111111111111111111111111"
-`));
+` + (kind === "cadence"
+      ? `
+[[reference]]
+id = "temporal-issue"
+source = "testing.fixture-small-control"
+kind = "external_issue"
+repository = "fixture/repository"
+issue = "17"
+`
+      : "")),
+    sourcePath,
+    "testing",
+    false,
+  ));
+  const source = withCrossRoadmapTestingExternTarget(splicedCanonical);
   const projection = fixture(context, "positive/small-testing-v3.expected.md");
   return fakePorts({
     read(path) {
@@ -740,15 +788,14 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
         (decisions.held ?? []).every((row) => "rationale_md" in row && "reopening_signal" in row) &&
         (decisions.decided ?? []).every((row) => "rationale_md" in row && "authority_reference_id" in row),
       "decisions dashboard dropped its state-specific question/rationale/authority fields");
-      // Post-fold (Packet 3A-2) the transitions dashboard carries only STANDALONE transition records;
-      // the unblock/retirement kinds live nested on their owners and surface via actionables.
+      // Standalone transition records are unrepresentable (Phase 4 fold); the transitions
+      // dashboard carries exactly the temporal rows — nested cadences under their owners' ids,
+      // and as-of evidence freshness. The qualitative nested kinds surface via
+      // actionables/decisions/watches.
       const transitions = dashboards.get("transitions")!.transitions as Record<string, readonly Record<string, unknown>[]>;
-      assert(JSON.stringify(Object.keys(transitions)) === JSON.stringify(["cadence", "evidence_freshness",
-        "promotion_trigger", "reopening_signal", "watch_escalation"]),
-      "transitions dashboard transition grouping changed");
+      assert(JSON.stringify(Object.keys(transitions)) === JSON.stringify(["cadence", "evidence_freshness"]),
+        "transitions dashboard transition grouping changed");
       for (const [kind, required] of [
-        ["promotion_trigger", ["predicate", "action_on_fire_md"]],
-        ["watch_escalation", ["capture_procedure_md", "response_md", "escalation_action_md", "retirement_semantics_md"]],
         ["cadence", ["period_or_event_md", "checklist_md", "missed_action_md", "due_on"]],
         ["evidence_freshness", ["claim_md", "reference_ids", "scope", "valid_through", "unprobed_remainder_md"]],
       ] as const) {

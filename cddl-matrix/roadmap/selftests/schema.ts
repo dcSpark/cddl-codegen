@@ -138,8 +138,9 @@ function decodePayload(body: string, roadmap: RoadmapName): unknown {
 
 const READY = `kind = "work"\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nacceptance_md = """Accepted."""\npriority_band = "normal"\npriority_rationale_md = """Normal."""\n`;
 
+/** An armed work carrying the nested promotion trigger — the only remaining trigger packaging. */
 function predicateTransition(predicate: string): string {
-  return `kind = "transition"\ntransition_kind = "promotion_trigger"\nobserver = "operator"\ndimension = "count"\nobservable = "fixture"\naction_on_fire_md = """Act."""\nevaluation = "unknown"\n\n[p.predicate]\n${predicate}`;
+  return `kind = "work"\nwork_state = "armed"\nwork_intent = "optimize"\nwork_kind = "optimization"\nrisk = "cosmetic"\ncontrol_ids = ["matrix.fixture-control"]\n\n[p.promotion_trigger]\nobserver = "operator"\ndimension = "count"\nobservable = "fixture"\naction_on_fire_md = """Act."""\nevaluation = "unknown"\n\n[p.promotion_trigger.predicate]\n${predicate}`;
 }
 
 const FIXTURE_ROOT = "cddl-matrix/roadmap/fixtures" as RepoPath;
@@ -775,16 +776,16 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       return;
     }
     case "transition_observable_arm_dependent": {
-      const eventTransition = `kind = "transition"\ntransition_kind = "promotion_trigger"\nobserver = "operator"\ndimension = "count"\naction_on_fire_md = """Act."""\nevaluation = "unknown"\n\n[p.predicate]\npredicate_kind = "event"\nevent_md = """Event."""\nevidence_ids = ["matrix.fixture-evidence"]\n`;
+      const eventTransition = `kind = "work"\nwork_state = "armed"\nwork_intent = "optimize"\nwork_kind = "optimization"\nrisk = "cosmetic"\ncontrol_ids = ["matrix.fixture-control"]\n\n[p.promotion_trigger]\nobserver = "operator"\ndimension = "count"\naction_on_fire_md = """Act."""\nevaluation = "unknown"\n\n[p.promotion_trigger.predicate]\npredicate_kind = "event"\nevent_md = """Event."""\nevidence_ids = ["matrix.fixture-evidence"]\n`;
       const decodedEvent = decodePayload(eventTransition, "matrix");
-      assert(decodedEvent !== undefined, "event-condition transition decodes without a transition-level observable");
-      expectFailure(() => decodePayload(eventTransition.replace('dimension = "count"', 'dimension = "count"\nobservable = "fixture"'), "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"], "p.observable");
+      assert(decodedEvent !== undefined, "event-condition trigger decodes without a trigger-level observable");
+      expectFailure(() => decodePayload(eventTransition.replace('dimension = "count"', 'dimension = "count"\nobservable = "fixture"'), "matrix"), ["E-SCHEMA-FORBIDDEN-KEY"], "p.promotion_trigger.observable");
       const manualTransition = predicateTransition('predicate_kind = "manual"\nreview_procedure_md = """Review."""\nevidence_ids = ["matrix.fixture-evidence"]\n');
-      assert(decodePayload(manualTransition, "matrix") !== undefined, "manual-condition transition keeps its authored observable");
-      expectFailure(() => decodePayload(manualTransition.replace('observable = "fixture"\n', ""), "matrix"), ["E-SCHEMA-MISSING-KEY"], "p.observable");
+      assert(decodePayload(manualTransition, "matrix") !== undefined, "manual-condition trigger keeps its authored observable");
+      expectFailure(() => decodePayload(manualTransition.replace('observable = "fixture"\n', ""), "matrix"), ["E-SCHEMA-MISSING-KEY"], "p.promotion_trigger.observable");
       const quantitative = predicateTransition('predicate_kind = "quantitative"\ncomparator = "ge"\nthreshold = 2\nunit = "constructs"\nscope = "fixture"\nmeasurement = 1\nas_of = "2026-08-11"\nevidence_ids = ["matrix.fixture-evidence"]\n');
       assert(decodePayload(quantitative, "matrix") !== undefined, "quantitative predicate carries its optional evidence_ids");
-      expectFailure(() => decodePayload(quantitative.replace('observable = "fixture"\n', ""), "matrix"), ["E-SCHEMA-MISSING-KEY"], "p.observable");
+      expectFailure(() => decodePayload(quantitative.replace('observable = "fixture"\n', ""), "matrix"), ["E-SCHEMA-MISSING-KEY"], "p.promotion_trigger.observable");
       return;
     }
     case "domain_defect_regression_required": expectFailure(() => decodePayload(READY.replace('work_kind = "feature"', 'work_kind = "defect"'), "matrix"), ["E-SCHEMA-STATE"]); return;
@@ -802,13 +803,12 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       return;
     }
     case "domain_fired_transition_not_parked": {
-      // Deferred work is the one arm retaining the standalone-transition citation (Packet 3A-2);
-      // fixture-signal-a's evaluation is already "met", so retargeting the citation parks a
-      // fired transition.
+      // Deferred work's reopening signal is nested (Phase 4 fold); a deferred record whose nested
+      // signal already reads "met" is parking a fired transition.
       assert(context !== undefined, `${id} requires fixture ports`);
       const source = fixtureText(context, "all-fields/matrix-v3.toml");
-      const mutated = replaceAfter(source, 'id = "matrix.fixture-task-g"', 'transition_ids = ["matrix.fixture-signal-f"]', 'transition_ids = ["matrix.fixture-signal-a"]');
-      expectFailure(() => decodeRoadmapSource(text(mutated), "<fired-transition>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-g.transition_ids");
+      const mutated = replaceAfter(source, 'id = "matrix.fixture-task-g"', 'evaluation = "unmet"', 'evaluation = "met"');
+      expectFailure(() => decodeRoadmapSource(text(mutated), "<fired-transition>", "matrix"), ["E-SCHEMA-STATE"], "record.matrix.fixture-task-g.reopening_signal");
       return;
     }
     case "domain_already_met_transition_rejected": {
@@ -898,7 +898,7 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       return;
     }
     case "schema_due_on_valid_through_postures": {
-      expectFailure(() => decodePayload('kind = "transition"\ntransition_kind = "unblock_predicate"\nowner_reference_id = "owner"\nevent_md = """Event."""\ncheck_procedure_md = """Check."""\ndue_action_md = """Act."""\ndue_on = "2026-08-11"\nevaluation = "unknown"\n', "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]);
+      expectFailure(() => decodePayload('kind = "work"\nwork_state = "blocked"\nwork_intent = "repair"\nwork_kind = "feature"\nrisk = "cosmetic"\nblocker_md = """No."""\n\n[p.unblock_predicate]\nowner_reference_id = "owner"\nevent_md = """Event."""\ncheck_procedure_md = """Check."""\ndue_action_md = """Act."""\ndue_on = "2026-08-11"\nevaluation = "unknown"\n', "matrix"), ["E-SCHEMA-UNKNOWN-KEY"]);
       expectFailure(() => decodePayload('kind = "evidence"\nevidence_kind = "source_read"\nclaim_md = """Claim."""\nevidence_verdict = "confirmed"\nfreshness = "historical"\nreference_ids = ["source"]\nobserved_at = "2026-08-11"\nvalid_through = "2026-08-12"\nenvironment_md = """Env."""\nunprobed_remainder_md = """None."""\n\n[p.scope]\nsurfaces = ["fixture"]\n', "matrix"), ["E-SCHEMA-FORBIDDEN-KEY", "E-SCHEMA-STATE"]);
       return;
     }

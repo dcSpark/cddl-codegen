@@ -48,10 +48,6 @@ function decodeWatch(ctx: DecodeContext, raw: unknown, path: string): TestingOpe
     arm,
     { kind: "testing_operational_watch", watch_state: state },
   ) as unknown as TestingOperationalWatchPayload;
-  const record = payload as unknown as Record<string, unknown>;
-  if ((record.watch_escalation === undefined) === (record.escalation_transition_id === undefined)) {
-    schemaFail(ctx, "E-SCHEMA-STATE", path, "operational watch requires exactly one of a nested watch_escalation or escalation_transition_id");
-  }
   return payload;
 }
 

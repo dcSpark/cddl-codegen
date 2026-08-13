@@ -28,14 +28,6 @@ export type ReferenceKindName = Reference["kind"];
 export interface RoadmapTargetExpectation {
   readonly payload_kind: SemanticPayload["kind"];
   readonly work_kind?: "regression_gap";
-  readonly transition_kinds?: readonly (
-    | "promotion_trigger"
-    | "reopening_signal"
-    | "unblock_predicate"
-    | "watch_escalation"
-    | "retirement_predicate"
-    | "cadence"
-  )[];
   readonly control_state?: "live";
 }
 
@@ -122,9 +114,8 @@ export const CONTROL_KINDS = ["gate", "test", "fixture", "review_rule", "consume
 export const CONTROL_STATES = ["live", "proposed", "stale"] as const;
 export const DECISION_STATES = ["pending", "held", "decided"] as const;
 export const PERMANENCE = ["permanent", "reopenable"] as const;
-export const TRANSITION_KINDS = ["promotion_trigger", "reopening_signal", "unblock_predicate", "watch_escalation", "retirement_predicate", "cadence"] as const;
 export const PREDICATE_KINDS = ["quantitative", "event", "manual"] as const;
-export const SHARED_SEMANTIC_KINDS = ["work", "decision", "transition", "evidence", "control"] as const;
+export const SHARED_SEMANTIC_KINDS = ["work", "decision", "evidence", "control"] as const;
 export const CLOSEOUT_STATES = ["waiting", "due", "blocked"] as const;
 export const POLICY_KINDS = ["maintenance_protocol", "boundary"] as const;
 export const MATRIX_SEMANTIC_KINDS = ["matrix_external_closeout", "matrix_policy"] as const;
@@ -266,9 +257,6 @@ const LIVE_CONTROL_TARGET: RoadmapTargetExpectation = { payload_kind: "control",
 const REGRESSION_GAP_TARGET: RoadmapTargetExpectation = { payload_kind: "work", work_kind: "regression_gap" };
 const ADMISSION_TARGET: RoadmapTargetExpectation = { payload_kind: "testing_system_admission" };
 const INCIDENT_TARGET: RoadmapTargetExpectation = { payload_kind: "testing_incident" };
-const transitionTarget = (
-  ...kinds: NonNullable<RoadmapTargetExpectation["transition_kinds"]>[number][]
-): RoadmapTargetExpectation => ({ payload_kind: "transition", transition_kinds: kinds });
 
 const workCommon = (): PayloadField[] => [
   kindField(),
@@ -404,6 +392,8 @@ const nestedTable = (name: string, group: NestedGroup, presence: "required" | "o
   field(name, presence, { t: "table", group });
 
 const WORK_ARM_LIST: readonly PayloadArm[] = [
+  // Ready work may carry a reopening signal for the scope it deliberately does NOT take on: the
+  // item is buildable now, and the signal names the observable that would reopen its boundary.
   arm("ready work", [["work_state", ["ready"]]], [
     ...workCommon(),
     md("acceptance_md", "required", true),
@@ -411,7 +401,8 @@ const WORK_ARM_LIST: readonly PayloadArm[] = [
     md("priority_rationale_md", "required", true),
     idSet("control_ids", CONTROL_TARGET, "optional"),
     ...workTail(),
-  ], ["blocker_md", "transition_ids", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "unblock_predicate", "promotion_trigger", "reopening_signal", "retirement_predicate"]),
+    nestedTable("reopening_signal", NESTED_TRANSITION_GROUP, "optional"),
+  ], ["blocker_md", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "unblock_predicate", "promotion_trigger", "retirement_predicate"]),
   arm("blocked work", [["work_state", ["blocked"]]], [
     ...workCommon(),
     md("acceptance_md", "optional"),
@@ -419,23 +410,23 @@ const WORK_ARM_LIST: readonly PayloadArm[] = [
     idSet("control_ids", CONTROL_TARGET, "optional"),
     ...workTail(),
     nestedTable("unblock_predicate", NESTED_UNBLOCK_GROUP),
-  ], ["priority_band", "priority_rationale_md", "transition_ids", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "promotion_trigger", "reopening_signal", "retirement_predicate"]),
+  ], ["priority_band", "priority_rationale_md", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "promotion_trigger", "reopening_signal", "retirement_predicate"]),
+  // Armed work may additionally carry a cadence: a recurring checklist owned by the same record
+  // whose promotion trigger waits on its event.
   arm("armed work", [["work_state", ["armed"]]], [
     ...workCommon(),
     md("acceptance_md", "optional"),
     idSet("control_ids", LIVE_CONTROL_TARGET, "required", true),
     ...workTail(),
     nestedTable("promotion_trigger", NESTED_TRANSITION_GROUP),
-  ], ["priority_band", "priority_rationale_md", "blocker_md", "transition_ids", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "unblock_predicate", "reopening_signal", "retirement_predicate"]),
-  // Deferred work admits BOTH forms at once (re-cut ruling 3): the nested reopening signal and a
-  // citation of a standalone (rendered) transition record; the decoder requires at least one.
+    nestedTable("cadence", NESTED_CADENCE_GROUP, "optional"),
+  ], ["priority_band", "priority_rationale_md", "blocker_md", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "unblock_predicate", "reopening_signal", "retirement_predicate"]),
   arm("deferred work", [["work_state", ["deferred"]]], [
     ...workCommon(),
     md("acceptance_md", "optional"),
     idSet("control_ids", CONTROL_TARGET, "optional"),
-    idSet("transition_ids", transitionTarget("reopening_signal"), "optional", true),
     ...workTail(),
-    nestedTable("reopening_signal", NESTED_TRANSITION_GROUP, "optional"),
+    nestedTable("reopening_signal", NESTED_TRANSITION_GROUP),
   ], ["priority_band", "priority_rationale_md", "blocker_md", "external_owner_reference_id", "return_condition_md", "uncertainty_md", "unblock_predicate", "promotion_trigger", "retirement_predicate"]),
   // Waiting-external work carries exactly one of the two admissible transition contracts.
   arm("waiting external work", [["work_state", ["waiting_external"]]], [
@@ -446,20 +437,20 @@ const WORK_ARM_LIST: readonly PayloadArm[] = [
     ...workTail(),
     nestedTable("retirement_predicate", NESTED_RETIREMENT_GROUP, "optional"),
     nestedTable("unblock_predicate", NESTED_UNBLOCK_GROUP, "optional"),
-  ], ["priority_band", "priority_rationale_md", "blocker_md", "transition_ids", "return_condition_md", "uncertainty_md", "promotion_trigger", "reopening_signal"]),
+  ], ["priority_band", "priority_rationale_md", "blocker_md", "return_condition_md", "uncertainty_md", "promotion_trigger", "reopening_signal"]),
   arm("delegated work", [["work_state", ["delegated"]]], [
     ...workCommon(),
     md("acceptance_md", "optional"),
     idSet("control_ids", CONTROL_TARGET, "optional"),
     md("return_condition_md"),
     ...workTail(),
-  ], ["priority_band", "priority_rationale_md", "blocker_md", "transition_ids", "external_owner_reference_id", "uncertainty_md", "unblock_predicate", "promotion_trigger", "reopening_signal", "retirement_predicate"]),
+  ], ["priority_band", "priority_rationale_md", "blocker_md", "external_owner_reference_id", "uncertainty_md", "unblock_predicate", "promotion_trigger", "reopening_signal", "retirement_predicate"]),
   arm("pending review work", [["work_state", ["pending_review"]]], [
     ...workCommon(),
     idSet("control_ids", CONTROL_TARGET, "optional"),
     md("uncertainty_md"),
     ...workTail(),
-  ], ["acceptance_md", "priority_band", "priority_rationale_md", "blocker_md", "transition_ids", "external_owner_reference_id", "return_condition_md", "unblock_predicate", "promotion_trigger", "reopening_signal", "retirement_predicate"]),
+  ], ["acceptance_md", "priority_band", "priority_rationale_md", "blocker_md", "external_owner_reference_id", "return_condition_md", "unblock_predicate", "promotion_trigger", "reopening_signal", "retirement_predicate"]),
 ];
 
 const DECISION_ARM_LIST: readonly PayloadArm[] = [
@@ -469,7 +460,7 @@ const DECISION_ARM_LIST: readonly PayloadArm[] = [
     en("decision_state", DECISION_STATES),
     md("question_md"),
     nestedTable("unblock_predicate", NESTED_UNBLOCK_GROUP),
-  ], ["rationale_md", "authority_reference_id", "permanence", "transition_ids", "reopening_signal"]),
+  ], ["rationale_md", "authority_reference_id", "permanence", "reopening_signal"]),
   arm("held decision", [["decision_state", ["held"]]], [
     kindField(),
     detail(),
@@ -477,7 +468,7 @@ const DECISION_ARM_LIST: readonly PayloadArm[] = [
     md("rationale_md"),
     en("permanence", ["reopenable"]),
     nestedTable("reopening_signal", NESTED_TRANSITION_GROUP),
-  ], ["question_md", "authority_reference_id", "transition_ids", "unblock_predicate"]),
+  ], ["question_md", "authority_reference_id", "unblock_predicate"]),
   arm("decided permanent decision", [["decision_state", ["decided"]], ["permanence", ["permanent"]]], [
     kindField(),
     detail(),
@@ -485,7 +476,7 @@ const DECISION_ARM_LIST: readonly PayloadArm[] = [
     md("rationale_md"),
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
     en("permanence", PERMANENCE),
-  ], ["question_md", "transition_ids", "reopening_signal", "unblock_predicate"]),
+  ], ["question_md", "reopening_signal", "unblock_predicate"]),
   arm("decided reopenable decision", [["decision_state", ["decided"]], ["permanence", ["reopenable"]]], [
     kindField(),
     detail(),
@@ -494,81 +485,7 @@ const DECISION_ARM_LIST: readonly PayloadArm[] = [
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
     en("permanence", PERMANENCE),
     nestedTable("reopening_signal", NESTED_TRANSITION_GROUP),
-  ], ["question_md", "transition_ids", "unblock_predicate"]),
-];
-
-const triggerWhen = (predicateKinds: readonly string[]): readonly (readonly [string, readonly string[]])[] => [
-  ["transition_kind", ["promotion_trigger", "reopening_signal"]],
-  ["predicate.predicate_kind", predicateKinds],
-];
-
-const TRANSITION_ARM_LIST: readonly PayloadArm[] = [
-  arm("event-condition promotion or reopening signal", triggerWhen(["event"]), [
-    kindField(),
-    detail(),
-    en("transition_kind", TRANSITION_KINDS),
-    str("observer"),
-    str("dimension"),
-    md("action_on_fire_md"),
-    en("evaluation", EVALUATIONS),
-    field("predicate", "required", { t: "table", group: TRANSITION_PREDICATE_GROUP }),
-  ], ["observable"]),
-  arm("authored-condition promotion or reopening signal", triggerWhen(["quantitative", "manual"]), [
-    kindField(),
-    detail(),
-    en("transition_kind", TRANSITION_KINDS),
-    str("observer"),
-    str("dimension"),
-    str("observable"),
-    md("action_on_fire_md"),
-    en("evaluation", EVALUATIONS),
-    field("predicate", "required", { t: "table", group: TRANSITION_PREDICATE_GROUP }),
-  ]),
-  arm("unblock predicate", [["transition_kind", ["unblock_predicate"]]], [
-    kindField(),
-    detail(),
-    en("transition_kind", TRANSITION_KINDS),
-    refId("owner_reference_id", DURABLE_OWNER_REFERENCE_KINDS),
-    md("event_md"),
-    md("check_procedure_md"),
-    md("due_action_md"),
-    en("evaluation", EVALUATIONS),
-  ]),
-  arm("watch escalation", [["transition_kind", ["watch_escalation"]]], [
-    kindField(),
-    detail(),
-    en("transition_kind", TRANSITION_KINDS),
-    md("failure_signature_md"),
-    md("capture_procedure_md"),
-    md("response_md"),
-    md("escalation_action_md"),
-    md("retirement_semantics_md"),
-    en("evaluation", EVALUATIONS),
-  ]),
-  arm("retirement predicate", [["transition_kind", ["retirement_predicate"]]], [
-    kindField(),
-    detail(),
-    en("transition_kind", TRANSITION_KINDS),
-    refId("external_owner_reference_id", EXTERNAL_OWNER_REFERENCE_KINDS),
-    md("external_predicate_md"),
-    md("verification_md"),
-    md("due_action_md"),
-    en("evaluation", EVALUATIONS),
-  ]),
-  arm("cadence transition", [["transition_kind", ["cadence"]]], [
-    kindField(),
-    detail(),
-    en("transition_kind", TRANSITION_KINDS),
-    refId("owner_reference_id", DURABLE_OWNER_REFERENCE_KINDS),
-    str("event_source"),
-    md("period_or_event_md"),
-    md("checklist_md"),
-    md("missed_action_md"),
-    refId("last_completion_reference_id", DURABLE_OWNER_REFERENCE_KINDS, "optional", { absent: "null" }),
-    date("due_on", "optional", { absent: "null" }),
-    date("as_of", "optional", { rename: "authored_as_of", absent: "null" }),
-    en("evaluation", EVALUATIONS),
-  ]),
+  ], ["question_md", "unblock_predicate"]),
 ];
 
 export const EVIDENCE_SCOPE_GROUP: NestedGroup = Object.freeze({
@@ -681,9 +598,9 @@ const closeoutFields = (state: "waiting" | "due" | "blocked"): PayloadField[] =>
 ];
 
 const CLOSEOUT_ARM_LIST: readonly PayloadArm[] = [
-  arm("waiting matrix closeout", [["closeout_state", ["waiting"]]], closeoutFields("waiting"), ["blocker_md", "transition_ids"]),
-  arm("due matrix closeout", [["closeout_state", ["due"]]], closeoutFields("due"), ["blocker_md", "transition_ids"]),
-  arm("blocked matrix closeout", [["closeout_state", ["blocked"]]], closeoutFields("blocked"), ["transition_ids"]),
+  arm("waiting matrix closeout", [["closeout_state", ["waiting"]]], closeoutFields("waiting"), ["blocker_md"]),
+  arm("due matrix closeout", [["closeout_state", ["due"]]], closeoutFields("due"), ["blocker_md"]),
+  arm("blocked matrix closeout", [["closeout_state", ["blocked"]]], closeoutFields("blocked")),
 ];
 
 const POLICY_ARM_LIST: readonly PayloadArm[] = [
@@ -694,7 +611,7 @@ const POLICY_ARM_LIST: readonly PayloadArm[] = [
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
     md("protocol_md"),
     nestedTable("cadence", NESTED_CADENCE_GROUP),
-  ], ["cadence_transition_id", "reopening_transition_id", "reopening_signal"]),
+  ], ["reopening_signal"]),
   arm("matrix permanent boundary", [["policy_kind", ["boundary"]], ["permanence", ["permanent"]]], [
     kindField(),
     detail(),
@@ -702,7 +619,7 @@ const POLICY_ARM_LIST: readonly PayloadArm[] = [
     refId("authority_reference_id", AUTHORITATIVE_REFERENCE_KINDS),
     md("rationale_md"),
     en("permanence", PERMANENCE),
-  ], ["cadence_transition_id", "reopening_transition_id", "cadence", "reopening_signal"]),
+  ], ["cadence", "reopening_signal"]),
   arm("matrix reopenable boundary", [["policy_kind", ["boundary"]], ["permanence", ["reopenable"]]], [
     kindField(),
     detail(),
@@ -711,7 +628,7 @@ const POLICY_ARM_LIST: readonly PayloadArm[] = [
     md("rationale_md"),
     en("permanence", PERMANENCE),
     nestedTable("reopening_signal", NESTED_TRANSITION_GROUP),
-  ], ["cadence_transition_id", "reopening_transition_id", "cadence"]),
+  ], ["cadence"]),
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -721,8 +638,6 @@ export const CAPTURE_STEP_GROUP: NestedGroup = Object.freeze({
   arms: [arm("watch capture step", [], [slug("step_id"), md("capture_md")])],
 });
 
-// A watch carries exactly one of the two escalation forms: the nested watch_escalation, or a
-// citation of a standalone (rendered) watch-escalation transition record (re-cut ruling 2).
 const watchFields = (state: "watching" | "attributed" | "retire_pending"): PayloadField[] => [
   kindField(),
   detail(),
@@ -733,10 +648,9 @@ const watchFields = (state: "watching" | "attributed" | "retire_pending"): Paylo
     refId("operating_rule_reference_id", ["file_heading", "gate"]),
   ]),
   md("response_md"),
-  idField("escalation_transition_id", transitionTarget("watch_escalation"), "optional"),
   ...(state === "retire_pending" ? [refId("retirement_reference_id", ["file_heading", "gate", "test_symbol"])] : []),
   md("retirement_semantics_md"),
-  nestedTable("watch_escalation", NESTED_WATCH_ESCALATION_GROUP, "optional"),
+  nestedTable("watch_escalation", NESTED_WATCH_ESCALATION_GROUP),
   field("capture_step", "required", {
     t: "array_table",
     group: CAPTURE_STEP_GROUP,
@@ -818,7 +732,6 @@ const ADMISSION_ARM_LIST: readonly PayloadArm[] = [
 export const PAYLOAD_KIND_ARMS: Readonly<Record<SemanticPayload["kind"], readonly PayloadArm[]>> = Object.freeze({
   work: WORK_ARM_LIST,
   decision: DECISION_ARM_LIST,
-  transition: TRANSITION_ARM_LIST,
   evidence: EVIDENCE_ARM_LIST,
   control: CONTROL_ARM_LIST,
   matrix_external_closeout: CLOSEOUT_ARM_LIST,
@@ -959,12 +872,6 @@ export const DISCRIMINATOR_ROWS = Object.freeze({
     ["kind", "decision_state", "permanence"],
     DECISION_ARM_LIST.slice(2),
   ),
-  transition: discriminatorRow("transition discriminator", ["kind", "transition_kind"], TRANSITION_ARM_LIST),
-  transition_predicate_presence: discriminatorRow(
-    "transition predicate presence",
-    ["kind", "transition_kind", "predicate"],
-    TRANSITION_ARM_LIST.slice(0, 2),
-  ),
   transition_predicate: discriminatorRow(
     "transition predicate discriminator",
     ["predicate_kind"],
@@ -992,13 +899,10 @@ export const SHARED_SEMANTIC_SCHEMA_ROW_LIST: readonly ExactSchemaRow[] = Object
   ...WORK_ARM_LIST.map((entry) => entry.row),
   ...DECISION_ARM_LIST.slice(0, 3).map((entry) => entry.row),
   DECISION_ARM_LIST[3]!.row,
-  TRANSITION_ARM_LIST[0]!.row,
-  ...TRANSITION_ARM_LIST.slice(2).map((entry) => entry.row),
   ...TRANSITION_PREDICATE_GROUP.arms.map((entry) => entry.row),
   EVIDENCE_ARM_LIST[0]!.row,
   EVIDENCE_SCOPE_GROUP.arms[0]!.row,
   CONTROL_ARM_LIST[0]!.row,
-  TRANSITION_ARM_LIST[1]!.row,
   ...NESTED_TRANSITION_GROUP.arms.map((entry) => entry.row),
   NESTED_UNBLOCK_GROUP.arms[0]!.row,
   NESTED_WATCH_ESCALATION_GROUP.arms[0]!.row,

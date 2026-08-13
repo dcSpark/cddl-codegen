@@ -3,8 +3,6 @@ import type {
   DecisionPayload,
   EvidencePayload,
   SharedSemanticPayload,
-  TransitionPayload,
-  TransitionPredicate,
   WorkPayload,
 } from "../model/core.ts";
 import type { SemanticPayload } from "../model/documents.ts";
@@ -24,8 +22,6 @@ import {
   RISKS,
   SHARED_SEMANTIC_KINDS,
   SHARED_SEMANTIC_SCHEMA_ROW_LIST,
-  TRANSITION_PREDICATE_GROUP,
-  TRANSITION_KINDS,
   WORK_INTENTS,
   WORK_KINDS,
   WORK_STATES,
@@ -55,7 +51,6 @@ export const SEMANTIC_ENUM_FIELDS: readonly EnumSchemaField[] = [
   { name: "priority_band", values: PRIORITIES },
   { name: "decision_state", values: DECISION_STATES },
   { name: "decision_permanence", values: PERMANENCE },
-  { name: "transition_kind", values: TRANSITION_KINDS },
   { name: "transition_evaluation", values: EVALUATIONS },
   { name: "predicate_kind", values: PREDICATE_KINDS },
   { name: "comparator", values: COMPARATORS },
@@ -83,9 +78,6 @@ function decodeWork(ctx: DecodeContext, raw: unknown, path: string): WorkPayload
     schemaFail(ctx, "E-SCHEMA-STATE", path, "ready missing-system work requires an admission ID");
   }
   const record = payload as unknown as Record<string, unknown>;
-  if (state === "deferred" && record.reopening_signal === undefined && record.transition_ids === undefined) {
-    schemaFail(ctx, "E-SCHEMA-STATE", path, "deferred work requires a nested reopening_signal or a standalone transition citation");
-  }
   if (state === "waiting_external" && (record.retirement_predicate === undefined) === (record.unblock_predicate === undefined)) {
     schemaFail(ctx, "E-SCHEMA-STATE", path, "waiting-external work requires exactly one of retirement_predicate or unblock_predicate");
   }
@@ -109,31 +101,6 @@ function decodeDecision(ctx: DecodeContext, raw: unknown, path: string): Decisio
     arm,
     { kind: "decision", decision_state: state, permanence },
   ) as unknown as DecisionPayload;
-}
-
-function decodeTransition(ctx: DecodeContext, raw: unknown, path: string): TransitionPayload {
-  const pre = expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.transition);
-  const kind = expectEnum(ctx, requiredValue(pre, "transition_kind"), TRANSITION_KINDS, p(path, "transition_kind"));
-  if (kind === "promotion_trigger" || kind === "reopening_signal") {
-    // The trigger condition's home is arm-dependent: an event predicate carries it as
-    // predicate.event_md (transition-level observable is forbidden), while manual and quantitative
-    // predicates have no nested condition field, so observable is required exactly there.
-    const predicate = decodePredicate(
-      ctx,
-      requiredValue(expectExactTable(ctx, raw, path, DISCRIMINATOR_ROWS.transition_predicate_presence), "predicate"),
-      p(path, "predicate"),
-    ) as unknown as TransitionPredicate;
-    const arm = armForDiscriminants("transition", { transition_kind: kind, predicate });
-    return decodeArmFields(
-      ctx,
-      raw,
-      path,
-      arm,
-      { kind: "transition", transition_kind: kind, predicate },
-    ) as unknown as TransitionPayload;
-  }
-  const arm = armForDiscriminants("transition", { transition_kind: kind });
-  return decodeArmFields(ctx, raw, path, arm, { kind: "transition", transition_kind: kind }) as unknown as TransitionPayload;
 }
 
 function decodeEvidence(ctx: DecodeContext, raw: unknown, path: string): EvidencePayload {
@@ -184,7 +151,6 @@ export function decodeSharedSemanticPayload(
   switch (kind) {
     case "work": return decodeWork(ctx, raw, path);
     case "decision": return decodeDecision(ctx, raw, path);
-    case "transition": return decodeTransition(ctx, raw, path);
     case "evidence": return decodeEvidence(ctx, raw, path);
     case "control": return decodeControl(ctx, raw, path);
     default: return undefined;

@@ -320,7 +320,6 @@ const MATRIX_RECORD_IDS = [
   ...suffixed("matrix.fixture-policy-", "abc"),
   "matrix.fixture-raw-owner",
   "matrix.fixture-semantic-owner",
-  ...suffixed("matrix.fixture-signal-", "abcdefghijk"),
   ...suffixed("matrix.fixture-task-", "abcdefghij"),
   ...suffixed("matrix.fixture-upstream-", "abc"),
 ];
@@ -365,29 +364,27 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
       ...suffixed("matrix.fixture-policy-", "abc"),
       "matrix.fixture-semantic-owner",
     ],
-    "semantic:transition": suffixed("matrix.fixture-signal-", "abcdefghijk"),
     "semantic:work": [
       "matrix.fixture-raw-owner",
       ...suffixed("matrix.fixture-task-", "abcdefghij"),
     ],
   },
   id_use_roles: {
-    section_entry: 53,
+    section_entry: 42,
     parent_record: 1,
-    provider: 53,
+    provider: 42,
     reference_source: 12,
     reference_target: 1,
     relation_source: 10,
     relation_target: 10,
-    semantic_target: 18,
+    semantic_target: 15,
   },
   semantic_targets: {
     "matrix.fixture-control-a": 2,
-    "matrix.fixture-evidence-a": 7,
+    "matrix.fixture-evidence-a": 6,
     "matrix.fixture-evidence-b": 2,
-    "matrix.fixture-evidence-c": 3,
+    "matrix.fixture-evidence-c": 2,
     "matrix.fixture-evidence-d": 1,
-    "matrix.fixture-signal-f": 1,
     "matrix.fixture-task-b": 2,
   },
   reference_uses: {
@@ -396,7 +393,7 @@ const MATRIX_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     "ref-feature": 1,
     "ref-file": 12,
     "ref-gate": 6,
-    "ref-issue": 17,
+    "ref-issue": 15,
     "ref-release": 1,
     "ref-roadmap": 2,
     "ref-spec": 3,
@@ -455,7 +452,6 @@ const TESTING_RECORD_IDS = [
   "testing.fixture-operational-attributed",
   "testing.fixture-operational-retire-pending",
   "testing.fixture-operational-watching",
-  "testing.fixture-signal-escalation",
   "testing.fixture-task-ready",
 ];
 
@@ -465,7 +461,6 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
   payloads: {
     "semantic:control": ["testing.fixture-control-review"],
     "semantic:evidence": ["testing.fixture-evidence-gate"],
-    "semantic:transition": ["testing.fixture-signal-escalation"],
     "semantic:testing_cost": [
       "testing.fixture-all-fields-semantic",
       "testing.fixture-cost-historical",
@@ -490,17 +485,16 @@ const TESTING_ALL_FIELDS_EXPECTATION: FixtureIndexExpectation = {
     ],
   },
   id_use_roles: {
-    section_entry: 15,
-    provider: 15,
+    section_entry: 14,
+    provider: 14,
     reference_source: 9,
-    semantic_target: 10,
+    semantic_target: 9,
   },
   semantic_targets: {
     "testing.fixture-admission-independent": 1,
     "testing.fixture-evidence-gate": 6,
     "testing.fixture-incident-attributed": 1,
     "testing.fixture-incident-live": 1,
-    "testing.fixture-signal-escalation": 1,
   },
   reference_uses: {
     "control-review-heading": 1,
@@ -913,16 +907,9 @@ function assertCommittedFixtureIndexes(bundle: IdentityFixtureBundle): void {
           payload_records: payloadRecords,
         }, path);
       };
-      // The nested transition forms (Packet 3A-2) make a wrong-kind target unrepresentable for
-      // blocked/armed work, closeouts, and policies; the one remaining matrix citation surface is
-      // deferred work's standalone-transition transition list.
-      assert(
-        mutateSemanticTarget("fixture-task-g\"].payload.transition_ids", (payload) => ({
-          ...payload,
-          transition_kind: "cadence",
-        })).some((value) => value.code === "E-REFERENCE-FORBIDDEN" && value.logical_path.includes("fixture-task-g")),
-        "deferred work must reject a cadence target in place of its reopening signal",
-      );
+      // Every transition is a nested table (Packet 3A-2, completed by Phase 4's fold of the last
+      // rendered signals), so a wrong-kind transition target is unrepresentable rather than
+      // validated; the remaining semantic-target joins are the typed ID lists below.
       assert(
         mutateSemanticTarget("fixture-task-f\"].payload.control_ids", (payload) => ({
           ...payload,

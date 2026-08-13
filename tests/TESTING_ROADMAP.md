@@ -392,6 +392,12 @@ At the pinned cddl revision (`ac1b98ec`) a
     Each is pinned cross-module by exactly one hand fixture cell (`tests/multifile`'s `open_flat` /
     `open_nested` / `open_tail` in `qux.cddl`, whose key/value/element live in `a`, `a/c/foo` and
     `b/bar`, compiled wasm-side under both fixture profiles) rather than by a grid.
+    - **Reopening signal:** a THIRD construct joins the flat-walked set — countable in-tree as the
+      explicit container mints in `generation/mod.rs` that exist because the conceptual visitor
+      cannot see the composite (two today, both listed above). At three, per-construct hand cells
+      stop being cheaper than the grid row, and the cross-axis coverage the grid gives for free
+      (placement × reference mode × profile) is coverage three constructs are each doing without.
+
     - **What one hand cell per construct does not buy, established by the escape that produced this
       entry.** A rest row whose inner types lived in another file scope emitted two unresolved-name
       classes at once: the module's rest accessor returned a wrapper class minted at the crate ROOT
@@ -405,14 +411,6 @@ At the pinned cddl revision (`ac1b98ec`) a
       shapes only; a construct that exists only INSIDE a record has no row it can occupy, which is
       why the two above are hand cells. Extending that axis to record-embedded shapes is the
       concrete build.
-    <a id="roadmap-id-testing.container-combinations.reopening-signal"></a>
-    <sub>transition · transition_kind=reopening_signal · predicate.predicate_kind=quantitative</sub>
-    - **Reopening signal:** a THIRD construct joins the flat-walked set — countable in-tree as the
-      explicit container mints in `generation/mod.rs` that exist because the conceptual visitor
-      cannot see the composite (two today, both listed above). At three, per-construct hand cells
-      stop being cheaper than the grid row, and the cross-axis coverage the grid gives for free
-      (placement × reference mode × profile) is coverage three constructs are each doing without.
-
 <a id="roadmap-id-testing.generated-local-collision-class-refused-mangled-refusal-s"></a>
 <sub>control</sub>
 - **The generated-local collision class is refused, not mangled — and the refusal's shape scope
@@ -454,6 +452,11 @@ At the pinned cddl revision (`ac1b98ec`) a
     `from_json` — per posture and in both directions, against a table it carries in source. A
     SEVENTH member, added to the emitter and not to that table, is caught by nothing: the table is
     the vocabulary, and it is written by hand.
+    - **Reopening signal:** a consumer reporting a wasm member absent that the rust crate has. That
+      reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose rust
+      counterpart they can point at), and the count of silently-missing members is the dimension
+      along which a hand-listed vocabulary stops being maintainable.
+
     - **Why the parity gate cannot host the generalization.** `wasm_api_parity` exists to report
       "a rust member with no wasm counterpart", but its rust-side walk reads INHERENT impls only
       (`syn::Item::Impl(im) if im.trait_.is_none()`) and documents the exclusion of trait impls as a
@@ -465,13 +468,6 @@ At the pinned cddl revision (`ac1b98ec`) a
       the wasm side. Widening the walk to trait impls would drown the differential in the
       `From`/`AsRef` noise the exemption exists to remove; the generalization wants its own
       mechanism, keyed on the trait set the wasm face promises to mirror.
-    <a id="roadmap-id-testing.wasm-door-vocabulary.reopening-signal"></a>
-    <sub>transition · transition_kind=reopening_signal · predicate.predicate_kind=event</sub>
-    - **Reopening signal:** a consumer reporting a wasm member absent that the rust crate has. That
-      reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose rust
-      counterpart they can point at), and the count of silently-missing members is the dimension
-      along which a hand-listed vocabulary stops being maintainable.
-
 <a id="roadmap-id-testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns"></a>
 <sub>decision · decision_state=pending</sub>
 - **A maintainer ruling to force: the convenience `to_cbor_bytes()` door turns `float16`'s loud
@@ -1997,16 +1993,12 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   between the mirror's `MIRRORED_DIRECTIVES` and the authority's `tag("@…")` literals at import
   time, so `project_corpus` (fast tier, CI) fires the moment a directive is added or removed on
   either side. Remaining work, each piece behind its trigger:
-  <a id="roadmap-id-testing.twin-implementation.read-caught-instance-trigger"></a>
-  <sub>transition · transition_kind=promotion_trigger · predicate.predicate_kind=event</sub>
   - *On the next read-caught instance of the class:* build the mechanical layer — a
     same-construct differential sweep (emit one bounded/flagged construct per site class — member
     ctor/setter, wrapper `new()`/deserialize, primitive-deserialize `.and_then`, collection len
     check — and diff the check conditions + failure payloads, ledgering deliberate site-specific
     differences), plus the cheap grep half: a snapshot-wide wart scan (same-N `< N || > N`, dead
     `< 0` over unsigned/`len()` exprs) in the spirit of the doubled-doc-marker scan above.
-  <a id="roadmap-id-testing.twin-implementation.comment-ast-change-cadence"></a>
-  <sub>transition · transition_kind=cadence</sub>
   - *On the next `comment_ast` grammar change of ANY form (not just a new directive):* do the AST
     floor instead of hand-extending `DSL_TAGS` again — parse the comments with the real
     `comment_ast` via a small `examples/` binary, as the role floor already does with
@@ -2885,8 +2877,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   permanently-red gate asserts nothing a doc does not). The unfiled upstream report with both
   reproducer recipes and the full matrix is the gitignored `draft/` LLD-crash note (conclusion and
   numbers recorded here because that note is checkout-local).
-  <a id="roadmap-id-testing.workspace-wasip2.reopening-signal"></a>
-  <sub>transition · transition_kind=reopening_signal · predicate.predicate_kind=event</sub>
   - **Reopening signal:** an upstream LLD fix reaching the pinned toolchain (re-measure BOTH
     matrix cells before believing it — a single green cell is what the 2026-08-08 correction was
     shipped on), or a consumer reporting the linker SIGSEGV from their own both-faces workspace's
@@ -2907,8 +2897,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   pinned lockfile, or a second node in the gate's provisioning preflight). Each is a
   fixture-and-lockfile change rather than new machinery, so what is deferred is coverage breadth and
   the cold-run cost that buys it — none of the four sits on the path the motivating consumer takes.
-  <a id="roadmap-id-testing.component-js-probe.reopening-signal"></a>
-  <sub>transition · transition_kind=reopening_signal · predicate.predicate_kind=event</sub>
   - **Reopening signal:** a consumer reporting a JS-side failure on one of those axes — the party
     running the browser build, the preserve posture or a newer jco is the only one who can see it
     first, and the report names which axis to probe. The gate's exact pins are what make such a
@@ -3266,19 +3254,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 - **Exclusion-record reasons are informational, not interchange.** Consumers never parse the text
   after `; unexported: <ident> — `; wording may change freely. If tooling ever wants to act on
   exclusion REASONS, that's a dialect v2 field, not a regex over prose.
-  <a id="roadmap-id-testing.scratch-retention.reopening-signal"></a>
-  <sub>transition · transition_kind=watch_escalation</sub>
-  - **Reopening signal** (for a bounded named scratch root the tiers reuse and truncate, which
-    retires debris by construction rather than by age): a disk-floor refusal or an ENOSPC gate death
-    on a machine whose SAME run's sweep line reported nothing removed. Both halves are in the one
-    log the operator already has, so the report arrives self-diagnosing.
-  Two corroborating
-  sightings from the concurrent session, same saturation window: a first-ever generation run
-  exiting 1 whose only capture went through `tail -3` (evidence burned — the exact failure mode
-  the evidence-preservation rule names; green on immediate rerun, attribution now unrecoverable
-  but consistent with a full `/tmp`), and a local-tier run failing three nested-cargo gates on
-  os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
-  destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
 <a id="roadmap-id-testing.tier-memory.spend-measurements"></a>
 <sub>work · work_state=blocked · risk=resource_exhaustion</sub>
 - **Spend the measurements.** The 4 GiB slot constant and the one-permit nested bound are
@@ -3399,6 +3374,17 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
   still treat unexplained ENOSPC/mid-gate deaths as possible scratch saturation and check before
   re-attributing — but read the run's own sweep line first, because a run that swept and still
   refused on the disk floor is reporting a different problem.
+  - **Reopening signal** (for a bounded named scratch root the tiers reuse and truncate, which
+    retires debris by construction rather than by age): a disk-floor refusal or an ENOSPC gate death
+    on a machine whose SAME run's sweep line reported nothing removed. Both halves are in the one
+    log the operator already has, so the report arrives self-diagnosing.
+  Two corroborating
+  sightings from the concurrent session, same saturation window: a first-ever generation run
+  exiting 1 whose only capture went through `tail -3` (evidence burned — the exact failure mode
+  the evidence-preservation rule names; green on immediate rerun, attribution now unrecoverable
+  but consistent with a full `/tmp`), and a local-tier run failing three nested-cargo gates on
+  os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
+  destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
 <a id="roadmap-id-testing.registry-fetch-transients-nested-cargo-cells"></a>
 <sub>testing_operational_watch · watch_state=watching</sub>
 - **Registry-fetch transients in nested-cargo cells.** Nested-cargo cells used to resolve deps

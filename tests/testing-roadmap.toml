@@ -91,13 +91,11 @@ entries = [
   "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial",
   "part-what-hand-per-construct-buy-established-escape-produced",
   "part-cheap-system-matrix-shape-pairs-compiled-wasm-side",
-  "testing.container-combinations.reopening-signal",
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
   "testing.generated-local-collision.scope-wide-probe",
   "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism",
   "part-why-parity-gate-cannot-host-generalization",
-  "testing.wasm-door-vocabulary.reopening-signal",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
   "testing.build-registration-class-reference-position-sweep-second-escape",
   "testing.fixture-shape-evicted-over-known-defect-stale-guard",
@@ -199,8 +197,6 @@ entries = [
   "testing.extern-deps-wasm-boundary-surface-packaging-json-gen",
   "testing.generic-raw-bytes-base-refused-generic-extern-base",
   "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings",
-  "testing.twin-implementation.read-caught-instance-trigger",
-  "testing.twin-implementation.comment-ast-change-cadence",
   "testing.twin-implementation.own-reviewed-change-rule",
   "part-non-recorded-isn-t-re-litigated-coverage-gap",
   "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count",
@@ -251,9 +247,7 @@ body_md = '''## Deferred features (build when a real consumer needs them)
 '''
 entries = [
   "testing.workspace-mode-wasm32-wasip2-build-gate-both-faces",
-  "testing.workspace-wasip2.reopening-signal",
   "testing.probe-component-face-s-js-surface-axes-js",
-  "testing.component-js-probe.reopening-signal",
   "testing.crate-generates-json-schema-document-aggregate-package",
   "testing.wasm32-link-floor-deferred-reject-twin",
   "testing.extern-interface-export-dialect-v2-candidates",
@@ -289,7 +283,6 @@ entries = [
   "testing.extern-interface-export-public-interchange-format",
   "testing.exclusion-reasons-informational-interchange",
   "testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until",
-  "testing.scratch-retention.reopening-signal",
   "testing.tier-memory.spend-measurements",
   "testing.tier-s-disk-bandwidth-unmeasured-anything-scratch-floor",
   "testing.gate-cache-costs",
@@ -990,32 +983,6 @@ authority_reference_id = "testing-guard-complete-cargo-mutants-sweep-will-never"
 permanence = "permanent"
 
 [[record]]
-id = "testing.component-js-probe.reopening-signal"
-title = "Reopening signal:"
-
-[record.payload]
-kind = "transition"
-detail_md = '''  - **Reopening signal:** a consumer reporting a JS-side failure on one of those axes — the party
-    running the browser build, the preserve posture or a newer jco is the only one who can see it
-    first, and the report names which axis to probe. The gate's exact pins are what make such a
-    report actionable rather than ambiguous: a failure at a version the gate does not pin is a
-    version finding, while a failure at 1.26.1 on node 22 is a regression the gate should already
-    have caught.
-
-'''
-transition_kind = "reopening_signal"
-observer = "consumer running the browser build, preserve posture, or a newer jco"
-dimension = "the named JS-side component probe axes"
-action_on_fire_md = '''Promote only the named axis; classify a failure on the pinned version and already-probed axis as a defect finding rather than breadth demand.
-'''
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = '''a consumer requires the JSON doors, browser build, preserve canonical-bytes posture, or a jco/node version other than jco 1.26.1 with node 22, and names that axis
-'''
-
-[[record]]
 id = "testing.composing-registration-rows-across-generation-passes-share-output"
 title = "Composing registration rows across generation passes that share one output crate."
 
@@ -1095,36 +1062,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.container-combinations.reopening-signal"
-title = "Reopening signal:"
-
-[record.payload]
-kind = "transition"
-detail_md = '''    - **Reopening signal:** a THIRD construct joins the flat-walked set — countable in-tree as the
-      explicit container mints in `generation/mod.rs` that exist because the conceptual visitor
-      cannot see the composite (two today, both listed above). At three, per-construct hand cells
-      stop being cheaper than the grid row, and the cross-axis coverage the grid gives for free
-      (placement × reference mode × profile) is coverage three constructs are each doing without.
-
-'''
-transition_kind = "reopening_signal"
-observer = "maintainer enumerating explicit container mints in generation/mod.rs"
-dimension = "flat-walked container constructs invisible as composites to the conceptual visitor"
-observable = "the count reaches at least three"
-action_on_fire_md = '''Promote the parent and build the placement by reference-mode by profile grid row.
-'''
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "quantitative"
-comparator = "ge"
-threshold = 3
-unit = "constructs"
-scope = "explicit container mints in generation/mod.rs required because the conceptual visitor cannot see the composite"
-measurement = 2
-as_of = "2026-08-12"
-
-[[record]]
 id = "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
 title = "A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile coverage — its placement behaviour rests on one hand cell per construct."
 legacy_aliases = ["Next work 7"]
@@ -1141,25 +1078,34 @@ detail_md = '''7. **A container construct the conceptual type visitor walks FLAT
     Each is pinned cross-module by exactly one hand fixture cell (`tests/multifile`'s `open_flat` /
     `open_nested` / `open_tail` in `qux.cddl`, whose key/value/element live in `a`, `a/c/foo` and
     `b/bar`, compiled wasm-side under both fixture profiles) rather than by a grid.
+    - **Reopening signal:** a THIRD construct joins the flat-walked set — countable in-tree as the
+      explicit container mints in `generation/mod.rs` that exist because the conceptual visitor
+      cannot see the composite (two today, both listed above). At three, per-construct hand cells
+      stop being cheaper than the grid row, and the cross-axis coverage the grid gives for free
+      (placement × reference mode × profile) is coverage three constructs are each doing without.
+
 '''
 work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-transition_ids = ["testing.container-combinations.reopening-signal"]
 
 [record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
-dimension = "A container construct the conceptual type visitor walks FLAT has no combinatorial wasm-compile coverage — its placement behaviour rests on one hand cell per construct."
-observable = "A third container construct is minted explicitly in generation/mod.rs because the conceptual visitor cannot see it as a composite."
-action_on_fire_md = '''Set testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial to ready and execute only its preserved acceptance/mechanical-layer scope.
+observer = "maintainer enumerating explicit container mints in generation/mod.rs"
+dimension = "flat-walked container constructs invisible as composites to the conceptual visitor"
+observable = "the count reaches at least three"
+action_on_fire_md = '''Promote the parent and build the placement by reference-mode by profile grid row.
 '''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial's payload.detail_md. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
+predicate_kind = "quantitative"
+comparator = "ge"
+threshold = 3
+unit = "constructs"
+scope = "explicit container mints in generation/mod.rs required because the conceptual visitor cannot see the composite"
+measurement = 2
+as_of = "2026-08-12"
 
 [[record]]
 id = "testing.containment-note-s-stated-reason-go-false-any"
@@ -5899,15 +5845,38 @@ detail_md = '''- **Nested-cargo scratch retention: `/tmp/cddl*` leaks until the 
   still treat unexplained ENOSPC/mid-gate deaths as possible scratch saturation and check before
   re-attributing — but read the run's own sweep line first, because a run that swept and still
   refused on the disk floor is reporting a different problem.
+  - **Reopening signal** (for a bounded named scratch root the tiers reuse and truncate, which
+    retires debris by construction rather than by age): a disk-floor refusal or an ENOSPC gate death
+    on a machine whose SAME run's sweep line reported nothing removed. Both halves are in the one
+    log the operator already has, so the report arrives self-diagnosing.
+  Two corroborating
+  sightings from the concurrent session, same saturation window: a first-ever generation run
+  exiting 1 whose only capture went through `tail -3` (evidence burned — the exact failure mode
+  the evidence-preservation rule names; green on immediate rerun, attribution now unrecoverable
+  but consistent with a full `/tmp`), and a local-tier run failing three nested-cargo gates on
+  os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
+  destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
 '''
 watch_state = "watching"
 signature_md = '''Disk-floor refusal or ENOSPC gate death with the same run reporting zero scratch entries removed.
 '''
 response_md = '''Protect live paths, reclaim only explicit old unreferenced scratch, and rerun the whole tier.
 '''
-escalation_transition_id = "testing.scratch-retention.reopening-signal"
 retirement_semantics_md = '''Retire only after that root is delivered and durably proven self-retiring; age sweep alone is insufficient.
 '''
+
+[record.payload.watch_escalation]
+failure_signature_md = '''A disk-floor refusal or ENOSPC gate death occurs and the same run's scratch-sweep line reports that it removed nothing.
+'''
+capture_procedure_md = '''Preserve the full untruncated log; record its scratch-sweep line, disk preflight, failing gate and ENOSPC or disk-floor line, command, commit, date, environment, and live-path exclusions. Both conjuncts must come from the same run.
+'''
+response_md = '''Protect live paths, recover capacity using explicit age- and liveness-checked targets, and rerun the complete tier.
+'''
+escalation_action_md = '''Promote the bounded named scratch-root design that tiers reuse and truncate; do not fire from evidence whose two halves are from different runs.
+'''
+retirement_semantics_md = '''Retire only when the bounded root makes killed-run debris self-retiring and a durable gate proves it cannot accumulate across runs; age-based sweep success alone does not retire it.
+'''
+evaluation = "unknown"
 
 [[record.payload.capture_step]]
 step_id = "signature"
@@ -6402,24 +6371,29 @@ detail_md = '''- **Probe the component face's JS surface on the axes the JS-host
   pinned lockfile, or a second node in the gate's provisioning preflight). Each is a
   fixture-and-lockfile change rather than new machinery, so what is deferred is coverage breadth and
   the cold-run cost that buys it — none of the four sits on the path the motivating consumer takes.
+  - **Reopening signal:** a consumer reporting a JS-side failure on one of those axes — the party
+    running the browser build, the preserve posture or a newer jco is the only one who can see it
+    first, and the report names which axis to probe. The gate's exact pins are what make such a
+    report actionable rather than ambiguous: a failure at a version the gate does not pin is a
+    version finding, while a failure at 1.26.1 on node 22 is a regression the gate should already
+    have caught.
+
 '''
 work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-transition_ids = ["testing.component-js-probe.reopening-signal"]
 
 [record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.probe-component-face-s-js-surface-axes-js"
-dimension = "Probe the component face's JS surface on the axes the JS-host gate left untouched."
-observable = "- **Probe the component face's JS surface on the axes the JS-host gate left untouched.** The `component_jco` gate drives one jco version (1.26.1) and one node version (22) over the default encoding posture, with no JSON doors, in node only — which is what its two reused fixtures carry. Four axes are therefore documented as unprobed in `docs/docs/component_differences.mdx`, cited by \"Not probed on this face\", each with the probe that would settle it: `--json-serde-derives`' `to-json`/`from-json` doors (generate one of the existing fixtures with the flag and drive both doors from node); the browser build of `@bytecodealliance/preview2-shim` (the same drivers under a headless browser); `--preserve-encodings`' `to-canonical-cbor-bytes` (the surface fixture at that posture, asserting byte-exactness across the JS boundary); and other jco/node versions (a second pinned lockfile, or a second node in the gate's provisioning preflight). Each is a fixture-and-lockfile change rather than new machinery, so what is deferred is coverage breadth and the cold-run cost that buys it — none of the four sits on the path the motivating consumer takes."
-action_on_fire_md = '''Set testing.probe-component-face-s-js-surface-axes-js to ready and execute only its preserved acceptance/mechanical-layer scope.
+observer = "consumer running the browser build, preserve posture, or a newer jco"
+dimension = "the named JS-side component probe axes"
+action_on_fire_md = '''Promote only the named axis; classify a failure on the pinned version and already-probed axis as a defect finding rather than breadth demand.
 '''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.probe-component-face-s-js-surface-axes-js's payload.detail_md. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
+predicate_kind = "event"
+event_md = '''a consumer requires the JSON doors, browser build, preserve canonical-bytes posture, or a jco/node version other than jco 1.26.1 with node 22, and names that axis
 '''
 
 [[record]]
@@ -7637,37 +7611,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.scratch-retention.reopening-signal"
-title = "Reopening signal"
-
-[record.payload]
-kind = "transition"
-detail_md = '''  - **Reopening signal** (for a bounded named scratch root the tiers reuse and truncate, which
-    retires debris by construction rather than by age): a disk-floor refusal or an ENOSPC gate death
-    on a machine whose SAME run's sweep line reported nothing removed. Both halves are in the one
-    log the operator already has, so the report arrives self-diagnosing.
-  Two corroborating
-  sightings from the concurrent session, same saturation window: a first-ever generation run
-  exiting 1 whose only capture went through `tail -3` (evidence burned — the exact failure mode
-  the evidence-preservation rule names; green on immediate rerun, attribution now unrecoverable
-  but consistent with a full `/tmp`), and a local-tier run failing three nested-cargo gates on
-  os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
-  destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
-'''
-transition_kind = "watch_escalation"
-failure_signature_md = '''A disk-floor refusal or ENOSPC gate death occurs and the same run's scratch-sweep line reports that it removed nothing.
-'''
-capture_procedure_md = '''Preserve the full untruncated log; record its scratch-sweep line, disk preflight, failing gate and ENOSPC or disk-floor line, command, commit, date, environment, and live-path exclusions. Both conjuncts must come from the same run.
-'''
-response_md = '''Protect live paths, recover capacity using explicit age- and liveness-checked targets, and rerun the complete tier.
-'''
-escalation_action_md = '''Promote the bounded named scratch-root design that tiers reuse and truncate; do not fire from evidence whose two halves are from different runs.
-'''
-retirement_semantics_md = '''Retire only when the bounded root makes killed-run debris self-retiring and a durable gate proves it cannot accumulate across runs; age-based sweep success alone does not retire it.
-'''
-evaluation = "unknown"
-
-[[record]]
 id = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 title = "Stale \"known limitation\" prose surviving its fix — a finding ledgered in TWO homes where the fixing commit prunes only one."
 
@@ -8233,34 +8176,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.twin-implementation.comment-ast-change-cadence"
-title = "On the next `comment_ast` grammar change of ANY form (not just a new directive):"
-
-[record.payload]
-kind = "transition"
-detail_md = '''  - *On the next `comment_ast` grammar change of ANY form (not just a new directive):* do the AST
-    floor instead of hand-extending `DSL_TAGS` again — parse the comments with the real
-    `comment_ast` via a small `examples/` binary, as the role floor already does with
-    `ast_roles.rs`. The floor is the only fix for the tripwire's blind spot, ARG-GRAMMAR drift
-    within an unchanged directive set (the proven `@used_as_key` flavor shape: no set delta,
-    changed consumption, a new panic path), because hand-picked selfCheck vectors drift WITH the
-    mirror by construction. The floor's scope also includes the mirror's flavor-set→sibling-id
-    crediting (`dsl.used_as_key.{hash,ord,hash_ord}`, mirroring `DemandSet`'s bare/flavored
-    exclusivity) — hand-mirrored consumption accreted without any `comment_ast` grammar change,
-    which is why this trigger has correctly not fired yet.
-'''
-transition_kind = "cadence"
-owner_reference_id = "testing-twin-repo-implementations-semantic-drifting"
-event_source = "comment_ast grammar authority"
-period_or_event_md = '''Run on the next comment_ast grammar change of any form, including argument grammar with no directive-set delta.
-'''
-checklist_md = '''Replace the hand-extended DSL_TAGS mirror with a small examples binary parsing through the real comment_ast; cover flavor-set to sibling-id crediting and unchanged-directive-set argument grammar.
-'''
-missed_action_md = '''Block the grammar change from landing with another hand-mirrored extension; the AST floor is due in the same delivery.
-'''
-evaluation = "unknown"
-
-[[record]]
 id = "testing.twin-implementation.own-reviewed-change-rule"
 title = "Its own reviewed change, never a drive-by:"
 
@@ -8279,31 +8194,6 @@ reference_ids = ["testing-roadmap-next-work-n58"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.twin-implementation.own-reviewed-change-rule's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.twin-implementation.read-caught-instance-trigger"
-title = "On the next read-caught instance of the class:"
-
-[record.payload]
-kind = "transition"
-detail_md = '''  - *On the next read-caught instance of the class:* build the mechanical layer — a
-    same-construct differential sweep (emit one bounded/flagged construct per site class — member
-    ctor/setter, wrapper `new()`/deserialize, primitive-deserialize `.and_then`, collection len
-    check — and diff the check conditions + failure payloads, ledgering deliberate site-specific
-    differences), plus the cheap grep half: a snapshot-wide wart scan (same-N `< N || > N`, dead
-    `< 0` over unsigned/`len()` exprs) in the spirit of the doubled-doc-marker scan above.
-'''
-transition_kind = "promotion_trigger"
-observer = "reviewer finding semantic drift between twin implementations"
-dimension = "read-caught twin-implementation drift instances"
-action_on_fire_md = '''Build the same-construct differential sweep and snapshot-wide wart scan exactly scoped in the preserved detail.
-'''
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = '''a fresh read-caught instance of the class recorded by the parent
 '''
 
 [[record]]
@@ -8352,6 +8242,22 @@ detail_md = '''- **Twin in-repo implementations of one semantic decision driftin
   between the mirror's `MIRRORED_DIRECTIVES` and the authority's `tag("@…")` literals at import
   time, so `project_corpus` (fast tier, CI) fires the moment a directive is added or removed on
   either side. Remaining work, each piece behind its trigger:
+  - *On the next read-caught instance of the class:* build the mechanical layer — a
+    same-construct differential sweep (emit one bounded/flagged construct per site class — member
+    ctor/setter, wrapper `new()`/deserialize, primitive-deserialize `.and_then`, collection len
+    check — and diff the check conditions + failure payloads, ledgering deliberate site-specific
+    differences), plus the cheap grep half: a snapshot-wide wart scan (same-N `< N || > N`, dead
+    `< 0` over unsigned/`len()` exprs) in the spirit of the doubled-doc-marker scan above.
+  - *On the next `comment_ast` grammar change of ANY form (not just a new directive):* do the AST
+    floor instead of hand-extending `DSL_TAGS` again — parse the comments with the real
+    `comment_ast` via a small `examples/` binary, as the role floor already does with
+    `ast_roles.rs`. The floor is the only fix for the tripwire's blind spot, ARG-GRAMMAR drift
+    within an unchanged directive set (the proven `@used_as_key` flavor shape: no set delta,
+    changed consumption, a new panic path), because hand-picked selfCheck vectors drift WITH the
+    mirror by construction. The floor's scope also includes the mirror's flavor-set→sibling-id
+    crediting (`dsl.used_as_key.{hash,ord,hash_ord}`, mirroring `DemandSet`'s bare/flavored
+    exclusivity) — hand-mirrored consumption accreted without any `comment_ast` grammar change,
+    which is why this trigger has correctly not fired yet.
 '''
 work_state = "armed"
 work_intent = "build_system"
@@ -8360,17 +8266,27 @@ risk = "silent_wrong_bytes"
 control_ids = ["testing.guard.twin-repo-implementations-semantic-drifting-apart-emission-spellings"]
 
 [record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-dimension = "Twin in-repo implementations of one semantic decision drifting apart (emission spellings, detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix pattern; only the directive-SET flavor has a firing detector so far."
-observable = "- **Twin in-repo implementations of one semantic decision drifting apart (emission spellings, detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix pattern; only the directive-SET flavor has a firing detector so far.** The in-repo sibling of the parallel-constructor residual's predicate lesson above (\"when a fix needs the same decision an existing function already makes, extract the decision, never mirror it\"): two implementations of one decision, both living in this repo, drift apart while every behavioral oracle stays green — semantically-equivalent drift has no oracle but reading (decode conformance sees equal accept/reject sets, the mutation sweep sees no behavioral delta, the compile gates stay green; pending-system coverage check done at recording time: the grammar-fuzzer escalations own only the ACTIVE missing-import flavor of the walker instance — a recombination shape table extended to nested container positions would compile-fail it, E0433 — and NO pending item sees the semantically-equivalent flavor). Three read-caught instances, each fixed by single-owner extraction and pinned: (1) `generate_wrapper_struct` hand-built its range-check `cond`/`failure_expr` beside the shared helpers and drifted three spellings apart (`!= N` collapse, zero-min lower-leg elision, an inline float-payload duplicate) — `bounds_check_if_block` + `range_check_err` (`non_negative`/`location` params) are now the single owner, pinned by the `bounds_spellings` corpus fixture; (2) `uses_non_empty_{vec,map}` hand-walked the `RustStructType` variants, mirroring `visit_all_rust_types`' position enumeration, and drifted two legs short (named-array `element_type`, table `domain`) — masked by the transparent alias every top-level array/table rule co-registers; now folded onto the canonical visitor, pinned by `nonempty_nested_positions`; (3) cross-language: `corpus_detect.ts`'s `DSL_TAGS` scanner is a documented hand mirror of `comment_ast.rs`'s directive grammar and drifted twice (no `@used_as_elem`; pre-flavor `@used_as_key` grammar), with its hand-picked selfCheck vectors drifting WITH it — the layers that fired (`verify.ts`'s docs-lint, `project_corpus`'s content-drift check A) trigger only via adjacent artifacts (a docs mention, a `[[cover]]` entry), not the mirror itself. A fourth, BYTE-COUPLED flavor was read-caught before it fired (D1's core/alloc rewrite, 2026-07-29): `composed_runtime_static_files`' preserve flavoring `.replace()`s a byte-exact import line that lives in `static/non_empty_map.rs`, so rewriting that line's path would have silently no-op'd the substitution — distinct from the instances above in failure mode: not silent (the mangled flavor is an E0432 in every preserve corpus-compile cell, `local` tier) but loud-LATE and far from the causing edit, and invisible to any grep of either file alone. Fixed as a synchronized edit with a move-together comment on BOTH sides; the instance-level tripwire, due on the next touch of that composition code, is a must-hit replace (assert the pattern occurred before substituting — the selfCheck-lockstep analog for byte mirrors, turning the no-op into a generation-time panic that every snapshot regeneration sees at `fast` tier). Directive-SET drift now has a firing detector: `corpus_detect.ts`'s selfCheck lockstep tripwire demands set equality between the mirror's `MIRRORED_DIRECTIVES` and the authority's `tag(\"@…\")` literals at import time, so `project_corpus` (fast tier, CI) fires the moment a directive is added or removed on either side. Remaining work, each piece behind its trigger:"
-action_on_fire_md = '''Set testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings to ready and execute only its preserved acceptance/mechanical-layer scope.
+observer = "reviewer finding semantic drift between twin implementations"
+dimension = "read-caught twin-implementation drift instances"
+action_on_fire_md = '''Build the same-construct differential sweep and snapshot-wide wart scan exactly scoped in the preserved detail.
 '''
 evaluation = "unknown"
 
 [record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings's payload.detail_md. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
+predicate_kind = "event"
+event_md = '''a fresh read-caught instance of the class recorded by the parent
 '''
+
+[record.payload.cadence]
+owner_reference_id = "testing-twin-repo-implementations-semantic-drifting"
+event_source = "comment_ast grammar authority"
+period_or_event_md = '''Run on the next comment_ast grammar change of any form, including argument grammar with no directive-set delta.
+'''
+checklist_md = '''Replace the hand-extended DSL_TAGS mirror with a small examples binary parsing through the real comment_ast; cover flavor-set to sibling-id crediting and unchanged-directive-set argument grammar.
+'''
+missed_action_md = '''Block the grammar change from landing with another hand-mirrored extension; the AST floor is due in the same delivery.
+'''
+evaluation = "unknown"
 
 [[record]]
 id = "testing.unused-imports-generated-crates-trait-import-class-name"
@@ -8746,30 +8662,6 @@ priority_rationale_md = '''The source owner places this item in Next priority or
 regression_evidence_ids = ["testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"]
 
 [[record]]
-id = "testing.wasm-door-vocabulary.reopening-signal"
-title = "Reopening signal:"
-
-[record.payload]
-kind = "transition"
-detail_md = '''    - **Reopening signal:** a consumer reporting a wasm member absent that the rust crate has. That
-      reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose rust
-      counterpart they can point at), and the count of silently-missing members is the dimension
-      along which a hand-listed vocabulary stops being maintainable.
-
-'''
-transition_kind = "reopening_signal"
-observer = "consumer comparing a generated JS class with its rust counterpart"
-dimension = "rust door members silently absent from wasm"
-action_on_fire_md = '''Reopen the delivered door-vocabulary boundary and derive the reported member class without widening unrelated trait methods.
-'''
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = '''a consumer reports an undefined wasm member and identifies the rust member that exists
-'''
-
-[[record]]
 id = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
 title = "The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust surface it mirrors."
 legacy_aliases = ["Next work 10"]
@@ -8783,6 +8675,11 @@ detail_md = '''10. **The wasm face's door vocabulary is hand-listed, and no mech
     `from_json` — per posture and in both directions, against a table it carries in source. A
     SEVENTH member, added to the emitter and not to that table, is caught by nothing: the table is
     the vocabulary, and it is written by hand.
+    - **Reopening signal:** a consumer reporting a wasm member absent that the rust crate has. That
+      reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose rust
+      counterpart they can point at), and the count of silently-missing members is the dimension
+      along which a hand-listed vocabulary stops being maintainable.
+
 '''
 work_state = "ready"
 work_intent = "add_regression"
@@ -8791,6 +8688,18 @@ risk = "wrong_public_api"
 acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.wasm-face-s-door-vocabulary-hand-listed-mechanism's payload.detail_md; do not widen adjacent future work.
 '''
 priority_rationale_md = '''The source owner places this item in Next priority order.
+'''
+
+[record.payload.reopening_signal]
+observer = "consumer comparing a generated JS class with its rust counterpart"
+dimension = "rust door members silently absent from wasm"
+action_on_fire_md = '''Reopen the delivered door-vocabulary boundary and derive the reported member class without widening unrelated trait methods.
+'''
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = '''a consumer reports an undefined wasm member and identifies the rust member that exists
 '''
 
 [[record]]
@@ -8851,47 +8760,26 @@ detail_md = '''- **A workspace-mode `wasm32-wasip2` build gate for a BOTH-FACES 
   permanently-red gate asserts nothing a doc does not). The unfiled upstream report with both
   reproducer recipes and the full matrix is the gitignored `draft/` LLD-crash note (conclusion and
   numbers recorded here because that note is checkout-local).
-'''
-work_state = "deferred"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "compile_failure"
-transition_ids = ["testing.workspace-wasip2.reopening-signal"]
-
-[record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.workspace-mode-wasm32-wasip2-build-gate-both-faces"
-dimension = "A workspace-mode `wasm32-wasip2` build gate for a BOTH-FACES tree."
-observable = "- **A workspace-mode `wasm32-wasip2` build gate for a BOTH-FACES tree.** `component_wasip2_build` builds component-only workspaces from the root over manifests exactly as emitted, which reaches the rust crate's own lib targets; a component-only tree is emitted `crate-type = [\"rlib\"]`, so no cdylib is linked for wasip2 there. A tree generated with `--wasm=true` as well keeps the cdylib that face needs, and that shape is the one whose wasip2 workspace build can SIGSEGV the sysroot's `wasm-component-ld`/LLD. No gate builds it: the one both-faces sweep (`component_corpus_compiles`) `cargo check`s the component package alone, over a rust crate it narrows by hand first — exactly what the `--component` flag doc prescribes for a both-faces consumer. Such a gate would assert a claim about the LINKER rather than about anything this tool emits, and that claim is red against a LIVE upstream LLD defect (measured 2026-08-08, each cell deterministic across repeated links: the current emission's cdylib crashes rustc 1.96.1's LLD (LLVM 22.1.2) and links clean on 1.97.1 (LLVM 22.1.6); the 2026-08-01-era emission flips exactly the other way — so no pin choice gives the gate a green side to be red-FIRST against, and a permanently-red gate asserts nothing a doc does not). The unfiled upstream report with both reproducer recipes and the full matrix is the gitignored `draft/` LLD-crash note (conclusion and numbers recorded here because that note is checkout-local)."
-action_on_fire_md = '''Set testing.workspace-mode-wasm32-wasip2-build-gate-both-faces to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-evaluation = "unknown"
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.workspace-mode-wasm32-wasip2-build-gate-both-faces's payload.detail_md. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.workspace-wasip2.reopening-signal"
-title = "Reopening signal:"
-
-[record.payload]
-kind = "transition"
-detail_md = '''  - **Reopening signal:** an upstream LLD fix reaching the pinned toolchain (re-measure BOTH
+  - **Reopening signal:** an upstream LLD fix reaching the pinned toolchain (re-measure BOTH
     matrix cells before believing it — a single green cell is what the 2026-08-08 correction was
     shipped on), or a consumer reporting the linker SIGSEGV from their own both-faces workspace's
     wasip2 build — the flag doc names the exact failure signature, so the report arrives
     pre-diagnosed with the input that reproduces in their environment.
 
 '''
-transition_kind = "reopening_signal"
+work_state = "deferred"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "compile_failure"
+
+[record.payload.reopening_signal]
 observer = "toolchain updater or both-faces workspace consumer"
 dimension = "wasm32-wasip2 both-faces workspace linker viability"
 action_on_fire_md = '''For the upstream branch, remeasure both matrix cells; for the consumer branch, promote the reproducing both-faces workspace gate.
 '''
 evaluation = "unknown"
 
-[record.payload.predicate]
+[record.payload.reopening_signal.predicate]
 predicate_kind = "event"
 event_md = '''an upstream LLD fix reaches the pinned toolchain and both matrix cells remeasure green, or a consumer reports the documented linker SIGSEGV from a both-faces workspace wasip2 build
 '''
@@ -9352,11 +9240,6 @@ kind = "parent_of"
 target = "testing.proof-gap.config-run-s-convergence-warning-name-crate-already"
 
 [[relation]]
-source = "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
-kind = "parent_of"
-target = "testing.container-combinations.reopening-signal"
-
-[[relation]]
 source = "testing.containment-note-s-stated-reason-go-false-any"
 kind = "parent_of"
 target = "testing.guard.containment-note-s-stated-reason-go-false-any"
@@ -9762,11 +9645,6 @@ kind = "parent_of"
 target = "testing.guard.multifile-reference-position-coverage-two-position-keyed-escapes"
 
 [[relation]]
-source = "testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until"
-kind = "parent_of"
-target = "testing.scratch-retention.reopening-signal"
-
-[[relation]]
 source = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
 kind = "parent_of"
 target = "testing.guard.nothing-asserts-how-many-times-rejection-message-emitted"
@@ -9815,11 +9693,6 @@ target = "testing.admission-path.positional-diversity-fold-preserve-fixture-corp
 source = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 kind = "parent_of"
 target = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-
-[[relation]]
-source = "testing.probe-component-face-s-js-surface-axes-js"
-kind = "parent_of"
-target = "testing.component-js-probe.reopening-signal"
 
 [[relation]]
 source = "testing.process-boundary.rustc-after-panic-fix"
@@ -10029,17 +9902,7 @@ target = "testing.guard.twin-repo-implementations-semantic-drifting-apart-emissi
 [[relation]]
 source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 kind = "parent_of"
-target = "testing.twin-implementation.comment-ast-change-cadence"
-
-[[relation]]
-source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-kind = "parent_of"
 target = "testing.twin-implementation.own-reviewed-change-rule"
-
-[[relation]]
-source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-kind = "parent_of"
-target = "testing.twin-implementation.read-caught-instance-trigger"
 
 [[relation]]
 source = "testing.unused-imports-generated-crates-trait-import-class-name"
@@ -10065,21 +9928,6 @@ target = "testing.guard.wac-composed-component-transpiled-jco-loses-cross-instan
 source = "testing.warm-up-refresh-dep-universe-lock-trust-fresh"
 kind = "parent_of"
 target = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
-
-[[relation]]
-source = "testing.wasm-door-vocabulary.reopening-signal"
-kind = "reopens"
-target = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
-
-[[relation]]
-source = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
-kind = "parent_of"
-target = "testing.wasm-door-vocabulary.reopening-signal"
-
-[[relation]]
-source = "testing.workspace-mode-wasm32-wasip2-build-gate-both-faces"
-kind = "parent_of"
-target = "testing.workspace-wasip2.reopening-signal"
 
 [[relation]]
 source = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
@@ -11160,12 +11008,6 @@ path = "tests/TESTING_ROADMAP.md"
 heading = "Next work"
 
 [[reference]]
-id = "testing-twin-repo-implementations-semantic-drifting"
-source = "testing.twin-implementation.comment-ast-change-cadence"
-kind = "roadmap"
-target_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-
-[[reference]]
 id = "testing-roadmap-next-work-n58"
 source = "testing.twin-implementation.own-reviewed-change-rule"
 kind = "file_heading"
@@ -11177,6 +11019,12 @@ id = "gate-project-corpus-n2"
 source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 kind = "gate"
 gate_id = "project_corpus"
+
+[[reference]]
+id = "testing-twin-repo-implementations-semantic-drifting"
+source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
+kind = "roadmap"
+target_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 
 [[reference]]
 id = "test-extern-deps-n2"

@@ -501,10 +501,6 @@ type ExpectedSemanticTarget =
   | {
       readonly payload_kind: SemanticPayloadProviderFact["payload"]["kind"];
       readonly work_kind?: "regression_gap";
-      readonly transition_kinds?: readonly Extract<
-        SemanticPayloadProviderFact["payload"],
-        { kind: "transition" }
-      >["transition_kind"][];
       readonly control_state?: "live";
     };
 
@@ -533,7 +529,6 @@ function semanticTargetExpectation(
           return {
             payload_kind: target.payload_kind,
             ...(target.work_kind === undefined ? {} : { work_kind: target.work_kind }),
-            ...(target.transition_kinds === undefined ? {} : { transition_kinds: target.transition_kinds }),
             ...(target.control_state === undefined ? {} : { control_state: target.control_state }),
           };
         }
@@ -541,18 +536,6 @@ function semanticTargetExpectation(
     }
   }
   if (logicalPath.endsWith("control_ids")) return { payload_kind: "control" };
-  if (logicalPath.endsWith("cadence_transition_id")) {
-    return { payload_kind: "transition", transition_kinds: ["cadence"] };
-  }
-  if (logicalPath.endsWith("reopening_transition_id")) {
-    return { payload_kind: "transition", transition_kinds: ["reopening_signal"] };
-  }
-  if (logicalPath.endsWith("escalation_transition_id")) {
-    return { payload_kind: "transition", transition_kinds: ["watch_escalation"] };
-  }
-  if (logicalPath.endsWith("transition_ids")) {
-    return { payload_kind: "transition", transition_kinds: [] };
-  }
   if (logicalPath.endsWith("regression_gap_ids")) return { payload_kind: "work", work_kind: "regression_gap" };
   if (logicalPath.endsWith("work_ids") || logicalPath.endsWith("work_id")) return { payload_kind: "work" };
   if (logicalPath.endsWith("admission_ids")) return { payload_kind: "testing_system_admission" };
@@ -653,22 +636,6 @@ export function validateSemanticRoadmapJoins(
       ));
     }
     if (
-      expected.transition_kinds !== undefined &&
-      (
-        payload.payload.kind !== "transition" ||
-        !expected.transition_kinds.includes(payload.payload.transition_kind)
-      )
-    ) {
-      issues.push(issue(
-        "E-REFERENCE-FORBIDDEN",
-        source,
-        use.logical_path,
-        expected.transition_kinds.length === 0
-          ? "semantic transition field has no valid state-specific target policy"
-          : `roadmap ID ${JSON.stringify(use.id)} must resolve to transition kind ${expected.transition_kinds.join("|")}`,
-      ));
-    }
-    if (
       expected.control_state !== undefined &&
       (payload.payload.kind !== "control" || payload.payload.control_state !== expected.control_state)
     ) {
@@ -682,19 +649,6 @@ export function validateSemanticRoadmapJoins(
   }
   for (const provider of indexes.payload_records.values()) {
     const payload = provider.payload;
-    // Post-fold (Packet 3A-2) the only remaining transition CITATION lists are deferred work's
-    // optional standalone-transition citation; when authored it must name exactly one target.
-    if (
-      payload.kind === "work" && payload.work_state === "deferred" &&
-      payload.transition_ids !== undefined && payload.transition_ids.length !== 1
-    ) {
-      issues.push(issue(
-        "E-REFERENCE-FORBIDDEN",
-        source,
-        `${provider.logical_path}.transition_ids`,
-        "state-specific transition list must contain exactly 1 target",
-      ));
-    }
     if (payload.kind === "work" && payload.work_state === "delegated") {
       const edges = indexes.relations.filter((relation) =>
         relation.source === provider.record.id && relation.kind === "delegates_to"

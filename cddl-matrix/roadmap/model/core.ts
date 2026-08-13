@@ -102,11 +102,13 @@ interface WorkBase extends SemanticPayloadBase {
   admission_ids?: RoadmapId[];
 }
 
+/** Ready work may carry a reopening signal for the scope it deliberately does not take on. */
 export interface ReadyWork extends WorkBase {
   work_state: "ready";
   acceptance_md: Uint8Array;
   priority_rationale_md: Uint8Array;
   priority_band?: PriorityBand;
+  reopening_signal?: NestedTransition;
 }
 
 export interface BlockedWork extends WorkBase {
@@ -115,17 +117,17 @@ export interface BlockedWork extends WorkBase {
   unblock_predicate: NestedUnblockPredicate;
 }
 
+/** Armed work may additionally carry a cadence owned by the same record as its trigger. */
 export interface ArmedWork extends WorkBase {
   work_state: "armed";
   control_ids: RoadmapId[];
   promotion_trigger: NestedTransition;
+  cadence?: NestedCadenceTransition;
 }
 
-/** Deferred work carries a nested reopening signal, a standalone-transition citation, or both. */
 export interface DeferredWork extends WorkBase {
   work_state: "deferred";
-  transition_ids?: RoadmapId[];
-  reopening_signal?: NestedTransition;
+  reopening_signal: NestedTransition;
 }
 
 /** Waiting-external work carries exactly one of the two admissible transition contracts. */
@@ -210,8 +212,13 @@ export interface ManualPredicate {
 
 export type TransitionPredicate = QuantitativePredicate | EventPredicate | ManualPredicate;
 
-interface PredicateTransitionBase extends SemanticPayloadBase {
-  kind: "transition";
+/**
+ * Nested transition tables: the six transition kinds' typed contracts, packaged as tables on the
+ * owning record — the field name supplies the transition kind and the owner supplies the identity
+ * and the rendered prose, so neither has a nested representation.  Since Phase 4 folded the last
+ * rendered standalone signals, this is the ONLY form a transition takes.
+ */
+export interface NestedTransition {
   observer: string;
   dimension: string;
   /**
@@ -226,17 +233,7 @@ interface PredicateTransitionBase extends SemanticPayloadBase {
   predicate: TransitionPredicate;
 }
 
-export interface PromotionTrigger extends PredicateTransitionBase {
-  transition_kind: "promotion_trigger";
-}
-
-export interface ReopeningSignal extends PredicateTransitionBase {
-  transition_kind: "reopening_signal";
-}
-
-export interface UnblockPredicate extends SemanticPayloadBase {
-  kind: "transition";
-  transition_kind: "unblock_predicate";
+export interface NestedUnblockPredicate {
   owner_reference_id: ReferenceId;
   event_md: Uint8Array;
   check_procedure_md: Uint8Array;
@@ -244,9 +241,7 @@ export interface UnblockPredicate extends SemanticPayloadBase {
   evaluation: TransitionEvaluation;
 }
 
-export interface WatchEscalation extends SemanticPayloadBase {
-  kind: "transition";
-  transition_kind: "watch_escalation";
+export interface NestedWatchEscalation {
   failure_signature_md: Uint8Array;
   capture_procedure_md: Uint8Array;
   response_md: Uint8Array;
@@ -255,9 +250,7 @@ export interface WatchEscalation extends SemanticPayloadBase {
   evaluation: TransitionEvaluation;
 }
 
-export interface RetirementPredicate extends SemanticPayloadBase {
-  kind: "transition";
-  transition_kind: "retirement_predicate";
+export interface NestedRetirementPredicate {
   external_owner_reference_id: ReferenceId;
   external_predicate_md: Uint8Array;
   verification_md: Uint8Array;
@@ -265,9 +258,7 @@ export interface RetirementPredicate extends SemanticPayloadBase {
   evaluation: TransitionEvaluation;
 }
 
-export interface CadenceTransition extends SemanticPayloadBase {
-  kind: "transition";
-  transition_kind: "cadence";
+export interface NestedCadenceTransition {
   owner_reference_id: ReferenceId;
   event_source: string;
   period_or_event_md: Uint8Array;
@@ -278,25 +269,6 @@ export interface CadenceTransition extends SemanticPayloadBase {
   as_of?: CivilDate;
   evaluation: TransitionEvaluation;
 }
-
-export type TransitionPayload =
-  | PromotionTrigger
-  | ReopeningSignal
-  | UnblockPredicate
-  | WatchEscalation
-  | RetirementPredicate
-  | CadenceTransition;
-
-/**
- * Nested transition tables (Packet 3A-2): the standalone transition arms' typed contracts packaged as
- * tables on the owning record — the field name supplies `transition_kind`, the owner supplies the
- * identity, so those and `detail_md` have no nested representation.
- */
-export type NestedTransition = Omit<PromotionTrigger, "kind" | "transition_kind" | "detail_md">;
-export type NestedUnblockPredicate = Omit<UnblockPredicate, "kind" | "transition_kind" | "detail_md">;
-export type NestedWatchEscalation = Omit<WatchEscalation, "kind" | "transition_kind" | "detail_md">;
-export type NestedRetirementPredicate = Omit<RetirementPredicate, "kind" | "transition_kind" | "detail_md">;
-export type NestedCadenceTransition = Omit<CadenceTransition, "kind" | "transition_kind" | "detail_md">;
 
 export type EvidenceKind =
   | "regression_pin"
@@ -366,6 +338,5 @@ export interface ControlPayload extends SemanticPayloadBase {
 export type SharedSemanticPayload =
   | WorkPayload
   | DecisionPayload
-  | TransitionPayload
   | EvidencePayload
   | ControlPayload;

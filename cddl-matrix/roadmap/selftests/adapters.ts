@@ -903,8 +903,8 @@ function testGoldenRendering(bundle: AdapterFixtureBundle): void {
   for (const [roadmap, sourcePath, expectedPath, adapter, statusInputs, expectedLength] of [
     ["matrix", "positive/small-matrix-v3.toml", "positive/small-matrix-v3.expected.md", MATRIX_ADAPTER, statusCompatibilityInputs(), 48],
     ["testing", "positive/small-testing-v3.toml", "positive/small-testing-v3.expected.md", TESTING_ADAPTER, statusCompatibilityInputs(), 49],
-    ["matrix", "all-fields/matrix-v3.toml", "all-fields/matrix-v3.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 1632],
-    ["testing", "all-fields/testing-v3.toml", "all-fields/testing-v3.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 452],
+    ["matrix", "all-fields/matrix-v3.toml", "all-fields/matrix-v3.expected.md", MATRIX_ADAPTER, allFieldsStatusInputs(), 1388],
+    ["testing", "all-fields/testing-v3.toml", "all-fields/testing-v3.expected.md", TESTING_ADAPTER, allFieldsStatusInputs(), 427],
   ] as const) {
     const document = decoded(bundle, sourcePath, roadmap);
     const snapshots = markdownSnapshots(document);
@@ -1010,22 +1010,9 @@ function testDomainMutationTable(bundle: AdapterFixtureBundle): void {
   const matrixPath = (id: string, field: string): string => `record[${JSON.stringify(id)}].payload.${field}`;
   const testingPath = (id: string, field: string): string => `record[${JSON.stringify(id)}].payload.${field}`;
   const vectors: readonly AdapterMutationVector[] = [
-    // The closeout/policy transition-subtype vectors retired with Packet 3A-2: those transitions
-    // are required NESTED tables whose kind is fixed by the field name, so a wrong-kind target is
-    // unrepresentable rather than validated.  The remaining citation surfaces (deferred work,
-    // watch escalation) keep their subtype vectors below and in the identity suite.
-    {
-      name: "matrix deferred transition subtype",
-      roadmap: "matrix",
-      logical_path: matrixPath("matrix.fixture-task-g", "transition_ids"),
-      issue_codes: ["E-REFERENCE-FORBIDDEN"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "work" && payload.work_state === "deferred",
-        (payload) => {
-          assert(payload.kind === "work" && payload.work_state === "deferred", "matrix deferred vector selected the wrong payload");
-          return { ...payload, transition_ids: ["matrix.fixture-signal-k" as RoadmapId] };
-        }),
-    },
+    // The transition-subtype vectors retired with the folds (Packet 3A-2, then Phase 4's fold of
+    // the last rendered signals): every transition is a nested table whose kind is fixed by its
+    // field name, so a wrong-kind target is unrepresentable rather than validated.
     {
       name: "matrix branch references existing branch instead of action",
       roadmap: "matrix",
@@ -1041,18 +1028,6 @@ function testDomainMutationTable(bundle: AdapterFixtureBundle): void {
               ? { ...branch, action_ids: [branch.branch_id] }
               : branch),
           };
-        }),
-    },
-    {
-      name: "testing watch escalation wrong existing kind",
-      roadmap: "testing",
-      logical_path: testingPath("testing.fixture-operational-watching", "escalation_transition_id"),
-      issue_codes: ["E-REFERENCE-FORBIDDEN", "E-SCHEMA-STATE"],
-      mutate: (document) => replacePayload(document,
-        (payload) => payload.kind === "testing_operational_watch" && payload.watch_state === "watching",
-        (payload) => {
-          assert(payload.kind === "testing_operational_watch", "testing watch vector selected the wrong payload");
-          return { ...payload, escalation_transition_id: "testing.fixture-evidence-gate" as RoadmapId };
         }),
     },
     {

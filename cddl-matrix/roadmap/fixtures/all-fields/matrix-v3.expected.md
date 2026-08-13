@@ -18,17 +18,6 @@ Work d: ready.
 Work c: ready.
 Work b: ready.
 Exercises every optional work-base linkage.
-Cadence signal.
-Retirement predicate.
-Watch escalation.
-Unblock predicate.
-Manual promotion signal.
-Event reopening signal.
-Quantitative signal gt.
-Quantitative signal ge.
-Quantitative signal eq.
-Quantitative signal le.
-Quantitative signal lt.
 ## Semantic authority boundary
 Permanent matrix fixture boundary.
 Raw authority shadow.

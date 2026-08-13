@@ -97,7 +97,6 @@ export const ALL_FIELDS_EXPECTED_COVERAGE_BY_AXIS = {
     "evidence",
     "matrix_external_closeout",
     "matrix_policy",
-    "transition",
     "testing_cost",
     "testing_incident",
     "testing_operational_watch",

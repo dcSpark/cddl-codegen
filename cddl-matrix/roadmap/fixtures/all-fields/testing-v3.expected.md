@@ -1,7 +1,6 @@
 # Testing all-fields fixture
 
 Ready missing-system task.
-Watch escalation signal.
 Watching operational watch.
 Retire-pending operational watch.
 Attributed operational watch.

@@ -25,17 +25,6 @@ entries = [
   "matrix.fixture-task-c",
   "matrix.fixture-task-b",
   "matrix.fixture-task-a",
-  "matrix.fixture-signal-k",
-  "matrix.fixture-signal-j",
-  "matrix.fixture-signal-i",
-  "matrix.fixture-signal-h",
-  "matrix.fixture-signal-g",
-  "matrix.fixture-signal-f",
-  "matrix.fixture-signal-e",
-  "matrix.fixture-signal-d",
-  "matrix.fixture-signal-c",
-  "matrix.fixture-signal-b",
-  "matrix.fixture-signal-a",
   "matrix.fixture-semantic-owner",
   "matrix.fixture-raw-owner",
   "matrix.fixture-policy-c",
@@ -676,7 +665,7 @@ as_of = "2026-08-11"
 [[record]]
 id = "matrix.fixture-raw-owner"
 title = "Raw authority sentinel"
-tags = ["coverage:closeout_state:blocked", "coverage:closeout_state:due", "coverage:closeout_state:waiting", "coverage:comparator:eq", "coverage:comparator:ge", "coverage:comparator:gt", "coverage:comparator:le", "coverage:comparator:lt", "coverage:control_kind:consumer_ci", "coverage:control_kind:fixture", "coverage:control_kind:gate", "coverage:control_kind:operator_procedure", "coverage:control_kind:review_rule", "coverage:control_kind:test", "coverage:control_kind:upstream_issue", "coverage:control_state:live", "coverage:control_state:proposed", "coverage:control_state:stale", "coverage:decision_arm:decided_permanent", "coverage:decision_arm:decided_reopenable", "coverage:decision_arm:held_reopenable", "coverage:decision_arm:pending", "coverage:decision_state:decided", "coverage:decision_state:held", "coverage:decision_state:pending", "coverage:evidence_kind:committed_vector", "coverage:evidence_kind:consumer_report", "coverage:evidence_kind:decision", "coverage:evidence_kind:execution_probe", "coverage:evidence_kind:external_commit", "coverage:evidence_kind:external_issue", "coverage:evidence_kind:gate", "coverage:evidence_kind:harness_free_repro", "coverage:evidence_kind:incident", "coverage:evidence_kind:registry_enumeration", "coverage:evidence_kind:regression_pin", "coverage:evidence_kind:source_read", "coverage:evidence_kind:spec_read", "coverage:evidence_verdict:confirmed", "coverage:evidence_verdict:falsified", "coverage:evidence_verdict:inapplicable", "coverage:evidence_verdict:proposed", "coverage:evidence_verdict:unknown", "coverage:freshness:as_of", "coverage:freshness:historical", "coverage:freshness:live", "coverage:freshness:stale", "coverage:payload_kind:control", "coverage:payload_kind:decision", "coverage:payload_kind:evidence", "coverage:payload_kind:matrix_external_closeout", "coverage:payload_kind:matrix_policy", "coverage:payload_kind:transition", "coverage:payload_kind:work", "coverage:permanence:permanent", "coverage:permanence:reopenable", "coverage:policy_kind:boundary", "coverage:policy_kind:maintenance_protocol", "coverage:predicate_kind:event", "coverage:predicate_kind:manual", "coverage:predicate_kind:quantitative", "coverage:priority_band:critical", "coverage:priority_band:high", "coverage:priority_band:low", "coverage:priority_band:normal", "coverage:reference_kind:consumer_report", "coverage:reference_kind:external_commit", "coverage:reference_kind:external_issue", "coverage:reference_kind:external_release", "coverage:reference_kind:file_heading", "coverage:reference_kind:gate", "coverage:reference_kind:matrix_cell", "coverage:reference_kind:matrix_feature", "coverage:reference_kind:matrix_role", "coverage:reference_kind:roadmap", "coverage:reference_kind:spec_passage", "coverage:reference_kind:test_symbol", "coverage:relation_kind:blocked_by", "coverage:relation_kind:complements", "coverage:relation_kind:delegates_to", "coverage:relation_kind:depends_on", "coverage:relation_kind:overlaps", "coverage:relation_kind:parent_of", "coverage:relation_kind:related", "coverage:relation_kind:reopens", "coverage:relation_kind:split_from", "coverage:relation_kind:supersedes", "coverage:render_node_kind:part", "coverage:render_node_kind:record", "coverage:render_node_kind:section", "coverage:risk:abort_or_panic", "coverage:risk:compile_failure", "coverage:risk:cosmetic", "coverage:risk:false_pass_or_red", "coverage:risk:invalid_acceptance", "coverage:risk:misleading_docs", "coverage:risk:resource_exhaustion", "coverage:risk:silent_wrong_bytes", "coverage:risk:valid_rejection", "coverage:risk:wrong_public_api", "coverage:schema_version:3", "coverage:transition_evaluation:met", "coverage:transition_evaluation:stale", "coverage:transition_evaluation:unknown", "coverage:transition_evaluation:unmet", "coverage:transition_kind:cadence", "coverage:transition_kind:promotion_trigger", "coverage:transition_kind:reopening_signal", "coverage:transition_kind:retirement_predicate", "coverage:transition_kind:unblock_predicate", "coverage:transition_kind:watch_escalation", "coverage:work_intent:add_regression", "coverage:work_intent:build_capability", "coverage:work_intent:build_system", "coverage:work_intent:change_documentation", "coverage:work_intent:establish_honest_refusal", "coverage:work_intent:optimize", "coverage:work_intent:repair", "coverage:work_kind:coverage_cell", "coverage:work_kind:defect", "coverage:work_kind:documentation_integrity", "coverage:work_kind:feature", "coverage:work_kind:infrastructure", "coverage:work_kind:missing_system", "coverage:work_kind:optimization", "coverage:work_kind:regression_gap", "coverage:work_state:armed", "coverage:work_state:blocked", "coverage:work_state:deferred", "coverage:work_state:delegated", "coverage:work_state:ready", "coverage:work_state:waiting_external"]
+tags = ["coverage:closeout_state:blocked", "coverage:closeout_state:due", "coverage:closeout_state:waiting", "coverage:comparator:eq", "coverage:comparator:ge", "coverage:comparator:gt", "coverage:comparator:le", "coverage:comparator:lt", "coverage:control_kind:consumer_ci", "coverage:control_kind:fixture", "coverage:control_kind:gate", "coverage:control_kind:operator_procedure", "coverage:control_kind:review_rule", "coverage:control_kind:test", "coverage:control_kind:upstream_issue", "coverage:control_state:live", "coverage:control_state:proposed", "coverage:control_state:stale", "coverage:decision_arm:decided_permanent", "coverage:decision_arm:decided_reopenable", "coverage:decision_arm:held_reopenable", "coverage:decision_arm:pending", "coverage:decision_state:decided", "coverage:decision_state:held", "coverage:decision_state:pending", "coverage:evidence_kind:committed_vector", "coverage:evidence_kind:consumer_report", "coverage:evidence_kind:decision", "coverage:evidence_kind:execution_probe", "coverage:evidence_kind:external_commit", "coverage:evidence_kind:external_issue", "coverage:evidence_kind:gate", "coverage:evidence_kind:harness_free_repro", "coverage:evidence_kind:incident", "coverage:evidence_kind:registry_enumeration", "coverage:evidence_kind:regression_pin", "coverage:evidence_kind:source_read", "coverage:evidence_kind:spec_read", "coverage:evidence_verdict:confirmed", "coverage:evidence_verdict:falsified", "coverage:evidence_verdict:inapplicable", "coverage:evidence_verdict:proposed", "coverage:evidence_verdict:unknown", "coverage:freshness:as_of", "coverage:freshness:historical", "coverage:freshness:live", "coverage:freshness:stale", "coverage:payload_kind:control", "coverage:payload_kind:decision", "coverage:payload_kind:evidence", "coverage:payload_kind:matrix_external_closeout", "coverage:payload_kind:matrix_policy", "coverage:payload_kind:work", "coverage:permanence:permanent", "coverage:permanence:reopenable", "coverage:policy_kind:boundary", "coverage:policy_kind:maintenance_protocol", "coverage:predicate_kind:event", "coverage:predicate_kind:manual", "coverage:predicate_kind:quantitative", "coverage:priority_band:critical", "coverage:priority_band:high", "coverage:priority_band:low", "coverage:priority_band:normal", "coverage:reference_kind:consumer_report", "coverage:reference_kind:external_commit", "coverage:reference_kind:external_issue", "coverage:reference_kind:external_release", "coverage:reference_kind:file_heading", "coverage:reference_kind:gate", "coverage:reference_kind:matrix_cell", "coverage:reference_kind:matrix_feature", "coverage:reference_kind:matrix_role", "coverage:reference_kind:roadmap", "coverage:reference_kind:spec_passage", "coverage:reference_kind:test_symbol", "coverage:relation_kind:blocked_by", "coverage:relation_kind:complements", "coverage:relation_kind:delegates_to", "coverage:relation_kind:depends_on", "coverage:relation_kind:overlaps", "coverage:relation_kind:parent_of", "coverage:relation_kind:related", "coverage:relation_kind:reopens", "coverage:relation_kind:split_from", "coverage:relation_kind:supersedes", "coverage:render_node_kind:part", "coverage:render_node_kind:record", "coverage:render_node_kind:section", "coverage:risk:abort_or_panic", "coverage:risk:compile_failure", "coverage:risk:cosmetic", "coverage:risk:false_pass_or_red", "coverage:risk:invalid_acceptance", "coverage:risk:misleading_docs", "coverage:risk:resource_exhaustion", "coverage:risk:silent_wrong_bytes", "coverage:risk:valid_rejection", "coverage:risk:wrong_public_api", "coverage:schema_version:3", "coverage:transition_evaluation:met", "coverage:transition_evaluation:stale", "coverage:transition_evaluation:unknown", "coverage:transition_evaluation:unmet", "coverage:transition_kind:cadence", "coverage:transition_kind:promotion_trigger", "coverage:transition_kind:reopening_signal", "coverage:transition_kind:retirement_predicate", "coverage:transition_kind:unblock_predicate", "coverage:work_intent:add_regression", "coverage:work_intent:build_capability", "coverage:work_intent:build_system", "coverage:work_intent:change_documentation", "coverage:work_intent:establish_honest_refusal", "coverage:work_intent:optimize", "coverage:work_intent:repair", "coverage:work_kind:coverage_cell", "coverage:work_kind:defect", "coverage:work_kind:documentation_integrity", "coverage:work_kind:feature", "coverage:work_kind:infrastructure", "coverage:work_kind:missing_system", "coverage:work_kind:optimization", "coverage:work_kind:regression_gap", "coverage:work_state:armed", "coverage:work_state:blocked", "coverage:work_state:deferred", "coverage:work_state:delegated", "coverage:work_state:ready", "coverage:work_state:waiting_external"]
 
 [record.payload]
 kind = "work"
@@ -705,258 +694,6 @@ authority_reference_id = "ref-file"
 rationale_md = '''Permanent matrix fixture boundary.
 '''
 permanence = "permanent"
-
-[[record]]
-id = "matrix.fixture-signal-a"
-title = "Quantitative signal a"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Quantitative signal lt.
-'''
-transition_kind = "promotion_trigger"
-observer = "fixture-observer"
-dimension = "fixture-dimension"
-observable = "fixture-measurement"
-action_on_fire_md = '''Promote the associated work.
-'''
-evaluation = "met"
-
-[record.payload.predicate]
-predicate_kind = "quantitative"
-comparator = "lt"
-threshold = 1
-unit = "fixture-units"
-scope = "matrix fixture"
-measurement = 0
-as_of = "2026-08-11"
-evidence_ids = ["matrix.fixture-evidence-a"]
-
-[[record]]
-id = "matrix.fixture-signal-b"
-title = "Quantitative signal b"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Quantitative signal le.
-'''
-transition_kind = "promotion_trigger"
-observer = "fixture-observer"
-dimension = "fixture-dimension"
-observable = "fixture-measurement"
-action_on_fire_md = '''Promote the associated work.
-'''
-evaluation = "unmet"
-
-[record.payload.predicate]
-predicate_kind = "quantitative"
-comparator = "le"
-threshold = 2
-unit = "fixture-units"
-scope = "matrix fixture"
-measurement = 3
-as_of = "2026-08-11"
-evidence_ids = ["matrix.fixture-evidence-a"]
-
-[[record]]
-id = "matrix.fixture-signal-c"
-title = "Quantitative signal c"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Quantitative signal eq.
-'''
-transition_kind = "promotion_trigger"
-observer = "fixture-observer"
-dimension = "fixture-dimension"
-observable = "fixture-measurement"
-action_on_fire_md = '''Promote the associated work.
-'''
-evaluation = "unmet"
-
-[record.payload.predicate]
-predicate_kind = "quantitative"
-comparator = "eq"
-threshold = 3
-unit = "fixture-units"
-scope = "matrix fixture"
-measurement = 2
-as_of = "2026-08-11"
-evidence_ids = ["matrix.fixture-evidence-a"]
-
-[[record]]
-id = "matrix.fixture-signal-d"
-title = "Quantitative signal d"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Quantitative signal ge.
-'''
-transition_kind = "promotion_trigger"
-observer = "fixture-observer"
-dimension = "fixture-dimension"
-observable = "fixture-measurement"
-action_on_fire_md = '''Promote the associated work.
-'''
-evaluation = "stale"
-
-[record.payload.predicate]
-predicate_kind = "quantitative"
-comparator = "ge"
-threshold = 4
-unit = "fixture-units"
-scope = "matrix fixture"
-measurement = 3
-as_of = "2026-08-11"
-evidence_ids = ["matrix.fixture-evidence-d"]
-
-[[record]]
-id = "matrix.fixture-signal-e"
-title = "Quantitative signal e"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Quantitative signal gt.
-'''
-transition_kind = "promotion_trigger"
-observer = "fixture-observer"
-dimension = "fixture-dimension"
-observable = "fixture-measurement"
-action_on_fire_md = '''Promote the associated work.
-'''
-evaluation = "met"
-
-[record.payload.predicate]
-predicate_kind = "quantitative"
-comparator = "gt"
-threshold = 5
-unit = "fixture-units"
-scope = "matrix fixture"
-measurement = 6
-as_of = "2026-08-11"
-evidence_ids = ["matrix.fixture-evidence-a"]
-
-[[record]]
-id = "matrix.fixture-signal-f"
-title = "Event reopening signal"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Event reopening signal.
-'''
-transition_kind = "reopening_signal"
-observer = "fixture-observer"
-dimension = "fixture-event"
-action_on_fire_md = '''Reopen the held decision.
-'''
-evaluation = "unmet"
-
-[record.payload.predicate]
-predicate_kind = "event"
-event_md = '''A reviewed event is recorded.
-'''
-evidence_ids = ["matrix.fixture-evidence-b"]
-
-[[record]]
-id = "matrix.fixture-signal-g"
-title = "Manual promotion signal"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Manual promotion signal.
-'''
-transition_kind = "promotion_trigger"
-observer = "fixture-reviewer"
-dimension = "fixture-review"
-observable = "fixture-signoff"
-action_on_fire_md = '''Promote after review.
-'''
-evaluation = "unknown"
-
-[record.payload.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Inspect every declared fixture arm.
-'''
-evidence_ids = ["matrix.fixture-evidence-c"]
-
-[[record]]
-id = "matrix.fixture-signal-h"
-title = "Unblock signal"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Unblock predicate.
-'''
-transition_kind = "unblock_predicate"
-owner_reference_id = "ref-release"
-event_md = '''The dependency release is published.
-'''
-check_procedure_md = '''Resolve the release reference.
-'''
-due_action_md = '''Unblock the associated work.
-'''
-evaluation = "stale"
-
-[[record]]
-id = "matrix.fixture-signal-i"
-title = "Watch escalation signal"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Watch escalation.
-'''
-transition_kind = "watch_escalation"
-failure_signature_md = '''The fixture signature recurs.
-'''
-capture_procedure_md = '''Capture the complete reproduction.
-'''
-response_md = '''Classify the recurrence.
-'''
-escalation_action_md = '''Escalate to the named owner.
-'''
-retirement_semantics_md = '''Retire only after the control proves the claim.
-'''
-evaluation = "met"
-
-[[record]]
-id = "matrix.fixture-signal-j"
-title = "Retirement signal"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Retirement predicate.
-'''
-transition_kind = "retirement_predicate"
-external_owner_reference_id = "ref-issue"
-external_predicate_md = '''The external owner closes the issue.
-'''
-verification_md = '''Verify the released behavior.
-'''
-due_action_md = '''Retire the waiting work.
-'''
-evaluation = "unmet"
-
-[[record]]
-id = "matrix.fixture-signal-k"
-title = "Cadence signal"
-
-[record.payload]
-kind = "transition"
-detail_md = '''Cadence signal.
-'''
-transition_kind = "cadence"
-owner_reference_id = "ref-file"
-event_source = "fixture-calendar"
-period_or_event_md = '''Review once per fixture revision.
-'''
-checklist_md = '''Check schema, spans, references, and projection.
-'''
-missed_action_md = '''Escalate a missed review.
-'''
-last_completion_reference_id = "ref-commit"
-due_on = "2026-08-12"
-as_of = "2026-08-11"
-evaluation = "unknown"
 
 [[record]]
 id = "matrix.fixture-task-a"
@@ -998,6 +735,24 @@ priority_band = "high"
 priority_rationale_md = '''Priority high is explicit.
 '''
 
+[record.payload.reopening_signal]
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+action_on_fire_md = '''Promote the associated work.
+'''
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "quantitative"
+comparator = "lt"
+threshold = 1
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 0
+as_of = "2026-08-11"
+evidence_ids = ["matrix.fixture-evidence-a"]
+
 [[record]]
 id = "matrix.fixture-task-c"
 title = "Work arm c"
@@ -1015,6 +770,24 @@ acceptance_md = '''Ready work c has explicit acceptance.
 priority_band = "normal"
 priority_rationale_md = '''Priority normal is explicit.
 '''
+
+[record.payload.reopening_signal]
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+action_on_fire_md = '''Promote the associated work.
+'''
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "quantitative"
+comparator = "le"
+threshold = 2
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 3
+as_of = "2026-08-11"
+evidence_ids = ["matrix.fixture-evidence-a"]
 
 [[record]]
 id = "matrix.fixture-task-d"
@@ -1034,6 +807,24 @@ priority_band = "low"
 priority_rationale_md = '''Priority low is explicit.
 '''
 
+[record.payload.reopening_signal]
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+action_on_fire_md = '''Promote the associated work.
+'''
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "quantitative"
+comparator = "eq"
+threshold = 3
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 2
+as_of = "2026-08-11"
+evidence_ids = ["matrix.fixture-evidence-d"]
+
 [[record]]
 id = "matrix.fixture-task-e"
 title = "Work arm e"
@@ -1050,14 +841,14 @@ blocker_md = '''A named dependency blocks execution.
 '''
 
 [record.payload.unblock_predicate]
-owner_reference_id = "ref-issue"
+owner_reference_id = "ref-release"
 event_md = '''Nested unblock event.
 '''
 check_procedure_md = '''Nested unblock check procedure.
 '''
 due_action_md = '''Nested unblock due action.
 '''
-evaluation = "unknown"
+evaluation = "stale"
 
 [[record]]
 id = "matrix.fixture-task-f"
@@ -1086,6 +877,20 @@ predicate_kind = "manual"
 review_procedure_md = '''Nested manual review procedure.
 '''
 
+[record.payload.cadence]
+owner_reference_id = "ref-file"
+event_source = "fixture-calendar"
+period_or_event_md = '''Review once per fixture revision.
+'''
+checklist_md = '''Check schema, spans, references, and projection.
+'''
+missed_action_md = '''Escalate a missed review.
+'''
+last_completion_reference_id = "ref-commit"
+due_on = "2026-08-12"
+as_of = "2026-08-11"
+evaluation = "unknown"
+
 [[record]]
 id = "matrix.fixture-task-g"
 title = "Work arm g"
@@ -1098,7 +903,19 @@ work_state = "deferred"
 work_intent = "change_documentation"
 work_kind = "documentation_integrity"
 risk = "false_pass_or_red"
-transition_ids = ["matrix.fixture-signal-f"]
+
+[record.payload.reopening_signal]
+observer = "fixture-observer"
+dimension = "fixture-event"
+action_on_fire_md = '''Reopen the held decision.
+'''
+evaluation = "unmet"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = '''A reviewed event is recorded.
+'''
+evidence_ids = ["matrix.fixture-evidence-b"]
 
 [[record]]
 id = "matrix.fixture-task-h"
@@ -1158,6 +975,24 @@ acceptance_md = '''Reviewed acceptance for the ported fixture arm.
 '''
 priority_rationale_md = '''Fixture arm carries no live priority claim.
 '''
+
+[record.payload.reopening_signal]
+observer = "fixture-observer"
+dimension = "fixture-dimension"
+observable = "fixture-measurement"
+action_on_fire_md = '''Promote the associated work.
+'''
+evaluation = "unknown"
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "quantitative"
+comparator = "gt"
+threshold = 5
+unit = "fixture-units"
+scope = "matrix fixture"
+measurement = 6
+as_of = "2026-08-11"
+evidence_ids = ["matrix.fixture-evidence-a"]
 
 [[record]]
 id = "matrix.fixture-upstream-a"
