@@ -36,7 +36,7 @@ const text = (value: string): Uint8Array => UTF8.encode(value);
 const ZERO_HASH = "0".repeat(64);
 
 export const REQUIRED_SCHEMA_SELFTEST_CASE_IDS = [
-  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "missing_section_entries", "empty_records_floor", "all_fields_identity", "v3_semantic_identity", "v2_unsupported", "v3_retired_keys_rejected", "signal_observable_arm_dependent", "noncanonical_literal_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "schema_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
+  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "missing_section_entries", "empty_records_floor", "all_fields_identity", "v3_semantic_identity", "v2_unsupported", "v3_retired_keys_rejected", "signal_observable_arm_dependent", "noncanonical_basic_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_fired_transition_not_parked", "domain_already_met_signal_rejected", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "schema_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
 ] as const;
 
 export type RequiredSchemaSelfTestCaseId = (typeof REQUIRED_SCHEMA_SELFTEST_CASE_IDS)[number];
@@ -73,8 +73,8 @@ projection_path = "fixture/matrix.md"
 [[section]]
 section_id = "fixture"
 title = "Fixture"
-body_md = """S
-"""
+body_md = '''S
+'''
 entries = [
   "matrix.fixture-minimal",
 ]
@@ -85,16 +85,16 @@ title = "Fixture record"
 
 [record.payload]
 kind = "work"
-detail_md = """R
-"""
+detail_md = '''R
+'''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "cosmetic"
-acceptance_md = """Accepted.
-"""
-priority_rationale_md = """Normal.
-"""
+acceptance_md = '''Accepted.
+'''
+priority_rationale_md = '''Normal.
+'''
 `);
 }
 
@@ -109,7 +109,7 @@ function minimalDocument(): RoadmapDocumentV3 {
  * arms. Both subordinate kinds declare the one disposition their kind permits.
  */
 function subordinateRoadmap(): string {
-  return `[document]\nschema_version = 3\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\n\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\nbody_md = """S{{slot:status}}\n"""\nentries = [\n  "matrix.fixture-record",\n  "part",\n]\n\n[section.slots.status]\nbinding = "fixture-status"\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\n\n[record.payload]\nkind = "work"\ndetail_md = """R\n"""\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nacceptance_md = """Accepted.\n"""\npriority_rationale_md = """Normal.\n"""\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\nbody_md = """P\n"""\n`;
+  return `[document]\nschema_version = 3\nroadmap = "matrix"\nsource_path = "fixture/subordinate.toml"\nprojection_path = "fixture/subordinate.md"\n\n[[section]]\nsection_id = "fixture"\ntitle = "Fixture"\nbody_md = '''S{{slot:status}}\n'''\nentries = [\n  "matrix.fixture-record",\n  "part",\n]\n\n[section.slots.status]\nbinding = "fixture-status"\n\n[[record]]\nid = "matrix.fixture-record"\ntitle = "Record"\n\n[record.payload]\nkind = "work"\ndetail_md = '''R\n'''\nwork_state = "ready"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nacceptance_md = '''Accepted.\n'''\npriority_rationale_md = '''Normal.\n'''\n\n[[part]]\npart_id = "part"\nparent_record_id = "matrix.fixture-record"\nbody_md = '''P\n'''\n`;
 }
 
 /**
@@ -117,7 +117,7 @@ function subordinateRoadmap(): string {
  * no manifest placement. This synthetic source is the exact-key corpus target for that row.
  */
 function pendingReviewRoadmap(): Uint8Array {
-  const record = `\n[[record]]\nid = "matrix.fixture-review-pending"\ntitle = "Pending review"\n\n[record.payload]\nkind = "work"\nwork_state = "pending_review"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nuncertainty_md = """Review required.\n"""\n`;
+  const record = `\n[[record]]\nid = "matrix.fixture-review-pending"\ntitle = "Pending review"\n\n[record.payload]\nkind = "work"\nwork_state = "pending_review"\nwork_intent = "build_capability"\nwork_kind = "feature"\nrisk = "cosmetic"\nuncertainty_md = '''Review required.\n'''\n`;
   return text(subordinateRoadmap().replace("\n[[part]]", `${record}\n[[part]]`));
 }
 
@@ -726,9 +726,9 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
       assert(context !== undefined, `${id} requires fixture ports`); allFieldsCoverage(context); return;
     case "noncanonical_comment": expectFailure(() => decodeRoadmapSource(text(`# comment\n${new TextDecoder().decode(minimalRoadmap())}`), "<comment>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
     case "noncanonical_inline_table": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap()).replace('entries = [\n  "matrix.fixture-minimal",\n]', 'entries = ["matrix.fixture-minimal"]\nslots = { status = { binding = "fixture-status" } }')), "<inline-table>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
-    // Both quote forms are shielded and decode alike, so the alternate spelling is refused by
-    // the canonical-bytes comparison rather than by the placeholder binding.
-    case "noncanonical_literal_string": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap()).replace('body_md = """S\n"""', "body_md = '''S\n'''")), "<literal>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
+    // The D7 flip made the literal spelling canonical, so the alternate form to reject is the
+    // basic one; both quote forms decode alike, so the canonical-bytes comparison refuses it.
+    case "noncanonical_basic_string": expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap()).replace("body_md = '''S\n'''", 'body_md = """S\n"""')), "<basic>", "matrix"), ["E-TOML-NONCANONICAL"]); return;
     case "noncanonical_set_order": {
       expectFailure(() => decodeRoadmapSource(text(new TextDecoder().decode(minimalRoadmap()).replace('title = "Fixture"', 'title = "Fixture"\nlegacy_aliases = ["z", "a"]')), "<set-order>", "matrix"), ["E-TOML-NONCANONICAL"]);
       return;
@@ -971,7 +971,7 @@ const SCHEMA_CASES: { readonly [K in RequiredSchemaSelfTestCaseId]: SchemaCaseSp
   v2_unsupported: { category: "schema", polarity: "negative" },
   v3_retired_keys_rejected: { category: "schema", polarity: "negative" },
   signal_observable_arm_dependent: { category: "schema", polarity: "negative" },
-  noncanonical_literal_string: { category: "schema", polarity: "negative" },
+  noncanonical_basic_string: { category: "schema", polarity: "negative" },
   noncanonical_table_order: { category: "schema", polarity: "negative" },
   noncanonical_set_order: { category: "schema", polarity: "negative" },
   toml_terminal_newline: { category: "schema", polarity: "positive" },

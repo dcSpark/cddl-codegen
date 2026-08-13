@@ -7,21 +7,21 @@ projection_path = "cddl-matrix/ROADMAP.md"
 [[section]]
 section_id = "preamble"
 title = "Matrix roadmap preamble"
-body_md = """# CDDL master matrix — roadmap (remaining work + findings)
+body_md = '''# CDDL master matrix — roadmap (remaining work + findings)
 
 Read `README.md` first (the model + current state, including the durable gotchas and the
 upstream-oracle-gap state). This doc is strictly the FUTURE state: matrix-side work, the
 open-findings ledger, upstream close-outs, and pending decisions. The blow-by-blow of *how* done work landed lives in git history (this
 doc is actively pruned of it; the project already did the same with the scale report + cold-critique).
 Running the gates is not a roadmap concern either: `check.ts` at the repo root is the self-enforcing
-gate registry + entry point, `tests/README.md` § \"Running everything\" is the prose overview, each
+gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-One authoring rule for this file: a sentence asserting COVERAGE — \"gate X exercises Y\", or the
-negative \"nothing exercises Z\" — must name the pin/gate it rests on (for a negative claim, the
+One authoring rule for this file: a sentence asserting COVERAGE — "gate X exercises Y", or the
+negative "nothing exercises Z" — must name the pin/gate it rests on (for a negative claim, the
 enumerated registry or mechanism it was established against). A named identifier dangles greppably
 when its referent moves and `lint_doc_citations` asserts it resolves; an unnamed coverage claim
-reads as fact indefinitely — a \"the json-gen runner gate is single-file-only\" sentence here
+reads as fact indefinitely — a "the json-gen runner gate is single-file-only" sentence here
 outlived the contrary always-on test (`multifile_json_preserve`, executing json-gen over
 cross-module input since 2023) until a pickup probe caught it. Pickup re-probing stays the
 enforcement (a prose rule cannot enforce itself); naming the pin is what gives the probe a target
@@ -29,7 +29,7 @@ and the reader a checkable referent.
 
 **Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->{{slot:counts}}<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->{{slot:ops}}<!-- /gen:sh:roadmap-ops -->):
-\"supported\" requires the generated crate's `--emit-tests`
+"supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
 mint no test surface (recorded honestly in the evidence). The orthogonal **emission axis is filled**
 (every default-supported row carries a `preserve`/`json` verdict; <!-- gen:sh:roadmap-emission -->{{slot:emission}}<!-- /gen:sh:roadmap-emission --> —
@@ -50,19 +50,19 @@ Four projections GENERATE their hand docs and drift-check: `golden_hex` (encodin
 (the `## Limitations` section of `docs/docs/current_capacities.mdx`, Q1), and
 `project_status_headers.ts` (the countable status-header prose in these docs + `tests/README.md`,
 including this paragraph's own counts). **Every consumer query
-Q1–Q6 is answered by a standing script** (`QUERIES.md` § \"Definition of done\").
+Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done").
 
 > **North star.** Do the hard per-construct coverage work **once** and *project* it into the **many** docs
 > that need it, instead of hand-maintaining (and re-sweating) each. `docs/docs/current_capacities.mdx`'s
 > **Limitations** section projects Q1's support gaps (`query_q1_gaps.ts`); more docs follow. The matrix is
-> \"good enough\" when regenerating a real hand doc from it is a **clear win**.
+> "good enough" when regenerating a real hand doc from it is a **clear win**.
 
 > **Findings ledger (F#)**: F-numbered items are the cold critique's ledger (full write-up in git
 > history). The only ones still cited are **F8–F11, out of scope** (bottom); the machinery the rest
-> produced is current state in `README.md` (execution-gated support, § \"Directional support
-> evidence\", § \"Upstream oracle gaps\").
+> produced is current state in `README.md` (execution-gated support, § "Directional support
+> evidence", § "Upstream oracle gaps").
 
-"""
+'''
 entries = []
 
 [section.slots.constraint]
@@ -80,14 +80,14 @@ binding = "status_header_markers:roadmap-ops"
 [[section]]
 section_id = "matrix-side-work"
 title = "Matrix-side work — the model and the projections it renders"
-body_md = """## Matrix-side work — the model and the projections it renders
+body_md = '''## Matrix-side work — the model and the projections it renders
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What is left on the
 matrix's own side — as opposed to in the generator, which is the findings ledger below — is of two
 kinds: a defect in a projection (buildable now) and known incompletenesses of the coverage MODEL
 (deferred, so each names the observable that would reopen it).
 
-"""
+'''
 entries = [
   "matrix.named-group-reference-grid",
   "matrix.grammar-derived-legality",
@@ -99,9 +99,9 @@ entries = [
 [[section]]
 section_id = "expansion"
 title = "Expansion (when relevant)"
-body_md = """## Expansion (when relevant)
+body_md = '''## Expansion (when relevant)
 
-"""
+'''
 entries = [
   "matrix.profile-version-scope",
   "matrix.additional-tool-annotations",
@@ -113,33 +113,33 @@ entries = [
 [[section]]
 section_id = "findings-open"
 title = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
-body_md = """## Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)
+body_md = '''## Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)
 
 Every entry here is a defect or a missing capability in **this** generator that a probe, gate, or
 fuzzer sweep surfaced — that is what the section means, and what the many `§ findings` citations in
 `src/tests/` and `tests/README.md` resolve to. Two neighbouring classes live elsewhere on purpose:
 what the generator does TODAY, including the boundaries it keeps permanently and the upstream-oracle
-gap state, is current state in `README.md` (§ \"Gotchas\", § \"Upstream oracle gaps\"); prunes that wait
-on an external release are § \"Upstream close-outs (waiting on external releases)\". New findings are
+gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle gaps"); prunes that wait
+on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
 ledgered here (that's what the probe/gate error messages point at).
 
 One evidence rule for this section: an entry claiming a GENERATOR defect carries a harness-free
 repro — the tool run alone, into a scratch dir — before it is written. Evidence read off committed
 fixture trees does not qualify, because those trees pass through the test harness, which appends its
 own content INTO generated files, so a harness-written emission is indistinguishable there from a
-generator-written one. One entry was retracted on exactly that (2026-08-07): its \"greppable in the
-fixture trees\" emission defect — an unused `use serialization::*;` — was such an append, and a
+generator-written one. One entry was retracted on exactly that (2026-08-07): its "greppable in the
+fixture trees" emission defect — an unused `use serialization::*;` — was such an append, and a
 fresh-generation probe found the generator emits that glob nowhere. The retraction record is in
 `tests/TESTING_ROADMAP.md`'s unused-imports entry. Two corollaries, each learned from a shipped
 imprecision: a verified remedy's MECHANISM gloss is part of the claim — write only what the probe
-executed (a 2026-08 entry glossed its executed rename-the-rule remedy as \"`@name` renames a rule\",
+executed (a 2026-08 entry glossed its executed rename-the-rule remedy as "`@name` renames a rule",
 which the parser refuses; the gloss outlived the entry into a delegation spec before a parse probe
 caught it) — and edits to this section delete or move entries WHOLE, bold header through final
 line (a partial deletion once merged the following entry's body into the previous one's
 continuation lines, headerless and invisible as an entry; no lint can tell that merge from a long
 entry, so the atomicity is the rule).
 
-"""
+'''
 entries = [
   "matrix.multi-choice-group-rule",
   "matrix.derived-variant-naming",
@@ -171,15 +171,15 @@ entries = [
 [[section]]
 section_id = "upstream-closeouts"
 title = "Upstream close-outs (waiting on external releases)"
-body_md = """## Upstream close-outs (waiting on external releases)
+body_md = '''## Upstream close-outs (waiting on external releases)
 
 Not cddl-codegen work: each entry is a PRUNE that becomes due when an external release ships a fix
 the matrix currently carries fork-pinned provenance for (the gap state itself is current state in
-`README.md` § \"Upstream oracle gaps\"). They are separated from the findings ledger above because
+`README.md` § "Upstream oracle gaps"). They are separated from the findings ledger above because
 nothing here is a candidate fix — the code change already exists upstream or on the fork, and what
 remains is deleting the notes that explain why we do not have it yet.
 
-"""
+'''
 entries = [
   "matrix.prelude-number-float-upstream",
   "matrix.float-key-null-upstream",
@@ -204,17 +204,17 @@ entries = [
 [[section]]
 section_id = "wasm-abi-multifile"
 title = "wasm-ABI & multifile placement matrices — remaining work"
-body_md = """## wasm-ABI & multifile placement matrices — remaining work
+body_md = '''## wasm-ABI & multifile placement matrices — remaining work
 
 Current state — the grid, the three always-on axes (compile floor, round-trip, rust↔wasm API-surface
 parity) with their emission-profile sweeps, the minted wasm test surface and its loud-skip list, and
-the multifile placement sweep — is documented in `tests/README.md` (§ \"wasm-ABI matrix\", § \"wasm-crate
-test module\", § \"rust↔wasm API-surface parity\", § \"multifile placement matrix\") plus the
+the multifile placement sweep — is documented in `tests/README.md` (§ "wasm-ABI matrix", § "wasm-crate
+test module", § "rust↔wasm API-surface parity", § "multifile placement matrix") plus the
 annotations-table row in `README.md` (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer's wasm leg
-(`recombination_wasm_crates_check`, `tests/README.md` § \"Shape-recombination fuzzer\") is the
+(`recombination_wasm_crates_check`, `tests/README.md` § "Shape-recombination fuzzer") is the
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
-"""
+'''
 entries = [
   "matrix.root-reference-placement",
   "matrix.periodic-coverage-honesty",
@@ -231,10 +231,10 @@ entries = [
 [[section]]
 section_id = "explicit-boundaries"
 title = "Explicitly out of scope (decided, not overlooked)"
-body_md = """## Explicitly out of scope (decided, not overlooked)
+body_md = '''## Explicitly out of scope (decided, not overlooked)
 
 Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a concrete need surfaces):
-"""
+'''
 entries = [
   "matrix.matching-semantics-boundary",
   "matrix.interaction-tuples-boundary",
@@ -248,9 +248,9 @@ entries = [
 [[section]]
 section_id = "pending-decisions"
 title = "Pending decisions (need a human call)"
-body_md = """## Pending decisions (need a human call)
+body_md = '''## Pending decisions (need a human call)
 
-"""
+'''
 entries = [
   "matrix.over-acceptance-denominator",
 ]
@@ -258,7 +258,7 @@ entries = [
 [[section]]
 section_id = "maintenance"
 title = "Maintenance"
-body_md = """## Maintenance
+body_md = '''## Maintenance
 
 Upstream specs churn (IANA registries, the grammar). Refresh with `sources/fetch.sh` (re-fetches + verifies
 against `SHA256SUMS`); a checksum mismatch flags upstream drift to review before re-pinning and regenerating.
@@ -273,7 +273,7 @@ through review again, fold these counts into `project_status_headers.ts`'s gener
 system (the same mechanism that already generates the status-header counts) instead of adding
 another review rule. The class is not confined to this doc — one armed instance on record: the
 wasm-ABI shape-family delivery (2026-07-21) grew the multifile skip ledger across three reviewed
-commits while `tests/README.md`'s \"Twelve cells\" pinned-cell prose (count + enumeration) went
+commits while `tests/README.md`'s "Twelve cells" pinned-cell prose (count + enumeration) went
 stale, caught only by a dedicated post-delivery doc audit, not by any of the six per-commit
 reviews. A second armed instance is on record and it did NOT land in prose: the recombination
 sweep's baseline outcome counts, carried as a source comment in `src/tests/recombination_tests.rs`,
@@ -287,17 +287,17 @@ self-measuring datum where it is measured (the shape `tests/timings.json` alread
 durations; the recombination sweep's own datum is DELIVERED as `tests/recombination-counts.json`,
 held exactly by `recombination_generation_sweep` — see `tests/README.md`'s recombination section).
 
-"""
+'''
 entries = []
 
 [[section]]
 section_id = "related"
 title = "Related"
-body_md = """## Related
+body_md = '''## Related
 
 Broader testing work (clear-wins, roadmap items, the trailing-bytes runtime change) lives in
 `tests/TESTING_ROADMAP.md` — the matrix is the reference that testing effort *projects from*.
-"""
+'''
 entries = []
 
 [[record]]
@@ -306,26 +306,26 @@ title = "More tools:"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **More tools:** the master is implementation-agnostic; add `annotations/<other-tool>.toml` if another
+detail_md = '''- **More tools:** the master is implementation-agnostic; add `annotations/<other-tool>.toml` if another
   consumer adopts it.
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-expansion-when-relevant"
-rationale_md = """The master stays implementation-agnostic; add an annotations/<tool>.toml adapter only when another tool actually adopts it.
-"""
+rationale_md = '''The master stays implementation-agnostic; add an annotations/<tool>.toml adapter only when another tool actually adopts it.
+'''
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
 observer = "adopting tool owner"
 dimension = "annotation consumers"
-action_on_fire_md = """add its annotation file and adapter
-"""
+action_on_fire_md = '''add its annotation file and adapter
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """another consumer adopts the master
-"""
+event_md = '''another consumer adopts the master
+'''
 
 [[record]]
 id = "matrix.anonymous-nested-map"
@@ -333,7 +333,7 @@ title = "Real support for the anonymous nested MAP in a type position"
 
 [record.payload]
 kind = "work"
-detail_md = """- **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
+detail_md = '''- **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). Every one of those shapes rejects gracefully
   under both profiles, naming the map's supported named form (`m = {x: int, y: uint}`, referenced by
@@ -345,7 +345,7 @@ detail_md = """- **Real support for the anonymous nested MAP in a type position*
   the count of anonymous nested maps a consumer must hoist to named rules to compile ONE committed
   spec reaches 5 — hoisting is a mechanical per-occurrence edit, so the cost grows inside a single
   spec rather than across consumers, and the consumer can count it from their own rejection output.
-"""
+'''
 work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
@@ -354,14 +354,14 @@ risk = "valid_rejection"
 [record.payload.reopening_signal]
 observer = "affected spec owner"
 dimension = "required map hoists"
-action_on_fire_md = """add the anonymous map door
-"""
+action_on_fire_md = '''add the anonymous map door
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """one committed spec requires five
-"""
+event_md = '''one committed spec requires five
+'''
 
 [[record]]
 id = "matrix.array-sequence-upstream"
@@ -370,25 +370,25 @@ legacy_aliases = ["README gap #2", "README gap #4"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
+detail_md = '''- When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
   crates.io: prune the fix-provenance notes (README gaps #2/#4, the draft repro table, the vector
   `reason` provenance).
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit"
-current_upstream_state_md = """The behavior is fixed on local-fixes at 773b723; no fresh release-and-pin check has been performed.
-"""
-verification_md = """Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
-"""
+current_upstream_state_md = '''The behavior is fixed on local-fixes at 773b723; no fresh release-and-pin check has been performed.
+'''
+verification_md = '''Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit"
-external_predicate_md = """A published release contains commit 773b723 behavior and this repository's Cargo pin can return from local-fixes to that release.
-"""
-verification_md = """Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release contains commit 773b723 behavior and this repository's Cargo pin can return from local-fixes to that release.
+'''
+verification_md = '''Probe sole, preceded-sibling, exactly-once, bounded, zero-or-more, optional, and named-group array sequences plus the control-op-carrying rule; re-mint contain.occurrence-target.grpent.inline_group.exactly_once_array, contain.occurrence-target.grpent.groupname, and ctl.size.uint; prune gaps 2 and 4 only after all controls agree.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -398,26 +398,26 @@ legacy_aliases = ["README gap #6"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a release ships the `c2ebf9f` bignum map-key/value-tag fix (upstream PR pending — fix +
+detail_md = '''- When a release ships the `c2ebf9f` bignum map-key/value-tag fix (upstream PR pending — fix +
   30-test suite on the fork; README gap #6): prune the fix-provenance notes (README gap #6, the
   `RUST_ORACLE_SKIP` past-resident note, the two `bignint-*` fingerprint probes' provenance
   wording).
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n2"
-current_upstream_state_md = """The fix and test suite are on local-fixes; no fresh published-release check has been performed.
-"""
-verification_md = """Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
-"""
+current_upstream_state_md = '''The fix and test suite are on local-fixes; no fresh published-release check has been performed.
+'''
+verification_md = '''Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n2"
-external_predicate_md = """A published release contains commit c2ebf9f behavior for bignum map keys and value tags.
-"""
-verification_md = """Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release contains commit c2ebf9f behavior for bignum map keys and value tags.
+'''
+verification_md = '''Run bignint-key-empty-map-accepts and bignint-wrong-tag-rejects, restore the rust conformance-oracle leg, and prune only the gap 6 and RUST_ORACLE_SKIP provenance proven stale.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -434,14 +434,14 @@ risk = "invalid_acceptance"
 [record.payload.reopening_signal]
 observer = "refusal-fix owner"
 dimension = "guards with ordering bypass history"
-action_on_fire_md = """add the mechanical reject-catalog leg
-"""
+action_on_fire_md = '''add the mechanical reject-catalog leg
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a second guard is bypassed at an unenumerated trigger-space point
-"""
+event_md = '''a second guard is bypassed at an unenumerated trigger-space point
+'''
 
 [[record]]
 id = "matrix.cbor-any-boundary"
@@ -449,16 +449,16 @@ title = "`cbor-any` is a decided permanent exclusion, not a candidate feature."
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **`cbor-any` is a decided permanent exclusion, not a candidate feature.** Its
+detail_md = '''- **`cbor-any` is a decided permanent exclusion, not a candidate feature.** Its
   `#6.55799(any)` self-describe tag is a property of a complete serialized CBOR stream, not an
   ordinary value a generated wrapper can hold. Keep its role-neutral graceful refusal and the
   `tests/TESTING_ROADMAP.md` § North star exclusion; do not reopen it without an explicit maintainer
   decision.
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the"
-rationale_md = """cbor-any's self-describe tag is a complete-stream property rather than an ordinary generated value; retain the role-neutral graceful refusal unless a new explicit maintainer decision supersedes this boundary.
-"""
+rationale_md = '''cbor-any's self-describe tag is a complete-stream property rather than an ordinary generated value; retain the role-neutral graceful refusal unless a new explicit maintainer decision supersedes this boundary.
+'''
 permanence = "permanent"
 
 [[record]]
@@ -467,7 +467,7 @@ title = "A supported control's HOST-PLACEMENT spelling space — one support exa
 
 [record.payload]
 kind = "work"
-detail_md = """- **A supported control's HOST-PLACEMENT spelling space — one support example proves ONE point of
+detail_md = '''- **A supported control's HOST-PLACEMENT spelling space — one support example proves ONE point of
   it.** Distinct from the intra-alternative axis above (variation inside the controller): a
   control also varies by where its TARGET sits — occurrence (mandatory vs optional member),
   representation (map vs array member), and carriage (spelled at the member vs carried through a
@@ -490,7 +490,7 @@ detail_md = """- **A supported control's HOST-PLACEMENT spelling space — one s
   authoring rule enforced per supported op): a SECOND op found broken at an unenumerated
   host-placement point — measurable by whoever hits the break, and lying on the dimension the
   deferred cost grows along (the count of ops with proven multi-point breakage; `.default` is one).
-"""
+'''
 work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
@@ -499,14 +499,14 @@ risk = "false_pass_or_red"
 [record.payload.reopening_signal]
 observer = "control-fix owner"
 dimension = "controls with proven multi-point breakage"
-action_on_fire_md = """enumerate that operator's full product
-"""
+action_on_fire_md = '''enumerate that operator's full product
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a second operator breaks outside its enumerated host placement
-"""
+event_md = '''a second operator breaks outside its enumerated host placement
+'''
 
 [[record]]
 id = "matrix.derived-variant-naming"
@@ -514,10 +514,10 @@ title = "No auto-naming scheme for a DERIVED variant identifier that the fixed-v
 
 [record.payload]
 kind = "work"
-detail_md = """- **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
+detail_md = '''- **No auto-naming scheme for a DERIVED variant identifier that the fixed-value minter cannot spell
   — such FLOAT, NINT and keyword-minting TEXT choice arms are refused instead of named.** A choice
   arm with no member key takes its variant name from the value's LEXEME, which fails two ways:
-  `1.5` → `F1.5` and `-1` → `U-1` are not identifier-shaped, and `\"self\"` → `Self` is
+  `1.5` → `F1.5` and `-1` → `U-1` are not identifier-shaped, and `"self"` → `Self` is
   identifier-shaped but a keyword (the emitter writes minted names verbatim and never raw-escapes,
   and `Self` is Rust's only capitalized keyword, so it is the sole reachable one today).
   Today that is a graceful refusal at parse naming the rule, the arm and the
@@ -540,7 +540,7 @@ detail_md = """- **No auto-naming scheme for a DERIVED variant identifier that t
   consumer, so that is the dimension to watch rather than a second consumer appearing. It is not
   already met: today the evidence is synthetic probes only, and a synthetic probe writes no
   `@name`.
-"""
+'''
 work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
@@ -549,14 +549,14 @@ risk = "wrong_public_api"
 [record.payload.reopening_signal]
 observer = "affected crate owner"
 dimension = "hand-authored arm names"
-action_on_fire_md = """review a public naming convention
-"""
+action_on_fire_md = '''review a public naming convention
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """arms needing @name outnumber unnamed arms or exceed a handful in one crate
-"""
+event_md = '''arms needing @name outnumber unnamed arms or exceed a handful in one crate
+'''
 
 [[record]]
 id = "matrix.duplicate-rejection-diagnostics"
@@ -564,7 +564,7 @@ title = "Say each rejection once, so the count of messages is the count of probl
 
 [record.payload]
 kind = "work"
-detail_md = """- **Say each rejection once, so the count of messages is the count of problems.** A single
+detail_md = '''- **Say each rejection once, so the count of messages is the count of problems.** A single
   offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
   `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
   a map-value position (`m = { outer: { a: int, c: uint } }`) and the older group-choice rejections
@@ -586,7 +586,7 @@ detail_md = """- **Say each rejection once, so the count of messages is the coun
   makes the number of DISTINCT problems unreadable — three or more copies of one message, or
   duplicates interleaved with genuinely different rejections — reported by someone reading that
   output to fix their own spec.
-"""
+'''
 work_state = "deferred"
 work_intent = "repair"
 work_kind = "regression_gap"
@@ -595,14 +595,14 @@ risk = "misleading_docs"
 [record.payload.reopening_signal]
 observer = "spec fixer"
 dimension = "unreadable rejection output"
-action_on_fire_md = """identify sites and deduplicate visits/pairs
-"""
+action_on_fire_md = '''identify sites and deduplicate visits/pairs
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """three copies or interleaving obscure the distinct-problem count
-"""
+event_md = '''three copies or interleaving obscure the distinct-problem count
+'''
 
 [[record]]
 id = "matrix.emission-input-mode-honesty"
@@ -610,7 +610,7 @@ title = "Third honesty axis — flag-gated EMISSION SURFACES × input mode (peri
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
+detail_md = '''- **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
   SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
   flag-gated emission surface can still be built against single-file assumptions and break only
   under DIRECTORY input, invisible to every single-file gate. Proven instance: the `--emit-tests`
@@ -621,21 +621,21 @@ detail_md = """- **Third honesty axis — flag-gated EMISSION SURFACES × input 
   `multifile_matrix_roundtrips`). The rule going forward: a NEW flag-gated emission surface must
   state its input-mode posture in the same change — exercised under directory input, or recorded
   single-file-only with the reason. Postures already settled, each with the pin that holds it:
-"""
+'''
 policy_kind = "maintenance_protocol"
 authority_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining"
-protocol_md = """Every flag-gated emitted surface must declare directory-input execution coverage or a reasoned single-file posture; directory input containing one file is not multifile coverage.
-"""
+protocol_md = '''Every flag-gated emitted surface must declare directory-input execution coverage or a reasoned single-file posture; directory input containing one file is not multifile coverage.
+'''
 
 [record.payload.cadence]
 owner_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining"
 event_source = "flag-surface changes"
-period_or_event_md = """Run for every new flag-gated emission surface.
-"""
-checklist_md = """Declare directory-input execution coverage or a reasoned single-file posture.
-"""
-missed_action_md = """Reject a silently omitted input mode.
-"""
+period_or_event_md = '''Run for every new flag-gated emission surface.
+'''
+checklist_md = '''Declare directory-input execution coverage or a reasoned single-file posture.
+'''
+missed_action_md = '''Reject a silently omitted input mode.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -644,7 +644,7 @@ title = "Narrowing at emission, in the golden fixture floor."
 
 [record.payload]
 kind = "work"
-detail_md = """- **Narrowing at emission, in the golden fixture floor.** The per-construct section of
+detail_md = '''- **Narrowing at emission, in the golden fixture floor.** The per-construct section of
   `tests/golden_hex/COVERAGE.md` marks a construct exercised when a golden rule NAMES it, corrected
   for the prelude's plain aliases (derivable, so applied rather than disclaimed). Not corrected: a
   construct the fixture reaches only through a WIDER type that cddl-codegen narrows when it emits.
@@ -658,7 +658,7 @@ detail_md = """- **Narrowing at emission, in the golden fixture floor.** The per
   already asserts — wasted authoring work, measured by the author who did it, and growing with the
   number of skewed rows rather than with the number of consumers. The entry records that the case
   exists; it records nobody having paid for it yet, so the signal can still fire.
-"""
+'''
 work_state = "deferred"
 work_intent = "build_system"
 work_kind = "documentation_integrity"
@@ -667,14 +667,14 @@ risk = "misleading_docs"
 [record.payload.reopening_signal]
 observer = "golden-vector author"
 dimension = "duplicate asserted-byte authoring"
-action_on_fire_md = """add an emission model or name the narrow type
-"""
+action_on_fire_md = '''add an emission model or name the narrow type
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a new vector duplicates bytes already asserted through narrowing
-"""
+event_md = '''a new vector duplicates bytes already asserted through narrowing
+'''
 
 [[record]]
 id = "matrix.evidence.fixed-value-choice-member.bool"
@@ -683,13 +683,13 @@ title = "Live bool FixedValue choice-member evidence."
 [record.payload]
 kind = "evidence"
 evidence_kind = "gate"
-claim_md = """For `t = true / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
-"""
+claim_md = '''For `t = true / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+'''
 evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify"]
-unprobed_remainder_md = """No other boolean spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
-"""
+unprobed_remainder_md = '''No other boolean spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
+'''
 refresh_reference_id = "gate-verify"
 
 [record.payload.scope]
@@ -703,13 +703,13 @@ title = "Live bytes FixedValue choice-member evidence."
 [record.payload]
 kind = "evidence"
 evidence_kind = "gate"
-claim_md = """For `t = h'CAFE' / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
-"""
+claim_md = '''For `t = h'CAFE' / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+'''
 evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n2"]
-unprobed_remainder_md = """No other byte-string spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
-"""
+unprobed_remainder_md = '''No other byte-string spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
+'''
 refresh_reference_id = "gate-verify-n2"
 
 [record.payload.scope]
@@ -723,15 +723,15 @@ title = "Delivered FixedValue choice-member closure at 8320fb33."
 [record.payload]
 kind = "evidence"
 evidence_kind = "external_commit"
-claim_md = """The FixedValue choice-member family closed its reviewed denominator at commit 8320fb3330c5d6febda8910e5a3bb944bcec1466: eight legal representative cells (bool, bytes, float, nint, null, text, uint, undefined) carried thirty-six verified stage outcomes under the default profile — six representatives supported with rust and wasm compile plus round-trip evidence, while float and nint were safely refused at rust generation with their runtime stages inapplicable — and zero exclusions.
-"""
+claim_md = '''The FixedValue choice-member family closed its reviewed denominator at commit 8320fb3330c5d6febda8910e5a3bb944bcec1466: eight legal representative cells (bool, bytes, float, nint, null, text, uint, undefined) carried thirty-six verified stage outcomes under the default profile — six representatives supported with rust and wasm compile plus round-trip evidence, while float and nint were safely refused at rust generation with their runtime stages inapplicable — and zero exclusions.
+'''
 evidence_verdict = "confirmed"
 freshness = "historical"
 reference_ids = ["commit-dcspark-cddl-codegen"]
 at_commit = "8320fb3330c5d6febda8910e5a3bb944bcec1466"
 observed_at = "2026-08-13"
-unprobed_remainder_md = """Only the eight canonical representative coordinates are claimed; other literals of each kind, other placements, profiles, and faces are unclaimed. The live guard machinery that re-derived this closure from source on every run was retired on 2026-08-13; generator drift against the closed family is since caught by review, and the per-representative live evidence records beside this one remain refreshable through the verify gate.
-"""
+unprobed_remainder_md = '''Only the eight canonical representative coordinates are claimed; other literals of each kind, other placements, profiles, and faces are unclaimed. The live guard machinery that re-derived this closure from source on every run was retired on 2026-08-13; generator drift against the closed family is since caught by review, and the per-representative live evidence records beside this one remain refreshable through the verify gate.
+'''
 
 [record.payload.scope]
 faces = ["rust", "wasm"]
@@ -744,13 +744,13 @@ title = "Live float FixedValue choice-member evidence."
 [record.payload]
 kind = "evidence"
 evidence_kind = "gate"
-claim_md = """For `t = 1.5 / tstr` under the default profile, Rust generation safely refuses with exit 1; Rust compilation and Rust round-trip are therefore inapplicable.
-"""
+claim_md = '''For `t = 1.5 / tstr` under the default profile, Rust generation safely refuses with exit 1; Rust compilation and Rust round-trip are therefore inapplicable.
+'''
 evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n3"]
-unprobed_remainder_md = """No other float spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
-"""
+unprobed_remainder_md = '''No other float spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
+'''
 refresh_reference_id = "gate-verify-n3"
 
 [record.payload.scope]
@@ -764,13 +764,13 @@ title = "Live nint FixedValue choice-member evidence."
 [record.payload]
 kind = "evidence"
 evidence_kind = "gate"
-claim_md = """For `t = -1 / null / tstr` under the default profile, Rust generation safely refuses with exit 1; Rust compilation and Rust round-trip are therefore inapplicable.
-"""
+claim_md = '''For `t = -1 / null / tstr` under the default profile, Rust generation safely refuses with exit 1; Rust compilation and Rust round-trip are therefore inapplicable.
+'''
 evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n4"]
-unprobed_remainder_md = """No other negative-integer spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
-"""
+unprobed_remainder_md = '''No other negative-integer spelling, placement, profile, or face is claimed; wasm is outside this refused coordinate's applicability.
+'''
 refresh_reference_id = "gate-verify-n4"
 
 [record.payload.scope]
@@ -784,13 +784,13 @@ title = "Live null FixedValue choice-member evidence."
 [record.payload]
 kind = "evidence"
 evidence_kind = "gate"
-claim_md = """For `t = null / tstr / uint` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
-"""
+claim_md = '''For `t = null / tstr / uint` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+'''
 evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n5"]
-unprobed_remainder_md = """No other null placement, profile, or face is claimed; this is the canonical representative coordinate only.
-"""
+unprobed_remainder_md = '''No other null placement, profile, or face is claimed; this is the canonical representative coordinate only.
+'''
 refresh_reference_id = "gate-verify-n5"
 
 [record.payload.scope]
@@ -804,13 +804,13 @@ title = "Live text FixedValue choice-member evidence."
 [record.payload]
 kind = "evidence"
 evidence_kind = "gate"
-claim_md = """For `t = \"x\" / uint` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
-"""
+claim_md = '''For `t = "x" / uint` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+'''
 evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n6"]
-unprobed_remainder_md = """No other text literal, placement, profile, or face is claimed; in particular the keyword-minting literal `\"self\"` remains a separately pinned refusal.
-"""
+unprobed_remainder_md = '''No other text literal, placement, profile, or face is claimed; in particular the keyword-minting literal `"self"` remains a separately pinned refusal.
+'''
 refresh_reference_id = "gate-verify-n6"
 
 [record.payload.scope]
@@ -824,13 +824,13 @@ title = "Live uint FixedValue choice-member evidence."
 [record.payload]
 kind = "evidence"
 evidence_kind = "gate"
-claim_md = """For `t = 5 / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
-"""
+claim_md = '''For `t = 5 / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+'''
 evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n7"]
-unprobed_remainder_md = """No other unsigned-integer spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
-"""
+unprobed_remainder_md = '''No other unsigned-integer spelling, placement, profile, or face is claimed; this is the canonical representative coordinate only.
+'''
 refresh_reference_id = "gate-verify-n7"
 
 [record.payload.scope]
@@ -844,13 +844,13 @@ title = "Live undefined FixedValue choice-member evidence."
 [record.payload]
 kind = "evidence"
 evidence_kind = "gate"
-claim_md = """For `t = undefined / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
-"""
+claim_md = '''For `t = undefined / tstr` under the default profile, Rust generation, Rust compilation, Rust round-trip, wasm compilation, and wasm round-trip all succeed.
+'''
 evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["gate-verify-n8"]
-unprobed_remainder_md = """No other undefined placement, profile, or face is claimed; this is the canonical representative coordinate only.
-"""
+unprobed_remainder_md = '''No other undefined placement, profile, or face is claimed; this is the canonical representative coordinate only.
+'''
 refresh_reference_id = "gate-verify-n8"
 
 [record.payload.scope]
@@ -863,7 +863,7 @@ title = "Behavioral emitted-test cells for extern / raw-bytes ctor args"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **Behavioral emitted-test cells for extern / raw-bytes ctor args** — compile-verdict-permanent,
+detail_md = '''- **Behavioral emitted-test cells for extern / raw-bytes ctor args** — compile-verdict-permanent,
   decided 2026-08-04, same class as the `--wasm-*-macro` posture. This is about whether the
   AUTO-MINTER (`emit_tests`) learns these classes, NOT about the feature going untested: hand
   fixtures already cover raw-bytes behaviorally on both sides (`tests/raw-bytes/tests.rs` and
@@ -877,28 +877,28 @@ detail_md = """- **Behavioral emitted-test cells for extern / raw-bytes ctor arg
   struct variant (`emit_tests::mint_struct` yields no `MintValue` for `RustStructType::Extern`
   beyond the reserved `Int`, nor for `RustStructType::RawBytesType`), so the only route is a
   user-supplied-hint FEATURE (DSL surface, red-first vectors, docs,
-  matrix registration), which the \"no test-harness metadata in production
-  specs\" reasoning rejects. Reopening signals: a consumer asking for minted extern/raw-bytes
+  matrix registration), which the "no test-harness metadata in production
+  specs" reasoning rejects. Reopening signals: a consumer asking for minted extern/raw-bytes
   values (the request arrives carrying the valid-bytes knowledge the hint needs), or a
   consumer-reported wasm-boundary defect on such a ctor arg that the compile verdict passed.
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked"
-rationale_md = """Extern and raw-bytes execution needs consumer-owned valid-byte knowledge; retain compile coverage plus existing hand tests until a consumer supplies that knowledge or reports a missed defect.
-"""
+rationale_md = '''Extern and raw-bytes execution needs consumer-owned valid-byte knowledge; retain compile coverage plus existing hand tests until a consumer supplies that knowledge or reports a missed defect.
+'''
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
 observer = "extern/raw-bytes consumer"
 dimension = "demand or missed wasm defect"
-action_on_fire_md = """review hint feature
-"""
+action_on_fire_md = '''review hint feature
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """consumer supplies valid-byte knowledge or reports a defect
-"""
+event_md = '''consumer supplies valid-byte knowledge or reports a defect
+'''
 
 [[record]]
 id = "matrix.extern-execution-multifile"
@@ -906,17 +906,17 @@ title = "Corpus/matrix extern EXECUTION, and the multifile matrix's structural e
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **Corpus/matrix extern EXECUTION, and the multifile matrix's structural extern exclusion.** The
+detail_md = '''- **Corpus/matrix extern EXECUTION, and the multifile matrix's structural extern exclusion.** The
   COMPILE side of extern breadth is delivered and is now current state, documented where it is
-  enforced rather than here: the matrix rows in `README.md` § \"User-code rows are SEEDED, not
-  exempted\", the corpus/wasm-matrix side in `tests/README.md` (`CORPUS_DEF_SPLICE`,
+  enforced rather than here: the matrix rows in `README.md` § "User-code rows are SEEDED, not
+  exempted", the corpus/wasm-matrix side in `tests/README.md` (`CORPUS_DEF_SPLICE`,
   `append_extern_defs`, and the two per-gate skip lists that remain, each with its own reason).
   Two deliberate holes are left, each with an owner rather than a plan here:
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n2"
-rationale_md = """The matrix owns extern and raw-bytes compile-state coverage; execution lifecycle belongs to testing.extern-deps-wasm-boundary-surface-packaging-json-gen, while multifile extern-shape breadth has its own child work record.
-"""
+rationale_md = '''The matrix owns extern and raw-bytes compile-state coverage; execution lifecycle belongs to testing.extern-deps-wasm-boundary-surface-packaging-json-gen, while multifile extern-shape breadth has its own child work record.
+'''
 permanence = "permanent"
 
 [[record]]
@@ -925,7 +925,7 @@ title = "Extern-interface seam sentinels"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **Extern-interface seam sentinels** — the `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and
+detail_md = '''- **Extern-interface seam sentinels** — the `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and
   `; unexported:` records that `--extern-import` input files carry beyond the two `ext.*` sentinels
   (strictly parsed at the seam; comments to the grammar). They are tool-interchange rather than
   user-authored CDDL, and their strictness is enforced where it binds — the consumer seam's
@@ -933,24 +933,24 @@ detail_md = """- **Extern-interface seam sentinels** — the `; _CDDL_CODEGEN_EX
   `extern_import_unknown_annotation_hard_errors` (`src/tests/extern_import_tests.rs`). A matrix row
   would restate that enforcement as model surface for constructs no user authors. Reopening signal:
   a concrete matrix consumer query that needs vendor-sentinel rows.
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n2"
-rationale_md = """Do not model vendor-sentinel extern-interface data without a concrete matrix query that needs it; the strict parser tests remain the current seam control.
-"""
+rationale_md = '''Do not model vendor-sentinel extern-interface data without a concrete matrix query that needs it; the strict parser tests remain the current seam control.
+'''
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
 observer = "matrix query consumer"
 dimension = "vendor-sentinel query demand"
-action_on_fire_md = """model only demanded seam data
-"""
+action_on_fire_md = '''model only demanded seam data
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a concrete query needs it
-"""
+event_md = '''a concrete query needs it
+'''
 
 [[record]]
 id = "matrix.fixed-array.static-representation"
@@ -958,7 +958,7 @@ title = "Fixed-array representation optimization"
 
 [record.payload]
 kind = "work"
-detail_md = """### Fixed-array representation optimization
+detail_md = '''### Fixed-array representation optimization
 
 An exact `n*n T` can map to `[T; n]`, so the representation itself carries the constraint. The
 `uint .size 1` → `u8` mapping is the shipped precedent, independently of the `TryFrom` door, which
@@ -966,16 +966,16 @@ stays as the ergonomic entry point. The fixed carrier and its construction door 
 serialization, deserialization, Rust, wasm, JSON, component, cross-crate projection, matrix
 classification, and spec-derived boundary vectors.
 
-"""
+'''
 work_state = "ready"
 work_intent = "optimize"
 work_kind = "optimization"
 risk = "wrong_public_api"
-acceptance_md = """Map exact n*n homogeneous array occurrences to [T; n], retain TryFrom as the ergonomic construction door, keep fixed-byte representation outside this identity, and update every applicable Rust, wasm, JSON, component, cross-crate, matrix, and boundary-vector surface.
-"""
+acceptance_md = '''Map exact n*n homogeneous array occurrences to [T; n], retain TryFrom as the ergonomic construction door, keep fixed-byte representation outside this identity, and update every applicable Rust, wasm, JSON, component, cross-crate, matrix, and boundary-vector surface.
+'''
 priority_band = "normal"
-priority_rationale_md = """The fixed-array representation remains explicitly selected because an exact array type carries the cardinality invariant statically and avoids conflating this scope with the separate fixed-byte representation.
-"""
+priority_rationale_md = '''The fixed-array representation remains explicitly selected because an exact array type carries the cardinality invariant statically and avoids conflating this scope with the separate fixed-byte representation.
+'''
 
 [[record]]
 id = "matrix.fixed-bytes.lowercase-base64-parser"
@@ -983,7 +983,7 @@ title = "When a `cddl` parser release accepts lowercase-hex and base64 fixed-byt
 
 [record.payload]
 kind = "work"
-detail_md = """### When a `cddl` parser release accepts lowercase-hex and base64 fixed-byte literals
+detail_md = '''### When a `cddl` parser release accepts lowercase-hex and base64 fixed-byte literals
 
 The pinned parser accepts uppercase `h'CAFE'` and raw UTF-8 byte literals but rejects lowercase hex
 and RFC 8610 base64 spellings before generation. When a published parser release accepts both
@@ -993,7 +993,7 @@ limitation documentation, matrix projections, and fixed-byte vectors in one chan
 both newly parsed forms to lower to the same bytes as `h'CAFE'` and exercise the already-supported
 fixed-value surfaces; it is independent of the CBOR validator repair below.
 
-"""
+'''
 work_state = "waiting_external"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
@@ -1002,12 +1002,12 @@ external_owner_reference_id = "release-rust-cddl-parser-one-published-parser-rel
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-parser-one-published-parser-release"
-external_predicate_md = """One published parser release accepts both h'cafe' and b64'yv4=' and lowers them to the same bytes as h'CAFE'.
-"""
-verification_md = """Probe h'cafe', b64'yv4=', h'CAFE', and a raw UTF-8 control in the same release, exercise every already-supported fixed-value surface, and update feature/docs/projections/vectors only if lowered bytes agree.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''One published parser release accepts both h'cafe' and b64'yv4=' and lowers them to the same bytes as h'CAFE'.
+'''
+verification_md = '''Probe h'cafe', b64'yv4=', h'CAFE', and a raw UTF-8 control in the same release, exercise every already-supported fixed-value surface, and update feature/docs/projections/vectors only if lowered bytes agree.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -1016,22 +1016,22 @@ title = "Fixed-byte representation optimization"
 
 [record.payload]
 kind = "work"
-detail_md = """### Fixed-byte representation optimization
+detail_md = '''### Fixed-byte representation optimization
 
 `bytes .size 32` can map to `[u8; 32]`: the representation itself carries the constraint. The
 `uint .size 1` → `u8` mapping is the shipped precedent, independently of the `TryFrom` door, which
 stays as the ergonomic entry point.
 
-"""
+'''
 work_state = "ready"
 work_intent = "optimize"
 work_kind = "optimization"
 risk = "wrong_public_api"
-acceptance_md = """Map an exact bytes .size N value to [u8; N], retain TryFrom as the ergonomic entry point, and cover Rust, wasm, JSON, component, cross-crate, matrix, fixed-member, and recombination surfaces without changing fixed-array campaign identity.
-"""
+acceptance_md = '''Map an exact bytes .size N value to [u8; N], retain TryFrom as the ergonomic entry point, and cover Rust, wasm, JSON, component, cross-crate, matrix, fixed-member, and recombination surfaces without changing fixed-array campaign identity.
+'''
 priority_band = "normal"
-priority_rationale_md = """The exact byte-array representation carries its length invariant statically and has the shipped uint .size 1 to u8 precedent, while remaining an independent optimization.
-"""
+priority_rationale_md = '''The exact byte-array representation carries its length invariant statically and has the shipped uint .size 1 to u8 precedent, while remaining an independent optimization.
+'''
 
 [[record]]
 id = "matrix.fixed-bytes.validator-corroboration"
@@ -1040,7 +1040,7 @@ legacy_aliases = ["README gap #17"]
 
 [record.payload]
 kind = "work"
-detail_md = """### When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17)
+detail_md = '''### When a rust `cddl` release fixes fixed-byte CBOR validation (README gap #17)
 
 Confirm `h'CAFE'` and raw UTF-8 fixed-byte rules validate without a panic, then remove the four pinned
   decode-foreign rows and re-mint them with
@@ -1054,7 +1054,7 @@ Confirm `h'CAFE'` and raw UTF-8 fixed-byte rules validate without a panic, then 
   lazy byte-safe diagnostic renderer. Until then, generated execution is the equality-enforcement
   pin; the missing independent oracle certification is explicit rather than inferred as `n/a`.
 
-"""
+'''
 work_state = "waiting_external"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
@@ -1063,12 +1063,12 @@ external_owner_reference_id = "release-rust-cddl-a-published-release-validates-h
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-validates-h-cafe"
-external_predicate_md = """A published release validates h'CAFE' and raw UTF-8 fixed-byte rules without panic and renders arbitrary B16ByteString bytes without a UTF-8 assumption.
-"""
-verification_md = """Run bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes,contain.choice-member.type2.value.bytes.fixed-kind; require normal two-oracle and constraint evidence; run fixed-member and recombination regressions before pruning gap 17 or simplifying diagnostics.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release validates h'CAFE' and raw UTF-8 fixed-byte rules without panic and renders arbitrary B16ByteString bytes without a UTF-8 assumption.
+'''
+verification_md = '''Run bun run verify.ts --mint-decode-foreign --only=value.bytes,contain.array-element.value.bytes,contain.map-value.value.bytes,contain.choice-member.type2.value.bytes.fixed-kind; require normal two-oracle and constraint evidence; run fixed-member and recombination regressions before pruning gap 17 or simplifying diagnostics.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -1077,7 +1077,7 @@ title = "Bytes, nint, and float fixed map-key refusals are pinned at the shared 
 
 [record.payload]
 kind = "control"
-detail_md = """- Bytes/nint/float fixed map keys are **rejected gracefully** — only uint and text fixed keys are
+detail_md = '''- Bytes/nint/float fixed map keys are **rejected gracefully** — only uint and text fixed keys are
   implemented on the struct-map record path (pinned by
   `contain.map-key.memberkey.value.{nint,float}_colon_single`,
   `contain.map-key.memberkey.value.{nint,float}_colon_multi`, and the matching group-choice-arm rows
@@ -1095,14 +1095,14 @@ detail_md = """- Bytes/nint/float fixed map keys are **rejected gracefully** —
   record-key representation: it is deliberately allowlisted to uint/text, so bytes (as well as the
   nint/float/special kinds above) remain graceful refusals until a dedicated key representation is
   designed. `fixed_key_arrow_single_entry_routes_to_record_path` pins the allowlist seam.
-"""
+'''
 control_kind = "test"
 control_state = "live"
 reference_ids = ["cell-contain-group-choice-arm-memberkey-value-float-map", "cell-contain-group-choice-arm-memberkey-value-nint-map", "cell-contain-map-key-memberkey-value-float-colon-multi", "cell-contain-map-key-memberkey-value-float-colon-single", "cell-contain-map-key-memberkey-value-nint-colon-multi", "cell-contain-map-key-memberkey-value-nint-colon-single", "test-fixed-key-arrow-single-entry-routes-to-record-path"]
-claim_md = """Struct-map fixed keys are allowlisted to uint and text; byte, nint, float, and special fixed keys refuse gracefully, and nint/float group-choice-arm spellings are pinned without widening the record-key representation.
-"""
-boundary_md = """This control owns current enforcement only. Nint feature work belongs to matrix.nint-capability and float-key feature work belongs to matrix.float-table-key-domain.
-"""
+claim_md = '''Struct-map fixed keys are allowlisted to uint and text; byte, nint, float, and special fixed keys refuse gracefully, and nint/float group-choice-arm spellings are pinned without widening the record-key representation.
+'''
+boundary_md = '''This control owns current enforcement only. Nint feature work belongs to matrix.nint-capability and float-key feature work belongs to matrix.float-table-key-domain.
+'''
 
 [[record]]
 id = "matrix.float-key-null-upstream"
@@ -1111,25 +1111,25 @@ legacy_aliases = ["README gap #10"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a release ships the `707c038` float-key/null member-key fix (README gap #10): prune the
+detail_md = '''- When a release ships the `707c038` float-key/null member-key fix (README gap #10): prune the
   fix-provenance notes (README gap #10, the `float-key-accepts` / `null-key-rejects` fingerprint
   probes' provenance wording).
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n3"
-current_upstream_state_md = """The fix is on local-fixes; no fresh published-release check has been performed.
-"""
-verification_md = """Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
-"""
+current_upstream_state_md = '''The fix is on local-fixes; no fresh published-release check has been performed.
+'''
+verification_md = '''Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n3"
-external_predicate_md = """A published release contains commit 707c038 behavior matching float keys and rejecting null keys.
-"""
-verification_md = """Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release contains commit 707c038 behavior matching float keys and rejecting null keys.
+'''
+verification_md = '''Run float-key-accepts and null-key-rejects against occurrence-less, optional, and fallback paths, then prune only gap 10 provenance.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -1139,8 +1139,8 @@ legacy_aliases = ["README gap #12"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When the rust oracle starts distinguishing the float prelude names at all (README gap #12 — OPEN
-  at the pinned `ac1b98e` rev: all six names collapse to one \"is it a float\" test). The ruby gem
+detail_md = '''- When the rust oracle starts distinguishing the float prelude names at all (README gap #12 — OPEN
+  at the pinned `ac1b98e` rev: all six names collapse to one "is it a float" test). The ruby gem
   0.12.14 already implements the shortest-form partition head-independently, so this is a
   one-oracle divergence and every affected `DECODE_REJECT_ORACLE_GAP_EXEMPT` entry names `rust`
   alone. Written up for filing, tracked by
@@ -1153,51 +1153,51 @@ detail_md = """- When the rust oracle starts distinguishing the float prelude na
   itself. If instead the answer is that all six names denote the same set, the exemptions are wrong
   rather than stale: the shortest-form partition reopens, and the writeup's own closing section
   says exactly what moves.
-"""
+'''
 closeout_state = "due"
 upstream_owner_reference_id = "release-rust-cddl-a-published-ruling-or-release"
-current_upstream_state_md = """A paste-ready report is committed at cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md, but no issue is filed.
-"""
-verification_md = """File the report; on a distinguishing fix, drop rust from affected exemptions and re-mint the five constrained float rows; on the opposite ruling, execute the report's reversal branch.
-"""
+current_upstream_state_md = '''A paste-ready report is committed at cddl-matrix/upstream-reports/rust-cddl-float-name-blindness.md, but no issue is filed.
+'''
+verification_md = '''File the report; on a distinguishing fix, drop rust from affected exemptions and re-mint the five constrained float rows; on the opposite ruling, execute the report's reversal branch.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-ruling-or-release"
-external_predicate_md = """A published ruling or release distinguishes the six float prelude names, or explicitly rules that the current common set is correct.
-"""
-verification_md = """File the report; on a distinguishing fix, drop rust from affected exemptions and re-mint the five constrained float rows; on the opposite ruling, execute the report's reversal branch.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published ruling or release distinguishes the six float prelude names, or explicitly rules that the current common set is correct.
+'''
+verification_md = '''File the report; on a distinguishing fix, drop rust from affected exemptions and re-mint the five constrained float rows; on the opposite ruling, execute the report's reversal branch.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
-action_md = """File the report.
-"""
+action_md = '''File the report.
+'''
 
 [[record.payload.action]]
 action_id = "validator-distinguishes"
-action_md = """Drop rust from the affected exemptions and re-mint the five constrained float rows.
-"""
+action_md = '''Drop rust from the affected exemptions and re-mint the five constrained float rows.
+'''
 
 [[record.payload.action]]
 action_id = "validator-rules-common-set"
-action_md = """Execute the committed report's reversal branch and update the durable capacity claim to the ruling.
-"""
+action_md = '''Execute the committed report's reversal branch and update the durable capacity claim to the ruling.
+'''
 
 [[record.payload.branch]]
 branch_id = "validator-distinguishes"
-predicate_md = """A published validator release distinguishes the six float prelude names.
-"""
+predicate_md = '''A published validator release distinguishes the six float prelude names.
+'''
 
 [[record.payload.branch.action]]
 action_id = "validator-distinguishes"
 
 [[record.payload.branch]]
 branch_id = "validator-rules-common-set"
-predicate_md = """A published ruling states that the validator's common float-name set is correct.
-"""
+predicate_md = '''A published ruling states that the validator's common float-name set is correct.
+'''
 
 [[record.payload.branch.action]]
 action_id = "validator-rules-common-set"
@@ -1208,7 +1208,7 @@ title = "Float-family table key domains"
 
 [record.payload]
 kind = "work"
-detail_md = """- Float-family table key domains are **rejected gracefully** at generation — a key domain that is
+detail_md = '''- Float-family table key domains are **rejected gracefully** at generation — a key domain that is
   (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or an `OrderedHashMap` bounded
   `K: Hash + Eq + Ord` under `--preserve-encodings`), and floats implement none of `Eq`/`Ord`/`Hash`,
   so every such crate failed to build (E0277). The rejection covers the direct family (`{ float64 =>
@@ -1219,7 +1219,7 @@ detail_md = """- Float-family table key domains are **rejected gracefully** at g
   key domain. Real float-key support (e.g. an ordered-float wrapper) is a candidate feature.
   Reopening signal: a consumer reports a spec whose table keys are floats in a wire format they do
   not control — i.e. the integer/text/bytes remedy is not theirs to apply.
-"""
+'''
 work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
@@ -1228,14 +1228,14 @@ risk = "compile_failure"
 [record.payload.reopening_signal]
 observer = "affected consumer"
 dimension = "immutable wire formats with float keys"
-action_on_fire_md = """design an ordered-float key
-"""
+action_on_fire_md = '''design an ordered-float key
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a consumer cannot apply integer/text/bytes remedy
-"""
+event_md = '''a consumer cannot apply integer/text/bytes remedy
+'''
 
 [[record]]
 id = "matrix.grammar-derived-legality"
@@ -1243,20 +1243,20 @@ title = "Grammar-derived legality denominator for the role × feature grid."
 
 [record.payload]
 kind = "work"
-detail_md = """- **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
-  `tests/corpus/COVERAGE.md` § \"Role × feature containment grid\" takes its denominator from two
+detail_md = '''- **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
+  `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
   exercises — so a cell that neither touches renders blank and is invisible *as a cell*. Derive the
   denominator instead from the grammar (a `role → admitted-production` relation over RFC 8610's ABNF,
-  the same source each `roles.toml` entry already cites), so that \"nothing has an opinion about this
-  legal nesting\" becomes a rendered state rather than the absence of one, and the corpus stops being
+  the same source each `roles.toml` entry already cites), so that "nothing has an opinion about this
+  legal nesting" becomes a rendered state rather than the absence of one, and the corpus stops being
   the thing that decides which cells exist.
   **Reopening signal:** a generation defect (panic, refusal, or miscompile) on valid CDDL reported
   against a `(role × feature)` cell the grid renders BLANK — measurable by the reporter, who holds the
   spec that broke and can look its cell up in the published grid. The two panics that motivated the
   grid itself do not meet this signal: both sat in cells the corpus exercises and nothing models,
   which the grid now names `·`.
-"""
+'''
 work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
@@ -1265,14 +1265,14 @@ risk = "false_pass_or_red"
 [record.payload.reopening_signal]
 observer = "consumer reporter"
 dimension = "blank legal role×feature cells"
-action_on_fire_md = """derive the grammar denominator
-"""
+action_on_fire_md = '''derive the grammar denominator
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a valid-CDDL generation defect is reported in a blank cell
-"""
+event_md = '''a valid-CDDL generation defect is reported in a blank cell
+'''
 
 [[record]]
 id = "matrix.heterogeneous-array.atomic-bounds-handover"
@@ -1280,22 +1280,22 @@ title = "Atomically hand over bounded scalar and byte/text values to private-fie
 
 [record.payload]
 kind = "work"
-detail_md = """### Atomically hand over bounded scalar and byte/text values to private-field newtypes
+detail_md = '''### Atomically hand over bounded scalar and byte/text values to private-field newtypes
 
 Value windows (`uint .le N`, `.size` ranges on bytes/text) need private-field newtypes whose
 `TryFrom` door replaces today's ctor/deserialize checks (the `value_bounds_check_line` emission
 sites).
 
-"""
+'''
 work_state = "ready"
 work_intent = "optimize"
 work_kind = "optimization"
 risk = "wrong_public_api"
-acceptance_md = """Represent bounded scalar and byte/text values with private-field newtypes and make TryFrom the construction door that replaces both constructor-time and deserializer-only value_bounds_check_line enforcement.
-"""
+acceptance_md = '''Represent bounded scalar and byte/text values with private-field newtypes and make TryFrom the construction door that replaces both constructor-time and deserializer-only value_bounds_check_line enforcement.
+'''
 priority_band = "normal"
-priority_rationale_md = """The invariant currently has multiple enforcement sites; an atomic private carrier removes invalid construction without depending on the separate heterogeneous-occurrence decoder design.
-"""
+priority_rationale_md = '''The invariant currently has multiple enforcement sites; an atomic private carrier removes invalid construction without depending on the separate heterogeneous-occurrence decoder design.
+'''
 
 [[record]]
 id = "matrix.heterogeneous-array.occurrence-bounds"
@@ -1303,7 +1303,7 @@ title = "Honor non-final and bounded count-permitting occurrences on heterogeneo
 
 [record.payload]
 kind = "work"
-detail_md = """### Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record fields.
+detail_md = '''### Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record fields.
 
 A **final-position** `* t` after ≥1 fixed member is the loose open-array rest tail;
   final `+ t` / `1* t` is its `NonEmptyVec` twin with a first-element construction door (both
@@ -1319,16 +1319,16 @@ A **final-position** `* t` after ≥1 fixed member is the loose open-array rest 
   serialization, deserialization, every generated projection, matrix classification, and
   spec-derived boundary vectors.
 
-"""
+'''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = """Define invariant-preserving carriers and construction doors for middle or non-final repetition and bounded heterogeneous final or open tails; honor RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
-"""
+acceptance_md = '''Define invariant-preserving carriers and construction doors for middle or non-final repetition and bounded heterogeneous final or open tails; honor RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
+'''
 priority_band = "high"
-priority_rationale_md = """Spec-valid middle repetitions and bounded heterogeneous final or open tails remain valid rejections, so this selected capability closes a real supported-language boundary without reviving already delivered final unbounded tails.
-"""
+priority_rationale_md = '''Spec-valid middle repetitions and bounded heterogeneous final or open tails remain valid rejections, so this selected capability closes a real supported-language boundary without reviving already delivered final unbounded tails.
+'''
 
 [[record]]
 id = "matrix.incremental-extension-reference-upstream"
@@ -1339,35 +1339,35 @@ legacy_aliases = ["README gap #15"]
 kind = "matrix_external_closeout"
 closeout_state = "due"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-accumulates-the"
-current_upstream_state_md = """The report cddl-matrix/upstream-reports/rust-cddl-incremental-extension-reference-resolution.md is committed but no issue is filed.
-"""
-verification_md = """File the report; probe both statement orders at root and through r = extended; require uint and text arms through the reference; re-enable ordinary rust corroboration for assignt_extend while retaining the ruby extension-first branch until ruby separately passes.
-"""
+current_upstream_state_md = '''The report cddl-matrix/upstream-reports/rust-cddl-incremental-extension-reference-resolution.md is committed but no issue is filed.
+'''
+verification_md = '''File the report; probe both statement orders at root and through r = extended; require uint and text arms through the reference; re-enable ordinary rust corroboration for assignt_extend while retaining the ruby extension-first branch until ruby separately passes.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-accumulates-the"
-external_predicate_md = """A published release accumulates the base = arm and every /= arm when the rule is referenced, for both statement orders.
-"""
-verification_md = """File the report; probe both statement orders at root and through r = extended; require uint and text arms through the reference; re-enable ordinary rust corroboration for assignt_extend while retaining the ruby extension-first branch until ruby separately passes.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release accumulates the base = arm and every /= arm when the rule is referenced, for both statement orders.
+'''
+verification_md = '''File the report; probe both statement orders at root and through r = extended; require uint and text arms through the reference; re-enable ordinary rust corroboration for assignt_extend while retaining the ruby extension-first branch until ruby separately passes.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
-action_md = """File the report.
-"""
+action_md = '''File the report.
+'''
 
 [[record.payload.action]]
 action_id = "ruby-extension-first"
-action_md = """Re-enable ordinary rust corroboration and retain the ruby extension-first branch until ruby separately passes.
-"""
+action_md = '''Re-enable ordinary rust corroboration and retain the ruby extension-first branch until ruby separately passes.
+'''
 
 [[record.payload.branch]]
 branch_id = "ruby-extension-first"
-predicate_md = """Rust accumulates every extension arm through a reference while ruby still fails the extension-first statement order.
-"""
+predicate_md = '''Rust accumulates every extension arm through a reference while ruby still fails the extension-first statement order.
+'''
 
 [[record.payload.branch.action]]
 action_id = "ruby-extension-first"
@@ -1378,7 +1378,7 @@ title = "Incremental GROUP-choice extension (`//=`) stays refused; honoring it i
 
 [record.payload]
 kind = "work"
-detail_md = """- **Incremental GROUP-choice extension (`//=`) stays refused; honoring it is blocked on the
+detail_md = '''- **Incremental GROUP-choice extension (`//=`) stays refused; honoring it is blocked on the
   choice-of-bodies design, not on this seam.** The type half is done — `merge_incremental_type_choice_extensions`
   splices every `/=` statement's arms into the first statement's before `ParentVisitor` is built, so
   a `/=` chain generates byte-identically to the folded type-choice rule
@@ -1392,22 +1392,22 @@ detail_md = """- **Incremental GROUP-choice extension (`//=`) stays refused; hon
   row (verify.ts re-probe) and re-mint its decode rows. Reopening signal — it is the
   choice-of-bodies entry's signal, since nothing here can move first.
 
-"""
+'''
 work_state = "blocked"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-blocker_md = """The required choice-of-bodies representation is not yet reviewed and cannot represent group //= bodies; consumer demand for the parent capability is not sufficient to unblock this implementation dependency.
-"""
+blocker_md = '''The required choice-of-bodies representation is not yet reviewed and cannot represent group //= bodies; consumer demand for the parent capability is not sufficient to unblock this implementation dependency.
+'''
 
 [record.payload.unblock_predicate]
 owner_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n3"
-event_md = """The choice-of-bodies design is reviewed and can represent group //= bodies without flattening their alternatives.
-"""
-check_procedure_md = """Confirm a durable design and acceptance owner exists and matrix.multi-choice-group-rule is no longer blocked for that capability.
-"""
-due_action_md = """Delete the current refusal arm, generalize group-choice merging, flip assigng.extend, and re-mint the affected decode rows.
-"""
+event_md = '''The choice-of-bodies design is reviewed and can represent group //= bodies without flattening their alternatives.
+'''
+check_procedure_md = '''Confirm a durable design and acceptance owner exists and matrix.multi-choice-group-rule is no longer blocked for that capability.
+'''
+due_action_md = '''Delete the current refusal arm, generalize group-choice merging, flip assigng.extend, and re-mint the affected decode rows.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -1416,7 +1416,7 @@ title = "A containment-matrix row for the INLINE nested `.cbor` self-composition
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **A containment-matrix row for the INLINE nested `.cbor` self-composition**
+detail_md = '''- **A containment-matrix row for the INLINE nested `.cbor` self-composition**
   (`bytes .cbor (bytes .cbor T)`, beside the four existing `contain.cbor-payload.*` rows). Declined
   because a row's whole job — keeping the construct's support claim measured — is already done at
   every layer a row would feed: the corpus cell (`ctl.cbor` × `cbor-payload` exercised, COVERAGE.md),
@@ -1428,24 +1428,24 @@ detail_md = """- **A containment-matrix row for the INLINE nested `.cbor` self-c
   signal: a concrete matrix consumer query that needs the self-composition row — the same signal
   class as the seam-sentinel decline above.
 
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n3"
-rationale_md = """Do not add nested-CBOR containment rows unless a concrete query demonstrates additional discrimination beyond the existing corpus, decode, and recombination controls.
-"""
+rationale_md = '''Do not add nested-CBOR containment rows unless a concrete query demonstrates additional discrimination beyond the existing corpus, decode, and recombination controls.
+'''
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
 observer = "matrix query consumer"
 dimension = "nested-cbor row demand"
-action_on_fire_md = """add the row if it adds discrimination
-"""
+action_on_fire_md = '''add the row if it adds discrimination
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a concrete query needs it
-"""
+event_md = '''a concrete query needs it
+'''
 
 [[record]]
 id = "matrix.inline-group-choice-arm"
@@ -1453,7 +1453,7 @@ title = "Real support for an inline group as a group-choice arm's sole entry"
 
 [record.payload]
 kind = "work"
-detail_md = """- **Real support for an inline group as a group-choice arm's sole entry**
+detail_md = '''- **Real support for an inline group as a group-choice arm's sole entry**
   (`t = [ (uint, tstr) // bytes ]`, and the map-rep `t = { (a: uint) // b: tstr }`). Both reject
   gracefully, pointing at the equivalent named form
   (`pair = (uint, tstr)`, then `t = [ pair // bytes ]`) — pinned by
@@ -1463,7 +1463,7 @@ detail_md = """- **Real support for an inline group as a group-choice arm's sole
   anonymous-nested-MAP entry because the remedy is fully equivalent here (naming the group changes nothing on the
   wire), so the reopening signal is the same magnitude one on a higher threshold: the count of
   inline group-choice arms a consumer must name to compile ONE committed spec reaches 10.
-"""
+'''
 work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
@@ -1472,14 +1472,14 @@ risk = "valid_rejection"
 [record.payload.reopening_signal]
 observer = "affected spec owner"
 dimension = "required group names"
-action_on_fire_md = """mint the inline arm struct
-"""
+action_on_fire_md = '''mint the inline arm struct
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """one committed spec requires ten
-"""
+event_md = '''one committed spec requires ten
+'''
 
 [[record]]
 id = "matrix.inline-group-occurrence-carrier"
@@ -1487,7 +1487,7 @@ title = "Honor zero-permitting occurrences on inline parenthesized groups when a
 
 [record.payload]
 kind = "work"
-detail_md = """### Honor zero-permitting occurrences on inline parenthesized groups when a carrier exists
+detail_md = '''### Honor zero-permitting occurrences on inline parenthesized groups when a carrier exists
 
 An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]` — is **rejected
   gracefully** (pinned by `contain.occurrence-target.grpent.inline_group.{plus_array,optional_array,bounded_array,zero_map}`
@@ -1499,16 +1499,16 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
   `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
-"""
+'''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = """Add an Option- or Vec-style synthesized carrier only for zero-permitting inline parenthesized-group markers, preserve exactly-once flattening, preserve the lower-bound-at-least-one keyed-map collapse and the working named-group remedy, and add positive plus refusal vectors that prevent silent narrowing.
-"""
+acceptance_md = '''Add an Option- or Vec-style synthesized carrier only for zero-permitting inline parenthesized-group markers, preserve exactly-once flattening, preserve the lower-bound-at-least-one keyed-map collapse and the working named-group remedy, and add positive plus refusal vectors that prevent silent narrowing.
+'''
 priority_band = "low"
-priority_rationale_md = """The work is sound and unblocked, but the named-group spelling is already a complete remedy; it follows the selected occurrence carriers in priority.
-"""
+priority_rationale_md = '''The work is sound and unblocked, but the named-group spelling is already a complete remedy; it follows the selected occurrence carriers in priority.
+'''
 
 [[record]]
 id = "matrix.interaction-tuples-boundary"
@@ -1517,13 +1517,13 @@ legacy_aliases = ["F9"]
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **F9 — interaction tuples** (A-in-B-in-role-C-with-operator-D): richer-than-binary containment; stretch
+detail_md = '''- **F9 — interaction tuples** (A-in-B-in-role-C-with-operator-D): richer-than-binary containment; stretch
   query (Q7) only.
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n4"
-rationale_md = """F9 remains the Q7 stretch query and does not become a matrix denominator or implementation campaign.
-"""
+rationale_md = '''F9 remains the Q7 stretch query and does not become a matrix denominator or implementation campaign.
+'''
 permanence = "permanent"
 
 [[record]]
@@ -1532,20 +1532,20 @@ title = "Intra-alternative variation rows (the enforcement-blind-spot class):"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **Intra-alternative variation rows (the enforcement-blind-spot class):** when a new variation axis
+detail_md = '''- **Intra-alternative variation rows (the enforcement-blind-spot class):** when a new variation axis
   appears *inside* one ABNF alternative (a new controller value class, a new literal lexeme, a new
-  head-type × sign combination), enumerate it as a ROW with its `class=\"constraint\"` boundary-violation
+  head-type × sign combination), enumerate it as a ROW with its `class="constraint"` boundary-violation
   reject vector FIRST — before trusting a green. Silent-acceptance bugs are visible only to the
   enforcement axis, and that axis reaches exactly as far as row/example enumeration — an enumeration gap
   here is an enforcement blind spot, not just coverage accounting (the over-acceptance gotcha in
-  `README.md` § \"Gotchas\"). Precedent rows to model on: `rangeop.{inclusive,exclusive}.{int,nint,float}`,
+  `README.md` § "Gotchas"). Precedent rows to model on: `rangeop.{inclusive,exclusive}.{int,nint,float}`,
   `occur.bounded.{lower,upper}`, `value.number.{hex,bin,hexfloat}`, `ctl.ne.{zero,one}`, `ctl.size.uint`
   (Q4 pins the exact enforce-green set). The vector CLASS follows the decoder's current behavior:
-  when it correctly rejects the boundary violation, the row lands `class=\"constraint\"` (the rows
+  when it correctly rejects the boundary violation, the row lands `class="constraint"` (the rows
   above); when it currently WRONGLY ACCEPTS it, the same enumeration lands the violation as a
-  certified `class=\"over-acceptance\"` pin instead, which flips to `class=\"constraint\"` once the fix
+  certified `class="over-acceptance"` pin instead, which flips to `class="constraint"` once the fix
   lands. Both branches have been walked end to end on one row — the worked cycle is in `README.md`
-  § \"Gotchas\", so it is not retold here. The same rule applies to DISPATCH variations, not just
+  § "Gotchas", so it is not retold here. The same rule applies to DISPATCH variations, not just
   enforcement — precedent row: `contain.group-choice-arm.grpent.member.record_array_tagged`
   (`t = [ a: tg // b: tstr ]`, `tg = #6.10([x: uint])`), which pins the TAG head of a struct-level
   tagged record as an array-rep group-choice arm member. The arm discriminant routes a non-embedded
@@ -1561,21 +1561,21 @@ detail_md = """- **Intra-alternative variation rows (the enforcement-blind-spot 
   `0`. Delivered enumeration: `tests/corpus/default_scalar_kinds.cddl` + the fallible
   `type2_to_fixed_value` lowering (a non-literal operand is a recorded rejection, so the panic
   class cannot return through a shape nobody enumerated).
-"""
+'''
 policy_kind = "maintenance_protocol"
 authority_reference_id = "roadmap-expansion-when-relevant-n2"
-protocol_md = """A newly discovered intra-alternative value or dispatch axis must be represented by a row and a truthful violation vector before the affected surface is accepted as green.
-"""
+protocol_md = '''A newly discovered intra-alternative value or dispatch axis must be represented by a row and a truthful violation vector before the affected surface is accepted as green.
+'''
 
 [record.payload.cadence]
 owner_reference_id = "roadmap-expansion-when-relevant-n2"
 event_source = "matrix row authoring"
-period_or_event_md = """Run whenever a new intra-alternative value or dispatch axis is added.
-"""
-checklist_md = """Enumerate the row and its violation vector before accepting green.
-"""
-missed_action_md = """Block the row when enforcement is unclassified.
-"""
+period_or_event_md = '''Run whenever a new intra-alternative value or dispatch axis is added.
+'''
+checklist_md = '''Enumerate the row and its violation vector before accepting green.
+'''
+missed_action_md = '''Block the row when enforcement is unclassified.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -1584,7 +1584,7 @@ title = "Honor zero-permitting occurrences on keyed struct-map fields"
 
 [record.payload]
 kind = "work"
-detail_md = """### Honor zero-permitting occurrences on keyed struct-map fields
+detail_md = '''### Honor zero-permitting occurrences on keyed struct-map fields
 
 Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
 gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
@@ -1596,16 +1596,16 @@ gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,
   serialization, deserialization, every applicable generated projection, matrix classification,
   and spec-derived boundary vectors.
 
-"""
+'''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = """Add an invariant-preserving optional carrier for *, 0*n, and *n keyed struct-map fields without changing the deliberate exactly-one collapse for lower bounds of at least one, then cover every generated face, cross-crate projection, matrix classification, and spec-derived boundary vector.
-"""
+acceptance_md = '''Add an invariant-preserving optional carrier for *, 0*n, and *n keyed struct-map fields without changing the deliberate exactly-one collapse for lower bounds of at least one, then cover every generated face, cross-crate projection, matrix classification, and spec-derived boundary vector.
+'''
 priority_band = "high"
-priority_rationale_md = """Zero-permitting keyed struct-map fields are valid input and remain selected because the current mandatory representation would silently narrow them, while an Option-like carrier can preserve their absence semantics.
-"""
+priority_rationale_md = '''Zero-permitting keyed struct-map fields are valid input and remain selected because the current mandatory representation would silently narrow them, while an Option-like carrier can preserve their absence semantics.
+'''
 
 [[record]]
 id = "matrix.matching-semantics-boundary"
@@ -1614,13 +1614,13 @@ legacy_aliases = ["F8"]
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **F8 — matching semantics** (prioritized-choice ordering, greedy occurrence, implicit `:` cut): a
+detail_md = '''- **F8 — matching semantics** (prioritized-choice ordering, greedy occurrence, implicit `:` cut): a
   validation concern, not a cddl-codegen serialization concern.
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n5"
-rationale_md = """F8 remains a validation and matching-semantics question rather than a serialization-support matrix axis.
-"""
+rationale_md = '''F8 remains a validation and matching-semantics question rather than a serialization-support matrix axis.
+'''
 permanence = "permanent"
 
 [[record]]
@@ -1629,10 +1629,10 @@ title = "A group RULE whose body carries multiple group choices is refused with 
 
 [record.payload]
 kind = "work"
-detail_md = """- **A group RULE whose body carries multiple group choices is refused with two verified remedies —
+detail_md = '''- **A group RULE whose body carries multiple group choices is refused with two verified remedies —
   the honoring design (a choice of bodies) is the missing capability, not the guard.**
   `pg = (a: uint // f: bytes)` is valid CDDL (a group rule's body is
-  `grpchoice *(S \"//\" S grpchoice)`), and today it is a graceful refusal at the `api::with_types`
+  `grpchoice *(S "//" S grpchoice)`), and today it is a graceful refusal at the `api::with_types`
   pre-scan, naming the rule, its choice count and two remedies verified to generate and build
   (`multi_choice_group_rule_body_rejects_gracefully_at_every_placement`): write the alternatives
   where the choice is actually made, as the referencing container's own group choices
@@ -1650,7 +1650,7 @@ detail_md = """- **A group RULE whose body carries multiple group choices is ref
   sites — the hand-expanded arm lists a spec author keeps in sync grow as references × alternatives
   INSIDE one spec, so that count is the dimension to watch rather than a second consumer appearing.
   Not already met: today's evidence is synthetic probes, each with at most one reference site.
-"""
+'''
 work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
@@ -1659,14 +1659,14 @@ risk = "valid_rejection"
 [record.payload.reopening_signal]
 observer = "affected spec owner"
 dimension = "repeated hand expansion"
-action_on_fire_md = """design a choice of bodies
-"""
+action_on_fire_md = '''design a choice of bodies
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """one rule's alternatives are re-spelled at more than a handful of reference sites
-"""
+event_md = '''one rule's alternatives are re-spelled at more than a handful of reference sites
+'''
 
 [[record]]
 id = "matrix.multifile.extern-shape-coverage"
@@ -1674,7 +1674,7 @@ title = "The multifile matrix never enumerates extern/rawbytes shapes at all"
 
 [record.payload]
 kind = "work"
-detail_md = """  - The multifile matrix never enumerates extern/rawbytes shapes at all
+detail_md = '''  - The multifile matrix never enumerates extern/rawbytes shapes at all
     (`project_multifile_matrix.ts`'s `SHAPES`), so its exclusion is structural rather than a skip
     list. Extern PLACEMENT across scopes is covered by `tests/extern-generic-scoped` and
     `facade_composition_compiles`.
@@ -1684,7 +1684,7 @@ detail_md = """  - The multifile matrix never enumerates extern/rawbytes shapes 
   grows here is the number of SCOPES a consumer's spec splits an extern surface across, not the
   number of consumers.
 
-"""
+'''
 work_state = "deferred"
 work_intent = "build_system"
 work_kind = "missing_system"
@@ -1693,14 +1693,14 @@ risk = "compile_failure"
 [record.payload.reopening_signal]
 observer = "multi-scope consumer"
 dimension = "scopes crossed by extern surface"
-action_on_fire_md = """enumerate demanded shapes
-"""
+action_on_fire_md = '''enumerate demanded shapes
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a cross-module extern build breaks outside facade composition
-"""
+event_md = '''a cross-module extern build breaks outside facade composition
+'''
 
 [[record]]
 id = "matrix.named-group-reference-grid"
@@ -1708,8 +1708,8 @@ title = "Enumerate the named-group REFERENCE kind (`grpent.groupname`) across it
 
 [record.payload]
 kind = "work"
-detail_md = """- **Enumerate the named-group REFERENCE kind (`grpent.groupname`) across its container PLACEMENTS
-  and member MODIFIERS — two explicit axes, not a \"remaining roles\" sweep.** Buildable now, and the
+detail_md = '''- **Enumerate the named-group REFERENCE kind (`grpent.groupname`) across its container PLACEMENTS
+  and member MODIFIERS — two explicit axes, not a "remaining roles" sweep.** Buildable now, and the
   payoff is measured: every defect yet found in this kind's cells was caught by per-delivery ad-hoc
   probing rather than any projection, because each sat on an axis the grid does not model. The two
   TABLE roles (`{ * coords => uint }` / `{ * uint => coords }`) — one aborted on a raw unwrap, the
@@ -1729,9 +1729,9 @@ detail_md = """- **Enumerate the named-group REFERENCE kind (`grpent.groupname`)
   a splice writes no marker of its own and so leaves the array's LENGTH as the only evidence of
   presence, which an embedded decoder that length-checks just its own members cannot read
   (`optional_plain_group_array_field_rejects_gracefully_at_every_spelling`; real support is the
-  occurrence/bounds design owned by the finding \"Honor non-final and bounded count-permitting
-  occurrences on heterogeneous ARRAY-record fields\" — cited below as \"the occurrence/bounds
-  family\" — and its guard covered a TAGGED
+  occurrence/bounds design owned by the finding "Honor non-final and bounded count-permitting
+  occurrences on heterogeneous ARRAY-record fields" — cited below as "the occurrence/bounds
+  family" — and its guard covered a TAGGED
   spelling that had been shipping a codec whose own decoder rejected its own bytes). So enumerate
   the product: placement (array
   element, array-rep field, struct-map member, table key, table value, map/array group-choice arm,
@@ -1783,8 +1783,8 @@ detail_md = """- **Enumerate the named-group REFERENCE kind (`grpent.groupname`)
   exactly ONE data item — telling the arms apart on the wire is the whole of what a choice decoder
   does — while a plain group can only be spliced and a splice has no one-item form
   (`plain_group_type_choice_arm_rejects_gracefully_at_every_spelling`). That closes the branch
-  \"stamp the group's Array rep on the choice walk's arms the way the array
-  PLACEMENTS do\": the array placements splice into a container whose length already scales with the
+  "stamp the group's Array rep on the choice walk's arms the way the array
+  PLACEMENTS do": the array placements splice into a container whose length already scales with the
   group's arity and absorbs the extra items, and an arm has no such container, so there is nothing to
   stamp a rep ONTO. The array framing the refusal names is therefore the semantics rather than a
   workaround, which makes this row cheap to mint (one verdict, one evidence class) and the row worth
@@ -1792,22 +1792,22 @@ detail_md = """- **Enumerate the named-group REFERENCE kind (`grpent.groupname`)
   in `src/intermediate/rust_type.rs`, the plain-group registry assert in `src/intermediate/mod.rs`
   reached earlier under `--wasm`, and at RULE position under the `/ null` collapse an exit-0
   emission of `pub type U = Option<Kv>;` over a `Kv` defined nowhere, a non-compiling crate reported
-  as success. A grid whose cells carry only \"panics\" would have flattened the third, which is the one
+  as success. A grid whose cells carry only "panics" would have flattened the third, which is the one
   that matters most. NB this defect class is also one synthetic instance shy of the
-  \"Grammar-derived legality denominator\" item's reopening signal (a generation defect in a
+  "Grammar-derived legality denominator" item's reopening signal (a generation defect in a
   grid-BLANK cell): a
   consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
   targeted slice that does not wait for it.
-"""
+'''
 work_state = "ready"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "false_pass_or_red"
-acceptance_md = """Enumerate every reviewed placement × modifier × representation/entry-kind coordinate named in the source; mint a matrix row for each; attach support evidence where the splice is conformant and exact graceful-refusal evidence where it is not; keep the axes explicitly observed-only rather than claiming grammar closure.
-"""
+acceptance_md = '''Enumerate every reviewed placement × modifier × representation/entry-kind coordinate named in the source; mint a matrix row for each; attach support evidence where the splice is conformant and exact graceful-refusal evidence where it is not; keep the axes explicitly observed-only rather than claiming grammar closure.
+'''
 priority_band = "high"
-priority_rationale_md = """The source marks this buildable now and records silent non-conformant output, aborts, panics, and compile failures that escaped because their coordinates were not modeled.
-"""
+priority_rationale_md = '''The source marks this buildable now and records silent non-conformant output, aborts, panics, and compile failures that escaped because their coordinates were not modeled.
+'''
 
 [[record]]
 id = "matrix.named-rule-map-key-upstream"
@@ -1816,7 +1816,7 @@ legacy_aliases = ["README gap #11"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
+detail_md = '''- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
   #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
   multi-entry-composite-array-key observations, and prune steps in
   `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md`, local note; no upstream issue filed yet): re-mint the
@@ -1827,28 +1827,28 @@ detail_md = """- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice 
   adjacent observations,
   re-mint `wasm_nested_alias.passthru_tags_map` and the `composite_map_key` fixture in the same
   change), and prune README gap #11 + that draft.
-"""
+'''
 closeout_state = "due"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-resolves-named"
-current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue has been filed, and the repository has not been queried.
-"""
-verification_md = """Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
-"""
+current_upstream_state_md = '''The diagnosis exists only as frozen historical prose; no durable report or upstream issue has been filed, and the repository has not been queried.
+'''
+verification_md = '''Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-resolves-named"
-external_predicate_md = """A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions.
-"""
-verification_md = """Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions.
+'''
+verification_md = '''Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
-action_md = """Create and file a durable report.
-"""
+action_md = '''Create and file a durable report.
+'''
 
 [[record]]
 id = "matrix.nint-capability"
@@ -1856,7 +1856,7 @@ title = "Real nint support is ONE cross-cutting candidate feature — its per-sh
 
 [record.payload]
 kind = "work"
-detail_md = """- **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration
+detail_md = '''- **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration
   cells of the matrix, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully, its own entry; table domains and `@newtype` bounds — work; bare values, json,
   preserve-encodings — partial), so probing any role re-surfaces a nint cell and per-finding
@@ -1874,7 +1874,7 @@ detail_md = """- **Real nint support is ONE cross-cutting candidate feature — 
   nint shapes land as graceful rejections + enumeration cells; when one does, the work is the
   runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
   flip the pinned rejection rows (record path first, then the group-choice arm).
-"""
+'''
 work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
@@ -1883,14 +1883,14 @@ risk = "valid_rejection"
 [record.payload.reopening_signal]
 observer = "affected spec owner"
 dimension = "full-range nint constructs in an uncontrolled spec"
-action_on_fire_md = """design runtime/emitted type and resolve upstream literal width
-"""
+action_on_fire_md = '''design runtime/emitted type and resolve upstream literal width
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a consumer reports such a spec
-"""
+event_md = '''a consumer reports such a spec
+'''
 
 [[record]]
 id = "matrix.nominal-custom-pair-wrapper"
@@ -1898,7 +1898,7 @@ title = "No opt-in NOMINAL wrapper over a custom pair, so a pair's wire has no s
 
 [record.payload]
 kind = "work"
-detail_md = """- **No opt-in NOMINAL wrapper over a custom pair, so a pair's wire has no standalone entry point.**
+detail_md = '''- **No opt-in NOMINAL wrapper over a custom pair, so a pair's wire has no standalone entry point.**
   A pair-carrying transparent alias mints no rust type (that is what gives one CDDL name one wire
   form: a `pub type` there would carry the aliased type's built-in codec as a standalone wire
   contradicting the one every embed site writes). The consequence is that the pair's wire is
@@ -1906,7 +1906,7 @@ detail_md = """- **No opt-in NOMINAL wrapper over a custom pair, so a pair's wir
   `Inner::to_cbor_bytes()`. A consumer who wants that entry point today hand-writes a wrapper over
   the codec functions. Deliberately not built as a default: nominalizing would break the in-memory
   transparency that is the alias-of-marker spelling's documented point (a value IS the hand-written
-  type), and it is the remedy `comment_dsl.mdx` § \"Positions that are rejected\" prescribes for the
+  type), and it is the remedy `comment_dsl.mdx` § "Positions that are rejected" prescribes for the
   extern/raw-bytes marker, tag-head, tag-258, enum and `@newtype` refusals — each of which needs the
   alias to stay transparent. A directive requesting the wrapper explicitly would sit ON TOP of the
   one-wire-form contract rather than against it, since an opted-in nominal type owns its whole wire
@@ -1915,7 +1915,7 @@ detail_md = """- **No opt-in NOMINAL wrapper over a custom pair, so a pair's wir
   crate, so that is the dimension to watch rather than a second consumer appearing. It is not
   already met: the entry records that the hand-written route exists, not that anyone has been
   observed paying for it.
-"""
+'''
 work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
@@ -1924,14 +1924,14 @@ risk = "wrong_public_api"
 [record.payload.reopening_signal]
 observer = "affected crate owner"
 dimension = "handwritten standalone wrappers"
-action_on_fire_md = """design opt-in nominalization
-"""
+action_on_fire_md = '''design opt-in nominalization
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """one crate carries more than a handful
-"""
+event_md = '''one crate carries more than a handful
+'''
 
 [[record]]
 id = "matrix.non-uint-range-upstream"
@@ -1940,24 +1940,24 @@ legacy_aliases = ["README gap #3"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending): prune the
+detail_md = '''- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending): prune the
   fix-provenance notes in README gap #3 and the rangeop vectors' `reason` provenance.
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n4"
-current_upstream_state_md = """The behavior is fixed on local-fixes at 885c61c; no fresh published-release check has been performed.
-"""
-verification_md = """Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
-"""
+current_upstream_state_md = '''The behavior is fixed on local-fixes at 885c61c; no fresh published-release check has been performed.
+'''
+verification_md = '''Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n4"
-external_predicate_md = """A published release contains commit 885c61c behavior for integer-sign and float range endpoints.
-"""
-verification_md = """Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release contains commit 885c61c behavior for integer-sign and float range endpoints.
+'''
+verification_md = '''Re-probe and re-mint the inclusive and exclusive int, nint, and float rangeop rows; require in-window acceptance, out-of-window rejection, half-open upper exclusion, mixed-sign integer behavior, and NaN rejection before pruning gap 3 provenance.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -1966,7 +1966,7 @@ title = "Resolve optional fields adjacent to open array tails or open-table rows
 
 [record.payload]
 kind = "work"
-detail_md = """### Resolve optional fields adjacent to open array tails or open-table rows
+detail_md = '''### Resolve optional fields adjacent to open array tails or open-table rows
 
 Type-disjoint non-final optionals already decode by peeking at the next value's major type. An
 optional whose value domain overlaps its follower or an open tail/row has no sound discriminator,
@@ -1978,22 +1978,22 @@ intrinsically overlapping spellings remain intentional refusals, not decoder-heu
 newly honored shape must prove that boundary through serialization/deserialization and the applicable
 Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived-vector surfaces.
 
-"""
+'''
 work_state = "blocked"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "invalid_acceptance"
-blocker_md = """No reviewed discriminator and residue proof yet separates all sound optional-adjacency classes under greedy non-backtracking matching; overlapping [? uint, uint] remains intentionally refused.
-"""
+blocker_md = '''No reviewed discriminator and residue proof yet separates all sound optional-adjacency classes under greedy non-backtracking matching; overlapping [? uint, uint] remains intentionally refused.
+'''
 
 [record.payload.unblock_predicate]
 owner_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n4"
-event_md = """A reviewed discriminator and residue proof exists for a specific optional adjacency.
-"""
-check_procedure_md = """Verify that proof against RFC greedy non-backtracking examples, including the overlapping [? uint, uint] refusal control.
-"""
-due_action_md = """Implement and vector only the proven adjacency classes; retain graceful refusal for every unresolved overlap.
-"""
+event_md = '''A reviewed discriminator and residue proof exists for a specific optional adjacency.
+'''
+check_procedure_md = '''Verify that proof against RFC greedy non-backtracking examples, including the overlapping [? uint, uint] refusal control.
+'''
+due_action_md = '''Implement and vector only the proven adjacency classes; retain graceful refusal for every unresolved overlap.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -2002,7 +2002,7 @@ title = "Honor bounded occurrences on open-table rows"
 
 [record.payload]
 kind = "work"
-detail_md = """### Honor bounded occurrences on open-table rows
+detail_md = '''### Honor bounded occurrences on open-table rows
 
 Bounded typed or catch-all rows in an open table/open struct remain rejected rather than being
 silently lowered to a loose or mandatory field. Support requires a per-row carrier and construction
@@ -2011,16 +2011,16 @@ across Rust, wasm, JSON, component, and cross-crate projections. This is distinc
 typed-row hardening question below and from zero-permitting fixed-key fields, which have their own
 lifecycle.
 
-"""
+'''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = """Define carriers and construction doors for bounded typed and catch-all rows in open-table and open-struct contexts, preserve every admitted cardinality, and cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
-"""
+acceptance_md = '''Define carriers and construction doors for bounded typed and catch-all rows in open-table and open-struct contexts, preserve every admitted cardinality, and cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
+'''
 priority_band = "high"
-priority_rationale_md = """Bounded typed and catch-all rows remain selected because silently narrowing their cardinality is invalid and a graceful refusal is not the desired end state.
-"""
+priority_rationale_md = '''Bounded typed and catch-all rows remain selected because silently narrowing their cardinality is invalid and a graceful refusal is not the desired end state.
+'''
 
 [[record]]
 id = "matrix.open-table.min-one-hardening"
@@ -2028,7 +2028,7 @@ title = "Harden an open table's min-1 typed row when an invalid value is observe
 
 [record.payload]
 kind = "work"
-detail_md = """### Harden an open table's min-1 typed row when an invalid value is observed
+detail_md = '''### Harden an open table's min-1 typed row when an invalid value is observed
 
 An open table's min-1 typed row (`t = { + K_t => V_t, * K_r => V_r }`) is the one min-1 shape
 that does NOT use the unrepresentable model, because the container it bounds is one `pub` member
@@ -2041,7 +2041,7 @@ extern-interface faces of a shape that currently reuses the rest row's container
 verbatim. Reopening signal: a consumer reporting a value that reached the wire — or a
 cross-crate boundary — with an empty typed row, i.e. the bypass observed rather than argued.
 
-"""
+'''
 work_state = "deferred"
 work_intent = "repair"
 work_kind = "regression_gap"
@@ -2050,14 +2050,14 @@ risk = "invalid_acceptance"
 [record.payload.reopening_signal]
 observer = "affected consumer"
 dimension = "empty typed row reaching wire/cross-crate boundary"
-action_on_fire_md = """adopt NonEmptyMap/PairMap across faces
-"""
+action_on_fire_md = '''adopt NonEmptyMap/PairMap across faces
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """bypass is observed
-"""
+event_md = '''bypass is observed
+'''
 
 [[record]]
 id = "matrix.optional-closed-map-upstream"
@@ -2066,40 +2066,40 @@ legacy_aliases = ["README gap #9"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix (upstream
+detail_md = '''- When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix (upstream
   PR pending — fix + regression tests + 21/12-cell differential grid on the fork; README gap #9):
   prune the fix-provenance notes (README gap #9 and the two `optional-entry`/`closed-map`
   fingerprint probes' provenance wording). The fork checkout's `future-issues/` files three
   still-open adjacent map-matching gaps found during that fix (a fourth, the float-key/null
   copy-paste, is since fork-fixed — README gap #10) — bundle them into the upstream conversation
   when convenient.
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n5"
-current_upstream_state_md = """The combined fix is on local-fixes; three adjacent future issues remain independent; no fresh release check has been performed.
-"""
-verification_md = """Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
-"""
+current_upstream_state_md = '''The combined fix is on local-fixes; three adjacent future issues remain independent; no fresh release check has been performed.
+'''
+verification_md = '''Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n5"
-external_predicate_md = """A published release contains commit 3d56d8e behavior for optional entries, closed maps, and JSON type-domain keys.
-"""
-verification_md = """Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release contains commit 3d56d8e behavior for optional entries, closed maps, and JSON type-domain keys.
+'''
+verification_md = '''Run optional-entry-empty-map-accepts and closed-map-unexpected-key-rejects, re-mint the affected optional-entry row, and prune gap 9 provenance only; do not close the adjacent observations.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "adjacent-map-matching"
-action_md = """Retain every adjacent map-matching observation not proven by the release.
-"""
+action_md = '''Retain every adjacent map-matching observation not proven by the release.
+'''
 
 [[record.payload.branch]]
 branch_id = "adjacent-map-matching"
-predicate_md = """The optional/closed-map release satisfies gap 9 while one or more adjacent map-matching observations remain unverified.
-"""
+predicate_md = '''The optional/closed-map release satisfies gap 9 while one or more adjacent map-matching observations remain unverified.
+'''
 
 [[record.payload.branch.action]]
 action_id = "adjacent-map-matching"
@@ -2111,12 +2111,12 @@ legacy_aliases = ["F10", "F11"]
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **F10 / F11** — note-only (over-acceptance denominator; AST cross-check is weak corroboration).
-"""
+detail_md = '''- **F10 / F11** — note-only (over-acceptance denominator; AST cross-check is weak corroboration).
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n6"
-rationale_md = """F10 and F11 remain note-only AST corroboration; they neither certify over-acceptance nor define its denominator.
-"""
+rationale_md = '''F10 and F11 remain note-only AST corroboration; they neither certify over-acceptance nor define its denominator.
+'''
 permanence = "permanent"
 
 [[record]]
@@ -2125,8 +2125,8 @@ title = "Over-acceptance denominator:"
 
 [record.payload]
 kind = "decision"
-detail_md = """- **Over-acceptance denominator:** the `class=\"over-acceptance\"` vector class pins each CERTIFIED
-  instance (the numerator; rows are enumerated per the \"Intra-alternative variation rows\" rule as
+detail_md = '''- **Over-acceptance denominator:** the `class="over-acceptance"` vector class pins each CERTIFIED
+  instance (the numerator; rows are enumerated per the "Intra-alternative variation rows" rule as
   instances surface). Still undecided is the DENOMINATOR for any completeness claim about that axis:
   should over-acceptance coverage be measured against the grammar's full superset, or only
   realistically-implementable constructs? (Affects only how completeness is reported — the pins and
@@ -2135,19 +2135,19 @@ detail_md = """- **Over-acceptance denominator:** the `class=\"over-acceptance\"
 (Resolved decisions — D3 corpus numerator; cddl-codegen comment-DSL as the `CDDL_CODEGEN` profile; doc
 consolidation — are recorded in the code + git history; not re-litigated here.)
 
-"""
+'''
 decision_state = "pending"
-question_md = """Should over-acceptance completeness use the grammar's full superset or only realistically implementable constructs as its denominator?
-"""
+question_md = '''Should over-acceptance completeness use the grammar's full superset or only realistically implementable constructs as its denominator?
+'''
 
 [record.payload.unblock_predicate]
 owner_reference_id = "roadmap-pending-decisions-need-a-human-call"
-event_md = """A maintainer records either the grammar superset or the realistically implementable construct set as the reporting denominator.
-"""
-check_procedure_md = """Confirm the ruling cites a durable authority and states how completeness, exclusions, and future vectors are reported.
-"""
-due_action_md = """Update matrix.systematic.over-acceptance from the ruling, including its axes or explicit denominator unknowns, without changing certified numerator vectors.
-"""
+event_md = '''A maintainer records either the grammar superset or the realistically implementable construct set as the reporting denominator.
+'''
+check_procedure_md = '''Confirm the ruling cites a durable authority and states how completeness, exclusions, and future vectors are reported.
+'''
+due_action_md = '''Update matrix.systematic.over-acceptance from the ruling, including its axes or explicit denominator unknowns, without changing certified numerator vectors.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -2156,7 +2156,7 @@ title = "Per-VALUE encoding reachability."
 
 [record.payload]
 kind = "work"
-detail_md = """- **Per-VALUE encoding reachability.** A head argument that is fixed by the construct's own definition
+detail_md = '''- **Per-VALUE encoding reachability.** A head argument that is fixed by the construct's own definition
   is not a judgment call: a prelude construct declares the exact cell its head lands in, and
   `build_matrix.ts` re-derives that from the pinned prelude, so `bigfloat` (tag 5, at every value)
   claims `enc.major6.imm` and nothing else. What remains is the case where the argument **follows the
@@ -2170,7 +2170,7 @@ detail_md = """- **Per-VALUE encoding reachability.** A head argument that is fi
   along — how far the column overstates the actionable set. It is not already met: the width cells
   are writable up to `ai26` (a 64 KiB literal) and only `ai27` is out of reach, so today an author
   writes more than they dismiss.
-"""
+'''
 work_state = "deferred"
 work_intent = "build_system"
 work_kind = "infrastructure"
@@ -2179,14 +2179,14 @@ risk = "false_pass_or_red"
 [record.payload.reopening_signal]
 observer = "golden-vector author"
 dimension = "actionable-column overstatement"
-action_on_fire_md = """add per-value reachability
-"""
+action_on_fire_md = '''add per-value reachability
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """the author hand-dismisses more cells than they can vector
-"""
+event_md = '''the author hand-dismisses more cells than they can vector
+'''
 
 [[record]]
 id = "matrix.periodic-coverage-honesty"
@@ -2194,7 +2194,7 @@ title = "Keep EVERY matrix axis honest (periodic)."
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **Keep EVERY matrix axis honest (periodic).** Grid coverage equals the hand-curated lists the
+detail_md = '''- **Keep EVERY matrix axis honest (periodic).** Grid coverage equals the hand-curated lists the
   projections carry — `SHAPES` × `ROLES` in `project_wasm_matrix.ts`, `SHAPES` × reference MODE in
   `project_multifile_matrix.ts` — and a hole in ANY of them is silent, not a red cell. A wasm
   representation not in `SHAPES` is an un-gated shape; an emitter path that places types in a
@@ -2204,22 +2204,22 @@ detail_md = """- **Keep EVERY matrix axis honest (periodic).** Grid coverage equ
   rule the axes need a periodic sweep, and the sweep is worth running as four repeatable TELLS rather
   than as a re-read of the lists — every hole that has actually bitten (E0412/E0425/E0599 classes,
   one of them escaping to a production consumer's regen) was found by one of these, never by asking
-  \"is this list complete?\":
-"""
+  "is this list complete?":
+'''
 policy_kind = "maintenance_protocol"
 authority_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining-n2"
-protocol_md = """At periodic review and every new boundary shape, inspect fix reach, steering comments, consumer hand patches, and exclusion comments; every discovered hole must gain a durable owner.
-"""
+protocol_md = '''At periodic review and every new boundary shape, inspect fix reach, steering comments, consumer hand patches, and exclusion comments; every discovered hole must gain a durable owner.
+'''
 
 [record.payload.cadence]
 owner_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining-n2"
 event_source = "matrix and generator coverage review"
-period_or_event_md = """Run at periodic review and whenever a boundary position, shape, or mode is added.
-"""
-checklist_md = """Run the four exact tells in the supporting parts and inspect exclusions and committed consumer hand patches.
-"""
-missed_action_md = """Fail pickup when a discovered hole has no durable owner.
-"""
+period_or_event_md = '''Run at periodic review and whenever a boundary position, shape, or mode is added.
+'''
+checklist_md = '''Run the four exact tells in the supporting parts and inspect exclusions and committed consumer hand patches.
+'''
+missed_action_md = '''Fail pickup when a discovered hole has no durable owner.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -2229,57 +2229,57 @@ legacy_aliases = ["README gap #7"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a release ships the `90f66ff` prelude-`number` float fix (README gap #7): prune the
+detail_md = '''- When a release ships the `90f66ff` prelude-`number` float fix (README gap #7): prune the
   fix-provenance notes (README gap #7, the `prelude-number-float-accepts` /
   `prelude-number-tstr-rejects` fingerprint probes' provenance wording). Separately citable while
   in the neighborhood: bare floats against `time` (`#6.1(number)`) validate WITHOUT the tag-1
   wrapper (tag-leniency laxity, pre-existing and unchanged by the fix) — a candidate upstream
   report, not yet filed. A sibling ruby time-family laxity surfaced by the corpus decode mint:
-  the generator mints calendar-INVALID `tdate`s (`0(\"5906-11-31t22:32:49-05:59\")` — November 31
+  the generator mints calendar-INVALID `tdate`s (`0("5906-11-31t22:32:49-05:59")` — November 31
   does not exist) and the validator accepts them, while the local-fixes rust oracle rejects
-  (RFC 3339 date validity — arguably the correct reading); repro + impact under \"Adjacent
-  observations\" in `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md` (local note) — the same
+  (RFC 3339 date validity — arguably the correct reading); repro + impact under "Adjacent
+  observations" in `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md` (local note) — the same
   candidate-upstream-report disposition, not yet filed.
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n6"
-current_upstream_state_md = """The prelude-number fix is on local-fixes; adjacent tag-leniency and ruby calendar-date observations are unfiled and independent.
-"""
-verification_md = """Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
-"""
+current_upstream_state_md = '''The prelude-number fix is on local-fixes; adjacent tag-leniency and ruby calendar-date observations are unfiled and independent.
+'''
+verification_md = '''Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n6"
-external_predicate_md = """A published release contains commit 90f66ff behavior accepting floats for prelude number while preserving non-number rejection.
-"""
-verification_md = """Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release contains commit 90f66ff behavior accepting floats for prelude number while preserving non-number rejection.
+'''
+verification_md = '''Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "ruby-calendar-date"
-action_md = """Retain the ruby calendar-date observation and its separate owner.
-"""
+action_md = '''Retain the ruby calendar-date observation and its separate owner.
+'''
 
 [[record.payload.action]]
 action_id = "tag-leniency"
-action_md = """Retain the adjacent tag-leniency observation and do not prune it with gap 7.
-"""
+action_md = '''Retain the adjacent tag-leniency observation and do not prune it with gap 7.
+'''
 
 [[record.payload.branch]]
 branch_id = "ruby-calendar-date"
-predicate_md = """The number fix is released while ruby's calendar-date observation remains independently open.
-"""
+predicate_md = '''The number fix is released while ruby's calendar-date observation remains independently open.
+'''
 
 [[record.payload.branch.action]]
 action_id = "ruby-calendar-date"
 
 [[record.payload.branch]]
 branch_id = "tag-leniency"
-predicate_md = """The number fix is released while the adjacent tag-leniency observation remains independently open.
-"""
+predicate_md = '''The number fix is released while the adjacent tag-leniency observation remains independently open.
+'''
 
 [[record.payload.branch.action]]
 action_id = "tag-leniency"
@@ -2290,7 +2290,7 @@ title = "Profiles/versions:"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + the IANA control-op registry (spans RFC
+detail_md = '''- **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + the IANA control-op registry (spans RFC
   8610/9090/9165/9741). The CDDL modules draft is now a pinned source
   (`sources/draft-ietf-cbor-cddl-modules-06.txt`; version-pinned URL — bump filename+URL+sum together)
   and cddl-codegen has a defined, tested stance on its directives: recognized and refused loudly
@@ -2299,21 +2299,21 @@ detail_md = """- **Profiles/versions:** v1 targets the RFC 8610/9682 grammar + t
   the draft's constructs become worthwhile only if real module support lands
   (`tests/TESTING_ROADMAP.md` § Deferred features tracks that decision); bump cddl-codegen's
   declared target profile if it updates its `cddl` dependency.
-"""
+'''
 policy_kind = "maintenance_protocol"
 authority_reference_id = "roadmap-expansion-when-relevant-n3"
-protocol_md = """Pin the target profile's source filename, URL, and checksum as one reviewed unit, and re-review the module stance whenever the profile or cddl dependency changes.
-"""
+protocol_md = '''Pin the target profile's source filename, URL, and checksum as one reviewed unit, and re-review the module stance whenever the profile or cddl dependency changes.
+'''
 
 [record.payload.cadence]
 owner_reference_id = "roadmap-expansion-when-relevant-n3"
 event_source = "target-profile and cddl-dependency revisions"
-period_or_event_md = """Run on every target-profile or cddl-dependency update.
-"""
-checklist_md = """Bump the pinned source filename, URL, and checksum together and re-review the module stance against the cited passages.
-"""
-missed_action_md = """Refuse the update when the source set and declared profile disagree.
-"""
+period_or_event_md = '''Run on every target-profile or cddl-dependency update.
+'''
+checklist_md = '''Bump the pinned source filename, URL, and checksum together and re-review the module stance against the cited passages.
+'''
+missed_action_md = '''Refuse the update when the source set and declared profile disagree.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -2323,53 +2323,53 @@ legacy_aliases = ["README gap #5"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a release ships the `2c7548e` radix-literal lexer fix (upstream PR pending — fix +
+detail_md = '''- When a release ships the `2c7548e` radix-literal lexer fix (upstream PR pending — fix +
   35-test suite on the fork): prune the fix-provenance notes in README gap #5. Separately track the
   WG spec question the fix spawned
   (cbor-wg/cddl#33, filed: radix-mantissa floats the unordered ABNF technically derives). Future
   radix-POSITION rows (occurrence bounds `0x2*0x4`, tag heads `#6.0x20`, …) additionally wait on a
   ruby oracle fix — ruby corroborates radix in value position only
   (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n7"
-current_upstream_state_md = """The parser fix is on local-fixes at 2c7548e; WG issue 33 and ruby non-value-position deviations remain independent; no fresh release check has been performed.
-"""
-verification_md = """Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
-"""
+current_upstream_state_md = '''The parser fix is on local-fixes at 2c7548e; WG issue 33 and ruby non-value-position deviations remain independent; no fresh release check has been performed.
+'''
+verification_md = '''Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n7"
-external_predicate_md = """A published release contains commit 2c7548e behavior for RFC radix integers in every uint_value position.
-"""
-verification_md = """Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release contains commit 2c7548e behavior for RFC radix integers in every uint_value position.
+'''
+verification_md = '''Probe lower/uppercase hexadecimal and binary literals in value, occurrence-bound, tag-head, member-key, range-bound, and control-argument positions; re-mint value.number.hex and value.number.bin; require overflow to fail rather than become zero; do not close WG issue 33 or ruby-position work.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "ruby-radix-positions"
-action_md = """Retain the ruby radix-position caveat and its evidence until ruby independently passes those positions.
-"""
+action_md = '''Retain the ruby radix-position caveat and its evidence until ruby independently passes those positions.
+'''
 
 [[record.payload.action]]
 action_id = "wg-radix-mantissa"
-action_md = """Keep WG issue 33 open and do not claim the release settles radix mantissa semantics.
-"""
+action_md = '''Keep WG issue 33 open and do not claim the release settles radix mantissa semantics.
+'''
 
 [[record.payload.branch]]
 branch_id = "ruby-radix-positions"
-predicate_md = """The rust release closes value-position radix parsing while ruby still rejects at least one non-value radix position.
-"""
+predicate_md = '''The rust release closes value-position radix parsing while ruby still rejects at least one non-value radix position.
+'''
 
 [[record.payload.branch.action]]
 action_id = "ruby-radix-positions"
 
 [[record.payload.branch]]
 branch_id = "wg-radix-mantissa"
-predicate_md = """The parser release accepts the target radix spellings while WG issue 33's mantissa question remains unresolved.
-"""
+predicate_md = '''The parser release accepts the target radix spellings while WG issue 33's mantissa question remains unresolved.
+'''
 
 [[record.payload.branch.action]]
 action_id = "wg-radix-mantissa"
@@ -2380,7 +2380,7 @@ title = "A REFUSED construct's spelling space — a refusal probed on one spelli
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **A REFUSED construct's spelling space — a refusal probed on one spelling is not a refusal of
+detail_md = '''- **A REFUSED construct's spelling space — a refusal probed on one spelling is not a refusal of
   the class.** The reject-side sibling of the two supported-op entries above: every layer that
   certifies a rejection (the matrix row's one `example`, the reject-catalog projection built from
   it, and the `*_rejects_gracefully` pin's hand-written vectors) walks committed
@@ -2400,21 +2400,21 @@ detail_md = """- **A REFUSED construct's spelling space — a refusal probed on 
   measurable by whoever hits the bypass, on the dimension the deferred cost grows along (the
   count of guards with proven ordering-bypass history; the incremental-extension guard is one).
 
-"""
+'''
 policy_kind = "maintenance_protocol"
 authority_reference_id = "roadmap-expansion-when-relevant-n4"
-protocol_md = """For every graceful-refusal guard, review ordering, placement, and alternate spellings in the closing change; keep the mechanical trigger-space catalog as separate deferred work.
-"""
+protocol_md = '''For every graceful-refusal guard, review ordering, placement, and alternate spellings in the closing change; keep the mechanical trigger-space catalog as separate deferred work.
+'''
 
 [record.payload.cadence]
 owner_reference_id = "roadmap-expansion-when-relevant-n4"
 event_source = "graceful-refusal guard changes"
-period_or_event_md = """Run in every change that adds or changes a graceful-refusal guard.
-"""
-checklist_md = """Review trigger ordering, placement, aliases, and alternate spellings against the guard's reachable syntax space.
-"""
-missed_action_md = """Block the change when an equivalent spelling bypasses or contradicts the guard.
-"""
+period_or_event_md = '''Run in every change that adds or changes a graceful-refusal guard.
+'''
+checklist_md = '''Review trigger ordering, placement, aliases, and alternate spellings against the guard's reachable syntax space.
+'''
+missed_action_md = '''Block the change when an equivalent spelling bypasses or contradicts the guard.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -2423,7 +2423,7 @@ title = "Carry root-position references into the NON-structural reference positi
 
 [record.payload]
 kind = "work"
-detail_md = """- **Carry root-position references into the NON-structural reference positions.** The referencing
+detail_md = '''- **Carry root-position references into the NON-structural reference positions.** The referencing
   module is now an axis: the `rootref` mode places the anon spelling in `lib.cddl` over the
   wrapper-minting shapes (`EXPECTED_ROOTREF_SHAPES`), so both halves of `mark_refs`' root behaviour
   are gated — a wrapper sole-owned by a scope module IMPORTED into root, and a wrapper the root
@@ -2436,7 +2436,7 @@ detail_md = """- **Carry root-position references into the NON-structural refere
   was the one built. Reopening signal, on the axis that made `aliased` worth adding: a root-position
   dangling-import class (E0412/E0425/E0432) fixed BY HAND after a consumer's regen — an observable
   its owner reports by construction, and one the seven green `rootref` cells put at zero today.
-"""
+'''
 work_state = "deferred"
 work_intent = "add_regression"
 work_kind = "coverage_cell"
@@ -2445,14 +2445,14 @@ risk = "compile_failure"
 [record.payload.reopening_signal]
 observer = "affected consumer"
 dimension = "root-position dangling imports"
-action_on_fire_md = """add named/alias root rows
-"""
+action_on_fire_md = '''add named/alias root rows
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """E0412/E0425/E0432 is hand-fixed after regen outside seven rootref cells
-"""
+event_md = '''E0412/E0425/E0432 is hand-fixed after regen outside seven rootref cells
+'''
 
 [[record]]
 id = "matrix.ruby-inline-controller-upstream"
@@ -2460,7 +2460,7 @@ title = "When a ruby `cddl` gem release parses inline/composite type2 controller
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
+detail_md = '''- When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
   — gem 0.12.14 exit-65s at parse, so the whole containing spec becomes unjudgeable; repro +
   upstream steps in `cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md`): remove the
   `ir_conformance_corpus` gate's `RUBY_EXPECTED_FAIL` entries for `cbor_wrapped_group_array` and
@@ -2469,28 +2469,28 @@ detail_md = """- When a ruby `cddl` gem release parses inline/composite type2 co
   Until then, rows/fixtures needing ruby corroboration for a control-arg construct must name the
   controller type — same caveat class as the ruby radix-position deviations
   (`cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md`).
-"""
+'''
 closeout_state = "due"
 upstream_owner_reference_id = "release-ruby-cddl-a-published-gem-parses-inline"
-current_upstream_state_md = """The diagnosis exists only as frozen historical prose; no durable report or upstream issue is named, and the repository has not been queried.
-"""
-verification_md = """Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
-"""
+current_upstream_state_md = '''The diagnosis exists only as frozen historical prose; no durable report or upstream issue is named, and the repository has not been queried.
+'''
+verification_md = '''Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-ruby-cddl-a-published-gem-parses-inline"
-external_predicate_md = """A published gem parses inline/composite type2 controller arguments such as bytes .cbor [coords].
-"""
-verification_md = """Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published gem parses inline/composite type2 controller arguments such as bytes .cbor [coords].
+'''
+verification_md = '''Create and file a durable ruby report; after a release remove only cbor_wrapped_group_array and cbor_bignint_table RUBY_EXPECTED_FAIL entries whose stale guards fire; retain the separate ruby radix-position caveat.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
-action_md = """Create and file a durable ruby report.
-"""
+action_md = '''Create and file a durable ruby report.
+'''
 
 [[record]]
 id = "matrix.signed-int-size-upstream"
@@ -2498,7 +2498,7 @@ title = "Signed int .size close-out"
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- `.size` on a signed `int` — semantics CLARIFIED by the RFC author (cbor-wg/cddl#32): a control
+detail_md = '''- `.size` on a signed `int` — semantics CLARIFIED by the RFC author (cbor-wg/cddl#32): a control
   distributes over `int = uint / nint`, and an undefined application (`.size` on `nint`) is a
   per-value non-match, so `int .size N` matches exactly the `uint .size N` window. cddl-codegen
   REJECTS the construct gracefully (the old `i{8N}` mapping mis-enforced the clarified window in
@@ -2509,51 +2509,51 @@ detail_md = """- `.size` on a signed `int` — semantics CLARIFIED by the RFC au
   supporting `int .size N` as the uint window becomes certifiable (a `ctl.size.int` row becomes
   mintable) and the rejection can be revisited. (2) When the clarification lands as erratum/spec
   text, cite it in the `current_capacities.mdx` note.
-"""
+'''
 closeout_state = "due"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-validates-int-size"
-current_upstream_state_md = """WG issue 32 clarifies semantics, but the validator fix/report and erratum are not complete; no fresh upstream query has been performed.
-"""
-verification_md = """Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
-"""
+current_upstream_state_md = '''WG issue 32 clarifies semantics, but the validator fix/report and erratum are not complete; no fresh upstream query has been performed.
+'''
+verification_md = '''Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-validates-int-size"
-external_predicate_md = """A published release validates int .size N as the uint arm's window with nint values as per-value non-matches, and durable spec text records the clarification.
-"""
-verification_md = """Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release validates int .size N as the uint arm's window with nint values as per-value non-matches, and durable spec text records the clarification.
+'''
+verification_md = '''Create and file the validator fix/report; after a release implement and certify ctl.size.int against uint-window accepts and nint non-matches; after the erratum update current_capacities.mdx; preserve this order.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
-action_md = """Create and file the validator fix/report.
-"""
+action_md = '''Create and file the validator fix/report.
+'''
 
 [[record.payload.action]]
 action_id = "spec-erratum"
-action_md = """Update current_capacities.mdx to the clarified semantics after preserving the validator-release ordering.
-"""
+action_md = '''Update current_capacities.mdx to the clarified semantics after preserving the validator-release ordering.
+'''
 
 [[record.payload.action]]
 action_id = "validator-release"
-action_md = """Implement and certify ctl.size.int against uint-window accepts and nint non-matches.
-"""
+action_md = '''Implement and certify ctl.size.int against uint-window accepts and nint non-matches.
+'''
 
 [[record.payload.branch]]
 branch_id = "spec-erratum"
-predicate_md = """The durable specification erratum clarifying int .size semantics is published.
-"""
+predicate_md = '''The durable specification erratum clarifying int .size semantics is published.
+'''
 
 [[record.payload.branch.action]]
 action_id = "spec-erratum"
 
 [[record.payload.branch]]
 branch_id = "validator-release"
-predicate_md = """A published validator release implements int .size as the uint arm's window with nint values as non-matches.
-"""
+predicate_md = '''A published validator release implements int .size as the uint arm's window with nint values as non-matches.
+'''
 
 [[record.payload.branch.action]]
 action_id = "validator-release"
@@ -2567,25 +2567,25 @@ legacy_aliases = ["README gap #13"]
 kind = "matrix_external_closeout"
 closeout_state = "due"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-permits-zero-rest"
-current_upstream_state_md = """README gap 13 contains the durable conclusion, but no durable report or upstream issue has been filed and the repository has not been queried.
-"""
-verification_md = """Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
-"""
+current_upstream_state_md = '''README gap 13 contains the durable conclusion, but no durable report or upstream issue has been filed and the repository has not been queried.
+'''
+verification_md = '''Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-permits-zero-rest"
-external_predicate_md = """A published release permits zero rest entries for bytes- and tstr-keyed star rows in mixed maps while retaining required declared entries.
-"""
-verification_md = """Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release permits zero rest entries for bytes- and tstr-keyed star rows in mixed maps while retaining required declared entries.
+'''
+verification_md = '''Create and file a durable report from the README-owned differential; require declared-only, rest-bearing, uint/nint-domain, and pure-table controls to agree; re-mint contain.occurrence-target.memberkey.type1.open_struct_bytes_key without losing zero-rest candidates.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
-action_md = """Create and file a durable report from the README-owned differential.
-"""
+action_md = '''Create and file a durable report from the README-owned differential.
+'''
 
 [[record]]
 id = "matrix.tag-map-key-upstream"
@@ -2594,7 +2594,7 @@ legacy_aliases = ["README gap #8"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """### When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8)
+detail_md = '''### When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8)
 
 This remains OPEN at the pinned `ac1b98e` rev; the differential repro, suspected
 `src/validator/cbor.rs` site, and prune steps are recorded in
@@ -2603,28 +2603,28 @@ re-mint the row it blocks (`--mint-decode-foreign --only=contain.map-key.type2.t
 `pinned_reason` disappears once candidates survive the two-oracle gate), re-run the full `verify.ts`
 in the same change so the row's evidence picks up the corroboration clause, and prune README gap #8
 plus that draft.
-"""
+'''
 closeout_state = "due"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-validates-tag"
-current_upstream_state_md = """The diagnosis is complete but no durable upstream report or issue has been filed; the repository has not been queried.
-"""
-verification_md = """Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
-"""
+current_upstream_state_md = '''The diagnosis is complete but no durable upstream report or issue has been filed; the repository has not been queried.
+'''
+verification_md = '''Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-validates-tag"
-external_predicate_md = """A published release validates TAG-typed map keys at entry-key position and the tagged-key row can mint nonempty two-oracle vectors.
-"""
-verification_md = """Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release validates TAG-typed map keys at entry-key position and the tagged-key row can mint nonempty two-oracle vectors.
+'''
+verification_md = '''Create and file the durable report; then probe the tagged key against its untagged control, re-mint contain.map-key.type2.tag with --mint-decode-foreign, run full verify, and prune gap 8 only when candidates survive both oracles.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "file-report"
-action_md = """Create and file the durable report.
-"""
+action_md = '''Create and file the durable report.
+'''
 
 [[record]]
 id = "matrix.tag-registry-boundary"
@@ -2632,32 +2632,32 @@ title = "Tag registry — deliberately not pinned or enumerated."
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **Tag registry — deliberately not pinned or enumerated.** cddl-codegen is tag-parametric, so the tag
+detail_md = '''- **Tag registry — deliberately not pinned or enumerated.** cddl-codegen is tag-parametric, so the tag
   NUMBER is a parameter of the `type2.tag` feature rather than a construct of its own, and the few
   codegen-distinct tags are already prelude rows; the reasoning is current state in `README.md`
-  § \"What is a feature?\". *Reopening signal:* a **tag-semantic** consumer of the master appears — one
+  § "What is a feature?". *Reopening signal:* a **tag-semantic** consumer of the master appears — one
   that must emit per-tag behaviour (datetime, bignum, …) rather than a parametric wrap/unwrap. That is
   the only reader for whom the parametric model under-describes the space, and it is measurable by
   them the moment they try to key anything off a tag number.
 
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "readme-what-is-a-feature"
-rationale_md = """Tag numbers remain parameters rather than separate feature rows because cddl-codegen is tag-parametric; enumerate tag semantics only when a consumer needs behavior keyed by a tag number.
-"""
+rationale_md = '''Tag numbers remain parameters rather than separate feature rows because cddl-codegen is tag-parametric; enumerate tag semantics only when a consumer needs behavior keyed by a tag number.
+'''
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
 observer = "matrix consumer"
 dimension = "tag-semantic consumers"
-action_on_fire_md = """enumerate only the demanded tag semantics
-"""
+action_on_fire_md = '''enumerate only the demanded tag semantics
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """a consumer needs behavior keyed by tag number
-"""
+event_md = '''a consumer needs behavior keyed by tag number
+'''
 
 [[record]]
 id = "matrix.typed-tag-report-upstream"
@@ -2666,7 +2666,7 @@ legacy_aliases = ["README gap #14"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- File the prepared typed-tag report for README gap #14:
+detail_md = '''- File the prepared typed-tag report for README gap #14:
   `cddl-matrix/upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md` is committed and
   paste-ready, but no upstream issue has been filed. The catalog exemption remains deliberately
   exact: when rust begins rejecting `81cbf4`, remove
@@ -2678,64 +2678,64 @@ detail_md = """- File the prepared typed-tag report for README gap #14:
   the current acceptance correct, follow the report's explicit reversal branch instead of retaining
   the exemption.
 
-"""
+'''
 closeout_state = "due"
 upstream_owner_reference_id = "release-rust-cddl-a-published-ruling-or-release-rejects"
-current_upstream_state_md = """The paste-ready report cddl-matrix/upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md is committed but no issue is filed.
-"""
-verification_md = """File the report; on an 81cbf4 fix remove that exact exemption, re-mint contain.group-choice-arm.type2.tag.fixed_array, run probe/fold, and prune gap 14; do not treat an 81ccf5-only change as closure.
-"""
+current_upstream_state_md = '''The paste-ready report cddl-matrix/upstream-reports/rust-cddl-tag-fixed-payload-acceptance.md is committed but no issue is filed.
+'''
+verification_md = '''File the report; on an 81cbf4 fix remove that exact exemption, re-mint contain.group-choice-arm.type2.tag.fixed_array, run probe/fold, and prune gap 14; do not treat an 81ccf5-only change as closure.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-ruling-or-release-rejects"
-external_predicate_md = """A published ruling or release rejects wrong fixed payload 81cbf4 for the declared typed tag, or explicitly rules that acceptance correct.
-"""
-verification_md = """File the report; on an 81cbf4 fix remove that exact exemption, re-mint contain.group-choice-arm.type2.tag.fixed_array, run probe/fold, and prune gap 14; do not treat an 81ccf5-only change as closure.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published ruling or release rejects wrong fixed payload 81cbf4 for the declared typed tag, or explicitly rules that acceptance correct.
+'''
+verification_md = '''File the report; on an 81cbf4 fix remove that exact exemption, re-mint contain.group-choice-arm.type2.tag.fixed_array, run probe/fold, and prune gap 14; do not treat an 81ccf5-only change as closure.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "acceptance-ruled-correct"
-action_md = """Execute the report's acceptance-correct reversal and retain the accommodation with the ruling as authority.
-"""
+action_md = '''Execute the report's acceptance-correct reversal and retain the accommodation with the ruling as authority.
+'''
 
 [[record.payload.action]]
 action_id = "file-report"
-action_md = """File the report.
-"""
+action_md = '''File the report.
+'''
 
 [[record.payload.action]]
 action_id = "fixed-payload-changes"
-action_md = """Remove the exact 81cbf4 exemption, re-mint the affected row, run probe/fold, and prune gap 14.
-"""
+action_md = '''Remove the exact 81cbf4 exemption, re-mint the affected row, run probe/fold, and prune gap 14.
+'''
 
 [[record.payload.action]]
 action_id = "tag-only-changes"
-action_md = """Retain gap 14 and record that the tag-only change is not closure.
-"""
+action_md = '''Retain gap 14 and record that the tag-only change is not closure.
+'''
 
 [[record.payload.branch]]
 branch_id = "acceptance-ruled-correct"
-predicate_md = """A published ruling states that accepting wrong fixed payload 81cbf4 is correct.
-"""
+predicate_md = '''A published ruling states that accepting wrong fixed payload 81cbf4 is correct.
+'''
 
 [[record.payload.branch.action]]
 action_id = "acceptance-ruled-correct"
 
 [[record.payload.branch]]
 branch_id = "fixed-payload-changes"
-predicate_md = """A published release rejects wrong fixed payload 81cbf4 for the declared typed tag.
-"""
+predicate_md = '''A published release rejects wrong fixed payload 81cbf4 for the declared typed tag.
+'''
 
 [[record.payload.branch.action]]
 action_id = "fixed-payload-changes"
 
 [[record.payload.branch]]
 branch_id = "tag-only-changes"
-predicate_md = """A release changes only the 81ccf5 tag case and leaves wrong fixed payload 81cbf4 accepted.
-"""
+predicate_md = '''A release changes only the 81ccf5 tag case and leaves wrong fixed payload 81cbf4 accepted.
+'''
 
 [[record.payload.branch.action]]
 action_id = "tag-only-changes"
@@ -2747,24 +2747,24 @@ legacy_aliases = ["README gap #1"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
+detail_md = '''- When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
   README gap #1's fix-provenance notes.
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-the"
-current_upstream_state_md = """The fix is submitted upstream; no fresh published-release check has been performed.
-"""
-verification_md = """Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
-"""
+current_upstream_state_md = '''The fix is submitted upstream; no fresh published-release check has been performed.
+'''
+verification_md = '''Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-contains-the"
-external_predicate_md = """A published release contains the submitted uint-target numeric, size, and bits control-operator enforcement fix.
-"""
-verification_md = """Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release contains the submitted uint-target numeric, size, and bits control-operator enforcement fix.
+'''
+verification_md = '''Run the oracle fingerprint and the .le, .lt, .gt, .eq, .ne, .ge, .size, and .bits uint violation probes; re-mint their constraint evidence; prune gap 1 and historical provenance only if every violation rejects and positive controls accept.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -2773,7 +2773,7 @@ title = "When ciborium's generic value decoder preserves CBOR `undefined` (`f7`)
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When ciborium's generic value decoder preserves CBOR `undefined` (`f7`) distinctly instead of
+detail_md = '''- When ciborium's generic value decoder preserves CBOR `undefined` (`f7`) distinctly instead of
   returning `Value::Null`, `reference_codec_differential_self_check` should fail stale. Teach
   `ciborium_value_to_tree` the new variant, remove the sole
   `CborTree::Undefined => CborTree::Null` normalization, retain `f7` as an ordinary equality
@@ -2782,22 +2782,22 @@ detail_md = """- When ciborium's generic value decoder preserves CBOR `undefined
   still collapse `f7`; do not remove its per-rule oracle accommodation unless its own exact probe
   accepts.
 
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-ciborium-a-published-release-exposes-cbor"
-current_upstream_state_md = """The current generic decoder collapses f7 to Null; no fresh release check has been performed.
-"""
-verification_md = """Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
-"""
+current_upstream_state_md = '''The current generic decoder collapses f7 to Null; no fresh release check has been performed.
+'''
+verification_md = '''Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-ciborium-a-published-release-exposes-cbor"
-external_predicate_md = """A published release exposes CBOR undefined as a distinct generic Value variant rather than Null.
-"""
-verification_md = """Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release exposes CBOR undefined as a distinct generic Value variant rather than Null.
+'''
+verification_md = '''Confirm reference_codec_differential_self_check fails stale, map the new variant, remove only the Undefined-to-Null normalization, retain f7 equality, update tests/README.md, and run the corpus gate; do not alter the rust-validator accommodation.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record]]
@@ -2807,7 +2807,7 @@ legacy_aliases = ["README gap #16"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-detail_md = """- When the pinned rust `cddl` validator accepts `validate_cbor_from_slice(\"x = undefined\",
+detail_md = '''- When the pinned rust `cddl` validator accepts `validate_cbor_from_slice("x = undefined",
   &[0xf7], None)` (README gap #16): the exact-signature stale probe in
   `ir_conformance_corpus` will fail first. Confirm the fixed behavior is the intended RFC 8949
   undefined value, remove the sole `(fixed_singletons, undefined_value)`
@@ -2817,33 +2817,33 @@ detail_md = """- When the pinned rust `cddl` validator accepts `validate_cbor_fr
   wording in `tests/README.md` and README gap #16, and delete this close-out entry. A changed
   rejection signature is not a fix: investigate it and retain or revise the ledger only with a
   new exact probe; never promote this one-rule gap to fixture-level `RUST_ORACLE_SKIP`.
-"""
+'''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-accepts-validate"
-current_upstream_state_md = """The pinned validator rejects f7 as Null; no fresh published-release check has been performed.
-"""
-verification_md = """Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
-"""
+current_upstream_state_md = '''The pinned validator rejects f7 as Null; no fresh published-release check has been performed.
+'''
+verification_md = '''Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
+'''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-accepts-validate"
-external_predicate_md = """A published release accepts validate_cbor_from_slice(\"x = undefined\", &[0xf7], None) with RFC 8949 undefined semantics.
-"""
-verification_md = """Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
-"""
-due_action_md = """Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-"""
+external_predicate_md = '''A published release accepts validate_cbor_from_slice("x = undefined", &[0xf7], None) with RFC 8949 undefined semantics.
+'''
+verification_md = '''Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
 evaluation = "unknown"
 
 [[record.payload.action]]
 action_id = "signature-only-change"
-action_md = """Retain the closeout and update only the stale-signature evidence; do not remove the skip.
-"""
+action_md = '''Retain the closeout and update only the stale-signature evidence; do not remove the skip.
+'''
 
 [[record.payload.branch]]
 branch_id = "signature-only-change"
-predicate_md = """A published validator changes the rejection signature for f7 but still does not accept RFC 8949 undefined.
-"""
+predicate_md = '''A published validator changes the rejection signature for f7 but still does not accept RFC 8949 undefined.
+'''
 
 [[record.payload.branch.action]]
 action_id = "signature-only-change"
@@ -2854,9 +2854,9 @@ title = "The wasm extern re-export glue demands a wrapper the wasm crate never u
 
 [record.payload]
 kind = "work"
-detail_md = """- **The wasm extern re-export glue demands a wrapper the wasm crate never uses.** Every in-crate
+detail_md = '''- **The wasm extern re-export glue demands a wrapper the wasm crate never uses.** Every in-crate
   `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule gets `pub use crate::<Name>;`
-  emitted into the wasm crate's generated module, and the \"Own-spec extern re-export contract\"
+  emitted into the wasm crate's generated module, and the "Own-spec extern re-export contract"
   stderr line asks the consumer to supply that name — whether or not the wasm face references it.
   A raw-bytes type reached only as a generic ARGUMENT is the shape where the two come apart:
   `tests/corpus/extern_generic_raw_bytes.cddl` binds `ext_set<pub_key>`, so the wasm face names
@@ -2873,7 +2873,7 @@ detail_md = """- **The wasm extern re-export glue demands a wrapper the wasm cra
   **Reopening signal:** a consumer reports the unused-import warning (or silences it) on a wrapper
   the tool asked them to write — they can see it in their own build, which we cannot, and it is the
   same observable whether they hit it once or on twenty types.
-"""
+'''
 work_state = "deferred"
 work_intent = "repair"
 work_kind = "regression_gap"
@@ -2882,14 +2882,14 @@ risk = "misleading_docs"
 [record.payload.reopening_signal]
 observer = "generated-crate consumer"
 dimension = "unused wrapper obligations"
-action_on_fire_md = """make reachability-conditional emission
-"""
+action_on_fire_md = '''make reachability-conditional emission
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """consumer reports or silences the generated unused import
-"""
+event_md = '''consumer reports or silences the generated unused import
+'''
 
 [[record]]
 id = "matrix.wasm-macro-behavior-boundary"
@@ -2897,61 +2897,61 @@ title = "Behavioral wasm-surface rows for the `--wasm-*-macro` modes"
 
 [record.payload]
 kind = "matrix_policy"
-detail_md = """- **Behavioral wasm-surface rows for the `--wasm-*-macro` modes** — those flags replace the whole
+detail_md = '''- **Behavioral wasm-surface rows for the `--wasm-*-macro` modes** — those flags replace the whole
   wrapper method surface with user-supplied macro definitions, so an assertion over that surface
   would judge the FIXTURE's macro bodies rather than the generator's output. The compile verdict
-  plus a loud skip (`tests/README.md` § \"wasm-crate test module\") is the permanent posture, decided
+  plus a loud skip (`tests/README.md` § "wasm-crate test module") is the permanent posture, decided
   2026-08-03. Reopening signal: a consumer-reported behavioral defect in a macro-mode wasm surface
   that the compile verdict passed.
-"""
+'''
 policy_kind = "boundary"
 authority_reference_id = "roadmap-explicitly-out-of-scope-decided-not-overlooked-n7"
-rationale_md = """Macro modes replace the wrapper method surface with fixture-supplied bodies, so the matrix judges generator compile behavior and skips behavioral claims until a consumer reports a defect that passed compilation.
-"""
+rationale_md = '''Macro modes replace the wrapper method surface with fixture-supplied bodies, so the matrix judges generator compile behavior and skips behavioral claims until a consumer reports a defect that passed compilation.
+'''
 permanence = "reopenable"
 
 [record.payload.reopening_signal]
 observer = "macro-mode consumer"
 dimension = "behavioral defects past compile verdict"
-action_on_fire_md = """revisit only that boundary
-"""
+action_on_fire_md = '''revisit only that boundary
+'''
 evaluation = "unknown"
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = """one is reported
-"""
+event_md = '''one is reported
+'''
 
 [[part]]
 part_id = "consumer-hand-patch"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "Hand-patched generated output in a consumer"
-body_md = """  - **Hand-patched generated output in a consumer** — hand-added `use` lines, visibility flips, or
+body_md = '''  - **Hand-patched generated output in a consumer** — hand-added `use` lines, visibility flips, or
     `#[rustfmt::skip]` blocks living in a consumer's committed `src/generated/**`. Every regen
     deletes them, so each one is a workaround for a generator hole nobody filed; read the consumer's
     generated-output diffs for hand edits (read them — never regenerate a consumer to find them).
-"""
+'''
 
 [[part]]
 part_id = "emitted-conformance-directory"
 parent_record_id = "matrix.emission-input-mode-honesty"
 title = "`--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` — a"
-body_md = """  - `--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` — a
+body_md = '''  - `--emit-tests-conformance` × directory input is executed by `ir_conformance_multifile` — a
     multifile placement cell's non-root-module rule judged against the concatenated source spec, the
     spec-on-disk contract `docs/docs/command_line_flags.mdx` states for the flag.
-"""
+'''
 
 [[part]]
 part_id = "exclusion-comment-audit"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "The EXCLUSION comments, not just the missing rows"
-body_md = """  - **The EXCLUSION comments, not just the missing rows** — a shape excluded because the compile
+body_md = '''  - **The EXCLUSION comments, not just the missing rows** — a shape excluded because the compile
     floor cannot build it standalone (`extern` / `rawbytes`) bounds the GATE, not the generator, and
     a consumer regen has already broken inside exactly such an exclusion. An exclusion justified by
     the gate's execution model is never evidence the generator has nothing to get wrong there.
   One residual is recorded rather than enumerated, in `tests/TESTING_ROADMAP.md`: the
   `gcvariant` mode extension over the Record-resolving shapes plus a generation-only leg over the
-  excluded shapes (§ \"Multifile reference-POSITION coverage\"). (Input REALISM — consumer-scale
+  excluded shapes (§ "Multifile reference-POSITION coverage"). (Input REALISM — consumer-scale
   identifier length, a dimension no axis here enumerates — is not a residual here: the
   over-width-field class every short-named fixture kept unreachable is held by a standing
   cddl-codegen gate, the dense width ladder
@@ -2961,31 +2961,31 @@ body_md = """  - **The EXCLUSION comments, not just the missing rows** — a sha
   review rather than by a gate — a SECOND such near-miss is the signal to make
   `project_multifile_matrix.ts --check` assert its `SHAPES` is a superset of the wasm projection's
   (minus its documented exclusions) instead of relying on review.
-"""
+'''
 
 [[part]]
 part_id = "extern-execution"
 parent_record_id = "matrix.extern-execution-multifile"
 title = "EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —"
-body_md = """  - EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —
+body_md = '''  - EXECUTION of user-code cells — running the emitted round-trip module rather than compiling it —
     is `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry. A seeded codec round-trips
     because the seed says so, which is why `feature_corpus_roundtrips_nondefault_profiles` skips
     those stems on an execution-side reason of its own rather than inheriting the compile floor's.
-"""
+'''
 
 [[part]]
 part_id = "fix-review-reach"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "Fix-review reach analysis"
-body_md = """  - **Fix-review reach analysis** — after a fix, ask which OTHER rule families the changed code path
+body_md = '''  - **Fix-review reach analysis** — after a fix, ask which OTHER rule families the changed code path
     can reach. The shapes it reaches and the grid does not are the missing rows.
-"""
+'''
 
 [[part]]
 part_id = "json-gen-cross-module-execution"
 parent_record_id = "matrix.emission-input-mode-honesty"
 title = "EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module types is covered"
-body_md = """  - EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module types is covered
+body_md = '''  - EXECUTION of the generated json-gen crate (`wasm/json-gen`) over cross-module types is covered
     by `multifile_json_preserve`, whose `run_test` leg runs the json-gen binary over the
     four-submodule `tests/multifile/inputs` tree and asserts the emitted document.
 
@@ -3008,44 +3008,44 @@ body_md = """  - EXECUTION of the generated json-gen crate (`wasm/json-gen`) ove
   MODE (local vs index-deferred vs workspace-borrowed vs requested-hosted) × wrapper shape ×
   reference POSITION, which neither SHAPES/ROLES nor this input-mode rule enumerates — is swept in
   the rust suite instead, by the wrapper-participation grid (`tests/README.md`
-  § \"The wrapper-participation grid\"): a table-driven grid with always-on generation assertions and
+  § "The wrapper-participation grid"): a table-driven grid with always-on generation assertions and
   per-(mode, floor) compile/link gates. It stays there rather than moving here because every mode
   configuration requires directory input, which this differential scopes out by construction.
 
-"""
+'''
 
 [[part]]
 part_id = "shared-carrier-delivery-requirements"
 parent_record_id = "matrix.heterogeneous-array.occurrence-bounds"
 title = "Shared delivery requirements for occurrence and bounds carrier classes"
-body_md = """### Shared delivery requirements for occurrence and bounds carrier classes
+body_md = '''### Shared delivery requirements for occurrence and bounds carrier classes
 
 Each class above lands tests-first when picked up; the `+` case's fixture surface (the `nev_*` rules
 in `tests/core/input.cddl`, the `tests/robustness/non_empty_*` collision/dedup pins) is the template,
 and any wasm-boundary shape a new class mints must be enumerated in the wasm-ABI/multifile matrix
-`SHAPES` in the same change (the \"Keep EVERY matrix axis honest\" rule).
+`SHAPES` in the same change (the "Keep EVERY matrix axis honest" rule).
 
-"""
+'''
 
 [[part]]
 part_id = "test-steering-comment"
 parent_record_id = "matrix.periodic-coverage-honesty"
 title = "A steering comment in a test"
-body_md = """  - **A steering comment in a test** — a test that deliberately picks the easy variant (\"uses an
-    exposable key so no wrapper is minted\") is a coverage hole wearing a disguise. Grepping for such
+body_md = '''  - **A steering comment in a test** — a test that deliberately picks the easy variant ("uses an
+    exposable key so no wrapper is minted") is a coverage hole wearing a disguise. Grepping for such
     steering is a cheap sweep arm.
-"""
+'''
 
 [[part]]
 part_id = "wasm-macro-directory"
 parent_record_id = "matrix.emission-input-mode-honesty"
 title = "The `--wasm-*-macro` modes × directory input are compile-gated by"
-body_md = """  - The `--wasm-*-macro` modes × directory input are compile-gated by
+body_md = '''  - The `--wasm-*-macro` modes × directory input are compile-gated by
     `wasm_macros_multifile_compiles` (per-module macro imports, invocations minted inside the
     submodule's own file, and the scoped rust path each invocation carries), which puts the
     input-mode axis under the compile-only verdict that is those surfaces' permanent posture
-    (§ \"Explicitly out of scope\") rather than adding a behavioral row.
-"""
+    (§ "Explicitly out of scope") rather than adding a behavioral row.
+'''
 
 [[relation]]
 source = "matrix.catalog-build.refusal-spelling"

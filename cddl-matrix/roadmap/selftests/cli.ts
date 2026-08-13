@@ -366,28 +366,28 @@ function temporalTestingPorts(
   const payload = kind === "cadence"
     ? `[record.payload]
 kind = "signal"
-detail_md = """Semantic testing detail."""
+detail_md = '''Semantic testing detail.'''
 transition_kind = "cadence"
 owner_reference_id = "temporal-owner"
 event_source = "fixture-calendar"
-period_or_event_md = """Review on the fixture date."""
-checklist_md = """Check the decoded cadence."""
-missed_action_md = """Escalate the missed fixture cadence."""
+period_or_event_md = '''Review on the fixture date.'''
+checklist_md = '''Check the decoded cadence.'''
+missed_action_md = '''Escalate the missed fixture cadence.'''
 due_on = "2025-01-01"
 evaluation = "unknown"
 `
     : `[record.payload]
 kind = "evidence"
-detail_md = """Semantic testing detail."""
+detail_md = '''Semantic testing detail.'''
 evidence_kind = "external_commit"
-claim_md = """The fixture commit is point-in-time evidence."""
+claim_md = '''The fixture commit is point-in-time evidence.'''
 evidence_verdict = "confirmed"
 freshness = "as_of"
 reference_ids = ["temporal-owner"]
 at_commit = "1111111111111111111111111111111111111111"
 observed_at = "2025-01-01"
 valid_through = "2025-01-01"
-unprobed_remainder_md = """No timeless claim is made."""
+unprobed_remainder_md = '''No timeless claim is made.'''
 
 [record.payload.scope]
 surfaces = ["fixture"]

@@ -51,9 +51,62 @@ function appendUnicodeEscape(out: string[], byte: number): void {
   out.push("\\u", byte.toString(16).padStart(4, "0"));
 }
 
-/** Encode one Markdown byte value using the sole canonical TOML spelling. */
+/**
+ * Whether a Markdown value must take the multiline-basic fallback spelling.
+ *
+ * Derived from TOML 1.0.0's multiline-literal grammar, which is what a `'''` token may carry:
+ *
+ *     ml-literal-string = "'''" [ newline ] ml-literal-body "'''"
+ *     ml-literal-body   = *mll-content *( mll-quotes 1*mll-content ) [ mll-quotes ]
+ *     mll-content       = mll-char / newline
+ *     mll-char          = %x09 / %x20-26 / %x28-7E / non-ascii
+ *     mll-quotes        = 1*2 "'"
+ *
+ * Three clauses follow, and they are the whole predicate:
+ *
+ *  1. a run of three or more apostrophes anywhere in the value — `mll-quotes` caps a run at two,
+ *     and a third would close the token;
+ *  2. any control scalar other than TAB and LF — `mll-char` admits only %x09 plus `newline` below
+ *     %x20, and stops at %x7E, so %x7F (DEL) is excluded as well. CR never reaches here (it is
+ *     rejected for the whole source by `decodeFatalUtf8Lf`), and a literal string has no escapes
+ *     with which to spell any of these;
+ *  3. a value ENDING in an apostrophe. The grammar's trailing `[ mll-quotes ]` does allow it, but
+ *     only by closing the token with a four- or five-quote run. Canonicality means exactly one
+ *     valid spelling per value, so canonical literal tokens always close with exactly three
+ *     quotes and this content takes the fallback instead.
+ *
+ * A value STARTING with LF is not a fallback case: the grammar's optional newline immediately
+ * after the opening delimiter is trimmed by the parser, so the encoder writes one extra LF there
+ * and `decodeMarkdownToken` skips it back off.
+ */
+function requiresBasicSpelling(bytes: Uint8Array): boolean {
+  if (bytes.length !== 0 && bytes[bytes.length - 1] === 0x27) return true;
+  let apostropheRun = 0;
+  for (const byte of bytes) {
+    if (byte === 0x27) {
+      apostropheRun += 1;
+      if (apostropheRun >= 3) return true;
+      continue;
+    }
+    apostropheRun = 0;
+    if ((byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * Encode one Markdown byte value using the sole canonical TOML spelling: a multiline literal
+ * string, which needs no escapes and so keeps prose (`\d+`, `C:\path`, quoted phrases) readable,
+ * falling back to a multiline basic string exactly when `requiresBasicSpelling` says a literal
+ * cannot carry the value. The choice is a pure function of the content, so one value still has
+ * exactly one canonical spelling.
+ */
 export function encodeMarkdownString(bytes: Uint8Array, source = "<markdown>"): string {
   decodeFatalUtf8Lf(bytes, source);
+  if (!requiresBasicSpelling(bytes)) {
+    const body = UTF8_FATAL.decode(bytes);
+    return bytes.length !== 0 && bytes[0] === 0x0a ? `'''\n${body}'''` : `'''${body}'''`;
+  }
   const out: string[] = ['"""'];
   for (let index = 0; index < bytes.length; ) {
     const byte = bytes[index];

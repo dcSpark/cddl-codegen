@@ -41,6 +41,7 @@ export const REQUIRED_CODEC_SELFTEST_CASE_IDS = [
   "codec_comment_delimiter_ignored",
   "codec_basic_and_literal_delimiter_ignored",
   "codec_multiline_literal_shielded",
+  "codec_literal_fallback_boundaries",
   "codec_quoted_and_dotted_key_binding",
   "codec_array_of_tables_index_binding",
   "codec_false_placeholder_plain_string",
@@ -176,7 +177,7 @@ const tests: Record<RequiredCodecSelfTestCaseId, () => void> = {
   },
   codec_nonleading_lf_is_physical: () => {
     const encoded = encodeMarkdownString(text("a\nb"));
-    assert(encoded === '"""a\nb"""', "nonleading LF must remain physical");
+    assert(encoded === "'''a\nb'''", "nonleading LF must remain physical");
   },
   codec_toml_terminal_newline: () => assert(`value = ${encodeMarkdownString(text("x"))}\n`.endsWith("\n"), "canonical TOML terminal LF"),
   codec_shields_every_multiline_token: () => {
@@ -194,6 +195,29 @@ const tests: Record<RequiredCodecSelfTestCaseId, () => void> = {
       text('"""\n'),
       "basic delimiters inside a literal token are content",
     );
+  },
+  codec_literal_fallback_boundaries: () => {
+    // One vector per clause of the fallback predicate, each beside the nearest content that stays
+    // literal, so a widened or narrowed predicate fails here rather than in a live renormalization.
+    const spellings: readonly (readonly [string, string])[] = [
+      ["", "''''''"],
+      ["a''b", "'''a''b'''"],
+      ["a'''b", '"""a\'\'\'b"""'],
+      ["'x", "''''x'''"],
+      ["x'", '"""x\'"""'],
+      ["x''", '"""x\'\'"""'],
+      ["a\tb", "'''a\tb'''"],
+      ["a\u0000b", '"""a\\u0000b"""'],
+      ["a\u007fb", '"""a\\u007fb"""'],
+      ["\nlead", "'''\n\nlead'''"],
+      ["C:\\path with \"quotes\" and \\d+", "'''C:\\path with \"quotes\" and \\d+'''"],
+    ];
+    for (const [value, expected] of spellings) {
+      const raw = text(value);
+      const encoded = encodeMarkdownString(raw);
+      assert(encoded === expected, `canonical spelling of ${JSON.stringify(value)} is ${JSON.stringify(encoded)}`);
+      assertBytes(one(`value = ${encoded}\n`).value, raw, `boundary round trip for ${JSON.stringify(value)}`);
+    }
   },
   codec_quoted_and_dotted_key_binding: () => {
     const bindings = shieldTomlMarkdown(text('["quoted.key"]\ndotted.value = """x"""\n'), "<keys>");
@@ -264,6 +288,7 @@ const POSITIVE_CODEC_CASE_IDS: readonly RequiredCodecSelfTestCaseId[] = [
   "codec_comment_delimiter_ignored",
   "codec_basic_and_literal_delimiter_ignored",
   "codec_multiline_literal_shielded",
+  "codec_literal_fallback_boundaries",
   "codec_quoted_and_dotted_key_binding",
   "codec_array_of_tables_index_binding",
   "codec_false_placeholder_plain_string",

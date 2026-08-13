@@ -7,9 +7,9 @@ projection_path = "cddl-matrix/roadmap/fixtures/positive/small-matrix-v3.expecte
 [[section]]
 section_id = "fixture"
 title = "Small matrix fixture"
-body_md = """# Small matrix fixture
+body_md = '''# Small matrix fixture
 
-"""
+'''
 entries = [
   "matrix.fixture-small-semantic",
 ]
@@ -20,12 +20,12 @@ title = "Small semantic matrix owner"
 
 [record.payload]
 kind = "work"
-detail_md = """Semantic matrix detail.
-"""
+detail_md = '''Semantic matrix detail.
+'''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "cosmetic"
-acceptance_md = """The semantic owner renders each consumed field once."""
+acceptance_md = '''The semantic owner renders each consumed field once.'''
 priority_band = "normal"
-priority_rationale_md = """The fixture is a normal-priority contract vector."""
+priority_rationale_md = '''The fixture is a normal-priority contract vector.'''

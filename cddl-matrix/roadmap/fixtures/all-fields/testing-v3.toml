@@ -7,9 +7,9 @@ projection_path = "cddl-matrix/roadmap/fixtures/all-fields/testing-v3.expected.m
 [[section]]
 section_id = "fixture"
 title = "Testing all-fields fixture"
-body_md = """# Testing all-fields fixture
+body_md = '''# Testing all-fields fixture
 
-"""
+'''
 entries = [
   "testing.fixture-task-ready",
   "testing.fixture-signal-escalation",
@@ -34,10 +34,10 @@ title = "Independent recurrence admission"
 
 [record.payload]
 kind = "testing_system_admission"
-detail_md = """Independent recurrence admission.
-"""
+detail_md = '''Independent recurrence admission.
+'''
 admission_kind = "independent_recurrence"
-claim_md = """Two distinct incidents recur independently."""
+claim_md = '''Two distinct incidents recur independently.'''
 evidence_ids = ["testing.fixture-evidence-gate"]
 incident_ids = ["testing.fixture-incident-attributed", "testing.fixture-incident-live"]
 
@@ -47,10 +47,10 @@ title = "Silent corruption admission"
 
 [record.payload]
 kind = "testing_system_admission"
-detail_md = """Silent corruption admission.
-"""
+detail_md = '''Silent corruption admission.
+'''
 admission_kind = "silent_corruption"
-claim_md = """The evidence demonstrates a silent-corruption risk."""
+claim_md = '''The evidence demonstrates a silent-corruption risk.'''
 evidence_ids = ["testing.fixture-evidence-gate"]
 
 [[record]]
@@ -60,16 +60,16 @@ tags = ["coverage:admission_kind:independent_recurrence", "coverage:admission_ki
 
 [record.payload]
 kind = "work"
-detail_md = """Pending-review migration owner.
-"""
+detail_md = '''Pending-review migration owner.
+'''
 work_state = "ready"
 work_intent = "build_system"
 work_kind = "infrastructure"
 risk = "false_pass_or_red"
-acceptance_md = """Reviewed acceptance for the ported fixture arm.
-"""
-priority_rationale_md = """Fixture arm carries no live priority claim.
-"""
+acceptance_md = '''Reviewed acceptance for the ported fixture arm.
+'''
+priority_rationale_md = '''Fixture arm carries no live priority claim.
+'''
 
 [[record]]
 id = "testing.fixture-all-fields-semantic"
@@ -77,14 +77,14 @@ title = "Testing semantic cost"
 
 [record.payload]
 kind = "testing_cost"
-detail_md = """## Testing semantic cost
+detail_md = '''## Testing semantic cost
 
 Live fixture timing registry.
-"""
+'''
 cost_posture = "live_registry"
 unit = "milliseconds"
-scope_md = """Live fixture timing registry.
-"""
+scope_md = '''Live fixture timing registry.
+'''
 gate_reference_id = "semantic-cost-gate"
 
 [[record]]
@@ -93,13 +93,13 @@ title = "Review rule control"
 
 [record.payload]
 kind = "control"
-detail_md = """Review-rule control.
-"""
+detail_md = '''Review-rule control.
+'''
 control_kind = "review_rule"
 control_state = "live"
 reference_ids = ["control-review-heading"]
-claim_md = """The fixture review rule stays live."""
-boundary_md = """It covers only the synthetic all-fields fixture."""
+claim_md = '''The fixture review rule stays live.'''
+boundary_md = '''It covers only the synthetic all-fields fixture.'''
 
 [[record]]
 id = "testing.fixture-cost-historical"
@@ -107,15 +107,15 @@ title = "Historical cost"
 
 [record.payload]
 kind = "testing_cost"
-detail_md = """Historical cost observation.
-"""
+detail_md = '''Historical cost observation.
+'''
 cost_posture = "historical_observation"
 unit = "milliseconds"
-scope_md = """One synthetic fixture execution."""
+scope_md = '''One synthetic fixture execution.'''
 value_min = 10
 value_max = 20
 observed_at = "2026-08-11"
-environment_md = """Pinned synthetic executor."""
+environment_md = '''Pinned synthetic executor.'''
 evidence_ids = ["testing.fixture-evidence-gate"]
 
 [[record]]
@@ -124,14 +124,14 @@ title = "Gate evidence"
 
 [record.payload]
 kind = "evidence"
-detail_md = """Live gate evidence.
-"""
+detail_md = '''Live gate evidence.
+'''
 evidence_kind = "gate"
-claim_md = """A non-stub synthetic gate protects this fixture."""
+claim_md = '''A non-stub synthetic gate protects this fixture.'''
 evidence_verdict = "confirmed"
 freshness = "live"
 reference_ids = ["evidence-gate-target"]
-unprobed_remainder_md = """No production roadmap is probed."""
+unprobed_remainder_md = '''No production roadmap is probed.'''
 refresh_reference_id = "evidence-gate-target"
 
 [record.payload.scope]
@@ -143,12 +143,12 @@ title = "Attributed incident"
 
 [record.payload]
 kind = "testing_incident"
-detail_md = """Attributed incident.
-"""
+detail_md = '''Attributed incident.
+'''
 incident_posture = "attributed"
-signature_md = """Synthetic attributed signature."""
+signature_md = '''Synthetic attributed signature.'''
 evidence_ids = ["testing.fixture-evidence-gate"]
-attribution_md = """The fixture identifies the synthetic cause."""
+attribution_md = '''The fixture identifies the synthetic cause.'''
 operating_rule_reference_id = "incident-attributed-rule"
 
 [[record]]
@@ -157,12 +157,12 @@ title = "Historical incident"
 
 [record.payload]
 kind = "testing_incident"
-detail_md = """Historical incident.
-"""
+detail_md = '''Historical incident.
+'''
 incident_posture = "historical"
-signature_md = """Synthetic historical signature."""
+signature_md = '''Synthetic historical signature.'''
 evidence_ids = ["testing.fixture-evidence-gate"]
-attribution_md = """The fixture identifies the retired synthetic cause."""
+attribution_md = '''The fixture identifies the retired synthetic cause.'''
 operating_rule_reference_id = "incident-historical-rule"
 retirement_reference_id = "incident-historical-retirement"
 
@@ -172,10 +172,10 @@ title = "Live incident"
 
 [record.payload]
 kind = "testing_incident"
-detail_md = """Live incident.
-"""
+detail_md = '''Live incident.
+'''
 incident_posture = "live"
-signature_md = """Synthetic live signature."""
+signature_md = '''Synthetic live signature.'''
 evidence_ids = ["testing.fixture-evidence-gate"]
 
 [[record]]
@@ -184,31 +184,31 @@ title = "Attributed operational watch"
 
 [record.payload]
 kind = "testing_operational_watch"
-detail_md = """Attributed operational watch.
-"""
+detail_md = '''Attributed operational watch.
+'''
 watch_state = "attributed"
-signature_md = """Synthetic attributed watch signature."""
-attribution_md = """The fixture attributes the watch."""
+signature_md = '''Synthetic attributed watch signature.'''
+attribution_md = '''The fixture attributes the watch.'''
 operating_rule_reference_id = "operational-attributed-rule"
-response_md = """Capture and retain exact evidence."""
-retirement_semantics_md = """Retire after the operating rule proves stable."""
+response_md = '''Capture and retain exact evidence.'''
+retirement_semantics_md = '''Retire after the operating rule proves stable.'''
 
 [record.payload.watch_escalation]
-failure_signature_md = """Nested failure signature.
-"""
-capture_procedure_md = """Nested capture procedure.
-"""
-response_md = """Nested response.
-"""
-escalation_action_md = """Nested escalation action.
-"""
-retirement_semantics_md = """Nested retirement semantics.
-"""
+failure_signature_md = '''Nested failure signature.
+'''
+capture_procedure_md = '''Nested capture procedure.
+'''
+response_md = '''Nested response.
+'''
+escalation_action_md = '''Nested escalation action.
+'''
+retirement_semantics_md = '''Nested retirement semantics.
+'''
 evaluation = "unknown"
 
 [[record.payload.capture_step]]
 step_id = "capture"
-capture_md = """Capture the full synthetic diagnostic."""
+capture_md = '''Capture the full synthetic diagnostic.'''
 
 [[record]]
 id = "testing.fixture-operational-retire-pending"
@@ -216,32 +216,32 @@ title = "Retire-pending operational watch"
 
 [record.payload]
 kind = "testing_operational_watch"
-detail_md = """Retire-pending operational watch.
-"""
+detail_md = '''Retire-pending operational watch.
+'''
 watch_state = "retire_pending"
-signature_md = """Synthetic retire-pending watch signature."""
-attribution_md = """The fixture attributes the retired watch."""
+signature_md = '''Synthetic retire-pending watch signature.'''
+attribution_md = '''The fixture attributes the retired watch.'''
 operating_rule_reference_id = "operational-retire-rule"
-response_md = """Retain the capture until retirement completes."""
+response_md = '''Retain the capture until retirement completes.'''
 retirement_reference_id = "operational-retire-pin"
-retirement_semantics_md = """Retire when the replacement pin resolves."""
+retirement_semantics_md = '''Retire when the replacement pin resolves.'''
 
 [record.payload.watch_escalation]
-failure_signature_md = """Nested failure signature.
-"""
-capture_procedure_md = """Nested capture procedure.
-"""
-response_md = """Nested response.
-"""
-escalation_action_md = """Nested escalation action.
-"""
-retirement_semantics_md = """Nested retirement semantics.
-"""
+failure_signature_md = '''Nested failure signature.
+'''
+capture_procedure_md = '''Nested capture procedure.
+'''
+response_md = '''Nested response.
+'''
+escalation_action_md = '''Nested escalation action.
+'''
+retirement_semantics_md = '''Nested retirement semantics.
+'''
 evaluation = "unknown"
 
 [[record.payload.capture_step]]
 step_id = "capture"
-capture_md = """Capture the full synthetic diagnostic."""
+capture_md = '''Capture the full synthetic diagnostic.'''
 
 [[record]]
 id = "testing.fixture-operational-watching"
@@ -249,17 +249,17 @@ title = "Watching operational watch"
 
 [record.payload]
 kind = "testing_operational_watch"
-detail_md = """Watching operational watch.
-"""
+detail_md = '''Watching operational watch.
+'''
 watch_state = "watching"
-signature_md = """Synthetic watching signature."""
-response_md = """Capture the failure before responding."""
+signature_md = '''Synthetic watching signature.'''
+response_md = '''Capture the failure before responding.'''
 escalation_transition_id = "testing.fixture-signal-escalation"
-retirement_semantics_md = """Retire after the watch predicate remains clear."""
+retirement_semantics_md = '''Retire after the watch predicate remains clear.'''
 
 [[record.payload.capture_step]]
 step_id = "capture"
-capture_md = """Capture the full synthetic diagnostic."""
+capture_md = '''Capture the full synthetic diagnostic.'''
 
 [[record]]
 id = "testing.fixture-signal-escalation"
@@ -267,14 +267,14 @@ title = "Watch escalation"
 
 [record.payload]
 kind = "signal"
-detail_md = """Watch escalation signal.
-"""
+detail_md = '''Watch escalation signal.
+'''
 transition_kind = "watch_escalation"
-failure_signature_md = """The synthetic watch signature recurs."""
-capture_procedure_md = """Capture the exact fixture output."""
-response_md = """Attribute or quarantine the recurrence."""
-escalation_action_md = """Promote the watch to active repair work."""
-retirement_semantics_md = """Retire after the recurrence remains absent."""
+failure_signature_md = '''The synthetic watch signature recurs.'''
+capture_procedure_md = '''Capture the exact fixture output.'''
+response_md = '''Attribute or quarantine the recurrence.'''
+escalation_action_md = '''Promote the watch to active repair work.'''
+retirement_semantics_md = '''Retire after the recurrence remains absent.'''
 evaluation = "unknown"
 
 [[record]]
@@ -283,15 +283,15 @@ title = "Ready missing-system task"
 
 [record.payload]
 kind = "work"
-detail_md = """Ready missing-system task.
-"""
+detail_md = '''Ready missing-system task.
+'''
 work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "false_pass_or_red"
-acceptance_md = """The independent-recurrence admission remains live."""
+acceptance_md = '''The independent-recurrence admission remains live.'''
 priority_band = "high"
-priority_rationale_md = """Silent failure makes this fixture task high priority."""
+priority_rationale_md = '''Silent failure makes this fixture task high priority.'''
 admission_ids = ["testing.fixture-admission-independent"]
 
 [[reference]]

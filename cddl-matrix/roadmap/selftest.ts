@@ -308,7 +308,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["strict_generic_disposition_rejected", { code: "E-SCHEMA-UNKNOWN-KEY", logical_path: "p.disposition" }],
   ["missing_section_entries", { code: "E-SCHEMA-MISSING-KEY", logical_path: "section[0].entries" }],
   ["empty_records_floor", { code: "E-SCHEMA-MISSING-KEY", logical_path: "record" }],
-  ["noncanonical_literal_string", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
+  ["noncanonical_basic_string", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["noncanonical_table_order", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["noncanonical_set_order", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["domain_state_required_forbidden", { code: "E-SCHEMA-FORBIDDEN-KEY", logical_path: "p.blocker_md" }],
