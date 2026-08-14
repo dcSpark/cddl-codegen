@@ -3695,7 +3695,7 @@ fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
 /// Standing, table-driven sweep over the generator's synthesized wasm-boundary idents. The generator
 /// mints structural wasm classes whose names derive from user type names (`intermediate/rust_type.rs`):
 /// F1 plain list `{Elem}List` (`name_as_wasm_array_ct`), F2 table builder `Map{K}To{V}`
-/// (`name_for_wasm_map`), F3 `NonEmpty{Elem}List` (`non_empty_wasm_wrapper_name`), F4
+/// (`wasm_structural_map_name_for`), F3 `NonEmpty{Elem}List` (`non_empty_wasm_wrapper_name`), F4
 /// `NonEmptyMap{K}To{V}` (`non_empty_wasm_map_wrapper_name`), and F5 the table `keys()` list wrapper
 /// (`mint_wasm_wrapper_for_visited_type`). Each cell below crosses a family with one interaction
 /// against user rule names and enforces the invariant **no cell may be exit-0 with a non-compiling
@@ -4249,6 +4249,127 @@ fn generic_instance_occurrence_bounds_have_distinct_nominals_and_compile() {
             String::from_utf8_lossy(&check.stdout),
             String::from_utf8_lossy(&check.stderr)
         );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Recursive structural MAP names use each child collection's boundary identity. In particular,
+/// `{* uint => [* uint]}` and `{* uint => [*5 uint]}` used to share `MapU64ToArrU64`, so whichever
+/// order minted it selected the other occurrence's native carrier and the wasm crate failed E0277.
+/// Exercise both claimant orders, including an outer list of each map: the outer names prove the map
+/// fragment is recursive rather than merely a top-level map suffix. The fixture also includes a
+/// bounded table and the same table nested as a key: their `MapArrU64ToU64` loose source and
+/// `MapU64ListMax5ToU64` native child must compile as distinct classes. An ordinary inline map and
+/// default/preserve open-table catch-all rows prove the same source/native split is valid where the
+/// formerly rejecting wrappers are actually used.
+#[test]
+fn nested_restricted_map_wasm_boundaries_have_distinct_nominals_and_compile() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch_name = format!("cddl_codegen_nested_map_identity_{:016x}", checkout_hash());
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let orders = [
+        (
+            "loose_first",
+            "direct = { [*5 uint] => uint }\n\
+             table_outer = { { [*5 uint] => uint } => uint }\n\
+             preserve_direct = { [*5 uint] => uint } ; @duplicates preserve\n\
+             ordinary = [native: {* [*5 uint] => uint}]\n\
+             open_default = { * text => uint, * [*5 uint] => uint }\n\
+             open_preserve = { * text => uint, * [*5 uint] => uint ; @duplicates preserve\n}\n\
+             holder = [\n\
+               loose: {* uint => [* uint]},\n\
+               restricted: {* uint => [*5 uint]},\n\
+               outer_loose: [* {* uint => [* uint]}],\n\
+               outer_restricted: [* {* uint => [*5 uint]}],\n\
+             ]\n",
+        ),
+        (
+            "restricted_first",
+            "a_table_outer = { { [*5 uint] => uint } => uint }\n\
+             z_direct = { [*5 uint] => uint }\n\
+             z_preserve_direct = { [*5 uint] => uint } ; @duplicates preserve\n\
+             ordinary = [native: {* [*5 uint] => uint}]\n\
+             open_default = { * text => uint, * [*5 uint] => uint }\n\
+             open_preserve = { * text => uint, * [*5 uint] => uint ; @duplicates preserve\n}\n\
+             holder = [\n\
+               restricted: {* uint => [*5 uint]},\n\
+               loose: {* uint => [* uint]},\n\
+               outer_restricted: [* {* uint => [*5 uint]}],\n\
+               outer_loose: [* {* uint => [* uint]}],\n\
+             ]\n",
+        ),
+    ];
+    for (order, cddl) in orders {
+        let input = root.join(format!("{order}.cddl"));
+        let out = root.join(order);
+        std::fs::write(&input, cddl).unwrap();
+        let generated = codegen_cmd()
+            .arg(format!("--input={}", input.display()))
+            .arg(format!("--output={}", out.display()))
+            .arg("--wasm=true")
+            .arg(format!(
+                "--static-dir={}",
+                concat!(env!("CARGO_MANIFEST_DIR"), "/static")
+            ))
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{order}: nested restricted map fixture must generate:\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        let wasm = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
+        for (name, carrier) in [
+            ("MapArrU64ToU64", "BTreeMap<Vec<u64>, u64>"),
+            (
+                "MapU64ListMax5ToU64",
+                "BTreeMap<BoundedVec<u64, 0, 5>, u64>",
+            ),
+            ("PairMapArrU64ToU64", "PairMap<Vec<u64>, u64>"),
+            (
+                "PairMapU64ListMax5ToU64",
+                "PairMap<BoundedVec<u64, 0, 5>, u64>",
+            ),
+            ("MapU64ToArrU64", "BTreeMap<u64, Vec<u64>>"),
+            (
+                "MapU64ToU64ListMax5",
+                "BTreeMap<u64, BoundedVec<u64, 0, 5>>",
+            ),
+            ("MapU64ToArrU64List", "Vec<BTreeMap<u64, Vec<u64>>>"),
+            (
+                "MapU64ToU64ListMax5List",
+                "Vec<BTreeMap<u64, BoundedVec<u64, 0, 5>>>",
+            ),
+        ] {
+            assert_eq!(
+                wasm.matches(&format!("pub struct {name}(")).count(),
+                1,
+                "{order}: {name} must have exactly one wasm class:\n{wasm}"
+            );
+            assert!(
+                wasm.contains(&format!("pub struct {name}(pub(crate) {carrier});")),
+                "{order}: {name} must retain its distinct native carrier:\n{wasm}"
+            );
+        }
+        for crate_sub in ["rust", "wasm"] {
+            let check = tool_cmd("cargo")
+                .arg("check")
+                .current_dir(out.join(crate_sub))
+                .env("CARGO_TARGET_DIR", root.join(format!("{order}-target")))
+                .output()
+                .unwrap();
+            assert!(
+                check.status.success(),
+                "{order}: nested restricted map {crate_sub} crate must compile:\n{}\n{}",
+                String::from_utf8_lossy(&check.stdout),
+                String::from_utf8_lossy(&check.stderr)
+            );
+        }
     }
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -364,14 +364,7 @@ expression: ir
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
-                    bounds: Some(
-                        (
-                            Some(
-                                1,
-                            ),
-                            None,
-                        ),
-                    ),
+                    bounds: None,
                     duplicates: None,
                     float_bounds: None,
                     basic_override: false,

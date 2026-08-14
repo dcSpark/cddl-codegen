@@ -38,6 +38,6 @@ impl Holder {
     }
 }
 
-pub type MapU64ToU64List = Vec<NonEmptyMap<u64, u64>>;
+pub type MapU64ToU64List = Vec<BTreeMap<u64, u64>>;
 
 pub type NestedPlus = Vec<NonEmptyVec<u64>>;

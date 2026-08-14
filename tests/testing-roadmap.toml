@@ -81,7 +81,6 @@ entries = [
   "testing.duplicates-policy-residuals",
   "part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516",
   "testing.duplicates.same-shape-set-conversion",
-  "testing.wasm-boundary.nested-restricted-map-identity",
   "testing.duplicates.dedicated-generic-collision-message",
   "testing.duplicates.member-position-extension",
   "part-md-mdmap",
@@ -7794,42 +7793,6 @@ action_on_fire_md = '''Set testing.wac-composed-component-transpiled-jco-loses-c
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.wac-composed-component-transpiled-jco-loses-cross-instance's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.wasm-boundary.nested-restricted-map-identity"
-title = "Recursive structural identity for nested restricted map children at the WASM boundary."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Nested restricted map child identity at the WASM boundary.** The array-wrapper family now
-  carries a recursive, identifier-safe boundary fragment, but map wrapper identity still fans out
-  through bounds-blind `ConceptualRustType::name_for_wasm_map()` in the map emitters, deferral/index
-  decisions, collision detectors, and requested-shape reconstruction. Thus a loose outer container
-  over a restricted map child can select the same `MapKToV` class as one over the loose child; the
-  first mint fixes that class's carrier and the other conversion emits E0277 (or a later traversal
-  silently chooses the wrong structural owner). Minimal repro shape: place both `{* uint => [*5
-  uint]}` and `{* uint => [* uint]}` as nested values/keys of wrappers that require a wasm class,
-  then `cargo check` the generated wasm crate.
-
-  Make map structural naming use one recursive, identifier-safe RustType-level boundary identity,
-  and propagate it in lockstep through map minting, wrapper requests/index reconstruction, every
-  collision detector, and the table-key deliberate top-level-loosening exception. Add a dedicated
-  matrix/corpus compile cell (or a focused integration scratch crate promoted into that sweep) with
-  loose-vs-restricted nested map children and source assertions for the two distinct classes.
-'''
-work_state = "ready"
-work_intent = "build_capability"
-work_kind = "feature"
-risk = "compile_failure"
-acceptance_md = '''Use one recursive, identifier-safe RustType-level identity for nested map
-children at every listed map mint/reference/reconstruction/collision seam; preserve the deliberate
-top-level table-key loosening; and add the stated source-asserted WASM compile regression. Do not
-widen this item into the already-delivered recursive ARRAY wrapper family.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order: the B5-102
-array regression exposed the same bounds-blind map naming class, whose current result is generated
-WASM output that can fail E0277 or select a traversal-dependent carrier.
 '''
 
 [[record]]

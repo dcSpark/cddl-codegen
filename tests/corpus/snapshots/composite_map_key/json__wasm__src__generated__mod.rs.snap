@@ -115,7 +115,7 @@ impl AsRef<cddl_lib::Holder> for Holder {
     }
 }
 
-pub type MapArrU64ToU64 = T;
+pub type MapNonEmptyU64ListToU64 = T;
 
 /// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation.
 /// Enter via `try_from` or `new(first)`.

@@ -1400,7 +1400,7 @@ impl RustType {
                 // owner-named wrapper must never look deferrable). Change both together.
                 None => format!(
                     "NonEmpty{}",
-                    ConceptualRustType::name_for_wasm_map(k, v, self.is_preserve_pair_map())
+                    Self::wasm_structural_map_name_for(k, v, self.is_preserve_pair_map(), types)
                 ),
             },
             _ => unreachable!("non_empty_wasm_map_wrapper_name on a non-map: {:?}", self),
@@ -1409,13 +1409,13 @@ impl RustType {
 
     /// Mechanical wasm name for a finite/exact table. Both bounds and duplicate policy are part of
     /// the structural identity, so a loose source can never be mistaken for this wrapper.
-    pub fn bounded_wasm_map_structural_name(&self) -> String {
+    pub fn bounded_wasm_map_structural_name(&self, types: &IntermediateTypes) -> String {
         let (min, max) = self
             .bounded_map_u64_bounds()
             .expect("bounded map wasm wrapper has representable bounds");
         let base = match &self.conceptual_type {
             ConceptualRustType::Map(k, v) => {
-                ConceptualRustType::name_for_wasm_map(k, v, self.is_preserve_pair_map())
+                Self::wasm_structural_map_name_for(k, v, self.is_preserve_pair_map(), types)
             }
             _ => unreachable!("bounded_wasm_map_wrapper_name on a non-map"),
         };
@@ -1439,7 +1439,7 @@ impl RustType {
         types
             .bounded_map_named_owner(key, value, bounds, self.is_preserve_pair_map())
             .map(ToString::to_string)
-            .unwrap_or_else(|| self.bounded_wasm_map_structural_name())
+            .unwrap_or_else(|| self.bounded_wasm_map_structural_name(types))
     }
 
     /// The wasm-boundary name of the LOOSE `@duplicates preserve` map wrapper (`PairMapKToV`) — the
@@ -1448,10 +1448,10 @@ impl RustType {
     /// class minted under the rule ident with a `pub type PairMapKToV = <Owner>;` alias beside it
     /// (`mint_sole_owner_table`), so every reference site names the structural spelling and
     /// wasm-bindgen folds it onto the owner class.
-    pub fn preserve_pair_map_wasm_wrapper_name(&self) -> String {
+    pub fn preserve_pair_map_wasm_wrapper_name(&self, types: &IntermediateTypes) -> String {
         match &self.conceptual_type {
             ConceptualRustType::Map(k, v) => {
-                ConceptualRustType::name_for_wasm_map(k, v, true).to_string()
+                Self::wasm_structural_map_name_for(k, v, true, types).to_string()
             }
             _ => unreachable!(
                 "preserve_pair_map_wasm_wrapper_name on a non-map: {:?}",
@@ -1572,7 +1572,7 @@ impl RustType {
         // conceptual `for_wasm_member_ct` below cannot see the policy, so the flavor branch lives here
         // — the same seam `is_non_empty_map` uses for the occurrence bound.
         if self.is_preserve_pair_map() {
-            return self.preserve_pair_map_wasm_wrapper_name();
+            return self.preserve_pair_map_wasm_wrapper_name(types);
         }
         match &self.conceptual_type {
             // Keep this RustType-level so a nested occurrence retains its own wasm wrapper name.
@@ -1584,7 +1584,7 @@ impl RustType {
         }
     }
 
-    /// Return TYPE for wasm. Bounds-aware over `for_wasm_return_ct`.
+    /// Return TYPE for wasm. Bounds-aware over `for_wasm_member`.
     pub fn for_wasm_return(&self, types: &IntermediateTypes) -> String {
         self.for_wasm_member(types)
     }
@@ -1613,7 +1613,7 @@ impl RustType {
             return format!("&{}", self.bounded_wasm_map_wrapper_name(types));
         }
         if self.is_preserve_pair_map() {
-            return format!("&{}", self.preserve_pair_map_wasm_wrapper_name());
+            return format!("&{}", self.preserve_pair_map_wasm_wrapper_name(types));
         }
         match &self.conceptual_type {
             // Same name owner as `for_wasm_member` and the wrapper mint path below.
@@ -1653,7 +1653,7 @@ impl RustType {
             return self.bounded_wasm_map_wrapper_name(types);
         }
         if self.is_preserve_pair_map() {
-            return self.preserve_pair_map_wasm_wrapper_name();
+            return self.preserve_pair_map_wasm_wrapper_name(types);
         }
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) => inner.name_as_wasm_array(types),
@@ -1698,20 +1698,10 @@ impl RustType {
     /// neither of which may be extended to name an outer wrapper. Structural wrapper minting,
     /// references, and requested-shape reconstruction all use this owner instead.
     ///
-    /// This currently owns the ARRAY family only: loose/unconstrained array shapes retain their
-    /// historic `for_variant()` base while restricted arrays and Optional children recurse through
-    /// the actual wrapper class. Map children deliberately retain their legacy bounds-blind owner
-    /// until `testing.wasm-boundary.nested-restricted-map-identity` is delivered; do not silently
-    /// point an array-over-map at a class the map emitter still cannot mint.
+    /// Loose/unconstrained collections retain their historic spelling while restricted arrays and
+    /// maps recurse through the actual wrapper class. This keeps every structural parent class on
+    /// the same native carrier its child emitter minted.
     pub fn wasm_boundary_identity_fragment(&self, types: &IntermediateTypes) -> String {
-        // Map wrapper minting retains its established, bounds-blind ConceptualRustType owner.
-        // Keep this before the occurrence/preserve predicates: a nested `{+ uint => uint}` is
-        // still the `MapU64ToU64` child of an outer list, not a reference to an unminted
-        // `NonEmptyMapU64ToU64` class. The nested-restricted-map roadmap item owns widening this
-        // identity once map minting and every reconstruction seam agree on it.
-        if matches!(self.conceptual_type, ConceptualRustType::Map(_, _)) {
-            return self.for_variant().to_string();
-        }
         if self.is_bounded_reject_ordered_set() {
             return self.bounded_reject_ordered_set_wasm_wrapper_name(types);
         }
@@ -1724,6 +1714,12 @@ impl RustType {
         if self.is_bounded_array() {
             return self.bounded_wasm_wrapper_name(types);
         }
+        if self.is_non_empty_map() {
+            return self.non_empty_wasm_map_wrapper_name(types);
+        }
+        if self.is_bounded_map() {
+            return self.bounded_wasm_map_wrapper_name(types);
+        }
         match &self.conceptual_type {
             ConceptualRustType::Optional(inner) => {
                 format!("Opt{}", inner.wasm_boundary_identity_fragment(types))
@@ -1731,9 +1727,10 @@ impl RustType {
             ConceptualRustType::Array(inner) => {
                 format!("Arr{}", inner.wasm_boundary_identity_fragment(types))
             }
-            // The raw-map early return above deliberately catches restricted and preserve maps
-            // before their predicates; aliases retain their authored spelling here.
-            ConceptualRustType::Map(_, _) => self.for_variant().to_string(),
+            ConceptualRustType::Map(k, v) => {
+                Self::wasm_structural_map_name_for(k, v, self.is_preserve_pair_map(), types)
+                    .to_string()
+            }
             // Alias spelling is authored identity, as in the generic canonical key; it is not a
             // structural invitation to merge an author's name with an inline representation.
             ConceptualRustType::Alias(_, _)
@@ -1770,8 +1767,9 @@ impl RustType {
     /// list returned from `keys()`.
     ///
     /// The structural keys-list ABI predates occurrence-enforcing collection carriers: a table
-    /// keyed by `[* uint]`, `[+ uint]`, or `[2*5 uint]` names the returned class `ArrU64List` in
-    /// every case. Keep that established name honest by projecting an inline restricted collection
+    /// keyed by `[* uint]`, `[+ uint]`, `[2*5 uint]`, or their map equivalents names the returned
+    /// class from a loose outer key collection in every case. Keep that established name honest by
+    /// projecting an inline restricted collection
     /// key to its loose boundary value before synthesizing the OUTER list. The map itself retains
     /// the restricted key carrier, so `insert`/`get` still use the checked wrapper; only `keys()`
     /// clones each key out through the carrier's infallible `Into<Vec<_>>` conversion.
@@ -1783,7 +1781,7 @@ impl RustType {
         let mut loose = self.clone();
         if matches!(
             loose.conceptual_type.resolve_alias_shallow(),
-            ConceptualRustType::Array(_)
+            ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
         ) {
             loose.config.bounds = None;
             loose.config.duplicates = None;
@@ -1873,6 +1871,46 @@ impl RustType {
             return expr.to_owned();
         }
         self.conceptual_type.from_wasm_boundary_ref(types, expr)
+    }
+
+    /// The one owner for STRUCTURAL map class names. Values contribute their complete,
+    /// identifier-safe WASM boundary identity rather than a bounds-blind display spelling, so a
+    /// map containing `[* uint]` cannot share a class with one containing `[*5 uint]`. This is the
+    /// native map boundary identity: direct and nested collection restrictions both remain visible.
+    /// A bounded table's historical loose `try_from` builder is named separately below.
+    pub fn wasm_structural_map_name_for(
+        k: &RustType,
+        v: &RustType,
+        preserve: bool,
+        types: &IntermediateTypes,
+    ) -> RustIdent {
+        RustIdent::new(CDDLIdent::new(format!(
+            "{}Map{}To{}",
+            if preserve { "Pair" } else { "" },
+            k.wasm_boundary_identity_fragment(types),
+            v.wasm_boundary_identity_fragment(types)
+        )))
+    }
+
+    /// Structural map class name for this map occurrence, including its duplicate policy.
+    pub fn wasm_structural_map_name(&self, types: &IntermediateTypes) -> RustIdent {
+        let ConceptualRustType::Map(k, v) = &self.conceptual_type else {
+            unreachable!("wasm_structural_map_name on a non-map: {:?}", self);
+        };
+        Self::wasm_structural_map_name_for(k, v, self.is_preserve_pair_map(), types)
+    }
+
+    /// Structural name of the deliberately loose builder used by a bounded table's checked
+    /// `try_from` door. This is intentionally distinct from the native map identity above: the
+    /// builder carries a loose direct collection key and re-checks it at the guarded door.
+    pub fn wasm_loose_table_builder_name_for(
+        key: &RustType,
+        value: &RustType,
+        preserve: bool,
+        types: &IntermediateTypes,
+    ) -> RustIdent {
+        let loose_key = key.loosened_for_wasm_table_boundary_key();
+        Self::wasm_structural_map_name_for(&loose_key, value, preserve, types)
     }
 }
 
@@ -2194,32 +2232,9 @@ impl ConceptualRustType {
         }
     }
 
-    /// Return TYPE for wasm
-    pub fn for_wasm_return_ct(&self, types: &IntermediateTypes) -> String {
-        self.for_wasm_member_ct(types)
-    }
-
-    /// The structural wasm class name for a table shape. The name derives from the STRUCTURE, and the
-    /// structure includes the backing container: a `@duplicates preserve` map is a `PairMap<K, V>` (a
-    /// duplicate-permitting vec of pairs) while the default flavor is a key-VALUE-keyed
-    /// `OrderedHashMap`/`BTreeMap`, and two structurally different types must not derive one name —
-    /// one class can only have one inner type, so sharing the name emits a wasm crate that does not
-    /// compile. `preserve` therefore prefixes `PairMap` exactly as `NonEmpty` prefixes for the min-1
-    /// occurrence (`NonEmptyPairMapKToV` composes both).
-    ///
-    /// `preserve` is LOCAL information at every call site — a table rule's `config().duplicates`, a
-    /// `RestRow::duplicates()`, or the `RustType`'s own carried policy (`is_preserve_pair_map`). It is
-    /// never recovered from a crate-wide shape lookup: the whole point of encoding the flavor in the
-    /// name is that a shape no longer determines a flavor.
-    pub fn name_for_wasm_map(k: &RustType, v: &RustType, preserve: bool) -> RustIdent {
-        RustIdent::new(CDDLIdent::new(format!(
-            "{}Map{}To{}",
-            if preserve { "Pair" } else { "" },
-            k.conceptual_type.for_variant(),
-            v.conceptual_type.for_variant()
-        )))
-    }
-
+    /// Native Rust representation for a table's key and value. WASM structural class naming is
+    /// deliberately owned by [`RustType::wasm_structural_map_name_for`], where occurrence bounds
+    /// and duplicate policy remain visible.
     pub fn name_for_rust_map(
         types: &IntermediateTypes,
         k: &RustType,
@@ -2255,7 +2270,9 @@ impl ConceptualRustType {
             // (it lives on the enclosing `RustType`), so this names the DEFAULT-flavored class. The
             // preserve twin is named one level up, by `RustType::for_wasm_member`, which can see the
             // policy — exactly how the `{+ …}` bound is handled.
-            Self::Map(k, v) => Self::name_for_wasm_map(k, v, false).to_string(),
+            Self::Map(k, v) => {
+                RustType::wasm_structural_map_name_for(k, v, false, types).to_string()
+            }
             Self::Alias(ident, ty) => match ident {
                 // we don't generate type aliases for reserved types, just transform
                 // them into rust equivalents, so we can't and shouldn't use their alias here.
@@ -2362,9 +2379,14 @@ impl ConceptualRustType {
             // `Map` occurrence (a named preserve table is referenced as an `Alias`, taking the alias
             // arm below), and an inline occurrence carries no `@duplicates` directive — the policy is
             // per-RULE, so a preserve map must be given its own named rule.
-            Self::Map(k, v) => {
-                VariantIdent::new_custom(Self::name_for_wasm_map(k, v, false).to_string())
-            }
+            // This is CHOICE-ARM DISPLAY spelling, not a wasm wrapper identity. Keep its historic
+            // bounds-blind `for_variant()` recursion so enum variant labels remain stable; structural
+            // map mint/reference/reconstruction must use `wasm_structural_map_name_for` instead.
+            Self::Map(k, v) => VariantIdent::new_custom(format!(
+                "Map{}To{}",
+                k.conceptual_type.for_variant(),
+                v.conceptual_type.for_variant()
+            )),
             Self::Alias(ident, _ty) => match ident {
                 AliasIdent::Rust(rust_ident) => VariantIdent::new_rust(rust_ident.clone()),
                 AliasIdent::Reserved(reserved) => VariantIdent::new_custom(reserved),
@@ -2577,7 +2599,7 @@ impl ConceptualRustType {
                 }
             }
             //Self::Array(ty) => format!("{}({}.clone())", ty.name_as_wasm_array(types), expr),
-            //Self::Map(k, v) => format!("{}({}.clone())", Self::name_for_wasm_map(k, v), expr),
+            //Self::Map(k, v) => format!("{}({}.clone())", Self::wasm_structural_map_name_for(k, v, false, types), expr),
             Self::Array(_ty) => {
                 if self.directly_wasm_exposable_ct(types) {
                     format!("{expr}.clone()")
@@ -2875,6 +2897,7 @@ impl std::fmt::Display for ToWasmBoundaryOperations {
 #[cfg(test)]
 mod tests {
     use super::{ConceptualRustType, FixedValue, Primitive, RustType};
+    use crate::comment_ast::DuplicatesPolicy;
     use crate::intermediate::IntermediateTypes;
     use cbor_event::Sz;
 
@@ -2953,5 +2976,87 @@ mod tests {
             "OptU64ListMax5"
         );
         assert_eq!(optional.name_as_wasm_array(&types), "OptU64ListMax5List");
+    }
+
+    #[test]
+    fn wasm_boundary_identity_fragment_recurses_maps_and_table_key_looseness() {
+        let types = IntermediateTypes::new();
+        let u64_type = || RustType::new(ConceptualRustType::Primitive(Primitive::U64));
+        let bounded_array = || {
+            RustType::new(ConceptualRustType::Array(Box::new(u64_type())))
+                .with_bounds((None, Some(5)))
+        };
+        let loose_map = RustType::new(ConceptualRustType::Map(
+            Box::new(u64_type()),
+            Box::new(RustType::new(ConceptualRustType::Array(Box::new(
+                u64_type(),
+            )))),
+        ));
+        let bounded_value_map = RustType::new(ConceptualRustType::Map(
+            Box::new(u64_type()),
+            Box::new(bounded_array()),
+        ));
+        let bounded_key_map = RustType::new(ConceptualRustType::Map(
+            Box::new(RustType::new(ConceptualRustType::Optional(Box::new(
+                bounded_array(),
+            )))),
+            Box::new(u64_type()),
+        ));
+        let non_empty_preserve_map = RustType::new(ConceptualRustType::Map(
+            Box::new(u64_type()),
+            Box::new(u64_type()),
+        ))
+        .with_bounds((Some(1), None))
+        .with_duplicates_policy(Some(DuplicatesPolicy::Preserve));
+
+        let names = [
+            loose_map.wasm_boundary_identity_fragment(&types),
+            bounded_value_map.wasm_boundary_identity_fragment(&types),
+            bounded_key_map.wasm_boundary_identity_fragment(&types),
+            non_empty_preserve_map.wasm_boundary_identity_fragment(&types),
+        ];
+        assert_eq!(names[0], "MapU64ToArrU64");
+        assert_eq!(names[1], "MapU64ToU64ListMax5");
+        assert_eq!(names[2], "MapOptU64ListMax5ToU64");
+        assert_eq!(names[3], "NonEmptyPairMapU64ToU64");
+        assert_ne!(names[0], names[1]);
+        assert_ne!(names[1], names[2]);
+        assert!(names.iter().all(|name| {
+            name.chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        }));
+
+        let restricted_key = RustType::new(ConceptualRustType::Map(
+            Box::new(u64_type()),
+            Box::new(bounded_array()),
+        ))
+        .with_bounds((Some(1), None))
+        .with_duplicates_policy(Some(DuplicatesPolicy::Preserve));
+        let loosened = restricted_key.loosened_for_wasm_table_boundary_key();
+        assert_eq!(
+            restricted_key.wasm_boundary_identity_fragment(&types),
+            "NonEmptyPairMapU64ToU64ListMax5"
+        );
+        assert_eq!(
+            loosened.wasm_boundary_identity_fragment(&types),
+            "MapU64ToU64ListMax5",
+            "only the top-level map occurrence/policy is erased"
+        );
+        assert_eq!(
+            loosened.name_as_wasm_array(&types),
+            "MapU64ToU64ListMax5List",
+            "the nested bounded-array restriction remains in the keys-list identity"
+        );
+        assert_eq!(
+            RustType::wasm_loose_table_builder_name_for(
+                &bounded_array(),
+                &u64_type(),
+                false,
+                &types,
+            )
+            .to_string(),
+            "MapArrU64ToU64",
+            "a bounded table's direct restricted key keeps its established loose builder ABI"
+        );
     }
 }

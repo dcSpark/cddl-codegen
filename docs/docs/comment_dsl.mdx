@@ -395,7 +395,8 @@ now defaults to `reject` (see *Defaults* below); every other set defaults to `pr
 preserve table and a non-preserve map/table of the *identical* key/value **coexist** under `--wasm`:
 the synthesized wasm class name encodes the backing container, so the preserve flavor is
 `PairMap<K>To<V>` (and `NonEmptyPairMap<K>To<V>` for `{+ …}`) while the default flavor keeps
-`Map<K>To<V>` — two distinct classes, each wrapping its own inner type.
+`Map<K>To<V>` — two distinct classes, each wrapping its own inner type. The `K` and `V` fragments
+also retain nested collection bounds and map flavor recursively.
 :::
 
 Selects the per-rule policy for how a collection handles duplicate entries on the CBOR wire. CBOR

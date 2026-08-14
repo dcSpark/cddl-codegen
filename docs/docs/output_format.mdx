@@ -1100,7 +1100,9 @@ The wasm boundary mirrors the set twins' two-wrapper pattern, except the loose `
 container flavor — `PairMap<K>To<V>`, `NonEmptyPairMap<K>To<V>`, and bounded
 `PairMap<K>To<V>MaxN` / `…MinN` / `…MinNMaxM`, against the default flavor's
 `Map<K>To<V>` / `NonEmptyMap<K>To<V>` — so a preserve and a non-preserve map of the identical
-key/value are two distinct classes. See
+key/value are two distinct classes. The `K` and `V` fragments are themselves recursive boundary
+identities, so occurrence restrictions and duplicate flavor inside nested arrays or maps also select
+distinct classes and matching native carriers. See
 [Wasm Differences](./wasm_differences.mdx#preserve-duplicates-tables).
 
 ## Generated crate roots (thin root, seed-once)

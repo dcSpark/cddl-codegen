@@ -30,7 +30,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 |------|---------|--------------|------------------|
 | `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~43s<!-- /gen:sh:tests-tier-fast --> |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~13 min<!-- /gen:sh:tests-tier-local --> |
-| `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~49 min<!-- /gen:sh:tests-tier-full --> |
+| `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~66 min<!-- /gen:sh:tests-tier-full --> |
 
 Those three are **sliding-window medians (up to 20 runs) on the dev machine**, projected off
 `tests/timings.json` by generated spans (`project_status_headers.ts` — hand-corrected stale twice
@@ -1794,18 +1794,19 @@ idiom") is verified across the layers:
   `integration_tests::workspace_requests_anonymous_collapsed_set_satisfies_from_own_spec`: the
   structural request is satisfied by own-spec (no criterion-8 #3 collision on the synthesized name),
   and the named-rule boundary still hard-errors naming `NamedSet`.
-- **Occurrence-aware instance identity + recursive array boundary** —
+- **Occurrence-aware instance identity + recursive collection boundary** —
   `integration_tests::generic_instance_occurrence_bounds_have_distinct_nominals_and_compile`
   crosses loose, outer-bounded, inner-bounded, and doubly bounded arguments through anonymous uses
   and named bindings, source-asserts each distinct native/WASM nominal and carrier, then checks both
-  generated crates. Its bounded-table-key leg pins the deliberate top-level-loose `ArrU64List`
-  `keys()` ABI (including coexistence with an authored compatible `arr_u64_list`) while nested array
-  restrictions retain their own structural identity. It supplies the recursive-identity vector
-  missing when source review found that table-key mint/reference/import/collision paths could
-  disagree after recursive array identity was introduced; the standing table-key carrier,
-  synthesized-name interaction, and workspace wrapper-routing tests keep their respective seams.
-  The map-family analogue is deliberately not claimed here; it remains ready as
-  `testing.wasm-boundary.nested-restricted-map-identity`.
+  generated crates. `integration_tests::nested_restricted_map_wasm_boundaries_have_distinct_nominals_and_compile`
+  applies the same identity rule recursively to map keys and values, including preserve-pair flavor,
+  and checks both source orders compile with distinct native carriers and WASM classes. The deliberate
+  table-key exception loosens only an outer array or map occurrence/policy restriction for a bounded
+  table's checked builder and the `keys()` structural wrapper; nested array/map restrictions still
+  contribute to their identities. The focused regressions cover emitter,
+  mint/reference/import/collision, and wrapper-request reconstruction seams; the standing table-key
+  carrier, synthesized-name interaction, and workspace wrapper-routing tests keep their respective
+  seams.
 - **Compile + round-trip** — the `tag_set_idiom` / `tag_set_generic` / `tag_set_near_miss` corpus
   fixtures (`feature_corpus` snapshots + `feature_corpus_compiles`' three-profile compile and the
   default-profile `--emit-tests` byte-exact round-trip of the tagged arm). `tag_set_generic` carries
@@ -4223,17 +4224,21 @@ minted once over `Vec<Vec<u64>>`; restricted `keys()` surfaces convert into that
 while their map classes retain checked key doors. A focused generated-WASM `cargo check` is required
 when changing this seam, and the full-tier recombination wasm leg remains the broad compile oracle.
 `nested_table_key_keeps_its_native_array_carrier_at_the_outer_boundary` is the complementary
-read-derived pin: `rc1508 = { { [*5 uint] => uint } => uint }` asserts that the inner map's own
-anonymous structural builder and the outer table conversion retain the nested map's `BoundedVec`
-carrier. Its sibling
+read-derived pin: `rc1508 = { { [*5 uint] => uint } => uint }` distinguishes the inner bounded
+table's loose checked source (`MapArrU64ToU64` over `Vec`) from its native recursive identity
+(`MapU64ListMax5ToU64` over `BoundedVec`), then asserts that the outer table conversion retains the
+native bounded carrier. Its sibling
 `direct_and_nested_table_keys_share_one_canonical_structural_builder_carrier` crosses both traversal
-orders and pins that a named bounded table makes `MapArrU64ToU64` the one loose builder regardless of
-mint order. `ordinary_inline_map_keeps_its_native_restricted_key_carrier` covers the incompatible
-ordinary-map boundary, while `loose_map_and_named_bounded_table_same_builder_shape_reject_gracefully`
-and `open_table_catchall_and_named_bounded_table_same_builder_shape_reject_gracefully` refuse the
-one-name/two-carrier composition for inline fields and the default/preserve catch-all wrappers. The
-source assertions catch the otherwise exit-0 E0277 conversion mismatch; focused generated-WASM
-`cargo check`s remain required after edits.
+orders and pins `MapArrU64ToU64` as the one loose builder regardless of mint order.
+`ordinary_inline_map_keeps_its_native_restricted_key_carrier` pins the recursive native name and
+carrier for the ordinary-map boundary;
+`loose_map_and_named_bounded_table_mint_distinct_builder_and_native_classes` and
+`open_table_catchall_and_named_bounded_table_mint_distinct_classes` prove the formerly refused
+one-name/two-carrier compositions now generate as distinct default/preserve classes.
+`bounded_table_loose_builder_collision_uses_actual_source_identity` keeps the collision detectors
+on the exact loose-source class, including self-named bounded sources. The source assertions catch
+an otherwise exit-0 E0277 conversion mismatch; focused generated-WASM `cargo check`s remain required
+after edits.
 
 Expectations are seeded by the **probe-then-pin** rule: run the generator on the cell's CDDL, inspect
 the outcome, then pin the observed-AND-correct behavior. A cell that lands exit-0 + non-compiling is a

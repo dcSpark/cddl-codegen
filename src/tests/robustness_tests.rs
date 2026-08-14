@@ -3621,10 +3621,9 @@ fn table_keys_list_syntheses_share_the_established_loose_boundary_carrier() {
     );
 }
 
-/// An anonymous bounded table used only as another table's key retains its native carrier. In
-/// particular, no named bounded table establishes `MapArrU64ToU64` as a loose structural source in
-/// this spec, so the inner wrapper and outer key agree on `BoundedVec`; recursively loosening the
-/// builder would instead produce E0277.
+/// An anonymous bounded table used as another table's key has both a loose checked-conversion
+/// source and its own restricted native carrier. Their distinct structural identities keep the
+/// outer key on `BoundedVec` without making the `MapArrU64ToU64` source order-dependent.
 ///
 /// This is the minimized wasm recombination composition `rc1508`. Source assertions pin both ends
 /// of the conversion; the focused scratch WASM-crate check accompanying this change proves the
@@ -3650,17 +3649,24 @@ fn nested_table_key_keeps_its_native_array_carrier_at_the_outer_boundary() {
     let wasm = &out["wasm/src/generated/mod.rs"];
 
     assert!(
-        wasm.contains(
-            "pub struct MapArrU64ToU64(pub(crate) BTreeMap<BoundedVec<u64, 0, 5>, u64>)"
-        ) && wasm.contains(
+        wasm.contains("pub struct MapArrU64ToU64(pub(crate) BTreeMap<Vec<u64>, u64>)")
+            && wasm.contains(
+                "pub struct MapU64ListMax5ToU64(pub(crate) BTreeMap<BoundedVec<u64, 0, 5>, u64>)"
+            )
+            && wasm.contains(
+                "pub struct MapU64ListMax5ToU64Min1Max1(pub(crate) BoundedMap<BoundedVec<u64, 0, 5>, u64, 1, 1>)"
+            )
+            && wasm.contains(
             "pub struct Rc1508(pub(crate) BoundedMap<BoundedMap<BoundedVec<u64, 0, 5>, u64, 1, 1>, u64, 1, 1>)"
         ),
-        "the nested table and outer key must retain their shared native bounded carrier:\n{wasm}"
+        "the loose source, native nested table, and outer key must retain their distinct carriers:\n{wasm}"
     );
     assert!(
-        wasm.contains("let inner: BTreeMap<BoundedVec<u64, 0, 5>, u64> = map.clone().into();")
-            && !wasm.contains("let inner: BTreeMap<Vec<u64>, u64> = map.clone().into();"),
-        "the anonymous nested table must read its native source carrier:\n{wasm}"
+        wasm.contains("let inner: BTreeMap<Vec<u64>, u64> = map.clone().into();")
+            && wasm.contains(
+                "let inner: BTreeMap<BTreeMap<BoundedVec<u64, 0, 5>, u64>, u64> = map.clone().into();"
+            ),
+        "the bounded child must re-check its loose source while the outer boundary stays native:\n{wasm}"
     );
 }
 
@@ -3711,9 +3717,8 @@ fn direct_and_nested_table_keys_share_one_canonical_structural_builder_carrier()
 }
 
 /// An ordinary loose inline map is a native parent-boundary carrier, not a bounded-table
-/// `try_from` source. In the absence of a matching named bounded-table owner it must keep its
-/// direct restricted array key; changing it to a loose `Vec` breaks Holder's infallible getter/new
-/// conversions with E0277.
+/// `try_from` source. Its structural name keeps its direct restricted key visible, and its
+/// infallible getter/new conversions retain that native `BoundedVec` carrier.
 #[test]
 fn ordinary_inline_map_keeps_its_native_restricted_key_carrier() {
     const CDDL: &str = "holder = [m: { * [*5 uint] => uint }]\n";
@@ -3734,18 +3739,18 @@ fn ordinary_inline_map_keeps_its_native_restricted_key_carrier() {
     std::fs::remove_file(&path).ok();
     let wasm = &out["wasm/src/generated/mod.rs"];
     assert!(
-        wasm.contains("pub struct MapArrU64ToU64(pub(crate) BTreeMap<BoundedVec<u64, 0, 5>, u64>)")
-            && wasm.contains("pub fn new(m: &MapArrU64ToU64) -> Self"),
+        wasm.contains(
+            "pub struct MapU64ListMax5ToU64(pub(crate) BTreeMap<BoundedVec<u64, 0, 5>, u64>)"
+        ) && wasm.contains("pub fn new(m: &MapU64ListMax5ToU64) -> Self"),
         "the ordinary map wrapper must retain the native key carrier its parent converts infallibly:\n{wasm}"
     );
 }
 
-/// A named bounded table needs the loose `MapArrU64ToU64` source, while an ordinary loose map of
-/// the same structural shape needs the native version for a parent boundary. Reject this genuinely
-/// unrepresentable one-name/two-carrier combination before emission rather than letting map mint
-/// order choose an ABI (or a later E0277).
+/// A named bounded table's `try_from` source is the historical loose `MapArrU64ToU64`, while an
+/// ordinary loose map retains the native `MapU64ListMax5ToU64` boundary carrier. Recursive map
+/// identity separates those classes without whole-IR carrier arbitration.
 #[test]
-fn loose_map_and_named_bounded_table_same_builder_shape_reject_gracefully() {
+fn loose_map_and_named_bounded_table_mint_distinct_builder_and_native_classes() {
     const CDDL: &str = "direct = { [*5 uint] => uint }\n\
                         holder = [m: { * [*5 uint] => uint }]\n";
     let path = std::env::temp_dir().join(format!(
@@ -3753,7 +3758,7 @@ fn loose_map_and_named_bounded_table_same_builder_shape_reject_gracefully() {
         std::process::id()
     ));
     std::fs::write(&path, CDDL).unwrap();
-    let err = crate::api::generated_strings(&Cli::parse_from([
+    let out = crate::api::generated_strings(&Cli::parse_from([
         "cddl-codegen",
         "--input",
         path.to_str().unwrap(),
@@ -3761,22 +3766,141 @@ fn loose_map_and_named_bounded_table_same_builder_shape_reject_gracefully() {
         "loose_bounded_builder_collision_unused",
         "--wasm=true",
     ]))
-    .expect_err("one structural builder cannot carry both loose and native direct-array map keys");
+    .expect("the loose builder and native map carrier have distinct structural identities");
     std::fs::remove_file(&path).ok();
+    let wasm = &out["wasm/src/generated/mod.rs"];
     assert!(
-        err.to_string()
-            .contains("wasm structural builder collision")
-            && err.to_string().contains("MapArrU64ToU64"),
-        "the incompatible loose-map/bounded-source pair must reject with its structural builder name: {err}"
+        wasm.contains("pub struct MapArrU64ToU64(pub(crate) BTreeMap<Vec<u64>, u64>)")
+            && wasm.contains(
+                "pub struct MapU64ListMax5ToU64(pub(crate) BTreeMap<BoundedVec<u64, 0, 5>, u64>)"
+            ),
+        "the bounded source and ordinary native map must mint their distinct carriers:\n{wasm}"
     );
 }
 
-/// A captured open-table catch-all row mints the same whole-map structural class as an inline map
-/// field (the typed row does not: its accessors are flattened onto the open-table class). Cover both
-/// structural flavors so the collision preflight cannot overlook a `Map`/`PairMap` source that is
-/// reconstructed from `RestRow::container_type` rather than stored as a composite `RustType`.
+/// A bounded table's `try_from` source is the deliberately loose `MapArrU64ToU64`, not its
+/// native `MapU64ListMax5ToU64` child identity. Check both duplicate-policy flavors so the default
+/// and PairMap collision detectors name precisely the class their respective emitters mint.
 #[test]
-fn open_table_catchall_and_named_bounded_table_same_builder_shape_reject_gracefully() {
+fn bounded_table_loose_builder_collision_uses_actual_source_identity() {
+    for (
+        label,
+        preserve,
+        source_rule,
+        native_rule,
+        source_name,
+        native_name,
+        native_class_is_independently_claimed,
+    ) in [
+        (
+            "default",
+            "",
+            "map_arr_u64_to_u64",
+            "map_u64_list_max5_to_u64",
+            "MapArrU64ToU64",
+            "MapU64ListMax5ToU64",
+            true,
+        ),
+        (
+            "preserve",
+            " ; @duplicates preserve",
+            "pair_map_arr_u64_to_u64",
+            "pair_map_u64_list_max5_to_u64",
+            "PairMapArrU64ToU64",
+            "PairMapU64ListMax5ToU64",
+            false,
+        ),
+    ] {
+        let source_cddl =
+            format!("direct = {{ [*5 uint] => uint }}{preserve}\n{source_rule} = uint\n");
+        let source_path = std::env::temp_dir().join(format!(
+            "cddl_codegen_bounded_source_collision_{label}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&source_path, source_cddl).unwrap();
+        let err = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            source_path.to_str().unwrap(),
+            "--output",
+            "bounded_source_collision_unused",
+            "--wasm=true",
+        ]))
+        .expect_err("a rule claiming the bounded table's loose source must reject");
+        std::fs::remove_file(&source_path).ok();
+        assert!(
+            err.to_string().contains(source_name),
+            "the {label} rejection must identify the actual loose source {source_name}: {err}"
+        );
+        assert!(
+            !err.to_string().contains(native_name),
+            "the {label} rejection must not misidentify native {native_name} as the source: {err}"
+        );
+
+        let self_named_cddl = format!("{source_rule} = {{ [*5 uint] => uint }}{preserve}\n");
+        let self_named_path = std::env::temp_dir().join(format!(
+            "cddl_codegen_bounded_self_named_source_{label}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&self_named_path, self_named_cddl).unwrap();
+        let self_named_err = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            self_named_path.to_str().unwrap(),
+            "--output",
+            "bounded_self_named_source_unused",
+            "--wasm=true",
+        ]))
+        .expect_err("a bounded wrapper cannot also own its incompatible loose-source class ident");
+        std::fs::remove_file(&self_named_path).ok();
+        assert!(
+            self_named_err.to_string().contains(source_name),
+            "the self-named {label} bounded source collision must name {source_name}: \
+             {self_named_err}"
+        );
+
+        let native_cddl =
+            format!("direct = {{ [*5 uint] => uint }}{preserve}\n{native_rule} = uint\n");
+        let native_path = std::env::temp_dir().join(format!(
+            "cddl_codegen_bounded_native_identity_{label}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&native_path, native_cddl).unwrap();
+        let native = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            native_path.to_str().unwrap(),
+            "--output",
+            "bounded_native_identity_unused",
+            "--wasm=true",
+        ]));
+        std::fs::remove_file(&native_path).ok();
+        if native_class_is_independently_claimed {
+            let native_err = native.expect_err(
+                "the default native map class may still be independently claimed, but not as the source",
+            );
+            assert!(
+                native_err.to_string().contains(native_name),
+                "the {label} native class claim must name {native_name}: {native_err}"
+            );
+            assert!(
+                !native_err.to_string().contains("try_from source"),
+                "the {label} native class must not be misreported as the bounded table source: {native_err}"
+            );
+        } else {
+            native.expect(
+                "the preserve native identity is not the bounded table's loose source claimant",
+            );
+        }
+    }
+}
+
+/// A captured open-table catch-all row mints its native whole-map class (the typed row does not: its
+/// accessors are flattened onto the open-table class). A named bounded table's loose source remains
+/// a separate `Map`/`PairMap` class, including when the catch-all is reconstructed from
+/// `RestRow::container_type` rather than stored as a composite `RustType`.
+#[test]
+fn open_table_catchall_and_named_bounded_table_mint_distinct_classes() {
     for (label, preserve) in [("default", ""), ("preserve", " ; @duplicates preserve")] {
         let cddl = format!(
             "direct = {{ [*5 uint] => uint }}{preserve}\n\
@@ -3787,7 +3911,7 @@ fn open_table_catchall_and_named_bounded_table_same_builder_shape_reject_gracefu
             std::process::id()
         ));
         std::fs::write(&path, cddl).unwrap();
-        let err = crate::api::generated_strings(&Cli::parse_from([
+        let out = crate::api::generated_strings(&Cli::parse_from([
             "cddl-codegen",
             "--input",
             path.to_str().unwrap(),
@@ -3795,18 +3919,17 @@ fn open_table_catchall_and_named_bounded_table_same_builder_shape_reject_gracefu
             "open_table_bounded_builder_collision_unused",
             "--wasm=true",
         ]))
-        .expect_err("an open-table catch-all cannot share both structural builder carriers");
+        .expect("the open-table native carrier and bounded source have distinct identities");
         std::fs::remove_file(&path).ok();
-        let structural = if preserve.is_empty() {
-            "MapArrU64ToU64"
+        let (builder, native) = if preserve.is_empty() {
+            ("MapArrU64ToU64", "MapU64ListMax5ToU64")
         } else {
-            "PairMapArrU64ToU64"
+            ("PairMapArrU64ToU64", "PairMapU64ListMax5ToU64")
         };
+        let wasm = &out["wasm/src/generated/mod.rs"];
         assert!(
-            err.to_string()
-                .contains("wasm structural builder collision")
-                && err.to_string().contains(structural),
-            "the {label} catch-all collision must name its structural builder: {err}"
+            wasm.contains(builder) && wasm.contains(native),
+            "the {label} catch-all and bounded source must have distinct classes:\n{wasm}"
         );
     }
 }

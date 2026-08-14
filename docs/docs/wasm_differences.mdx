@@ -141,7 +141,13 @@ named rule.
 
 ## Tables
 
-Map literals also generate a type for them with `new()`, `len() -> usize`, `insert(K, V) -> Option<V>`, `get(K) -> Option<V>` and `keys() -> Vec<K>`. An anonymously-inlined map member gets a structural `MapKeyToValue` name derived from its `Key` and `Value` types. A named table rule **always** surfaces as a JS class under its own identifier, independent of what else the spec contains. When that rule is the sole owner of its map shape, the structural `MapKeyToValue` name becomes a rust-source-level `pub type` alias to the rule's class (`wasm_bindgen` does not export type aliases, so anonymous/embedded uses of the same shape resolve to the rule's JS class); if two or more named rules share one shape, each still gets its own class and anonymous inline uses of that shape get the structural `MapKeyToValue` class.
+Map literals also generate a type for them with `new()`, `len() -> usize`, `insert(K, V) -> Option<V>`, `get(K) -> Option<V>` and `keys() -> Vec<K>`. An anonymously-inlined map member gets a structural `MapKeyToValue` name derived from the full boundary identities of its `Key` and `Value` types. That derivation is recursive: nested array/map occurrence restrictions and a nested map's duplicate policy contribute identifier-safe fragments, so incompatible native carriers never select one JS class; wholly loose descendants retain their established spelling. A named table rule **always** surfaces as a JS class under its own identifier, independent of what else the spec contains. When that rule is the sole owner of its map shape, the structural `MapKeyToValue` name becomes a rust-source-level `pub type` alias to the rule's class (`wasm_bindgen` does not export type aliases, so anonymous/embedded uses of the same shape resolve to the rule's JS class); if two or more named rules share one shape, each still gets its own class and anonymous inline uses of that shape get the structural `MapKeyToValue` class.
+
+One established boundary exception applies when `K` is itself a restricted array or map. A bounded
+table's checked `try_from` builder and a table's `keys()` list use the key's **loose outer collection**
+form; only that outer occurrence/duplicate-policy restriction is erased. Restrictions nested inside
+the key remain in the structural name and carrier, while the native table and its `insert`/`get`
+surface keep the fully restricted key type.
 
 ## Non-empty containers (the two-wrapper pattern)
 

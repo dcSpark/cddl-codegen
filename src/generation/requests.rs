@@ -267,7 +267,6 @@ impl GenerationScope {
                             bounds,
                             false,
                             rt.is_preserve_pair_map(),
-                            true,
                             cli,
                         );
                     } else if rt.is_non_empty_map() {
@@ -602,13 +601,9 @@ fn parse_requested_shape(
     while pos < chars.len() && chars[pos].is_whitespace() {
         pos += 1;
     }
-    // A `@duplicates reject` collection carries its policy in the shape column as a trailing marker
-    // (the exact spelling `render_wrapper_shape` emits — the sidecar round-trips it), so the dep
-    // rebuilds the SAME uniqueness twin the consumer borrowed. Consume it before the trailing-content
-    // guard and stamp the policy onto the reconstructed `RustType` (only an array-shaped collection
-    // ever carries it; the emit dispatch + structural naming key off `is_reject_ordered_set`).
-    // (`REJECT_MARKER` / `PRESERVE_MARKER`, module-level: the renderer, this parser and the
-    // hint's comment-position rewrite all key off the one pair of spellings.)
+    // Collection fragments consume their own trailing duplicate-policy marker, including when they
+    // are nested. That keeps the parser aligned with the recursive renderer: a nested preserve map
+    // must rebuild its PairMap identity before its parent structural name is reconstructed.
     let rest: String = chars[pos..].iter().collect();
     if rest == REJECT_MARKER {
         if !matches!(rt.conceptual_type, ConceptualRustType::Array(_)) {
@@ -702,8 +697,14 @@ fn parse_shape_fragment(
                 bad("expected `]`");
             }
             *pos += 1;
-            let rt = RustType::new(ConceptualRustType::Array(Box::new(inner)));
-            rt.with_bounds(occ)
+            let mut rt = RustType::new(ConceptualRustType::Array(Box::new(inner))).with_bounds(occ);
+            skip_ws(pos);
+            let marker: Vec<char> = REJECT_MARKER.chars().collect();
+            if chars[*pos..].starts_with(&marker) {
+                *pos += marker.len();
+                rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
+            }
+            rt
         }
         '{' => {
             *pos += 1;
@@ -743,11 +744,18 @@ fn parse_shape_fragment(
                 bad("expected `}`");
             }
             *pos += 1;
-            let rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
-            match occ {
+            let mut rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
+            rt = match occ {
                 (None, None) => rt,
                 bounds => rt.with_bounds(bounds),
+            };
+            skip_ws(pos);
+            let marker: Vec<char> = PRESERVE_MARKER.chars().collect();
+            if chars[*pos..].starts_with(&marker) {
+                *pos += marker.len();
+                rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Preserve);
             }
+            rt
         }
         _ => {
             // A named or primitive leaf: read the ident token.
@@ -804,8 +812,7 @@ fn parse_shape_fragment(
     }
 }
 
-/// Read the array occurrence grammar emitted by [`render_wrapper_shape`], advancing past it.
-/// Maps keep their historical `*`/`+` grammar; only the `[` caller consumes the wider form.
+/// Read the occurrence grammar emitted by [`render_wrapper_shape`], advancing past it.
 fn read_occurrence(chars: &[char], pos: &mut usize) -> Option<(Option<i128>, Option<i128>)> {
     match chars.get(*pos) {
         Some('+') => {
@@ -884,18 +891,18 @@ fn requested_structural_name(
             }
         }
         ConceptualRustType::Map(k, v) => {
-            // Map wrapper names still have their established bounds-blind owner. The recursive
-            // array work must not point an array-over-map at a class the map emitter has not minted.
+            // Owner-independent requested names use the same recursive RustType structural owner
+            // as the emitter; named owners are intentionally not consulted here.
             let preserve = rt.is_preserve_pair_map();
             if rt.is_bounded_map() {
-                rt.bounded_wasm_map_structural_name()
+                rt.bounded_wasm_map_structural_name(types)
             } else if rt.is_non_empty_map() {
                 format!(
                     "NonEmpty{}",
-                    ConceptualRustType::name_for_wasm_map(k, v, preserve)
+                    RustType::wasm_structural_map_name_for(k, v, preserve, types)
                 )
             } else {
-                ConceptualRustType::name_for_wasm_map(k, v, preserve).to_string()
+                rt.wasm_structural_map_name(types).to_string()
             }
         }
         other => panic!(
@@ -1051,4 +1058,44 @@ pub(super) fn load_extern_wrapper_indices(
         out.insert(dep, names);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_requested_shape, render_wrapper_shape, requested_structural_name};
+    use crate::{
+        comment_ast::DuplicatesPolicy,
+        intermediate::{ConceptualRustType, IntermediateTypes, Primitive, RustType},
+    };
+
+    #[test]
+    fn requested_nested_preserve_map_reconstructs_emitter_structural_name() {
+        let types = IntermediateTypes::new();
+        let u64_type = || RustType::new(ConceptualRustType::Primitive(Primitive::U64));
+        let bounded_array = RustType::new(ConceptualRustType::Array(Box::new(u64_type())))
+            .with_bounds((None, Some(5)));
+        let nested_preserve = RustType::new(ConceptualRustType::Map(
+            Box::new(bounded_array),
+            Box::new(u64_type()),
+        ))
+        .with_bounds((None, Some(3)))
+        .with_duplicates_policy(Some(DuplicatesPolicy::Preserve));
+        let emitted = RustType::new(ConceptualRustType::Map(
+            Box::new(u64_type()),
+            Box::new(nested_preserve),
+        ))
+        .with_duplicates_policy(Some(DuplicatesPolicy::Preserve));
+        let shape = render_wrapper_shape(&emitted);
+        let reconstructed = parse_requested_shape(&types, &shape, "consumer", "sidecar", "listed");
+
+        assert_eq!(
+            requested_structural_name(&types, &reconstructed, "consumer", "sidecar"),
+            emitted.wasm_structural_map_name(&types).to_string(),
+            "the real sidecar parser must preserve a nested bounded PairMap identity"
+        );
+        assert_eq!(
+            emitted.wasm_structural_map_name(&types).to_string(),
+            "PairMapU64ToPairMapU64ListMax5ToU64Max3"
+        );
+    }
 }

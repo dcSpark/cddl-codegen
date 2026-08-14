@@ -941,7 +941,6 @@ impl GenerationScope {
                                 !types.is_synthesized_collection(rust_ident),
                                 rust_struct.config().duplicates
                                     == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
-                                true,
                                 cli,
                             );
                         } else if cli.wasm && !anon {
@@ -949,11 +948,12 @@ impl GenerationScope {
                             // mints below are `exists_in_rust` paths), so the one thing the defer
                             // seam would have said about a dep-indexed name has to be said here.
                             self.warn_rule_declared_table_shadows_index(rust_ident);
-                            let map_ident = ConceptualRustType::name_for_wasm_map(
+                            let map_ident = RustType::wasm_structural_map_name_for(
                                 domain,
                                 range,
                                 rust_struct.config().duplicates
                                     == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                                types,
                             );
                             if table_shape_sole_owner.get(&map_ident.to_string())
                                 == Some(rust_ident)

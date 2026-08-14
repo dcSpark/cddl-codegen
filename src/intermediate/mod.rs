@@ -852,41 +852,6 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
-    /// Whether an exported named bounded table needs the loose structural wasm builder for this
-    /// key/value SHAPE. The builder name deliberately ignores an inline array's occurrence window,
-    /// so this is shape-based rather than occurrence-based: a nested bounded table that reaches the
-    /// same `Map…` source must choose its carrier from this whole-IR fact, never from mint order.
-    ///
-    /// This says nothing about an ordinary loose map use of the shape. That incompatible native
-    /// boundary is rejected separately by `bounded_table_loose_builder_carrier_collisions` before
-    /// generation, rather than silently choosing one carrier for both roles.
-    pub fn has_bounded_table_loose_builder_for_wasm_shape(
-        &self,
-        key: &RustType,
-        value: &RustType,
-        preserve: bool,
-    ) -> bool {
-        let structural = ConceptualRustType::name_for_wasm_map(key, value, preserve);
-        self.rust_structs.iter().any(|(ident, rs)| {
-            if !self.scope(ident).export() || self.is_anonymous_collection_instance(ident) {
-                return false;
-            }
-            let RustStructType::Table {
-                domain,
-                range,
-                bounds: Some(bounds),
-            } = rs.variant()
-            else {
-                return false;
-            };
-            Self::normalized_bounded_map_window(*bounds).is_some()
-                && (rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve))
-                    == preserve
-                && domain.loosened_for_wasm_table_boundary_key() != *domain
-                && ConceptualRustType::name_for_wasm_map(domain, range, preserve) == structural
-        })
-    }
-
     /// Canonicalize an array occurrence window before comparing ownership or rendering a request:
     /// absent endpoints are the real `0` / unbounded values, and the two loose shapes are not
     /// bounded owners.  Keeping this here makes `[? T]`/`[0*1 T]` and `[*5 T]`/`[0*5 T]` one
@@ -1032,7 +997,7 @@ impl<'a> IntermediateTypes<'a> {
                     range,
                     bounds,
                 } if *bounds == Some((Some(1), None))
-                    && ConceptualRustType::name_for_wasm_map(domain, range, preserve).to_string()
+                    && RustType::wasm_structural_map_name_for(domain, range, preserve, self).to_string()
                         == name
             )
         })
@@ -1107,7 +1072,7 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     /// Which named `Table` rule solely owns each structural wasm-map shape, keyed by the structural
-    /// `name_for_wasm_map` string (that string IS the shape identity). A shape owned by EXACTLY ONE
+    /// `wasm_structural_map_name_for` string (that string IS the shape identity). A shape owned by EXACTLY ONE
     /// table rule has its wasm class plus the structural `pub type MapKToV = <Owner>;` alias minted in
     /// that owner's module (`mint_sole_owner_table` in generation/collections.rs); zero-owner (anonymous-only) and
     /// multi-owner (same-shape rule pair) shapes keep the structural fallback class at the crate root.
@@ -1153,11 +1118,12 @@ impl<'a> IntermediateTypes<'a> {
                 // rule owns `PairMapKToV` while a default rule of the identical key/value owns
                 // `MapKToV` — two independent sole-owner entries that cannot interfere. The flavor is
                 // read from this rule's own config: local information, never a crate-wide lookup.
-                let structural = ConceptualRustType::name_for_wasm_map(
+                let structural = RustType::wasm_structural_map_name_for(
                     domain,
                     range,
                     rust_struct.config().duplicates
                         == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                    self,
                 )
                 .to_string();
                 owners.entry(structural).or_default().push(ident.clone());
@@ -1196,14 +1162,14 @@ impl<'a> IntermediateTypes<'a> {
         // when one exists (matching `mint_sole_owner_table`), else `types.scope` (root). Resolve it
         // before the `for_wasm_member` name below because the sole-owner indirection is invisible to
         // `types.scope` — the structural `MapKToV` name is never a registered scope.
-        if let ConceptualRustType::Map(k, v) = &ty.conceptual_type
+        if let ConceptualRustType::Map(_, _) = &ty.conceptual_type
             && !ty.is_non_empty_map()
             && !ty.is_bounded_map()
         {
             // The occurrence's own carried policy selects the flavor (`MapKToV` / `PairMapKToV`) —
             // the same local signal `for_wasm_member` uses, so name resolution here and at the
             // emitter cannot disagree.
-            let ident = ConceptualRustType::name_for_wasm_map(k, v, ty.is_preserve_pair_map());
+            let ident = ty.wasm_structural_map_name(self);
             let scope = sole_owners
                 .get(&ident.to_string())
                 .map(|owner| self.scope(owner).clone())
@@ -1352,13 +1318,13 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         // The map twin of `register_deferred_restricted_list_source`: a locally-minted restricted
-        // `NonEmptyMap*` (or named `{+ …}` rule) class enters via `try_from(&MapKToV)` — when that
-        // loose structural table wrapper is deferred, import it at the restricted wrapper's
-        // emission scope. Additional no-op case: the loose shape has a SOLE table-rule owner —
-        // the `try_from` source is then the owner's local `pub type MapKToV = <Owner>;` alias
-        // (see `generate_non_empty_map_type`), never a deferred class.
+        // map class enters via `try_from(&MapKToV)` — when that loose structural table wrapper is
+        // deferred, import it at the restricted wrapper's emission scope. The caller passes the
+        // exact SOURCE key: native for `{+ …}`, top-level-loosened for a bounded table. Additional
+        // no-op case: the loose shape has a SOLE table-rule owner — the `try_from` source is then
+        // the owner's local `pub type MapKToV = <Owner>;` alias, never a deferred class.
         #[allow(clippy::too_many_arguments)]
-        fn register_deferred_non_empty_map_source(
+        fn register_deferred_restricted_map_source(
             refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
             deferred: &BTreeMap<RustIdent, ModuleScope>,
@@ -1370,7 +1336,7 @@ impl<'a> IntermediateTypes<'a> {
             // the SAME flavor (`PairMapKToV` for a `@duplicates preserve` `{+ …}`, `MapKToV` otherwise)
             preserve: bool,
         ) {
-            let loose_ident = ConceptualRustType::name_for_wasm_map(key, value, preserve);
+            let loose_ident = RustType::wasm_structural_map_name_for(key, value, preserve, types);
             if loose_ident.as_ref() == wrapper_ident.as_ref()
                 || sole_owners.contains_key(&loose_ident.to_string())
             {
@@ -1474,16 +1440,16 @@ impl<'a> IntermediateTypes<'a> {
             }
             mark_refs(refs, types, wasm, sole_owners, deferred, &loose_scope, elem);
         }
-        // The map twin of `register_root_restricted_list_source`: a restricted `NonEmptyMap*` /
-        // `NonEmptyPairMap*` wrapper (synthesized, named `{+ …}` rule, or dedup owner) emitted at
-        // `emit_scope` enters via `try_from(&MapKToV)`, naming the LOOSE structural table wrapper bare
-        // in `emit_scope`. Import it there, resolving the loose builder's own home the SAME way
-        // emission places it (`table_shape_sole_owners`: the owner's `pub type MapKToV = <Owner>;`
-        // module when a sole owner exists, else root). Also register the loose builder's key/value
-        // refs at its scope (its accessors name them bare there). No-op when the loose name equals the
+        // The map twin of `register_root_restricted_list_source`: a restricted map wrapper emitted
+        // at `emit_scope` enters via `try_from(&MapKToV)`, naming the LOOSE structural table wrapper
+        // bare in `emit_scope`. The caller passes the exact SOURCE key: native for `{+ …}`,
+        // top-level-loosened for a bounded table. Import it here, resolving the loose builder's own
+        // home the SAME way emission places it (`table_shape_sole_owners`: the owner's
+        // `pub type MapKToV = <Owner>;` module when a sole owner exists, else root). Also register
+        // the loose builder's key/value refs at its scope. No-op when the loose name equals the
         // wrapper ident (self-named rule) or the loose builder is deferred.
         #[allow(clippy::too_many_arguments)]
-        fn register_root_non_empty_map_source(
+        fn register_root_restricted_map_source(
             refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
             wasm: bool,
@@ -1499,7 +1465,7 @@ impl<'a> IntermediateTypes<'a> {
             if !wasm {
                 return;
             }
-            let loose_ident = ConceptualRustType::name_for_wasm_map(key, value, preserve);
+            let loose_ident = RustType::wasm_structural_map_name_for(key, value, preserve, types);
             if loose_ident.as_ref() == wrapper_ident.as_ref() || deferred.contains_key(&loose_ident)
             {
                 return;
@@ -1737,21 +1703,26 @@ impl<'a> IntermediateTypes<'a> {
                                 .or_default()
                                 .insert(wrapper.clone());
                         }
-                        // A RESTRICTED `{+ …}` map wrapper enters via `try_from(&MapKToV)`, naming the
-                        // loose structural table wrapper bare in its emission scope — import it there
-                        // (deferred + non-deferred analogues).
+                        // A restricted map wrapper enters via `try_from(&MapKToV)`, naming the loose
+                        // structural table wrapper bare in its emission scope. `{+ …}` uses its
+                        // native key; a bounded table uses its deliberately loosened direct key.
                         if ty.is_non_empty_map() || ty.is_bounded_map() {
-                            register_deferred_non_empty_map_source(
+                            let source_key = if ty.is_bounded_map() {
+                                key.loosened_for_wasm_table_boundary_key()
+                            } else {
+                                (**key).clone()
+                            };
+                            register_deferred_restricted_map_source(
                                 refs,
                                 types,
                                 deferred,
                                 sole_owners,
                                 &wrapper,
-                                key,
+                                &source_key,
                                 value,
                                 ty.is_preserve_pair_map(),
                             );
-                            register_root_non_empty_map_source(
+                            register_root_restricted_map_source(
                                 refs,
                                 types,
                                 wasm,
@@ -1759,7 +1730,7 @@ impl<'a> IntermediateTypes<'a> {
                                 deferred,
                                 &emit_scope,
                                 &wrapper,
-                                key,
+                                &source_key,
                                 value,
                                 ty.is_preserve_pair_map(),
                             );
@@ -2057,22 +2028,30 @@ impl<'a> IntermediateTypes<'a> {
                     // not the using site — same rationale as the existing helpers).
                     register_deferred_keys_list(&mut refs, self, deferred, current_scope, domain);
                     register_root_keys_list(&mut refs, self, wasm, deferred, current_scope, domain);
-                    // A NAMED `{+ …}` rule's restricted class borrows the LOOSE structural
-                    // `MapKToV` as its `try_from` source; when that source is deferred, import it
-                    // at THIS rule's scope — the rule-named analogue of the inline Map arm's
-                    // registration above.
-                    if wasm && *bounds == Some((Some(1), None)) {
+                    // A named restricted table's class borrows a LOOSE structural `MapKToV` as its
+                    // `try_from` source; when that source is deferred, import it at THIS rule's
+                    // scope. `{+ …}` uses its native direct key; a bounded table uses the same
+                    // top-level-loosened key as `generate_bounded_map_type`.
+                    let bounded_source = bounds.is_some_and(|candidate| {
+                        Self::normalized_bounded_map_window(candidate).is_some()
+                    });
+                    if wasm && (*bounds == Some((Some(1), None)) || bounded_source) {
                         // the rule's own `@duplicates` config picks its container flavor, so the
                         // `try_from` source resolved below is the loose wrapper of the SAME flavor
                         let preserve = rust_struct.config().duplicates
                             == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-                        register_deferred_non_empty_map_source(
+                        let source_key = if bounded_source {
+                            domain.loosened_for_wasm_table_boundary_key()
+                        } else {
+                            domain.clone()
+                        };
+                        register_deferred_restricted_map_source(
                             &mut refs,
                             self,
                             deferred,
                             &table_shape_sole_owners,
                             &rust_struct.ident,
-                            domain,
+                            &source_key,
                             range,
                             preserve,
                         );
@@ -2080,7 +2059,7 @@ impl<'a> IntermediateTypes<'a> {
                         // (ROOT- or sole-owner-) minted class the rule's `try_from(&MapKToV)` names
                         // bare in THIS scope, so import it here (E0425 otherwise). Fixes the
                         // `nemap`/`nepmap`/`nepmapa` cells.
-                        register_root_non_empty_map_source(
+                        register_root_restricted_map_source(
                             &mut refs,
                             self,
                             wasm,
@@ -2088,7 +2067,7 @@ impl<'a> IntermediateTypes<'a> {
                             deferred,
                             current_scope,
                             &rust_struct.ident,
-                            domain,
+                            &source_key,
                             range,
                             preserve,
                         );
@@ -2322,26 +2301,33 @@ impl<'a> IntermediateTypes<'a> {
                                 &mut refs, self, wasm, deferred, req_scope, key,
                             );
                         }
-                        // A restricted `{+ …}` map borrows a LOOSE `MapKToV` as its `try_from` source
-                        // named bare at the emission scope — same requested-source guard as the list arm.
-                        if rt.is_non_empty_map() {
-                            register_deferred_non_empty_map_source(
+                        // A restricted map borrows a LOOSE `MapKToV` as its `try_from` source named
+                        // bare at the emission scope — same requested-source guard as the list arm.
+                        // Bounded maps use the emitter's top-level-loosened direct key.
+                        if rt.is_non_empty_map() || rt.is_bounded_map() {
+                            let source_key = if rt.is_bounded_map() {
+                                key.loosened_for_wasm_table_boundary_key()
+                            } else {
+                                (**key).clone()
+                            };
+                            register_deferred_restricted_map_source(
                                 &mut refs,
                                 self,
                                 deferred,
                                 &table_shape_sole_owners,
                                 wid,
-                                key,
+                                &source_key,
                                 value,
                                 rt.is_preserve_pair_map(),
                             );
-                            let loose = ConceptualRustType::name_for_wasm_map(
-                                key,
+                            let loose = RustType::wasm_structural_map_name_for(
+                                &source_key,
                                 value,
                                 rt.is_preserve_pair_map(),
+                                self,
                             );
                             if !requested_hosted.contains(&loose) {
-                                register_root_non_empty_map_source(
+                                register_root_restricted_map_source(
                                     &mut refs,
                                     self,
                                     wasm,
@@ -2349,7 +2335,7 @@ impl<'a> IntermediateTypes<'a> {
                                     deferred,
                                     req_scope,
                                     wid,
-                                    key,
+                                    &source_key,
                                     value,
                                     rt.is_preserve_pair_map(),
                                 );
@@ -4056,9 +4042,6 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.bounded_pair_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
-            for msg in self.bounded_table_loose_builder_carrier_collisions() {
-                self.record_rejection(msg);
-            }
             // `@duplicates reject` uniqueness-twin wasm-wrapper name collisions — the third container
             // kind's sibling of the two detectors above (the reject twin is the new container kind
             // AGENTS.md's twin-detector note reserved as the trigger for this expansion).
@@ -5014,8 +4997,10 @@ impl<'a> IntermediateTypes<'a> {
 
     /// Detect wasm-class name conflicts the `{+ k => v}` (NonEmptyMap) emission would otherwise turn
     /// into a non-compiling wasm crate — the map-side twin of `non_empty_wrapper_name_collisions`.
-    /// The loose table builder is always `MapKToV` (`name_for_wasm_map`); a map is never directly
-    /// exposable, so (unlike arrays) the loose builder is ALWAYS the `try_from` source. Five classes:
+    /// Ordinary loose-table paths use `MapKToV` (`wasm_structural_map_name_for`); a bounded table
+    /// uses its separately named loose direct-key source (`wasm_loose_table_builder_name_for`). A
+    /// map is never directly exposable, so (unlike arrays) each such builder is a `try_from` source.
+    /// Five classes:
     ///
     /// 1. An inline `{+ k => v}` with no named owner (see `non_empty_map_named_owner`) mints a
     ///    synthesized `NonEmptyMapKToV` class: a user rule claiming that ident collides.
@@ -5054,7 +5039,7 @@ impl<'a> IntermediateTypes<'a> {
                 inline_non_empty.push(rt.clone());
             } else if let ConceptualRustType::Map(k, v) = &rt.conceptual_type {
                 let preserve = rt.is_preserve_pair_map();
-                let name = ConceptualRustType::name_for_wasm_map(k, v, preserve).to_string();
+                let name = rt.wasm_structural_map_name(self).to_string();
                 plain_loose_needs
                     .insert(name.clone(), "a plain (`*`-occurrence) map use".to_owned());
                 if !preserve {
@@ -5069,8 +5054,9 @@ impl<'a> IntermediateTypes<'a> {
                 }
             }
         });
-        // named plain tables mint their loose `MapKToV` class too (Table structs aren't visited as
-        // Map RustTypes); exclude non-empty tables (their class is the restricted wrapper)
+        // Named table structs are not visited as Map RustTypes. An unbounded table mints its native
+        // structural map class, while a bounded table mints the explicitly loose source its
+        // `try_from` door names. Non-empty tables keep their existing restricted-wrapper path.
         for rs in self.rust_structs.values() {
             match rs.variant() {
                 RustStructType::Table {
@@ -5081,21 +5067,32 @@ impl<'a> IntermediateTypes<'a> {
                     if *bounds != Some((Some(1), None)) {
                         let preserve = rs.config().duplicates
                             == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-                        let name = ConceptualRustType::name_for_wasm_map(domain, range, preserve)
-                            .to_string();
-                        plain_loose_needs.insert(
-                            name.clone(),
-                            "a plain (`*`-occurrence) table rule".to_owned(),
-                        );
+                        let bounded_source = bounds.is_some_and(|candidate| {
+                            Self::normalized_bounded_map_window(candidate).is_some()
+                        });
+                        let (name, builder_key, need) = if bounded_source {
+                            (
+                                RustType::wasm_loose_table_builder_name_for(
+                                    domain, range, preserve, self,
+                                )
+                                .to_string(),
+                                domain.loosened_for_wasm_table_boundary_key(),
+                                "a bounded table rule's loose `try_from` source",
+                            )
+                        } else {
+                            (
+                                RustType::wasm_structural_map_name_for(
+                                    domain, range, preserve, self,
+                                )
+                                .to_string(),
+                                domain.clone(),
+                                "a plain (`*`-occurrence) table rule",
+                            )
+                        };
+                        plain_loose_needs.insert(name.clone(), need.to_owned());
                         if !preserve {
-                            direct_claim_needs.insert(
-                                name,
-                                (
-                                    "a plain (`*`-occurrence) table rule".to_owned(),
-                                    domain.clone(),
-                                    range.clone(),
-                                ),
-                            );
+                            direct_claim_needs
+                                .insert(name, (need.to_owned(), builder_key, range.clone()));
                         }
                     }
                 }
@@ -5116,16 +5113,11 @@ impl<'a> IntermediateTypes<'a> {
                         continue;
                     };
                     let container = rest.container_type();
-                    let ConceptualRustType::Map(k, v) = &container.conceptual_type else {
+                    let ConceptualRustType::Map(_, _) = &container.conceptual_type else {
                         unreachable!("a map rest row's container is a Map");
                     };
                     plain_loose_needs.insert(
-                        ConceptualRustType::name_for_wasm_map(
-                            k,
-                            v,
-                            container.is_preserve_pair_map(),
-                        )
-                        .to_string(),
+                        container.wasm_structural_map_name(self).to_string(),
                         "an open struct-map rest row".to_owned(),
                     );
                 }
@@ -5139,7 +5131,8 @@ impl<'a> IntermediateTypes<'a> {
                                 preserve: bool,
                                 needed_by: &str,
                                 msgs: &mut BTreeSet<String>| {
-            let loose = ConceptualRustType::name_for_wasm_map(key, value, preserve).to_string();
+            let loose =
+                RustType::wasm_structural_map_name_for(key, value, preserve, self).to_string();
             if self.wasm_ident_claimed_by_user_rule(&loose)
                 && !self.provides_compatible_loose_table(
                     &loose,
@@ -5196,7 +5189,8 @@ impl<'a> IntermediateTypes<'a> {
             }
             let preserve =
                 rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-            let loose = ConceptualRustType::name_for_wasm_map(domain, range, preserve).to_string();
+            let loose =
+                RustType::wasm_structural_map_name_for(domain, range, preserve, self).to_string();
             if loose == ident.to_string() {
                 // self-named rule: it owns the ident as its RESTRICTED class (no try_from); any
                 // OTHER use needing the loose builder of this shape now has no class to name
@@ -5241,7 +5235,7 @@ impl<'a> IntermediateTypes<'a> {
                 continue;
             };
             let structural =
-                ConceptualRustType::name_for_wasm_map(rest.domain(), rest.range(), false)
+                RustType::wasm_structural_map_name_for(rest.domain(), rest.range(), false, self)
                     .to_string();
             if self.wasm_ident_claimed_by_user_rule(&structural)
                 && !self.provides_compatible_loose_table(
@@ -5321,7 +5315,7 @@ impl<'a> IntermediateTypes<'a> {
             {
                 return;
             }
-            let restricted = rt.bounded_wasm_map_structural_name();
+            let restricted = rt.bounded_wasm_map_structural_name(self);
             if self.wasm_ident_claimed_by_user_rule(&restricted) {
                 let (min, max) = bounds;
                 let window = if max == u64::MAX {
@@ -5365,7 +5359,7 @@ impl<'a> IntermediateTypes<'a> {
             {
                 return;
             }
-            let restricted = rt.bounded_wasm_map_structural_name();
+            let restricted = rt.bounded_wasm_map_structural_name(self);
             if self.wasm_ident_claimed_by_user_rule(&restricted) {
                 let (min, max) = bounds;
                 let window = if max == u64::MAX {
@@ -5381,81 +5375,6 @@ impl<'a> IntermediateTypes<'a> {
                 ));
             }
         });
-        msgs.into_iter().collect()
-    }
-
-    /// A named bounded table with a direct restricted-array key needs `MapKToV` (or its preserve
-    /// pair-map twin) as a loose `try_from` source. An ordinary loose map of the same structural
-    /// name instead needs that class to carry its native restricted key for an infallible parent
-    /// conversion. One wasm class cannot carry both representations, and letting whichever visitor
-    /// runs first decide produces a reproducible-looking but order-dependent E0277. Reject the
-    /// incompatible pair before generation; bounded-only direct/nested uses share the loose source
-    /// through `has_bounded_table_loose_builder_for_wasm_shape` instead.
-    fn bounded_table_loose_builder_carrier_collisions(&self) -> Vec<String> {
-        let mut bounded_builders: BTreeMap<String, RustIdent> = BTreeMap::new();
-        for (ident, rs) in self.rust_structs() {
-            if !self.scope(ident).export() || self.is_anonymous_collection_instance(ident) {
-                continue;
-            }
-            let RustStructType::Table {
-                domain,
-                range,
-                bounds: Some(bounds),
-            } = rs.variant()
-            else {
-                continue;
-            };
-            let preserve =
-                rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-            if Self::normalized_bounded_map_window(*bounds).is_some()
-                && domain.loosened_for_wasm_table_boundary_key() != *domain
-            {
-                bounded_builders
-                    .entry(
-                        ConceptualRustType::name_for_wasm_map(domain, range, preserve).to_string(),
-                    )
-                    .or_insert_with(|| ident.clone());
-            }
-        }
-
-        let mut msgs = BTreeSet::new();
-        let mut record_loose_map_collision = |rt: &RustType| {
-            let ConceptualRustType::Map(key, value) = &rt.conceptual_type else {
-                return;
-            };
-            if rt.is_bounded_map() || rt.is_non_empty_map() {
-                return;
-            }
-            let preserve = rt.is_preserve_pair_map();
-            if key.loosened_for_wasm_table_boundary_key() == **key {
-                return;
-            }
-            let structural =
-                ConceptualRustType::name_for_wasm_map(key, value, preserve).to_string();
-            let Some(owner) = bounded_builders.get(&structural) else {
-                return;
-            };
-            msgs.insert(format!(
-                "wasm structural builder collision: bounded table rule `{owner}` needs `{structural}` as a loose direct-array-key builder, but an ordinary loose map of the same shape needs `{structural}` to retain its native restricted key for an infallible parent boundary. One wasm class cannot represent both carriers; wrap one key shape in a distinct named type (for example an `@newtype`) so the structural builder names differ."
-            ));
-        };
-        self.visit_all_rust_types(&mut record_loose_map_collision);
-        // A captured open-table CATCH-ALL row has a whole-map `rest()` getter and therefore mints
-        // the same structural `MapKToV` / `PairMapKToV` class as an inline loose-map field. The
-        // general RustType visitor deliberately walks only a rest row's domain/range (there is no
-        // stored container RustType), so reconstruct that emitted container here. The TYPED row is
-        // excluded: its map surface is flattened onto the open table and mints no map class.
-        for rs in self.rust_structs.values() {
-            let RustStructType::Record(record) = rs.variant() else {
-                continue;
-            };
-            for rest in record
-                .captured_dynamic_rows()
-                .filter(|rest| !rest.is_array_tail() && !record.is_typed_row(rest))
-            {
-                record_loose_map_collision(&rest.container_type());
-            }
-        }
         msgs.into_iter().collect()
     }
 
@@ -5572,8 +5491,9 @@ impl<'a> IntermediateTypes<'a> {
     /// capture field's wasm getter returns the structural class), an ANONYMOUS preserve table instance
     /// (`ptbl<uint, tstr>`, which routes through the structural wrapper via its passthrough alias), a
     /// NAMED preserve `{* …}` rule that solely owns the shape (its `pub type PairMapKToV = <Owner>;`
-    /// alias claims the ident beside the class), a named preserve `{+ …}` rule whose `try_from`
-    /// source is the loose pair-map builder, and a `@newtype`/TAG-forced WRAPPER over an inline
+    /// alias claims the ident beside the class), a named preserve restricted table whose `try_from`
+    /// source is the loose pair-map builder (including its bounded direct-key source), and a
+    /// `@newtype`/TAG-forced WRAPPER over an inline
     /// `{* k => v} ; @duplicates preserve` (its `new`/getter boundary names the structural class,
     /// which the wasm struct walk mints for exactly that inner). A user rule that IS a plain preserve
     /// `{* k => v}` table of
@@ -5618,20 +5538,42 @@ impl<'a> IntermediateTypes<'a> {
                     {
                         continue;
                     }
-                    let structural =
-                        ConceptualRustType::name_for_wasm_map(domain, range, true).to_string();
-                    // A self-named rule legitimately owns the ident for its own class.
-                    if structural == ident.to_string() {
+                    let bounded_source = bounds.is_some_and(|candidate| {
+                        Self::normalized_bounded_map_window(candidate).is_some()
+                    });
+                    let (structural, builder_key, source) = if bounded_source {
+                        (
+                            RustType::wasm_loose_table_builder_name_for(domain, range, true, self)
+                                .to_string(),
+                            domain.loosened_for_wasm_table_boundary_key(),
+                            true,
+                        )
+                    } else {
+                        (
+                            RustType::wasm_structural_map_name_for(domain, range, true, self)
+                                .to_string(),
+                            domain.clone(),
+                            *bounds == Some((Some(1), None)),
+                        )
+                    };
+                    // A self-named loose or `{+}` rule legitimately owns the ident for its own
+                    // class. A bounded rule does not: its restricted wrapper and loose checked
+                    // source would otherwise claim the same ident with incompatible carriers.
+                    if !bounded_source && structural == ident.to_string() {
                         continue;
                     }
                     let minted_by = if *bounds == Some((Some(1), None)) {
                         format!(
                             "the `@duplicates preserve` `{{+ …}}` rule '{ident}'s `try_from` source"
                         )
+                    } else if source {
+                        format!(
+                            "the bounded `@duplicates preserve` rule '{ident}'s loose `try_from` source"
+                        )
                     } else {
                         format!("the `@duplicates preserve` table rule '{ident}'")
                     };
-                    check(structural, domain, range, minted_by, &mut msgs);
+                    check(structural, &builder_key, range, minted_by, &mut msgs);
                 }
                 RustStructType::Record(record) => {
                     // CAPTURED rows only: an `@ignore` row has no field and no getter, so it mints
@@ -5648,9 +5590,13 @@ impl<'a> IntermediateTypes<'a> {
                     }) else {
                         continue;
                     };
-                    let structural =
-                        ConceptualRustType::name_for_wasm_map(rest.domain(), rest.range(), true)
-                            .to_string();
+                    let structural = RustType::wasm_structural_map_name_for(
+                        rest.domain(),
+                        rest.range(),
+                        true,
+                        self,
+                    )
+                    .to_string();
                     check(
                         structural,
                         rest.domain(),
@@ -5676,8 +5622,7 @@ impl<'a> IntermediateTypes<'a> {
                     let ConceptualRustType::Map(domain, range) = &wrapped.conceptual_type else {
                         unreachable!("is_preserve_pair_map implies a Map conceptual type");
                     };
-                    let structural =
-                        ConceptualRustType::name_for_wasm_map(domain, range, true).to_string();
+                    let structural = wrapped.wasm_structural_map_name(self).to_string();
                     check(
                         structural,
                         domain,
@@ -5767,7 +5712,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             let structural = format!(
                 "NonEmpty{}",
-                ConceptualRustType::name_for_wasm_map(domain, range, true)
+                RustType::wasm_structural_map_name_for(domain, range, true, self)
             );
             if self.wasm_ident_claimed_by_user_rule(&structural) {
                 msgs.insert(format!(
