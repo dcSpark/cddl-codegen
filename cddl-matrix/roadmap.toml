@@ -144,7 +144,6 @@ entries = [
   "matrix.multi-choice-group-rule",
   "matrix.derived-variant-naming",
   "matrix.nominal-custom-pair-wrapper",
-  "matrix.duplicate-rejection-diagnostics",
   "matrix.incremental-group-choice-extension",
   "matrix.heterogeneous-array.occurrence-bounds",
   "matrix.open-array.optional-adjacency",
@@ -552,52 +551,6 @@ action_on_fire_md = '''review a public naming convention
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
 event_md = '''arms needing @name outnumber unnamed arms or exceed a handful in one crate
-'''
-
-[[record]]
-id = "matrix.duplicate-rejection-diagnostics"
-title = "Say each rejection once, so the count of messages is the count of problems."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Say each rejection once, so the count of messages is the count of problems.** A single
-  offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
-  `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
-  a map-value position (`m = { outer: { a: int, c: uint } }`) and the older group-choice rejections
-  print it once. A SINGLE-ELEMENT inline array is the same instance seen from the type-choice side:
-  `x = [1.5 / tstr]` prints its rejection twice and `x = [tstr / tstr]` its arm-dedup warning twice,
-  while the two-entry form `x = [1.5 / tstr, z: uint]` prints once — probed 2026-08-06 on an
-  UNMODIFIED binary (default profile, `--wasm=false`). The duplication is positional — the parse
-  walk visits an array-element / `.cbor`-controller type2 twice, and a `panic!` at such a site
-  masks the second visit by aborting on the first, so any abort→rejection conversion should expect
-  to make a pre-existing double-walk observable.
-  `record_rejection` is a bare `Vec::push` and `rejections_error` joins the vector, so nothing
-  dedups. The fix is NOT simply deduping that join, and that is the part worth recording: two
-  genuinely distinct rules can hit one site and produce byte-identical messages (several rejection
-  texts name the construct class, not the offending rule), so a blind dedup would silently collapse
-  two real problems into one report — trading a cosmetic defect for a correctness one. The shape
-  that works is to make the message identify its site (the `rejection_site` helper already exists
-  for exactly this) and dedup on the identified pair, or to suppress the second VISIT rather than
-  the second message. '''
-signal_md = '''Reopening signal, on the axis the cost grows: a spec whose rejection output
-  makes the number of DISTINCT problems unreadable — three or more copies of one message, or
-  duplicates interleaved with genuinely different rejections — reported by someone reading that
-  output to fix their own spec.
-'''
-work_state = "deferred"
-work_intent = "repair"
-work_kind = "regression_gap"
-risk = "misleading_docs"
-
-[record.payload.reopening_signal]
-observer = "spec fixer"
-dimension = "unreadable rejection output"
-action_on_fire_md = '''identify sites and deduplicate visits/pairs
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "event"
-event_md = '''three copies or interleaving obscure the distinct-problem count
 '''
 
 [[record]]

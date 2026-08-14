@@ -74,6 +74,58 @@ function isPanicEvidence(evidence: string): boolean {
   return evidence.includes("panic (exit 101)") || evidence.startsWith("probe (cell): cddl-codegen exit 101");
 }
 
+type RejectCatalogRow = { id: string; label: string; rejectionLines?: number };
+type ParsedRejectCatalogRow = { row: RejectCatalogRow } | { error: string };
+
+// The Rust reject scorecard adds `rejection-lines=N` only to graceful rows. Keep this parser
+// deliberately stricter than the old label-only regex: silently ignoring a malformed suffix would
+// let a re-bless erase the multiplicity check that catches duplicate rejection diagnostics.
+function parseRejectCatalogRow(line: string): ParsedRejectCatalogRow | null {
+  const match = /^([\w.$-]+) +(ok|error \(graceful\)|PANIC)(.*)$/.exec(line);
+  if (match === null) return null;
+  const [, id, label, suffix] = match;
+  if (label === "error (graceful)") {
+    const count = /^ rejection-lines=([1-9]\d*)$/.exec(suffix);
+    if (count === null)
+      return {
+        error:
+          `\`${id}\` is \`error (graceful)\` but lacks one positive \`rejection-lines=N\` suffix`,
+      };
+    return { row: { id, label, rejectionLines: Number(count[1]) } };
+  }
+  if (suffix !== "")
+    return { error: `\`${id}\` is \`${label}\` but has unexpected suffix \`${suffix.trim()}\`` };
+  return { row: { id, label } };
+}
+
+// The suffix is a cross-language schema: Rust writes it and this script validates it. These
+// start-up cases pin both accepted forms and every label's absence/presence rule without needing a
+// temporary snapshot fixture.
+{
+  const cases: readonly [string, string][] = [
+    ["graceful error (graceful) rejection-lines=1", "graceful|error (graceful)|1"],
+    ["many error (graceful) rejection-lines=23", "many|error (graceful)|23"],
+    ["clean ok", "clean|ok|"],
+    ["panic PANIC", "panic|PANIC|"],
+    ["missing error (graceful)", "error"],
+    ["zero error (graceful) rejection-lines=0", "error"],
+    ["extra ok rejection-lines=1", "error"],
+    ["extra_panic PANIC rejection-lines=1", "error"],
+  ];
+  const failures = cases.filter(([line, want]) => {
+    const parsed = parseRejectCatalogRow(line);
+    const got = parsed === null ? "none" : "error" in parsed
+      ? "error"
+      : `${parsed.row.id}|${parsed.row.label}|${parsed.row.rejectionLines ?? ""}`;
+    return got !== want;
+  });
+  if (failures.length)
+    throw new Error(
+      "HARNESS FAILURE: reject-catalog suffix parser self-test failed: " +
+        failures.map(([line, want]) => `${JSON.stringify(line)} expected ${want}`).join("; "),
+    );
+}
+
 interface Ann { id: string; status: string; evidence?: string }
 interface Ex { id: string; example: string }
 const matrix = JSON.parse(readFileSync(`${HERE}/matrix.json`, "utf8")) as {
@@ -243,10 +295,14 @@ if (CHECK) {
   const snapPath = `${REJECT_DIR}/snapshots/catalog.snap`;
   if (!existsSync(snapPath)) drift.push("matrix_reject: snapshots/catalog.snap is missing (run the Rust catalog test)");
   else {
-    const rows = readFileSync(snapPath, "utf8")
-      .split("\n")
-      .map(l => /^([\w.$-]+) +(ok|error \(graceful\)|PANIC)$/.exec(l))
-      .filter((m): m is RegExpExecArray => m !== null);
+    const rows: RejectCatalogRow[] = [];
+    for (const line of readFileSync(snapPath, "utf8").split("\n")) {
+      const parsed = parseRejectCatalogRow(line);
+      if (parsed === null) continue;
+      if ("error" in parsed)
+        drift.push(`reject catalog↔matrix: malformed snapshot row ${parsed.error}`);
+      else rows.push(parsed.row);
+    }
     // Anti-vacuity: a label relabel + re-bless (both CI-green) would make this regex match zero rows,
     // silently comparing nothing. Assert non-empty AND that every projected reject id has a row.
     if (rows.length === 0) {
@@ -255,7 +311,7 @@ if (CHECK) {
           "(update project_robustness.ts) or the snapshot is empty",
       );
     } else {
-      const catalogIds = new Set(rows.map(([, id]) => id));
+      const catalogIds = new Set(rows.map(row => row.id));
       for (const id of rejectExpect.keys())
         if (!catalogIds.has(id))
           drift.push(
@@ -263,7 +319,7 @@ if (CHECK) {
               `(renamed/dropped, or the label regex no longer matches its row)`,
           );
     }
-    for (const [, id, label] of rows) {
+    for (const { id, label } of rows) {
       const want = rejectExpect.get(id);
       if (want === undefined)
         drift.push(

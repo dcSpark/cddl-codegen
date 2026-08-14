@@ -4057,7 +4057,9 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > *silently* makes a rejected construct parse — the exact regression a past cddl-fork bump caused for 14
 > control ops — as a snapshot diff in the default `cargo test` run instead of only on a manual verify.ts
 > sweep; `project_robustness.ts --check` independently pins each reject row's expected label to its matrix
-> evidence class, so a re-bless can't quietly launder such a flip.
+> evidence class, so a re-bless can't quietly launder such a flip. Every graceful reject row also
+> snapshots its rejection-line count, with a non-vacuous graceful-row floor; separately authored
+> nodes with equal rendered text remain distinct reports under the node-identity regression.
 
 > Sibling system: `src/tests/identifier_hazard_tests.rs` is the same catalog+gate shape on a
 > **NAME-shaped** axis a construct enumeration can never catch — collisions between a user-chosen CDDL

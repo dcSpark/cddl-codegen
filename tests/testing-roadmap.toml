@@ -209,7 +209,6 @@ entries = [
   "testing.directive-s-documented-sentence-stay-true-consumer-visible",
   "testing.citation-resolves-naming-wrong-thing-invisible-citation-lint",
   "testing.matrix-s-note-names-panic-site-aborts-nothing",
-  "testing.nothing-asserts-how-many-times-rejection-message-emitted",
   "testing.containment-note-s-stated-reason-go-false-any",
   "testing.emit-tests-gate-asserts-round-trip-green-cannot",
   "testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible",
@@ -3933,20 +3932,6 @@ boundary_md = '''This control owns current containment only. It does not claim t
 '''
 
 [[record]]
-id = "testing.guard.nothing-asserts-how-many-times-rejection-message-emitted"
-title = "Current control for testing.nothing-asserts-how-many-times-rejection-message-emitted."
-
-[record.payload]
-kind = "control"
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-next-work-n43"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.nothing-asserts-how-many-times-rejection-message-emitted's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
 id = "testing.guard.observed-baseline-comments-beside-gate-floors-rot-silently"
 title = "Current control for testing.observed-baseline-comments-beside-gate-floors-rot-silently."
 
@@ -5325,42 +5310,6 @@ capture_md = '''Capture the same-run sweep, preflight, failure, disk usage, and 
 [[record.payload.capture_step]]
 step_id = "scope"
 capture_md = '''Record the full untruncated log or consumer report, command, full commit, date, environment, relevant versions, and the explicitly unprobed remainder; never cite a disposable draft log as durable evidence.
-'''
-
-[[record]]
-id = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
-title = "Nothing asserts how MANY times a rejection message is emitted, and nested composites emit theirs twice."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Nothing asserts how MANY times a rejection message is emitted, and nested composites emit
-  theirs twice.** `a = [x: [* 5]]` prints its refusal twice because the parse walk visits a nested
-  composite twice; `a = [x: { uint => tstr }]` duplicates the same way, so the class predates the
-  guards that surfaced it. Behaviour is correct and the exit code is right — only the reading is
-  degraded, which is why the robustness/reject catalogs (they record an outcome LABEL, never the
-  message) cannot see it. Meanwhile the working rule is that a rejection's text is reviewed by
-  reading it once, at authoring time. The mechanical layer is a multiplicity assertion over the
-  catalogs' captured stderr, paired with a `contains` de-dup in `record_rejection`. Trigger, on the
-  axis the cost grows along — the repetition FACTOR, measurable by whoever next authors a fixture:
-  a catalog fixture whose refusal repeats a message THREE or more times (a deeper nest multiplies
-  it again), at which point a user cannot tell one refusal from several.
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "misleading_docs"
-control_ids = ["testing.guard.nothing-asserts-how-many-times-rejection-message-emitted"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.nothing-asserts-how-many-times-rejection-message-emitted"
-dimension = "Nothing asserts how MANY times a rejection message is emitted, and nested composites emit theirs twice."
-observable = "- **Nothing asserts how MANY times a rejection message is emitted, and nested composites emit theirs twice.** `a = [x: [* 5]]` prints its refusal twice because the parse walk visits a nested composite twice; `a = [x: { uint => tstr }]` duplicates the same way, so the class predates the guards that surfaced it. Behaviour is correct and the exit code is right — only the reading is degraded, which is why the robustness/reject catalogs (they record an outcome LABEL, never the message) cannot see it. Meanwhile the working rule is that a rejection's text is reviewed by reading it once, at authoring time. The mechanical layer is a multiplicity assertion over the catalogs' captured stderr, paired with a `contains` de-dup in `record_rejection`. Trigger, on the axis the cost grows along — the repetition FACTOR, measurable by whoever next authors a fixture: a catalog fixture whose refusal repeats a message THREE or more times (a deeper nest multiplies it again), at which point a user cannot tell one refusal from several."
-action_on_fire_md = '''Set testing.nothing-asserts-how-many-times-rejection-message-emitted to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.nothing-asserts-how-many-times-rejection-message-emitted's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]
@@ -8658,11 +8607,6 @@ kind = "parent_of"
 target = "testing.guard.multifile-reference-position-coverage-two-position-keyed-escapes"
 
 [[relation]]
-source = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
-kind = "parent_of"
-target = "testing.guard.nothing-asserts-how-many-times-rejection-message-emitted"
-
-[[relation]]
 source = "testing.observed-baseline-comments-beside-gate-floors-rot-silently"
 kind = "parent_of"
 target = "testing.guard.observed-baseline-comments-beside-gate-floors-rot-silently"
@@ -9574,13 +9518,6 @@ source = "testing.multifile-reference-position-coverage-two-position-keyed-escap
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::snapshot_tests::extern_generic_scoped_alias_imports"
 symbol = "tests::snapshot_tests::extern_generic_scoped_alias_imports"
-
-[[reference]]
-id = "testing-roadmap-next-work-n43"
-source = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
 
 [[reference]]
 id = "gate-corpus-decode-replay-n2"

@@ -7,71 +7,72 @@ expression: catalog
 # compile rows record `ok` (generate-only can't see the later failure), out-of-profile panics record
 # `PANIC`. A row flipping `error (graceful)` -> `ok` means a rejected construct started PARSING (the
 # cddl-fork-bump regression class) — investigate, don't blindly re-bless. project_robustness.ts --check
-# pins each row's expected label to its matrix evidence class. Source: cddl-matrix/project_robustness.ts.
+# pins each row's expected label to its matrix evidence class. Graceful rows also pin their rejection-line
+# multiplicity. Source: cddl-matrix/project_robustness.ts.
 
-assigng.extend                     error (graceful)
-contain.array-element.type2.array  error (graceful)
-contain.array-element.type2.map    error (graceful)
-contain.array-element.type2.unwrap error (graceful)
-contain.cbor-payload.type2.array   error (graceful)
-contain.cbor-payload.type2.map     error (graceful)
-contain.choice-member.prelude.any.non_last error (graceful)
-contain.choice-member.type2.array  error (graceful)
-contain.choice-member.type2.map    error (graceful)
-contain.choice-member.type2.value.float.fixed-kind error (graceful)
-contain.choice-member.type2.value.nint.fixed-kind error (graceful)
-contain.generic-arg.type2.map      error (graceful)
-contain.group-choice-arm.grpent.inline_group.array error (graceful)
-contain.group-choice-arm.memberkey.type1.map error (graceful)
-contain.group-choice-arm.memberkey.value.float_map error (graceful)
-contain.group-choice-arm.memberkey.value.nint_map error (graceful)
-contain.group-choice-arm.type2.map.array error (graceful)
-contain.map-key.memberkey.type1.bool_arrow_multi error (graceful)
-contain.map-key.memberkey.type1.bool_arrow_single error (graceful)
-contain.map-key.memberkey.type1.float_arrow_multi error (graceful)
-contain.map-key.memberkey.type1.float_arrow_single error (graceful)
-contain.map-key.memberkey.type1.nint_arrow_multi error (graceful)
-contain.map-key.memberkey.type1.nint_arrow_single error (graceful)
-contain.map-key.memberkey.value.float_colon_multi error (graceful)
-contain.map-key.memberkey.value.float_colon_single error (graceful)
-contain.map-key.memberkey.value.nint_colon_multi error (graceful)
-contain.map-key.memberkey.value.nint_colon_single error (graceful)
-contain.map-key.type2.array        error (graceful)
-contain.map-value.type2.array      error (graceful)
-contain.map-value.type2.map        error (graceful)
-contain.map-value.type2.unwrap     error (graceful)
-contain.occurrence-target.grpent.groupname.table_map error (graceful)
-contain.occurrence-target.grpent.inline_group.bounded_array error (graceful)
-contain.occurrence-target.grpent.inline_group error (graceful)
-contain.occurrence-target.grpent.inline_group.optional_array error (graceful)
-contain.occurrence-target.grpent.inline_group.plus_array error (graceful)
-contain.occurrence-target.grpent.inline_group.zero_map error (graceful)
-contain.occurrence-target.memberkey.bareword.zero_bounded_map error (graceful)
-contain.occurrence-target.memberkey.bareword.zero_map error (graceful)
-contain.occurrence-target.memberkey.type1.open_struct_float_key error (graceful)
-contain.occurrence-target.memberkey.type1.open_struct_null_key error (graceful)
-contain.occurrence-target.memberkey.type1.open_struct_plus error (graceful)
-contain.occurrence-target.memberkey.type1.open_table_catchall_plus error (graceful)
-contain.occurrence-target.type2.array error (graceful)
-contain.occurrence-target.type2.map error (graceful)
-contain.occurrence-target.type2.value.optional_array error (graceful)
-contain.occurrence-target.type2.value.plus_array error (graceful)
-contain.occurrence-target.type2.value.table_map error (graceful)
-contain.occurrence-target.type2.value.zero_array error (graceful)
-contain.top-level.type2.unwrap     error (graceful)
-ctl.and                            error (graceful)
-ctl.cborseq                        error (graceful)
-ctl.oid                            error (graceful)
-ctl.sdnv                           error (graceful)
-ctl.sdnvseq                        error (graceful)
-ctl.within                         error (graceful)
-ext.raw_bytes.generic              error (graceful)
-genericparm.group                  error (graceful)
-prelude.cbor-any                   error (graceful)
-type2.any                          error (graceful)
-type2.choice_from_group            error (graceful)
-type2.choice_from_inline_group     error (graceful)
-type2.major                        error (graceful)
-type2.major7                       error (graceful)
+assigng.extend                     error (graceful) rejection-lines=1
+contain.array-element.type2.array  error (graceful) rejection-lines=1
+contain.array-element.type2.map    error (graceful) rejection-lines=1
+contain.array-element.type2.unwrap error (graceful) rejection-lines=1
+contain.cbor-payload.type2.array   error (graceful) rejection-lines=1
+contain.cbor-payload.type2.map     error (graceful) rejection-lines=1
+contain.choice-member.prelude.any.non_last error (graceful) rejection-lines=1
+contain.choice-member.type2.array  error (graceful) rejection-lines=2
+contain.choice-member.type2.map    error (graceful) rejection-lines=2
+contain.choice-member.type2.value.float.fixed-kind error (graceful) rejection-lines=1
+contain.choice-member.type2.value.nint.fixed-kind error (graceful) rejection-lines=1
+contain.generic-arg.type2.map      error (graceful) rejection-lines=1
+contain.group-choice-arm.grpent.inline_group.array error (graceful) rejection-lines=1
+contain.group-choice-arm.memberkey.type1.map error (graceful) rejection-lines=1
+contain.group-choice-arm.memberkey.value.float_map error (graceful) rejection-lines=1
+contain.group-choice-arm.memberkey.value.nint_map error (graceful) rejection-lines=1
+contain.group-choice-arm.type2.map.array error (graceful) rejection-lines=1
+contain.map-key.memberkey.type1.bool_arrow_multi error (graceful) rejection-lines=1
+contain.map-key.memberkey.type1.bool_arrow_single error (graceful) rejection-lines=1
+contain.map-key.memberkey.type1.float_arrow_multi error (graceful) rejection-lines=1
+contain.map-key.memberkey.type1.float_arrow_single error (graceful) rejection-lines=1
+contain.map-key.memberkey.type1.nint_arrow_multi error (graceful) rejection-lines=1
+contain.map-key.memberkey.type1.nint_arrow_single error (graceful) rejection-lines=1
+contain.map-key.memberkey.value.float_colon_multi error (graceful) rejection-lines=1
+contain.map-key.memberkey.value.float_colon_single error (graceful) rejection-lines=1
+contain.map-key.memberkey.value.nint_colon_multi error (graceful) rejection-lines=1
+contain.map-key.memberkey.value.nint_colon_single error (graceful) rejection-lines=1
+contain.map-key.type2.array        error (graceful) rejection-lines=2
+contain.map-value.type2.array      error (graceful) rejection-lines=1
+contain.map-value.type2.map        error (graceful) rejection-lines=1
+contain.map-value.type2.unwrap     error (graceful) rejection-lines=1
+contain.occurrence-target.grpent.groupname.table_map error (graceful) rejection-lines=1
+contain.occurrence-target.grpent.inline_group.bounded_array error (graceful) rejection-lines=1
+contain.occurrence-target.grpent.inline_group error (graceful) rejection-lines=1
+contain.occurrence-target.grpent.inline_group.optional_array error (graceful) rejection-lines=1
+contain.occurrence-target.grpent.inline_group.plus_array error (graceful) rejection-lines=1
+contain.occurrence-target.grpent.inline_group.zero_map error (graceful) rejection-lines=1
+contain.occurrence-target.memberkey.bareword.zero_bounded_map error (graceful) rejection-lines=1
+contain.occurrence-target.memberkey.bareword.zero_map error (graceful) rejection-lines=1
+contain.occurrence-target.memberkey.type1.open_struct_float_key error (graceful) rejection-lines=1
+contain.occurrence-target.memberkey.type1.open_struct_null_key error (graceful) rejection-lines=1
+contain.occurrence-target.memberkey.type1.open_struct_plus error (graceful) rejection-lines=1
+contain.occurrence-target.memberkey.type1.open_table_catchall_plus error (graceful) rejection-lines=1
+contain.occurrence-target.type2.array error (graceful) rejection-lines=2
+contain.occurrence-target.type2.map error (graceful) rejection-lines=2
+contain.occurrence-target.type2.value.optional_array error (graceful) rejection-lines=1
+contain.occurrence-target.type2.value.plus_array error (graceful) rejection-lines=1
+contain.occurrence-target.type2.value.table_map error (graceful) rejection-lines=1
+contain.occurrence-target.type2.value.zero_array error (graceful) rejection-lines=1
+contain.top-level.type2.unwrap     error (graceful) rejection-lines=1
+ctl.and                            error (graceful) rejection-lines=1
+ctl.cborseq                        error (graceful) rejection-lines=1
+ctl.oid                            error (graceful) rejection-lines=1
+ctl.sdnv                           error (graceful) rejection-lines=1
+ctl.sdnvseq                        error (graceful) rejection-lines=1
+ctl.within                         error (graceful) rejection-lines=1
+ext.raw_bytes.generic              error (graceful) rejection-lines=1
+genericparm.group                  error (graceful) rejection-lines=1
+prelude.cbor-any                   error (graceful) rejection-lines=1
+type2.any                          error (graceful) rejection-lines=1
+type2.choice_from_group            error (graceful) rejection-lines=1
+type2.choice_from_inline_group     error (graceful) rejection-lines=1
+type2.major                        error (graceful) rejection-lines=1
+type2.major7                       error (graceful) rejection-lines=1
 type2.tag_head_type                PANIC
-type2.unwrap                       error (graceful)
+type2.unwrap                       error (graceful) rejection-lines=1

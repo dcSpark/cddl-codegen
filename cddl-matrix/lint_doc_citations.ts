@@ -440,6 +440,19 @@ const allFiles = readTrackedTextFiles(trackedRels, readTextState);
 // of truth, which is exactly what the move out of the repository forecloses.
 const ROADMAP_SOURCE_DOCS = ["cddl-matrix/roadmap.toml", "tests/testing-roadmap.toml"] as const;
 const RETIRED_PROJECTION_PATHS = ["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADMAP.md"] as const;
+// Burndown 5 is a deliberately tracked managed list, not a generated roadmap projection or an
+// ad-hoc draft. Keep this exact eight-file boundary aligned with its README Files table; its cycle
+// specs and probes stay ignored, and any other tracked `draft/` path remains a lint failure.
+const MANAGED_BURNDOWN5_DOCS = new Set([
+  "draft/burndown5/README.md",
+  "draft/burndown5/tier1-silent-wrong-results.md",
+  "draft/burndown5/tier2-tool-honesty.md",
+  "draft/burndown5/tier3-due-test-systems.md",
+  "draft/burndown5/tier4-ready-features.md",
+  "draft/burndown5/tier5-decisions-and-filings.md",
+  "draft/burndown5/bookkeeping.md",
+  "draft/burndown5/parked-validated.md",
+]);
 // These spellings name deleted projections, not current documents. Keep the compatibility surface
 // closed: every other tracked text file must use the TOML authorities or a stable roadmap record ID.
 // This excludes paths themselves (git rejects retired projections below); it scans only readable text
@@ -468,7 +481,11 @@ const problems: string[] = [];
 const missingHandDocs = handDocs.filter(rel => !trackedRels.includes(rel));
 for (const rel of missingHandDocs) problems.push(`${rel}: hand doc is not tracked by git`);
 for (const rel of trackedRels) {
-  if ((RETIRED_PROJECTION_PATHS as readonly string[]).includes(rel) || rel === "draft" || rel.startsWith("draft/")) {
+  if (
+    (RETIRED_PROJECTION_PATHS as readonly string[]).includes(rel) ||
+    rel === "draft" ||
+    (rel.startsWith("draft/") && !MANAGED_BURNDOWN5_DOCS.has(rel))
+  ) {
     problems.push(`${rel}: generated roadmap projections and draft/ scratch material must not be tracked by git; the TOML sources are the authority and the renders live under gitignored draft/roadmaps/`);
   }
 }

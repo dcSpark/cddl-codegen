@@ -391,6 +391,18 @@ pub struct IntermediateTypes<'a> {
     // any resolution runs, so no later code operates on the incomplete IR left behind by a skipped
     // field. A `Vec` keeps insertion order deterministic (rule order is already deterministic).
     rejections: Vec<String>,
+    // Every semantic rejection observation, including revisits of an AST node whose diagnostic was
+    // already emitted. A parse branch uses this as a per-subwalk rejection signal: its inert
+    // `Fixed(Null)` placeholder must remain rejected on every visit, even though the final error
+    // reports that node only once. This is deliberately separate from `rejections`, whose length
+    // is the number of user-visible diagnostic lines.
+    rejection_observations: usize,
+    // First-observation claims for diagnostics emitted by parse paths that can revisit one AST node
+    // during classification and construction. The address is stable for the AST's in-run lifetime
+    // and is never rendered or otherwise exposed; the kind keeps independent diagnostics at one
+    // node distinct. `rejections` remains the ordered public result, so the ledger cannot affect
+    // diagnostic order or emitted bytes beyond suppressing a repeated visit.
+    diagnostic_node_claims: BTreeSet<(usize, &'static str)>,
     // for scope() to work we keep this here.
     // Returning a reference to the const ROOT_SCOPE complains of returning a temporary
     root_scope: ModuleScope,
@@ -437,6 +449,8 @@ impl<'a> IntermediateTypes<'a> {
             rule_source_names: BTreeMap::new(),
             group_choice_arm_claims: BTreeMap::new(),
             rejections: Vec::new(),
+            rejection_observations: 0,
+            diagnostic_node_claims: BTreeSet::new(),
             root_scope: ROOT_SCOPE.clone(),
         }
     }
@@ -463,15 +477,37 @@ impl<'a> IntermediateTypes<'a> {
     /// Record a construct the parse walk rejects by design (it can't return an `Err` itself).
     /// `finalize` turns any accumulated rejections into a single graceful `Err`.
     pub fn record_rejection(&mut self, msg: String) {
+        self.rejection_observations += 1;
         self.rejections.push(msg);
     }
 
-    /// How many parse-walk rejections have been recorded so far. Lets a caller tell whether a
-    /// sub-walk it just ran rejected something: a rejected construct yields an INERT PLACEHOLDER
-    /// type (`Fixed(Null)`) rather than the type it spelled, so any structural comparison against
-    /// it compares placeholders — `[int] / [tstr]` would otherwise read as two identical arms.
+    /// Record one semantic rejection observation at `node`, while emitting its diagnostic only on
+    /// the first visit of that node/kind pair. Repeated classification/construction visits still
+    /// count as rejected, so callers comparing [`Self::rejection_count`] around a sub-walk never
+    /// mistake its inert placeholder for a real type.
+    pub fn record_rejection_once_at<T>(&mut self, node: &T, kind: &'static str, msg: String) {
+        self.rejection_observations += 1;
+        if self.claim_diagnostic_node(node, kind) {
+            self.rejections.push(msg);
+        }
+    }
+
+    /// Claim the first observation of `kind` at one AST node. This is intentionally a claim-only
+    /// seam: callers retain their own diagnostics, so two different messages at one node are not
+    /// accidentally merged, and independently authored nodes with matching rendered text remain
+    /// independently reportable.
+    pub fn claim_diagnostic_node<T>(&mut self, node: &T, kind: &'static str) -> bool {
+        self.diagnostic_node_claims
+            .insert((node as *const T as usize, kind))
+    }
+
+    /// How many parse-walk rejections have been observed so far. Lets a caller tell whether a
+    /// sub-walk it just ran rejected something even if a repeated AST visit suppresses a duplicate
+    /// diagnostic: a rejected construct yields an INERT PLACEHOLDER type (`Fixed(Null)`) rather
+    /// than the type it spelled, so any structural comparison against it compares placeholders —
+    /// `[int] / [tstr]` would otherwise read as two identical arms.
     pub fn rejection_count(&self) -> usize {
-        self.rejections.len()
+        self.rejection_observations
     }
 
     /// Whether any parse-walk rejection has been recorded. Lets the reserved-name pre-scan in

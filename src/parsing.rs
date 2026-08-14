@@ -1343,6 +1343,19 @@ fn is_spellable_variant_name(name: &str) -> bool {
 /// and a group-choice arm has a SECOND, adjacent slot (the entry's own line) that names nothing,
 /// which is exactly where an author reading a bare `; @name <new_name>` remedy lands. So the slot
 /// is named, not implied.
+fn unnameable_arm_variant_name_rejection(
+    owner_desc: &str,
+    arm_source: &str,
+    minted_name: &str,
+    naming_slot: &str,
+) -> String {
+    format!(
+        "{owner_desc}: its arm `{arm_source}` generates the variant name `{minted_name}`, which is \
+         not a valid Rust identifier. Name the arm with `; @name <new_name>` to choose the variant \
+         name yourself — {naming_slot}."
+    )
+}
+
 fn reject_unnameable_arm_variant_name(
     types: &mut IntermediateTypes,
     owner_desc: &str,
@@ -1350,10 +1363,11 @@ fn reject_unnameable_arm_variant_name(
     minted_name: &str,
     naming_slot: &str,
 ) {
-    types.record_rejection(format!(
-        "{owner_desc}: its arm `{arm_source}` generates the variant name `{minted_name}`, which is \
-         not a valid Rust identifier. Name the arm with `; @name <new_name>` to choose the variant \
-         name yourself — {naming_slot}."
+    types.record_rejection(unnameable_arm_variant_name_rejection(
+        owner_desc,
+        arm_source,
+        minted_name,
+        naming_slot,
     ));
 }
 
@@ -4743,13 +4757,16 @@ pub fn create_variants_from_type_choices(
                 if !is_spellable_variant_name(&minted) {
                     // The rejection names the rule as the AUTHOR spelled it (`owner_desc` above
                     // carries the rust ident, which the arm-dedup warnings already print).
-                    reject_unnameable_arm_variant_name(
-                        types,
-                        &source_owner_desc,
-                        &choice.type1.type2.to_string(),
-                        &minted,
-                        "a type-choice arm's naming slot is its own trailing \
-                         comment (`<arm> ; @name <new_name>`)",
+                    types.record_rejection_once_at(
+                        choice,
+                        "unnameable-type-choice-arm",
+                        unnameable_arm_variant_name_rejection(
+                            &source_owner_desc,
+                            &choice.type1.type2.to_string(),
+                            &minted,
+                            "a type-choice arm's naming slot is its own trailing \
+                             comment (`<arm> ; @name <new_name>`)",
+                        ),
                     );
                 }
                 minted
@@ -4758,14 +4775,18 @@ pub fn create_variants_from_type_choices(
         if let Some(dup_ordinal) = dup_of {
             let arm_ordinal = arm_idx + 1;
             if rule_metadata.name.is_none() {
-                crate::warn!(
-                    "Dropping arm {arm_ordinal} of {owner_desc}: it has the same representation as arm {dup_ordinal}, so the decoder first-matches arm {dup_ordinal} and the variant it would have minted (`{base_name}`) could never be decoded. Write `; @name <Name>` on it to keep it anyway."
-                );
+                if types.claim_diagnostic_node(choice, "duplicate-type-choice-arm-warning") {
+                    crate::warn!(
+                        "Dropping arm {arm_ordinal} of {owner_desc}: it has the same representation as arm {dup_ordinal}, so the decoder first-matches arm {dup_ordinal} and the variant it would have minted (`{base_name}`) could never be decoded. Write `; @name <Name>` on it to keep it anyway."
+                    );
+                }
                 continue;
             }
-            crate::warn!(
-                "Arm {arm_ordinal} of {owner_desc} (`@name {base_name}`) has the same representation as arm {dup_ordinal}: the variant is kept because it is explicitly named, but the decoder first-matches arm {dup_ordinal}, so nothing on the wire ever decodes to it."
-            );
+            if types.claim_diagnostic_node(choice, "duplicate-named-type-choice-arm-warning") {
+                crate::warn!(
+                    "Arm {arm_ordinal} of {owner_desc} (`@name {base_name}`) has the same representation as arm {dup_ordinal}: the variant is kept because it is explicitly named, but the decoder first-matches arm {dup_ordinal}, so nothing on the wire ever decodes to it."
+                );
+            }
         }
         // Explicit names were reserved before this arm walk and must be emitted verbatim. Only a
         // generator-derived name may be disambiguated with a numeric suffix.
@@ -6123,12 +6144,16 @@ fn rust_type_from_type2(
                             let name = match rule_metadata.name.as_ref() {
                                 Some(name) => name,
                                 None => {
-                                    types.record_rejection(format!(
-                                        "Anonymous groups not allowed: the inline array `[{group}]` \
-                                         is used where a type is required. Either create an explicit \
-                                         rule (`foo = [0, bytes]`, then reference `foo`) or give it \
-                                         a name using the `@name` notation."
-                                    ));
+                                    types.record_rejection_once_at(
+                                        type2,
+                                        "anonymous-inline-array",
+                                        format!(
+                                            "Anonymous groups not allowed: the inline array `[{group}]` \
+                                             is used where a type is required. Either create an explicit \
+                                             rule (`foo = [0, bytes]`, then reference `foo`) or give it \
+                                             a name using the `@name` notation."
+                                        ),
+                                    );
                                     return ConceptualRustType::Fixed(FixedValue::Null).into();
                                 }
                             };
@@ -6241,9 +6266,11 @@ fn rust_type_from_type2(
                         // key), so the message points at the supported spelling rather than
                         // promising that naming alone fixes every shape.
                         _ => {
-                            types.record_rejection(
-                                "an inline map (`{ a: int, b: uint }`) used as a member or element \
-                                 type is unsupported unless it is a table (`{ * k => v }`) — name \
+                            types.record_rejection_once_at(
+                                type2,
+                                "non-table-inline-map",
+                                 "an inline map (`{ a: int, b: uint }`) used as a member or element \
+                                  type is unsupported unless it is a table (`{ * k => v }`) — name \
                                  it as its own rule (`m = { a: int, b: uint }`) and reference `m`"
                                     .to_string(),
                             );
@@ -6325,9 +6352,19 @@ fn rust_type_from_type2(
                 ),
                 other => (format!("this type2 construct ({other:?})"), String::new()),
             };
-            types.record_rejection(format!(
-                "{construct} used as a member or element type is unsupported{hint}"
-            ));
+            let kind = match x {
+                Type2::Unwrap { .. } => "unsupported-type2-unwrap",
+                Type2::DataMajorType { .. } => "unsupported-type2-major",
+                Type2::Any { .. } => "unsupported-type2-any",
+                Type2::ChoiceFromGroup { .. } => "unsupported-type2-choice-from-group",
+                Type2::ChoiceFromInlineGroup { .. } => "unsupported-type2-choice-from-inline-group",
+                _ => "unsupported-type2-other",
+            };
+            types.record_rejection_once_at(
+                type2,
+                kind,
+                format!("{construct} used as a member or element type is unsupported{hint}"),
+            );
             ConceptualRustType::Fixed(FixedValue::Null).into()
         }
     }

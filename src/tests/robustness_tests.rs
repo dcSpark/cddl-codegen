@@ -206,6 +206,8 @@ fn unsupported_construct_panic_catalog() {
 /// `ok` and surfaces here as a snapshot diff in the DEFAULT `cargo test` suite, instead of waiting for a
 /// manual verify.ts run. The `project_robustness.ts --check` cross-check independently pins each row's
 /// expected label to its matrix evidence class, so a re-bless that hides such a flip fails that gate.
+/// Graceful rows also snapshot their rejection-line count: fixture-specific counts preserve separate
+/// problems that happen to render alike while making a repeated visit a visible snapshot change.
 ///
 /// Generate-only (no `cargo check`), matching the matrix probe's flags (--wasm=false, default profile).
 #[test]
@@ -228,8 +230,10 @@ fn unsupported_construct_reject_catalog() {
          # compile rows record `ok` (generate-only can't see the later failure), out-of-profile panics record\n\
          # `PANIC`. A row flipping `error (graceful)` -> `ok` means a rejected construct started PARSING (the\n\
          # cddl-fork-bump regression class) — investigate, don't blindly re-bless. project_robustness.ts --check\n\
-         # pins each row's expected label to its matrix evidence class. Source: cddl-matrix/project_robustness.ts.\n\n",
+         # pins each row's expected label to its matrix evidence class. Graceful rows also pin their rejection-line\n\
+         # multiplicity. Source: cddl-matrix/project_robustness.ts.\n\n",
     );
+    let mut graceful_rejection_rows = 0usize;
     // hook restored (and lock released) before the possibly-panicking snapshot assertion below
     with_thread_silenced_panics(|| {
         for path in &inputs {
@@ -246,15 +250,30 @@ fn unsupported_construct_reject_catalog() {
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::api::generated_strings(&cli)
             }));
-            let label = match outcome {
-                Ok(Ok(_)) => "ok",
-                Ok(Err(_)) => "error (graceful)",
-                Err(_) => "PANIC",
+            let (label, multiplicity) = match outcome {
+                Ok(Ok(_)) => ("ok", None),
+                Ok(Err(error)) => {
+                    graceful_rejection_rows += 1;
+                    let rejection_lines = error.to_string().lines().count();
+                    assert!(
+                        rejection_lines > 0,
+                        "{id} is a graceful rejection but reported no diagnostic lines"
+                    );
+                    ("error (graceful)", Some(rejection_lines))
+                }
+                Err(_) => ("PANIC", None),
             };
-            catalog.push_str(&format!("{id:34} {label}\n"));
+            let multiplicity = multiplicity
+                .map(|count| format!(" rejection-lines={count}"))
+                .unwrap_or_default();
+            catalog.push_str(&format!("{id:34} {label}{multiplicity}\n"));
         }
     });
-
+    assert!(
+        graceful_rejection_rows > 0,
+        "the reject catalog must retain at least one graceful-rejection row; otherwise its \
+         multiplicity floor is vacuous"
+    );
     let mut settings = insta::Settings::clone_current();
     settings.set_snapshot_path(
         std::env::current_dir()
@@ -263,6 +282,162 @@ fn unsupported_construct_reject_catalog() {
     );
     settings.set_prepend_module_to_snapshot(false);
     settings.bind(|| insta::assert_snapshot!("catalog", catalog));
+}
+
+/// A parse walk may classify and construct the same AST node, but that must still surface as one
+/// problem. The two authored arrays are the counter-control: their rendered messages deliberately
+/// match, yet they are two nodes and must remain two diagnostics.
+#[test]
+fn revisited_rejection_nodes_report_once_without_collapsing_distinct_nodes() {
+    let vectors = [
+        (
+            "anonymous_array",
+            "a = [[int]]\n",
+            "Anonymous groups not allowed",
+        ),
+        (
+            "inline_map",
+            "g = (x: uint)\na = [{ g }]\n",
+            "an inline map (`{ a: int, b: uint }`)",
+        ),
+        (
+            "single_element_type_choice",
+            "x = [1.5 / tstr]\n",
+            "generates the variant name `F1.5`",
+        ),
+        (
+            "unwrap",
+            "h = [uint]\na = [~h]\n",
+            "an unwrap (`~name`) used as a member or element type",
+        ),
+    ];
+    for (tag, spec, message) in vectors {
+        let error = expect_graceful_rejection(tag, spec, &[]);
+        assert_eq!(
+            error.matches(message).count(),
+            1,
+            "one revisited AST node must report once ({tag}):\n{error}"
+        );
+    }
+
+    let distinct = expect_graceful_rejection(
+        "distinct_anonymous_arrays",
+        "a = [[int]]\nb = [[int]]\n",
+        &[],
+    );
+    assert_eq!(
+        distinct.matches("Anonymous groups not allowed").count(),
+        2,
+        "two authored anonymous arrays must remain two diagnostics:\n{distinct}"
+    );
+}
+
+/// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an
+/// in-process assertion cannot observe it without changing the production logging seam.
+#[test]
+fn single_element_type_choice_warning_child() {
+    if std::env::var_os("CDDL_CYCLE8_WARNING_CHILD").is_none() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_cycle8_single_choice_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, "x = [tstr / tstr]\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "cycle8_warning_unused",
+        "--wasm=false",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+    result.expect("the duplicate-arm warning fixture must generate");
+}
+
+#[test]
+fn single_element_type_choice_warning_reports_once() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "tests::robustness_tests::single_element_type_choice_warning_child",
+            "--nocapture",
+        ])
+        .env("CDDL_CYCLE8_WARNING_CHILD", "1")
+        .output()
+        .expect("must run the warning-capture child");
+    assert!(
+        output.status.success(),
+        "warning-capture child failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        output
+            .matches("Dropping arm 2 of an inline type choice")
+            .count(),
+        1,
+        "one single-element type-choice node must warn once:\n{output}"
+    );
+}
+
+/// A revisited rejected arm still carries the inert placeholder, but it must never be admitted to
+/// the dedup set. Otherwise the nested anonymous array in `[[int] / null / uint]` makes the real
+/// `null` arm look like a duplicate placeholder and emits a false "Dropping arm 2" warning.
+#[test]
+fn revisited_rejected_type_choice_arm_does_not_enter_dedup_child() {
+    if std::env::var_os("CDDL_CYCLE8_SEMANTIC_CHILD").is_none() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_cycle8_rejected_arm_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, "x = [[int] / null / uint]\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "cycle8_semantic_unused",
+        "--wasm=false",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+    result.expect_err("the invalid first arm must remain a graceful rejection");
+}
+
+#[test]
+fn revisited_rejected_type_choice_arm_does_not_enter_dedup() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "tests::robustness_tests::revisited_rejected_type_choice_arm_does_not_enter_dedup_child",
+            "--nocapture",
+        ])
+        .env("CDDL_CYCLE8_SEMANTIC_CHILD", "1")
+        .output()
+        .expect("must run the semantic-regression child");
+    assert!(
+        output.status.success(),
+        "semantic-regression child failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.contains("Dropping arm 2 of an inline type choice"),
+        "a rejected placeholder must not mask the real null arm:\n{output}"
+    );
 }
 
 /// A bareword member key (`a:`) and a quoted text member key (`"a":`) are the same CDDL construct
