@@ -1019,7 +1019,7 @@ impl Hash {
                 "Hash",
                 DeserializeFailure::RangeCheck {
                     found: inner.len() as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(8),
                 },
             ));
@@ -2009,7 +2009,7 @@ impl String64 {
                 "String64",
                 DeserializeFailure::RangeCheck {
                     found: inner.len() as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(64),
                 },
             ));

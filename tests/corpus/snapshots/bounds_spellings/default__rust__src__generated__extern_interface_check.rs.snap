@@ -31,6 +31,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::WIntRange>();
     _assert_serialize::<crate::generated::WNintRange>();
     _assert_deserialize::<crate::generated::WNintRange>();
+    _assert_serialize::<crate::generated::WZeroExact>();
+    _assert_deserialize::<crate::generated::WZeroExact>();
     _assert_serialize::<crate::generated::WZeroLen>();
     _assert_deserialize::<crate::generated::WZeroLen>();
 }

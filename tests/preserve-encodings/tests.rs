@@ -465,7 +465,7 @@ mod tests {
             assert_eq!(irregular_bytes, irregular.to_cbor_bytes());
         }
         let _ = String64::from_cbor_bytes(&cbor_str_sz(&(0..64).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two))).unwrap();
-        assert_decode_reject_reason::<String64>(&cbor_str_sz(&(0..65).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two)), "65 not in range 0 - 64");
+        assert_decode_reject_reason::<String64>(&cbor_str_sz(&(0..65).map(|_| "?").collect::<String>(), StringLenSz::Len(Sz::Two)), "65 not at most 64");
     }
 
     #[test]

@@ -2749,7 +2749,7 @@ impl Deserialize for String64 {
             if inner.len() > 64 {
                 return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(64),
                 }
                 .into());

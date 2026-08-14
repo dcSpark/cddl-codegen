@@ -164,6 +164,51 @@ expression: ir
                         },
                     },
                     RustField {
+                        name: "m_zero_exact",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: Some(
+                                    (
+                                        None,
+                                        Some(
+                                            0,
+                                        ),
+                                    ),
+                                ),
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
                         name: "m_nint_range",
                         rust_type: RustType {
                             conceptual_type: Primitive(
@@ -366,6 +411,52 @@ expression: ir
                         -100,
                     ),
                     None,
+                ),
+            ),
+            float_min_max: None,
+        },
+    },
+    RustIdent(
+        "WZeroExact",
+    ): RustStruct {
+        ident: RustIdent(
+            "WZeroExact",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    duplicates: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: Some(
+                (
+                    Some(
+                        0,
+                    ),
+                    Some(
+                        0,
+                    ),
                 ),
             ),
             float_min_max: None,

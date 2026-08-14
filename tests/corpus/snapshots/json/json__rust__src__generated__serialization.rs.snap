@@ -1036,7 +1036,7 @@ impl Deserialize for U8Wrapper {
             if inner > 255 {
                 return Err(DeserializeFailure::RangeCheck {
                     found: inner as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(255),
                 }
                 .into());

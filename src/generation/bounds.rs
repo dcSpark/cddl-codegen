@@ -299,8 +299,8 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
 ///
 /// The same decision tree as [`value_bounds_check_line`], reached through the SAME condition owners
 /// (`reject_cond`, `bounds_check_expr_rust_type`, `bounds_check_expr_non_negative`,
-/// `nint_bounds_to_u64`, `float_accept_cond`, `float_literal`): only the `Err(..)` construction
-/// forks. Two things force that fork and nothing else does — the component guest reports every
+/// `nint_bounds_to_u64`, `canonical_range_check_payload`, `float_accept_cond`, `float_literal`):
+/// only the `Err(..)` construction forks. Two things force that fork and nothing else does — the component guest reports every
 /// failure as the `String` of the rust error's `Display` (through its own `err` helper), and it
 /// spells the error types through the generated crate's path (`runtime`) rather than bare, because
 /// the guest file imports nothing from that crate. A second CONDITION spelling is precisely the
@@ -361,14 +361,15 @@ pub(super) fn component_bounds_check_line(ty: &RustType, e: &str, runtime: &str)
     } else {
         *bounds
     };
+    let (payload_min, payload_max) = canonical_range_check_payload(&bounds, non_negative);
     let opt = |b: Option<i128>| b.map_or_else(|| "None".to_owned(), |b| format!("Some({b})"));
     Some(format!(
         "if {} {{ {} }}",
         reject_cond(&bounds, non_negative).render(&check_expr),
         wrap(format!(
             "RangeCheck{{ found: {check_expr} as i128, min: {}, max: {} }}",
-            opt(bounds.0),
-            opt(bounds.1),
+            opt(payload_min),
+            opt(payload_max),
         ))
     ))
 }
@@ -379,7 +380,10 @@ pub(super) fn component_bounds_check_line(ty: &RustType, e: &str, runtime: &str)
 /// `min == 0` lower leg (`e < 0`, dead there and an `unused_comparisons` wart) be dropped; when
 /// unsure a site passes `false` and keeps the long form. `location` threads through to
 /// `range_check_err` (the wrapper's name-carrying `new()` copy vs the locationless deserialize copy).
-/// The reported `min`/`max` are ALWAYS the original bounds, regardless of how the condition simplifies.
+/// The reported `min`/`max` are the canonical effective window: a proven-non-negative expression's
+/// redundant inclusive zero minimum in an ordinary zero-to-non-negative-max window is reported as `None`,
+/// matching its one-sided condition; all other bounds (including inverted `.ne` encodings) retain
+/// their authored payload.
 /// `found_i128` threads through to `range_check_err` (whether the found expression is already i128).
 pub(super) fn bounds_check_if_block(
     bounds: &(Option<i128>, Option<i128>),
@@ -389,11 +393,34 @@ pub(super) fn bounds_check_if_block(
     location: Option<&str>,
     found_i128: bool,
 ) -> String {
+    let (payload_min, payload_max) = canonical_range_check_payload(bounds, non_negative);
     format!(
         "if {} {}",
         reject_cond(bounds, non_negative).render(e),
-        range_check_err(e, bounds.0, bounds.1, return_err, location, found_i128)
+        range_check_err(
+            e,
+            payload_min,
+            payload_max,
+            return_err,
+            location,
+            found_i128
+        )
     )
+}
+
+/// The diagnostic payload for an integer range check. A zero lower endpoint conveys no restriction
+/// beyond a proven-non-negative checked expression, so ordinary zero-to-non-negative-max windows
+/// report their effective one-sided range. Keep inverted `.ne` encodings and every sign-unknown
+/// window authored: their bounds still carry semantic information not implied by the expression.
+fn canonical_range_check_payload(
+    bounds: &(Option<i128>, Option<i128>),
+    non_negative: bool,
+) -> (Option<i128>, Option<i128>) {
+    let min = match (bounds.0, bounds.1, non_negative) {
+        (Some(0), Some(max), true) if max >= 0 => None,
+        (min, _, _) => min,
+    };
+    (min, bounds.1)
 }
 
 /// The shape of the reject condition an integer value window imposes, held separately from its
@@ -685,5 +712,67 @@ pub(super) fn nint_arm_needs_width(arm: &SignArmBounds, wmin: i128) -> bool {
         SignArmBounds::Empty(_) => false,
         SignArmBounds::Check(bounds) => !lower_caps(&Some(*bounds), wmin),
         SignArmBounds::Unconstrained => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_minimum_payload_is_canonical_only_for_proven_non_negative_checks() {
+        let bounds = (Some(0), Some(100));
+
+        assert_eq!(
+            bounds_check_if_block(&bounds, "x", true, true, Some("named"), false),
+            "if x > 100 { return Err(DeserializeError::new(\"named\", DeserializeFailure::RangeCheck{ found: x as i128, min: None, max: Some(100)})) }"
+        );
+        assert_eq!(
+            bounds_check_if_block(&bounds, "x", false, true, None, false),
+            "if x > 100 { Err(DeserializeFailure::RangeCheck{ found: x as i128, min: None, max: Some(100)}.into()) }"
+        );
+        assert_eq!(
+            bounds_check_if_block(&bounds, "x", false, false, None, false),
+            "if x < 0 || x > 100 { Err(DeserializeFailure::RangeCheck{ found: x as i128, min: Some(0), max: Some(100)}.into()) }"
+        );
+        let exclusion = (Some(0), Some(-2));
+        assert_eq!(
+            bounds_check_if_block(&exclusion, "x", false, true, None, false),
+            "if x == -1 { Err(DeserializeFailure::RangeCheck{ found: x as i128, min: Some(0), max: Some(-2)}.into()) }"
+        );
+        let exact = (Some(0), Some(0));
+        assert_eq!(
+            bounds_check_if_block(&exact, "x", false, true, None, false),
+            "if x != 0 { Err(DeserializeFailure::RangeCheck{ found: x as i128, min: None, max: Some(0)}.into()) }"
+        );
+    }
+
+    #[test]
+    fn component_zero_minimum_payload_uses_the_shared_canonical_window() {
+        let bounded = |primitive, bounds| {
+            let mut ty = RustType::new(ConceptualRustType::Primitive(primitive));
+            // Construct this directly so the renderer is tested at its own seam: normal parsing
+            // already erases an unsigned redundant zero before it can reach either emitter.
+            ty.config.bounds = Some(bounds);
+            ty
+        };
+        let render = |ty: &RustType| {
+            component_bounds_check_line(ty, "value", "runtime")
+                .expect("bounded primitive must require a component check")
+        };
+
+        assert_eq!(
+            render(&bounded(Primitive::U64, (Some(0), Some(100)))),
+            "if value > 100 { return Err(err(runtime::error::DeserializeError::from(runtime::error::DeserializeFailure::RangeCheck{ found: value as i128, min: None, max: Some(100) }))); }"
+        );
+        assert_eq!(
+            render(&bounded(Primitive::I64, (Some(0), Some(100)))),
+            "if value < 0 || value > 100 { return Err(err(runtime::error::DeserializeError::from(runtime::error::DeserializeFailure::RangeCheck{ found: value as i128, min: Some(0), max: Some(100) }))); }"
+        );
+        // The inverted tuple is the `.ne -1` encoding, so its zero endpoint remains authored.
+        assert_eq!(
+            render(&bounded(Primitive::U64, (Some(0), Some(-2)))),
+            "if value == -1 { return Err(err(runtime::error::DeserializeError::from(runtime::error::DeserializeFailure::RangeCheck{ found: value as i128, min: Some(0), max: Some(-2) }))); }"
+        );
     }
 }

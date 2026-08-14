@@ -32,8 +32,9 @@
 //!      `recombination_preserve_crates_execute`, `recombination_json_crates_execute` (both
 //!      `cargo test` the emitted-tests rust crate under their `ALL_PROFILES` flags), and
 //!      `recombination_wasm_crates_check` (`--wasm=true`, `cargo check` the wasm crate) — batch the
-//!      profile's `ok` compositions (~`LAYER2_RULES_PER_BATCH` rules/batch; names are collision-free
-//!      by construction; per-profile scratch + `CARGO_TARGET_DIR`). Any batch failure is
+//!      profile's `ok` compositions (~`LAYER2_RULES_PER_BATCH` rules/batch; authored root/aux-rule
+//!      names are collision-free by construction, while generated names remain a product invariant;
+//!      per-profile scratch + `CARGO_TARGET_DIR`). Any batch failure is
 //!      re-attributed by rerunning members individually; a failing member whose desc matches neither
 //!      the shared `LAYER2_KNOWN_BAD` nor the profile's own ledger is a NEW finding, and a
 //!      classification panic outside `KNOWN_PANIC_CLASSES` ∪ the profile's panic ledger likewise.

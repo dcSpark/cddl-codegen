@@ -6478,13 +6478,57 @@ fn rust_type(
             // due to undercase primitive names, we need to convert here
             combined_name.push_str(&variant.rust_type().for_variant().to_string());
         }
-        let combined_ident = RustIdent::new(CDDLIdent::new(&combined_name));
-        types.register_rust_struct(
-            parent_visitor,
-            RustStruct::new_type_choice(combined_ident, None, Some(&rule_metadata), variants, cli),
+        let base_ident = RustIdent::new(CDDLIdent::new(&combined_name));
+        // Same carrier names do not prove the same enum: a value window, encoding operation, or
+        // variant directive can make two `I64OrText` candidates incompatible. Reuse the existing
+        // anonymous owner only for the full structural fingerprint; otherwise mint a deterministic
+        // sibling. An AUTHOR who owns the base stays on the established global-registration seam:
+        // its structurally identical anonymous use shares that type, and an incompatible one rejects
+        // rather than renaming either public claimant. Looking across the anonymous carrier family's
+        // prior siblings (rather than only at the bare name) preserves reuse when A, B, A are
+        // encountered in one spec.
+        let candidate = RustStruct::new_type_choice(
+            base_ident.clone(),
+            None,
+            Some(&rule_metadata),
+            variants.clone(),
             cli,
         );
-        types.new_type(&CDDLIdent::new(combined_name), cli)
+        let sibling_base = format!("{combined_name}_inline_choice");
+        let sibling_prefix = RustIdent::new(CDDLIdent::new(&sibling_base)).to_string();
+        let combined_ident = if types.is_toplevel_rule(&base_ident) {
+            base_ident
+        } else {
+            types
+                .rust_structs()
+                .iter()
+                .find(|(ident, existing)| {
+                    !types.is_toplevel_rule(ident)
+                        && (ident.as_ref() == base_ident.as_ref()
+                            || ident.as_ref().starts_with(&sibling_prefix))
+                        && existing.structurally_equivalent(&candidate)
+                })
+                .map(|(ident, _)| ident.clone())
+                .unwrap_or_else(|| {
+                    if types.rust_struct(&base_ident).is_some() {
+                        types.fresh_synthesized_ident(&sibling_base)
+                    } else {
+                        base_ident
+                    }
+                })
+        };
+        types.register_rust_struct(
+            parent_visitor,
+            RustStruct::new_type_choice(
+                combined_ident.clone(),
+                None,
+                Some(&rule_metadata),
+                variants,
+                cli,
+            ),
+            cli,
+        );
+        types.new_type(&CDDLIdent::new(combined_ident.to_string()), cli)
     }
 }
 

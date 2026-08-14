@@ -3560,7 +3560,7 @@ impl Deserialize for Hash {
             if inner.len() > 8 {
                 return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(8),
                 }
                 .into());

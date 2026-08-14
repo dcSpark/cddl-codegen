@@ -9561,7 +9561,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 10 is the EXCLUDED upper endpoint of `0...10` (half-open excludes 10) — violates the exclusive range"
-expect_err = "10 not in range 0 - 9"
+expect_err = "10 not at most 9"
 
 [[row.vector]]
 hex = "0b"
@@ -9569,7 +9569,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 11 is above the `0...10` window — violates the exclusive range"
-expect_err = "11 not in range 0 - 9"
+expect_err = "11 not at most 9"
 
 [[row]]
 id = "rangeop.exclusive.float"
@@ -9857,7 +9857,7 @@ source = "hand"
 expect = "reject"
 class = "constraint"
 reason = "the value 11 is above the `0..10` window — violates the inclusive range"
-expect_err = "11 not in range 0 - 10"
+expect_err = "11 not at most 10"
 
 [[row]]
 id = "rangeop.inclusive.float"

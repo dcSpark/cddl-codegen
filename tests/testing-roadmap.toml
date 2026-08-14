@@ -184,7 +184,6 @@ entries = [
   "testing.extern-deps-wasm-boundary-surface-packaging-json-gen",
   "testing.generic-raw-bytes-base-refused-generic-extern-base",
   "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings",
-  "testing.twin-implementation.own-reviewed-change-rule",
   "part-non-recorded-isn-t-re-litigated-coverage-gap",
   "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count",
   "testing.run-local-values-gate-cache-key-material-proven",
@@ -7242,27 +7241,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.twin-implementation.own-reviewed-change-rule"
-title = "Its own reviewed change, never a drive-by:"
-
-[record.payload]
-kind = "control"
-body_md = '''  - *Its own reviewed change, never a drive-by:* unify the zero-min RangeCheck payload — the same
-    authored zero-min bound reports `min: Some(0)` in wrapper payloads vs `min: None` at member
-    sites because the drop-the-redundant-zero decision itself has multiple owners
-    (`RustType::with_bounds` normalizes the member channel at IR build; the wrapper's `min_max`
-    channel bypasses it; parsing's occurrence filter and `classify_sign_arm`'s uint-arm filter
-    spell the same decision in their own domains). A user-visible error-message change.
-'''
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-next-work-n58"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.twin-implementation.own-reviewed-change-rule's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
 id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 title = "Twin in-repo implementations of one semantic decision drifting apart (emission spellings, detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix pattern; only the directive-SET flavor has a firing detector so far."
 
@@ -8822,11 +8800,6 @@ kind = "parent_of"
 target = "testing.guard.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 
 [[relation]]
-source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-kind = "parent_of"
-target = "testing.twin-implementation.own-reviewed-change-rule"
-
-[[relation]]
 source = "testing.unused-imports-generated-crates-trait-import-class-name"
 kind = "parent_of"
 target = "testing.guard.unused-imports-generated-crates-trait-import-class-name"
@@ -9823,13 +9796,6 @@ heading = "Deferred features (build when a real consumer needs them)"
 [[reference]]
 id = "testing-roadmap-next-work-n57"
 source = "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n58"
-source = "testing.twin-implementation.own-reviewed-change-rule"
 kind = "file_heading"
 path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"

@@ -28,6 +28,7 @@ pub struct BoundsMembers {
     pub m_exact_size: Vec<u8>,
     pub m_zero_len: Vec<u8>,
     pub m_int_range: u64,
+    pub m_zero_exact: u64,
     pub m_nint_range: u64,
 }
 
@@ -36,6 +37,7 @@ impl BoundsMembers {
         m_exact_size: Vec<u8>,
         m_zero_len: Vec<u8>,
         m_int_range: u64,
+        m_zero_exact: u64,
         m_nint_range: u64,
     ) -> Result<Self, DeserializeError> {
         if m_exact_size.len() != 3 {
@@ -62,6 +64,14 @@ impl BoundsMembers {
             }
             .into());
         }
+        if m_zero_exact > 0 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: m_zero_exact as i128,
+                min: None,
+                max: Some(0),
+            }
+            .into());
+        }
         if m_nint_range > 99 {
             return Err(DeserializeFailure::RangeCheck {
                 found: m_nint_range as i128,
@@ -74,6 +84,7 @@ impl BoundsMembers {
             m_exact_size,
             m_zero_len,
             m_int_range,
+            m_zero_exact,
             m_nint_range,
         })
     }
@@ -171,7 +182,7 @@ impl WIntRange {
                 "WIntRange",
                 DeserializeFailure::RangeCheck {
                     found: inner as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(100),
                 },
             ));
@@ -295,6 +306,75 @@ impl schemars::JsonSchema for WNintRange {
     }
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct WZeroExact(pub(crate) u64);
+
+impl WZeroExact {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
+    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner != 0 {
+            return Err(DeserializeError::new(
+                "WZeroExact",
+                DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: None,
+                    max: Some(0),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u64> for WZeroExact {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        WZeroExact::new(inner)
+    }
+}
+
+impl serde::Serialize for WZeroExact {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for WZeroExact {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::new(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Unsigned(inner),
+                &"invalid WZeroExact",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for WZeroExact {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("WZeroExact")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WZeroLen(pub(crate) Vec<u8>);
 
@@ -309,7 +389,7 @@ impl WZeroLen {
                 "WZeroLen",
                 DeserializeFailure::RangeCheck {
                     found: inner.len() as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(32),
                 },
             ));
@@ -381,6 +461,12 @@ impl From<WIntRange> for u64 {
 
 impl From<WNintRange> for u64 {
     fn from(wrapper: WNintRange) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<WZeroExact> for u64 {
+    fn from(wrapper: WZeroExact) -> Self {
         wrapper.0
     }
 }

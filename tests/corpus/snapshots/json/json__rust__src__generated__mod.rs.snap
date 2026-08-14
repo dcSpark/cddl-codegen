@@ -735,7 +735,7 @@ impl U8Wrapper {
                 "U8Wrapper",
                 DeserializeFailure::RangeCheck {
                     found: inner as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(255),
                 },
             ));

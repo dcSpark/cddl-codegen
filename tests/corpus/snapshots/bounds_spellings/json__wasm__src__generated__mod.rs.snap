@@ -57,6 +57,10 @@ impl BoundsMembers {
         self.0.m_int_range
     }
 
+    pub fn m_zero_exact(&self) -> u64 {
+        self.0.m_zero_exact
+    }
+
     pub fn m_nint_range(&self) -> u64 {
         self.0.m_nint_range
     }
@@ -65,11 +69,18 @@ impl BoundsMembers {
         m_exact_size: Vec<u8>,
         m_zero_len: Vec<u8>,
         m_int_range: u64,
+        m_zero_exact: u64,
         m_nint_range: u64,
     ) -> Result<BoundsMembers, JsError> {
-        cddl_lib::BoundsMembers::new(m_exact_size, m_zero_len, m_int_range, m_nint_range)
-            .map(Into::into)
-            .map_err(Into::into)
+        cddl_lib::BoundsMembers::new(
+            m_exact_size,
+            m_zero_len,
+            m_int_range,
+            m_zero_exact,
+            m_nint_range,
+        )
+        .map(Into::into)
+        .map_err(Into::into)
     }
 }
 
@@ -267,6 +278,66 @@ impl From<WNintRange> for cddl_lib::WNintRange {
 
 impl AsRef<cddl_lib::WNintRange> for WNintRange {
     fn as_ref(&self) -> &cddl_lib::WNintRange {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WZeroExact(pub(crate) cddl_lib::WZeroExact);
+
+#[wasm_bindgen]
+impl WZeroExact {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WZeroExact, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<WZeroExact, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Result<WZeroExact, JsError> {
+        cddl_lib::WZeroExact::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::WZeroExact> for WZeroExact {
+    fn from(native: cddl_lib::WZeroExact) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WZeroExact> for cddl_lib::WZeroExact {
+    fn from(wasm: WZeroExact) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WZeroExact> for WZeroExact {
+    fn as_ref(&self) -> &cddl_lib::WZeroExact {
         &self.0
     }
 }

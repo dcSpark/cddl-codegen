@@ -9,10 +9,11 @@ package cddl:cddl-lib@0.1.0;
 
 interface types {
   resource bounds-members {
-    constructor(m-exact-size: list<u8>, m-zero-len: list<u8>, m-int-range: u64, m-nint-range: u64) -> result<bounds-members, string>;
+    constructor(m-exact-size: list<u8>, m-zero-len: list<u8>, m-int-range: u64, m-zero-exact: u64, m-nint-range: u64) -> result<bounds-members, string>;
     m-exact-size: func() -> list<u8>;
     m-zero-len: func() -> list<u8>;
     m-int-range: func() -> u64;
+    m-zero-exact: func() -> u64;
     m-nint-range: func() -> u64;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<bounds-members, string>;
@@ -34,6 +35,12 @@ interface types {
     get: func() -> u64;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<w-nint-range, string>;
+  }
+  resource w-zero-exact {
+    constructor(inner: u64) -> result<w-zero-exact, string>;
+    get: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<w-zero-exact, string>;
   }
   resource w-zero-len {
     constructor(inner: list<u8>) -> result<w-zero-len, string>;

@@ -13,6 +13,7 @@ pub struct BoundsMembersEncoding {
     pub m_exact_size_encoding: StringEncoding,
     pub m_zero_len_encoding: StringEncoding,
     pub m_int_range_encoding: Option<cbor_event::Sz>,
+    pub m_zero_exact_encoding: Option<cbor_event::Sz>,
     pub m_nint_range_encoding: Option<cbor_event::Sz>,
 }
 
@@ -28,6 +29,11 @@ pub struct WIntRangeEncoding {
 
 #[derive(Clone, Debug, Default)]
 pub struct WNintRangeEncoding {
+    pub inner_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WZeroExactEncoding {
     pub inner_encoding: Option<cbor_event::Sz>,
 }
 

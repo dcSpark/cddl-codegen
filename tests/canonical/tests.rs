@@ -607,11 +607,11 @@ mod tests {
         assert!(bar_missing.to_string().contains("Mandatory field"), "{bar_missing}");
 
         // string64 = text .size (0..64) — deserialize-side bounds check: 64 chars pass, 65 reject
-        // (RangeCheck's "not in range" display).
+        // (RangeCheck's canonical effective-window "not at most 64" display).
         let text_n = |n: usize| [&[0x78, n as u8][..], &vec![0x3f; n]].concat();
         String64::from_cbor_bytes(&text_n(64)).unwrap();
         let string64_long = String64::from_cbor_bytes(&text_n(65)).unwrap_err();
-        assert!(string64_long.to_string().contains("not in range"), "{string64_long}");
+        assert!(string64_long.to_string().contains("65 not at most 64"), "{string64_long}");
 
         // TypeChoice = 0 / "hello world" / uint / text / #6.16([*uint]) — a map matches no variant.
         TypeChoice::from_cbor_bytes(&[0x01]).unwrap();

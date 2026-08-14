@@ -21,6 +21,7 @@ impl wit_types::Guest for Component {
     type WExactSize = WitWExactSize;
     type WIntRange = WitWIntRange;
     type WNintRange = WitWNintRange;
+    type WZeroExact = WitWZeroExact;
     type WZeroLen = WitWZeroLen;
 }
 
@@ -39,13 +40,19 @@ impl wit_types::GuestBoundsMembers for WitBoundsMembers {
         m_exact_size: Vec<u8>,
         m_zero_len: Vec<u8>,
         m_int_range: u64,
+        m_zero_exact: u64,
         m_nint_range: u64,
     ) -> Result<Self, String> {
         let m_exact_size = m_exact_size.into_iter().collect();
         let m_zero_len = m_zero_len.into_iter().collect();
-        let inner =
-            cddl_lib::BoundsMembers::new(m_exact_size, m_zero_len, m_int_range, m_nint_range)
-                .map_err(err)?;
+        let inner = cddl_lib::BoundsMembers::new(
+            m_exact_size,
+            m_zero_len,
+            m_int_range,
+            m_zero_exact,
+            m_nint_range,
+        )
+        .map_err(err)?;
         Ok(WitBoundsMembers(RefCell::new(inner)))
     }
 
@@ -62,6 +69,11 @@ impl wit_types::GuestBoundsMembers for WitBoundsMembers {
     fn m_int_range(&self) -> u64 {
         let me = self.0.borrow();
         me.m_int_range
+    }
+
+    fn m_zero_exact(&self) -> u64 {
+        let me = self.0.borrow();
+        me.m_zero_exact
     }
 
     fn m_nint_range(&self) -> u64 {
@@ -160,6 +172,33 @@ impl wit_types::GuestWNintRange for WitWNintRange {
     fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::WNintRange, String> {
         <cddl_lib::WNintRange as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
             .map(|v| wit_types::WNintRange::new(WitWNintRange(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitWZeroExact(pub RefCell<cddl_lib::WZeroExact>);
+
+impl wit_types::GuestWZeroExact for WitWZeroExact {
+    fn new(inner: u64) -> Result<Self, String> {
+        let inner = cddl_lib::WZeroExact::new(inner).map_err(err)?;
+        Ok(WitWZeroExact(RefCell::new(inner)))
+    }
+
+    fn get(&self) -> u64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::WZeroExact as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::WZeroExact, String> {
+        <cddl_lib::WZeroExact as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::WZeroExact::new(WitWZeroExact(RefCell::new(v))))
             .map_err(err)
     }
 }

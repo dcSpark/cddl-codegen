@@ -12229,6 +12229,108 @@ fn camel_case_equivalent_rule_idents_reject_at_global_struct_registration() {
     }
 }
 
+/// Member-position type choices have no authored enum name. Their variant carrier names are a useful
+/// default (`-10..10 / tstr` → `I64OrText`), but not a globally unique identity: another inline
+/// choice can have the same carriers and a different bound or encoding. The latter needs its own
+/// enum, while a structurally identical later choice must still reuse the original owner. Exercise
+/// all layer-2 emission faces in-process: this A/B/A expansion of the escaped two-rule composition
+/// also pins reuse after an incompatible sibling, without adding a corpus fixture (and its unrelated
+/// decode-catalog vectors) for a generator-name-only regression.
+#[test]
+fn incompatible_anonymous_type_choices_get_deterministic_siblings() {
+    const INCOMPATIBLE: &str = "wide_holder = [value: -10..10 / tstr]\n\
+                                narrow_holder = [value: -5..5 / tstr]\n\
+                                wide_again_holder = [value: -10..10 / tstr]\n";
+    let profiles: &[(&str, &[&str])] = &[
+        ("default", &["--wasm=false"]),
+        ("preserve", &["--wasm=false", "--preserve-encodings=true"]),
+        ("json", &["--wasm=false", "--json-serde-derives=true"]),
+        ("wasm", &["--wasm=true"]),
+    ];
+
+    for (profile, extra) in profiles {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_inline_choice_collision_{profile}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, INCOMPATIBLE).unwrap();
+        let mut argv = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "inline_choice_collision_unused",
+        ];
+        argv.extend_from_slice(extra);
+        let generated = crate::api::generated_strings(&Cli::parse_from(argv));
+        std::fs::remove_file(&path).ok();
+        let src = generated
+            .unwrap_or_else(|e| {
+                panic!("[{profile}] incompatible anonymous type choices must generate: {e}")
+            })
+            .into_values()
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            src.matches("pub enum I64OrText {").count(),
+            1,
+            "[{profile}] the carrier-derived enum must keep one owner:\n{src}"
+        );
+        assert_eq!(
+            src.matches("pub enum I64OrTextInlineChoice {").count(),
+            1,
+            "[{profile}] incompatible carrier twins need one deterministic sibling:\n{src}"
+        );
+        assert!(
+            !src.contains("pub enum I64OrTextInlineChoice1"),
+            "[{profile}] the final A must reuse its prior owner instead of minting a third enum:\n{src}"
+        );
+        assert!(
+            src.contains("max: Some(10)") && src.contains("max: Some(5)"),
+            "[{profile}] each enum must retain its own integer window:\n{src}"
+        );
+    }
+
+    for (tag, spec) in [
+        (
+            "authored_first",
+            "i64_or_text = -5..5 / tstr\nholder = [value: -5..5 / tstr]\n",
+        ),
+        (
+            "inline_first",
+            "holder = [value: -5..5 / tstr]\ni64_or_text = -5..5 / tstr\n",
+        ),
+    ] {
+        expect_generates(
+            &format!("anonymous_choice_authored_equivalent_{tag}"),
+            spec,
+            &["--wasm=false"],
+        );
+    }
+    for (tag, spec) in [
+        (
+            "authored_first",
+            "i64_or_text = -5..5 / tstr\nholder = [value: -10..10 / tstr]\n",
+        ),
+        (
+            "inline_first",
+            "holder = [value: -10..10 / tstr]\ni64_or_text = -5..5 / tstr\n",
+        ),
+    ] {
+        let err = expect_graceful_rejection(
+            &format!("anonymous_choice_authored_incompatible_{tag}"),
+            spec,
+            &["--wasm=false"],
+        );
+        assert!(
+            err.contains("generated Rust type `I64OrText` has incompatible registrations")
+                && err.contains("first claimant is a type-choice enum")
+                && err.contains("later claimant is a type-choice enum"),
+            "[{tag}] an authored carrier-derived name must remain on the global registration seam: {err}"
+        );
+    }
+}
+
 /// `IntermediateTypes::new` pre-registers the built-in `int` prelude marker so unshadowed CDDL
 /// `int` references resolve to the hand-written `Int`. An authored rule with that exact lowercase
 /// spelling owns the same emitted name instead, so the marker must be released before any authored

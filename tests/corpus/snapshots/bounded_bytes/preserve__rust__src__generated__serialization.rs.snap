@@ -36,7 +36,7 @@ impl Deserialize for Hash {
             if inner.len() > 32 {
                 return Err(DeserializeFailure::RangeCheck {
                     found: inner.len() as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(32),
                 }
                 .into());

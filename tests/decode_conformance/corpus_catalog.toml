@@ -1058,60 +1058,60 @@ expect = "accept"
 [[row]]
 id = "bounds_spellings.bounds_members"
 axis = "corpus"
-example = "bounds_members = [\n  m_exact_size: bytes .size 3,\n  m_zero_len: bytes .size (0..32),\n  m_int_range: 0..100,\n  m_nint_range: nint .ge -100,\n]"
+example = "bounds_members = [\n  m_exact_size: bytes .size 3,\n  m_zero_len: bytes .size (0..32),\n  m_int_range: 0..100,\n  m_zero_exact: 0..0,\n  m_nint_range: nint .ge -100,\n]"
 fixture = "bounds_spellings"
 rule = "bounds_members"
-spec = "__probe_holder = [0, bounds_members]\nbounds_members = [\n  m_exact_size: bytes .size 3,\n  m_zero_len: bytes .size (0..32),\n  m_int_range: 0..100,\n  m_nint_range: nint .ge -100,\n]"
+spec = "__probe_holder = [0, bounds_members]\nbounds_members = [\n  m_exact_size: bytes .size 3,\n  m_zero_len: bytes .size (0..32),\n  m_int_range: 0..100,\n  m_zero_exact: 0..0,\n  m_nint_range: nint .ge -100,\n]"
 mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820084430ea8a05495763b9ca11151877d36115a0caf8fd375f2cbed0427"
+hex = "8200854363d9ee4726e79845730bc512003839"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008443188acf581e2188cfca281adc671805df5553b69002cd19b12f80ca87c8cd646a460167183c385f"
+hex = "82008543651f405693a33ca73f50b8a0108c1cbf6d9f38466389ea0f34fb05003827"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008443249fa050e356afa10a8093188b1b2af68b58ce71185f3845"
+hex = "82008543669e8f55d12f91530cfa28953eb39c5ae41291bda0e4a20d89181d003848"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200844355e3ed507e4329403c56699b73a22f3f8e735cb11834381c"
+hex = "820085436cfba64da8af8b2a64bf96a05a373c1e16181e003848"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820084437000494d6689bed30551eec7224214793218283841"
+hex = "82008543814f2745eb539ecaca1861003839"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008443a8f5f24e39fe9e9289a4f914f299819671a0182d3831"
+hex = "820085438594f3539bd5dc4779e4979a82c97467a67a880fd5b07e186100381e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008443ab8d15551982d38ecc4f56ced14ab8466835c46858ca1ec96518403861"
+hex = "82008543900bbb4b367714e0dc4b369762afcc1825003848"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008443ade6f05484aed5c0ec52894070aac08698d4809d551f5a3d185a381c"
+hex = "82008543a4f74947760892e87310fc184700385b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008443ca0b33581a2e8f993b35bc205355db0832d2970ded67f896aa518f6da866c418543830"
+hex = "82008543f238c9581d5c7a8f233183e69b1ee2fd3050e806165b2051d1d8b61132997757a38e1831002b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008443d3f2da5819abbcabcea08c2773492efd2433f0ae9f809ed8333d833137fd182222"
+hex = "82008543fb3bc34f25c5a4f0a601b84cc8ea58c1bd11cb183500381f"
 source = "ruby-generate"
 expect = "accept"
 
@@ -1126,52 +1126,52 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "82004309563e"
+hex = "820043061715"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200431f1807"
+hex = "82004324645a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200434fba6f"
+hex = "8200434f9402"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200436d9673"
+hex = "8200435b7286"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820043705573"
+hex = "82004360bea5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200438dbee1"
+hex = "82004361b60a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820043b06a32"
+hex = "82004399dab1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820043df2e11"
+hex = "820043a6e185"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820043e26302"
+hex = "820043b65220"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820043e9d996"
+hex = "820043c1a2fa"
 source = "ruby-generate"
 expect = "accept"
 
@@ -1186,52 +1186,47 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820008"
+hex = "8200181d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82000e"
+hex = "82001828"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820011"
+hex = "8200182c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200181e"
+hex = "82001831"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82001834"
+hex = "82001833"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82001849"
+hex = "8200184c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200184d"
+hex = "8200184e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82001852"
+hex = "8200185d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82001856"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "82001862"
+hex = "82001860"
 source = "ruby-generate"
 expect = "accept"
 
@@ -1246,52 +1241,67 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820030"
+hex = "82002b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820037"
+hex = "82003820"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200381a"
+hex = "82003821"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82003837"
+hex = "82003830"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82003840"
+hex = "82003834"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200384e"
+hex = "8200383f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82003857"
+hex = "8200384c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200385b"
+hex = "8200385c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82003860"
+hex = "8200385f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82003862"
+hex = "82003861"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "bounds_spellings.w_zero_exact"
+axis = "corpus"
+example = "w_zero_exact = 0..0"
+fixture = "bounds_spellings"
+rule = "w_zero_exact"
+spec = "__probe_holder = [0, w_zero_exact]\nw_zero_exact = 0..0"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820000"
 source = "ruby-generate"
 expect = "accept"
 
@@ -1306,52 +1316,52 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "8200421bc7"
+hex = "82004143"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82004303f021"
+hex = "8200419b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82004a7b03e84c7f9e410a6623"
+hex = "820046b8a9a5d68204"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82004cc7e29830a5e4f6dedc794f39"
+hex = "820047e41887e7e38cf9"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82004da1988f8b6faa2b3c0029a32a78"
+hex = "82004d85f1a4c199cb9a5eb89d146651"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820054f0e55dbd21d441b05ce3b199e9c08207bd87e339"
+hex = "8200558083152b7de8529871c64a5536880453c22f1136f5"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200560a6ba58ceaff121f7f4513a7f8851acdda5d20b4cc05"
+hex = "8200562bb7682f70a51ea723033c35cd4fa009b2b3ebc9d632"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200570d4d8bc99aaca7d5c1b3722b37e638e1fccbfdf495bd0e"
+hex = "82005818d07da632e2185bfe9b2339dc3f223bd45cc1998af874ba81"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82005818d0330b1c86a71a10f7e5ea48321b2b5c614eb43df3dcdbfe"
+hex = "8200581e4ddc21d4434cf47beba8acb17c67c84045b57ed0f580547c48f40254c46d"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200581f0994917a1240e2d95a8808a4d3354fe48d2538aed7bac3fc912edd75ae6f27"
+hex = "8200581f644ba95a5a406ba6ab2fb893ae76292dfd46ebabb655294c7841f88f3c7e7b"
 source = "ruby-generate"
 expect = "accept"
 

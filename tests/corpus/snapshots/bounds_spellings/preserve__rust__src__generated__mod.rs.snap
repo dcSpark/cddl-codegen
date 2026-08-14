@@ -23,7 +23,7 @@ pub mod serialization;
 use crate::generated::error::*;
 use cbor_encodings::{
     BoundsMembersEncoding, WExactSizeEncoding, WIntRangeEncoding, WNintRangeEncoding,
-    WZeroLenEncoding,
+    WZeroExactEncoding, WZeroLenEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -31,6 +31,7 @@ pub struct BoundsMembers {
     pub m_exact_size: Vec<u8>,
     pub m_zero_len: Vec<u8>,
     pub m_int_range: u64,
+    pub m_zero_exact: u64,
     pub m_nint_range: u64,
     pub encodings: Option<BoundsMembersEncoding>,
 }
@@ -40,6 +41,7 @@ impl BoundsMembers {
         m_exact_size: Vec<u8>,
         m_zero_len: Vec<u8>,
         m_int_range: u64,
+        m_zero_exact: u64,
         m_nint_range: u64,
     ) -> Result<Self, DeserializeError> {
         if m_exact_size.len() != 3 {
@@ -66,6 +68,14 @@ impl BoundsMembers {
             }
             .into());
         }
+        if m_zero_exact > 0 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: m_zero_exact as i128,
+                min: None,
+                max: Some(0),
+            }
+            .into());
+        }
         if m_nint_range > 99 {
             return Err(DeserializeFailure::RangeCheck {
                 found: m_nint_range as i128,
@@ -78,6 +88,7 @@ impl BoundsMembers {
             m_exact_size,
             m_zero_len,
             m_int_range,
+            m_zero_exact,
             m_nint_range,
             encodings: None,
         })
@@ -144,7 +155,7 @@ impl WIntRange {
                 "WIntRange",
                 DeserializeFailure::RangeCheck {
                     found: inner as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(100),
                 },
             ));
@@ -202,6 +213,43 @@ impl TryFrom<u64> for WNintRange {
 }
 
 #[derive(Clone, Debug)]
+pub struct WZeroExact {
+    pub(crate) inner: u64,
+    pub encodings: Option<WZeroExactEncoding>,
+}
+
+impl WZeroExact {
+    pub fn get(&self) -> u64 {
+        self.inner
+    }
+
+    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner != 0 {
+            return Err(DeserializeError::new(
+                "WZeroExact",
+                DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: None,
+                    max: Some(0),
+                },
+            ));
+        }
+        Ok(Self {
+            inner,
+            encodings: None,
+        })
+    }
+}
+
+impl TryFrom<u64> for WZeroExact {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        WZeroExact::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct WZeroLen {
     pub(crate) inner: Vec<u8>,
     pub encodings: Option<WZeroLenEncoding>,
@@ -218,7 +266,7 @@ impl WZeroLen {
                 "WZeroLen",
                 DeserializeFailure::RangeCheck {
                     found: inner.len() as i128,
-                    min: Some(0),
+                    min: None,
                     max: Some(32),
                 },
             ));
@@ -252,6 +300,12 @@ impl From<WIntRange> for u64 {
 
 impl From<WNintRange> for u64 {
     fn from(wrapper: WNintRange) -> Self {
+        wrapper.inner
+    }
+}
+
+impl From<WZeroExact> for u64 {
+    fn from(wrapper: WZeroExact) -> Self {
         wrapper.inner
     }
 }

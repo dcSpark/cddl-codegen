@@ -11,6 +11,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.add::<cddl_lib::WExactSize>();
     reg.add::<cddl_lib::WIntRange>();
     reg.add::<cddl_lib::WNintRange>();
+    reg.add::<cddl_lib::WZeroExact>();
     reg.add::<cddl_lib::WZeroLen>();
 }
 
