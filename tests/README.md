@@ -56,8 +56,9 @@ before considering work done" — the heavy correctness gates (full
 `cddl-matrix/` once; the runtime stays dependency-free — which is also why it is NOT in the class
 above: CI cannot install it without a second `run:` step), `verify_selftest` (`verify.ts`'s
 assert-at-startup deciders, run standalone in tens of milliseconds — their own gate is `full`-tier,
-and an ignored flag, wrong compiler identity, verdict token, evidence-stage name, or policy-mint
-classifier is silent in production, so the cheap tier is where it must fail), `no_std_check` (the
+and an ignored flag, wrong compiler identity, verdict token, evidence-stage name, policy-mint
+classifier, or drifted component row-selection/name mirror is silent in production, so the cheap
+tier is where it must fail), `no_std_check` (the
 no_std drift gate — see its section below),
 `no_silent_directive` (which
 spawns `cargo build` plus generator runs) and `timings_digest_check` live here, NOT in CI. The

@@ -806,6 +806,14 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `rust-toolchain.toml` once and forces that `RUSTUP_TOOLCHAIN` into every nested cargo/rustc process,
   including the `lib.ts` `rustc -vV` cache-key probe, so a cache entry identifies the compiler that
   actually built its scratch crate.
+- **The component probe's Rust→WIT resource lookup is executable lockstep, not a copied convention.**
+  `verify.ts` must mirror the generator's Rust-ident-to-kebab conversion to find the resource that a
+  row minted. Its startup self-test parses the exact literal assertion table in
+  `src/utils.rs::convert_to_kebab_case_table` and requires every TypeScript fixture to be present with
+  the same expectation; an empty table, a malformed or duplicate row, a missing fixture, or a value
+  mismatch fails before component work begins. The local-tier `verify_selftest` gate runs this check,
+  preventing a drifted lookup from silently understating the component execution evidence as
+  "unminted."
 - **A WIDE evidence flip means check disk, not the oracle.** A single ruby flake dirties ONE row's
   `ruby=` clause; the distinct tell of the ENOSPC class is MANY rows flipping in one run to the SAME
   generic cargo-failure line (`cargo test exit 101`), none reproducing when probed solo. The cause is a
