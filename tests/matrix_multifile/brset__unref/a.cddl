@@ -1,0 +1,2 @@
+; cell: brset x unref (shape defs, module a)
+brs = [*2 uint] ; @duplicates reject

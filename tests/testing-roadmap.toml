@@ -178,7 +178,6 @@ entries = [
   "testing.multifile-reference-position-coverage-two-position-keyed-escapes",
   "testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near",
   "testing.armed-idle-harness-arms-empty-head-ledgers-zero",
-  "testing.doubled-doc-comment-markers-emitted-docs-proven-instance",
   "testing.emitted-shape-lint-classes-outside-clippy-all-beyond",
   "testing.unused-imports-generated-crates-trait-import-class-name",
   "testing.mechanical-layers-two-review-owned-design-rules-tests",
@@ -190,9 +189,7 @@ entries = [
   "part-non-recorded-isn-t-re-litigated-coverage-gap",
   "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count",
   "testing.run-local-values-gate-cache-key-material-proven",
-  "testing.control-bytes-committed-source-files-proven-instance-machinery",
   "testing.gate-script-health-cache-staleness-key-fresh-worktree",
-  "testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently",
   "testing.dependency-swap-pass-compile-parity-existing-gate-silently",
   "testing.fixture-s-verdict-accident-cargo-feature-unification-harness",
   "testing.profile-driven-compile-gate-covers-compositions-profiles-specs",
@@ -1078,40 +1075,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.control-bytes-committed-source-files-proven-instance-machinery"
-title = "Control bytes in committed source files — one proven instance, no machinery yet."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Control bytes in committed source files — one proven instance, no machinery yet.** A committed
-  TS script embedded a literal 0x00 byte in a template-string separator; grep/diff/review tooling
-  then classifies the whole file as binary — silently exempting it from every text-shaped check
-  and from readable review — while `tsc` parses it happily, so `matrix_typecheck` cannot see the
-  class (fixed by spelling the byte as a backslash-u0000 escape). Working rule meanwhile: escape
-  sequences, never literal control bytes, in source text. Mechanical layer if the class recurs: a
-  tracked-source text-cleanliness lint — every tracked `*.ts`/`*.rs`/`*.toml`/`*.md` must be valid
-  UTF-8 with no control bytes outside tab/LF/CR (a one-command scan; natural sibling of
-  `lint_doc_citations` in the local tier).
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "silent_wrong_bytes"
-control_ids = ["testing.guard.control-bytes-committed-source-files-proven-instance-machinery"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.control-bytes-committed-source-files-proven-instance-machinery"
-dimension = "Control bytes in committed source files — one proven instance, no machinery yet."
-observable = "- **Control bytes in committed source files — one proven instance, no machinery yet.** A committed TS script embedded a literal 0x00 byte in a template-string separator; grep/diff/review tooling then classifies the whole file as binary — silently exempting it from every text-shaped check and from readable review — while `tsc` parses it happily, so `matrix_typecheck` cannot see the class (fixed by spelling the byte as a backslash-u0000 escape). Working rule meanwhile: escape sequences, never literal control bytes, in source text. Mechanical layer if the class recurs: a tracked-source text-cleanliness lint — every tracked `*.ts`/`*.rs`/`*.toml`/`*.md` must be valid UTF-8 with no control bytes outside tab/LF/CR (a one-command scan; natural sibling of `lint_doc_citations` in the local tier)."
-action_on_fire_md = '''Set testing.control-bytes-committed-source-files-proven-instance-machinery to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.control-bytes-committed-source-files-proven-instance-machinery's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
 id = "testing.corpus-wide-regen-over-prior-output-sweep-reaches"
 title = "The corpus-wide regen-over-prior-output sweep reaches two emission profiles of four, and its user-EDIT leg reaches one."
 
@@ -1676,45 +1639,6 @@ action_on_fire_md = '''Set testing.documented-flag-pairing-broken-fixture-stays-
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.documented-flag-pairing-broken-fixture-stays-green-because's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.doubled-doc-comment-markers-emitted-docs-proven-instance"
-title = "Doubled doc-comment markers in emitted docs — one proven instance recorded, no machinery yet."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Doubled doc-comment markers in emitted docs — one proven instance recorded, no machinery
-  yet.** The `codegen` builder fork prefixes EVERY newline-separated line of a doc string with
-  the marker itself, so an emission-site string embedding a literal marker to "continue" a
-  multi-line doc ships doubled markers (rustdoc renders the extra slashes as literal text).
-  Proven instance: the wasm NonEmpty wrapper doc rewording embedded literal markers after its
-  `\n`s and landed at HEAD inside a commit whose snapshot suite was left stale-red; the next
-  bless folded the bug into ~660 golden snapshots and only post-bless diff REVIEW caught it —
-  the snapshot layer pins bytes, so it flags a change but blesses a defect just as happily, and
-  `generated_code_clippy_clean` cannot see it (no clippy lint fires on a doc comment's text).
-  Mechanical layer if the class recurs: a catalog-wide scan asserting no doubled-marker line in
-  any `*.snap` (cheap, pure grep). Meanwhile the working rules are: bare `\n` in `.doc()`
-  strings (the builder owns the markers), and the § "Blessing changes" discipline — review the
-  blessed diff, never accept blind, ESPECIALLY when snapshots were already red before your
-  change (the diff then contains someone else's unreviewed delta interleaved with yours).
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "misleading_docs"
-control_ids = ["testing.guard.doubled-doc-comment-markers-emitted-docs-proven-instance"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.doubled-doc-comment-markers-emitted-docs-proven-instance"
-dimension = "Doubled doc-comment markers in emitted docs — one proven instance recorded, no machinery yet."
-observable = "- **Doubled doc-comment markers in emitted docs — one proven instance recorded, no machinery yet.** The `codegen` builder fork prefixes EVERY newline-separated line of a doc string with the marker itself, so an emission-site string embedding a literal marker to \"continue\" a multi-line doc ships doubled markers (rustdoc renders the extra slashes as literal text). Proven instance: the wasm NonEmpty wrapper doc rewording embedded literal markers after its `\\n`s and landed at HEAD inside a commit whose snapshot suite was left stale-red; the next bless folded the bug into ~660 golden snapshots and only post-bless diff REVIEW caught it — the snapshot layer pins bytes, so it flags a change but blesses a defect just as happily, and `generated_code_clippy_clean` cannot see it (no clippy lint fires on a doc comment's text). Mechanical layer if the class recurs: a catalog-wide scan asserting no doubled-marker line in any `*.snap` (cheap, pure grep). Meanwhile the working rules are: bare `\\n` in `.doc()` strings (the builder owns the markers), and the § \"Blessing changes\" discipline — review the blessed diff, never accept blind, ESPECIALLY when snapshots were already red before your change (the diff then contains someone else's unreviewed delta interleaved with yours)."
-action_on_fire_md = '''Set testing.doubled-doc-comment-markers-emitted-docs-proven-instance to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.doubled-doc-comment-markers-emitted-docs-proven-instance's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]
@@ -3507,20 +3431,6 @@ boundary_md = '''This control owns current containment only. It does not claim t
 '''
 
 [[record]]
-id = "testing.guard.control-bytes-committed-source-files-proven-instance-machinery"
-title = "Current control for testing.control-bytes-committed-source-files-proven-instance-machinery."
-
-[record.payload]
-kind = "control"
-control_kind = "gate"
-control_state = "live"
-reference_ids = ["gate-lint-doc-citations-n2", "gate-matrix-typecheck"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.control-bytes-committed-source-files-proven-instance-machinery's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
 id = "testing.guard.corpus-wide-regen-over-prior-output-sweep-reaches"
 title = "Current control for testing.corpus-wide-regen-over-prior-output-sweep-reaches."
 
@@ -3614,20 +3524,6 @@ control_kind = "test"
 control_state = "live"
 reference_ids = ["test-common-override-wasm-int", "test-extern-deps-wasm"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.documented-flag-pairing-broken-fixture-stays-green-because's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.doubled-doc-comment-markers-emitted-docs-proven-instance"
-title = "Current control for testing.doubled-doc-comment-markers-emitted-docs-proven-instance."
-
-[record.payload]
-kind = "control"
-control_kind = "test"
-control_state = "live"
-reference_ids = ["test-generated-code-clippy-clean"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.doubled-doc-comment-markers-emitted-docs-proven-instance's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -3922,20 +3818,6 @@ control_kind = "gate"
 control_state = "live"
 reference_ids = ["gate-lint-doc-citations-n3"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
-title = "Current control for testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently."
-
-[record.payload]
-kind = "control"
-control_kind = "test"
-control_state = "live"
-reference_ids = ["test-export-static-crate-writes-composed-runtime-and"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -4499,53 +4381,6 @@ action_on_fire_md = '''Set testing.hand-enumerated-ban-pattern-list-authority-li
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
-title = "A hand-maintained source→dependency mapping in a manifest changeset can silently under-assert: the tool exports source referencing a crate that no changeset op guarantees."
-
-[record.payload]
-kind = "work"
-body_md = '''- **A hand-maintained source→dependency mapping in a manifest changeset can silently under-assert:
-  the tool exports source referencing a crate that no changeset op guarantees.** Proven instance
-  (consumer-reported, not caught by any gate): the pre-crate-shaped `--export-static-dir` wrote the
-  composed runtime source into a consumer's shared crate while owning no manifest at all, so a
-  cbor_event major bump updated every generated crate's manifest EXCEPT the shared runtime's, which
-  kept the old pin — caught only because the 2.x→3.x API break fails compilation loudly; a
-  source-compatible-looking skew would have shipped silently. Fixed structurally by the
-  crate-shaped `--export-static-crate` (the export merges the target's `Cargo.toml`;
-  regression-pinned by `export_static_crate_writes_composed_runtime_and_manifest`'s hand-manifest
-  leg), and the warm-up dep-universe gate sweeps `ops_for_static_runtime` alongside the other three
-  op sets. The RESIDUAL: the mapping from composed runtime files to dep ops (`cbor_event`/`hex`
-  always; `hashlink`/`serde`/`schemars` per flag) is hand-derived from grepping the static
-  files, and nothing re-checks it — a `static/*.rs` runtime file gaining a reference to a new
-  external crate (or to an existing one under a flag combination whose op condition doesn't match)
-  would under-assert again, and only the consumer's build would notice. Working rule meanwhile: a
-  change touching the static runtime files or `composed_runtime_static_files` re-greps the composed
-  file set for foreign-crate path roots and reconciles `ops_for_static_runtime` in the same commit.
-  Mechanical layer on a SECOND instance: a bidirectional drift gate over the maximal-flavor
-  composed file set — every known dep name appearing as a path root in the composed text must be
-  asserted by a static-runtime op, and every asserted dep must appear in the text — a natural
-  sibling of `warmup_manifest_covers_registry_dep_universe`, accepting the source-scan heuristics
-  then, not before.
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "compile_failure"
-control_ids = ["testing.guard.hand-maintained-source-dependency-mapping-manifest-changeset-silently"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
-dimension = "A hand-maintained source→dependency mapping in a manifest changeset can silently under-assert: the tool exports source referencing a crate that no changeset op guarantees."
-observable = "- **A hand-maintained source→dependency mapping in a manifest changeset can silently under-assert: the tool exports source referencing a crate that no changeset op guarantees.** Proven instance (consumer-reported, not caught by any gate): the pre-crate-shaped `--export-static-dir` wrote the composed runtime source into a consumer's shared crate while owning no manifest at all, so a cbor_event major bump updated every generated crate's manifest EXCEPT the shared runtime's, which kept the old pin — caught only because the 2.x→3.x API break fails compilation loudly; a source-compatible-looking skew would have shipped silently. Fixed structurally by the crate-shaped `--export-static-crate` (the export merges the target's `Cargo.toml`; regression-pinned by `export_static_crate_writes_composed_runtime_and_manifest`'s hand-manifest leg), and the warm-up dep-universe gate sweeps `ops_for_static_runtime` alongside the other three op sets. The RESIDUAL: the mapping from composed runtime files to dep ops (`cbor_event`/`hex` always; `hashlink`/`serde`/`schemars` per flag) is hand-derived from grepping the static files, and nothing re-checks it — a `static/*.rs` runtime file gaining a reference to a new external crate (or to an existing one under a flag combination whose op condition doesn't match) would under-assert again, and only the consumer's build would notice. Working rule meanwhile: a change touching the static runtime files or `composed_runtime_static_files` re-greps the composed file set for foreign-crate path roots and reconciles `ops_for_static_runtime` in the same commit. Mechanical layer on a SECOND instance: a bidirectional drift gate over the maximal-flavor composed file set — every known dep name appearing as a path root in the composed text must be asserted by a static-runtime op, and every asserted dep must appear in the text — a natural sibling of `warmup_manifest_covers_registry_dep_universe`, accepting the source-scan heuristics then, not before."
-action_on_fire_md = '''Set testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]
@@ -7597,7 +7432,8 @@ body_md = '''- **Twin in-repo implementations of one semantic decision drifting 
     ctor/setter, wrapper `new()`/deserialize, primitive-deserialize `.and_then`, collection len
     check — and diff the check conditions + failure payloads, ledgering deliberate site-specific
     differences), plus the cheap grep half: a snapshot-wide wart scan (same-N `< N || > N`, dead
-    `< 0` over unsigned/`len()` exprs) in the spirit of the doubled-doc-marker scan above.
+    `< 0` over unsigned/`len()` exprs), following the tracked-text lint's current snapshot-scan
+    posture (`lint_tracked_text`, documented in `tests/README.md` § "Running everything").
   - *On the next `comment_ast` grammar change of ANY form (not just a new directive):* do the AST
     floor instead of hand-extending `DSL_TAGS` again — parse the comments with the real
     `comment_ast` via a small `examples/` binary, as the role floor already does with
@@ -8551,11 +8387,6 @@ kind = "parent_of"
 target = "testing.guard.containment-note-s-stated-reason-go-false-any"
 
 [[relation]]
-source = "testing.control-bytes-committed-source-files-proven-instance-machinery"
-kind = "parent_of"
-target = "testing.guard.control-bytes-committed-source-files-proven-instance-machinery"
-
-[[relation]]
 source = "testing.corpus-wide-regen-over-prior-output-sweep-reaches"
 kind = "parent_of"
 target = "testing.guard.corpus-wide-regen-over-prior-output-sweep-reaches"
@@ -8599,11 +8430,6 @@ target = "testing.guard.documented-failure-shape-exercises-prose-cross-crate-int
 source = "testing.documented-flag-pairing-broken-fixture-stays-green-because"
 kind = "parent_of"
 target = "testing.guard.documented-flag-pairing-broken-fixture-stays-green-because"
-
-[[relation]]
-source = "testing.doubled-doc-comment-markers-emitted-docs-proven-instance"
-kind = "parent_of"
-target = "testing.guard.doubled-doc-comment-markers-emitted-docs-proven-instance"
 
 [[relation]]
 source = "testing.dsl-position-tests-string-level-design-green-emitted"
@@ -8819,11 +8645,6 @@ target = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two
 source = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 kind = "parent_of"
 target = "testing.guard.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
-
-[[relation]]
-source = "testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
-kind = "parent_of"
-target = "testing.guard.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
 
 [[relation]]
 source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one"
@@ -9276,18 +9097,6 @@ kind = "gate"
 gate_id = "project_corpus"
 
 [[reference]]
-id = "gate-lint-doc-citations-n2"
-source = "testing.control-bytes-committed-source-files-proven-instance-machinery"
-kind = "gate"
-gate_id = "lint_doc_citations"
-
-[[reference]]
-id = "gate-matrix-typecheck"
-source = "testing.control-bytes-committed-source-files-proven-instance-machinery"
-kind = "gate"
-gate_id = "matrix_typecheck"
-
-[[reference]]
 id = "gate-regen-over-prior-output-corpus"
 source = "testing.corpus-wide-regen-over-prior-output-sweep-reaches"
 kind = "gate"
@@ -9361,13 +9170,6 @@ source = "testing.documented-flag-pairing-broken-fixture-stays-green-because"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_deps_wasm"
 symbol = "tests::integration_tests::extern_deps_wasm"
-
-[[reference]]
-id = "test-generated-code-clippy-clean"
-source = "testing.doubled-doc-comment-markers-emitted-docs-proven-instance"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::generated_code_clippy_clean"
-symbol = "tests::integration_tests::generated_code_clippy_clean"
 
 [[reference]]
 id = "testing-roadmap-next-work-n6"
@@ -9600,13 +9402,6 @@ id = "gate-lint-doc-citations-n3"
 source = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 kind = "gate"
 gate_id = "lint_doc_citations"
-
-[[reference]]
-id = "test-export-static-crate-writes-composed-runtime-and"
-source = "testing.hand-maintained-source-dependency-mapping-manifest-changeset-silently"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::export_static_crate_writes_composed_runtime_and_manifest"
-symbol = "tests::integration_tests::export_static_crate_writes_composed_runtime_and_manifest"
 
 [[reference]]
 id = "testing-roadmap-next-work-n19"

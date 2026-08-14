@@ -534,6 +534,9 @@
       ]
     },
     {
+      "gate": "lint_tracked_text"
+    },
+    {
       "gate": "matrix_typecheck",
       "warm_ms": 4000,
       "n": 20,

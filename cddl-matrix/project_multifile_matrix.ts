@@ -38,12 +38,117 @@ import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, rmSync
 const HERE = import.meta.dir;
 const DIR = `${HERE}/../tests/matrix_multifile`;
 const CHECK = process.argv.includes("--check");
+const WASM_SHAPES_PATH = `${HERE}/project_wasm_matrix.ts`;
+
+// This projection must not import its sibling: importing it writes fixtures. Instead parse the one
+// bounded declaration we share, preserving the sibling's file-only/no-side-effect posture.
+const WASM_ONLY_EXCLUSIONS = ["extern", "prim", "rawbytes"];
+
+function skipTrivia(source: string, i: number): number {
+  for (;;) {
+    while (/\s/.test(source[i] ?? "")) i++;
+    if (source.startsWith("//", i)) { const end = source.indexOf("\n", i + 2); i = end < 0 ? source.length : end + 1; continue; }
+    if (source.startsWith("/*", i)) {
+      const end = source.indexOf("*/", i + 2);
+      if (end < 0) throw new Error("malformed SHAPES declaration: unterminated block comment");
+      i = end + 2;
+      continue;
+    }
+    return i;
+  }
+}
+
+function skipQuoted(source: string, i: number): number {
+  const quote = source[i++]!;
+  while (i < source.length) {
+    if (source[i] === "\\") { i += 2; continue; }
+    if (source[i] === quote) return i + 1;
+    i++;
+  }
+  throw new Error("malformed SHAPES declaration: unterminated string");
+}
+
+/** Parses exactly `const SHAPES: … = { … };`, without evaluating the sibling projection. */
+export function wasmShapeNames(source: string): string[] {
+  const declarations = [...source.matchAll(/\bconst\s+SHAPES\s*:/g)];
+  if (declarations.length !== 1) throw new Error(`expected exactly one top-level SHAPES declaration, found ${declarations.length}`);
+  let i = declarations[0]!.index! + declarations[0]![0].length;
+  const equals = source.indexOf("=", i);
+  if (equals < 0) throw new Error("malformed SHAPES declaration: missing '='");
+  i = skipTrivia(source, equals + 1);
+  if (source[i] !== "{") throw new Error("malformed SHAPES declaration: expected object literal");
+  const bodyStart = ++i;
+  let depth = 1;
+  for (; i < source.length && depth; i++) {
+    if (source.startsWith("//", i)) { i = skipTrivia(source, i) - 1; continue; }
+    if (source.startsWith("/*", i)) { i = skipTrivia(source, i) - 1; continue; }
+    if (["'", '"', "`"].includes(source[i]!)) { i = skipQuoted(source, i) - 1; continue; }
+    if (source[i] === "{") depth++;
+    if (source[i] === "}") depth--;
+  }
+  if (depth !== 0) throw new Error("malformed SHAPES declaration: unclosed object literal");
+  const bodyEnd = i - 1;
+  if (source[skipTrivia(source, i)] !== ";") throw new Error("malformed SHAPES declaration: object must end with ';'");
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+  let nesting = 0;
+  for (let p = bodyStart; p < bodyEnd;) {
+    p = skipTrivia(source, p);
+    if (p >= bodyEnd) break;
+    if (["'", '"', "`"].includes(source[p]!)) { p = skipQuoted(source, p); continue; }
+    const ch = source[p]!;
+    if ("{[(".includes(ch)) { nesting++; p++; continue; }
+    if ("}])".includes(ch)) { nesting--; p++; continue; }
+    if (nesting === 0) {
+      if (ch === ",") { p++; continue; }
+      const name = /^([A-Za-z_$][A-Za-z0-9_$]*)\s*:/.exec(source.slice(p));
+      if (name) {
+        if (seen.has(name[1]!)) throw new Error(`duplicate SHAPES key '${name[1]}'`);
+        seen.add(name[1]!);
+        names.push(name[1]!);
+        p += name[0].length;
+        continue;
+      }
+      throw new Error(`malformed SHAPES declaration: unsupported top-level property syntax near '${source.slice(p, p + 32)}'`);
+    }
+    p++;
+  }
+  if (nesting !== 0) throw new Error("malformed SHAPES declaration: unbalanced nested syntax");
+  return names.sort();
+}
+
+export function assertWasmShapeSuperset(wasmSource: string, localNames: Iterable<string>, exclusions = WASM_ONLY_EXCLUSIONS): void {
+  const wasm = new Set(wasmShapeNames(wasmSource));
+  const local = new Set(localNames);
+  for (const exclusion of exclusions) {
+    if (!wasm.has(exclusion)) throw new Error(`WASM_ONLY_EXCLUSIONS contains stale '${exclusion}' (absent from wasm SHAPES)`);
+    if (local.has(exclusion)) throw new Error(`WASM_ONLY_EXCLUSIONS contains '${exclusion}', but it is present in multifile SHAPES`);
+  }
+  const missing = [...wasm].filter(name => !local.has(name) && !exclusions.includes(name)).sort();
+  if (missing.length) throw new Error(`multifile SHAPES is missing eligible wasm shape(s): ${missing.join(", ")}`);
+}
+
+function supersetSelfTests(): void {
+  const source = "const SHAPES: Record<string, Shape> = { alpha: {}, prim: {}, extern: {}, rawbytes: {} };";
+  const expectThrow = (label: string, f: () => void): void => {
+    try { f(); } catch { return; }
+    throw new Error(`SHAPES superset self-test: ${label} was accepted`);
+  };
+  assertWasmShapeSuperset(source, ["alpha", "extra"], WASM_ONLY_EXCLUSIONS);
+  expectThrow("missing eligible wasm shape", () => assertWasmShapeSuperset(source, [], WASM_ONLY_EXCLUSIONS));
+  expectThrow("stale exclusion", () => assertWasmShapeSuperset(source, ["alpha"], ["prim", "stale"]));
+  expectThrow("malformed declaration", () => wasmShapeNames("const SHAPES: Record<string, Shape> = { alpha: {}"));
+  expectThrow("duplicate declaration key", () => wasmShapeNames("const SHAPES: Record<string, Shape> = { alpha: {}, alpha: {} };"));
+  expectThrow("unsupported quoted key", () => wasmShapeNames("const SHAPES: Record<string, Shape> = { \"alpha\": {} };"));
+}
+supersetSelfTests();
 
 // --- Axis 1: type-shapes. Defs + `ty` copied verbatim (provenance) from project_wasm_matrix.ts's
-// `SHAPES` — do NOT import it (that module runs projection on import) — plus `collrec` and `tblrec`,
-// which are multifile-SPECIFIC (the structural array wrapper / root-minted keys-list only need
-// placement cross-module; at the wasm
-// matrix's root scope those classes cannot bite). Included: every shape that HAS
+// `SHAPES` — do NOT import it (that module runs projection on import) — plus any multifile-SPECIFIC
+// placement-only shapes. Those extras are allowed because their cross-module placement class has no
+// wasm root-scope counterpart; `collrec` and `tblrec` are representative examples, not a closed list.
+// Included: every shape that HAS
 // defs and is self-contained (can compile standalone). `anonForm` is the shape's inline anonymous
 // same-shape spelling (the `mark_refs` structural-wrapper class); present iff the anon holder
 // `holder = [field0: <anonForm>]` compiles GREEN as a single-file spec — verified once when the
@@ -163,6 +268,11 @@ const SHAPES: Record<string, Shape> = {
   // complement is non-empty. No `anonForm`: an open table is a NAMED-RULE concession — an inline
   // anonymous one is refused at recognition — so there is no inline spelling to place.
   otblrec: { defs: ["foo = [a0: uint]", "otbl = { * foo => text, * text => text }"], ty: "otbl" },
+  // OPEN TABLE — verbatim wasm SHAPES provenance: `ot = { * bstr => uint, * text => uint }`,
+  // `ty: ot`. This all-exposable counterpart to `otblrec` has no inline form (open tables are
+  // named-rule-only), but its named/aliased/unref cells place the distinct flattened open-table
+  // emission path in a non-root module.
+  otbl: { defs: ["ot = { * bstr => uint, * text => uint }"], ty: "ot" },
   tag: { defs: ["tg = #6.10(uint)"], ty: "tg", anonForm: "#6.10(uint)" },
   bwrap: { defs: ["bw = bytes .size (0..32)"], ty: "bw", anonForm: "bytes .size (0..32)" },
   cenum: { defs: ["fe = 0 / 1 / 2"], ty: "fe" },
@@ -204,6 +314,15 @@ const SHAPES: Record<string, Shape> = {
   // like a bare `Vec`/`NonEmptyVec` (the `coll`/`necoll` placement class).
   rset: { defs: ["rs = [* uint] ; @duplicates reject"], ty: "rs" },
   nerset: { defs: ["nrs = [+ uint] ; @duplicates reject"], ty: "nrs" },
+  // BOUNDED reject set — verbatim wasm SHAPES provenance: `brs = [*2 uint] ; @duplicates reject`,
+  // `ty: brs`. Unlike loose/non-empty reject sets this emits the bounds-bearing runtime wrapper;
+  // named/aliased/unref cells place both its rule-owned wrapper and alias target across modules.
+  brset: { defs: ["brs = [*2 uint] ; @duplicates reject"], ty: "brs" },
+  // Anonymous generic bounded reject set — verbatim wasm SHAPES provenance:
+  // `boset<e0> = [2*3 e0] ; @duplicates reject`, `ty: boset<uint>`. Its structural
+  // bounds-bearing wrapper is reached through the same three reference modes, including the
+  // alias-only module that does not otherwise mention its generated structural name.
+  brseta: { defs: ["boset<e0> = [2*3 e0] ; @duplicates reject"], ty: "boset<uint>" },
   // anonymous generic reject-set instances over an exposable element — no structural wrapper crosses
   // (like `gcollexp`), so every reference mode is green.
   rseta: { defs: ["oset<e0> = [* e0] ; @duplicates reject"], ty: "oset<uint>" },
@@ -381,11 +500,16 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 154; // 43 shapes × {aliased, named, unref} = 129 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} + 7 rootref shapes × {rootref} -> 154
+const EXPECTED_CELLS = 163; // 46 shapes × {aliased, named, unref} = 138 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} + 7 rootref shapes × {rootref} -> 163
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,
   );
+
+// The sibling's definitions are the wasm-boundary authority. Every standalone-compilable wasm
+// shape belongs here too; the only exclusions are the exact structural ledger above. Multifile-specific
+// placement-only shapes are intentionally allowed as local extras.
+assertWasmShapeSuperset(readFileSync(WASM_SHAPES_PATH, "utf8"), Object.keys(SHAPES));
 
 const drift: string[] = [];
 if (!CHECK) mkdirSync(DIR, { recursive: true });

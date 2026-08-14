@@ -41,9 +41,12 @@ make `full` cheap.
 `fast` is exactly what CI runs (`build.yml` is a thin `bun run check.ts fast` invoker — see the CI
 policy below). Beside fmt/clippy/snapshot tests it carries the whole **sub-second no-cargo
 file-scanner class**: the matrix-drift gates plus the decode-conformance catalog, recombination
-ingredients, `query_q*`, status-header count and doc-citation gates
+ingredients, `query_q*`, status-header count, doc-citation, and tracked-text cleanliness gates
 (`project_decode_conformance.ts`, `project_recombination.ts`, the four `query_q*.ts`,
-`project_status_headers.ts`, `lint_doc_citations.ts`). What makes a gate a member — and what a new
+`project_status_headers.ts`, `lint_doc_citations.ts`, `lint_tracked_text.ts`). The tracked-text lint
+reads only `git ls-files -z` paths, strictly decodes authored text extensions (including `.mdx`),
+rejects C0/DEL controls except tab/LF/CR, and scans snapshot doc lines for doubled rustdoc markers.
+What makes a gate a member — and what a new
 gate must satisfy to join, rather than defaulting to `local` — is that it reads only committed
 files: no cargo, no network, no `cddl-matrix/node_modules`, no `draft/` ledger. The separately
 approved `roadmap_projection_check` joined `fast` on
@@ -2303,8 +2306,8 @@ across the same layers:
   reject `brset`/`brseta`, and the preserve pair-map twins as `pmap`/`nepmap`/`pmapa`/`nepmapa` in
   `project_wasm_matrix.ts`'s `SHAPES`
   (named-rule + anonymous-instance flavors, each × all 8 boundary roles, compile floor +
-  three-profile round-trips) and the same shapes × 3 reference modes in the multifile placement
-  matrix. Enumerating them found + fixed the `[*]`-reject wasm-boundary conversion gap (E0308,
+  three-profile round-trips) and the same shapes' eligible subset × reference modes in the
+  multifile placement matrix. Enumerating them found + fixed the `[*]`-reject wasm-boundary conversion gap (E0308,
   pinned by `newtype_over_plain_reject_ordered_set_converts_wasm_boundary`) and the cross-module
   restricted-wrapper placement class — every collection occurrence resolves its wasm wrapper name +
   home scope through `wasm_collection_wrapper`, and a field referencing a named/dep-owned collection
@@ -4847,14 +4850,14 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   beside the root rule and the cell carries no `b.cddl`. Root-owner direction (shape
   in root, referenced from a module) is deliberately NOT enumerated — root-module owners probed fine
   in both directions, so the non-root-owner cells are the discriminating ones.
-- **Axis 1 — type-shape** (`SHAPES`, copied verbatim from `project_wasm_matrix.ts` with a provenance
-  comment; NOT imported — that module projects on import; plus the multifile-specific `collrec`,
-  `[* <record>]` — the structural array wrapper only needs placement cross-module, so the wasm
-  matrix's root-scope grid cannot probe it — and `tblrec`, `{ * <record> => text }` — the
-  non-exposable-KEYED table, whose `keys()` accessor names a root-minted keys-list wrapper that
-  likewise only dangles cross-module). Every self-contained shape that HAS defs is
-  included; `prim` (no defs — nothing to place in a module) and `extern`/`rawbytes` (user-supplied
-  types, can't compile standalone) are excluded with header comments. The exclusion bounds the
+- **Axis 1 — type-shape** (`SHAPES`, checked as an executable superset of the bounded top-level
+  declaration in `project_wasm_matrix.ts`, parsed without importing that side-effecting projection;
+  multifile-specific placement-only shapes are also allowed when their cross-module class has no
+  wasm root-scope counterpart — `collrec` (`[* <record>]`) and `tblrec` (`{ * <record> => text }`)
+  are representative examples, not a closed list). Every self-contained shape that HAS defs is
+  included. The exact live exclusion ledger is `prim` (no defs — nothing to place in a module) and
+  `extern`/`rawbytes` (user-supplied types, can't compile standalone); the projection asserts each
+  remains present in wasm and absent locally. The exclusion bounds the
   GATE, not the generator: extern shapes still have placement behavior (re-export glue routing;
   generic-instance alias decomposition), and its alias-position residue escaped to a production
   regen as feature request 07 — now hand-pinned by `tests/extern-generic-scoped`
@@ -4912,8 +4915,8 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   distinct per-cell rust/wasm package identities, preserving the `cddl-lib` source alias with Cargo's
   `package = ...` dependency selector, plus one uncached old-enough marker-bearing expected-red
   canary per shard. Own scratch + `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
-  default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
-  once) / ~30 s warm measured at 43 cells (144 at HEAD).
+  default `cargo test` / check.ts local tier. Its measured duration belongs in `tests/timings.json`;
+  fixture breadth is derived by the projection rather than hand-counted here.
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
   **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
   enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
@@ -4931,14 +4934,13 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   `acquire_scratch_lock`, one shared `CARGO_TARGET_DIR`, each per-cell dir freed after its verdict.
   Loud-skip contract as the wasm round-trip gate: a cell minting no test surface passes with zero
   tests (the emitter eprintln!s the skip; the floor still pins its ABI) — and a minted-module
-  vacuity floor (each generated crate's root `generated/mod.rs` is grepped for its test module;
-  observed 144/144 rust and 144/144 wasm at the 48-cell grid — the count scales with the cell ×
-  profile grid) bounds the aggregate so green can't quietly go vacuous.
+  vacuity floor (each generated crate's root `generated/mod.rs` is grepped for its test module)
+  bounds the aggregate so green can't quietly go vacuous.
   The multifile `--emit-tests` emission itself (root-level test module + `use super::<m>::*;` scope
   globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
   in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full
   tier. Run with `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`
-  (~4.6 min measured at 48 cells, scaling with the cell count — 144 at HEAD; every run is effectively cold — the scratch root, shared target
+  (every run is effectively cold — the scratch root, shared target
   included, is cleared at start and end — with the deps built once up front and the remainder
   dominated by the per-cell-per-profile generate + two nested `cargo test` invocations (3 profiles x the cell count each).
 - **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,

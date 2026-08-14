@@ -1,0 +1,2 @@
+; cell: otbl x unref (shape defs, module a)
+ot = { * bstr => uint, * text => uint }

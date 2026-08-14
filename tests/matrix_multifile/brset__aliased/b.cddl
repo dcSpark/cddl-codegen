@@ -1,0 +1,2 @@
+; cell: brset x aliased (reference from module b)
+bal = brs

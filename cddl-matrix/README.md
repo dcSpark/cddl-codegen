@@ -128,7 +128,9 @@ resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` ho
 > resolves in the tree, bans positional "…item `<N>`" citations, bans numbered section headings in
 > the hand docs (a numbered heading invites `§ <N>` citations, which silently retarget on
 > renumbering), rejects references to the deleted roadmap projections outside their explicit
-> compatibility seams, and requires a blank line before headings.
+> compatibility seams, and requires a blank line before headings. Alongside it, `lint_tracked_text.ts`
+> (also fast-tier and dependency-free) reads only tracked paths, strictly rejects invalid UTF-8/control
+> bytes in authored text, and rejects doubled indentation-leading rustdoc markers in tracked snapshots.
 
 > **Selection state is not tracked in the repository.** Which roadmap entries are picked up, by whom,
 > and in what order is plan-internal state, and it lives in the gitignored `draft/` directory — the

@@ -2185,3 +2185,204 @@ mod extern_reexport_diagnostic_tests {
         assert!(missing_reexports(root, &required).is_empty());
     }
 }
+
+#[cfg(test)]
+mod static_runtime_dependency_bijection_tests {
+    use super::{GenerationScope, composed_runtime_static_files};
+    use clap::Parser;
+    use proc_macro2::{TokenStream, TokenTree};
+    use std::collections::BTreeSet;
+
+    /// Roots resolved by the language/prelude rather than a Cargo dependency. Keep this classifier
+    /// deliberately narrow: an unknown `foo::Bar` is external and the synthetic canary below proves
+    /// it cannot be silently classified away with today's six dependency names.
+    const INTERNAL_OR_PRELUDE_ROOTS: &[&str] = &[
+        "add_schema",
+        "alloc",
+        "any",
+        "borrow",
+        "bounded",
+        "char",
+        "collect",
+        "collections",
+        "convert",
+        "core",
+        "crate",
+        "error",
+        "f64",
+        "fmt",
+        "from_str",
+        "hash",
+        "hash_map",
+        "i64",
+        "iter",
+        "json_schema_gen",
+        "json_value_ser",
+        "linked_hash_map",
+        "marker",
+        "mem",
+        "natural_any_cbor",
+        "next_entry",
+        "next_key",
+        "next_value",
+        "non_empty",
+        "ops",
+        "ordered_hash_map",
+        "ordered_set",
+        "parse",
+        "se",
+        "self",
+        "serialization",
+        "slice",
+        "std",
+        "subschema_for",
+        "super",
+        "type_name",
+        "u16",
+        "u32",
+        "u64",
+        "u8",
+        "vec",
+    ];
+
+    fn external_path_roots(label: &str, source: &str) -> BTreeSet<String> {
+        syn::parse_file(source).unwrap_or_else(|error| {
+            panic!("composed static-runtime Rust source {label} must parse: {error}")
+        });
+        let tokens: TokenStream = source
+            .parse()
+            .expect("parseable static-runtime source must tokenize");
+        let mut roots = BTreeSet::new();
+        collect_path_roots(
+            tokens.into_iter().collect::<Vec<_>>().as_slice(),
+            &mut roots,
+        );
+        roots
+    }
+
+    fn collect_path_roots(tokens: &[TokenTree], roots: &mut BTreeSet<String>) {
+        for (i, token) in tokens.iter().enumerate() {
+            if let TokenTree::Group(group) = token {
+                let nested: Vec<_> = group.stream().into_iter().collect();
+                collect_path_roots(&nested, roots);
+                continue;
+            }
+            let TokenTree::Ident(ident) = token else {
+                continue;
+            };
+            let followed_by_path = matches!(tokens.get(i + 1), Some(TokenTree::Punct(p)) if p.as_char() == ':')
+                && matches!(tokens.get(i + 2), Some(TokenTree::Punct(p)) if p.as_char() == ':');
+            // In `a::b::C`, `b` is a segment, not another root. In `::a::C`, `a` still is one.
+            let preceded_by_ident_path = i >= 3
+                && matches!(tokens.get(i - 1), Some(TokenTree::Punct(p)) if p.as_char() == ':')
+                && matches!(tokens.get(i - 2), Some(TokenTree::Punct(p)) if p.as_char() == ':')
+                && matches!(tokens.get(i - 3), Some(TokenTree::Ident(_)));
+            if followed_by_path
+                && !preceded_by_ident_path
+                && !ident.to_string().starts_with(char::is_uppercase)
+            {
+                let root = ident.to_string();
+                if !INTERNAL_OR_PRELUDE_ROOTS.contains(&root.as_str()) {
+                    roots.insert(root);
+                }
+            }
+        }
+    }
+
+    fn asserted_dependency_keys(cli: &crate::cli::Cli) -> BTreeSet<String> {
+        crate::cargo_manifest::ops_for_static_runtime(cli)
+            .expect("static-runtime manifest ops")
+            .into_iter()
+            .filter_map(|(path, _)| {
+                (path.len() == 2 && path[0] == "dependencies").then(|| path[1].clone())
+            })
+            .collect()
+    }
+
+    fn compare_roots_and_ops(
+        referenced: &BTreeSet<String>,
+        asserted: &BTreeSet<String>,
+    ) -> Result<(), String> {
+        let missing: Vec<_> = referenced.difference(asserted).cloned().collect();
+        let stale: Vec<_> = asserted.difference(referenced).cloned().collect();
+        if missing.is_empty() && stale.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "static-runtime dependency bijection failed: referenced without dependency op = {missing:?}; asserted op absent from source = {stale:?}"
+            ))
+        }
+    }
+
+    #[test]
+    fn maximal_static_runtime_source_and_dependency_ops_are_bijective() {
+        let static_dir = format!("--static-dir={}/static", env!("CARGO_MANIFEST_DIR"));
+        let cli = crate::cli::Cli::parse_from([
+            "cddl-codegen",
+            "--input=unused_static_runtime_bijection.cddl",
+            "--output=unused_static_runtime_bijection",
+            &static_dir,
+            "--preserve-encodings=true",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ]);
+        let mut sources: Vec<(String, String)> = composed_runtime_static_files(
+            &cli, true, true, true, true, true, true, true, true, true, true,
+        )
+        .expect("maximal static runtime composition")
+        .into_iter()
+        .collect();
+        sources.push((
+            "serialization_prelude.rs".to_owned(),
+            GenerationScope::serialization_prelude(true, true, &cli)
+                .expect("maximal standalone serialization prelude"),
+        ));
+        let referenced = sources
+            .iter()
+            .flat_map(|(name, source)| external_path_roots(name, source))
+            .collect::<BTreeSet<_>>();
+        let asserted = asserted_dependency_keys(&cli);
+        assert_eq!(
+            referenced,
+            BTreeSet::from([
+                "cbor_event".to_owned(),
+                "hashlink".to_owned(),
+                "hex".to_owned(),
+                "schemars".to_owned(),
+                "serde".to_owned(),
+                "serde_json".to_owned(),
+            ]),
+            "maximal-flavor source roots changed: update the classifier exclusions only for language/prelude roots; a new external root must gain an op"
+        );
+        assert_eq!(
+            asserted, referenced,
+            "ops_for_static_runtime must assert exactly the external crate roots actual composed source references"
+        );
+        compare_roots_and_ops(&referenced, &asserted).expect("real maximal flavor is bijective");
+
+        let mut under_asserted = asserted.clone();
+        under_asserted.remove("serde");
+        assert!(
+            compare_roots_and_ops(&referenced, &under_asserted)
+                .expect_err("under-asserted source root must fail")
+                .contains("serde"),
+            "the under-assert canary must name its missing source root"
+        );
+        let mut stale_op = asserted.clone();
+        stale_op.insert("unused_synthetic_dependency".to_owned());
+        assert!(
+            compare_roots_and_ops(&referenced, &stale_op)
+                .expect_err("stale dependency op must fail")
+                .contains("unused_synthetic_dependency"),
+            "the stale-op canary must name its source-absent dependency"
+        );
+        assert!(
+            external_path_roots(
+                "unknown-root canary",
+                "type Canary = unknown_synthetic_root::Thing;",
+            )
+            .contains("unknown_synthetic_root"),
+            "the external-root classifier must reject an unknown root instead of accepting only today's dependency set"
+        );
+    }
+}

@@ -2168,21 +2168,19 @@ title = "Keep EVERY matrix axis honest (periodic)."
 
 [record.payload]
 kind = "matrix_policy"
-body_md = '''- **Keep EVERY matrix axis honest (periodic).** Grid coverage equals the hand-curated lists the
-  projections carry — `SHAPES` × `ROLES` in `project_wasm_matrix.ts`, `SHAPES` × reference MODE in
-  `project_multifile_matrix.ts` — and a hole in ANY of them is silent, not a red cell. A wasm
-  representation not in `SHAPES` is an un-gated shape; an emitter path that places types in a
-  boundary position not in `ROLES`, or a reference position not in the mode list, is an un-gated
-  position. **The standing rule: a generator change that gives types a NEW way to cross the wasm
-  boundary, or a NEW position to sit in, adds the shape/role/mode in the same change.** Beyond that
-  rule the axes need a periodic sweep, and the sweep is worth running as four repeatable TELLS rather
-  than as a re-read of the lists — every hole that has actually bitten (E0412/E0425/E0599 classes,
-  one of them escaping to a production consumer's regen) was found by one of these, never by asking
-  "is this list complete?":
+body_md = '''- **Keep EVERY matrix axis honest (periodic).** `project_multifile_matrix.ts --check`
+  now parses the bounded sibling wasm `SHAPES` declaration without executing it and requires its
+  local `SHAPES` to contain every standalone-compilable wasm shape; its only exact exclusions are
+  `prim`, `extern`, and `rawbytes`, and the exclusion ledger is itself asserted live. The grid still
+  relies on the hand-curated `SHAPES` × `ROLES` and `SHAPES` × reference-MODE axes, so a new boundary
+  representation, role, or placement position remains an ungated hole until it is added. **The
+  standing rule: a generator change that gives types a NEW way to cross the wasm boundary, or a NEW
+  position to sit in, adds the shape/role/mode in the same change.** The remaining periodic sweep is
+  therefore about reach and exclusions, not copying sibling rows by review:
 '''
 policy_kind = "maintenance_protocol"
 authority_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining-n2"
-protocol_md = '''At periodic review and every new boundary shape, inspect fix reach, steering comments, consumer hand patches, and exclusion comments; every discovered hole must gain a durable owner.
+protocol_md = '''At periodic review and every new boundary shape, inspect fix reach, steering comments, consumer hand patches, and exclusion comments; update the executable SHAPES superset when a standalone-compilable wasm shape is added; every discovered hole must gain a durable owner.
 '''
 
 [record.payload.cadence]
@@ -2190,7 +2188,7 @@ owner_reference_id = "roadmap-wasm-abi-multifile-placement-matrices-remaining-n2
 event_source = "matrix and generator coverage review"
 period_or_event_md = '''Run at periodic review and whenever a boundary position, shape, or mode is added.
 '''
-checklist_md = '''Run the four exact tells in the supporting parts and inspect exclusions and committed consumer hand patches.
+checklist_md = '''Run the supporting reach/exclusion/consumer-patch tells, inspect the exact exclusion ledger, and add every new standalone-compilable wasm shape to the executable multifile superset.
 '''
 missed_action_md = '''Fail pickup when a discovered hole has no durable owner.
 '''
@@ -2918,11 +2916,9 @@ body_md = '''  - **The EXCLUSION comments, not just the missing rows** — a sha
   over-width-field class every short-named fixture kept unreachable is held by a standing
   cddl-codegen gate, the dense width ladder
   `integration_tuple_field_width_ladder_never_aborts_rustfmt`, whose step-1 rungs cannot let the
-  measured 6-char rustfmt#5703 fatal window hide between fixtures.) One mechanical upgrade is armed:
-  the multifile `SHAPES` list has drifted from the wasm projection's once, caught by doc-coherence
-  review rather than by a gate — a SECOND such near-miss is the signal to make
-  `project_multifile_matrix.ts --check` assert its `SHAPES` is a superset of the wasm projection's
-  (minus its documented exclusions) instead of relying on review.
+  measured 6-char rustfmt#5703 fatal window hide between fixtures.) The multifile projection now
+  mechanically compares its names with the wasm projection and asserts this exact exclusion ledger;
+  review the rationale when either ledger changes.
 '''
 
 [[part]]

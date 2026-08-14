@@ -1,0 +1,2 @@
+; cell: brseta x named (shape defs, module a)
+boset<e0> = [2*3 e0] ; @duplicates reject
