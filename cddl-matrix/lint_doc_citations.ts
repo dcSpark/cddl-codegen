@@ -2,7 +2,7 @@
 /**
  * Documentation citation lint — PURE FILE READS, no cargo, no oracles.
  *
- * Four small checks keep gap-tracking prose maintainable:
+ * These small checks keep gap-tracking prose maintainable:
  *   1. Citation existence: in the shipped gap-tracking docs, every
  *      `pinned by` / `tracked by` / `gated by` backticked token must resolve to a real tracked path or
  *      fixed-string occurrence outside those same hand docs. Brace shorthands such as
@@ -26,6 +26,9 @@
  *      the constraint inline with a durable citation instead. See EPHEMERAL_PATTERNS.
  *   6. Roadmap fragment integrity: generated roadmap stable-ID anchors have canonical syntax,
  *      occur exactly once, and every durable stable-ID fragment resolves to one anchor.
+ *   7. Retired-projection reference ban: the deleted `ROADMAP.md` / `TESTING_ROADMAP.md`
+ *      spellings survive only in the explicit pre-cutover compatibility implementation and its
+ *      fixtures. Durable prose cites the authoritative TOML source or a stable record ID.
  *
  * Run from cddl-matrix/:
  *   bun run lint_doc_citations.ts
@@ -240,8 +243,11 @@ function positionalCitationProblems(file: TrackedFile): string[] {
   if (file.rel.startsWith("draft/")) return [];
   const problems: string[] = [];
   const patterns = [
-    // Roadmap-adjacent citations are always positional, including `TESTING_ROADMAP.md item <N>`.
-    /\b(?:[A-Za-z0-9_./-]*ROADMAP(?:\.md)?|roadmap)\s+(?:§\s+[^:\n()]{0,80}\s+)?item\s*#?\d+\b/gi,
+    // Roadmap-adjacent citations are always positional, including a roadmap TOML's `item <N>`.
+    /\b[A-Za-z0-9_./-]*roadmap(?:\.md|\.toml)?\s+(?:§\s+[^:\n()]{0,80}\s+)?item\s*#?\d+\b/gi,
+    // A roadmap filename followed by an all-numeric section address retargets when sections move.
+    // Require the filename extension so ordinary `RFC 8610 § 3.2` prose remains outside this rule.
+    /\b[A-Za-z0-9_./-]*roadmap(?:\.md|\.toml)\s+§\s*\d+(?:\.\d+)*\b/gi,
     // Bare forms are limited to citation verbs/prepositions to avoid standards prose such as
     // "item 6 of Section 3.1" in pinned upstream source text.
     /\b(?:see|from|in|by|tracks?|tracked|pinned|gated|cite[sd]?|refer(?:s|red)?\s+to)\s+item\s*#?\d+\b/gi,
@@ -254,6 +260,35 @@ function positionalCitationProblems(file: TrackedFile): string[] {
     }
   }
   return problems;
+}
+
+// Keep both roadmap position spellings live: a list-item number and a numeric section number.
+// Assemble the numeric suffixes so this source remains clean when the production scan reads it.
+function positionalCitationSelfTestProblems(): string[] {
+  const number = "1" + "4";
+  const numericSection = `§ ${number}`;
+  const authoritativeRoadmap = "tests/testing-roadmap.toml";
+  const legacyRoadmap = "TESTING_" + "ROADMAP.md";
+  const canary = (text: string): TrackedFile => ({ rel: "tests/positional-citation-canary.md", text });
+  const failures: string[] = [];
+  const expectBlocked = (label: string, text: string): void => {
+    const problems = positionalCitationProblems(canary(text));
+    const expected = `positional citation '${text}' is unstable`;
+    if (problems.length !== 1 || !problems[0]!.includes(expected))
+      failures.push(`positional-citation self-check: ${label} was not rejected with the stable diagnostic`);
+  };
+  const expectAllowed = (label: string, text: string): void => {
+    if (positionalCitationProblems(canary(text)).length !== 0)
+      failures.push(`positional-citation self-check: ${label} was incorrectly rejected`);
+  };
+
+  expectBlocked("roadmap item", `${authoritativeRoadmap} item ${number}`);
+  expectBlocked("legacy roadmap numeric section", `${legacyRoadmap} ${numericSection}`);
+  expectBlocked("authoritative roadmap numeric section", `${authoritativeRoadmap} ${numericSection}`);
+  expectBlocked("authoritative roadmap compact numeric section", `${authoritativeRoadmap} §${number}`);
+  expectAllowed("roadmap title", `${authoritativeRoadmap} § Standing-system residuals`);
+  expectAllowed("RFC numeric section", `RFC 8610 ${numericSection}`);
+  return failures;
 }
 
 // Capture the whole fragment token, not only a valid-looking prefix: `matrix.foo!bad` must be
@@ -405,6 +440,23 @@ const allFiles = readTrackedTextFiles(trackedRels, readTextState);
 // of truth, which is exactly what the move out of the repository forecloses.
 const ROADMAP_SOURCE_DOCS = ["cddl-matrix/roadmap.toml", "tests/testing-roadmap.toml"] as const;
 const RETIRED_PROJECTION_PATHS = ["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADMAP.md"] as const;
+// These spellings name deleted projections, not current documents. Keep the compatibility surface
+// closed: every other tracked text file must use the TOML authorities or a stable roadmap record ID.
+// This excludes paths themselves (git rejects retired projections below); it scans only readable text
+// contents, so binary fixtures cannot produce a misleading prose citation.
+const RETIRED_PROJECTION_SPELLING_RE = /\b(?:ROADMAP\.md|TESTING_ROADMAP\.md)\b/g;
+const RETIRED_PROJECTION_REFERENCE_ALLOWLIST = new Set([
+  "cddl-matrix/lint_doc_citations.ts",
+  "cddl-matrix/project_status_headers.ts",
+  "cddl-matrix/roadmap/adapters/matrix.ts",
+  "cddl-matrix/roadmap/fixtures/status-compat/diagnostics.toml",
+  "cddl-matrix/roadmap/fixtures/status-compat/modes.toml",
+  "cddl-matrix/roadmap/matrix_status_facts.ts",
+  "cddl-matrix/roadmap/output_registry.ts",
+  "cddl-matrix/roadmap/selftests/identity.ts",
+  "cddl-matrix/roadmap/selftests/projection.ts",
+  "cddl-matrix/roadmap/selftests/projection_views.ts",
+]);
 const handDocSet = new Set<string>([
   ...ROADMAP_SOURCE_DOCS,
   "tests/README.md",
@@ -419,6 +471,45 @@ for (const rel of trackedRels) {
   if ((RETIRED_PROJECTION_PATHS as readonly string[]).includes(rel) || rel === "draft" || rel.startsWith("draft/")) {
     problems.push(`${rel}: generated roadmap projections and draft/ scratch material must not be tracked by git; the TOML sources are the authority and the renders live under gitignored draft/roadmaps/`);
   }
+}
+
+function retiredProjectionSpellingProblems(files: readonly TrackedFile[]): string[] {
+  const problems: string[] = [];
+  for (const file of files) {
+    if (RETIRED_PROJECTION_REFERENCE_ALLOWLIST.has(file.rel)) continue;
+    for (const match of file.text.matchAll(RETIRED_PROJECTION_SPELLING_RE)) {
+      problems.push(
+        `${file.rel}:${lineOf(file.text, match.index ?? 0)}: retired roadmap projection spelling '${match[0]}' is reserved for closed pre-cutover compatibility seams; cite the TOML authority or a stable roadmap record ID instead`,
+      );
+    }
+  }
+  return problems;
+}
+
+function retiredProjectionAllowlistStalenessProblems(files: readonly TrackedFile[]): string[] {
+  const texts = new Map(files.map((file) => [file.rel, file.text]));
+  const problems: string[] = [];
+  for (const rel of [...RETIRED_PROJECTION_REFERENCE_ALLOWLIST].sort()) {
+    const text = texts.get(rel);
+    RETIRED_PROJECTION_SPELLING_RE.lastIndex = 0;
+    if (text === undefined || !RETIRED_PROJECTION_SPELLING_RE.test(text))
+      problems.push(`${rel}: retired-projection compatibility allowlist entry is stale; remove it or retain its explicit compatibility seam`);
+  }
+  RETIRED_PROJECTION_SPELLING_RE.lastIndex = 0;
+  return problems;
+}
+
+// Exercise the closed-set boundary without embedding a retired spelling in this scanned source.
+function retiredProjectionReferenceSelfTestProblems(): string[] {
+  const spelling = "ROAD" + "MAP.md";
+  const unknown = retiredProjectionSpellingProblems([{ rel: "tests/retired-projection-canary.md", text: spelling }]);
+  const known = retiredProjectionSpellingProblems([{ rel: "cddl-matrix/lint_doc_citations.ts", text: spelling }]);
+  const failures: string[] = [];
+  if (unknown.length !== 1 || !unknown[0]!.includes("reserved for closed pre-cutover compatibility seams"))
+    failures.push("retired-projection self-check: unallowlisted canary was not rejected with the stable diagnostic");
+  if (known.length !== 0)
+    failures.push("retired-projection self-check: allowlisted compatibility canary was rejected");
+  return failures;
 }
 
 const handDocFiles = handDocs.flatMap(rel => {
@@ -470,6 +561,10 @@ for (const doc of handDocFiles) {
 }
 
 for (const f of allFiles) problems.push(...positionalCitationProblems(f));
+problems.push(...positionalCitationSelfTestProblems());
+problems.push(...retiredProjectionSpellingProblems(allFiles));
+problems.push(...retiredProjectionAllowlistStalenessProblems(allFiles));
+problems.push(...retiredProjectionReferenceSelfTestProblems());
 for (const f of allFiles) problems.push(...ephemeralReferenceProblems(f));
 for (const f of allFiles) problems.push(...directiveSwallowedCloserProblems(f));
 problems.push(...roadmapFragmentProblems(allFiles));
@@ -505,5 +600,5 @@ if (problems.length) {
 console.log(
   `doc-citation lint OK — ${identifierCitationCount} citation token(s) across ${handDocFiles.length} hand doc(s) ` +
     `(${handDocs.map(rel => `${rel}=${perDocCitationCounts.get(rel) ?? 0}`).join(", ")}) · ` +
-    `positional + ephemeral-reference bans scanned ${allFiles.filter(f => !f.rel.startsWith("draft/")).length} tracked text file(s) · directive-swallow ban over docs/docs/*.mdx · MD022 headings clean`,
+    `positional + ephemeral-reference + retired-projection bans scanned ${allFiles.filter(f => !f.rel.startsWith("draft/")).length} tracked text file(s) · directive-swallow ban over docs/docs/*.mdx · MD022 headings clean`,
 );

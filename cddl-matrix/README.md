@@ -15,7 +15,7 @@ resolve to a pinned in-repo source (`src/comment_ast.rs` + `docs/docs/comment_ds
 bidirectional lint as spec features — so "not pure RFC" does not mean "unanchored."
 
 > **Entry points (in order):** *this README* (the model + current state, incl. the gotchas and
-> upstream-oracle-gap state) → [`ROADMAP.md`](ROADMAP.md)
+> upstream-oracle-gap state) → [`roadmap.toml`](roadmap.toml)
 > (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
 > consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->123 features and 144 containment cells<!-- /gen:sh:readme-counts -->
 > across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->301 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
@@ -121,13 +121,14 @@ resolve to a real master id). Run it with `bun run build_matrix.ts`; `lib.ts` ho
 > markdown render can be generated with `bun run project_roadmaps.ts --roadmap matrix --write`;
 > it lands in the gitignored `draft/roadmaps/` directory and must never be committed. The testing
 > roadmap follows the same source contract documented in `tests/README.md`. These documents are linted: the sibling script
-> `lint_doc_citations.ts` (check.ts `local` tier; not matrix tooling — it lives here for the shared
+> `lint_doc_citations.ts` (check.ts `fast` tier; not matrix tooling — it lives here for the shared
 > tsc coverage, as does `no_std_check.ts`, the no_std drift gate, which additionally shares
 > `lib.ts`'s gate-cache helpers; see `tests/README.md` § "The no_std drift gate") asserts every
 > "pinned by/tracked by/gated by `name`" citation in the hand docs still
 > resolves in the tree, bans positional "…item `<N>`" citations, bans numbered section headings in
 > the hand docs (a numbered heading invites `§ <N>` citations, which silently retarget on
-> renumbering), and requires a blank line before headings.
+> renumbering), rejects references to the deleted roadmap projections outside their explicit
+> compatibility seams, and requires a blank line before headings.
 
 > **Selection state is not tracked in the repository.** Which roadmap entries are picked up, by whom,
 > and in what order is plan-internal state, and it lives in the gitignored `draft/` directory — the
@@ -260,8 +261,8 @@ Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 ## Upstream oracle gaps (rust `cddl` CLI)
 
 None of these are cddl-codegen bugs, and the matrix no longer sits on any of them — but they shape
-what "certified" means per vector family (§ Q4 above) and what the prunes in `ROADMAP.md`
-§ "Upstream close-outs (waiting on external releases)" wait on. The sibling checkout's
+what "certified" means per vector family (§ Q4 above) and what the `upstream-closeouts` section in
+`roadmap.toml` waits on. The sibling checkout's
 `local-fixes` branch (`~/Documents/git/cddl`, commit
 `ac1b98e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
 cddl-codegen's own parser share it) carries the fixes whose entries below read FIXED; the entries
@@ -551,7 +552,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
 ## Gotchas (read before touching the support seam or probe examples)
 
 The recurring rule: **a panic/compile-failure on minimal *valid* CDDL is a finding to surface
-(ledger it in `ROADMAP.md` § findings), not something to engineer away by making the probe green —
+(ledger it in `roadmap.toml`'s `findings-open` section), not something to engineer away by making the probe green —
 and the inverse, don't *invent* a gap from a degenerate example.**
 
 - **Support seam — a probe verdict is only as good as its example.** The probe runs the cell's
@@ -592,7 +593,7 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the
   per-(feature, role) verdict genuinely differs, which is the whole point. An inline parenthesized
   group carrying an occurrence marker (`[* (int, tstr)]`) is a distinct path: it is rejected
-  gracefully (not a panic — `ROADMAP.md` § findings), with the same "name the group" remedy.
+  gracefully (not a panic — `roadmap.toml`'s `findings-open` section), with the same "name the group" remedy.
 - **Supported fixed values are nominal at the TOP level and inline at MEMBER position.** A named
   scalar/text/bytes/bool/null/undefined fixed rule (`x = true`, `x = undefined`, `x = 5`,
   `x = "v"`, `x = h'CAFE'`, or `x = 'raw'`) is a singleton type with a
@@ -637,7 +638,7 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `cbor_any_prelude_tag_rejects_gracefully_in_every_position`). Items (2) and (3) route through
   `record_rejection` and are pinned alongside the float-window enforcement in the `tests/core`
   `float_bounds` fixtures. Everything else in this section's neighbourhood is a candidate fix, and
-  lives in `ROADMAP.md` § findings.
+  lives in `roadmap.toml`'s `findings-open` section.
 - **`@custom_json` is a CONTRACT, and its can't-compile-STANDALONE class is the correct record of
   it.** The directive suppresses the serde/schemars derives on the type it names precisely so the
   spec author owns its JSON form, while every JSON surface the tool emits over that type keeps
@@ -656,7 +657,7 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `WASM_SURFACE_SKIP` is the right record: those legs compile the row's crate with no hand-written
   impls anywhere, which is exactly the state the contract says cannot build. The promise is stated
   where the directive is documented (`docs/docs/comment_dsl.mdx` § "@custom_json"). The boundary
-  would stop being a contract — and go back to `ROADMAP.md` § findings as a defect — if a
+  would stop being a contract — and go back to `roadmap.toml`'s `findings-open` section as a defect — if a
   `@custom_json` type's emitted JSON surface ever demanded anything BEYOND those three impls: a
   bound no hand impl can discharge, or a reference only an edit to a generated file could satisfy.
 - **A NON-STRING map key does not cross the `--json-serde-derives` json boundary — a kept
@@ -727,8 +728,9 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   array-element role") and a containment row is shape-granular (its example is an *anonymous inline*
   array), so the two sides are different shapes and never a contradiction. The grid is informational
   and kept honest by the `coverage_md_diff` gate, not by a verdict; its denominator is observed
-  (modelled ∪ exercised), which is why a blank cell claims nothing at all — see `ROADMAP.md` for the
-  grammar-derived denominator that would make "nothing has an opinion here" a rendered state.
+  (modelled ∪ exercised), which is why a blank cell claims nothing at all — see
+  `matrix.over-acceptance-denominator` for the grammar-derived denominator that would make "nothing
+  has an opinion here" a rendered state.
 - **Failure-claim findings must carry a resolvable pin (check I).** A corpus-overlay `[[finding]]`
   that states a defect ("Bug —"/"Gap —" or "Candidate cddl-codegen fix") must name at least one
   backtick-quoted tracking artifact that resolves against the tree (a `tests/…` file or a
@@ -926,8 +928,8 @@ cost six fail-fast tier iterations. In order:
 7. Expect the cells' examples to meet the REPLAY oracles for the first time on the next full
    tier, and route each finding to its designed ledger rather than a weakened contract:
    `JSON_SURFACE_SKIP` (a value class that cannot cross the json boundary — cite its owning
-   record: the non-string-map-key gotcha above for the kept boundary, a `ROADMAP.md` § findings
-   entry for a defect), `RUST_ORACLE_SKIP` (a rust-validator gap, ruby keeps judging — cite the gap number),
+   record: the non-string-map-key gotcha above for the kept boundary, a `roadmap.toml`
+   `findings-open` entry for a defect), `RUST_ORACLE_SKIP` (a rust-validator gap, ruby keeps judging — cite the gap number),
    `ENCODING_VARIANT_SKIP` (a real DECODER gap over a genuinely spec-equal re-encoding — cite the
    findings entry). All three are stale-guarded. A reordering variant whose value-equality premise
    is false for the TYPE is not ledgered at all: an `@duplicates preserve` pair-map's exemption is

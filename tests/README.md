@@ -970,8 +970,8 @@ CHANGED spec: "the generator emits no comment on a row a spec change can delete"
 "no trailing comments"). The disk round-trip regenerates the SAME spec — no row is ever deleted —
 and the corpus round-trip self-preserves (`preserve(content, content)`), a no-op for any comment
 whether or not a real regen would strand it. That blindness shipped a real trap once (the
-`extern_interface_check.rs` / `key_demand_assertions.rs` per-row markers — see the corresponding
-`TESTING_ROADMAP.md` entry), and the two pins minted then —
+`extern_interface_check.rs` / `key_demand_assertions.rs` per-row markers — see
+`testing.corpus-wide-regen-over-prior-output-sweep-reaches`), and the two pins minted then —
 `extern_interface_check_regen_over_deletion_no_trap` (a real regen-over-prior-output with a rule
 deletion, over a hand spec whose two `@used_as_key` rules let one tag be deleted while the file
 survives) and `extern_interface_check_has_no_trailing_row_comments` (a source-shape floor) — name
@@ -1081,7 +1081,8 @@ masked one of the two instances — unification keys on the PACKAGE, so that par
 when the `hex` key moved to the `const-hex` package, while the mechanism stands for every dep two
 manifests name identically), the same unification caveat
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards against below — full class
-ledger in `TESTING_ROADMAP.md` § Standing-system residuals. `tests/core/tests_wasm.rs` (default profile) and
+ledger in `testing.fixture-s-verdict-accident-cargo-feature-unification-harness`.
+`tests/core/tests_wasm.rs` (default profile) and
 `tests/canonical/tests_wasm.rs` (preserve-encodings/canonical, whose map wrappers wrap
 `OrderedHashMap`) execute a representative sample of the wasm-ABI shape axis (the
 `project_wasm_matrix.ts` `SHAPES` list): construct through the wasm wrapper API, round-trip
@@ -1121,7 +1122,8 @@ The supported/refused boundary and its remedies are documented for users in
 This map closes the known recursive alias-hop escape and, together with
 `generic_collection_tests::alias_of_instance_chains_generate`, the known generic-instance alias
 escape. It is not a cross-product over every kind of ident registration and reference position:
-that broader generation-and-compile sweep is the due item in `TESTING_ROADMAP.md` § 14. Keeping the
+that broader generation-and-compile sweep is the due work item
+`testing.build-registration-class-reference-position-sweep-second-escape`. Keeping the
 incident pins here and the unbuilt enumeration there makes the present verdict explicit without
 describing planned breadth as shipped coverage.
 
@@ -1187,8 +1189,8 @@ wrong-direction re-export compile-indistinguishable) and `dep_owned_named_collec
 faces — give the dep-owned named-collection cell a full cross-crate compile). Both are hand mirrors of generated `Int` — the
 preserve-encodings `Uint`/`Nint` representation, wire impls, and encoding-insensitive key
 semantics — enforced today only by round-tripping through the fixture's own impls (the mirror
-drift gate is a recorded `TESTING_ROADMAP.md` item, "Negative failure-SHAPE vectors + the
-fixture-`Int` mirror gate"). It is a bespoke
+drift gate is recorded by
+`testing.documented-failure-shape-exercises-prose-cross-crate-int`). It is a bespoke
 harness rather than `run_test`: it asserts the CLI's stderr warning for an all-extern wrapper
 absent from the index, the deferred `use <dep_wasm>::collections::…;` imports (plain `use`, never
 re-exported), the local-mint cells (not-in-index and mixed-element), a cross-crate behavioral
@@ -1290,8 +1292,9 @@ exactly the class every host-target check survives.
 The grid's table and compile floors currently establish those participation decisions at the
 default profile. Preserve-profile behavior has focused incident controls (including deferred map
 sources), but there is no preserve/JSON profile cross-product over every row. That is a measured
-scope boundary of the current system; `TESTING_ROADMAP.md` records the signal that would justify
-multiplying the grid by profiles.
+scope boundary of the current system;
+`testing.add-profile-wrapper-participation-grid-participation-differs-across` records the signal
+that would justify multiplying the grid by profiles.
 
 ### Hand-vector suites (`tests/<dir>/tests.rs`) — the assertions no other layer can make
 
@@ -1349,7 +1352,7 @@ new hand vectors in these shapes; a vector that merely EXERCISES the code certif
    When to write these: any change to the version floor or identity of
    a dependency whose types the generated public API re-exposes lands pins of the incumbent's
    consumer-reachable behavior first, in their own commit (the full working rule and its trigger
-   ledger live in `TESTING_ROADMAP.md` § Standing-system residuals).
+   ledger live in `testing.dependency-swap-pass-compile-parity-existing-gate-silently`).
 
 `tests/recursive-collection-ref/` exists purely to run one hand suite across two profiles rather
 than to add a shape: a nominal reference to a collection typedef, generated under BOTH the default

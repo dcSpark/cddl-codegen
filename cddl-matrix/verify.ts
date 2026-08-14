@@ -259,7 +259,7 @@ function applyDefSplice(out: string, opts: { wasm: boolean; json: boolean; prese
   appendFileSync(join(out, "wasm", "src", "lib.rs"), wasmDefs);
 }
 
-// --- EMISSION-PROFILE axis (design rationale: see README.md + ROADMAP.md) ----------------------------------------------
+// --- EMISSION-PROFILE axis (design rationale: see README.md + roadmap.toml) --------------------------------------------
 // Second, orthogonal axis on the support verdict: besides the DEFAULT-flags verdict (`status`), a
 // default-supported row is ALSO probed under each non-default emission profile — the CLI flag sets that
 // drive meaningfully different generation paths (preserve-encodings, json-serde/schema). The single

@@ -5,7 +5,8 @@
  * The status-slot marker payloads are derived and planned by the pure roadmap
  * compatibility seam. This file classifies argv before it can read a Markdown target, snapshots
  * each still-owned target once for check/write, and applies a successful write plan in historical
- * order. ROADMAP.md is projected from its TOML source and is not in this writer's inventory.
+ * order. Current human-review Markdown is rendered from TOML; legacy ROADMAP.md remains only the
+ * pre-cutover status compatibility seam and is not in this writer's inventory.
  *
  * Run from cddl-matrix/:
  *   bun run project_status_headers.ts           -> readable count report

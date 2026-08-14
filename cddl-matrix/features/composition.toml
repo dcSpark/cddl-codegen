@@ -170,7 +170,7 @@ roles = ["role.occurrence-target"]
 # --- occur one-sided-bound variation rows (n* / *m) ---
 # The occur.bounded base row above is probed only from the two-sided form `2*5`. These enumerate the
 # one-sided arms of the SAME `[uint] "*" [uint]` alternative — the variation the base desc mentions only
-# in prose. Enumerated for the "Intra-alternative variation rows" reason (ROADMAP.md): the
+# in prose. Enumerated for `matrix.intra-alternative-variations`: the
 # enforcement axis reaches only as far as row enumeration,
 # so a one-sided bound with no row is an enforcement blind spot, not just missing coverage accounting.
 [[feature]]

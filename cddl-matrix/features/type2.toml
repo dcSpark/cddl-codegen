@@ -45,7 +45,7 @@ encodings = ["enc.major0", "enc.major1", "enc.major7.float"]
 # --- value.number radix / lexeme variation rows (0x / 0b / hexfloat) ---
 # The value.number base row above is probed only from a decimal integer literal (`5`). These enumerate
 # the alternative numeric LEXEMES of the same `number` production — the radix axis (`0x`/`0b`) and the
-# hexfloat form. Enumerated for the "Intra-alternative variation rows" reason (ROADMAP.md): the
+# hexfloat form. Enumerated for `matrix.intra-alternative-variations`: the
 # enforcement axis reaches only as far as row
 # enumeration, so a radix/lexeme form with no row is an enforcement blind spot.
 #

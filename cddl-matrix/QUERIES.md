@@ -6,7 +6,7 @@ those questions **concretely**. Their purpose is twofold:
 1. **Definition of done** — the matrix is "good enough" when it can answer Q1–Q6 mechanically from
    `matrix.json` + annotations.
 2. **Granularity test** — each query *dictates* the resolution the schema must carry. A critique finding
-   (ledger in `ROADMAP.md`) is **load-bearing iff some query needs it**; if no query needs it, it's
+   (ledger in `roadmap.toml`) is **load-bearing iff some query needs it**; if no query needs it, it's
    optional. This is how we avoid both over- and under-investing.
 
 ## The queries the master must answer
@@ -118,7 +118,7 @@ The matrix is "done (v1)" when Q1–Q6 are each answerable by a small script ove
 annotations, with: an explicit target profile per feature (F1), bidirectional grammar reconciliation +
 tags (F2/F4), a per-construct encoding legality relation (F5), a ≥5-way directional support signal (F3),
 and a pinned/diffable synthesised snapshot (F6). F8/F9/F10/F11 are explicitly out of v1 scope (ledger
-in `ROADMAP.md`).
+in `roadmap.toml`).
 
 **This bar is met.** Each query has a standing script (the "Answered by" notes above): Q1
 `query_q1_gaps.ts`, Q2 `project_corpus.ts`, Q3 `project_golden_hex.ts`, Q4 `query_q4_directional.ts`,

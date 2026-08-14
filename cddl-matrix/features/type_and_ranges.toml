@@ -75,7 +75,7 @@ example = "t = 0..10"
 # The base rangeop rows above are verdicted from a uint-headed, non-negative window (`0..10`) alone.
 # These specialize the SAME production/alt on the (head-type × sign) axis — the variation that stayed
 # invisible until enumerated: because the enforcement axis reaches only as far as row enumeration (the
-# "Intra-alternative variation rows" rule, ROADMAP.md),
+# `matrix.intra-alternative-variations` rule),
 # a missing row is an enforcement blind spot, which is exactly how the float-range silent-acceptance
 # hole hid from the matrix and was caught only by manual probing.
 [[feature]]
