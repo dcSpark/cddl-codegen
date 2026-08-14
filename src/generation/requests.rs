@@ -873,22 +873,19 @@ fn requested_structural_name(
                 // for it resolves to (or subtracts against) the identical structural name.
                 rt.reject_ordered_set_wasm_wrapper_name(types)
             } else if rt.is_non_empty_array() {
-                format!("NonEmpty{}List", inner.conceptual_type.for_variant())
-            } else if let Some((min, max)) = rt.bounded_array_u64_bounds() {
-                let base = inner.conceptual_type.for_variant();
-                match (min, max == u64::MAX) {
-                    (0, false) => format!("{base}ListMax{max}"),
-                    (_, true) => format!("{base}ListMin{min}"),
-                    _ => format!("{base}ListMin{min}Max{max}"),
-                }
+                format!(
+                    "NonEmpty{}List",
+                    inner.wasm_boundary_identity_fragment(types)
+                )
+            } else if rt.bounded_array_u64_bounds().is_some() {
+                rt.bounded_wasm_array_structural_name(types)
             } else {
-                inner.conceptual_type.name_as_wasm_array_ct(types)
+                inner.name_as_wasm_array(types)
             }
         }
         ConceptualRustType::Map(k, v) => {
-            // The container flavor is part of the structural name, and the shape column round-trips
-            // it (`@duplicates preserve` marker), so a requested pair-map wrapper reconstructs to the
-            // SAME `PairMapKToV` / `NonEmptyPairMapKToV` spelling the consumer's emitter deferred on.
+            // Map wrapper names still have their established bounds-blind owner. The recursive
+            // array work must not point an array-over-map at a class the map emitter has not minted.
             let preserve = rt.is_preserve_pair_map();
             if rt.is_bounded_map() {
                 rt.bounded_wasm_map_structural_name()

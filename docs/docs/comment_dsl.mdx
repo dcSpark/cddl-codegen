@@ -37,6 +37,18 @@ It is also possible to use `@name` with type choices:
 foo = 0 ; @name mainnet
     / 1 ; @name testnet
 ```
+
+Every explicitly named arm of one **type choice** must have a distinct generated Rust variant
+name. The comparison is after Rust-name conversion, so `my_arm` and `myArm` collide; generation
+rejects both the exact duplicate and that camel-case convergence with a diagnostic naming the choice
+context (the rule where one exists), both arms, and the shared variant. Give the arms distinct
+`; @name` values.
+
+This is a deliberate breaking behavior change: a pre-existing duplicate no longer silently emits
+`Mainnet` plus `Mainnet2`. Names the generator derives (because no `@name` was written) still take
+numeric suffixes when they collide, and an explicit name always keeps its spelling even if its
+derived sibling comes first.
+
 and also for group choices:
 ```cddl
 script = [

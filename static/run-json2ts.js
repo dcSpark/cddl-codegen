@@ -108,11 +108,13 @@ if (sourceDefs == null || Object.keys(sourceDefs).length === 0) {
   fail(`${documentFile} has no definitions ($defs). Refusing to write an empty ${outputFile}.`);
 }
 
-// `JSON` suffix so these names cannot collide with the wasm classes they describe. This is the name
-// the emitted declaration MUST carry — `json-ts-types.js` keys the splice on it — so how it gets
-// there is the subject of the next block: the naive route (compile under the real name, rename
-// afterwards if json2ts mangled it) is unavailable, because renaming an identifier in the output
-// also rewrites matching words inside doc comments and string-literal unions.
+// `JSON` suffix so each ordinary wasm class differs from the JSON declaration that DESCRIBES IT.
+// Another authored wasm class can still carry that suffixed name; `json-ts-types.js` refuses that
+// cross-half collision once both declaration sets are in hand. This is the name the emitted
+// declaration MUST carry — the merge keys the splice on it — so how it gets there is the subject of
+// the next block: the naive route (compile under the real name, rename afterwards if json2ts mangled
+// it) is unavailable, because renaming an identifier in the output also rewrites matching words
+// inside doc comments and string-literal unions.
 const suffixed = (name) => `${name}JSON`;
 
 // The document needs a root that references every definition, or json2ts prunes the ones nothing

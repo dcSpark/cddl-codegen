@@ -531,7 +531,10 @@ impl GenerationScope {
         // (no named owner) branch of `RustType::non_empty_wasm_wrapper_name`, which cannot be called
         // here because an owner-named wrapper must never look deferrable. If that helper's
         // synthesized spelling changes, change this format! too (and the map twin below).
-        let structural_name = format!("NonEmpty{}List", element_type.conceptual_type.for_variant());
+        let structural_name = format!(
+            "NonEmpty{}List",
+            element_type.wasm_boundary_identity_fragment(types)
+        );
         let shape = format!("[+ {}]", render_wrapper_shape(&element_type));
         if self.try_defer_wrapper(
             types,
@@ -665,11 +668,17 @@ impl GenerationScope {
             max.to_string()
         };
         let structural_name = match (min, max == u64::MAX) {
-            (0, false) => format!("{}ListMax{max}", element_type.conceptual_type.for_variant()),
-            (_, true) => format!("{}ListMin{min}", element_type.conceptual_type.for_variant()),
+            (0, false) => format!(
+                "{}ListMax{max}",
+                element_type.wasm_boundary_identity_fragment(types)
+            ),
+            (_, true) => format!(
+                "{}ListMin{min}",
+                element_type.wasm_boundary_identity_fragment(types)
+            ),
             _ => format!(
                 "{}ListMin{min}Max{max}",
-                element_type.conceptual_type.for_variant()
+                element_type.wasm_boundary_identity_fragment(types)
             ),
         };
         // The request/index shape must go through the one canonical renderer: in particular its
@@ -870,7 +879,7 @@ impl GenerationScope {
         // reject set, which cannot be called here because a rule-named wrapper must never look
         // deferrable. If that helper's synthesized spelling changes, change this format! too (and the
         // list/map twins above).
-        let variant = element_type.conceptual_type.for_variant();
+        let variant = element_type.wasm_boundary_identity_fragment(types);
         let structural_name = if let Some((min, max)) = bounds {
             match (min, max == u64::MAX) {
                 (0, false) => format!("{variant}BoundedOrderedSetMax{max}"),
@@ -1897,8 +1906,8 @@ pub(super) fn push_table_accessors(
     let keys_deferred = !keys_type.directly_wasm_exposable_ct(types)
         && gen_scope.try_defer_wrapper(
             types,
-            &RustIdent::new(CDDLIdent::new(key_type.name_as_wasm_array(types))),
-            &key_type.name_as_wasm_array(types),
+            &RustIdent::new(CDDLIdent::new(keys_element_type.name_as_wasm_array(types))),
+            &keys_element_type.name_as_wasm_array(types),
             &[&keys_element_type.conceptual_type],
             &format!("[* {}]", render_wrapper_shape(&keys_element_type)),
             false,
@@ -2136,7 +2145,12 @@ pub(super) fn mint_wasm_keys_list(
     let keys_element = key.loosened_for_wasm_table_boundary_key();
     if !ConceptualRustType::Array(Box::new(keys_element.clone())).directly_wasm_exposable_ct(types)
     {
-        let keys_ident = key.name_as_wasm_array(types);
+        // A table's key-list ABI deliberately loosens only the TOP-LEVEL key occurrence
+        // (`[*5 uint]` keys become a `Vec<Vec<u64>>` list), while nested restrictions remain
+        // visible through `name_as_wasm_array`. Name the class from the same loose element the
+        // emitter passes to `generate_array_type`; using `key` here would mint a misleading
+        // `U64ListMax5List` class with the loose carrier after the recursive-array identity fix.
+        let keys_ident = keys_element.name_as_wasm_array(types);
         if wasm_wrappers_generated.insert(keys_ident.clone()) {
             gen_scope.generate_array_type(
                 types,

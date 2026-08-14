@@ -451,15 +451,11 @@
     },
     {
       "gate": "insta_orphan",
-      "warm_ms": 80000,
+      "warm_ms": 63000,
       "n": 20,
-      "measured": "2026-08-12",
+      "measured": "2026-08-14",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-27",
-          "warm_ms": 37000
-        },
         {
           "date": "2026-07-29",
           "warm_ms": 45000
@@ -475,6 +471,10 @@
         {
           "date": "2026-08-12",
           "warm_ms": 80000
+        },
+        {
+          "date": "2026-08-14",
+          "warm_ms": 63000
         }
       ]
     },
@@ -610,9 +610,9 @@
     },
     {
       "gate": "no_std_check",
-      "warm_ms": 7000,
+      "warm_ms": 5000,
       "n": 20,
-      "measured": "2026-08-10",
+      "measured": "2026-08-14",
       "machine": "86216c55",
       "history": [
         {
@@ -626,6 +626,10 @@
         {
           "date": "2026-08-10",
           "warm_ms": 7000
+        },
+        {
+          "date": "2026-08-14",
+          "warm_ms": 5000
         }
       ]
     },
@@ -850,15 +854,11 @@
     },
     {
       "gate": "recombination_preserve_crates_execute",
-      "warm_ms": 209000,
-      "n": 13,
-      "measured": "2026-08-12",
+      "warm_ms": 149000,
+      "n": 15,
+      "measured": "2026-08-14",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-30",
-          "warm_ms": 134000
-        },
         {
           "date": "2026-08-01",
           "warm_ms": 106000
@@ -874,6 +874,10 @@
         {
           "date": "2026-08-12",
           "warm_ms": 209000
+        },
+        {
+          "date": "2026-08-14",
+          "warm_ms": 149000
         }
       ]
     },
@@ -983,15 +987,11 @@
     },
     {
       "gate": "rust_oracle_fingerprint",
-      "warm_ms": 44000,
-      "n": 19,
-      "measured": "2026-08-06",
+      "warm_ms": 56000,
+      "n": 10,
+      "measured": "2026-08-14",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-28",
-          "warm_ms": 19000
-        },
         {
           "date": "2026-07-28",
           "warm_ms": 24000
@@ -1007,6 +1007,10 @@
         {
           "date": "2026-08-06",
           "warm_ms": 44000
+        },
+        {
+          "date": "2026-08-14",
+          "warm_ms": 56000
         }
       ]
     },

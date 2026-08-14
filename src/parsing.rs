@@ -1250,6 +1250,61 @@ fn reject_group_choice_arm_variant_name_collision(
     ));
 }
 
+/// Two explicitly named arms of ONE type choice land on the same emitted Rust variant.
+///
+/// This deliberately remains a per-kind sibling of
+/// `reject_group_choice_arm_variant_name_collision`. The type-choice builder also serves anonymous
+/// nested choices, so the no-owner message names only what that context can honestly identify: the
+/// two arms and their generated variant. Derived names carry no authorial API promise and continue
+/// to take numeric suffixes.
+fn reject_type_choice_arm_variant_name_collision(
+    types: &mut IntermediateTypes,
+    enum_name: Option<&RustIdent>,
+    first_arm_ordinal: usize,
+    first_arm_source_name: &str,
+    second_arm_ordinal: usize,
+    second_arm_source_name: &str,
+    variant_name: &str,
+) {
+    let message = match enum_name {
+        Some(enum_name) => {
+            let owner = source_rule_name_of(types, enum_name);
+            format!(
+                "rule `{owner}`: its type-choice arm {first_arm_ordinal} (`@name {first_arm_source_name}`) \
+                 and arm {second_arm_ordinal} (`@name {second_arm_source_name}`) both generate the variant \
+                 `{enum_name}::{variant_name}`. Two variants cannot share one name. Give the two arms \
+                 distinct `; @name` values."
+            )
+        }
+        None => format!(
+            "an inline type choice: its type-choice arm {first_arm_ordinal} (`@name {first_arm_source_name}`) \
+             and arm {second_arm_ordinal} (`@name {second_arm_source_name}`) both generate the variant \
+             `{variant_name}`. Two variants cannot share one name. Give the two arms distinct `; @name` \
+             values."
+        ),
+    };
+    types.record_rejection(message);
+}
+
+/// Settle a generator-derived type-choice variant against the complete emitted namespace.
+///
+/// Explicit names are pre-reserved before the arm walk, so this must search for the first free
+/// numeric suffix rather than assume `Base2` remains available: an author may explicitly own it.
+/// The same globally-used set also preserves ordinary derived-only suffixing.
+fn settle_derived_type_choice_variant_name(used: &mut BTreeSet<String>, base: String) -> String {
+    if used.insert(base.clone()) {
+        return base;
+    }
+    let mut n = 2u32;
+    loop {
+        let candidate = format!("{base}{n}");
+        if used.insert(candidate.clone()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 /// Whether a MINTED variant name can be emitted verbatim as a Rust variant identifier.
 ///
 /// Two conditions, both read off the STRING: it must be lexically an identifier
@@ -4579,7 +4634,40 @@ pub fn create_variants_from_type_choices(
         Some(name) => format!("rule `{}`", source_rule_name_of(types, name)),
         None => "an inline type choice".to_owned(),
     };
-    let mut variant_names_used = BTreeMap::<String, u32>::new();
+    let mut variant_names_used = BTreeSet::<String>::new();
+    // Reserve every explicit emitted name BEFORE walking arms. An explicit `@name` is public API,
+    // so it must keep that spelling even if a colliding generator-derived arm appears first; the
+    // derived arm is the one that takes `2`. This is the type-choice equivalent of the group-choice
+    // pre-reservation in `settle_arm_variant_name`.
+    //
+    // The same pre-pass sees two explicit names whose source spellings camel-case to one Rust
+    // variant (`my_arm` / `myArm`) in either a named or inline choice. The latter has no source rule
+    // or enum name to cite, but it still has arms and a generated variant, so it receives the
+    // role-generic diagnostic rather than keeping an invalid repeated variant.
+    let mut explicit_seen = BTreeMap::<String, (usize, String)>::new();
+    for (arm_idx, choice) in type_choices.iter().enumerate() {
+        let metadata = merge_metadata(
+            &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
+            &RuleMetadata::from(choice.comments_after_type.as_ref()),
+        );
+        if let Some(source_name) = metadata.name {
+            let emitted_name = convert_to_camel_case(&source_name);
+            if let Some((first_ordinal, first_source_name)) = explicit_seen.get(&emitted_name) {
+                reject_type_choice_arm_variant_name_collision(
+                    types,
+                    owner,
+                    *first_ordinal,
+                    first_source_name,
+                    arm_idx + 1,
+                    &source_name,
+                    &emitted_name,
+                );
+            } else {
+                explicit_seen.insert(emitted_name.clone(), (arm_idx + 1, source_name));
+                variant_names_used.insert(emitted_name);
+            }
+        }
+    }
     let mut variants: Vec<EnumVariant> = Vec::new();
     // What each kept variant was built from, plus the 1-based SOURCE arm ordinal it came from — the
     // dedup key and what the diagnostics name. Parallel to `variants` (an `EnumVariant` built here
@@ -4679,7 +4767,13 @@ pub fn create_variants_from_type_choices(
                 "Arm {arm_ordinal} of {owner_desc} (`@name {base_name}`) has the same representation as arm {dup_ordinal}: the variant is kept because it is explicitly named, but the decoder first-matches arm {dup_ordinal}, so nothing on the wire ever decodes to it."
             );
         }
-        let variant_name = append_number_if_duplicate(&mut variant_names_used, base_name);
+        // Explicit names were reserved before this arm walk and must be emitted verbatim. Only a
+        // generator-derived name may be disambiguated with a numeric suffix.
+        let variant_name = if rule_metadata.name.is_some() {
+            base_name
+        } else {
+            settle_derived_type_choice_variant_name(&mut variant_names_used, base_name)
+        };
         variants.push(EnumVariant::new(
             VariantIdent::new_custom(variant_name),
             rust_type.clone(),
@@ -5872,9 +5966,13 @@ fn rust_type_from_type1(
 /// (`rust_type_from_type2`'s `Type2::Typename` arm and `parse_group_type`'s single-entry
 /// `TypeGroupname` array arm) so the two paths cannot drift.
 /// The INSTANTIATION-derived canonical CDDL ident of a generic invocation:
-/// `<def-name>_<args' for_variant() names>` (`set` + `[key_hash]` → `set_KeyHash`, camel-cased to
-/// `SetKeyHash` by `RustIdent::new`). The ONE owner of this spelling so every call site — anonymous
-/// use (`generic_instance_or_new_type`) and named binding (`foo = bar<text>`) — derives the SAME
+/// `<def-name>_<args' canonical identity names>` (`set` + `[key_hash]` → `set_KeyHash`, camel-cased
+/// to `SetKeyHash` by `RustIdent::new`). The argument fragments preserve that historic spelling for
+/// ordinary unconstrained arguments, but include occurrence/config/codec differences recursively:
+/// `set<([* uint])>` and `set<([*5 uint])>` cannot both register as `SetArrU64`.
+///
+/// The ONE owner of this spelling so every call site — anonymous use
+/// (`generic_instance_or_new_type`) and named binding (`foo = bar<text>`) — derives the SAME
 /// instantiation identity, which the Phase 2.3 set-nominal dedup keys on.
 fn generic_instance_canonical_cddl_ident(
     cddl_ident: &CDDLIdent,
@@ -5882,7 +5980,7 @@ fn generic_instance_canonical_cddl_ident(
 ) -> CDDLIdent {
     let args_name = generic_args
         .iter()
-        .map(|t| t.for_variant().to_string())
+        .map(RustType::generic_argument_identity_fragment)
         .collect::<Vec<String>>()
         .join("_");
     CDDLIdent::new(format!("{cddl_ident}_{args_name}"))

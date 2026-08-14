@@ -19,7 +19,7 @@
       "type": "object",
       "additionalProperties": { "type": "integer" }
     },
-    "Odd<K>/~1name": {
+    "Odd<K>/~1café": {
       "type": "object",
       "required": ["v"],
       "properties": { "v": { "type": "integer" } }
@@ -27,7 +27,7 @@
     "OddHolder": {
       "type": "object",
       "required": ["odd"],
-      "properties": { "odd": { "$ref": "#/$defs/Odd%3CK%3E~1~01name" } }
+      "properties": { "odd": { "$ref": "#/$defs/Odd%3CK%3E~1~01caf%C3%A9" } }
     },
     "Deep": {
       "type": "object",

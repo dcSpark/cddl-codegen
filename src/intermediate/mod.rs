@@ -1300,7 +1300,10 @@ impl<'a> IntermediateTypes<'a> {
             emit_scope: &ModuleScope,
             key: &RustType,
         ) {
-            let keys_ident = RustIdent::new(CDDLIdent::new(key.name_as_wasm_array(types)));
+            let keys_ident = RustIdent::new(CDDLIdent::new(
+                key.loosened_for_wasm_table_boundary_key()
+                    .name_as_wasm_array(types),
+            ));
             if let Some(dep_scope) = deferred.get(&keys_ident) {
                 refs.entry(emit_scope.to_owned())
                     .or_default()
@@ -1408,7 +1411,10 @@ impl<'a> IntermediateTypes<'a> {
             if ConceptualRustType::Array(Box::new(key.clone())).directly_wasm_exposable_ct(types) {
                 return;
             }
-            let keys_ident = RustIdent::new(CDDLIdent::new(key.name_as_wasm_array(types)));
+            let keys_ident = RustIdent::new(CDDLIdent::new(
+                key.loosened_for_wasm_table_boundary_key()
+                    .name_as_wasm_array(types),
+            ));
             // deferred keys-lists live in a dep's `collections` module — imported by the deferred
             // helper, not from root
             if deferred.contains_key(&keys_ident) {
@@ -2004,8 +2010,9 @@ impl<'a> IntermediateTypes<'a> {
                             // this for free (its keys-list IS an IR Array struct, minted at parse);
                             // mark the element at the list's scope here on the same condition
                             // `register_root_keys_list` mints under.
+                            let loose_domain = rest.domain().loosened_for_wasm_table_boundary_key();
                             let keys_ident = RustIdent::new(CDDLIdent::new(
-                                rest.domain().name_as_wasm_array(self),
+                                loose_domain.name_as_wasm_array(self),
                             ));
                             if !ConceptualRustType::Array(Box::new(rest.domain().clone()))
                                 .directly_wasm_exposable_ct(self)
@@ -2018,7 +2025,7 @@ impl<'a> IntermediateTypes<'a> {
                                     &table_shape_sole_owners,
                                     deferred,
                                     &ROOT_SCOPE,
-                                    rest.domain(),
+                                    &loose_domain,
                                 );
                             }
                             continue;
@@ -2306,8 +2313,10 @@ impl<'a> IntermediateTypes<'a> {
                         // unguarded: it is a no-op for a locally-hosted keys-list and MUST still run
                         // for a mid-chain host whose keys-list is deferred to a deeper dep.
                         register_deferred_keys_list(&mut refs, self, deferred, req_scope, key);
-                        let keys_ident =
-                            RustIdent::new(CDDLIdent::new(key.name_as_wasm_array(self)));
+                        let keys_ident = RustIdent::new(CDDLIdent::new(
+                            key.loosened_for_wasm_table_boundary_key()
+                                .name_as_wasm_array(self),
+                        ));
                         if !requested_hosted.contains(&keys_ident) {
                             register_root_keys_list(
                                 &mut refs, self, wasm, deferred, req_scope, key,
@@ -2781,11 +2790,12 @@ impl<'a> IntermediateTypes<'a> {
                 if self.scope(&rust_struct.ident).export()
                     && !self.table_keys_list_mint_must_defer(&domain.conceptual_type)
                 {
+                    let loose_domain = domain.loosened_for_wasm_table_boundary_key();
                     // we must provide the keys type to return
                     self.create_and_register_array_type(
                         parent_visitor,
                         domain.clone(),
-                        &domain.conceptual_type.name_as_wasm_array_ct(self),
+                        &loose_domain.name_as_wasm_array(self),
                         cli,
                     );
                 }
@@ -3255,7 +3265,8 @@ impl<'a> IntermediateTypes<'a> {
             .iter()
             .filter_map(|(ident, rs)| match rs.variant() {
                 RustStructType::Table { domain, .. } if self.scope(ident).export() => {
-                    let name = domain.conceptual_type.name_as_wasm_array_ct(self);
+                    let loose_domain = domain.loosened_for_wasm_table_boundary_key();
+                    let name = loose_domain.name_as_wasm_array(self);
                     // A directly-exposable KEYS-LIST (`{ * uint => v }` -> bare `Vec<u64>` keys) mints
                     // no wrapper; `create_and_register_array_type` returns early on it, so only a real
                     // wrapper name that is not already registered identifies a deferred mint.
@@ -3270,7 +3281,9 @@ impl<'a> IntermediateTypes<'a> {
             })
             .collect();
         for domain in deferred {
-            let name = domain.conceptual_type.name_as_wasm_array_ct(self);
+            let name = domain
+                .loosened_for_wasm_table_boundary_key()
+                .name_as_wasm_array(self);
             self.create_and_register_array_type(parent_visitor, domain, &name, cli);
         }
     }
@@ -4796,9 +4809,10 @@ impl<'a> IntermediateTypes<'a> {
                 if !ConceptualRustType::Array(Box::new((**k).clone()))
                     .directly_wasm_exposable_ct(self)
                 {
+                    let loose_key = k.loosened_for_wasm_table_boundary_key();
                     plain_loose_needs.insert(
-                        k.name_as_wasm_array(self),
-                        ("a map keys() wrapper".to_owned(), (**k).clone()),
+                        loose_key.name_as_wasm_array(self),
+                        ("a map keys() wrapper".to_owned(), loose_key),
                     );
                 }
             }
@@ -4810,9 +4824,10 @@ impl<'a> IntermediateTypes<'a> {
                     if !ConceptualRustType::Array(Box::new(domain.clone()))
                         .directly_wasm_exposable_ct(self)
                     {
+                        let loose_domain = domain.loosened_for_wasm_table_boundary_key();
                         plain_loose_needs.insert(
-                            domain.name_as_wasm_array(self),
-                            ("a table keys() wrapper".to_owned(), domain.clone()),
+                            loose_domain.name_as_wasm_array(self),
+                            ("a table keys() wrapper".to_owned(), loose_domain),
                         );
                     }
                 }
@@ -4854,15 +4869,16 @@ impl<'a> IntermediateTypes<'a> {
                         } else if !ConceptualRustType::Array(Box::new(rest.domain().clone()))
                             .directly_wasm_exposable_ct(self)
                         {
+                            let loose_domain = rest.domain().loosened_for_wasm_table_boundary_key();
                             plain_loose_needs.insert(
-                                rest.domain().name_as_wasm_array(self),
+                                loose_domain.name_as_wasm_array(self),
                                 (
                                     if record.is_typed_row(rest) {
                                         "an open table's keys() wrapper".to_owned()
                                     } else {
                                         "an open struct-map rest row's keys() wrapper".to_owned()
                                     },
-                                    rest.domain().clone(),
+                                    loose_domain,
                                 ),
                             );
                         }
@@ -5471,11 +5487,16 @@ impl<'a> IntermediateTypes<'a> {
             {
                 continue;
             }
-            let variant = element_type.conceptual_type.for_variant();
-            let structural = if *bounds == Some((Some(1), None)) {
-                format!("NonEmpty{variant}OrderedSet")
+            let mut reject_array =
+                RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())))
+                    .with_duplicates_policy(Some(crate::comment_ast::DuplicatesPolicy::Reject));
+            if let Some(bounds) = bounds {
+                reject_array = reject_array.with_bounds(*bounds);
+            }
+            let structural = if reject_array.is_bounded_reject_ordered_set() {
+                reject_array.bounded_reject_ordered_set_wasm_wrapper_name(self)
             } else {
-                format!("{variant}OrderedSet")
+                reject_array.reject_ordered_set_wasm_wrapper_name(self)
             };
             if self.wasm_ident_claimed_by_user_rule(&structural) {
                 msgs.insert(format!(
@@ -5498,14 +5519,13 @@ impl<'a> IntermediateTypes<'a> {
             if !rs.config().set_nominal || !wrapped.duplicates_reject() {
                 continue;
             }
-            let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type else {
+            let ConceptualRustType::Array(_) = &wrapped.conceptual_type else {
                 continue;
             };
-            let variant = element_type.conceptual_type.for_variant();
-            let structural = if wrapped.is_non_empty_array() {
-                format!("NonEmpty{variant}OrderedSet")
+            let structural = if wrapped.is_bounded_reject_ordered_set() {
+                wrapped.bounded_reject_ordered_set_wasm_wrapper_name(self)
             } else {
-                format!("{variant}OrderedSet")
+                wrapped.reject_ordered_set_wasm_wrapper_name(self)
             };
             if self.wasm_ident_claimed_by_user_rule(&structural) {
                 msgs.insert(format!(

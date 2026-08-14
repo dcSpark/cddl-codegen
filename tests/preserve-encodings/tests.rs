@@ -84,6 +84,53 @@ mod tests {
         assert_cddl_rejects(&spec, "foo", &[0x00]);
     }
 
+    // The common-import-override fixture carries a hand-written preserve `Int` mirror. Its own
+    // serialize/deserialize round-trips cannot see a wire drift from the generated `Int`, so this
+    // comparison deliberately crosses the two codecs. `0x39 00 04` is major type 1 / argument 4
+    // (the signed value -5) deliberately widened to two argument bytes: it exercises the nint arm,
+    // `-1 - argument` conversion, and retained `Sz::Two` together. A generated serializer that
+    // normalized the retained width, or got the signed conversion wrong, would differ from the
+    // fixture's byte-exact output and fail one of the coupled comparisons below.
+    #[test]
+    fn generated_and_common_override_int_codecs_agree_on_irregular_nint() {
+        let irregular_nint = [0x39, 0x00, 0x04];
+        let generated = Int::from_cbor_bytes(&irregular_nint).unwrap();
+        let fixture = <extern_dep_crate::Int as extern_dep_crate::serialization::Deserialize>::from_cbor_bytes(
+            &irregular_nint,
+        )
+        .unwrap();
+
+        let generated_bytes = generated.to_cbor_bytes();
+        let fixture_bytes = extern_dep_crate::serialization::ToCBORBytes::to_cbor_bytes(&fixture);
+        assert_eq!(generated_bytes, irregular_nint);
+        assert_eq!(fixture_bytes, irregular_nint);
+        assert_eq!(generated_bytes, fixture_bytes);
+
+        // Cross the outputs back through the other decoder, not merely each implementation's own
+        // self-round-trip. Each re-emission remains coupled to the other codec's original bytes.
+        let fixture_from_generated =
+            <extern_dep_crate::Int as extern_dep_crate::serialization::Deserialize>::from_cbor_bytes(
+                &generated_bytes,
+            )
+            .unwrap();
+        let generated_from_fixture = Int::from_cbor_bytes(&fixture_bytes).unwrap();
+        assert_eq!(
+            extern_dep_crate::serialization::ToCBORBytes::to_cbor_bytes(&fixture_from_generated),
+            generated_bytes
+        );
+        assert_eq!(generated_from_fixture.to_cbor_bytes(), fixture_bytes);
+
+        // Fresh construction has no retained width, so both implementations must choose the same
+        // canonical spelling of the same negative value too.
+        assert_eq!(Int::new_nint(4).to_cbor_bytes(), vec![0x24]);
+        assert_eq!(
+            extern_dep_crate::serialization::ToCBORBytes::to_cbor_bytes(
+                &extern_dep_crate::Int::new_nint(4),
+            ),
+            vec![0x24]
+        );
+    }
+
     #[test]
     fn struct_array() {
         let mut foo = Foo::new(436, String::from("jfkdsjfd"), vec![1, 1, 1]);

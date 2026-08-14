@@ -81,7 +81,7 @@ entries = [
   "testing.duplicates-policy-residuals",
   "part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516",
   "testing.duplicates.same-shape-set-conversion",
-  "testing.duplicates.occurrence-aware-generic-identity",
+  "testing.wasm-boundary.nested-restricted-map-identity",
   "testing.duplicates.dedicated-generic-collision-message",
   "testing.duplicates.member-position-extension",
   "part-md-mdmap",
@@ -118,16 +118,13 @@ entries = [
   "part-bare-fixed-table-value-refusal-continued-say-named",
   "testing.directive-effect-round-trip-coherence-sweep-accepted-custom",
   "testing.warm-up-refresh-dep-universe-lock-trust-fresh",
-  "testing.check-merged-d-ts-name-collisions-two-halves",
   "testing.corpus-preserve-pair-map-key-value-self-encoding",
-  "testing.same-named-generated-crates-silently-share-cargo-fingerprint",
   "testing.corpus-c-style-enum-data-type-choice-arm",
   "testing.execution-binary-wrappers-true-last-documented-flag-value",
   "part-nested-cargo-test",
   "testing.synthetic-protocol-controls-component-probe-host-s-defensive",
   "testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror",
-  "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch",
-  "testing.verify-ts-refuse-unknown-flag-silently-degrading-plain",
+  "testing.verify-ts-elapsed-time-covers-startup-activity",
 ]
 
 [[section]]
@@ -220,7 +217,6 @@ entries = [
   "part-emitted-name-guard-mint-records-unminted-extra",
   "testing.schema-name.collision-loser-no-row-same-id",
   "testing.schema-name.cross-crate-same-id-collision",
-  "testing.schema-name.percent-encoded-ref",
   "testing.schema-name.two-rowless-types-collide",
   "part-emitted-name-guard-neither-closes-holes-above-two",
   "testing.directive-s-documented-sentence-stay-true-consumer-visible",
@@ -306,7 +302,6 @@ body_md = '''## Declined (decided, with a reopening signal unless explicitly per
 '''
 entries = [
   "testing.complete-cargo-mutants-sweep-will-never-run",
-  "testing.making-type-choice-path-reject-duplicated-explicit-name",
   "testing.msrv-declaration-os-matrix-generated-code",
   "testing.docs-vs-behavior-conformance-harness-comment-dsl-mdx",
   "testing.full-n-flag-powerset-pict-pairwise",
@@ -443,17 +438,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof", "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"]
 incident_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one", "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"]
-
-[[record]]
-id = "testing.admission-path.same-named-generated-crates-silently-share-cargo-fingerprint"
-title = "Admission for testing.same-named-generated-crates-silently-share-cargo-fingerprint."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "silent_corruption"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-evidence_ids = ["testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"]
 
 [[record]]
 id = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
@@ -791,40 +775,6 @@ action_on_fire_md = '''Set testing.cddl-module-directives-draft-ietf-cbor-cddl-m
 [record.payload.reopening_signal.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.cddl-module-directives-draft-ietf-cbor-cddl-modules's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.check-merged-d-ts-name-collisions-two-halves"
-title = "Check the merged `.d.ts` for name collisions BETWEEN its two halves."
-legacy_aliases = ["Next work 18"]
-
-[record.payload]
-kind = "work"
-body_md = '''18. **Check the merged `.d.ts` for name collisions BETWEEN its two halves.** `json-ts-types.js`
-    appends the `<key>JSON` declarations to the wasm-pack bindings under the claim that the suffix
-    cannot collide with a wasm class name — an assumption, not a check: `@name` can mint a wasm
-    class literally called `FooJSON` (and a contrived rule spelling that camelizes to one can too),
-    and TypeScript merges a class with a same-named `interface` silently and LEGALLY, so the merged
-    file's `tsc --noEmit` leg structurally cannot say so and the shipped type is the merge of two
-    unrelated shapes with nothing said. `run-json2ts.js`'s duplicate-declaration guard covers only
-    its own half, for the same reason it exists at all (`tsc` is not the oracle for declaration
-    merging). This is the missing TS sibling of the wasm wrapper-name collision-detector family:
-    per that family's ruling, a per-kind check with its own message rather than a generalization of
-    an existing one. The cheap mechanical layer sits where both halves are in hand —
-    `json-ts-types.js` already walks every `export class` line to place the splice, so collecting
-    those names and refusing an appended declaration equal to one is a set intersection plus a
-    diagnostic naming both the class and the `$defs` key, same fatal-and-file-untouched shape as
-    its existing failures; the vector is an `@name FooJSON` fixture through `js_d_ts_merge`'s
-    hand-laid harness.
-
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "compile_failure"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.check-merged-d-ts-name-collisions-two-halves's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
 '''
 
 [[record]]
@@ -1747,12 +1697,12 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 
 [[record]]
 id = "testing.documented-failure-shape-exercises-prose-cross-crate-int"
-title = "A documented failure SHAPE that no cell exercises is prose — the cross-crate `Int` channel has three, plus a hand mirror nothing cross-checks."
+title = "Three documented `--common-import-override` failure shapes still have no standing compile proof."
 
 [record.payload]
 kind = "work"
-body_md = '''- **A documented failure SHAPE that no cell exercises is prose — the cross-crate `Int` channel has
-  three, plus a hand mirror nothing cross-checks.** The shipped
+body_md = '''- **Three documented `--common-import-override` failure shapes still have no standing compile
+  proof.** The shipped
   `Int`-under-`--common-import-override` coverage proves the positive paths and asserts row-ABSENCE
   on the degraded path, but none of the three failure shapes documented in
   `command_line_flags.mdx`'s `--common-import-override` section is compile-proven by a standing cell:
@@ -1760,17 +1710,13 @@ body_md = '''- **A documented failure SHAPE that no cell exercises is prose — 
   the demanded flavor (needs a de-flavored fixture variant); (b) the unresolved-import failure when
   the common crate exposes no `Int`/`IntError` (the existence contract's loud half); (c) `E0277` at
   the consumer's own map sites when the override is not a `--workspace-dep` (today only the no-row
-  half is asserted, by `int_key_via_common_import_override_sidecar`). Related mirror exposure, to
-  close alongside (a): `tests/extern-dep-crate`'s hand-written `Int` mirrors generated `Int`'s
-  preserve-encodings wire format and encoding-insensitive key semantics, but `extern_deps` serializes
-  AND deserializes through the fixture's own impls, so a generated-`Int` divergence passes silently —
-  unlike the `tests/wasm-macro-crate` mirror, which compilation enforces. The cheap drift gate:
-  cross-serialize one vector between a generated `Int` (any no-override cell's output) and the
-  fixture's, asserting byte equality both ways. '''
+  half is asserted, by `int_key_via_common_import_override_sidecar`). The hand-written/generated
+  preserve-`Int` mirror drift that formerly shared this record is separately guarded now:
+  `preserve_encodings` cross-decodes and byte-compares a non-minimal negative vector between the two
+  codecs. '''
 signal_md = '''Reopening signal on the axis the cost grows along,
   measurable by the party who has the problem: a consumer hitting any of the three failure shapes and
-  reporting that the error they got was not the one the docs describe — or a generated-`Int` wire
-  change landing while `extern_deps` stays green.
+  reporting that the error they got was not the one the docs describe.
 '''
 work_state = "armed"
 work_intent = "build_system"
@@ -1780,8 +1726,8 @@ control_ids = ["testing.guard.documented-failure-shape-exercises-prose-cross-cra
 
 [record.payload.promotion_trigger]
 observer = "fresh-evidence submitter for testing.documented-failure-shape-exercises-prose-cross-crate-int"
-dimension = "A documented failure SHAPE that no cell exercises is prose — the cross-crate `Int` channel has three, plus a hand mirror nothing cross-checks."
-observable = "- **A documented failure SHAPE that no cell exercises is prose — the cross-crate `Int` channel has three, plus a hand mirror nothing cross-checks.** The shipped `Int`-under-`--common-import-override` coverage proves the positive paths and asserts row-ABSENCE on the degraded path, but none of the three failure shapes documented in `command_line_flags.mdx`'s `--common-import-override` section is compile-proven by a standing cell: (a) the consumer's `_borrowed_key_types_self_check` going RED when the common crate's `Int` lacks the demanded flavor (needs a de-flavored fixture variant); (b) the unresolved-import failure when the common crate exposes no `Int`/`IntError` (the existence contract's loud half); (c) `E0277` at the consumer's own map sites when the override is not a `--workspace-dep` (today only the no-row half is asserted, by `int_key_via_common_import_override_sidecar`). Related mirror exposure, to close alongside (a): `tests/extern-dep-crate`'s hand-written `Int` mirrors generated `Int`'s preserve-encodings wire format and encoding-insensitive key semantics, but `extern_deps` serializes AND deserializes through the fixture's own impls, so a generated-`Int` divergence passes silently — unlike the `tests/wasm-macro-crate` mirror, which compilation enforces. The cheap drift gate: cross-serialize one vector between a generated `Int` (any no-override cell's output) and the fixture's, asserting byte equality both ways. Reopening signal on the axis the cost grows along, measurable by the party who has the problem: a consumer hitting any of the three failure shapes and reporting that the error they got was not the one the docs describe — or a generated-`Int` wire change landing while `extern_deps` stays green."
+dimension = "Three documented `--common-import-override` failure shapes still have no standing compile proof."
+observable = "- **Three documented `--common-import-override` failure shapes still have no standing compile proof.** The shipped `Int`-under-`--common-import-override` coverage proves the positive paths and asserts row-ABSENCE on the degraded path, but none of the three failure shapes documented in `command_line_flags.mdx`'s `--common-import-override` section is compile-proven by a standing cell: (a) the consumer's `_borrowed_key_types_self_check` going RED when the common crate's `Int` lacks the demanded flavor (needs a de-flavored fixture variant); (b) the unresolved-import failure when the common crate exposes no `Int`/`IntError` (the existence contract's loud half); (c) `E0277` at the consumer's own map sites when the override is not a `--workspace-dep` (today only the no-row half is asserted, by `int_key_via_common_import_override_sidecar`). The hand-written/generated preserve-`Int` mirror drift that formerly shared this record is separately guarded now: `preserve_encodings` cross-decodes and byte-compares a non-minimal negative vector between the two codecs. Reopening signal on the axis the cost grows along, measurable by the party who has the problem: a consumer hitting any of the three failure shapes and reporting that the error they got was not the one the docs describe."
 action_on_fire_md = '''Set testing.documented-failure-shape-exercises-prose-cross-crate-int to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
@@ -1997,40 +1943,6 @@ action_on_fire_md = '''Set testing.duplicates.member-position-extension to ready
 [record.payload.reopening_signal.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.duplicates.member-position-extension's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.duplicates.occurrence-aware-generic-identity"
-title = "Occurrence-aware generic-instance identity."
-
-[record.payload]
-kind = "work"
-body_md = '''     - *Occurrence-aware generic-instance identity.* The canonical instance ident still derives
-       each argument from bounds-blind `for_variant()`: two uses of the SAME generic definition,
-       `set<([* uint])>` and `set<([*5 uint])>`, both become `SetArrU64`, so the later registration
-       can replace the former even though their native carriers are `Vec<u64>` and
-       `BoundedVec<u64, 0, 5>`. This is a separate parsing-time namespace contract, not part of the
-       table-keys boundary normalization. Until the canonical spelling becomes occurrence-aware,
-       bind each argument shape to a distinctly named rule before instantiation (or use distinct
-       generic definitions). Add a focused rust+wasm compile regression with the fix; a
-       generation-only same-definition probe is insufficient because last-registration-wins can
-       still exit 0 with the wrong carrier.
-'''
-work_state = "deferred"
-work_intent = "build_capability"
-work_kind = "feature"
-risk = "silent_wrong_bytes"
-
-[record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.duplicates.occurrence-aware-generic-identity"
-dimension = "Occurrence-aware generic-instance identity."
-observable = "A consumer spec must use two occurrences of one generic definition whose bounds-blind argument spellings collide, and binding the argument shapes to distinct named rules or definitions is not acceptable."
-action_on_fire_md = '''Set testing.duplicates.occurrence-aware-generic-identity to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.duplicates.occurrence-aware-generic-identity's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]
@@ -3805,7 +3717,7 @@ title = "Current control for testing.documented-failure-shape-exercises-prose-cr
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["test-extern-deps", "test-int-key-via-common-import-override-sidecar"]
+reference_ids = ["test-extern-deps", "test-int-key-via-common-import-override-sidecar", "test-preserve-encodings"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.documented-failure-shape-exercises-prose-cross-crate-int's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
@@ -4185,20 +4097,6 @@ control_kind = "review_rule"
 control_state = "live"
 reference_ids = ["testing-roadmap-next-work-n40"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.make-fixture-comment-s-claimed-wire-bytes-executable's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.making-type-choice-path-reject-duplicated-explicit-name"
-title = "Current control for testing.making-type-choice-path-reject-duplicated-explicit-name."
-
-[record.payload]
-kind = "control"
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n5"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.making-type-choice-path-reject-duplicated-explicit-name's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -5283,9 +5181,11 @@ body_md = '''- **Logic the tool EMITS as source text is outside every layer that
   (`Odd<K>/~name`) that decodes correctly under BOTH orders. So the comment's whole justification
   was unwitnessed: the three escape classes were covered, the ordering they were cited to protect
   was not. Confirmed by simulating `schemars`' `encode_ref_name` against both orders, then closed by
-  making the name carry a literal `~1` (`Odd<K>/~1name` → `Odd%3CK%3E~1~01name`, which the wrong
-  order decodes to `Odd<K>//name`), which costs no new nested-cargo cell. Why no standing layer sees
-  the class: the permanently-declined full `cargo-mutants` sweep (§ Declined) would not cover it
+  making the name carry a literal `~1`, then extended that same end-to-end vector to
+  `Odd<K>/~1café` (`Odd%3CK%3E~1~01caf%C3%A9`, which the wrong order decodes to
+  `Odd<K>//café`) for the multi-byte UTF-8 encoder path, with no new nested-cargo cell. Why no
+  standing layer sees the class: the permanently-declined full `cargo-mutants` sweep (§ Declined)
+  would not cover it
   anyway — that sweep is scoped to the tool's own functions, while logic living inside an emitted
   string constant is not a function it can mutate — so mutation scoring structurally cannot measure
   emitted-runtime behaviour, and the emitted surface is growing (the three name-injectivity panics,
@@ -5306,7 +5206,7 @@ control_ids = ["testing.guard.logic-tool-emits-source-text-outside-layer-reasons
 [record.payload.promotion_trigger]
 observer = "fresh-evidence submitter for testing.logic-tool-emits-source-text-outside-layer-reasons"
 dimension = "Logic the tool EMITS as source text is outside every layer that reasons about the tool's own code, so its only oracle is a hand vector chosen to DISTINGUISH a wrong implementation — and a vector that merely EXERCISES the logic certifies nothing."
-observable = "- **Logic the tool EMITS as source text is outside every layer that reasons about the tool's own code, so its only oracle is a hand vector chosen to DISTINGUISH a wrong implementation — and a vector that merely EXERCISES the logic certifies nothing.** Proven instance (orchestrator review, not any gate): the emitted schema-document closure check carries a `decode_schema_ref_name` whose comment justifies unescaping `~1` before `~0` — the order matters only for a name holding a LITERAL `~1`, which encodes to `~01` — while its green-path vector was a schema name (`Odd<K>/~name`) that decodes correctly under BOTH orders. So the comment's whole justification was unwitnessed: the three escape classes were covered, the ordering they were cited to protect was not. Confirmed by simulating `schemars`' `encode_ref_name` against both orders, then closed by making the name carry a literal `~1` (`Odd<K>/~1name` → `Odd%3CK%3E~1~01name`, which the wrong order decodes to `Odd<K>//name`), which costs no new nested-cargo cell. Why no standing layer sees the class: the permanently-declined full `cargo-mutants` sweep (§ Declined) would not cover it anyway — that sweep is scoped to the tool's own functions, while logic living inside an emitted string constant is not a function it can mutate — so mutation scoring structurally cannot measure emitted-runtime behaviour, and the emitted surface is growing (the three name-injectivity panics, the closure walk, the decode). Working rule meanwhile: a hand vector for emitted logic states which WRONG implementation it distinguishes, and a comment that justifies an ordering or precedence choice names the vector that would fail without it. Mechanical layer on a SECOND instance: mutation testing for the emitted runtime — perturb each emitted-source constant textually (swap adjacent `.replace` calls, invert a comparison, drop a branch), regenerate one fixture per mutant, and require some gate to go red; expensive enough (a nested cargo run per mutant) that it earns its cost only once the class has recurred."
+observable = "- **Logic the tool EMITS as source text is outside every layer that reasons about the tool's own code, so its only oracle is a hand vector chosen to DISTINGUISH a wrong implementation — and a vector that merely EXERCISES the logic certifies nothing.** Proven instance (orchestrator review, not any gate): the emitted schema-document closure check carries a `decode_schema_ref_name` whose comment justifies unescaping `~1` before `~0` — the order matters only for a name holding a LITERAL `~1`, which encodes to `~01` — while its green-path vector was a schema name (`Odd<K>/~name`) that decodes correctly under BOTH orders. So the comment's whole justification was unwitnessed: the three escape classes were covered, the ordering they were cited to protect was not. Confirmed by simulating `schemars`' `encode_ref_name` against both orders, then closed by making the name carry a literal `~1`, then extended that same end-to-end vector to `Odd<K>/~1café` (`Odd%3CK%3E~1~01caf%C3%A9`, which the wrong order decodes to `Odd<K>//café`) for the multi-byte UTF-8 encoder path, with no new nested-cargo cell. Why no standing layer sees the class: the permanently-declined full `cargo-mutants` sweep (§ Declined) would not cover it anyway — that sweep is scoped to the tool's own functions, while logic living inside an emitted string constant is not a function it can mutate — so mutation scoring structurally cannot measure emitted-runtime behaviour, and the emitted surface is growing (the three name-injectivity panics, the closure walk, the decode). Working rule meanwhile: a hand vector for emitted logic states which WRONG implementation it distinguishes, and a comment that justifies an ordering or precedence choice names the vector that would fail without it. Mechanical layer on a SECOND instance: mutation testing for the emitted runtime — perturb each emitted-source constant textually (swap adjacent `.replace` calls, invert a comparison, drop a branch), regenerate one fixture per mutant, and require some gate to go red; expensive enough (a nested cargo run per mutant) that it earns its cost only once the class has recurred."
 action_on_fire_md = '''Set testing.logic-tool-emits-source-text-outside-layer-reasons to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
@@ -5431,48 +5331,6 @@ action_on_fire_md = '''Set testing.make-fixture-comment-s-claimed-wire-bytes-exe
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.make-fixture-comment-s-claimed-wire-bytes-executable's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.making-type-choice-path-reject-duplicated-explicit-name"
-title = "Making the TYPE-CHOICE path reject a duplicated explicit `@name` the way the group-choice arm path does."
-
-[record.payload]
-kind = "decision"
-body_md = '''- **Making the TYPE-CHOICE path reject a duplicated explicit `@name` the way the group-choice arm
-  path does.** The two enum-producing paths now differ in policy: two group-choice arms of one rule
-  given the same `; @name` are a graceful rejection (`reject_group_choice_arm_variant_name_collision`
-  — an authored name is public API of the generated crate, so renaming one would ship a name nobody
-  wrote), while a type choice in the same situation (`foo = 0 ; @name mainnet / 1 ; @name mainnet`)
-  silently emits `Mainnet` and `Mainnet2`. The divergence is deliberate and rests on what the two
-  produce, not on principle: the arm path was emitting a REPEATED variant — a generated crate that
-  does not compile (`E0428`) — so it had to change and the only question was which way, whereas the
-  type-choice path emits code that compiles and works today. Tightening it is therefore a pure
-  behavior change on working output, and it would break any spec whose author has (knowingly or not)
-  built against the `Mainnet2` spelling — a cost paid by existing consumers to buy consistency no
-  consumer has asked for. Note the asymmetry does NOT extend to derived names: those carry no
-  authorial intent and take a numeric suffix on BOTH paths (`foo = [ x: uint // x: text ]` gives
-  `Foo::X` / `Foo::X2`), which is the behavior `append_number_if_duplicate` exists for. Reopening
-  signal: a consumer reporting that a variant they EXPLICITLY `@name`d was emitted under a different
-  name — the harm this would prevent, observable by the party who has it, and distinct from the
-  derived-name suffixing that is working as designed.
-'''
-decision_state = "decided"
-rationale_md = '''The decided boundary and its reasons are the exact preserved detail of testing.making-type-choice-path-reject-duplicated-explicit-name.
-'''
-authority_reference_id = "testing-guard-making-type-choice-path-reject-duplicated"
-permanence = "reopenable"
-
-[record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.making-type-choice-path-reject-duplicated-explicit-name"
-dimension = "Making the TYPE-CHOICE path reject a duplicated explicit `@name` the way the group-choice arm path does."
-observable = "A consumer reports that a type-choice variant they explicitly named with @name was emitted under a different suffixed name."
-action_on_fire_md = '''Create only the specifically demanded work without widening the settled boundary.
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.making-type-choice-path-reject-duplicated-explicit-name's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]
@@ -5663,6 +5521,24 @@ body_md = '''14. **A minted-identifier spellability floor: every identifier the 
     not merely a duplicate-name diagnostic. Keep the finalized-IR spellability/uniqueness checks as
     separate predicates: they catch bad surviving state, while the claim ledger catches a lossy
     registration seam that erased the evidence.
+
+    **B5-101 authored-variant-claim extension (2026-08-14).** Three review catches show the
+    distinction this registry still has to retain. A derived type-choice arm before an explicit
+    `@name text` silently made the authored arm `Text2`; an inline/member type choice silently
+    suffixed two explicit `@name mainnet` arms; and a count-only reservation let a derived `Name`
+    take explicitly reserved `Name2`, leaving a repeated final variant. A finalized-IR uniqueness
+    predicate would have caught only the third: both earlier failures finish with distinct,
+    spellable names after silently breaking the author's claim. `dsl_position_tests` likewise
+    cannot catch any of them — it probes directive placement/effect one cell at a time, not
+    cross-arm namespace arbitration or the explicit-versus-derived ordering axis. Extend the
+    pre-registration ledger with type-choice variant claims before suffix allocation:
+    `(choice context, arm ordinal, source @name, emitted VariantIdent, explicitness)`. Assert that
+    every explicit claim either survives under its exact Rust-converted spelling or is rejected
+    against another explicit claimant; derived claims alone may choose the first globally free
+    suffix, never one reserved by an explicit claim. Exercise named-rule and inline/member choices,
+    both explicit/derived orders, camel-case convergence, and an explicit `Name2` reservation. This
+    is a provenance predicate over the existing shared registry, not a second directive-position
+    sweep or a new name-minter enumeration.
 
 '''
 work_state = "ready"
@@ -6151,46 +6027,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"
-title = "Pin the toolchain of verify.ts's nested cargo — its scratch-cwd spawns resolve the rustup DEFAULT toolchain, and the cache key claims otherwise."
-legacy_aliases = ["Next work 25"]
-
-[record.payload]
-kind = "work"
-body_md = '''25. **Pin the toolchain of verify.ts's nested cargo — its scratch-cwd spawns resolve the rustup
-    DEFAULT toolchain, and the cache key claims otherwise.** Measured 2026-08-08, both halves:
-    a `cargo` child of the repo's `cargo test` resolves the PIN even with a scratch cwd (the
-    rustup proxy exports `RUSTUP_TOOLCHAIN` into the process tree — probed with a crate whose
-    test spawns `cargo -V` from `/tmp`), so every rust-side nested-cargo gate is pinned; but
-    verify.ts is reached via bun from a plain shell env, so every `Bun.spawnSync` cargo whose
-    cwd is a scratch tree — the main pipeline's `cargo test` legs, the component execution
-    leg's builds, the build sweep — resolves the machine's default toolchain (stable 1.97.1
-    today, vs the 1.96.1 pin). Two consequences, one latent and one structural: verify's
-    verdicts are measured on a toolchain no file in the repo names (link-class verdicts are
-    toolchain-knife-edge — the wasip2 LLD crash matrix is the proof), and
-    `lib.ts::gateCacheKey` folds `rustc -vV` measured with the CALLING process's cwd (in-repo →
-    the pin), so cached cells record a compiler identity their builds did not use — a
-    default-toolchain bump changes build behavior without changing the key, which is the
-    stale-PASS shape the cache audit exists to prevent. The fix is one funnel wide: parse
-    `rust-toolchain.toml`'s channel once, set `RUSTUP_TOOLCHAIN` in the spawn env of verify's
-    cargo/rustc invocations (and make the key's `rustc -vV` measurement use the same env), with
-    a startup self-test asserting a scratch-cwd spawn resolves the pin — red-first by asserting
-    it BEFORE threading the env. Until it lands, a verify/sweep verdict is evidence about the
-    machine's default toolchain, and any claim naming the pin must come from the rust-side
-    gates or an explicit `rustup run` (the AGENTS unspelled-default rule's toolchain bullet).
-
-'''
-work_state = "ready"
-work_intent = "repair"
-work_kind = "defect"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.pin-toolchain-verify-ts-s-nested-cargo-scratch's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-regression_evidence_ids = ["testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"]
-
-[[record]]
 id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 title = "Positional-diversity fold family for the preserve-fixture corpus — the authoring work that gives the rustfmt-cycle sweep discovery power."
 legacy_aliases = ["Next work 5"]
@@ -6580,21 +6416,6 @@ priority_rationale_md = '''The parent defect owns repair; this record owns the s
 '''
 
 [[record]]
-id = "testing.proof-gap.verify-ts-refuse-unknown-flag-silently-degrading-plain"
-title = "Regression gap for testing.verify-ts-refuse-unknown-flag-silently-degrading-plain."
-
-[record.payload]
-kind = "work"
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "false_pass_or_red"
-acceptance_md = '''Add a red-first CLI regression proving an unknown flag is rejected instead of returning success or degrading to plain verify mode.
-'''
-priority_rationale_md = '''The parent defect owns repair; this record owns the still-unexecuted regression gap without masquerading as defect evidence.
-'''
-
-[[record]]
 id = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
 title = "Incident evidence for testing.directive-effect-round-trip-coherence-sweep-accepted-custom."
 
@@ -6614,32 +6435,6 @@ unprobed_remainder_md = '''The evidence proves this admitted class only; it does
 surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
 
 [[record]]
-id = "testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"
-title = "Regression proof for testing.pin-toolchain-verify-ts-s-nested-cargo-scratch."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "harness_free_repro"
-claim_md = '''A scratch no-std check fails under the unpinned default toolchain and succeeds under the repository pin.
-'''
-freshness = "as_of"
-reference_ids = ["testing-pin-toolchain-verify-ts-s-nested-cargo-scratch", "testing-roadmap-next-work-n47"]
-command_md = '''From a plain shell whose cwd is a scratch tree, run cargo -V and rustc -vV; then run the same probes with RUSTUP_TOOLCHAIN set to the channel parsed from rust-toolchain.toml. Separately spawn cargo -V from a repository cargo-test child after changing its cwd to scratch.
-'''
-result_md = '''The Bun/plain-shell scratch child resolved default stable 1.97.1 while the repository pin was 1.96.1; the cargo-test child inherited RUSTUP_TOOLCHAIN and resolved the pin.
-'''
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-08"
-environment_md = '''rustup proxy; scratch cwd versus repository cargo-test process tree
-'''
-unprobed_remainder_md = '''No other launcher or toolchain coordinate was tested by this proof.
-'''
-
-[record.payload.scope]
-surfaces = ["verify.ts nested cargo and gate-cache compiler identity"]
-toolchains = ["default 1.97.1", "repository pin 1.96.1"]
-
-[[record]]
 id = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 title = "Incident evidence for testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives."
 
@@ -6650,25 +6445,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 freshness = "as_of"
 reference_ids = ["testing-positional-diversity-fold-preserve-fixture", "testing-roadmap-next-work-n48"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
-
-[[record]]
-id = "testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"
-title = "Incident evidence for testing.same-named-generated-crates-silently-share-cargo-fingerprint."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-freshness = "as_of"
-reference_ids = ["testing-roadmap-next-work-n49", "testing-same-named-generated-crates-silently-share-cargo"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -7276,63 +7052,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.same-named-generated-crates-silently-share-cargo-fingerprint"
-title = "Same-named generated crates silently share one cargo fingerprint under a shared `CARGO_TARGET_DIR`, so a concurrent shard can report a non-compiling crate as `Finished`."
-legacy_aliases = ["Next work 20"]
-
-[record.payload]
-kind = "work"
-body_md = '''20. **Same-named generated crates silently share one cargo fingerprint under a shared
-    `CARGO_TARGET_DIR`, so a concurrent shard can report a non-compiling crate as `Finished`.**
-    Every emitted rust crate is `cddl-lib v0.1.0`, and cargo's unit hash for the ROOT package of a
-    build does not include the manifest path — N cells under one target dir share ONE
-    `.fingerprint/cddl-lib-<hash>` entry. Sequential generate-then-check is safe (each fresh crate is
-    newer than the previous build, so it rebuilds), which is why this went unseen; SHARDED gates are
-    not, because a cell generated before a different shard's build completes is judged fresh against
-    that build's fingerprint and never compiled. Measured: six pre-generated cells checked in
-    sequence into one target dir — the first compiled, the other five reported `Finished` in 0.13 s
-    with zero errors, four of them non-compiling; with distinct package names all six compiled and
-    the four red ones failed. Observed live as a run-to-run-varying false PASS while building the
-    annotate=false floor, which is immunized (`give_cell_its_own_package_identity` renames each
-    cell's root package before `cargo check`, keeping the shared target dir and the shared dep
-    build). Still exposed, by enumeration of the sharded generate+compile gates:
-    `feature_corpus_compiles`, `wasm_matrix_compiles`, `multifile_matrix_compiles`. Exposure is
-    WORST exactly when it matters most — the gate cache suppresses most nested cargo runs, so the
-    concurrent-cargo window opens widest right after a generator change invalidates the cache. The
-    fix is the same three-line rename per gate; what makes it a work item rather than a trivial edit
-    is that those gates also build `wasm/` and `wasm/json-gen`, which path-depend on `rust/` by its
-    generated name, so each gate needs the rename applied across its whole crate set (or the
-    dependency spellings rewritten with it) and its whole gate cache re-earned. The fix should
-    land with a DETECTION layer, not just the rename: a per-shard-run red canary — one
-    deliberately non-compiling cell asserted to FAIL its `cargo check` — proves the verdict
-    channel itself is live, so any FUTURE false-fresh class (this hazard's mechanism or another)
-    fails the gate loudly instead of silently greening; the rename alone only removes the one
-    known mechanism. (No pre-existing gate could have caught this class:
-    `gate_cache_closure_audit` audits OUR cache keys, and here the key was right — the verdict
-    cargo handed us was wrong.) NEW MEMBER + a counterexample to the sequential-safety claim
-    above (2026-08-08, the matrix component-execution leg's bring-up): even SEQUENTIAL same-name
-    cells under one shared target cross-bound — cell 2's native oracle resolved its `cddl-lib`
-    path dep against cell 1's already-built same-name rlib and failed loudly on a type the new
-    cell defines (`cannot find type ProbeHolder`), a spurious RED rather than this item's silent
-    green, but the same mechanism (name+version-keyed fingerprints, manifest path excluded). The
-    leg is defended by an mtime `touchTree` per cell before its builds (`verify.ts`,
-    `COMPONENT_TARGET`'s comment carries the proof). Standing rule this instance adds: every NEW
-    shared-target consumer of same-named generated crates states its defense (package rename or
-    `touchTree`) at the site that creates the target dir, so the next leg does not rediscover
-    the hazard live.
-
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.same-named-generated-crates-silently-share-cargo-fingerprint's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-admission_ids = ["testing.admission-path.same-named-generated-crates-silently-share-cargo-fingerprint"]
-
-[[record]]
 id = "testing.schema-document-s-name-injectivity-enforced-row-side"
 title = "The schema document's name injectivity is enforced ROW-side, so the residue is everything the row set cannot see."
 
@@ -7424,35 +7143,6 @@ action_on_fire_md = '''Set testing.schema-name.cross-crate-same-id-collision to 
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.schema-name.cross-crate-same-id-collision's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.schema-name.percent-encoded-ref"
-title = "A `schema_name()` that `schemars` percent-encodes into its `$ref`"
-
-[record.payload]
-kind = "work"
-body_md = '''  - **A `schema_name()` that `schemars` percent-encodes into its `$ref`** (anything outside
-    `[A-Za-z0-9_]`, e.g. the static runtime's `OrderedHashMap<K, V>`) skips the kept-its-own-name
-    check entirely: `schemars`' `encode_ref_name` lives in a private module (`mod encoding` in
-    `schemars-1.2.1/src/lib.rs`, its items `pub fn` but unreachable), so reconstructing the expected
-    ref means duplicating an upstream encoder — a false panic in a consumer's build is worse than a
-    missed check. The closing mechanism is now half-built rather than hypothetical: the emitted
-    closure check carries a `decode_schema_ref_name` (percent-decode, then the JSON-Pointer escapes),
-    so the kept-its-own-name check could compare `decode(assigned)` against the name instead of
-    skipping. What it still needs before it can be trusted to panic is a vector per escape class,
-    since decoding a name the encoder spelled differently than assumed would fail a build that is
-    fine: `tests/json-extern`'s hand-written `schema_name()` covers three of them (`~`, `/`, a
-    percent-escaped byte — `tests/README.md` § "JSON-schema document — Rust-side coverage
-    (`run_test`'s per-fixture assertions + the emitted name guard)"), leaving a multi-byte UTF-8 name.
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "wrong_public_api"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.schema-name.percent-encoded-ref's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The former independent part identifies the remaining multi-byte UTF-8 vector needed before the half-built decoder can safely become a build-failing guard; no admission trigger is inferred.
 '''
 
 [[record]]
@@ -8491,35 +8181,32 @@ capture_md = '''Record the full untruncated log or consumer report, command, ful
 '''
 
 [[record]]
-id = "testing.verify-ts-refuse-unknown-flag-silently-degrading-plain"
-title = "verify.ts should refuse an unknown flag instead of silently degrading to a plain run."
-legacy_aliases = ["Next work 26"]
+id = "testing.verify-ts-elapsed-time-covers-startup-activity"
+title = "verify.ts's elapsed-time receipt needs a process-boundary regression proving it includes startup work."
+legacy_aliases = ["Next work 27"]
 
 [record.payload]
 kind = "work"
-body_md = '''26. **verify.ts should refuse an unknown flag instead of silently degrading to a plain run.**
-    Every mode flag is tested with a bare `process.argv.includes`, so a mistyped flag matches
-    nothing and the run proceeds as an ordinary full verify — same exit 0, same `RESULT: PASS`,
-    nothing distinguishing "did what you asked" from "ignored what you asked" except the absence
-    of the mode's own output lines. Proven expensive 2026-08-08 (B3-021 close): two ~14-minute
-    full sweeps ran under `--mint-decode` (the real flag is `--mint-decode-foreign`) before the
-    7.8-second mint itself; the log even *looks* plausible for a mint run until the missing
-    `wrote …catalog.toml` line is noticed. The fix is one seam: collect the known flag/`--k=v`
-    prefixes (they are all declared in one block at the top), and exit 2 at startup naming any
-    `--`-prefixed argv token that matches none — the same hard-fail posture `--only` already
-    takes for an unknown row id. Red-first: assert `verify.ts --mint-decode` exits 2 before
-    building the list.
+body_md = '''27. **verify.ts's elapsed-time receipt needs a process-boundary regression proving it includes
+    startup work.** B5-202 added two real startup subprocess checks, but a review caught the timer
+    initialized afterwards: external wall time was about 0.2 s while the verifier printed 7 ms.
+    The code fix moves the timer before every verifier-owned startup action. Neither the matrix
+    status-counter system (it derives committed-doc quantities) nor `timings_digest_check` (it
+    validates check.ts's recorded gate timing rows) observes verify.ts's own receipt, so neither
+    could catch this accounting boundary. Add a cheap process-boundary self-test with a TEST-ONLY,
+    bounded startup delay and assert the printed elapsed time includes it with a conservative
+    lower bound; keep ordinary production modes and their timing semantics unchanged. The test
+    must clean up its scratch state and avoid a wall-clock equality assertion.
 
 '''
 work_state = "ready"
-work_intent = "repair"
-work_kind = "defect"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.verify-ts-refuse-unknown-flag-silently-degrading-plain's payload prose; do not widen adjacent future work.
+work_intent = "add_regression"
+work_kind = "regression_gap"
+risk = "misleading_docs"
+acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.verify-ts-elapsed-time-covers-startup-activity's payload prose; do not widen adjacent future work.
 '''
 priority_rationale_md = '''The source owner places this item in Next priority order.
 '''
-regression_gap_ids = ["testing.proof-gap.verify-ts-refuse-unknown-flag-silently-degrading-plain"]
 
 [[record]]
 id = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
@@ -8610,6 +8297,42 @@ acceptance_md = '''Complete exactly the operative work, validation, and bounded 
 priority_rationale_md = '''The source owner places this item in Next priority order.
 '''
 regression_evidence_ids = ["testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"]
+
+[[record]]
+id = "testing.wasm-boundary.nested-restricted-map-identity"
+title = "Recursive structural identity for nested restricted map children at the WASM boundary."
+
+[record.payload]
+kind = "work"
+body_md = '''- **Nested restricted map child identity at the WASM boundary.** The array-wrapper family now
+  carries a recursive, identifier-safe boundary fragment, but map wrapper identity still fans out
+  through bounds-blind `ConceptualRustType::name_for_wasm_map()` in the map emitters, deferral/index
+  decisions, collision detectors, and requested-shape reconstruction. Thus a loose outer container
+  over a restricted map child can select the same `MapKToV` class as one over the loose child; the
+  first mint fixes that class's carrier and the other conversion emits E0277 (or a later traversal
+  silently chooses the wrong structural owner). Minimal repro shape: place both `{* uint => [*5
+  uint]}` and `{* uint => [* uint]}` as nested values/keys of wrappers that require a wasm class,
+  then `cargo check` the generated wasm crate.
+
+  Make map structural naming use one recursive, identifier-safe RustType-level boundary identity,
+  and propagate it in lockstep through map minting, wrapper requests/index reconstruction, every
+  collision detector, and the table-key deliberate top-level-loosening exception. Add a dedicated
+  matrix/corpus compile cell (or a focused integration scratch crate promoted into that sweep) with
+  loose-vs-restricted nested map children and source assertions for the two distinct classes.
+'''
+work_state = "ready"
+work_intent = "build_capability"
+work_kind = "feature"
+risk = "compile_failure"
+acceptance_md = '''Use one recursive, identifier-safe RustType-level identity for nested map
+children at every listed map mint/reference/reconstruction/collision seam; preserve the deliberate
+top-level table-key loosening; and add the stated source-asserted WASM compile regression. Do not
+widen this item into the already-delivered recursive ARRAY wrapper family.
+'''
+priority_rationale_md = '''The source owner places this item in Next priority order: the B5-102
+array regression exposed the same bounds-blind map naming class, whose current result is generated
+WASM output that can fail E0277 or select a traversal-dependent carrier.
+'''
 
 [[record]]
 id = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
@@ -9267,11 +8990,6 @@ target = "testing.duplicates.member-position-extension"
 [[relation]]
 source = "testing.duplicates-policy-residuals"
 kind = "parent_of"
-target = "testing.duplicates.occurrence-aware-generic-identity"
-
-[[relation]]
-source = "testing.duplicates-policy-residuals"
-kind = "parent_of"
 target = "testing.duplicates.same-shape-set-conversion"
 
 [[relation]]
@@ -9540,11 +9258,6 @@ kind = "parent_of"
 target = "testing.guard.make-fixture-comment-s-claimed-wire-bytes-executable"
 
 [[relation]]
-source = "testing.making-type-choice-path-reject-duplicated-explicit-name"
-kind = "parent_of"
-target = "testing.guard.making-type-choice-path-reject-duplicated-explicit-name"
-
-[[relation]]
 source = "testing.matrix-s-note-names-panic-site-aborts-nothing"
 kind = "parent_of"
 target = "testing.guard.matrix-s-note-names-panic-site-aborts-nothing"
@@ -9628,11 +9341,6 @@ target = "testing.guard.panic-site-un-shadowing-converting-shallow-panic-gracefu
 source = "testing.parallel-constructor-fixture-diversity-parser-over-external-input"
 kind = "parent_of"
 target = "testing.guard.parallel-constructor-fixture-diversity-parser-over-external-input"
-
-[[relation]]
-source = "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"
-kind = "parent_of"
-target = "testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"
 
 [[relation]]
 source = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
@@ -9750,16 +9458,6 @@ kind = "parent_of"
 target = "testing.guard.run-local-values-gate-cache-key-material-proven"
 
 [[relation]]
-source = "testing.same-named-generated-crates-silently-share-cargo-fingerprint"
-kind = "parent_of"
-target = "testing.admission-path.same-named-generated-crates-silently-share-cargo-fingerprint"
-
-[[relation]]
-source = "testing.same-named-generated-crates-silently-share-cargo-fingerprint"
-kind = "parent_of"
-target = "testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"
-
-[[relation]]
 source = "testing.schema-document-s-name-injectivity-enforced-row-side"
 kind = "parent_of"
 target = "testing.schema-name.collision-loser-no-row-same-id"
@@ -9768,11 +9466,6 @@ target = "testing.schema-name.collision-loser-no-row-same-id"
 source = "testing.schema-document-s-name-injectivity-enforced-row-side"
 kind = "parent_of"
 target = "testing.schema-name.cross-crate-same-id-collision"
-
-[[relation]]
-source = "testing.schema-document-s-name-injectivity-enforced-row-side"
-kind = "parent_of"
-target = "testing.schema-name.percent-encoded-ref"
 
 [[relation]]
 source = "testing.schema-document-s-name-injectivity-enforced-row-side"
@@ -9863,11 +9556,6 @@ target = "testing.guard.unused-imports-generated-crates-trait-import-class-name"
 source = "testing.value-anchor-rot-field-addition-delivery-grows-existing"
 kind = "parent_of"
 target = "testing.guard.value-anchor-rot-field-addition-delivery-grows-existing"
-
-[[relation]]
-source = "testing.verify-ts-refuse-unknown-flag-silently-degrading-plain"
-kind = "parent_of"
-target = "testing.proof-gap.verify-ts-refuse-unknown-flag-silently-degrading-plain"
 
 [[relation]]
 source = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
@@ -10034,6 +9722,13 @@ source = "testing.documented-failure-shape-exercises-prose-cross-crate-int"
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::int_key_via_common_import_override_sidecar"
 symbol = "tests::integration_tests::int_key_via_common_import_override_sidecar"
+
+[[reference]]
+id = "test-preserve-encodings"
+source = "testing.documented-failure-shape-exercises-prose-cross-crate-int"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::integration_tests::preserve_encodings"
+symbol = "tests::integration_tests::preserve_encodings"
 
 [[reference]]
 id = "test-common-override-wasm-int"
@@ -10522,19 +10217,6 @@ path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
-id = "testing-roadmap-declined-decided-with-a-reopening-signal-n5"
-source = "testing.making-type-choice-path-reject-duplicated-explicit-name"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Declined (decided, with a reopening signal unless explicitly permanent)"
-
-[[reference]]
-id = "testing-guard-making-type-choice-path-reject-duplicated"
-source = "testing.making-type-choice-path-reject-duplicated-explicit-name"
-kind = "roadmap"
-target_id = "testing.guard.making-type-choice-path-reject-duplicated-explicit-name"
-
-[[reference]]
 id = "testing-roadmap-next-work-n41"
 source = "testing.matrix-s-note-names-panic-site-aborts-nothing"
 kind = "file_heading"
@@ -10710,19 +10392,6 @@ kind = "roadmap"
 target_id = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
 
 [[reference]]
-id = "testing-roadmap-next-work-n47"
-source = "testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-pin-toolchain-verify-ts-s-nested-cargo-scratch"
-source = "testing.proof.pin-toolchain-verify-ts-s-nested-cargo-scratch"
-kind = "roadmap"
-target_id = "testing.pin-toolchain-verify-ts-s-nested-cargo-scratch"
-
-[[reference]]
 id = "testing-roadmap-next-work-n48"
 source = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 kind = "file_heading"
@@ -10734,19 +10403,6 @@ id = "testing-positional-diversity-fold-preserve-fixture"
 source = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 kind = "roadmap"
 target_id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-
-[[reference]]
-id = "testing-roadmap-next-work-n49"
-source = "testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-same-named-generated-crates-silently-share-cargo"
-source = "testing.proof.same-named-generated-crates-silently-share-cargo-fingerprint"
-kind = "roadmap"
-target_id = "testing.same-named-generated-crates-silently-share-cargo-fingerprint"
 
 [[reference]]
 id = "testing-roadmap-next-work-n50"

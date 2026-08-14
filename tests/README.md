@@ -56,8 +56,9 @@ before considering work done" — the heavy correctness gates (full
 `cddl-matrix/` once; the runtime stays dependency-free — which is also why it is NOT in the class
 above: CI cannot install it without a second `run:` step), `verify_selftest` (`verify.ts`'s
 assert-at-startup deciders, run standalone in tens of milliseconds — their own gate is `full`-tier,
-and a wrong verdict token, evidence-stage name, or policy-mint classifier is silent in production, so
-the cheap tier is where it must fail), `no_std_check` (the no_std drift gate — see its section below),
+and an ignored flag, wrong compiler identity, verdict token, evidence-stage name, or policy-mint
+classifier is silent in production, so the cheap tier is where it must fail), `no_std_check` (the
+no_std drift gate — see its section below),
 `no_silent_directive` (which
 spawns `cargo build` plus generator runs) and `timings_digest_check` live here, NOT in CI. The
 doc-citation gate
@@ -597,6 +598,11 @@ rests on the same enforced determinism
 invariant the rest of the repo leans on (byte-identical regeneration; `generated_code_clippy_clean`
 already relies on the identical-bytes→identical-verdict form of it): an unchanged key means
 re-running would provably reproduce the recorded verdict.
+
+`verify.ts` reads `[toolchain].channel` from the repository's `rust-toolchain.toml` once at startup
+and explicitly passes it as `RUSTUP_TOOLCHAIN` to every nested cargo/rustc child. Its cache-key
+`rustc -vV` probe inherits that same environment, so the compiler fingerprint is the compiler that
+performed the scratch-CWD build rather than the machine default.
 
 Mechanics: entries live in the gitignored `.gate-cache/` at the repo root (one
 `<key>.json` per green verdict — existence is the verdict, the body is for debugging which
@@ -1186,12 +1192,14 @@ with the `From`/`AsRef` boundary contract. The same pair backs two further cells
 `Int` wasm face to the WASM crate because the rust stand-in's `#[wasm_bindgen]` `Int` makes a
 wrong-direction re-export compile-indistinguishable) and `dep_owned_named_collection_compiles`
 (the pair's `DepWithdrawals`/`DepCerts` — transparent `BTreeMap`/`Vec` aliases plus thin wasm
-faces — give the dep-owned named-collection cell a full cross-crate compile). Both are hand mirrors of generated `Int` — the
-preserve-encodings `Uint`/`Nint` representation, wire impls, and encoding-insensitive key
-semantics — enforced today only by round-tripping through the fixture's own impls (the mirror
-drift gate is recorded by
-`testing.documented-failure-shape-exercises-prose-cross-crate-int`). It is a bespoke
-harness rather than `run_test`: it asserts the CLI's stderr warning for an all-extern wrapper
+faces — give the dep-owned named-collection cell a full cross-crate compile). The extern-dep crate
+pair's two `Int` faces are hand mirrors of generated `Int` — the preserve-encodings `Uint`/`Nint`
+representation, wire impls, and encoding-insensitive key
+semantics. `preserve_encodings` now decodes the same irregular negative `Int` with the generated
+and hand-written codecs, requires both to preserve its bytes, then cross-decodes and re-emits each
+other's output; a one-sided signed-arm, value-conversion, or retained-width drift therefore fails.
+The `extern_wrapper_index_defers_to_dep` bespoke harness, rather than `run_test`, asserts the CLI's
+stderr warning for an all-extern wrapper
 absent from the index, the deferred `use <dep_wasm>::collections::…;` imports (plain `use`, never
 re-exported), the local-mint cells (not-in-index and mixed-element), a cross-crate behavioral
 round-trip via the fixture's `tests_wasm.rs` (constructing through the DEP's wrapper classes — the
@@ -1758,6 +1766,18 @@ idiom") is verified across the layers:
   `integration_tests::workspace_requests_anonymous_collapsed_set_satisfies_from_own_spec`: the
   structural request is satisfied by own-spec (no criterion-8 #3 collision on the synthesized name),
   and the named-rule boundary still hard-errors naming `NamedSet`.
+- **Occurrence-aware instance identity + recursive array boundary** —
+  `integration_tests::generic_instance_occurrence_bounds_have_distinct_nominals_and_compile`
+  crosses loose, outer-bounded, inner-bounded, and doubly bounded arguments through anonymous uses
+  and named bindings, source-asserts each distinct native/WASM nominal and carrier, then checks both
+  generated crates. Its bounded-table-key leg pins the deliberate top-level-loose `ArrU64List`
+  `keys()` ABI (including coexistence with an authored compatible `arr_u64_list`) while nested array
+  restrictions retain their own structural identity. It supplies the recursive-identity vector
+  missing when source review found that table-key mint/reference/import/collision paths could
+  disagree after recursive array identity was introduced; the standing table-key carrier,
+  synthesized-name interaction, and workspace wrapper-routing tests keep their respective seams.
+  The map-family analogue is deliberately not claimed here; it remains ready as
+  `testing.wasm-boundary.nested-restricted-map-identity`.
 - **Compile + round-trip** — the `tag_set_idiom` / `tag_set_generic` / `tag_set_near_miss` corpus
   fixtures (`feature_corpus` snapshots + `feature_corpus_compiles`' three-profile compile and the
   default-profile `--emit-tests` byte-exact round-trip of the tagged arm). `tag_set_generic` carries
@@ -2890,10 +2910,11 @@ never emits a broken document (it also writes nothing, leaving any earlier expor
 failure classes are executed by `json_schema_ref_dangling_fails` over `tests/json-ref-dangling` (a
 bare `Schema::new_ref("SomeType")`, and an internal pointer at an undefined key). Its green
 direction — the ref DECODE, which must invert schemars' percent + JSON-pointer encoding — is a
-vector inside `tests/json-extern`: a hand-written `schema_name()` of `Odd<K>/~1name`, chosen because
-it exercises all three escape classes *and* distinguishes the unescape ORDER (the literal `~1`
-encodes to `~01`, which the wrong order decodes to `Odd<K>//name`). Do not simplify that name — a
-simpler one passes under both orders and certifies nothing.
+vector inside `tests/json-extern`: a hand-written `schema_name()` of `Odd<K>/~1café`, chosen because
+it exercises all three escape classes, including multi-byte UTF-8 percent encoding, *and*
+distinguishes the unescape ORDER (the literal `~1` encodes to `~01`, which the wrong order decodes to
+`Odd<K>//café`). Do not simplify that name — a simpler one passes under both orders or misses the
+encoder's UTF-8 path and certifies nothing.
 
 **`--json-schema-export` without `--json-serde-derives`.** The two flags are independent — nothing
 implies or rejects either from the other — but every other json-schema cell passes both, so the
@@ -2963,10 +2984,11 @@ nested-cargo `a_config_generated_workspace_builds_with_wasm_on` in `config_tests
 section below, since the derivation is where the flag is actually used.
 
 What these layers cannot see — a collision whose loser has no row and whose `schema_id`s match, a
-cross-crate collision between two `add_schemas` calls whose `schema_id`s match, a name schemars
-percent-encodes, and a collision between two types that BOTH lack rows — is enumerated in
-`tests/testing-roadmap.toml`, along with the conditions under which the emitted closure check
-silently skips, and the extra-root-on-the-losing-side cell that is recorded rather than minted.
+cross-crate collision between two `add_schemas` calls whose `schema_id`s match, and a collision
+between two types that BOTH lack rows — is enumerated in `tests/testing-roadmap.toml`, along with
+the extra-root-on-the-losing-side cell that is recorded rather than minted. The kept-its-own-name
+guard now decodes the ref Schemars actually returned, so percent-encoded names are covered without
+reproducing its private encoder.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
 
@@ -3018,7 +3040,7 @@ fixture rather than per opt-in.
   `--strict` is what makes the optional-property case fail at all; `typescript` is injected into the
   shared install's manifest rather than the shipped one, so `static/package_json_schemas.json` keeps
   pinning only what a consumer's package actually needs. A `$defs` key that is also REFERENCED
-  (`Odd<K>/~1name`, the spelling `tests/json-extern` really emits) pins the pointer escaping: a
+  (`Odd<K>/~1café`, the spelling `tests/json-extern` really emits) pins the pointer escaping: a
   `#/$defs/...` token carries the JSON-Pointer escapes under the URI-fragment percent-encoding, and
   matching it against a key without decoding both layers leaves the reference pointing at the
   pre-rename key — which kills the whole document inside json2ts's resolver, not just that one type.
@@ -3052,11 +3074,11 @@ fixture rather than per opt-in.
   under a string one), and the caller pins that each open type's index signature is the union form
   rather than the bare range. Running it at breadth is what found the pointer-escaping gap
   `js_schema_to_ts` now pins: `tests/json-extern`'s hand-written `JsonSchema` impl publishes a
-  `$defs` key holding `<`, `>` and `/`, and it was the only REFERENCED non-identifier key anywhere
-  in the tree.
+  `$defs` key holding `<`, `>`, `/` and multi-byte UTF-8, and it was the only REFERENCED
+  non-identifier key anywhere in the tree.
 - **`js_d_ts_merge`** runs `json-ts-types.js` in isolation over hand-written fixtures — no
   wasm-pack/json2ts needed — laid out in the shipped `<root>/scripts/*.js` shape the script resolves
-  its own paths from. Five cases, one per failure mode: the happy path (specialize + append); a class
+  its own paths from. Six cases, one per failure mode: the happy path (specialize + append); a class
   with no emitted JSON type exiting non-zero — naming the class and the `--allow-untyped=` escape,
   with the `.d.ts` untouched — rather than silently shipping `any`, plus the escape's two halves (an
   allowed class keeps `any` rather than gaining a `TS2304` dangling name, and a stale escape is
@@ -3071,7 +3093,12 @@ fixture rather than per opt-in.
   cannot find exiting non-zero with the `--method=` override named and the `.d.ts` untouched (the
   `--wasm-cbor-json-api-macro` case, where the macro body names the methods); and a non-default
   wasm-pack crate name (i.e. `--lib-name`) still being found, because `pkg/` is scanned for its single
-  non-`_bg` `.d.ts`.
+  non-`_bg` `.d.ts`; and a wasm `export class FooJSON` colliding with the appended `FooJSON`
+  declaration failing before the write, with the bindings `.d.ts` byte-for-byte untouched. Under the
+  shipped `<key>JSON` projection contract, that declaration corresponds to `$defs` key `Foo`; a
+  foreign or hand-written declaration is identified only by its observed spelling. `tsc` cannot
+  cover that last cross-half collision: TypeScript legally declaration-merges a class and an interface
+  with the same name, so the resulting wrong public type checks.
 - **`json_schema_scripts_without_package_json`** pins `--json-schema-scripts`: the two scripts land in
   `<output>/scripts/`, no `package.json` is written, the bare layout puts the wasm crate at
   `<output>/wasm` (the second candidate the scripts' wasm-dir detection exists for), and the flag
@@ -3273,15 +3300,19 @@ accumulators, so the trailing reassignments write the shadow and the outer value
 `default()` — and typing the binding to silence the resulting inference error would leave the loss
 in place. The non-canonical vectors fail against exactly that shape, measured.
 
-Each cell of this leg also gets its own package name (`give_cell_its_own_package_identity`) before
-`cargo check`. Cargo's unit hash for the ROOT package of a build does not include the manifest path,
-so N generated crates all called `cddl-lib v0.1.0` share ONE `.fingerprint` entry under a shared
-`CARGO_TARGET_DIR`; with shards running concurrently a cell whose sources predate another shard's
-completed build is then judged fresh and reported `Finished` without being compiled — a false PASS.
-Measured directly: six pre-generated cells checked in sequence into one target dir, the first
-compiled and the other five reported `Finished` in 0.13 s with zero errors, four of them
-non-compiling; with distinct package names all six compiled and the four red ones failed. See
-`tests/testing-roadmap.toml` for the same hazard in the sibling sharded shared-target gates.
+All four sharded compile legs — the base corpus, its no-annotate sibling, the wasm matrix and the
+multifile matrix — give every participating generated crate a deterministic per-cell package name
+before the gate-cache tree hash and nested Cargo command. Cargo's root-package fingerprint omits the
+manifest path, so same-named generated cells sharing one `CARGO_TARGET_DIR` could otherwise borrow a
+fresh fingerprint and be reported `Finished` without compiling. For a cell that builds `wasm/` or
+`wasm/json-gen`, its dependent manifest retains the source-level `cddl-lib` dependency alias but adds
+`package = "<renamed rust package>"`, so Cargo resolves that alias to the renamed local rust package
+without changing emitted Rust identifiers; each renamed manifest also fixes its original `[lib].name`
+(`cddl_lib`, `cddl_lib_wasm`, or `cddl_lib_json_schema_gen`) so Cargo's package-derived default cannot
+rename a self-reference. Each shard also pre-lays out a dependency-free,
+gate/shard-uniquely-named `compile_error!` canary and checks it after its cell loop against the same
+target dir. The expected red must fail *and* carry its exact marker in stderr: it is deliberately
+uncached and old enough to exercise any false-fresh channel even when every real cell is a cache hit.
 
 ### Encoding-fidelity oracle (`--emit-tests` × `--preserve-encodings`)
 
@@ -3778,11 +3809,13 @@ cost to catch a syntax error, and no lint sees it at all.
   blind spot rather than a new false positive.
 - **Real unit vectors for `decode_schema_ref_name`**, the inverse of a schemars-private encoder,
   which is reachable no other way. The vectors cover both escape layers (percent / JSON-Pointer),
-  the truncated- and non-hex-escape passthroughs, and — the case the code's own comment calls out
-  and no fixture exercises — the ORDER the two layers must be undone in: a name holding a literal
-  `~1` encodes to `~01`, so `~1`-before-`~0` is the only order that recovers it. `check_schema_ref_
-  closure` gets the accept path (including a definitions namespace that is not `#/$defs`, and an
-  unresolvable one, which must SKIP rather than fail) plus both failure classes.
+  the truncated- and non-hex-escape passthroughs, and the ORDER the two layers must be undone in: a
+  name holding a literal `~1` encodes to `~01`, so `~1`-before-`~0` is the only order that recovers
+  it. `tests/json-extern` carries the end-to-end private-encoder proof of that order alongside
+  multi-byte UTF-8; the shim's unsafe-name regression proves the emitted kept-its-own-name guard
+  compares the decoded assigned ref rather than skipping it. `check_schema_ref_closure` gets the
+  accept path (including a definitions namespace that is not `#/$defs`, and an unresolvable one,
+  which must SKIP rather than fail) plus both failure classes.
 - **Both arms of `custom_schema_impl!` expanded.** A macro body is text until something expands it,
   so the shim invokes each arm over a committed JSON file under `tests/json-schema-custom/unit/` —
   which also asserts that `include_str!` resolves relative to the INVOKING file rather than to
@@ -3899,8 +3932,10 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
   append — while an `extern__*` cell's `_CDDL_CODEGEN_EXTERN_TYPE_` gets the same treatment from the
   shared `tests/def_templates/` via `append_extern_defs` (templated because the type name is the
   cell's rule name). Seeding costs no
-  extra cargo invocation (same per-cell generate + check). It follows `feature_corpus_compiles`' shared-target-dir *pattern*
-  but uses its **own** scratch + `CARGO_TARGET_DIR` (`cddl_codegen_wasm_matrix`), separate so the two
+  extra cargo invocation (same per-cell generate + check). It follows `feature_corpus_compiles`' shared-target-dir *pattern*,
+  including per-cell package identities for both generated `rust/` and `wasm/` manifests (the latter
+  keeps its `cddl-lib` alias with Cargo's `package = ...` selector) and one uncached old-enough
+  expected-red canary per shard. It uses its **own** scratch + `CARGO_TARGET_DIR` (`cddl_codegen_wasm_matrix`), separate so the two
   tests don't collide when `cargo test` runs them in parallel. The verdict is **compile**: a cell can
   compile green while emitting *semantically* wrong bindings (e.g. an identity `.into()` where a transform
   was needed). Catching those is the job of the **round-trip** upgrade — `integration_tests::wasm_matrix_roundtrips`
@@ -4825,8 +4860,10 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   coverage").
 - **The compile floor** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs,
   generates each with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which
-  path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
-  `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
+  path-depends on the rust crate, so rust-side breakage surfaces transitively). Its shared target uses
+  distinct per-cell rust/wasm package identities, preserving the `cddl-lib` source alias with Cargo's
+  `package = ...` dependency selector, plus one uncached old-enough marker-bearing expected-red
+  canary per shard. Own scratch + `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
   once) / ~30 s warm measured at 43 cells (144 at HEAD).
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts

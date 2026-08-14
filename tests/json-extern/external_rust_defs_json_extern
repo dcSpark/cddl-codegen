@@ -130,10 +130,10 @@ pub struct HandWrittenJsonRoot {
 }
 
 // The encoded-`$ref` vector (see `encoded_name` in input.cddl). Do NOT simplify this name. It covers
-// the three escape classes the emitted closure check's decode must handle — `<`/`>` (percent), `/`
-// (`~1`), `~` (`~0`) — and, through the LITERAL `~1` in `~1name`, the decode's ORDER. A decode that
-// gets any class wrong, or that unescapes `~0` before `~1`, reports this document's own reference as
-// dangling and fails the json-gen run.
+// the three escape classes the emitted closure check's decode must handle — `<`/`>` and multi-byte
+// `é` (percent), `/` (`~1`), `~` (`~0`) — and, through the LITERAL `~1` in `~1café`, the decode's
+// ORDER. A decode that gets any class wrong, or that unescapes `~0` before `~1`, reports this
+// document's own reference as dangling and fails the json-gen run.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EncodedName {
     pub value: u64,
@@ -147,7 +147,7 @@ impl EncodedName {
 
 impl schemars::JsonSchema for EncodedName {
     fn schema_name() -> std::borrow::Cow<'static, str> {
-        std::borrow::Cow::Borrowed("Odd<K>/~1name")
+        std::borrow::Cow::Borrowed("Odd<K>/~1café")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

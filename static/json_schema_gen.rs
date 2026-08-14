@@ -300,16 +300,17 @@ pub fn add_schema<T: schemars::JsonSchema>(
         // A returned schema with no `$ref` at all is not a naming decision, so it is skipped.
         let prefix = definitions_ref_prefix(&generator.settings().definitions_path);
         // schemars percent-/JSON-pointer-encodes a name whose bytes are not safe inside a URI
-        // fragment (`OrderedHashMap<K, V>` becomes `OrderedHashMap%3CK,%20V%3E`) with an encoder that
-        // is not part of its public API. Comparing only names no encoder can touch keeps this guard
-        // from ever failing a build over a difference it merely cannot decode — the ledger above
-        // still covers every collision between two ROWS whatever the spelling.
-        let ref_safe_name = name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
-        // `None` when the ref carries some other prefix (nothing to compare), when the name is one
-        // the encoder may have touched, or when the row kept its own name.
+        // fragment (`OrderedHashMap<K, V>` becomes `OrderedHashMap%3CK,%20V%3E`), through an encoder
+        // that is not part of its public API. We do not reproduce that encoder: this comparison
+        // decodes the ACTUAL assigned ref component, using the standard URI-fragment and JSON-Pointer
+        // inverses, before comparing it to the claimed name. That keeps the guard valid for every
+        // spelling schemars emits, including UTF-8, without predicting which bytes it will escape.
+        // `None` when the ref carries some other prefix (nothing to compare), or when the row kept
+        // its own name.
         let stolen = reference
             .strip_prefix(prefix.as_str())
-            .filter(|assigned| ref_safe_name && *assigned != name);
+            .map(decode_schema_ref_name)
+            .filter(|assigned| assigned != &name);
         if let Some(assigned) = stolen {
             panic!("cddl-codegen --json-schema-export: {rust} publishes the JSON schema name \"{name}\", but the document assigned it \"{assigned}\" — another type claimed \"{name}\" first. The published name is then decided by registration order, so an unrelated spec edit can silently swap the two. Give one of them a `schemars::JsonSchema::schema_name()` that is unique within this crate.");
         }
@@ -383,10 +384,10 @@ fn decode_schema_ref_name(encoded: &str) -> String {
     // escapes (RFC 6901), `~1` before `~0` — a name holding a literal `~1` encodes to `~01` and
     // decodes wrong in the other order.
     //
-    // DEcoding is safe here even though the add_schema helper deliberately refuses to ENcode: that
-    // guard skips names it cannot reconstruct because reproducing a private encoder risks a false
-    // panic on a schemars bump. Decoding is a well-defined standard operation independent of which
-    // characters the encoder chose to escape, so it carries no such risk. Do not "fix" the asymmetry.
+    // Decoding is safe for both the closure walk and add_schema's kept-its-own-name guard: it reads
+    // the ACTUAL ref schemars assigned, rather than trying to reproduce its private encoder. These
+    // are standard inverse operations independent of which characters a future encoder version
+    // chooses to escape, so a private-API change cannot make the guard predict a wrong ref.
     let bytes = encoded.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut i = 0;

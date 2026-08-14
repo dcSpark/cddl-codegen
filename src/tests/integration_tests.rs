@@ -2905,6 +2905,9 @@ fn feature_corpus_compiles_shard(shard: usize) {
     );
     let root = scratch.root().to_path_buf();
     let target_dir = root.join("target");
+    // Pre-layout makes this canary old enough for a false-fresh fingerprint to affect it; post-loop
+    // checking below proves Cargo still compiles expected-red source through this shared target.
+    let canary = lay_out_expected_red_canary(&root, "feature-corpus", shard);
 
     let mut failures = vec![];
     let mut emitted_test_modules = 0usize;
@@ -3009,6 +3012,15 @@ fn feature_corpus_compiles_shard(shard: usize) {
             if missing_crates {
                 continue;
             }
+            if let Err(error) = give_generated_cell_its_own_package_identities(
+                &out,
+                "feature-corpus",
+                &label,
+                crate_subs,
+            ) {
+                failures.push(format!("{label}: {error}"));
+                continue;
+            }
             let mut argv_for_key = Vec::new();
             for (crate_sub, cargo_cmd) in &command_plan {
                 argv_for_key.extend([
@@ -3086,6 +3098,14 @@ fn feature_corpus_compiles_shard(shard: usize) {
             }
         }
     }
+    match canary {
+        Ok(canary) => {
+            if let Err(error) = check_expected_red_canary(&canary, &target_dir) {
+                failures.push(error);
+            }
+        }
+        Err(error) => failures.push(format!("cannot lay out expected-red canary: {error}")),
+    }
     if gate_cache::enabled() {
         println!(
             "feature_corpus_compiles shard {shard}/{FEATURE_CORPUS_SHARDS} gate-cache: {cache_run} run, {cache_hit} cached"
@@ -3119,42 +3139,202 @@ fn feature_corpus_compiles_shard(shard: usize) {
     }
 }
 
-/// Rename a generated cell's root package so cargo cannot confuse it with another cell's.
+/// Give every participating crate in one generated cell its own Cargo package identity.
 ///
-/// Every generated rust crate is `cddl-lib v0.1.0`, and cargo's unit hash for the ROOT package of a
-/// build does not include the manifest path — so N cells sharing one `CARGO_TARGET_DIR` share ONE
-/// `.fingerprint/cddl-lib-<hash>` entry. Sequentially that is harmless (each freshly generated crate
-/// is newer than the previous build, so it rebuilds), but shards run CONCURRENTLY: a cell generated
-/// before a *different* shard's build completes is then judged fresh against that build's
-/// fingerprint and reported `Finished` without being compiled — a silent FALSE PASS whose victim
-/// varies run to run. Measured directly: six pre-generated cells, one green and four red, checked in
-/// sequence into one target dir — the first compiled, the other five reported `Finished` in 0.13 s
-/// with zero errors; with distinct package names all six compiled and the four red ones failed.
+/// Cargo fingerprints a root package by name/version rather than manifest path. Thus generated
+/// cells all named `cddl-lib` can borrow one another's fresh fingerprint under these sharded gates'
+/// shared `CARGO_TARGET_DIR` and be reported `Finished` without compiling. The identity encodes the
+/// gate and every byte of the cell label, so it is deterministic and injective even where Cargo
+/// normalizes `-` and `_` in package names.
 ///
-/// Renaming keeps the shared target dir (deps still build once) while giving each cell its own
-/// fingerprint. Safe here because this leg builds `rust/` alone: the emitted `wasm/` and
-/// `no-std-check/` crates path-depend on it by the original name, and are not built by this gate.
+/// `wasm/` and `wasm/json-gen` still import their dependency as `cddl_lib` in Rust source. Cargo's
+/// dependency *key* therefore remains `cddl-lib`; its inline table gets `package = <renamed rust
+/// package>`, which changes only resolution of that key. Source-level generated identifiers stay
+/// untouched.
+fn give_generated_cell_its_own_package_identities(
+    out: &std::path::Path,
+    gate: &str,
+    cell: &str,
+    crate_subs: &[&str],
+) -> Result<(), String> {
+    let rust_package = generated_cell_package_name(gate, cell, "rust");
+    for crate_sub in crate_subs {
+        let (expected_name, package_kind, source_lib_name, depends_on_rust) = match *crate_sub {
+            "rust" => ("cddl-lib", "rust", "cddl_lib", false),
+            "wasm" => ("cddl-lib-wasm", "wasm", "cddl_lib_wasm", true),
+            "wasm/json-gen" => (
+                "cddl-lib-json-schema-gen",
+                "json-schema-gen",
+                "cddl_lib_json_schema_gen",
+                true,
+            ),
+            other => return Err(format!("unknown generated crate subpath `{other}`")),
+        };
+        let manifest = out.join(crate_sub).join("Cargo.toml");
+        let text = std::fs::read_to_string(&manifest)
+            .map_err(|error| format!("cannot read {}: {error}", manifest.display()))?;
+        let mut doc = text
+            .parse::<toml_edit::DocumentMut>()
+            .map_err(|error| format!("cannot parse {} as TOML: {error}", manifest.display()))?;
+        let package = doc
+            .get_mut("package")
+            .and_then(toml_edit::Item::as_table_mut)
+            .ok_or_else(|| format!("{} has no [package] table", manifest.display()))?;
+        let actual_name = package
+            .get("name")
+            .and_then(toml_edit::Item::as_str)
+            .ok_or_else(|| format!("{} has no string package.name", manifest.display()))?;
+        if actual_name != expected_name {
+            return Err(format!(
+                "{} declares package `{actual_name}`, expected generated `{expected_name}` before \
+                 applying this gate's distinct package identity",
+                manifest.display()
+            ));
+        }
+        let package_name = generated_cell_package_name(gate, cell, package_kind);
+        package["name"] = toml_edit::value(package_name);
+
+        // A package name normally supplies Cargo's default lib-target name. Preserve every original
+        // generated source identifier explicitly instead: json-gen's `main.rs` names its own lib,
+        // and making all three target names explicit keeps source-level crate names decoupled from
+        // this gate-only package-identity rewrite.
+        if doc.get("lib").is_none() {
+            doc["lib"] = toml_edit::Item::Table(toml_edit::Table::new());
+        }
+        let lib = doc
+            .get_mut("lib")
+            .and_then(toml_edit::Item::as_table_mut)
+            .ok_or_else(|| format!("{} [lib] is not a table", manifest.display()))?;
+        if let Some(existing_name) = lib.get("name").and_then(toml_edit::Item::as_str)
+            && existing_name != source_lib_name
+        {
+            return Err(format!(
+                "{} [lib].name is `{existing_name}`, expected generated `{source_lib_name}`",
+                manifest.display()
+            ));
+        }
+        lib["name"] = toml_edit::value(source_lib_name);
+
+        if depends_on_rust {
+            let dependency = doc
+                .get_mut("dependencies")
+                .and_then(toml_edit::Item::as_table_mut)
+                .and_then(|dependencies| dependencies.get_mut("cddl-lib"))
+                .and_then(toml_edit::Item::as_inline_table_mut)
+                .ok_or_else(|| {
+                    format!(
+                        "{} has no inline [dependencies].cddl-lib path dependency to retarget",
+                        manifest.display()
+                    )
+                })?;
+            let path = dependency
+                .get("path")
+                .and_then(toml_edit::Value::as_str)
+                .ok_or_else(|| {
+                    format!(
+                        "{} dependency `cddl-lib` has no string path",
+                        manifest.display()
+                    )
+                })?;
+            let expected_path = if *crate_sub == "wasm" {
+                "../rust"
+            } else {
+                "../../rust"
+            };
+            if path != expected_path {
+                return Err(format!(
+                    "{} dependency `cddl-lib` has path `{path}`, expected generated `{expected_path}`",
+                    manifest.display()
+                ));
+            }
+            dependency.insert("package", toml_edit::Value::from(rust_package.as_str()));
+        }
+        std::fs::write(&manifest, doc.to_string())
+            .map_err(|error| format!("cannot write {}: {error}", manifest.display()))?;
+    }
+    Ok(())
+}
+
+/// An injective, Cargo-valid name: the full cell label is hex rather than lossy punctuation
+/// normalization, so separate labels cannot converge on one root-package fingerprint.
+fn generated_cell_package_name(gate: &str, cell: &str, kind: &str) -> String {
+    let encoded_cell: String = cell
+        .as_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("cddl-codegen-{gate}-{encoded_cell}-{kind}")
+}
+
+struct ExpectedRedCanary {
+    crate_dir: std::path::PathBuf,
+    marker: String,
+}
+
+/// Lay out an expected-red crate before a shard starts its real nested Cargo activity.
 ///
-/// Asserts the substitution happened, so a change to the manifest emitter surfaces as a loud failure
-/// rather than as the silent return of the hazard.
-fn give_cell_its_own_package_identity(crate_dir: &std::path::Path, unique_name: &str) {
-    let manifest = crate_dir.join("Cargo.toml");
-    let Ok(text) = std::fs::read_to_string(&manifest) else {
-        return;
-    };
-    let generated = "name = \"cddl-lib\"\n";
-    assert!(
-        text.contains(generated),
-        "{manifest:?} does not declare `{}` — the corpus cell cannot be given a distinct package \
-         identity, and without one concurrent cells silently share a cargo fingerprint (false \
-         PASSes). Update this substitution to match the manifest emitter.",
-        generated.trim_end()
-    );
+/// The later check must happen *after* the cell loop: this source is old enough to be vulnerable to
+/// any false-fresh result left in the shared target, while its gate/shard-specific package name
+/// prevents Cargo from satisfying it through a different canary's fingerprint. Keeping this tiny
+/// crate dependency-free makes the live-verdict proof cheap, and it is intentionally never cached.
+fn lay_out_expected_red_canary(
+    root: &std::path::Path,
+    gate: &str,
+    shard: usize,
+) -> Result<ExpectedRedCanary, String> {
+    let marker = format!("cddl_codegen_expected_red_{gate}_shard_{shard:02}");
+    let crate_dir = root
+        .join("expected-red-canaries")
+        .join(format!("{gate}-{shard:02}"));
+    std::fs::create_dir_all(crate_dir.join("src"))
+        .map_err(|error| format!("cannot create {}: {error}", crate_dir.display()))?;
+    let package_name = format!("cddl-codegen-{gate}-expected-red-canary-shard-{shard:02}");
     std::fs::write(
-        &manifest,
-        text.replacen(generated, &format!("name = \"{unique_name}\"\n"), 1),
+        crate_dir.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"{package_name}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n"
+        ),
     )
-    .unwrap();
+    .map_err(|error| format!("cannot write canary manifest in {}: {error}", crate_dir.display()))?;
+    std::fs::write(
+        crate_dir.join("src/lib.rs"),
+        format!("compile_error!(\"{marker}\");\n"),
+    )
+    .map_err(|error| {
+        format!(
+            "cannot write canary source in {}: {error}",
+            crate_dir.display()
+        )
+    })?;
+    Ok(ExpectedRedCanary { crate_dir, marker })
+}
+
+/// Prove Cargo really compiled an old-enough expected-red crate through this shard's target dir.
+/// A nonzero status alone is insufficient: an unrelated Cargo/harness failure cannot stand in for
+/// the marker-bearing source's verdict.
+fn check_expected_red_canary(
+    canary: &ExpectedRedCanary,
+    target_dir: &std::path::Path,
+) -> Result<(), String> {
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(&canary.crate_dir)
+        .env("CARGO_TARGET_DIR", target_dir)
+        .output()
+        .map_err(|error| format!("cannot run expected-red canary cargo check: {error}"))?;
+    let stderr = String::from_utf8_lossy(&check.stderr);
+    if check.status.success() || !stderr.contains(&canary.marker) {
+        return Err(format!(
+            "expected-red canary at {} did not prove this shard's Cargo verdict channel is live \
+             (success={}, marker_present={}):\nstdout:\n{}\nstderr:\n{}",
+            canary.crate_dir.display(),
+            check.status.success(),
+            stderr.contains(&canary.marker),
+            String::from_utf8_lossy(&check.stdout),
+            stderr
+        ));
+    }
+    Ok(())
 }
 
 /// The `--annotate-fields=false` flavor rows the corpus compile floor sweeps, as
@@ -3294,6 +3474,9 @@ fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
     );
     let root = scratch.root().to_path_buf();
     let target_dir = root.join("target");
+    // This leg shares the base corpus target but owns a distinct canary identity, so it remains a
+    // live verdict proof when selected alone and cannot borrow another shard's fingerprint.
+    let canary = lay_out_expected_red_canary(&root, "feature-corpus-noannotate", shard);
 
     let mut failures = vec![];
     let mut swept = std::collections::BTreeSet::new();
@@ -3352,14 +3535,19 @@ fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
             }
             append_corpus_defs_for(&out, stem, false, base_profile == &"preserve");
             let crate_dir = out.join("rust");
-            give_cell_its_own_package_identity(
-                &crate_dir,
-                &format!("cddl-lib-noann-{stem}-{flavor}"),
-            );
             if !crate_dir.exists() {
                 failures.push(format!(
                     "{label} (rust): crate dir missing — the fixture is no longer being compile-gated"
                 ));
+                continue;
+            }
+            if let Err(error) = give_generated_cell_its_own_package_identities(
+                &out,
+                "feature-corpus-noannotate",
+                &label,
+                &["rust"],
+            ) {
+                failures.push(format!("{label}: {error}"));
                 continue;
             }
             swept.insert(label.clone());
@@ -3452,6 +3640,14 @@ fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
             cache_run += outcome.ran();
             cache_hit += outcome.cached();
         }
+    }
+    match canary {
+        Ok(canary) => {
+            if let Err(error) = check_expected_red_canary(&canary, &target_dir) {
+                failures.push(error);
+            }
+        }
+        Err(error) => failures.push(format!("cannot lay out expected-red canary: {error}")),
     }
     if gate_cache::enabled() {
         println!(
@@ -3899,6 +4095,161 @@ fn getting_started_example() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Generic-instance nominals key on the complete argument identity, not the bounds-blind
+/// `for_variant()` display spelling.  The old key made both `set<([* uint])>` and
+/// `set<([*5 uint])>` register as `SetArrU64`; the later registration silently replaced the loose
+/// `Vec` carrier with `BoundedVec`.  Check anonymous uses AND authored named bindings, then compile
+/// both generated crates: the wasm crate pulls rust transitively, but checking rust separately
+/// keeps the core-carrier verdict explicit.
+///
+/// The nested case is a recursion pin: only the INNER occurrence differs, so a top-level-only
+/// suffix would still collapse it to `SetArrArrU64`.
+#[test]
+fn generic_instance_occurrence_bounds_have_distinct_nominals_and_compile() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch_name = format!(
+        "cddl_codegen_generic_occurrence_identity_{:016x}",
+        checkout_hash()
+    );
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(
+        &input,
+        "set<a> = [value: a]\n\
+         loose_binding = set<([* uint])>\n\
+         bounded_binding = set<([*5 uint])>\n\
+         outer_bounded_binding = set<([*5 [* uint]])>\n\
+         nested_binding = set<([* [*5 uint]])>\n\
+         double_bounded_binding = set<([*5 [*5 uint]])>\n\
+         bounded_key_table = { * [*5 uint] => uint }\n\
+         arr_u64_list = [* [* uint]]\n\
+         holder = [\n\
+           loose_anon: set<([* uint])>,\n\
+           bounded_anon: set<([*5 uint])>,\n\
+           outer_bounded_anon: set<([*5 [* uint]])>,\n\
+           nested_anon: set<([* [*5 uint]])>,\n\
+           double_bounded_anon: set<([*5 [*5 uint]])>,\n\
+           loose_named: loose_binding,\n\
+           bounded_named: bounded_binding,\n\
+           outer_bounded_named: outer_bounded_binding,\n\
+           nested_named: nested_binding,\n\
+           double_bounded_named: double_bounded_binding,\n\
+           anonymous_bounded_key_map: { * [*5 uint] => uint },\n\
+         ]\n",
+    )
+    .unwrap();
+    let out = root.join("out");
+    let generated = codegen_cmd()
+        .arg(format!("--input={}", input.display()))
+        .arg(format!("--output={}", out.display()))
+        .arg("--wasm=true")
+        .arg(format!(
+            "--static-dir={}",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static")
+        ))
+        .output()
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "the occurrence-distinct generic instances must generate:\n{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+
+    let rust = std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).unwrap();
+    let wasm = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
+    assert_eq!(
+        wasm.matches("pub struct U64ListMax5List(pub(crate) Vec<BoundedVec<u64, 0, 5>>)")
+            .count(),
+        1,
+        "the loose outer list over a bounded inner list must mint its own bounds-aware wasm \
+         boundary class rather than reuse ArrU64List's Vec<Vec<u64>> carrier:\n{wasm}"
+    );
+    assert_eq!(
+        wasm.matches(
+            "pub struct U64ListMax5ListMax5(pub(crate) BoundedVec<BoundedVec<u64, 0, 5>, 0, 5>)"
+        )
+        .count(),
+        1,
+        "a bounded outer list over a bounded inner list must use the recursive structural \
+         wrapper name and carrier:\n{wasm}"
+    );
+    assert!(
+        wasm.contains("pub fn keys(&self) -> ArrU64List"),
+        "a table key list deliberately loosens its TOP-LEVEL bounded-array key, retaining the \\
+         established ArrU64List ABI while nested restrictions use their own identity:\n{wasm}"
+    );
+    assert!(
+        !wasm.contains("pub fn keys(&self) -> U64ListMax5List"),
+        "the table-key loosening exception must not be widened into a new restricted-key class:\n{wasm}"
+    );
+    let instances = [
+        ("SetArrU64", "pub value: Vec<u64>", "loose_binding"),
+        (
+            "SetArrU64BoundsMinNoneMaxPos5",
+            "pub value: BoundedVec<u64, 0, 5>",
+            "bounded_binding",
+        ),
+        (
+            "SetArrArrU64BoundsMinNoneMaxPos5",
+            "pub value: BoundedVec<Vec<u64>, 0, 5>",
+            "outer_bounded_binding",
+        ),
+        (
+            "SetArrArrU64ArrayElementBoundsMinNoneMaxPos5",
+            "pub value: Vec<BoundedVec<u64, 0, 5>>",
+            "nested_binding",
+        ),
+        (
+            "SetArrArrU64BoundsMinNoneMaxPos5ArrayElementBoundsMinNoneMaxPos5",
+            "pub value: BoundedVec<BoundedVec<u64, 0, 5>, 0, 5>",
+            "double_bounded_binding",
+        ),
+    ];
+    for (ident, carrier, binding) in instances {
+        assert_eq!(
+            rust.matches(&format!("pub struct {ident} {{")).count(),
+            1,
+            "{ident} must have exactly one native nominal definition:\n{rust}"
+        );
+        assert!(
+            rust.contains(&format!("pub struct {ident} {{\n    {carrier},")),
+            "{ident} must retain its own native carrier rather than last-registration-wins:\n{rust}"
+        );
+        let binding_ident = crate::utils::convert_to_camel_case(binding);
+        assert!(
+            rust.contains(&format!("pub struct {binding_ident} {{\n    {carrier},")),
+            "the named {binding} binding must retain its distinct carrier too:\n{rust}"
+        );
+        assert_eq!(
+            wasm.matches(&format!("pub struct {ident}(")).count(),
+            1,
+            "{ident} must have exactly one wasm nominal definition:\n{wasm}"
+        );
+    }
+
+    let target_dir = root.join("target");
+    for crate_sub in ["rust", "wasm"] {
+        let check = tool_cmd("cargo")
+            .arg("check")
+            .current_dir(out.join(crate_sub))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            check.status.success(),
+            "the occurrence-distinct generic {crate_sub} crate must compile:\n{}\n{}",
+            String::from_utf8_lossy(&check.stdout),
+            String::from_utf8_lossy(&check.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The dep-side compiled self-check (`generated/extern_interface_check.rs`) is emitted into every
 /// crate and references `crate::generated::<Type>` for every exported name, so a bad path or an
 /// unsatisfiable bound is a REAL build break. This generates the `tests/extern-interface-check`
@@ -4247,6 +4598,9 @@ fn wasm_matrix_compiles_shard(shard: usize) {
     );
     let root = scratch.root().to_path_buf();
     let target_dir = root.join("target");
+    // Pre-layout/post-check is deliberately outside the cached cells: it proves an old expected-red
+    // crate really compiles through this shard's shared target even when every cell is a cache hit.
+    let canary = lay_out_expected_red_canary(&root, "wasm-matrix", shard);
 
     let mut failures = vec![]; // red cells NOT on WASM_MATRIX_SKIP — real bugs
     let mut resurfaced = vec![]; // WASM_MATRIX_SKIP cells that now compile — remove them
@@ -4300,6 +4654,15 @@ fn wasm_matrix_compiles_shard(shard: usize) {
         if stem.starts_with("extern__") {
             append_extern_defs(&out, false);
         }
+        if let Err(error) = give_generated_cell_its_own_package_identities(
+            &out,
+            "wasm-matrix",
+            stem,
+            &["rust", "wasm"],
+        ) {
+            failures.push(format!("{stem}: {error}"));
+            continue;
+        }
         let argv_for_key = vec![
             "cwd=wasm".to_string(),
             "cargo".to_string(),
@@ -4337,17 +4700,26 @@ fn wasm_matrix_compiles_shard(shard: usize) {
             _ => {} // (false,true)=green as expected; (true,false)=red as expected
         }
     }
+    match canary {
+        Ok(canary) => {
+            if let Err(error) = check_expected_red_canary(&canary, &target_dir) {
+                failures.push(error);
+            }
+        }
+        Err(error) => failures.push(format!("cannot lay out expected-red canary: {error}")),
+    }
     if gate_cache::enabled() {
         println!(
             "wasm_matrix_compiles shard {shard}/{WASM_MATRIX_SHARDS} gate-cache: {cache_run} run, {cache_hit} cached"
         );
     }
-    assert!(
-        resurfaced.is_empty(),
-        "these WASM_MATRIX_SKIP-listed wasm-matrix cells now compile — remove them from \
-         WASM_MATRIX_SKIP (a fix landed):\n{}",
-        resurfaced.join("\n")
-    );
+    if !resurfaced.is_empty() {
+        failures.push(format!(
+            "these WASM_MATRIX_SKIP-listed wasm-matrix cells now compile — remove them from \
+             WASM_MATRIX_SKIP (a fix landed):\n{}",
+            resurfaced.join("\n")
+        ));
+    }
     assert!(
         failures.is_empty(),
         "wasm-matrix cells failed to compile:\n\n{}",
@@ -4474,6 +4846,9 @@ fn multifile_matrix_compiles_shard(shard: usize) {
     );
     let root = scratch.root().to_path_buf();
     let target_dir = root.join("target");
+    // The canary has a gate/shard-specific package identity and is laid out before cell builds, so
+    // a false-fresh result from this target cannot turn the proof itself into an apparent pass.
+    let canary = lay_out_expected_red_canary(&root, "multifile-matrix", shard);
 
     let mut failures = vec![]; // red cells NOT on MULTIFILE_MATRIX_SKIP — real bugs
     let mut resurfaced = vec![]; // MULTIFILE_MATRIX_SKIP cells that now compile — remove them
@@ -4523,6 +4898,15 @@ fn multifile_matrix_compiles_shard(shard: usize) {
                      is no longer being compile-gated)"
                 ));
             }
+            continue;
+        }
+        if let Err(error) = give_generated_cell_its_own_package_identities(
+            &out,
+            "multifile-matrix",
+            stem,
+            &["rust", "wasm"],
+        ) {
+            failures.push(format!("{stem}: {error}"));
             continue;
         }
         let argv_for_key = vec![
@@ -4580,17 +4964,26 @@ fn multifile_matrix_compiles_shard(shard: usize) {
             (false, true) => {} // green as expected
         }
     }
+    match canary {
+        Ok(canary) => {
+            if let Err(error) = check_expected_red_canary(&canary, &target_dir) {
+                failures.push(error);
+            }
+        }
+        Err(error) => failures.push(format!("cannot lay out expected-red canary: {error}")),
+    }
     if gate_cache::enabled() {
         println!(
             "multifile_matrix_compiles shard {shard}/{MULTIFILE_MATRIX_SHARDS} gate-cache: {cache_run} run, {cache_hit} cached"
         );
     }
-    assert!(
-        resurfaced.is_empty(),
-        "these MULTIFILE_MATRIX_SKIP-listed cells now compile — remove them from MULTIFILE_MATRIX_SKIP \
-         (a fix landed):\n{}",
-        resurfaced.join("\n")
-    );
+    if !resurfaced.is_empty() {
+        failures.push(format!(
+            "these MULTIFILE_MATRIX_SKIP-listed cells now compile — remove them from \
+             MULTIFILE_MATRIX_SKIP (a fix landed):\n{}",
+            resurfaced.join("\n")
+        ));
+    }
     assert!(
         failures.is_empty(),
         "multifile-matrix cells failed to compile:\n\n{}",
@@ -11548,7 +11941,10 @@ fn preserve_encodings() {
         &[custom_ser_path, conformance_path],
         &[],
         false,
-        &[CDDL_ORACLE_DEP],
+        &[
+            CDDL_ORACLE_DEP,
+            "extern-dep-crate = { path = \"../../../extern-dep-crate\" }",
+        ],
     );
 }
 
@@ -11575,7 +11971,10 @@ fn emit_tests_execute() {
         &[custom_ser_path, conformance_path],
         &[],
         false,
-        &[CDDL_ORACLE_DEP],
+        &[
+            CDDL_ORACLE_DEP,
+            "extern-dep-crate = { path = \"../../../extern-dep-crate\" }",
+        ],
     );
     // The emitted generated-test module now lands in the generated root (`generated/mod.rs`), not the
     // thin seed-once `lib.rs`.
@@ -14567,14 +14966,15 @@ fn js_schema_to_ts() {
         // (`OrderedHashMap<K, V>` -> `OrderedHashMapKVJSON`). The static runtime publishes exactly
         // this key, and no wasm class can carry such a name, so nothing keys on it.
         "export interface OrderedHashMapKVJSON",
-        // A non-identifier key that is also REFERENCED. `Odd<K>/~1name` is a real emitted spelling
+        // A non-identifier key that is also REFERENCED. `Odd<K>/~1café` is a real emitted spelling
         // (`tests/json-extern`'s hand-written `JsonSchema` publishes it), and its pointer carries
-        // both escaping layers — `%3C`/`%3E` over `<`/`>`, `~1` for the `/`, `~01` for the literal
-        // `~1` — so matching the pointer TOKEN against the key without decoding silently leaves the
-        // reference behind when the key is renamed, and json2ts's resolver then kills the whole
-        // document with a `MissingPointerError`. Every OTHER non-identifier key in this document is
-        // unreferenced, which is why the gap survived until the projection leg ran at breadth.
-        "export interface OddK1NameJSON",
+        // both escaping layers — `%3C`/`%3E` and `%C3%A9` over `<`/`>` and multi-byte `é`, `~1` for
+        // the `/`, `~01` for the literal `~1` — so matching the pointer TOKEN against the key without
+        // decoding silently leaves the reference behind when the key is renamed, and json2ts's
+        // resolver then kills the whole document with a `MissingPointerError`. Every OTHER
+        // non-identifier key in this document is unreferenced, which is why the gap survived until
+        // the projection leg ran at breadth.
+        "export interface OddK1CafeJSON",
         "export interface OddHolderJSON",
     ] {
         assert_eq!(
@@ -14602,7 +15002,7 @@ fn js_schema_to_ts() {
     assert!(dts.contains("\"x\" | \"y\""), "{dts}");
     // ...including the escaped pointer at a non-identifier key: the holder's member must be TYPED as
     // the definition that key names, not left dangling or inlined as `unknown`.
-    assert!(dts.contains("odd: OddK1NameJSON"), "{dts}");
+    assert!(dts.contains("odd: OddK1CafeJSON"), "{dts}");
     // A definition's `title` (schemars writes one whenever the Rust doc comment opens with a
     // markdown heading) must NOT become the emitted name — json2ts prefers `title` over the `$defs`
     // key, and an unsuffixed name merges with the wasm class of the same name (TS2300 on every
@@ -14880,7 +15280,7 @@ fn js_schema_to_ts() {
 /// exercised in isolation here (no wasm-pack/json2ts needed) with hand-written fixtures laid out in
 /// the shipped `<root>/scripts/*.js` shape the script resolves its own paths from.
 ///
-/// Five cases, one per failure mode the script must not have:
+/// Six cases, one per failure mode the script must not have:
 /// 1. the happy path (specialize + append);
 /// 2. a class with NO emitted JSON type is a non-zero exit naming the class and the
 ///    `--allow-untyped=` escape — not a silently-`any` method; with the escape it keeps `any`
@@ -14899,6 +15299,10 @@ fn js_schema_to_ts() {
 ///    with the `.d.ts` left untouched — not 111 silently-untyped methods;
 /// 5. a non-default `.d.ts` basename (the `--lib-name` case) is still found, because the script
 ///    scans `pkg/` for the single non-`_bg` `.d.ts` instead of hardcoding `cddl_lib_wasm`.
+/// 6. a wasm class and an appended JSON declaration with the same name fail before TypeScript can
+///    silently merge their unrelated shapes, naming the class and — under the shipped
+///    `<key>JSON` projection contract — the `$defs` key behind the declaration, while leaving the
+///    bindings `.d.ts` untouched.
 #[test]
 fn js_d_ts_merge() {
     use std::str::FromStr;
@@ -15048,6 +15452,46 @@ fn js_d_ts_merge() {
         run("normalized", &["--allow-untyped=Blake2b256"])
             .status
             .success()
+    );
+
+    // 6: `@name FooJSON` can mint a wasm class whose name is exactly the declaration the
+    // `$defs` key `Foo` publishes. TypeScript legally merges a class and an interface with the
+    // same name, so `tsc` cannot expose the wrong combined type: the merge must refuse it before
+    // writing either half back to the bindings file.
+    const COLLISION_DTS: &str = "export class ZedJSON {\n  free(): void;\n}\n\
+                                 export class FooJSON {\n  free(): void;\n}\n";
+    const COLLISION_DEFS: &str = "export interface FooJSON {\n  x: number;\n}\n\
+                                  export interface ZedJSON {\n  z: number;\n}\n";
+    let collision_path = lay_out(
+        "cross_half_collision",
+        "cddl_lib_wasm",
+        COLLISION_DTS,
+        COLLISION_DEFS,
+    );
+    let collision = run("cross_half_collision", &[]);
+    assert!(
+        !collision.status.success(),
+        "a wasm class and appended JSON declaration with the same name must fail the merge"
+    );
+    let collision_stderr = String::from_utf8_lossy(&collision.stderr);
+    assert!(collision_stderr.contains("FooJSON"), "{collision_stderr}");
+    assert!(collision_stderr.contains("ZedJSON"), "{collision_stderr}");
+    assert!(
+        collision_stderr.contains("`$defs` key `Foo`"),
+        "the exact <key>JSON collision must identify its source key:\n{collision_stderr}"
+    );
+    assert!(
+        collision_stderr.contains("under the shipped `<key>JSON` projection contract"),
+        "the source-key mapping must stay conditional on the shipped projection contract:\n{collision_stderr}"
+    );
+    assert!(
+        collision_stderr.find("FooJSON").unwrap() < collision_stderr.rfind("ZedJSON").unwrap(),
+        "cross-half collision diagnostics must be sorted by wasm class name:\n{collision_stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&collision_path).unwrap(),
+        COLLISION_DTS,
+        "a cross-half collision must leave the .d.ts untouched"
     );
 
     // 1 + 2 (escape half): the happy path, with the undeclared class explicitly allowed.

@@ -22,10 +22,11 @@ big_thing = [e: my_extern, s: my_set]
 
 ; Green-direction vector for the emitted document's reference-CLOSURE check, whose helper must DECODE
 ; a `$ref` before matching it against a `$defs` key. `EncodedName`'s hand-written `schema_name()` is
-; `Odd<K>/~1name`, which schemars spells in a `$ref` as `Odd%3CK%3E~1~01name` — one name covering all
-; three escape classes at once (percent, JSON-Pointer `~1` for `/`, `~0` for `~`) AND the decode's
-; ORDER, which the three classes alone cannot witness: the literal `~1` in the NAME encodes to `~01`,
-; so unescaping `~0` before `~1` yields `Odd<K>//name` while the correct order yields the name back.
+; `Odd<K>/~1café`, which schemars spells in a `$ref` as `Odd%3CK%3E~1~01caf%C3%A9` — one name covering
+; all three escape classes at once (percent for `<`/`>` and multi-byte `é`, JSON-Pointer `~1` for
+; `/`, `~0` for `~`) AND the decode's ORDER, which the three classes alone cannot witness: the
+; literal `~1` in the NAME encodes to `~01`, so unescaping `~0` before `~1` yields `Odd<K>//café`
+; while the correct order yields the name back.
 ; `encoded_holder`
 ; exists so something REFERENCES it: a root's own ref is discarded, so without a referrer no encoded
 ; `$ref` would appear in the document at all. A decode that is wrong in any of the three classes

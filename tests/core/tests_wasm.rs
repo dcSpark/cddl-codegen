@@ -342,9 +342,10 @@ fn wasm_non_empty_holder_parent_new_takes_wrappers_and_roundtrips() {
     tags_loose.add(&NevBar::new(7));
     let tags = NonEmptyNevBarList::try_from(&tags_loose).ok().expect("tags");
     // nested: `[+ [+ uint]]` -> the inner `[+ uint]` DEDUPS to the named `nev_ints` rule's class
-    // (NevInts — no synthesized NonEmptyU64List exists in this crate), the outer wraps it
+    // (NevInts — no synthesized NonEmptyU64List exists in this crate), and the outer wrapper
+    // therefore carries that named owner rather than a bounds-blind structural spelling.
     let inner = NevInts::try_from(vec![1u64, 2]).ok().expect("inner");
-    let nested = NonEmptyArrU64List::new(&inner);
+    let nested = NonEmptyNevIntsList::new(&inner);
     // named `[+ uint]` rule wrapper: exposable element -> try_from a bare Vec
     let ints = NevInts::try_from(vec![9u64]).ok().expect("ints");
     // parent `new` is NOT a throw site for these container constraints

@@ -14,8 +14,9 @@
 //! 2. **`decode_schema_ref_name` gets real vectors.** It is the inverse of a schemars-private
 //!    encoder, so its correctness is a property of THIS code and nothing else's; the cases below are
 //!    the two escape layers and — the one its own comment calls out — the ORDER they must be undone
-//!    in, which no end-to-end fixture exercises because no fixture has a schema name holding a
-//!    literal `~1`.
+//!    in. `tests/json-extern` reaches the private encoder end-to-end with a name that carries a
+//!    literal `~1` AND multi-byte UTF-8; the direct vectors below keep malformed inputs and each
+//!    inverse layer independently legible.
 //!
 //! 3. **`Registrar` is proven to be a pure re-spelling of the row.** Every emitted registration row
 //!    goes through it, so "the registrar registers what a direct `add_schema` call would, and its
@@ -131,6 +132,42 @@ struct SharedTwo {
     two: String,
 }
 
+/// A non-row type and a later row that claim the same ref-unsafe published name. They are distinct
+/// schema identities, so schemars assigns the row a suffixed name rather than merging the schemas.
+/// The first type is deliberately registered outside `Registrar`, as a type reached transitively
+/// through another row would be in a generated crate.
+struct UnsafeNameWinner;
+
+impl schemars::JsonSchema for UnsafeNameWinner {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Café/~1")
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("UnsafeNameWinner")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+
+struct UnsafeNameClaimant;
+
+impl schemars::JsonSchema for UnsafeNameClaimant {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Café/~1")
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("UnsafeNameClaimant")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+
 /// The reshape's load-bearing claim: driving rows through a `Registrar` builds the SAME document as
 /// calling `add_schema` directly with a hand-threaded ledger. Compared on the finished `$defs` map
 /// (what actually ships) rather than on anything about the calls, so the assertion survives any
@@ -192,6 +229,30 @@ fn a_second_registrar_starts_with_a_fresh_ledger() {
         reg.add::<Alpha>();
     }
     assert!(generator.take_definitions(true).contains_key("Alpha"));
+}
+
+/// The kept-its-own-name guard must cover ref-unsafe names too. The winner is registered directly
+/// with schemars BEFORE the registrar exists, so the registrar's name ledger cannot observe it; its
+/// sole row is the claimant below. Their explicit distinct schema IDs make schemars hand the
+/// claimant an encoded `Café/~12` ref. If this panics from the ledger instead, or if it does not
+/// panic at all, this vector has failed to exercise check B.
+#[test]
+#[should_panic(expected = "but the document assigned it \"Café/~12\"")]
+fn kept_own_name_guard_catches_a_percent_encoded_stolen_name() {
+    assert_ne!(
+        <UnsafeNameWinner as schemars::JsonSchema>::schema_id(),
+        <UnsafeNameClaimant as schemars::JsonSchema>::schema_id(),
+        "the two types must take schemars' suffixed-name path rather than merge"
+    );
+    let mut generator = schemars::SchemaGenerator::default();
+    let winner = generator.subschema_for::<UnsafeNameWinner>();
+    assert_eq!(
+        winner.get("$ref").and_then(|reference| reference.as_str()),
+        Some("#/$defs/Caf%C3%A9~1~01"),
+        "the test must exercise schemars' private UTF-8 + JSON-Pointer encoder, not a guessed ref"
+    );
+    let mut reg = Registrar::new(&mut generator);
+    reg.add::<UnsafeNameClaimant>();
 }
 
 /// A plain identifier survives both layers untouched — the overwhelmingly common case, and the one

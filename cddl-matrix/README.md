@@ -789,8 +789,9 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `cddl-matrix/upstream-reports/ruby-cddl-bernoulli-constraint-controllers.md`). `verify.ts` therefore never derives
   a verdict from `generate` for those ops (classified statically by controller op-name —
   `lib.ts` `rubyGenerateIsBernoulli`, self-tested at startup, gated by `verify_selftest`;
-  `bun run verify.ts --selftest` runs that check, its wasm-evidence sibling, and the policy-mint
-  classifier standalone in tens of milliseconds). The
+  `bun run verify.ts --selftest` runs that check, its wasm-evidence sibling, the policy-mint
+  classifier, the unknown-flag process boundary, and the scratch-cwd toolchain pin standalone in
+  tens of milliseconds). The
   clause reports one of three deterministic tokens, all preserving the `; ruby=` delimiter downstream
   splitters key on: `ruby=ok|fail` from `generate` for NON-narrowing examples; `ruby=ok(validate)|
   fail(validate)` for a narrowing op WITH committed spec-valid accept vectors — ruby `validate` over
@@ -799,6 +800,12 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   STABLE token chosen without a subprocess, never spec-invalidating (a dice roll must not flip a row's
   status). Control-op-axis ruby is corroboration-only, but a narrowing FEATURE row's `spec_valid` reads
   the same deterministic source, so no classified row can hard-fail a run on a draw.
+- **Verifier invocation and compiler identity fail closed.** `verify.ts` rejects every unrecognized
+  `--` token at startup (rather than falling through to an ordinary sweep); its accepted flags are
+  the declared mode flags plus `--smoke=`, `--only=`, and `--probe-only=`. It parses the repository's
+  `rust-toolchain.toml` once and forces that `RUSTUP_TOOLCHAIN` into every nested cargo/rustc process,
+  including the `lib.ts` `rustc -vV` cache-key probe, so a cache entry identifies the compiler that
+  actually built its scratch crate.
 - **A WIDE evidence flip means check disk, not the oracle.** A single ruby flake dirties ONE row's
   `ruby=` clause; the distinct tell of the ENOSPC class is MANY rows flipping in one run to the SAME
   generic cargo-failure line (`cargo test exit 101`), none reproducing when probed solo. The cause is a

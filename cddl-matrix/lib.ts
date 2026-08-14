@@ -157,7 +157,10 @@ export function gateCacheDir(repoRoot = resolve(ROOT, ".."), env: NodeJS.Process
 
 function rustcVersionVerbose(): string {
   if (cachedRustcVersionVerbose !== null) return cachedRustcVersionVerbose;
-  const r = Bun.spawnSync(["rustc", "-vV"], { stdout: "pipe", stderr: "pipe" });
+  // verify.ts installs its repository pin in process.env before any cache key is requested. Bun's
+  // implicit spawn environment is captured before that assignment, so make this probe inherit the
+  // live environment explicitly; the key must measure the same compiler its nested cargo uses.
+  const r = Bun.spawnSync(["rustc", "-vV"], { env: { ...process.env }, stdout: "pipe", stderr: "pipe" });
   const out = (r.stdout?.toString() ?? "") + (r.stderr?.toString() ?? "");
   cachedRustcVersionVerbose = out;
   return cachedRustcVersionVerbose;

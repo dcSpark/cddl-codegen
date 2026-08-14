@@ -53,9 +53,104 @@ import {
   writeGateCacheEntry,
 } from "./lib";
 
+// This starts before any verifier-owned startup work, including CLI/toolchain validation and the
+// cheap process-boundary self-tests. The exit report is an accounting of the whole invocation, not
+// merely of the later probe pipeline.
+const verifyStartedAt = Date.now();
 process.chdir(ROOT);
 
-const verifyStartedAt = Date.now();
+// Keep the command-line contract in one startup seam. A typo used to fall through every
+// `includes()` check and silently run the ordinary (expensive) verifier instead of the requested
+// mode. This intentionally says nothing about values or positional arguments: their existing
+// mode-specific validation remains the authority.
+const VERIFY_ARGS = process.argv.slice(2);
+const VERIFY_EXACT_FLAGS = new Set([
+  "--mint-decode-foreign",
+  "--mint-decode-corpus",
+  "--component-build-sweep",
+  "--selftest",
+  "--no-wasm",
+  "--no-decode-foreign",
+  "--no-component",
+]);
+const VERIFY_VALUE_FLAG_PREFIXES = ["--smoke=", "--only=", "--probe-only="];
+const unknownVerifyFlags = VERIFY_ARGS.filter(arg =>
+  arg.startsWith("--") && !VERIFY_EXACT_FLAGS.has(arg) && !VERIFY_VALUE_FLAG_PREFIXES.some(prefix => arg.startsWith(prefix)),
+);
+if (unknownVerifyFlags.length) {
+  console.error(`HARNESS FAILURE: unknown verify.ts flag(s): ${unknownVerifyFlags.join(", ")}; refusing to run.`);
+  process.exit(2);
+}
+const SELFTEST = VERIFY_ARGS.includes("--selftest");
+
+// verify.ts is launched by Bun from a plain shell, so its scratch-cwd cargo children do not inherit
+// Cargo's repository-toolchain selection. Parse the repository declaration once and make it a
+// process-wide invariant before any cargo/rustc subprocess (including lib.ts's gate-cache key
+// probe) can start. Explicit per-spawn env maps below spread process.env and therefore preserve it.
+let rustToolchainToml: {
+  toolchain?: { channel?: unknown };
+};
+try {
+  rustToolchainToml = Bun.TOML.parse(readFileSync(resolve(ROOT, "..", "rust-toolchain.toml"), "utf8")) as typeof rustToolchainToml;
+} catch (error) {
+  console.error(`HARNESS FAILURE: could not parse rust-toolchain.toml (${error instanceof Error ? error.message : String(error)}); refusing to run.`);
+  process.exit(2);
+}
+const declaredToolchain = rustToolchainToml.toolchain?.channel;
+if (typeof declaredToolchain !== "string" || declaredToolchain.trim().length === 0) {
+  console.error("HARNESS FAILURE: rust-toolchain.toml [toolchain].channel must be a non-empty string; refusing to run.");
+  process.exit(2);
+}
+const REPOSITORY_TOOLCHAIN = declaredToolchain;
+process.env.RUSTUP_TOOLCHAIN = REPOSITORY_TOOLCHAIN;
+// Bun snapshots its inherited environment for a spawn without an explicit `env`, so pass this
+// through every verifier subprocess funnel as well as assigning process.env for lib.ts callers.
+const VERIFY_SUBPROCESS_ENV = { ...process.env, RUSTUP_TOOLCHAIN: REPOSITORY_TOOLCHAIN };
+
+function startupToolHonestySelfTests(): void {
+  // This is deliberately a real child invocation, not only a predicate test: it pins the process
+  // boundary where the historical --mint-decode typo used to start an ordinary verification run.
+  const unknown = Bun.spawnSync([process.execPath, process.argv[1]!, "--mint-decode"], {
+    cwd: ROOT, stdout: "pipe", stderr: "pipe",
+  });
+  const unknownOutput = (unknown.stdout?.toString() ?? "") + (unknown.stderr?.toString() ?? "");
+  if (unknown.exitCode !== 2 || !unknownOutput.includes("--mint-decode") || unknownOutput.includes("RESULT:")) {
+    console.error(
+      "HARNESS FAILURE: unknown-flag process self-test failed — verify.ts --mint-decode must exit 2, name the token, and never start ordinary verification.",
+    );
+    process.exit(2);
+  }
+
+  const scratch = mkdtempSync(join(tmpdir(), "cddl_verify_toolchain_selftest_"));
+  let toolchainFailure: string | undefined;
+  try {
+    const rustc = Bun.spawnSync(["rustc", "-vV"], {
+      cwd: scratch, env: VERIFY_SUBPROCESS_ENV, stdout: "pipe", stderr: "pipe",
+    });
+    const pinned = Bun.spawnSync(["rustup", "run", REPOSITORY_TOOLCHAIN, "rustc", "-vV"], {
+      cwd: scratch, env: VERIFY_SUBPROCESS_ENV, stdout: "pipe", stderr: "pipe",
+    });
+    const got = (rustc.stdout?.toString() ?? "") + (rustc.stderr?.toString() ?? "");
+    const expected = (pinned.stdout?.toString() ?? "") + (pinned.stderr?.toString() ?? "");
+    if (rustc.exitCode !== 0 || pinned.exitCode !== 0 || got !== expected)
+      toolchainFailure = `scratch-cwd rustc did not match \`rustup run ${REPOSITORY_TOOLCHAIN} rustc -vV\` (scratch exit ${rustc.exitCode}, explicit-pin exit ${pinned.exitCode})`;
+  } catch (error) {
+    toolchainFailure = `could not run the scratch-cwd compiler comparison (${error instanceof Error ? error.message : String(error)})`;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+  if (toolchainFailure) {
+    console.error(`HARNESS FAILURE: ${toolchainFailure}; refusing to run.`);
+    process.exit(2);
+  }
+
+  if (SELFTEST) {
+    console.log("unknown-flag process self-test OK (--mint-decode exits 2 without ordinary verification)");
+    console.log(`scratch-cwd toolchain self-test OK (rustc ${REPOSITORY_TOOLCHAIN})`);
+  }
+}
+startupToolHonestySelfTests();
+
 const formatElapsed = (ms: number): string => {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);
@@ -315,7 +410,7 @@ const PROBED_EMISSION_PROFILES = EMISSION_PROFILES.filter(p => p.name !== "compo
 // The `runOracleFingerprint` oracle-IDENTITY check is NOT one of the skipped harness-health guards: it
 // still runs on a --smoke run (a smoke run against the wrong oracle would mislead the developer just as
 // much as a full run), the same as the `existsSync(RUST_CDDL)` oracle-resolution check.
-const smokeArg = process.argv.find(a => a.startsWith("--smoke="));
+const smokeArg = VERIFY_ARGS.find(a => a.startsWith("--smoke="));
 const SMOKE_N = smokeArg ? parseInt(smokeArg.slice("--smoke=".length), 10) : 0;
 const SMOKE = SMOKE_N > 0;
 
@@ -326,14 +421,14 @@ const SMOKE = SMOKE_N > 0;
 // runMintDecodeForeign. `--only=id,id,…` re-mints just that subset, preserving every other committed row
 // verbatim (parsed back through the same deterministic writer); a named id that has left the supported
 // set but still has a committed row is DROPPED (support-boundary removal), not re-minted.
-const MINT_DECODE = process.argv.includes("--mint-decode-foreign");
+const MINT_DECODE = VERIFY_ARGS.includes("--mint-decode-foreign");
 // --mint-decode-corpus (composition-depth decode leg): (re)generate the committed corpus decode catalog
 // (tests/decode_conformance/corpus_catalog.toml) from tests/corpus/*.cddl × the shared rule enumerator
 // and EXIT — writes ONLY that catalog, never annotations/verify_report.json/the matrix catalog. Same
 // structure as runMintDecodeForeign (negative control, two-oracle validation, replay, arm-floor,
 // triage/pin posture). `--only=` accepts corpus row ids AND bare fixture stems (expanding to the
 // fixture's rows). See runMintDecodeCorpus.
-const MINT_DECODE_CORPUS = process.argv.includes("--mint-decode-corpus");
+const MINT_DECODE_CORPUS = VERIFY_ARGS.includes("--mint-decode-corpus");
 // --component-build-sweep (the component face's class-level compile finder): for EVERY drivable
 // catalog row (spec + type_name present), generate `--component=true --wasm=false` and build the
 // emitted `component/` package for wasm32-wasip2, then EXIT. Same early-exit shape as the mint modes
@@ -344,8 +439,8 @@ const MINT_DECODE_CORPUS = process.argv.includes("--mint-decode-corpus");
 // alias) both sat in ORDINARY matrix rows no fixture spelled. Breadth is the whole point, so it
 // asserts strictly LESS per row than the execution leg — generation and build, no host, no vectors,
 // no oracle. `--only=id,id,…` runs a subset. See runComponentBuildSweep.
-const COMPONENT_BUILD_SWEEP = process.argv.includes("--component-build-sweep");
-const onlyArg = process.argv.find(a => a.startsWith("--only="));
+const COMPONENT_BUILD_SWEEP = VERIFY_ARGS.includes("--component-build-sweep");
+const onlyArg = VERIFY_ARGS.find(a => a.startsWith("--only="));
 const MINT_ONLY = onlyArg
   ? new Set(onlyArg.slice("--only=".length).split(",").map(s => s.trim()).filter(s => s.length))
   : null;
@@ -353,7 +448,7 @@ const MINT_ONLY = onlyArg
 // `--only`, it probes only named feature/containment/control rows, replaces only those exact
 // `[[support]]` blocks in the committed annotations, preserves every unselected byte, writes no
 // subset-shaped verify_report.json, and exits. Unknown/empty selectors fail before oracle work.
-const probeOnlyArg = process.argv.find(a => a.startsWith("--probe-only="));
+const probeOnlyArg = VERIFY_ARGS.find(a => a.startsWith("--probe-only="));
 const PROBE_ONLY = probeOnlyArg
   ? new Set(probeOnlyArg.slice("--probe-only=".length).split(",").map(s => s.trim()).filter(Boolean))
   : null;
@@ -366,7 +461,6 @@ if (PROBE_ONLY && (MINT_ONLY || MINT_DECODE || MINT_DECODE_CORPUS || COMPONENT_B
   process.exit(2);
 }
 const MINT_ACCEPT_REJECTED = "MINT_ACCEPT_REJECTED";
-const SELFTEST = process.argv.includes("--selftest");
 
 interface SupportBlock { readonly id: string; readonly start: number; readonly end: number; readonly bytes: string }
 function supportBlocks(source: string): readonly SupportBlock[] {
@@ -1187,7 +1281,7 @@ const COMPILE_WARM_TIMEOUT = 600; // first build (all deps) can exceed the per-p
 // round-trip verdict still gates support — the wasm result is recorded as additional evidence only. Its
 // own out/target dirs keep it from disturbing the rust probe's compile classification.
 const WASM_PROBE =
-  !process.argv.includes("--no-wasm") && !["0", "false"].includes((process.env.VERIFY_WASM ?? "").toLowerCase());
+  !VERIFY_ARGS.includes("--no-wasm") && !["0", "false"].includes((process.env.VERIFY_WASM ?? "").toLowerCase());
 let ccOutWasm = join(probeDir, `cc_out_wasm_${outSeq++}`);
 const ccWarmOutWasm = join(probeDir, "cc_warm_out_wasm");
 const WASM_TARGET = WASM_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_wasm_target_")) : "";
@@ -1202,7 +1296,7 @@ if (WASM_TARGET) scratchTargets.push(WASM_TARGET);
 // Opted out -> the per-probe fields stay undefined, so the report/annotation output is byte-identical to
 // a pre-feature run (the wasm-oracle opt-out pattern).
 const DECODE_FOREIGN =
-  !process.argv.includes("--no-decode-foreign") &&
+  !VERIFY_ARGS.includes("--no-decode-foreign") &&
   !["0", "false"].includes((process.env.VERIFY_DECODE_FOREIGN ?? "").toLowerCase());
 let ccOutForeign = join(probeDir, `cc_out_foreign_${outSeq++}`);
 // The committed vectors keyed by matrix row id (empty in the mint path / when opted out / before the
@@ -1219,7 +1313,7 @@ const catalogRows: Map<string, CatalogRow> =
 // Opted out -> the per-probe fields stay undefined, so the report/annotation output is byte-identical
 // to a pre-leg run (the wasm-oracle opt-out pattern).
 const COMPONENT_PROBE =
-  !process.argv.includes("--no-component") &&
+  !VERIFY_ARGS.includes("--no-component") &&
   !["0", "false"].includes((process.env.VERIFY_COMPONENT ?? "").toLowerCase());
 const COMPONENT_PROBE_SET = new Set(COMPONENT_PROBE_ROWS);
 const componentCatalogRows: Map<string, CatalogRow> =
@@ -1243,7 +1337,7 @@ const componentVectors = new Map<string, ComponentVectorCounts>();
 
 function runExit(cmd: string[], cwd?: string, env?: Record<string, string>, timeoutS = PROBE_TIMEOUT): number {
   const r = Bun.spawnSync(cmd, {
-    cwd, env: env ? { ...process.env, ...env } : undefined,
+    cwd, env: { ...VERIFY_SUBPROCESS_ENV, ...env, RUSTUP_TOOLCHAIN: REPOSITORY_TOOLCHAIN },
     stdout: "ignore", stderr: "ignore", timeout: timeoutS * 1000,
   });
   if (r.exitedDueToTimeout) return -1;              // timeout -> -1
@@ -1666,7 +1760,7 @@ function componentBuildAndDrive(cell: string, out: string, resource: string, vec
   const vecFile = join(out, "component_probe_vectors.txt");
   const oracle = Bun.spawnSync(
     ["cargo", "run", "-q", "--manifest-path", rustManifest, "--bin", "component_probe_oracle", "--", vecFile],
-    { cwd: CODEGEN_DIR, env: { ...process.env, CARGO_TARGET_DIR: COMPILE_TARGET }, stdout: "pipe", stderr: "pipe", timeout: COMPILE_WARM_TIMEOUT * 1000 },
+    { cwd: CODEGEN_DIR, env: { ...VERIFY_SUBPROCESS_ENV, CARGO_TARGET_DIR: COMPILE_TARGET }, stdout: "pipe", stderr: "pipe", timeout: COMPILE_WARM_TIMEOUT * 1000 },
   );
   const oracleBytes = new Map<string, string>();
   for (const line of (oracle.stdout?.toString() ?? "").split("\n")) {
@@ -1821,7 +1915,7 @@ fn main() {
  */
 function runSweepBuild(cmd: string[], cwd: string): { exit: number; stderr: string } {
   const spawn = () => Bun.spawnSync(cmd, {
-    cwd, env: { ...process.env, CARGO_TARGET_DIR: COMPONENT_TARGET },
+    cwd, env: { ...VERIFY_SUBPROCESS_ENV, CARGO_TARGET_DIR: COMPONENT_TARGET },
     stdout: "ignore", stderr: "pipe", timeout: COMPILE_WARM_TIMEOUT * 1000,
   });
   let r = spawn();
@@ -2375,7 +2469,7 @@ function replayInDir(cell: string, outDir: string, vecs: ReplayVec[], decodeType
   gateCacheStats.run++;
   const run = () => Bun.spawnSync(
     argv,
-    { cwd: CODEGEN_DIR, env: { ...process.env, CARGO_TARGET_DIR: COMPILE_TARGET }, stdout: "pipe", stderr: "pipe", timeout: PROBE_TIMEOUT * 1000 },
+    { cwd: CODEGEN_DIR, env: { ...VERIFY_SUBPROCESS_ENV, CARGO_TARGET_DIR: COMPILE_TARGET }, stdout: "pipe", stderr: "pipe", timeout: PROBE_TIMEOUT * 1000 },
   );
   let r = run();
   if (r.exitedDueToTimeout) r = run();  // one transient retry, mirroring runProbe

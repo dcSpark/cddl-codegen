@@ -185,6 +185,63 @@ impl FixedValue {
 }
 
 impl RustType {
+    /// A total, identifier-safe spelling of the configuration that changes this type's semantic
+    /// identity.  Synthesized nominals append this to an otherwise historic structural spelling:
+    /// the empty configuration remains empty, so existing unconstrained names stay stable.
+    ///
+    /// Delimit every field and encode signed/float values without punctuation.  This is an
+    /// identity rather than a display name: two type arguments that serialize or constrain values
+    /// differently must never choose one generated owner based on parse order.
+    fn canonical_config_identity_suffix(&self) -> String {
+        let mut out = String::new();
+        for operation in &self.encodings {
+            match operation {
+                CBOREncodingOperation::Tagged(tag) => out.push_str(&format!("__Tag{tag}")),
+                CBOREncodingOperation::OptionallyTagged(tag) => {
+                    out.push_str(&format!("__OptionalTag{tag}"));
+                }
+                CBOREncodingOperation::CBORBytes => out.push_str("__CborBytes"),
+            }
+        }
+        if let Some(default) = &self.config.default {
+            out.push_str("__Default");
+            out.push_str(&default.singleton_name_fragment());
+        }
+        let endpoint = |value: Option<i128>| match value {
+            None => "None".to_owned(),
+            Some(value) if value < 0 => format!("Neg{}", value.unsigned_abs()),
+            Some(value) => format!("Pos{value}"),
+        };
+        if let Some((min, max)) = self.config.bounds {
+            out.push_str(&format!("__BoundsMin{}Max{}", endpoint(min), endpoint(max)));
+        }
+        if let Some((min, max)) = self.config.float_bounds {
+            let endpoint = |value: Option<(f64, bool)>| match value {
+                Some((value, exclusive)) => format!(
+                    "Some{:016X}{}",
+                    value.to_bits(),
+                    if exclusive { "Exclusive" } else { "Inclusive" }
+                ),
+                None => "None".to_owned(),
+            };
+            out.push_str(&format!(
+                "__FloatBoundsMin{}Max{}",
+                endpoint(min),
+                endpoint(max)
+            ));
+        }
+        if let Some(policy) = self.config.duplicates {
+            out.push_str(match policy {
+                crate::comment_ast::DuplicatesPolicy::Preserve => "__DuplicatesPreserve",
+                crate::comment_ast::DuplicatesPolicy::Reject => "__DuplicatesReject",
+            });
+        }
+        if self.config.basic_override {
+            out.push_str("__BasicOverride");
+        }
+        out
+    }
+
     /// A total identifier fragment for a synthesized nominal fixed-value owner.  It includes the
     /// entire wire shape, not merely the CBOR value: `true` and `#6.7(true)` are distinct Rust
     /// values with distinct codecs, and must never deduplicate to one owner based on parse order.
@@ -198,6 +255,8 @@ impl RustType {
             other => panic!("fixed singleton name requested for {other:?}"),
         };
         let mut out = fixed.singleton_name_fragment();
+        // Fixed values normally have default config, but retaining every field makes this identity
+        // correct if a future fixed-value control operator attaches one.
         for operation in &self.encodings {
             match operation {
                 CBOREncodingOperation::Tagged(tag) => out.push_str(&format!("__Tag{tag}")),
@@ -207,9 +266,6 @@ impl RustType {
                 CBOREncodingOperation::CBORBytes => out.push_str("__CborBytes"),
             }
         }
-        // Fixed values normally have default config, but retaining every field makes this identity
-        // correct if a future fixed-value control operator attaches one.  The delimiters and
-        // fixed-width float bits keep this spelling structurally injective.
         if let Some(default) = &self.config.default {
             out.push_str("__Default");
             out.push_str(&default.singleton_name_fragment());
@@ -238,6 +294,49 @@ impl RustType {
         if self.config.basic_override {
             out.push_str("__BasicOverride");
         }
+        out
+    }
+
+    /// A canonical, occurrence-aware generic-argument identity fragment. `for_variant()` remains
+    /// the base, retaining every historic unconstrained spelling (`1` stays `I1`); a deterministic
+    /// path-qualified decoration walk records every codec/config distinction that the base omits.
+    /// That makes `[ *5 [* uint] ]` and `[* [*5 uint]]` distinct rather than merely suffixing the
+    /// whole tree ambiguously.
+    ///
+    /// An authored alias remains opaque: `set<xs_int>` and `set<[* int]>` deliberately have
+    /// different nominal identities even when `xs_int` resolves to that shape. The alias's OWN
+    /// config is still recorded, but its target is not structurally merged into this spelling.
+    pub fn generic_argument_identity_fragment(&self) -> String {
+        fn append_config_identity(ty: &RustType, path: &str, out: &mut String) {
+            let suffix = ty.canonical_config_identity_suffix();
+            if !suffix.is_empty() {
+                out.push_str("__");
+                out.push_str(path);
+                out.push_str(suffix.trim_start_matches("__"));
+            }
+            match &ty.conceptual_type {
+                ConceptualRustType::Array(inner) => {
+                    append_config_identity(inner, &format!("{path}ArrayElement"), out)
+                }
+                ConceptualRustType::Optional(inner) => {
+                    append_config_identity(inner, &format!("{path}OptionalInner"), out)
+                }
+                ConceptualRustType::Map(key, value) => {
+                    append_config_identity(key, &format!("{path}MapKey"), out);
+                    append_config_identity(value, &format!("{path}MapValue"), out);
+                }
+                // The authored spelling is identity for generic arguments. Do not recurse through
+                // an alias: that would merge it with an inline structural spelling.
+                ConceptualRustType::Alias(_, _)
+                | ConceptualRustType::Fixed(_)
+                | ConceptualRustType::Primitive(_)
+                | ConceptualRustType::Rust(_)
+                | ConceptualRustType::Any => {}
+            }
+        }
+
+        let mut out = self.for_variant().to_string();
+        append_config_identity(self, "", &mut out);
         out
     }
 }
@@ -1195,7 +1294,10 @@ impl RustType {
                 // LOCKSTEP: `generate_non_empty_array_type`'s defer-candidate structural name
                 // duplicates THIS spelling on purpose (it must stay owner-independent — an
                 // owner-named wrapper must never look deferrable). Change both together.
-                None => format!("NonEmpty{}List", inner.conceptual_type.for_variant()),
+                None => format!(
+                    "NonEmpty{}List",
+                    inner.wasm_boundary_identity_fragment(types)
+                ),
             },
             _ => unreachable!("non_empty_wasm_wrapper_name on a non-array: {:?}", self),
         }
@@ -1203,6 +1305,24 @@ impl RustType {
 
     /// Mechanical restricted-list wasm name for a bounded homogeneous array. A named rule wins;
     /// anonymous occurrences carry both sides of their inclusive window in the class name.
+    pub fn bounded_wasm_array_structural_name(&self, types: &IntermediateTypes) -> String {
+        let ConceptualRustType::Array(inner) = &self.conceptual_type else {
+            unreachable!(
+                "bounded_wasm_array_structural_name on a non-array: {:?}",
+                self
+            );
+        };
+        let (min, max) = self
+            .bounded_array_u64_bounds()
+            .expect("bounded wasm wrapper has representable bounds");
+        let base = inner.wasm_boundary_identity_fragment(types);
+        match (min, max == u64::MAX) {
+            (0, false) => format!("{base}ListMax{max}"),
+            (_, true) => format!("{base}ListMin{min}"),
+            _ => format!("{base}ListMin{min}Max{max}"),
+        }
+    }
+
     pub fn bounded_wasm_wrapper_name(&self, types: &IntermediateTypes) -> String {
         let ConceptualRustType::Array(inner) = &self.conceptual_type else {
             unreachable!("bounded_wasm_wrapper_name on a non-array: {:?}", self);
@@ -1211,18 +1331,10 @@ impl RustType {
             .config
             .bounds
             .expect("bounded array has occurrence bounds");
-        if let Some(owner) = types.bounded_array_named_owner(inner, bounds) {
-            return owner.to_string();
-        }
-        let (min, max) = self
-            .bounded_array_u64_bounds()
-            .expect("bounded wasm wrapper has representable bounds");
-        let base = inner.conceptual_type.for_variant();
-        match (min, max == u64::MAX) {
-            (0, false) => format!("{base}ListMax{max}"),
-            (_, true) => format!("{base}ListMin{min}"),
-            _ => format!("{base}ListMin{min}Max{max}"),
-        }
+        types
+            .bounded_array_named_owner(inner, bounds)
+            .map(ToString::to_string)
+            .unwrap_or_else(|| self.bounded_wasm_array_structural_name(types))
     }
 
     /// The wasm-boundary name of the restricted uniqueness-twin wrapper for a `@duplicates reject`
@@ -1237,7 +1349,7 @@ impl RustType {
     pub fn reject_ordered_set_wasm_wrapper_name(&self, _types: &IntermediateTypes) -> String {
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) => {
-                let variant = inner.conceptual_type.for_variant();
+                let variant = inner.wasm_boundary_identity_fragment(_types);
                 if self.is_non_empty_array() {
                     format!("NonEmpty{variant}OrderedSet")
                 } else {
@@ -1264,7 +1376,7 @@ impl RustType {
         let ConceptualRustType::Array(inner) = &self.conceptual_type else {
             unreachable!("bounded_reject_ordered_set_wasm_wrapper_name on a non-array");
         };
-        let base = inner.conceptual_type.for_variant();
+        let base = inner.wasm_boundary_identity_fragment(_types);
         match (min, max == u64::MAX) {
             (0, false) => format!("{base}BoundedOrderedSetMax{max}"),
             (_, true) => format!("{base}BoundedOrderedSetMin{min}"),
@@ -1463,6 +1575,8 @@ impl RustType {
             return self.preserve_pair_map_wasm_wrapper_name();
         }
         match &self.conceptual_type {
+            // Keep this RustType-level so a nested occurrence retains its own wasm wrapper name.
+            ConceptualRustType::Array(inner) => inner.name_as_wasm_array(types),
             ConceptualRustType::Optional(inner) => {
                 format!("Option<{}>", inner.for_wasm_member(types))
             }
@@ -1502,6 +1616,15 @@ impl RustType {
             return format!("&{}", self.preserve_pair_map_wasm_wrapper_name());
         }
         match &self.conceptual_type {
+            // Same name owner as `for_wasm_member` and the wrapper mint path below.
+            ConceptualRustType::Array(inner) => {
+                let name = inner.name_as_wasm_array(types);
+                if self.directly_wasm_exposable(types) {
+                    name
+                } else {
+                    format!("&{name}")
+                }
+            }
             ConceptualRustType::Optional(inner) => {
                 format!("Option<{}>", inner.for_wasm_param_impl_rt(types))
             }
@@ -1532,7 +1655,10 @@ impl RustType {
         if self.is_preserve_pair_map() {
             return self.preserve_pair_map_wasm_wrapper_name();
         }
-        self.conceptual_type.for_wasm_param_impl(types, true)
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) => inner.name_as_wasm_array(types),
+            _ => self.conceptual_type.for_wasm_param_impl(types, true),
+        }
     }
 
     /// Whether the type crosses the wasm boundary as a bare value (not via a wrapper). A NonEmpty
@@ -1567,12 +1693,77 @@ impl RustType {
         ConceptualRustType::Array(Box::new(self.clone())).directly_wasm_exposable_ct(types)
     }
 
+    /// Identifier-safe identity of this value at the WASM boundary. This is deliberately NOT a
+    /// rendered Rust type: `for_wasm_member()` can return `Option<U64ListMax5>` or `Vec<u64>`,
+    /// neither of which may be extended to name an outer wrapper. Structural wrapper minting,
+    /// references, and requested-shape reconstruction all use this owner instead.
+    ///
+    /// This currently owns the ARRAY family only: loose/unconstrained array shapes retain their
+    /// historic `for_variant()` base while restricted arrays and Optional children recurse through
+    /// the actual wrapper class. Map children deliberately retain their legacy bounds-blind owner
+    /// until `testing.wasm-boundary.nested-restricted-map-identity` is delivered; do not silently
+    /// point an array-over-map at a class the map emitter still cannot mint.
+    pub fn wasm_boundary_identity_fragment(&self, types: &IntermediateTypes) -> String {
+        // Map wrapper minting retains its established, bounds-blind ConceptualRustType owner.
+        // Keep this before the occurrence/preserve predicates: a nested `{+ uint => uint}` is
+        // still the `MapU64ToU64` child of an outer list, not a reference to an unminted
+        // `NonEmptyMapU64ToU64` class. The nested-restricted-map roadmap item owns widening this
+        // identity once map minting and every reconstruction seam agree on it.
+        if matches!(self.conceptual_type, ConceptualRustType::Map(_, _)) {
+            return self.for_variant().to_string();
+        }
+        if self.is_bounded_reject_ordered_set() {
+            return self.bounded_reject_ordered_set_wasm_wrapper_name(types);
+        }
+        if self.is_reject_ordered_set() {
+            return self.reject_ordered_set_wasm_wrapper_name(types);
+        }
+        if self.is_non_empty_array() {
+            return self.non_empty_wasm_wrapper_name(types);
+        }
+        if self.is_bounded_array() {
+            return self.bounded_wasm_wrapper_name(types);
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Optional(inner) => {
+                format!("Opt{}", inner.wasm_boundary_identity_fragment(types))
+            }
+            ConceptualRustType::Array(inner) => {
+                format!("Arr{}", inner.wasm_boundary_identity_fragment(types))
+            }
+            // The raw-map early return above deliberately catches restricted and preserve maps
+            // before their predicates; aliases retain their authored spelling here.
+            ConceptualRustType::Map(_, _) => self.for_variant().to_string(),
+            // Alias spelling is authored identity, as in the generic canonical key; it is not a
+            // structural invitation to merge an author's name with an inline representation.
+            ConceptualRustType::Alias(_, _)
+            | ConceptualRustType::Fixed(_)
+            | ConceptualRustType::Primitive(_)
+            | ConceptualRustType::Rust(_)
+            | ConceptualRustType::Any => self.for_variant().to_string(),
+        }
+    }
+
     /// `self` is the ELEMENT type; this names the LOOSE `Vec`-of-`self` wrapper (`BarList`,
-    /// `ArrIntList`). It is NOT the nonempty-container name — that is `for_wasm_member` on the array
-    /// RustType. The element's own `for_variant` (bounds-invariant) drives the name, so a nonempty
-    /// element still yields a distinct loose container name (e.g. `[* [+ int]]` → `ArrIntList`).
+    /// `U64ListMax5List`). It is NOT the nonempty-container name — that is `for_wasm_member` on
+    /// the array RustType. The full element `RustType`, rather than its bounds-blind conceptual
+    /// display spelling, owns this name: a loose outer `[* [*5 uint]]` must not borrow the
+    /// `ArrU64List` class whose carrier is `Vec<Vec<u64>>`.
+    ///
+    /// Table-key synthesis deliberately calls this after
+    /// [`Self::loosened_for_wasm_table_boundary_key`], preserving its established top-level loose
+    /// `ArrU64List` ABI while retaining any constraints nested inside the key value.
     pub fn name_as_wasm_array(&self, types: &IntermediateTypes) -> String {
-        self.conceptual_type.name_as_wasm_array_ct(types)
+        if ConceptualRustType::Array(Box::new(self.clone())).directly_wasm_exposable_ct(types) {
+            format!("Vec<{}>", self.for_wasm_member(types))
+        } else {
+            // A loose array element itself crosses as `Vec<T>`; that token is not an identifier
+            // and cannot be extended with `List`. Its historic structural spelling remains the
+            // wrapper base. A constrained array has an actual wasm wrapper class, whose name is
+            // the boundary identity the OUTER loose wrapper must carry.
+            let element_name = self.wasm_boundary_identity_fragment(types);
+            format!("{element_name}List")
+        }
     }
 
     /// The loose wasm boundary form of a table key, used by both the structural builder and the
@@ -2683,7 +2874,8 @@ impl std::fmt::Display for ToWasmBoundaryOperations {
 
 #[cfg(test)]
 mod tests {
-    use super::FixedValue;
+    use super::{ConceptualRustType, FixedValue, Primitive, RustType};
+    use crate::intermediate::IntermediateTypes;
     use cbor_event::Sz;
 
     /// `FixedValue::to_bytes` for negative literals must produce canonical CBOR nint bytes across
@@ -2742,5 +2934,24 @@ mod tests {
         assert_eq!(Sz::canonical(0x1_0000), Sz::Four);
         assert_eq!(Sz::canonical(0xffff_ffff), Sz::Four);
         assert_eq!(Sz::canonical(0x1_0000_0000), Sz::Eight);
+    }
+
+    /// A WASM wrapper identifier is not a rendered Rust type. In particular, an optional bounded
+    /// list must preserve the bounded child in its identifier fragment, rather than producing the
+    /// invalid token `Option<U64ListMax5>List` by appending `List` to a type expression.
+    #[test]
+    fn wasm_boundary_identity_fragment_recurses_optional_bounded_array() {
+        let types = IntermediateTypes::new();
+        let bounded = RustType::new(ConceptualRustType::Array(Box::new(RustType::new(
+            ConceptualRustType::Primitive(Primitive::U64),
+        ))))
+        .with_bounds((None, Some(5)));
+        let optional = RustType::new(ConceptualRustType::Optional(Box::new(bounded)));
+
+        assert_eq!(
+            optional.wasm_boundary_identity_fragment(&types),
+            "OptU64ListMax5"
+        );
+        assert_eq!(optional.name_as_wasm_array(&types), "OptU64ListMax5List");
     }
 }

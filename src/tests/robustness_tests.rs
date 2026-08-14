@@ -11952,6 +11952,122 @@ fn group_choice_arm_variant_name_collision_rejects_gracefully() {
     }
 }
 
+/// A type-choice arm's `@name` is public API just as a group-choice arm's is. Two explicitly
+/// named arms that mint the same Rust variant must therefore be rejected, rather than silently
+/// changing one into (for example) `Mainnet2`. Conversely, an authored name reserves its emitted
+/// spelling before the arm walk: a derived sibling yields, whether it appears before or after the
+/// explicit arm.
+#[test]
+fn type_choice_explicit_variant_names_reject_collisions_and_beat_derived_names() {
+    for (tag, spec, first, second, variant) in [
+        (
+            "same_spelling",
+            "foo = 0 ; @name mainnet\n / 1 ; @name mainnet\n",
+            "mainnet",
+            "mainnet",
+            "Mainnet",
+        ),
+        (
+            "camel_case_convergence",
+            "foo = 0 ; @name my_arm\n / 1 ; @name myArm\n",
+            "my_arm",
+            "myArm",
+            "MyArm",
+        ),
+    ] {
+        let err = expect_graceful_rejection(tag, spec, &["--wasm", "false"]);
+        assert!(
+            err.contains("rule `foo`"),
+            "[{tag}] rejection must name the source rule, got:\n{err}"
+        );
+        assert!(
+            err.contains(&format!("arm 1 (`@name {first}`)"))
+                && err.contains(&format!("arm 2 (`@name {second}`)")),
+            "[{tag}] rejection must name both offending source arms, got:\n{err}"
+        );
+        assert!(
+            err.contains(&format!("Foo::{variant}")),
+            "[{tag}] rejection must name the shared generated variant, got:\n{err}"
+        );
+        assert!(
+            err.contains("distinct `; @name`"),
+            "[{tag}] rejection must give the distinct-@name remedy, got:\n{err}"
+        );
+    }
+
+    let inline = expect_graceful_rejection(
+        "inline_member_same_explicit_name",
+        "holder = [\n f: (\n 0 ; @name mainnet\n / 1 ; @name mainnet\n )\n]\n",
+        &["--wasm", "false"],
+    );
+    assert!(
+        inline.contains("an inline type choice")
+            && inline.contains("arm 1 (`@name mainnet`)")
+            && inline.contains("arm 2 (`@name mainnet`)")
+            && inline.contains("variant `Mainnet`")
+            && inline.contains("distinct `; @name`"),
+        "inline type-choice collision must name the honest context, both arms, shared variant, and remedy, got:\n{inline}"
+    );
+
+    for (tag, spec, expected) in [
+        (
+            "derived_before_explicit",
+            "foo = tstr / uint ; @name text\n",
+            ["Text2(String)", "Text(u64)"],
+        ),
+        (
+            "explicit_before_derived",
+            "foo = uint ; @name text\n / tstr\n",
+            ["Text(u64)", "Text2(String)"],
+        ),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_type_choice_explicit_name_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let out = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "type_choice_explicit_name_unused",
+            "--wasm",
+            "false",
+        ]));
+        std::fs::remove_file(&path).ok();
+        let src = out
+            .unwrap_or_else(|e| panic!("[{tag}] explicit name must not be renamed: {e}\n{spec}"))
+            .into_values()
+            .collect::<Vec<_>>()
+            .join("\n");
+        for variant in expected {
+            assert!(
+                src.contains(variant),
+                "[{tag}] expected variant `{variant}` in generated source, got:\n{src}"
+            );
+        }
+    }
+
+    // The emitted namespace is globally reserved before derived arms are settled. `MyArm2` is an
+    // explicit API name, so the second derived text arm must skip it and choose `MyArm3` rather
+    // than recreating a repeated Rust enum variant.
+    let src = expect_generates(
+        "derived_suffix_skips_explicit_reservation",
+        "foo = \"my_arm\" / \"myArm\" / uint ; @name my_arm2\n",
+        &["--wasm", "false"],
+    )
+    .into_values()
+    .collect::<Vec<_>>()
+    .join("\n");
+    for variant in ["MyArm,", "MyArm3,", "MyArm2(u64)"] {
+        assert!(
+            src.contains(variant),
+            "global reservation must keep `{variant}` unique, got:\n{src}"
+        );
+    }
+}
+
 /// A group-choice arm the author did NOT name carries a name the GENERATOR derived — from the arm's
 /// sole member key, from its type, or from the arm's position (`{rule}{index}`). There is no
 /// authorial intent behind such a name, so when it collides it yields: it takes a numeric suffix,

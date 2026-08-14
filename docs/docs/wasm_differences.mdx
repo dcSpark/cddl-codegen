@@ -61,6 +61,12 @@ A named rule may deliberately claim a structural name: writing `foo_list = [* fo
 (below). The two must agree on the element: a rule of that ident with any *other* shape is rejected
 by name at generation time, naming the use that mints the class, rather than shadowing it.
 
+Nested restricted arrays keep the restricted child's identity in their structural class name and
+carrier: `[* [* uint]]` uses `ArrU64List` over `Vec<Vec<u64>>`, while `[* [*5 uint]]` uses
+`U64ListMax5List` over `Vec<BoundedVec<u64, 0, 5>>`. Outer occurrence bounds compose with that
+identity as well, so loose, outer-bounded, inner-bounded, and doubly bounded shapes cannot select one
+wrapper according to traversal order.
+
 Table `keys()` keeps the established structural spelling even when the key is a restricted
 collection: keys of type `[* uint]`, `[+ uint]`, and `[2*5 uint]` all return `ArrU64List`. The map's
 `insert`/`get` doors still take the appropriate loose, non-empty, or bounded key wrapper; the

@@ -136,6 +136,7 @@ const jsDocRegex = /(\s?\*\s?\@returns\s\{)(any)(\})/;
 const anyMethodRegex = /^\s*(?:static\s+)?[A-Za-z_$][\w$]*\(\)\s*:\s*any\s*;/;
 
 let currentClass = null;
+const wasmClasses = new Set();
 const specialized = new Set();
 const anyMethods = new Map();
 const untypedClasses = new Map();
@@ -144,6 +145,7 @@ for (let i = 0; i < lines.length; ++i) {
   const classDef = /export class(.*){/.exec(line);
   if (classDef != null && classDef.length > 1) {
     currentClass = classDef[1].trim();
+    wasmClasses.add(currentClass);
     continue;
   }
   // A closing brace in column 0 ends the class body. Without this (and the null guard below) a
@@ -179,6 +181,32 @@ for (let i = 0; i < lines.length; ++i) {
     lines[i] = next;
     specialized.add(currentClass);
   }
+}
+
+// `run-json2ts.js` owns duplicate declarations within the appended JSON defs. This is the distinct
+// cross-half case: TypeScript legally merges an `export class FooJSON` in wasm-pack's bindings with
+// an appended `export interface FooJSON`, producing a plausible but unrelated combined public type.
+// The shipped `<key>JSON` declaration-name guarantee lets the normal form conditionally name the
+// source `$defs` key; a hand-written or forked defs file has no source-key provenance in the emitted
+// `.d.ts`, so the observed declaration is always named and its source is never claimed outright.
+const crossHalfCollisions = [...wasmClasses].filter(cls => declared.has(cls)).sort();
+if (crossHalfCollisions.length > 0) {
+  const sourceDescription = (name) => {
+    const sourceKey = name.endsWith('JSON') ? name.slice(0, -'JSON'.length) : '';
+    if (/^[A-Za-z_$][\w$]*$/.test(sourceKey)) {
+      return `appended declaration \`${name}\` (under the shipped \`<key>JSON\` projection ` +
+        `contract, this corresponds to \`$defs\` key \`${sourceKey}\`)`;
+    }
+    return `appended declaration \`${name}\` (its source \`$defs\` key is not recoverable ` +
+      `from the emitted .d.ts)`;
+  };
+  console.error(
+    `${SCRIPT}: ${crossHalfCollisions.length} wasm class name(s) collide with appended JSON ` +
+    `declaration(s); TypeScript would silently merge the unrelated declarations:\n` +
+    crossHalfCollisions.map(cls => `  wasm export class \`${cls}\`; ${sourceDescription(cls)}`).join('\n') +
+    `\n${dtsFile} was left untouched. Rename the wasm class or ensure the appended declaration's ` +
+    `public TypeScript name differs.`);
+  process.exit(1);
 }
 
 // The failure this catches: the emitted schemas and the bindings both exist, but the method name
