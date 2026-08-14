@@ -42,6 +42,10 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::CborInCbor>();
     _assert_serialize::<crate::generated::ClippyEnumRecord>();
     _assert_deserialize::<crate::generated::ClippyEnumRecord>();
+    _assert_serialize::<crate::generated::ClippyLargeChoice>();
+    _assert_deserialize::<crate::generated::ClippyLargeChoice>();
+    _assert_serialize::<crate::generated::ClippyLargeRecord>();
+    _assert_deserialize::<crate::generated::ClippyLargeRecord>();
     _assert_serialize::<crate::generated::ClippyNegBounded>();
     _assert_deserialize::<crate::generated::ClippyNegBounded>();
     _assert_serialize::<crate::generated::ClippyWrappedMap>();

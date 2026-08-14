@@ -85,7 +85,6 @@ entries = [
   "testing.duplicates.dedicated-generic-collision-message",
   "testing.duplicates.member-position-extension",
   "part-md-mdmap",
-  "testing.lint-provocation-shapes-generated-code-clippy-clean-partially",
   "testing.rustfmt-seam-error-leg-still-witness-needs-subprocess",
   "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives",
   "testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite",
@@ -117,8 +116,6 @@ entries = [
   "part-generics-repeat-refusal-s-first-drafted-remedy-advertised",
   "part-bare-fixed-table-value-refusal-continued-say-named",
   "testing.directive-effect-round-trip-coherence-sweep-accepted-custom",
-  "testing.warm-up-refresh-dep-universe-lock-trust-fresh",
-  "testing.synthetic-protocol-controls-component-probe-host-s-defensive",
   "testing.verify-ts-elapsed-time-covers-startup-activity",
 ]
 
@@ -4978,56 +4975,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.lint-provocation-shapes-generated-code-clippy-clean-partially"
-title = "Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best)."
-legacy_aliases = ["Next work 3"]
-
-[record.payload]
-kind = "work"
-body_md = '''3. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
-   The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
-   on three cases (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
-   yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
-   for the shape that mints them. The gate's third case answers that for shapes the rich fixture
-   cannot host at all: a minimal scratch-written spec under `--preserve-encodings
-   --annotate-fields=false` covering verify-only fixed bool/null/undefined in member position and
-   in all three arm positions, including the mixed-special brute-force dispatch. This is where a
-   `clippy::no_effect` `();` and a `clippy::bool_comparison` `x != true` both shipped inside the
-   deny set while the gate stayed green. The gate's rich input
-   (`tests/canonical/input.cddl`) carries the
-   identity-op provocations (`clippy_neg_bounded` — a record-field bounded `nint` whose deserialize
-   RangeCheck exercises the no-`as i128`-cast path; `clippy_wrapped_map` — a `@newtype` over a map
-   whose rust `From` impl must be `new(inner)`; `clippy_enum_record` — a record with a c-style enum
-   field whose wasm ctor/getter cross by value), so a regression re-minting any of those
-   `clippy::unnecessary_cast` / `clippy::useless_conversion` shapes is hard-red in both profiles.
-   One still-open completeness item is an inventory/LOCKSTEP assertion between every unit-like
-   `FixedValue` variant and this fixture's fixed-special cross-product. The current bool/null/
-   undefined list is broad across positions but hand-maintained: the next fixed major-7 special
-   could add a deserialize branch without joining the lint provocation, recreating B3-024B's blind
-   spot. The other still-open work item is the THRESHOLD/shape-dependent default-warn lints the
-   input still can't provoke: it has no `/` choice asymmetric enough for `large_enum_variant`'s
-   200-byte default (a synthetic provocation needs a ~30-uint-field record variant), and the static
-   `DeserializeError` sits just under `result_large_err`'s ~128-byte threshold on this input while
-   exceeding it in CML's CI. Add a deliberately lint-provoking asymmetric choice so the NEXT
-   default-warn lint of that class — e.g. one a toolchain bump introduces — goes red in-repo
-   instead of in a consumer's CI; those two lints are already permanently silenced by the generated
-   root's allow, so for them the shape merely pins that the allow keeps covering what it was added
-   for. Known residual that keeps this "partial": threshold-adjacent lints fire spec- and
-   layout-dependently, so the gate certifies "no lint fires on shapes we provoke", never "no
-   consumer CI will trip"; the consumer-report channel stays load-bearing for that remainder, which
-   is why those two lints are allowed at the generated root rather than chased per-spec.
-
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "coverage_cell"
-risk = "compile_failure"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.lint-provocation-shapes-generated-code-clippy-clean-partially's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-
-[[record]]
 id = "testing.logic-tool-emits-source-text-outside-layer-reasons"
 title = "Logic the tool EMITS as source text is outside every layer that reasons about the tool's own code, so its only oracle is a hand vector chosen to DISTINGUISH a wrong implementation — and a vector that merely EXERCISES the logic certifies nothing."
 
@@ -6316,15 +6263,15 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 
 [[record]]
 id = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
-title = "Regression proof for testing.warm-up-refresh-dep-universe-lock-trust-fresh."
+title = "Historical execution proof for the warm-up dep-universe lock-trust gap."
 
 [record.payload]
 kind = "evidence"
 evidence_kind = "execution_probe"
-claim_md = '''Fresh dependency resolution must update the warm-up universe and lock input, and the regression pins that behavior.
+claim_md = '''A fresh scratch resolution once outran the warmed dep-universe lock; the delivered command-plan and exact TypeScript-lock regressions preserve the two corrected universes.
 '''
 freshness = "as_of"
-reference_ids = ["testing-roadmap-next-work-n50", "testing-warm-up-refresh-dep-universe-lock-trust-fresh"]
+reference_ids = ["test-check-ts-warmup-refresh-plan", "test-shared-ts-toolchain-lock-manifest"]
 command_md = '''Run the offline-forced tier path after the locked warm-up fetch while the oracle-fingerprint scratch manifest resolves fresh against the newly published zerocopy-derive 0.8.56.
 '''
 result_md = '''The fresh scratch resolve requested zerocopy-derive 0.8.56, absent from the lock-trusting warmed cache, and failed offline; the cache contained .52 through .55.
@@ -6333,11 +6280,11 @@ at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-06"
 environment_md = '''cargo registry cache plus offline nested-cargo gate
 '''
-unprobed_remainder_md = '''The separate npm caret-range dependency universe was not executed by this proof.
+unprobed_remainder_md = '''This historical probe did not itself run the TypeScript universe or synthesize a new registry release; its two bounded replacements are covered by the command-plan and lock/manifest tests.
 '''
 
 [record.payload.scope]
-surfaces = ["check.ts warm-up and oracle-fingerprint scratch resolve"]
+surfaces = ["check.ts warm-up, oracle-fingerprint scratch resolve, shared TypeScript test toolchain"]
 
 [[record]]
 id = "testing.propagating-deliberately-unpublished-type-s-intent-json-ts"
@@ -6528,8 +6475,9 @@ body_md = '''- **Registry-fetch transients in nested-cargo cells.** Nested-cargo
   index.crates.io, a class cargo's own transient retry never engages on) killed otherwise-green
   runs at a random cell with `unable to update registry crates-io` / `curl [56] Proxy CONNECT
   aborted` — the shifting-cell + registry-error signature, distinguishable from a real red cell
-  at a glance. Hardened by construction in check.ts: local/full runs warm-fetch once (retried)
-  and force `CARGO_NET_OFFLINE=true` for every gate, so no cell touches the network
+  at a glance. Hardened by construction in check.ts: local/full runs refresh the gitignored
+  dep-universe lock then warm-fetch once (as one retried unit) and force `CARGO_NET_OFFLINE=true`
+  for every gate, so no cell touches the network
   (`tests/README.md` § "Offline-after-warmup"; the warm-up dep-universe manifest is drift-gated by
   `warmup_manifest_covers_registry_dep_universe`). What remains under watch:
 '''
@@ -7355,39 +7303,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.synthetic-protocol-controls-component-probe-host-s-defensive"
-title = "Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm no generated component can reach never gets red-proven."
-legacy_aliases = ["Next work 23"]
-
-[record.payload]
-kind = "work"
-body_md = '''23. **Synthetic-protocol controls for the component probe host's defensive verdict arms — an arm
-    no generated component can reach never gets red-proven.** The matrix's generic wasmtime host
-    (`cddl-matrix/component-probe-host/`) maps boundary outcomes to verdict tokens
-    (`ok`/`err`/`mismatch`/`trap`), and the execution leg's red-first controls proved every arm a
-    GENERATED component can drive. The arms it structurally cannot reach — a decode door
-    returning `Ok` with no payload, a door whose result is not a `result` at all — went live
-    without ever firing, and one of them shipped mapped to the WRONG token (`Ok(None)` emitted
-    `ok`, a false-pass channel for the byte-equality assertion; caught by orchestrator design
-    review, fixed in the thirteen-row widening commit). The class: a generic driver grows
-    defensive arms for protocol shapes its own fixtures cannot produce, so the red-first
-    discipline that guards every reachable arm silently exempts exactly the arms most likely to
-    be wrong. The systematic layer: unit-style controls over the host's verdict MAPPING on
-    synthetic inputs (factor the outcome→token mapping into a function the host's own
-    `cargo test` drives with every arm, including the unreachable ones), so a future arm added
-    wrong fails the host's build, not a review. Small — the mapping is one match today.
-
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.synthetic-protocol-controls-component-probe-host-s-defensive's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-
-[[record]]
 id = "testing.tag-set.inline-anonymous-choice-boundary"
 title = "Inline/anonymous two-arm choices are not recognized."
 
@@ -8118,48 +8033,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.warm-up-refresh-dep-universe-lock-trust-fresh"
-title = "The warm-up should REFRESH the dep-universe lock, not trust it: a fresh-resolving scratch crate outruns `tests/warmup/Cargo.lock` at every upstream release."
-legacy_aliases = ["Next work 17"]
-
-[record.payload]
-kind = "work"
-body_md = '''17. **The warm-up should REFRESH the dep-universe lock, not trust it: a fresh-resolving scratch
-    crate outruns `tests/warmup/Cargo.lock` at every upstream release.** Proven 2026-08-06 (the
-    stale-lock offline tail in § Operational watches, "Registry-fetch transients"): the
-    oracle-fingerprint probe resolves a temp crate FRESH against crates.io, so the day
-    `zerocopy-derive 0.8.56` published, the offline-forced gate failed sub-second wanting a
-    version the locked warm-up fetch never cached — and the cargo cache holding .52 through .55
-    shows the class fires at release cadence, with 13 further warmup deps sitting behind latest.
-    Mechanical shape: in `check.ts`'s `warmupThenOffline`, run
-    `cargo update --manifest-path tests/warmup/Cargo.toml` (and the fuzz manifest if its scratch
-    consumers resolve fresh) before the retried fetch — the warm-up is already the tier's one
-    online step, and the lock is gitignored per-checkout state, so refreshing it there is free of
-    determinism cost; keep the workspace fetch `--locked` (the workspace lock is committed and
-    must NOT drift). Alternative if refresh-always proves noisy: pin the fingerprint probe crate's
-    manifest to exact versions so it stops resolving fresh — either ends the class; the manual
-    `cargo update -p <dep>` tail (§ Operational watches, "Registry-fetch transients") stays only
-    until one of them lands. A SECOND unlocked dep universe sits beside this one with the inverse
-    failure mode: the shared TS-toolchain install (`/.ts-toolchain/<manifest-hash>/`) runs
-    `npm install` over caret ranges (`json-schema-to-typescript: ^15.0.4`, `TS_COMPILER_PIN`
-    `^5.9.0`) with no lockfile, and its `.installed` stamp means it never re-resolves — so two
-    checkouts under one manifest-hash key can hold different resolved trees, while the `<key>JSON`
-    declaration-name contract was established empirically against json2ts 15.0.4 only. Whichever
-    refresh policy this item lands should state that universe's posture too (lock it, or
-    re-resolve deliberately).
-
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.warm-up-refresh-dep-universe-lock-trust-fresh's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-regression_evidence_ids = ["testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"]
-
-[[record]]
 id = "testing.wasm-boundary.nested-restricted-map-identity"
 title = "Recursive structural identity for nested restricted map children at the WASM boundary."
 
@@ -8599,19 +8472,14 @@ parent_record_id = "testing.registry-fetch-transients-nested-cargo-cells"
 title = "A sighting under an offline gate run is a NEW class"
 body_md = '''  - **A sighting under an offline gate run is a NEW class**, not this one — an offline cell
     cannot hit the registry; investigate it, don't re-ledger it here. Two manual tails are now
-    known, distinguished by the error text: (1) `no matching package named <dep>` — a tests/
-    fixture crate grew a dep outside the warm-up manifest; add it to `tests/warmup/Cargo.toml`.
-    (2) `failed to download <dep> vX.Y.Z … --offline was specified` — a FRESH-resolving scratch
-    crate (the oracle-fingerprint probe is one) wants a version newer than the gitignored
-    `tests/warmup/Cargo.lock`, i.e. an upstream release landed since the lock was minted; the
-    signature is a SUB-SECOND `HARNESS FAILURE` from the gate (the probe dies before building
-    anything), and the remedy is a targeted `cargo update -p <dep> --manifest-path
-    tests/warmup/Cargo.toml` (an `=`-pinned twin like `zerocopy-derive` moves via its parent),
-    never `CHECK_ONLINE=1` as a habit. Observed 2026-08-06 (`zerocopy-derive 0.8.56`, first seen
-    amid 4-way gate concurrency and initially misread as lock contention — the solo re-run is
-    what separated the classes; per-checkout, so every checkout re-fixes on first contact). The
-    systematic retirement of tail (2) is the work item "The warm-up should REFRESH the
-    dep-universe lock, not trust it".
+  known: `no matching package named <dep>` — a tests/ fixture crate grew a dep outside the
+    warm-up manifest; add it to `tests/warmup/Cargo.toml`. The former second tail, `failed to
+    download <dep> vX.Y.Z … --offline was specified` from a fresh scratch crate outrunning
+    `tests/warmup/Cargo.lock`, was observed on 2026-08-06 for `zerocopy-derive 0.8.56` and is
+    retired: each online warm-up now refreshes that gitignored lock before fetching. The same
+    signature AFTER a completed refresh/fetch is a new undercoverage class — preserve the full
+    log and investigate the omitted consumer or manifest rather than habitually setting
+    `CHECK_ONLINE=1` or manually updating a lock.
   Fail-fast discipline is unchanged and general: a failed run plus a one-gate retry is NOT a tier
   pass — fail-fast SKIPS every downstream gate, so a tier-level claim needs the tier re-run (the
   gate cache keeps already-passed cells cheap).
@@ -8625,8 +8493,8 @@ body_md = '''  - **Surfaces still online**: standalone script/gate runs outside 
     `bun run verify.ts`, an isolated `cargo test --bin cddl-codegen <gate>` confirm) — prefix
     `CARGO_NET_OFFLINE=true` there after any warm run; the warm-up fetch itself (retried,
     hard-stop before any gate if it can't fetch, `CHECK_ONLINE=1` to opt back into online runs);
-    and the shared TS-toolchain install's FIRST run per manifest hash (`npm`, not cargo — an
-    `npm install` under `/.ts-toolchain/` that needs the network once, then serves every
+    and the shared TS-toolchain install's FIRST run per manifest+lock hash (`npm`, not cargo — an
+    `npm ci` under `/.ts-toolchain/` that needs the network once, then serves every
     TypeScript-side leg offline; unprobed against a fully-offline tier run).
 '''
 
@@ -9398,11 +9266,6 @@ target = "testing.guard.value-anchor-rot-field-addition-delivery-grows-existing"
 source = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 kind = "parent_of"
 target = "testing.guard.wac-composed-component-transpiled-jco-loses-cross-instance"
-
-[[relation]]
-source = "testing.warm-up-refresh-dep-universe-lock-trust-fresh"
-kind = "parent_of"
-target = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 
 [[relation]]
 source = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
@@ -10242,17 +10105,18 @@ kind = "roadmap"
 target_id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 
 [[reference]]
-id = "testing-roadmap-next-work-n50"
+id = "test-check-ts-warmup-refresh-plan"
 source = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::integration_tests::check_ts_warmup_refresh_plan_selftest"
+symbol = "tests::integration_tests::check_ts_warmup_refresh_plan_selftest"
 
 [[reference]]
-id = "testing-warm-up-refresh-dep-universe-lock-trust-fresh"
+id = "test-shared-ts-toolchain-lock-manifest"
 source = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
-kind = "roadmap"
-target_id = "testing.warm-up-refresh-dep-universe-lock-trust-fresh"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::integration_tests::shared_ts_toolchain_lock_matches_the_effective_manifest"
+symbol = "tests::integration_tests::shared_ts_toolchain_lock_matches_the_effective_manifest"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n9"

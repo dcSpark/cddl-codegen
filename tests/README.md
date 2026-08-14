@@ -474,9 +474,13 @@ ranking. A cold build adds the one-time dependency + test-binary compile on top 
 
 ### Offline-after-warmup (nested cargo never touches the network)
 
-Local/full runs start with a retried `cargo fetch` warm-up — the workspace (`--locked`), the fuzz
-crate, and `tests/warmup/Cargo.toml` (the dep-universe manifest: the union of every crates-io dep
-the generated crates can declare) — then set `CARGO_NET_OFFLINE=true` for every gate. The env
+Local/full runs start each retried online warm-up by running `cargo update --manifest-path
+tests/warmup/Cargo.toml`, then fetch the workspace (`--locked`), the fuzz crate, and
+`tests/warmup/Cargo.toml` (the dep-universe manifest: the union of every crates-io dep the generated
+crates can declare) before setting `CARGO_NET_OFFLINE=true` for every gate. The update refreshes only
+the gitignored per-checkout dep-universe lock; it never touches the committed workspace lock. Fuzz's
+ignored lock deliberately is not refreshed: fuzz consumes that same lock itself after warm-up, while
+the dep universe is the one with fresh-resolving scratch consumers that can otherwise outrun it. The env
 propagates through `cargo test` → the suite's nested `Command` spawns and the cddl-matrix scripts,
 so every nested-cargo cell resolves from the cargo cache instead of hitting crates.io per temp
 crate. This removes the registry-transient flake class by construction (a flaky network/proxy used
@@ -492,8 +496,9 @@ when enabled). Fixture crates under `tests/` with hand-written manifests are the
 fixture-only dep missing from the warm-up manifest fails offline cells loudly with
 `no matching package named <dep>` — add it to `tests/warmup/Cargo.toml`. Escape hatches:
 `CHECK_ONLINE=1` keeps the run online (no offline forcing); a pre-set `CARGO_NET_OFFLINE=true`
-skips the fetch and trusts the cache. The warm-up is the ONE place a network retry is honest (a
-pure fetch, no assertions behind it); if it fails all attempts the run stops before any gate.
+skips the fetch and trusts the cache. The warm-up is the ONE place a network retry is honest (pure
+cache-population/update work, with no assertions behind it); if it fails all attempts the run stops
+before any gate.
 
 ### The no_std drift gate (`no_std_check`, local tier)
 
@@ -646,8 +651,10 @@ generation-only self-test, so a generator that doesn't build still aborts the ru
 verdict is written), and the component-execution cells (`verify.component_probe`: the wasip2
 build + native oracle + wasmtime drive memoized as ONE unit per selected row, with the generic
 host crate's CONTENT HASH folded into the key because the host is an input living outside the
-hashed generated tree — editing what the host checks re-runs every cell instead of serving stale
-PASSes); and, via `src/tests/gate_cache.rs`, one cached unit per cell in
+hashed generated tree — its copied scratch crate runs `cargo test` before the executable build, and
+editing what that host checks re-runs every cell instead of serving stale PASSes; the explicit
+test-before-build preparation marker likewise prevents reuse across verifier-side policy changes);
+and, via `src/tests/gate_cache.rs`, one cached unit per cell in
 `feature_corpus_compiles`, `wasm_matrix_compiles`, `multifile_matrix_compiles`,
 `wasm_matrix_roundtrips`, `multifile_matrix_roundtrips`, and the recombination layer-2 batches.
 `decode_conformance_replay` is deliberately NOT cached: its success path parses libtest stdout
@@ -1573,9 +1580,16 @@ the fixtures' reused `tests/<dir>/export` outputs). A third swaps the input for 
 gate writes into that same temp dir, under `--preserve-encodings --annotate-fields=false`: verify-only
 fixed bool/null/undefined in member position and in all three arm positions (map-rep, array-rep,
 type-choice), including their mixed-special brute-force dispatch.
-Those shapes are the gate's own coverage floor — the rich fixture spells none of them, and
-`--annotate-fields=false` is what makes the member position emit its unbound value, so one case
-covers all five emission sites. The fourth runs the rich input under `--json-serde-derives
+Those shapes are a table-driven cross-product of `FixedValue`'s unit-like major-7 values — both
+bool spellings, null, and undefined — across mandatory/optional array and map members plus every
+arm representation. A parsed-AST LOCKSTEP check over `FixedValue` refuses a new unit-like variant
+until it receives a row; `nil` has separate mandatory/optional identity witnesses for the same
+`FixedValue::Null`. `--annotate-fields=false` is what makes the member position emit its unbound
+value, and the mixed-special choice reaches brute-force dispatch. The rich input additionally
+contains a deliberately asymmetric ~30-`uint`-field record choice; the gate asserts both generated
+owners mint, so its permanent generated-module `large_enum_variant` allow stays exercised. It does
+not claim that input crosses `result_large_err`'s static-error threshold; that adjacent permanent
+allow remains policy for layout-dependent consumers. The fourth runs the rich input under `--json-serde-derives
 --json-schema-export`, the flag pair `ALL_PROFILES` spells for its `json` row, and lints the THIRD
 generated crate: `wasm/json-gen`, whose emitted `add_schemas`/`export_schemas` bodies and
 registration rows no other lint gate reaches (it is an independent nested crate, not a dependency of
@@ -3012,20 +3026,23 @@ that pins the LOUD behaviour (a non-zero exit) rather than just the happy path �
 script produces a `.d.ts` that looks plausible and a build that exits 0. Four tests cover it,
 cheapest-in-isolation first.
 
-Every leg below that needs npm packages resolves them through ONE install (`shared_ts_toolchain`),
-not one per call: the effective manifest is the shipped `static/package_json_schemas.json` plus a
-test-only `typescript` pin, and the install root under the gitignored `/.ts-toolchain/` is keyed by a
-hash of exactly those bytes — so a pin bump lands in a new root and reinstalls rather than silently
-reusing the old tree, and nothing needs to remember to invalidate it. The install is serialized on
+Every leg below that needs npm packages resolves them through ONE locked install
+(`shared_ts_toolchain`), not one per call: the effective manifest is the shipped
+`static/package_json_schemas.json` plus a test-only `typescript` range, and the committed
+`tests/ts-toolchain/package-lock.json` fixes the exact test resolution (`json-schema-to-typescript`
+15.0.4 and TypeScript 5.9.3 today). The shipped package retains its caret ranges; this lock makes
+only the shared test universe reproducible. The install root under the gitignored `/.ts-toolchain/`
+is keyed by both effective-manifest and lock bytes, so changing either lands in a new root and
+reinstalls rather than silently reusing the old tree. The install is serialized on
 `acquire_scratch_lock` (`cargo test` runs the legs as parallel threads, and separate checkouts run
-concurrently), and its `.installed` stamp is written only after `npm install` exits 0, which is what
+concurrently), and its `.installed` stamp is written only after `npm ci` exits 0, which is what
 lets every later caller skip the lock entirely. Each work dir gets a `node_modules` symlink into it;
 `tsc` is invoked by explicit path. Sharing it is what makes the projection leg affordable per
 fixture rather than per opt-in.
 
 - **`js_schema_to_ts`** runs the shipped `run-json2ts.js` over the committed schema document
-  (`tests/json2ts/schemas`) using the shipped `json-schema-to-typescript` range (`^15.0.4` — a
-  range, not an exact pin), asserting the emitted
+  (`tests/json2ts/schemas`) using the shipped `json-schema-to-typescript` range (`^15.0.4`) under
+  the shared test lock's exact 15.0.4 resolution, asserting the emitted
   `.d.ts`: every definition declared exactly once and JSON-suffixed (including one that nothing but
   another definition references — the shape that ships as an undeclared `TS2304` unless the whole
   document is compiled as one unit), resolved refs, enum → union, the `additionalProperties` guard on both a struct and a map
@@ -3182,7 +3199,15 @@ never compiles `#[cfg(test)]` code, so nothing but `cargo test` type-checks or r
 `preserve_pair_map_self_encoding` is the positional `@duplicates preserve` table where both
 key and value are nominal records and therefore own their encoding sidecars. Its enclosing record
 forces the serialize loop to bind `_i` with neither positional `.get(i)` lookup live, pinning the
-unused-binding/E0425 boundary in snapshots and the ordinary Rust/wasm corpus compile floor.
+unused-binding/E0425 boundary in snapshots and the ordinary Rust/wasm corpus compile floor. Its
+standalone `entry` rust conformance call remains live. The scheduled Cycle-3 full-tier
+`ir_conformance_corpus` run also found an upstream rust-`cddl` facet on `holder`: valid `[{}]`
+(`81a0`) for `{ * entry => entry }` is misclassified as `expected array type, got Map([])` when
+both domains resolve to named composite arrays. The gate therefore neutralizes only `holder`'s
+exact rust call; ruby, dumped-byte, and reference-codec structural checks remain live, and
+`self_map` is transparent so has no standalone call. See
+`cddl-matrix/upstream-reports/rust-cddl-named-key-map.md`; the existing systematic gate caught the
+class, so this needs no new testing-roadmap item.
 
 **A fixture that names user-supplied code is SEEDED, not skipped.** `CORPUS_DEF_SPLICE` keys the
 definitions each such fixture needs by stem, rendered per fixture from the shared
@@ -3635,7 +3660,13 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   pair uniqueness, one-or-more exact matches, no target left behind, and unchanged unledgered-call
   count are all guarded. The same scratch preflight directly asserts that reject signature, so an
   acceptance or signature change fails loudly: remove or re-investigate the one-rule ledger rather
-  than broadening it to the fixture.
+  than broadening it to the fixture. The same ledger also has
+  `(preserve_pair_map_self_encoding, holder)`: at the pinned revision the valid rooted holder
+  `[{}]` (`81a0`) for `{ * entry => entry }`, where both domains resolve to named composite arrays,
+  returns `expected array type, got Map([])`. Only that call is neutralized; standalone `entry`,
+  ruby, dumps, and structural checks remain live (`self_map` is transparent). A separate
+  preflight asserts the exact returned signature, so acceptance or a signature change fails with
+  instructions to investigate/remove the new per-rule skip after upstream repair.
 - **Dump-coverage (`DUMP_EXEMPT`)** — per fixture, every rule the generator *intended* to dump (its
   hook is present in `lib.rs`) must land a `.cbor` on disk. An intended-but-undumped rule fails the
   gate unless ledgered in `DUMP_EXEMPT` **with a justification** — so a dump hook that silently stops
@@ -4534,8 +4565,8 @@ Three legs:
 The npm dependencies are `@bytecodealliance/jco` and `@bytecodealliance/preview2-shim`, pinned
 **exact** in a committed `package-lock.json` and installed with `npm ci` (never `npm install`, which
 would resolve a newer jco and answer a question about a version nobody committed; the shared
-TS-toolchain install makes the opposite choice — caret ranges, no lockfile — and the dep-universe
-refresh work item in `tests/testing-roadmap.toml` owns stating that universe's posture). The shim is
+TS-toolchain now follows the same exact-resolution posture in its test-only committed lock, while
+the generated package it tests retains its shipped caret ranges). The shim is
 installed but **not mapped**: jco rewrites the `wasi:*` imports to it by default, and a hand-written
 `wasi:*` map breaks the output. There is no test-framework dependency — `node --test` and
 `node:assert`.

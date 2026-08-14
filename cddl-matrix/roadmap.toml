@@ -1793,30 +1793,33 @@ legacy_aliases = ["README gap #11"]
 
 [record.payload]
 kind = "matrix_external_closeout"
-body_md = '''- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
-  #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
-  multi-entry-composite-array-key observations, and prune steps in
+body_md = '''- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation and the
+  named-composite-array key-and-value facet (README gap #11 — OPEN at the pinned `ac1b98e` rev;
+  the scheduled Cycle-3 full-tier `ir_conformance_corpus` gate caught the latter on valid `[{}]`,
+  which rust misclassifies as `expected array type, got Map([])`; differential grid, adjacent
+  nested-map-VALUE and multi-entry-composite-array-key observations, and prune steps in
   `cddl-matrix/upstream-reports/rust-cddl-named-key-map.md`, local note; no upstream issue filed yet): re-mint the
   corpus decode rows it blocks
   (`--mint-decode-corpus --only=c_style_enum_map_key.enum_keyed_map,table_enum_key.enum_keyed,table_enum_key.enum_key_holder`
   — the empty-instance-only rows pick up non-empty vectors, and the pinned/active flip-flop the
   gap causes stops, once candidates survive the two-oracle gate; if the fix also covers the
-  adjacent observations,
-  re-mint `wasm_nested_alias.passthru_tags_map` and the `composite_map_key` fixture in the same
-  change), and prune README gap #11 + that draft.
+  adjacent observations, re-mint `wasm_nested_alias.passthru_tags_map`, the `composite_map_key`
+  fixture, and `preserve_pair_map_self_encoding.holder` / `.self_map` in the same change), and
+  remove the new per-rule rust-oracle skip only after the upstream repair's exact behavior is
+  rechecked; then prune README gap #11 + that draft.
 '''
 closeout_state = "due"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-resolves-named"
-current_upstream_state_md = '''The diagnosis exists only as frozen historical prose; no durable report or upstream issue has been filed, and the repository has not been queried.
+current_upstream_state_md = '''The diagnosis is recorded in the local upstream report and exact-rev reduction; no durable upstream issue has been filed, and the repository has not been queried. The scheduled Cycle-3 full-tier ir_conformance_corpus gate caught the named-composite-array facet, so no new systematic-test roadmap item is needed.
 '''
-verification_md = '''Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
+verification_md = '''Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, table_enum_key.enum_key_holder, preserve_pair_map_self_encoding.holder, and preserve_pair_map_self_encoding.self_map with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
 '''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-resolves-named"
-external_predicate_md = '''A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions.
+external_predicate_md = '''A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions, and accepts the valid named-composite-array key-and-value empty-map holder case without changing its documented behavior unexpectedly.
 '''
-verification_md = '''Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, and table_enum_key.enum_key_holder with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
+verification_md = '''Create and file a durable report; re-mint c_style_enum_map_key.enum_keyed_map, table_enum_key.enum_keyed, table_enum_key.enum_key_holder, preserve_pair_map_self_encoding.holder, and preserve_pair_map_self_encoding.self_map with --mint-decode-corpus; include adjacent rows only if the release covers them; reject a lossy re-mint while the gap persists.
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''

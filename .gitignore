@@ -36,9 +36,9 @@ example/export*/
 *.snap.new
 *.pending-snap
 
-# The one shared `npm install` the TypeScript-side test legs resolve their deps from
-# (`shared_ts_toolchain`): keyed by a hash of the effective manifest, reinstalled on a pin bump,
-# disposable like any other build artifact.
+# The one shared `npm ci` the TypeScript-side test legs resolve their deps from
+# (`shared_ts_toolchain`): keyed by the effective manifest AND committed test-only lock, reinstalled
+# when either changes, disposable like any other build artifact.
 /.ts-toolchain/
 
 # Scratch area for draft/investigation artifacts (not committed). Includes draft/roadmaps/ — the

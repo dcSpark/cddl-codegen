@@ -41,6 +41,41 @@ pub struct ClippyEnumRecordEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct ClippyLargeRecordEncoding {
+    pub len_encoding: LenEncoding,
+    pub f00_encoding: Option<cbor_event::Sz>,
+    pub f01_encoding: Option<cbor_event::Sz>,
+    pub f02_encoding: Option<cbor_event::Sz>,
+    pub f03_encoding: Option<cbor_event::Sz>,
+    pub f04_encoding: Option<cbor_event::Sz>,
+    pub f05_encoding: Option<cbor_event::Sz>,
+    pub f06_encoding: Option<cbor_event::Sz>,
+    pub f07_encoding: Option<cbor_event::Sz>,
+    pub f08_encoding: Option<cbor_event::Sz>,
+    pub f09_encoding: Option<cbor_event::Sz>,
+    pub f10_encoding: Option<cbor_event::Sz>,
+    pub f11_encoding: Option<cbor_event::Sz>,
+    pub f12_encoding: Option<cbor_event::Sz>,
+    pub f13_encoding: Option<cbor_event::Sz>,
+    pub f14_encoding: Option<cbor_event::Sz>,
+    pub f15_encoding: Option<cbor_event::Sz>,
+    pub f16_encoding: Option<cbor_event::Sz>,
+    pub f17_encoding: Option<cbor_event::Sz>,
+    pub f18_encoding: Option<cbor_event::Sz>,
+    pub f19_encoding: Option<cbor_event::Sz>,
+    pub f20_encoding: Option<cbor_event::Sz>,
+    pub f21_encoding: Option<cbor_event::Sz>,
+    pub f22_encoding: Option<cbor_event::Sz>,
+    pub f23_encoding: Option<cbor_event::Sz>,
+    pub f24_encoding: Option<cbor_event::Sz>,
+    pub f25_encoding: Option<cbor_event::Sz>,
+    pub f26_encoding: Option<cbor_event::Sz>,
+    pub f27_encoding: Option<cbor_event::Sz>,
+    pub f28_encoding: Option<cbor_event::Sz>,
+    pub f29_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct ClippyNegBoundedEncoding {
     pub len_encoding: LenEncoding,
     pub neg_encoding: Option<cbor_event::Sz>,

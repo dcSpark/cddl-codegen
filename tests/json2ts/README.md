@@ -3,14 +3,16 @@
 `cddl_lib.schema.json` is a hand-written stand-in for the schema document the generated `json-gen`
 crate emits (schemars 1.x style: draft 2020-12, one `$defs` bundle per crate, refs via `#/$defs/`).
 Consumed by `integration_tests::js_schema_to_ts`, which runs the *shipped* `static/run-json2ts.js`
-over it with the *pinned* `json-schema-to-typescript` from `static/package_json_schemas.json` and
-asserts the emitted `.d.ts` — both on its text and by type-checking it with `tsc --noEmit --strict
+over it with the `json-schema-to-typescript` range from `static/package_json_schemas.json` and the
+shared test toolchain's committed lock supplying its exact resolution, then asserts the emitted
+`.d.ts` — both on its text and by type-checking it with `tsc --noEmit --strict
 --target esnext` (no `--skipLibCheck`, which would make the check vacuous over a `.d.ts`). This is
 the only coverage of the schema → `.d.ts` step — without it a `json-schema-to-typescript` dep bump
 changing the emitted types would be invisible to every gate. The `typescript` compiler is injected
 into the work dir's manifest by the test rather than shipped in
-`static/package_json_schemas.json`: a consumer's generated package needs the emitted types, not a
-type-checker, so the pin that ships stays the `json-schema-to-typescript` one.
+`static/package_json_schemas.json`: a consumer's generated package keeps the shipped caret range
+for `json-schema-to-typescript`, while the test-only shared lock fixes both it and the injected
+type-checker exactly.
 
 One file, because the generator writes one document per crate: a type reached only through another
 type's schema has no registration row of its own, so it exists only as a `$defs` entry. Compiling a

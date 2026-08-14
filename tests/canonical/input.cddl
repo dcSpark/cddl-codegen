@@ -65,6 +65,21 @@ clippy_wrapped_map = { * uint => text } ; @newtype
 clippy_enum = 0 / 1 / 2
 clippy_enum_record = [ tag: clippy_enum, rest: uint ]
 
+; (d) an intentionally asymmetric choice: this ~30-uint-field record versus a scalar arm crosses
+; clippy::large_enum_variant's default threshold.  Generated roots permanently allow that lint
+; because boxing either public type would distort the emitted API; the clippy gate asserts this pair
+; mints, so that allowance cannot become unexercised policy.  `result_large_err` remains an adjacent
+; static-error allowance but this fixture does not claim to cross its input-independent threshold.
+clippy_large_record = [
+	f00: uint, f01: uint, f02: uint, f03: uint, f04: uint,
+	f05: uint, f06: uint, f07: uint, f08: uint, f09: uint,
+	f10: uint, f11: uint, f12: uint, f13: uint, f14: uint,
+	f15: uint, f16: uint, f17: uint, f18: uint, f19: uint,
+	f20: uint, f21: uint, f22: uint, f23: uint, f24: uint,
+	f25: uint, f26: uint, f27: uint, f28: uint, f29: uint,
+]
+clippy_large_choice = clippy_large_record / uint
+
 ; A mandatory tag owned by an anonymous enum rule. The canonical test proves the decoded non-minimal
 ; tag head is retained for ordinary replay but minimized by the canonical serializer.
 tagged_anonymous_choice = #6.10(int / tstr)

@@ -93,6 +93,44 @@ struct Vector {
     expected: Option<Vec<u8>>,
 }
 
+/// The observable outcome of a `from-cbor-bytes` return value.
+///
+/// Kept separate from the runtime loop so the dynamic, defensive `Val` protocol can be
+/// unit-tested even for shapes no generated component can currently return.
+enum FromCborBytesOutcome {
+    Handle(Val),
+    Verdict { token: &'static str, detail: String },
+}
+
+/// Classify every dynamic value a `from-cbor-bytes` call can hand the host.
+///
+/// The success handle is copied because `Func::call` owns the result vector while the following
+/// `to-cbor-bytes` call needs an owned argument. Every non-handle shape remains a per-vector
+/// observation rather than a trap: see the protocol table in the module header.
+fn classify_from_cbor_bytes_result(value: &Val) -> FromCborBytesOutcome {
+    match value {
+        Val::Result(Ok(Some(handle))) => FromCborBytesOutcome::Handle((**handle).clone()),
+        Val::Result(Ok(None)) => FromCborBytesOutcome::Verdict {
+            token: "mismatch",
+            detail: "(door returned Ok with no handle to re-encode)".to_owned(),
+        },
+        Val::Result(Err(message)) => {
+            let text = match message.as_deref() {
+                Some(Val::String(text)) => text.clone(),
+                other => format!("{other:?}"),
+            };
+            FromCborBytesOutcome::Verdict {
+                token: "err",
+                detail: format!("({text})"),
+            }
+        }
+        other => FromCborBytesOutcome::Verdict {
+            token: "mismatch",
+            detail: format!("(door returned {other:?}, not a result)"),
+        },
+    }
+}
+
 fn hex_decode(s: &str) -> Option<Vec<u8>> {
     if !s.len().is_multiple_of(2) {
         return None;
@@ -253,29 +291,10 @@ fn main() {
             emit("trap", &trap_detail("from-cbor-bytes", &e));
             std::process::exit(2);
         }
-        let handle = match &results[0] {
-            Val::Result(Ok(Some(h))) => (**h).clone(),
-            Val::Result(Ok(None)) => {
-                // `Ok` with no payload: nothing to re-encode, so byte equality cannot be shown.
-                // That is a mismatch, never an `ok` — see the verdict table in the module header.
-                emit("mismatch", "(door returned Ok with no handle to re-encode)");
-                continue;
-            }
-            Val::Result(Err(msg)) => {
-                let text = match msg.as_deref() {
-                    Some(Val::String(s)) => s.clone(),
-                    other => format!("{other:?}"),
-                };
-                emit("err", &format!("({text})"));
-                continue;
-            }
-            other => {
-                // Not a `result` at all: the door's WIT shape is not what this leg drives, which is
-                // a fact about the component, not a trap.
-                emit(
-                    "mismatch",
-                    &format!("(door returned {other:?}, not a result)"),
-                );
+        let handle = match classify_from_cbor_bytes_result(&results[0]) {
+            FromCborBytesOutcome::Handle(handle) => handle,
+            FromCborBytesOutcome::Verdict { token, detail } => {
+                emit(token, &detail);
                 continue;
             }
         };
@@ -319,4 +338,81 @@ fn trap_detail(door: &str, e: &wasmtime::Error) -> String {
         "call-error"
     };
     format!("({door} {kind}: {})", format!("{e:#}").replace('\n', " / "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_verdict(value: Val, token: &str, detail: &str) {
+        match classify_from_cbor_bytes_result(&value) {
+            FromCborBytesOutcome::Verdict {
+                token: actual_token,
+                detail: actual_detail,
+            } => {
+                assert_eq!(actual_token, token);
+                assert_eq!(actual_detail, detail);
+            }
+            FromCborBytesOutcome::Handle(handle) => {
+                panic!("expected {token} {detail:?}, got handle {handle:?}")
+            }
+        }
+    }
+
+    #[test]
+    fn from_cbor_bytes_ok_handle_carries_the_handle_to_the_reencode_step() {
+        let value = Val::Result(Ok(Some(Box::new(Val::U8(42)))));
+        match classify_from_cbor_bytes_result(&value) {
+            FromCborBytesOutcome::Handle(Val::U8(42)) => {}
+            FromCborBytesOutcome::Handle(handle) => {
+                panic!("wrong handle carried forward: {handle:?}")
+            }
+            FromCborBytesOutcome::Verdict { token, detail } => {
+                panic!("expected a handle, got {token} {detail}")
+            }
+        }
+    }
+
+    #[test]
+    fn from_cbor_bytes_ok_without_handle_is_a_mismatch_not_a_false_pass() {
+        assert_verdict(
+            Val::Result(Ok(None)),
+            "mismatch",
+            "(door returned Ok with no handle to re-encode)",
+        );
+    }
+
+    #[test]
+    fn from_cbor_bytes_string_error_is_an_err_verdict() {
+        assert_verdict(
+            Val::Result(Err(Some(Box::new(Val::String(
+                "decoder refused".to_owned(),
+            ))))),
+            "err",
+            "(decoder refused)",
+        );
+    }
+
+    #[test]
+    fn from_cbor_bytes_non_string_error_preserves_the_defensive_detail_shape() {
+        assert_verdict(
+            Val::Result(Err(Some(Box::new(Val::U8(7))))),
+            "err",
+            "(Some(U8(7)))",
+        );
+    }
+
+    #[test]
+    fn from_cbor_bytes_error_without_payload_is_still_an_err_verdict() {
+        assert_verdict(Val::Result(Err(None)), "err", "(None)");
+    }
+
+    #[test]
+    fn from_cbor_bytes_non_result_is_a_mismatch_with_the_observed_shape() {
+        assert_verdict(
+            Val::Bool(false),
+            "mismatch",
+            "(door returned Bool(false), not a result)",
+        );
+    }
 }

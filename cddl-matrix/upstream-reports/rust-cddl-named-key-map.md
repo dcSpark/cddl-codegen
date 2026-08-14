@@ -11,8 +11,9 @@ A `*`-occurrence table whose KEY domain is a NAMED-RULE reference or a PARENTHES
 rust-`cddl` validation on every spec-valid non-empty instance; the ruby `cddl` reference (gem
 0.12.14) accepts. Inline prelude keys (`uint`, `tstr`) and inline literal keys (`0`) validate fine —
 the indirection/choice spelling of the key type is the trigger, not the key values. The EMPTY map
-validates fine everywhere (no key to mis-match), which is why the affected corpus rows keep exactly
-their empty-instance vectors.
+validates for this named-scalar/choice-key facet (no key to mis-match), which is why the affected
+corpus rows keep exactly their empty-instance vectors. It does **not** validate everywhere: the
+separate named-composite-array key-and-value facet below also rejects `{}`.
 
 ## Repro (differential grid)
 
@@ -36,6 +37,39 @@ README gap #8 (TAG-typed map keys, `cddl-matrix/upstream-reports/rust-cddl-tag-m
 key-matching site in `src/validator/cbor.rs` not resolving typename references / choices when
 matching entry keys.
 
+## Separate facet: named composite-array key **and** value domains reject even `{}`
+
+Observed at the same pinned local-fixes `ac1b98e` revision while the scheduled Cycle-3 full-tier
+`ir_conformance_corpus` gate classified the new `preserve_pair_map_self_encoding` fixture. This is
+not the named-scalar/choice-key symptom above: an EMPTY table fails when both its key and value
+domains resolve to named composite arrays, whether they use the same name or distinct names.
+
+Minimal failing holder and bytes:
+
+```cddl
+entry = [n: uint]
+self_map = { * entry => entry }
+holder = [m: self_map]
+```
+
+`81a0` (`[{}]`) is valid; ruby `cddl` 0.12.14 accepts it, while rust `cddl --ci validate` returns
+the exact misclassification `expected array type, got Map([])` (at `/0` in the observed mismatch).
+The same result occurs when the validator is rooted through
+`__cddl_oracle_root = holder`; the repository preflight pins that rooted spelling and bytes.
+
+| domain spelling | `{}` ruby | `{}` rust | result |
+|---|---:|---:|---|
+| `entry => entry` (same named `[n: uint]`) | 0 | 1 | failing minimal case |
+| `left => right` (distinct named `[n: uint]` arrays) | 0 | 1 | same failure |
+| inline `{ * uint => uint }` | 0 | 0 | control |
+| scalar aliases (`key = uint`, `value = uint`) | 0 | 0 | control |
+| named array key + inline array value | 0 | 0 | control |
+| inline array key + named array value | 0 | 0 | control |
+
+Non-empty maps in the same-composite rows also reject, additionally reporting an unexpected
+composite-array key. This appears in the same validator neighborhood and is possibly related to
+the named-key map defect, but the current reduction does not establish a common root cause.
+
 ## Impact here (corpus decode-conformance catalog)
 
 Verified against the first full `--mint-decode-corpus` log — these drops carry the
@@ -52,6 +86,11 @@ Verified against the first full `--mint-decode-corpus` log — these drops carry
 - `table_enum_key.enum_key_holder` (holder over `enum_keyed` + `int_keyed`): 9 candidates dropped;
   only the both-empty instance survived (1 committed vector). (`int_keyed = { * int => text }` is
   NOT affected — `int` is an inline prelude name — its row minted 10 vectors.)
+- `preserve_pair_map_self_encoding.holder` and `.self_map`: all generated candidates dropped
+  (`ruby` accepted them and rust accepted none) under the separate named-composite-array facet.
+  The corpus gate therefore keeps the standalone `entry` rust call live and neutralizes only the
+  exact `holder` rust conformance call; `self_map` is a transparent alias with no standalone call.
+  Ruby, dumped-byte, and reference-codec structural checks remain live for every dumped case.
 
 No cddl-codegen behavior is affected (our generated decoder accepts these instances; the drops are
 oracle-side only — nothing validated ever reached the decoder).
@@ -74,8 +113,9 @@ Tested while classifying the mint's dropped candidates; NOT the named-key gap ab
    rejects (arguably correctly, RFC 3339 date validity). One `prelude.prelude` candidate dropped.
 
 1 and 2 are plausibly the same underlying entry-matching machinery as the named-key gap (and gap
-#8); they should be re-probed whenever that site is fixed. 3 is a ruby-side generator/validator
-laxity, unrelated to map matching.
+#8); the named-composite-array facet above is in the same validator neighborhood and may be related,
+but no common root cause is established. Re-probe all of them whenever that site is fixed. 3 is a
+ruby-side generator/validator laxity, unrelated to map matching.
 
 ## Close-out steps (when a fixed rust `cddl` ships)
 
@@ -84,6 +124,7 @@ laxity, unrelated to map matching.
    `bun run verify.ts --mint-decode-corpus --only=c_style_enum_map_key.enum_keyed_map,table_enum_key.enum_keyed,table_enum_key.enum_key_holder`
    — the rows pick up non-empty instances (and stop flip-flopping between active-empty and
    pinned) once candidates survive the two-oracle gate. If the fix also covers the adjacent
-   observations, re-mint `--only=wasm_nested_alias.passthru_tags_map,composite_map_key` in the
-   same change.
+   observations and the separate named-composite-array facet, re-mint
+   `--only=wasm_nested_alias.passthru_tags_map,composite_map_key,preserve_pair_map_self_encoding.holder,preserve_pair_map_self_encoding.self_map`
+   in the same change.
 3. Prune README gap #11, the roadmap.toml § findings close-out entry, and this report.

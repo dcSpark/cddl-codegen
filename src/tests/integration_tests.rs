@@ -6382,6 +6382,224 @@ fn wasm_collections_index_lists_every_minted_wrapper() {
     );
 }
 
+/// The fixed major-7 literals which have no Rust payload when used as record members or choice arms.
+///
+/// This is deliberately expressed in terms of `FixedValue`, rather than a second string-only list:
+/// the clippy fixture below is generated from this owner.  The companion AST check makes adding a
+/// new unit-like `FixedValue` variant (or changing Bool's carrier) fail loud until its fixture row
+/// is reviewed.  Numeric/text/bytes `FixedValue` variants are intentionally outside this fixture:
+/// they bind a Rust value and exercise different emission paths.
+struct FixedSpecialFixtureRow {
+    value: crate::intermediate::FixedValue,
+    literal: &'static str,
+    suffix: &'static str,
+}
+
+const FIXED_SPECIAL_FIXTURE_ROWS: &[FixedSpecialFixtureRow] = &[
+    FixedSpecialFixtureRow {
+        value: crate::intermediate::FixedValue::Bool(false),
+        literal: "false",
+        suffix: "bool_false",
+    },
+    FixedSpecialFixtureRow {
+        value: crate::intermediate::FixedValue::Bool(true),
+        literal: "true",
+        suffix: "bool_true",
+    },
+    FixedSpecialFixtureRow {
+        value: crate::intermediate::FixedValue::Null,
+        literal: "null",
+        suffix: "null",
+    },
+    FixedSpecialFixtureRow {
+        value: crate::intermediate::FixedValue::Undefined,
+        literal: "undefined",
+        suffix: "undefined",
+    },
+];
+
+fn fixed_special_inventory_name(value: &crate::intermediate::FixedValue) -> Option<&'static str> {
+    use crate::intermediate::FixedValue;
+
+    // Keep this match exhaustive.  A new `FixedValue` variant makes the compiler demand an
+    // explicit decision here; the parsed-enum check below then rejects a newly added unit-like
+    // special until it has a fixture row.
+    match value {
+        FixedValue::Null => Some("Null"),
+        FixedValue::Undefined => Some("Undefined"),
+        FixedValue::Bool(false) => Some("Bool(false)"),
+        FixedValue::Bool(true) => Some("Bool(true)"),
+        FixedValue::Nint(_)
+        | FixedValue::Uint(_)
+        | FixedValue::Float(_)
+        | FixedValue::Text(_)
+        | FixedValue::Bytes(_) => None,
+    }
+}
+
+fn fixed_special_fixture_spec() -> String {
+    let mut spec = String::from(
+        "; Fixed bool/null/undefined in MEMBER position and in every ARM representation.\n\
+; Under --preserve-encodings the fixed-value deserialize used to end in a bare `();` statement\n\
+; here — clippy::no_effect, inside this gate's own deny set.  Rows below are generated from\n\
+; FIXED_SPECIAL_FIXTURE_ROWS: do not hand-add a position without updating that inventory.\n",
+    );
+    for row in FIXED_SPECIAL_FIXTURE_ROWS {
+        spec.push_str(&format!(
+            "fixed_arr_member_{suffix} = [v: {literal}, x: uint]\n\
+fixed_map_member_{suffix} = {{ v: {literal}, x: uint }}\n\
+fixed_arr_optional_member_{suffix} = [x: uint, ? v: {literal}]\n\
+fixed_map_optional_member_{suffix} = {{ x: uint, ? v: {literal} }}\n\
+map_{suffix}_arm = {{ fixed: {literal} // label: tstr }}\n\
+arr_{suffix}_arm = [ fixed: {literal} // label: tstr ]\n\
+type_choice_{suffix}_arm = {literal} / tstr\n",
+            suffix = row.suffix,
+            literal = row.literal,
+        ));
+    }
+    // `nil` lowers to exactly FixedValue::Null.  Keep a second authored spelling in the fixture:
+    // `null` carries the cross-product row, while this witness makes a parser identity regression
+    // unable to hide behind the canonical spelling.
+    spec.push_str(
+        "fixed_arr_member_nil_identity = [v: nil, x: uint]\n\
+fixed_arr_optional_member_nil_identity = [x: uint, ? v: nil]\n\
+type_choice_nil_identity = nil / tstr\n\
+; All major-7 fixed specials share one choice, forcing the BRUTE-FORCE arm dispatch that the\n\
+; single-special type choices above do not reach.\n\
+type_choice_special_brute = false / true / null / undefined / tstr\n",
+    );
+    spec
+}
+
+fn assert_fixed_special_fixture_inventory(spec: &str) {
+    for row in FIXED_SPECIAL_FIXTURE_ROWS {
+        for required in [
+            format!(
+                "fixed_arr_member_{} = [v: {}, x: uint]",
+                row.suffix, row.literal
+            ),
+            format!(
+                "fixed_map_member_{} = {{ v: {}, x: uint }}",
+                row.suffix, row.literal
+            ),
+            format!(
+                "fixed_arr_optional_member_{} = [x: uint, ? v: {}]",
+                row.suffix, row.literal
+            ),
+            format!(
+                "fixed_map_optional_member_{} = {{ x: uint, ? v: {} }}",
+                row.suffix, row.literal
+            ),
+            format!(
+                "map_{}_arm = {{ fixed: {} // label: tstr }}",
+                row.suffix, row.literal
+            ),
+            format!(
+                "arr_{}_arm = [ fixed: {} // label: tstr ]",
+                row.suffix, row.literal
+            ),
+            format!("type_choice_{}_arm = {} / tstr", row.suffix, row.literal),
+        ] {
+            assert!(
+                spec.contains(&required),
+                "fixed-special fixture lost required cross-product row `{required}`"
+            );
+        }
+    }
+    assert!(
+        spec.contains("fixed_arr_member_nil_identity = [v: nil, x: uint]")
+            && spec.contains("fixed_arr_optional_member_nil_identity = [x: uint, ? v: nil]")
+            && spec.contains("type_choice_nil_identity = nil / tstr"),
+        "fixed-special fixture lost the `null`/`nil` identity witnesses"
+    );
+    assert!(
+        spec.contains("type_choice_special_brute = false / true / null / undefined / tstr"),
+        "fixed-special fixture lost the mixed-major-7 brute-force choice"
+    );
+}
+
+/// `FixedValue` is a production enum with non-unit data variants, so Rust cannot reflect its unit
+/// variants at runtime.  Parse this one bounded source file with `syn` rather than grepping it: the
+/// test asserts the fixture inventories every unit variant plus Bool's two literal values, and
+/// nothing else.  A future source re-shape is a deliberate test update, never a silently stale list.
+fn fixed_value_unit_like_major_7_inventory() -> std::collections::BTreeSet<String> {
+    let file = syn::parse_file(include_str!("../intermediate/rust_type.rs"))
+        .expect("src/intermediate/rust_type.rs must remain valid Rust");
+    let fixed_value = file
+        .items
+        .into_iter()
+        .find_map(|item| match item {
+            syn::Item::Enum(item) if item.ident == "FixedValue" => Some(item),
+            _ => None,
+        })
+        .expect("FixedValue enum must remain in src/intermediate/rust_type.rs");
+    let mut variants = std::collections::BTreeSet::new();
+    for variant in fixed_value.variants {
+        match (&*variant.ident.to_string(), &variant.fields) {
+            (_, syn::Fields::Unit) => {
+                variants.insert(variant.ident.to_string());
+            }
+            ("Bool", syn::Fields::Unnamed(fields)) if fields.unnamed.len() == 1 => {
+                let only = fields.unnamed.first().expect("Bool has one field");
+                let is_bool = matches!(
+                    &only.ty,
+                    syn::Type::Path(path)
+                        if path.qself.is_none() && path.path.is_ident("bool")
+                );
+                assert!(
+                    is_bool,
+                    "FixedValue::Bool must retain its bool carrier for this fixture"
+                );
+                variants.insert("Bool(false)".to_owned());
+                variants.insert("Bool(true)".to_owned());
+            }
+            _ => {}
+        }
+    }
+    variants
+}
+
+/// Locks the fixed-special fixture to the actual `FixedValue` syntax and red-proves the assertion
+/// against a local in-memory mutation.  The caught panic text is intentional evidence that a
+/// missing cross-product row cannot turn the clippy gate green by simply ceasing to mint.
+#[test]
+fn fixed_special_clippy_fixture_is_fixed_value_lockstep() {
+    let fixture_inventory =
+        FIXED_SPECIAL_FIXTURE_ROWS
+            .iter()
+            .map(|row| {
+                fixed_special_inventory_name(&row.value)
+            .expect("fixed-special fixture row must name a unit-like major-7 FixedValue variant")
+            .to_owned()
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        fixed_value_unit_like_major_7_inventory(),
+        fixture_inventory,
+        "the clippy fixed-special fixture is not exhaustive for FixedValue's unit-like major-7 variants"
+    );
+
+    let spec = fixed_special_fixture_spec();
+    assert_fixed_special_fixture_inventory(&spec);
+    let red_spec = spec.replacen(
+        "map_bool_false_arm = { fixed: false // label: tstr }\n",
+        "",
+        1,
+    );
+    let red = std::panic::catch_unwind(|| assert_fixed_special_fixture_inventory(&red_spec))
+        .expect_err("removing one fixed-special arm must make the inventory assertion red");
+    let message = red
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| red.downcast_ref::<&str>().copied())
+        .unwrap_or("non-string panic payload");
+    assert!(
+        message
+            .contains("fixed-special fixture lost required cross-product row `map_bool_false_arm"),
+        "the isolated red proof must name the missing row, got: {message}"
+    );
+}
+
 /// Clippy over generated crates: the emitted deserialize/serialize source must be `clippy::all`-clean
 /// (no `clippy::no_effect` degenerate `();` statements, no other default clippy lints), per emission
 /// profile. Snapshots pin that the emitted bytes don't *change*, not that they're *idiomatic* — a
@@ -6444,40 +6662,15 @@ fn generated_code_clippy_clean() {
     // emission positions: the member path (records.rs `generate_array_struct_deserialization`) plus
     // the map-rep / array-rep / type-choice arm paths and the BRUTE-FORCE type-choice dispatch
     // (enums.rs), which emit their unbound value under either annotate setting.
-    const FIXED_SPECIAL_SPEC: &str = "\
-; Fixed bool/null/undefined in MEMBER position: mandatory (zero-information, binds nothing) and
-; optional (a presence field). Under --preserve-encodings the fixed-value deserialize used to end
-; in a bare `();` statement here — `clippy::no_effect`, inside this gate's own deny set.
-arr_member = [v: true, x: uint]
-map_member = {k: false, x: uint}
-null_member = [n: null, y: uint]
-opt_member = [x: uint, ? v: true]
-undefined_member = [u: undefined, z: uint]
-opt_undefined_member = [x: uint, ? u: undefined]
-; The three ARM positions, whose unbound value is emitted under either --annotate-fields setting.
-map_bool_arm = { flag: true // label: tstr }
-map_null_arm = { absent: null // label: tstr }
-map_undefined_arm = { absent: undefined // label: tstr }
-arr_bool_arm = [ flag: true // label: tstr ]
-arr_null_arm = [ absent: null // label: tstr ]
-arr_undefined_arm = [ absent: undefined // label: tstr ]
-type_choice_bool = true / tstr
-; Three fixed specials in ONE choice: bool, null and undefined share CBOR major type 7, so no
-; type-match dispatch can separate the arms and the enum takes the BRUTE-FORCE try-each-arm
-; emission instead — a fifth site, which the single-Special spellings above never reach.
-type_choice_special_brute = true / null / undefined / tstr
-";
-    let cases: &[(&str, &[&str], Option<&str>)] = &[
-        ("default", &[][..], None),
+    let cases: &[(&str, &[&str])] = &[
+        ("default", &[][..]),
         (
             "preserve_canonical",
             &["--preserve-encodings=true", "--canonical-form=true"][..],
-            None,
         ),
         (
             "preserve_fixed_special",
             &["--preserve-encodings=true", "--annotate-fields=false"][..],
-            Some(FIXED_SPECIAL_SPEC),
         ),
         // The json profile is here for the THIRD generated crate: `--json-schema-export` mints
         // `wasm/json-gen`, whose emitted `add_schemas`/`export_schemas` bodies and registration rows
@@ -6486,7 +6679,6 @@ type_choice_special_brute = true / null / undefined / tstr
         (
             "json_schema_export",
             &["--json-serde-derives=true", "--json-schema-export=true"][..],
-            None,
         ),
     ];
     // shared scratch + target under temp_dir (per-checkout), like `flag_value_smoke` and the other
@@ -6494,16 +6686,18 @@ type_choice_special_brute = true / null / undefined / tstr
     let scratch =
         std::env::temp_dir().join(format!("cddl_codegen_clippy_gate_{:016x}", checkout_hash()));
     let target_dir = scratch.join("target");
+    let fixed_special_spec = fixed_special_fixture_spec();
+    assert_fixed_special_fixture_inventory(&fixed_special_spec);
     let mut failures = Vec::new();
-    for (label, options, inline_spec) in cases {
-        let input = match inline_spec {
-            None => rich_input.clone(),
-            Some(src) => {
+    for (label, options) in cases {
+        let input = match *label {
+            "preserve_fixed_special" => {
                 let path = scratch.join(format!("{label}.cddl"));
                 std::fs::create_dir_all(&scratch).unwrap();
-                std::fs::write(&path, src).unwrap();
+                std::fs::write(&path, &fixed_special_spec).unwrap();
                 path
             }
+            _ => rich_input.clone(),
         };
         let out = scratch.join(label);
         let _ = std::fs::remove_dir_all(&out);
@@ -6520,6 +6714,66 @@ type_choice_special_brute = true / null / undefined / tstr
                 String::from_utf8_lossy(&gen_out.stderr)
             ));
             continue;
+        }
+        if *label == "default" {
+            // The rich choice is deliberately large enough to trip `large_enum_variant` without
+            // the generated-root allow.  Do not let a parser/generator refusal turn the gate
+            // green: require both owner types and retain the generated root's permanent lint
+            // policy (whose adjacent `result_large_err` allowance remains input-independent).
+            let generated = std::fs::read_to_string(out.join("rust/src/generated/mod.rs"))
+                .unwrap_or_else(|e| panic!("{label}: cannot read generated rust module: {e}"));
+            for required in ["pub struct ClippyLargeRecord", "pub enum ClippyLargeChoice"] {
+                if !generated.contains(required) {
+                    failures.push(format!(
+                        "{label}: lint-provocation shape failed to mint `{required}`"
+                    ));
+                }
+            }
+            for permanent_allow in ["clippy::large_enum_variant", "clippy::result_large_err"] {
+                if !generated.contains(permanent_allow) {
+                    failures.push(format!(
+                        "{label}: minted large choice but generated root lost permanent `{permanent_allow}` allowance"
+                    ));
+                }
+            }
+        }
+        if *label == "preserve_fixed_special" {
+            // Authored rows are not coverage until their generated owners exist: a parser or
+            // registration regression that silently drops one rule must not leave this lint leg
+            // green merely because the source inventory is complete.
+            let generated = std::fs::read_to_string(out.join("rust/src/generated/mod.rs"))
+                .unwrap_or_else(|e| panic!("{label}: cannot read generated rust module: {e}"));
+            let mut expected_owners = Vec::new();
+            for row in FIXED_SPECIAL_FIXTURE_ROWS {
+                let suffix = crate::utils::convert_to_camel_case(row.suffix);
+                for prefix in [
+                    "FixedArrMember",
+                    "FixedMapMember",
+                    "FixedArrOptionalMember",
+                    "FixedMapOptionalMember",
+                ] {
+                    expected_owners.push(format!("{prefix}{suffix}"));
+                }
+                for prefix in ["Map", "Arr", "TypeChoice"] {
+                    expected_owners.push(format!("{prefix}{suffix}Arm"));
+                }
+            }
+            expected_owners.extend([
+                "FixedArrMemberNilIdentity".to_owned(),
+                "FixedArrOptionalMemberNilIdentity".to_owned(),
+                "TypeChoiceNilIdentity".to_owned(),
+                "TypeChoiceSpecialBrute".to_owned(),
+            ]);
+            for owner in expected_owners {
+                let minted = ["pub struct ", "pub enum ", "pub type "]
+                    .iter()
+                    .any(|kind| generated.contains(&format!("{kind}{owner}")));
+                if !minted {
+                    failures.push(format!(
+                        "{label}: fixed-special lint-provocation rule failed to mint `{owner}`"
+                    ));
+                }
+            }
         }
         // Every generated crate this case mints, in dependency order. `--json-schema-export` adds
         // the third one; `wasm/json-gen` is an INDEPENDENT nested crate (not a dependency of
@@ -11996,6 +12250,14 @@ fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir:
 "#,
     );
     main_rs.push_str(
+        r#"    match cddl::validate_cbor_from_slice("__cddl_oracle_root = holder\nentry = [n: uint]\nself_map = { * entry => entry }\nholder = [m: self_map]", &[0x81, 0xa0], None) {
+        Err(error) if error.to_string().contains("expected array type, got Map([])") => {}
+        Ok(()) => failures.push("  - named-composite-array-map-gap: unexpectedly accepted rooted `holder` spec with CBOR 81a0; investigate/remove the new per-rule skip after upstream repair".to_owned()),
+        Err(error) => failures.push(format!("  - named-composite-array-map-gap: expected rust-cddl ac1b98e rejection signature `expected array type, got Map([])` for rooted `holder` spec CBOR 81a0, got `{error}`; investigate/remove the new per-rule skip after upstream repair")),
+    }
+"#,
+    );
+    main_rs.push_str(
         r#"    match std::panic::catch_unwind(|| cddl::validate_cbor_from_slice("x = h'CAFE'", &[0x42, 0xca, 0xfe], None)) {
         Err(payload) => {
             let message = payload
@@ -12971,6 +13233,11 @@ fn ir_conformance_corpus() {
     // dumps, ruby and structural oracles live.
     const FIXED_BYTE_VALIDATOR_PANIC: &str = "pinned rust-cddl local-fixes ac1b98e panics at src/validator/cbor.rs:4840:29 (`called `Option::unwrap()` on a `None` value`) on valid fixed-byte CBOR; the exact h'CAFE' fingerprint probe makes this stale when the validator returns or changes signature — remove this skip after the upstream validator repair";
     const RUST_ORACLE_RULE_SKIP: &[(&str, &str, &str)] = &[
+        (
+            "preserve_pair_map_self_encoding",
+            "holder",
+            "cddl ac1b98e misclassifies the valid empty `{ * entry => entry }` map in rooted `holder` CBOR 81a0 as `expected array type, got Map([])` when BOTH key and value resolve to the named composite array `entry`; the separate preflight probe makes this stale when upstream repairs or changes the signature, while standalone `entry`, ruby, dumps, and structural checks remain live",
+        ),
         (
             "fixed_singletons",
             "undefined_value",
@@ -14746,25 +15013,95 @@ fn json_arbitrary_precision() {
     );
 }
 
-/// The `typescript` pin the TypeScript-side legs inject on top of the SHIPPED
+/// The TypeScript range the TypeScript-side legs inject on top of the SHIPPED
 /// `static/package_json_schemas.json`. A consumer's package needs the emitted TYPES, not a
-/// type-checker, so the pin that ships stays the `json-schema-to-typescript` one and the compiler is
-/// a test-only addition. `>= 5.2` is load-bearing wherever wasm-bindgen output is checked
-/// (`Symbol.dispose` members parse only from that version on).
+/// type-checker, so the shipped json2ts range stays untouched and the compiler is a test-only
+/// addition; `TS_TOOLCHAIN_LOCKFILE` supplies this suite's exact resolution. `>= 5.2` is
+/// load-bearing wherever wasm-bindgen output is checked (`Symbol.dispose` members parse only from
+/// that version on).
 const TS_COMPILER_PIN: &str = "^5.9.0";
 
-/// The one `npm install` every TypeScript-side leg shares, plus the `node_modules` it produced.
+/// The shared test-only toolchain resolves exactly what this committed lock says. It is separate
+/// from the shipped generated `package.json`: consumers retain its documented caret ranges, while
+/// this suite gets one reproducible json2ts/tsc universe for every fixture it projects.
+const TS_TOOLCHAIN_LOCKFILE: &str = "tests/ts-toolchain/package-lock.json";
+
+/// The test-side semver declarations remain ranges, while the committed lock picks the exact
+/// resolution. Keep both layers aligned: `npm ci` checks it operationally, and this cheap parser
+/// gives a precise red before any node process starts.
+#[test]
+fn shared_ts_toolchain_lock_matches_the_effective_manifest() {
+    let static_dir = std::path::Path::new("static");
+    let mut manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(static_dir.join("package_json_schemas.json")).unwrap(),
+    )
+    .unwrap();
+    manifest
+        .get_mut("devDependencies")
+        .and_then(serde_json::Value::as_object_mut)
+        .expect("static/package_json_schemas.json must have a devDependencies object")
+        .insert(
+            "typescript".to_string(),
+            serde_json::Value::String(TS_COMPILER_PIN.to_string()),
+        );
+    let expected = manifest["devDependencies"]
+        .as_object()
+        .expect("effective manifest must have devDependencies");
+    let lock: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(TS_TOOLCHAIN_LOCKFILE).unwrap()).unwrap();
+    let actual = lock["packages"][""]["devDependencies"]
+        .as_object()
+        .expect("shared TypeScript lock root must have devDependencies");
+    assert_eq!(
+        actual, expected,
+        "the committed test-toolchain lock must track the shipped manifest plus its test-only TypeScript range"
+    );
+    assert_eq!(
+        lock["packages"]["node_modules/json-schema-to-typescript"]["version"], "15.0.4",
+        "the lock, not the caret range, is this suite's exact json2ts resolution"
+    );
+    assert_eq!(
+        lock["packages"]["node_modules/typescript"]["version"], "5.9.3",
+        "the lock, not the caret range, is this suite's exact tsc resolution"
+    );
+}
+
+/// The warm-up's ordering is a cache-correctness contract, not an implementation detail: a fresh
+/// scratch manifest can only resolve offline after the transient dep-universe lock has refreshed.
+/// `--selftest` executes only its pure command-plan assertion, so this local-tier test cannot make
+/// CI contact cargo or the registry.
+#[test]
+fn check_ts_warmup_refresh_plan_selftest() {
+    let out = std::process::Command::new("bun")
+        .args(["run", "check.ts", "--selftest"])
+        .output()
+        .expect("bun must run check.ts's pure warm-up self-test");
+    assert!(
+        out.status.success(),
+        "check.ts warm-up command-plan self-test failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("warm-up refresh/fetch command order"),
+        "the focused check.ts self-test must receipt the command-order assertion"
+    );
+}
+
+/// The one locked `npm ci` every TypeScript-side leg shares, plus the `node_modules` it produced.
 ///
 /// The legs used to install per call, which was affordable while exactly one fixture projected; the
 /// projection now runs for EVERY `--json-schema-export` fixture (and `package_json_pipeline` borrows
 /// the compiler from here too), so a per-call install would dominate the suite. What makes one
 /// install safe to share is that the manifest is a pure function of committed bytes: the install
-/// root is keyed by a hash of the EFFECTIVE manifest (the shipped file plus `TS_COMPILER_PIN`), so a
-/// pin bump lands in a different root and reinstalls instead of silently reusing the old tree.
+/// root is keyed by a hash of the EFFECTIVE manifest (the shipped file plus `TS_COMPILER_PIN`) AND
+/// its committed exact-resolution lock, so either change lands in a different root and reinstalls
+/// instead of silently reusing the old tree. This deliberately locks the TEST universe only; the
+/// shipped package's semver ranges remain its consumer-facing behavior.
 ///
 /// Concurrency: `cargo test` runs fixtures as parallel threads of one process, and separate
 /// checkouts run concurrently too, so the install is serialized on `acquire_scratch_lock`. The
-/// `.installed` stamp is written only after `npm install` exits 0, which is what makes the
+/// `.installed` stamp is written only after `npm ci` exits 0, which is what makes the
 /// outside-the-lock fast path sound — a partially installed root never carries the stamp, and a root
 /// that carries it is never written again (its content is fixed by its key).
 ///
@@ -14789,6 +15126,10 @@ fn shared_ts_toolchain() -> std::path::PathBuf {
         let effective = serde_json::to_string_pretty(&manifest).unwrap();
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         effective.hash(&mut hasher);
+        let lock = std::fs::read_to_string(TS_TOOLCHAIN_LOCKFILE).unwrap_or_else(|e| {
+            panic!("cannot read committed shared TypeScript toolchain lock {TS_TOOLCHAIN_LOCKFILE}: {e}")
+        });
+        lock.hash(&mut hasher);
         let key = format!("{:016x}", hasher.finish());
 
         // Inside the checkout (gitignored `/.ts-toolchain/`) rather than under `temp_dir()`: the tree
@@ -14808,14 +15149,15 @@ fn shared_ts_toolchain() -> std::path::PathBuf {
         }
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("package.json"), &effective).unwrap();
+        std::fs::write(root.join("package-lock.json"), &lock).unwrap();
         let npm = std::process::Command::new("npm")
-            .args(["install", "--silent", "--no-audit", "--no-fund"])
+            .args(["ci", "--silent", "--no-audit", "--no-fund"])
             .current_dir(&root)
             .output()
             .unwrap();
         if !npm.status.success() {
             eprintln!(
-                "npm install stderr:\n{}",
+                "npm ci stderr:\n{}",
                 String::from_utf8_lossy(&npm.stderr)
             );
         }
@@ -14977,8 +15319,8 @@ fn assert_schema_projects_to_legal_ts(fixture_dir: &str, export_path: &str) -> O
 }
 
 /// Smoke-tests the schema → `.d.ts` step: runs the shipped `static/run-json2ts.js` over the committed
-/// schema document using the pinned `json-schema-to-typescript` from `static/package_json_schemas.json`
-/// (the shared install of `shared_ts_toolchain`: that exact file, plus an injected `typescript`),
+/// schema document using the `json-schema-to-typescript` range from `static/package_json_schemas.json`
+/// under `shared_ts_toolchain`'s exact committed lock (that file plus an injected `typescript`),
 /// then asserts the emitted types. This is the only coverage of that script + dependency — a bump there is otherwise
 /// invisible to CI, since the rest of the suite only `cargo build`s the json-gen crate and never runs
 /// the JS. See `tests/json2ts/README.md` and `tests/README.md` § "JSON-schema → TypeScript JS-side
@@ -15024,7 +15366,8 @@ fn js_schema_to_ts() {
     }
 
     // Lay out the shipped `--package-json` shape the script resolves its own paths from: the script
-    // at `<root>/scripts/`, a package.json (the shipped one, so npm installs the pinned json2ts),
+    // at `<root>/scripts/`, a package.json (the shipped one; shared_ts_toolchain supplies the
+    // lock-resolved json2ts),
     // and the schema document at `<root>/rust/wasm/json-gen/schemas/<lib>.schema.json`.
     let _ = std::fs::remove_dir_all(&work);
     let schemas_out = work.join("rust/wasm/json-gen/schemas");
@@ -15038,9 +15381,9 @@ fn js_schema_to_ts() {
     // The dependencies come from the shared install, which is the SHIPPED manifest verbatim except
     // for one injected devDependency: the `tsc` this test type-checks the emitted `.d.ts` with. It is
     // injected rather than shipped because a consumer's generated package needs the emitted TYPES,
-    // not a type-checker, and the README's claim that this test runs the *pinned* json2ts only holds
-    // while that pin keeps coming from the shipped file — which is what `shared_ts_toolchain` keys
-    // its install on.
+    // not a type-checker, and the README's exact-resolution claim holds because the shared lock
+    // tracks that shipped range plus the test-only compiler — which is what `shared_ts_toolchain`
+    // keys its install on.
     link_shared_node_modules(&work);
     for entry in std::fs::read_dir(&fixtures).unwrap() {
         let path = entry.unwrap().path();
@@ -16495,8 +16838,8 @@ fn package_json_pipeline() {
         "no export/scripts/json-ts-types.js"
     );
 
-    // `npm install` the pinned devDeps (rimraf/cross-env/json-schema-to-typescript), mirroring
-    // js_schema_to_ts.
+    // `npm install` the shipped devDependency ranges (rimraf/cross-env/json-schema-to-typescript),
+    // exercising consumer-facing package semantics rather than shared_ts_toolchain's test-only lock.
     let npm_install = std::process::Command::new("npm")
         .args(["install", "--silent", "--no-audit", "--no-fund"])
         .current_dir(&export)

@@ -655,6 +655,633 @@ impl Deserialize for ClippyEnumRecord {
     }
 }
 
+impl Serialize for ClippyLargeChoice {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+        force_canonical: bool,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            ClippyLargeChoice::ClippyLargeRecord(clippy_large_record) => {
+                clippy_large_record.serialize(serializer, force_canonical)
+            }
+            ClippyLargeChoice::U64 {
+                uint,
+                uint_encoding,
+            } => serializer
+                .write_unsigned_integer_sz(*uint, fit_sz(*uint, *uint_encoding, force_canonical)),
+        }
+    }
+}
+
+impl Deserialize for ClippyLargeChoice {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Array => Ok(ClippyLargeChoice::ClippyLargeRecord(
+                    ClippyLargeRecord::deserialize(raw)?,
+                )),
+                cbor_event::Type::UnsignedInteger => {
+                    let (uint, uint_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    Ok(Self::U64 {
+                        uint,
+                        uint_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("ClippyLargeChoice"))
+    }
+}
+
+impl Serialize for ClippyLargeRecord {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+        force_canonical: bool,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(30, force_canonical),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f00,
+            fit_sz(
+                self.f00,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f00_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f01,
+            fit_sz(
+                self.f01,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f01_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f02,
+            fit_sz(
+                self.f02,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f02_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f03,
+            fit_sz(
+                self.f03,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f03_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f04,
+            fit_sz(
+                self.f04,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f04_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f05,
+            fit_sz(
+                self.f05,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f05_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f06,
+            fit_sz(
+                self.f06,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f06_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f07,
+            fit_sz(
+                self.f07,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f07_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f08,
+            fit_sz(
+                self.f08,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f08_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f09,
+            fit_sz(
+                self.f09,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f09_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f10,
+            fit_sz(
+                self.f10,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f10_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f11,
+            fit_sz(
+                self.f11,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f11_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f12,
+            fit_sz(
+                self.f12,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f12_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f13,
+            fit_sz(
+                self.f13,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f13_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f14,
+            fit_sz(
+                self.f14,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f14_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f15,
+            fit_sz(
+                self.f15,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f15_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f16,
+            fit_sz(
+                self.f16,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f16_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f17,
+            fit_sz(
+                self.f17,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f17_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f18,
+            fit_sz(
+                self.f18,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f18_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f19,
+            fit_sz(
+                self.f19,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f19_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f20,
+            fit_sz(
+                self.f20,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f20_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f21,
+            fit_sz(
+                self.f21,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f21_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f22,
+            fit_sz(
+                self.f22,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f22_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f23,
+            fit_sz(
+                self.f23,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f23_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f24,
+            fit_sz(
+                self.f24,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f24_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f25,
+            fit_sz(
+                self.f25,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f25_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f26,
+            fit_sz(
+                self.f26,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f26_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f27,
+            fit_sz(
+                self.f27,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f27_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f28,
+            fit_sz(
+                self.f28,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f28_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.f29,
+            fit_sz(
+                self.f29,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.f29_encoding)
+                    .unwrap_or_default(),
+                force_canonical,
+            ),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer, force_canonical)
+    }
+}
+
+impl Deserialize for ClippyLargeRecord {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(30)?;
+            read_len.finish()?;
+            let (f00, f00_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f00"))?;
+            let (f01, f01_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f01"))?;
+            let (f02, f02_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f02"))?;
+            let (f03, f03_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f03"))?;
+            let (f04, f04_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f04"))?;
+            let (f05, f05_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f05"))?;
+            let (f06, f06_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f06"))?;
+            let (f07, f07_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f07"))?;
+            let (f08, f08_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f08"))?;
+            let (f09, f09_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f09"))?;
+            let (f10, f10_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f10"))?;
+            let (f11, f11_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f11"))?;
+            let (f12, f12_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f12"))?;
+            let (f13, f13_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f13"))?;
+            let (f14, f14_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f14"))?;
+            let (f15, f15_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f15"))?;
+            let (f16, f16_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f16"))?;
+            let (f17, f17_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f17"))?;
+            let (f18, f18_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f18"))?;
+            let (f19, f19_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f19"))?;
+            let (f20, f20_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f20"))?;
+            let (f21, f21_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f21"))?;
+            let (f22, f22_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f22"))?;
+            let (f23, f23_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f23"))?;
+            let (f24, f24_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f24"))?;
+            let (f25, f25_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f25"))?;
+            let (f26, f26_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f26"))?;
+            let (f27, f27_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f27"))?;
+            let (f28, f28_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f28"))?;
+            let (f29, f29_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("f29"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ClippyLargeRecord {
+                f00,
+                f01,
+                f02,
+                f03,
+                f04,
+                f05,
+                f06,
+                f07,
+                f08,
+                f09,
+                f10,
+                f11,
+                f12,
+                f13,
+                f14,
+                f15,
+                f16,
+                f17,
+                f18,
+                f19,
+                f20,
+                f21,
+                f22,
+                f23,
+                f24,
+                f25,
+                f26,
+                f27,
+                f28,
+                f29,
+                encodings: Some(ClippyLargeRecordEncoding {
+                    len_encoding,
+                    f00_encoding,
+                    f01_encoding,
+                    f02_encoding,
+                    f03_encoding,
+                    f04_encoding,
+                    f05_encoding,
+                    f06_encoding,
+                    f07_encoding,
+                    f08_encoding,
+                    f09_encoding,
+                    f10_encoding,
+                    f11_encoding,
+                    f12_encoding,
+                    f13_encoding,
+                    f14_encoding,
+                    f15_encoding,
+                    f16_encoding,
+                    f17_encoding,
+                    f18_encoding,
+                    f19_encoding,
+                    f20_encoding,
+                    f21_encoding,
+                    f22_encoding,
+                    f23_encoding,
+                    f24_encoding,
+                    f25_encoding,
+                    f26_encoding,
+                    f27_encoding,
+                    f28_encoding,
+                    f29_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("ClippyLargeRecord"))
+    }
+}
+
 impl Serialize for ClippyNegBounded {
     fn serialize<'se>(
         &self,

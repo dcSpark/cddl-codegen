@@ -57,8 +57,8 @@
  * (`fuzz/README.md`). Deliberately not gate-cached: a randomized exploration is not a pure function
  * of the tree's bytes.
  *
- * NETWORK: local/full runs start with a retried `cargo fetch` warm-up (workspace + fuzz +
- * tests/warmup dep-universe manifest), then force CARGO_NET_OFFLINE=true for every gate — nested-
+ * NETWORK: local/full runs start with a retried dep-universe-lock refresh plus `cargo fetch` warm-up
+ * (workspace + fuzz + tests/warmup dep-universe manifest), then force CARGO_NET_OFFLINE=true for every gate — nested-
  * cargo cells resolve from the cargo cache instead of hitting crates.io per cell, which removes
  * the registry-transient flake class outright (tests/README.md § "Offline-after-warmup").
  * CHECK_ONLINE=1 skips the offline forcing; a pre-set CARGO_NET_OFFLINE=true skips the fetch.
@@ -712,11 +712,40 @@ function digestHint(): (id: string) => number | undefined {
 // crate against crates.io, so a flaky network/proxy kills otherwise-green runs at a random cell —
 // and cargo's built-in transient retry never engages on the proxy-CONNECT-abort flavor (zero
 // `spurious network error` lines across full-tier logs that died this way). The fix is removing
-// the per-cell network dependency, not retrying it: one retried `cargo fetch` (workspace + fuzz +
+// the per-cell network dependency, not retrying it: one retried refresh + fetch (workspace + fuzz +
 // the tests/warmup dep-universe manifest, drift-gated by `warmup_manifest_covers_registry_dep_universe`),
 // then CARGO_NET_OFFLINE=true — the env propagates through `cargo test` → nested Command spawns and
-// the cddl-matrix scripts, so no cell touches the network. The retry here is honest: a pure fetch
+// the cddl-matrix scripts, so no cell touches the network. The retry here is honest: a cache warm-up
 // with no assertions behind it.
+//
+// The transient fuzz lock deliberately is NOT refreshed. Fuzz's only consumer is the later fuzz
+// gate itself, which uses that same lock; unlike the dep universe it has no fresh-resolving scratch
+// consumer that can outrun it. Refreshing it would add unrelated registry churn without closing the
+// stale-lock class this warm-up owns.
+export function warmupCommands(): string[][] {
+  return [
+    // This lock is gitignored per-checkout state. Refresh it before fetching so a fresh scratch
+    // resolve later in the tier cannot ask offline for a newly published compatible version.
+    ["cargo", "update", "--manifest-path", "tests/warmup/Cargo.toml"],
+    ["cargo", "fetch", "--locked"], // workspace lock is committed: it must never drift here
+    ["cargo", "fetch", "--manifest-path", "fuzz/Cargo.toml"],
+    ["cargo", "fetch", "--manifest-path", "tests/warmup/Cargo.toml"],
+  ];
+}
+
+/** Pure command-plan floor; its local-tier Rust caller proves this path without touching cargo. */
+export function warmupCommandsSelftest(): void {
+  const expected = [
+    ["cargo", "update", "--manifest-path", "tests/warmup/Cargo.toml"],
+    ["cargo", "fetch", "--locked"],
+    ["cargo", "fetch", "--manifest-path", "fuzz/Cargo.toml"],
+    ["cargo", "fetch", "--manifest-path", "tests/warmup/Cargo.toml"],
+  ];
+  const actual = warmupCommands();
+  if (JSON.stringify(actual) !== JSON.stringify(expected))
+    throw new Error(`warm-up command plan drifted:\nexpected ${JSON.stringify(expected)}\nactual   ${JSON.stringify(actual)}`);
+}
+
 function warmupThenOffline(tier: Tier) {
   if (rank(tier) < rank("local")) return; // fast tier is CI: stays online, zero added cost
   if (process.env.CHECK_ONLINE === "1") {
@@ -727,25 +756,21 @@ function warmupThenOffline(tier: Tier) {
     console.log("warm-up: CARGO_NET_OFFLINE already set — skipping fetch, cargo cache assumed warm");
     return;
   }
-  const fetches: string[][] = [
-    ["cargo", "fetch", "--locked"], // matches the build/clippy gates' --locked
-    ["cargo", "fetch", "--manifest-path", "fuzz/Cargo.toml"],
-    ["cargo", "fetch", "--manifest-path", "tests/warmup/Cargo.toml"],
-  ];
+  const commands = warmupCommands();
   const ATTEMPTS = 3;
   for (let attempt = 1; ; attempt++) {
-    console.log(`warm-up: cargo fetch (workspace + fuzz + dep universe), attempt ${attempt}/${ATTEMPTS}`);
-    if (fetches.every(cmd => sh(cmd) === 0)) break;
+    console.log(`warm-up: refresh dep universe + cargo fetch (workspace + fuzz + dep universe), attempt ${attempt}/${ATTEMPTS}`);
+    if (commands.every(cmd => sh(cmd) === 0)) break;
     if (attempt === ATTEMPTS) {
       console.error(
-        "check.ts: warm-up fetch failed after 3 attempts — one online fetch is required to populate " +
+        "check.ts: warm-up refresh/fetch failed after 3 attempts — one online cache warm-up is required to populate " +
         "the cargo cache before gates run offline (CHECK_ONLINE=1 forces the old online behavior)",
       );
       process.exit(2);
     }
   }
   process.env.CARGO_NET_OFFLINE = "true";
-  console.log("warm-up: fetched — CARGO_NET_OFFLINE=true for all gates");
+  console.log("warm-up: dep universe refreshed and fetched — CARGO_NET_OFFLINE=true for all gates");
 }
 
 // ---- run-start scratch sweep: leaked nested-cargo scratch retires itself -------------------------
@@ -2765,6 +2790,11 @@ async function runSelfLogged(): Promise<never> {
 }
 
 if (import.meta.main) {
+  if (process.argv.includes("--selftest")) {
+    warmupCommandsSelftest();
+    console.log("check.ts self-test OK (warm-up refresh/fetch command order)");
+    process.exit(0);
+  }
   // --help prints and exits; no evidence to preserve, so no log file for it.
   if (process.env.CHECK_SELF_LOG || process.argv.includes("--help")) await main();
   else await runSelfLogged();

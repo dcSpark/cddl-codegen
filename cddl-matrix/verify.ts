@@ -1762,6 +1762,10 @@ const COMPONENT_HOST_SRC = resolve(ROOT, "component-probe-host");
 // every cell, instead of serving stale PASSes.
 let componentHostHash = "";
 let componentHostBin = "";
+// The host's source hash covers its tests; this marker additionally keys the verifier-side
+// preparation contract, so a changed test-before-build sequence cannot reuse a cell cached under
+// an older preparation policy.
+const COMPONENT_HOST_PREPARATION_MARKER = "cargo-test-before-build-v1";
 // Built LAZILY, on the first cache miss: a run whose cells all hit pays no wasmtime build at all.
 // A failure here is a broken probe ENVIRONMENT, not a verdict about any row — same posture as the
 // wasm warm-up's.
@@ -1771,11 +1775,20 @@ function ensureComponentHost(): string {
   rmSync(dir, { recursive: true, force: true });
   copyTreeInto(COMPONENT_HOST_SRC, dir);
   const manifest = join(dir, "Cargo.toml");
-  const exit = runExit(["cargo", "build", "--manifest-path", manifest], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPONENT_TARGET }, COMPILE_WARM_TIMEOUT);
-  const bin = join(COMPONENT_TARGET, "debug", "component-probe-host");
-  if (exit !== 0 || !existsSync(bin)) {
+  const testExit = runExit(["cargo", "test", "--manifest-path", manifest], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPONENT_TARGET }, COMPILE_WARM_TIMEOUT);
+  if (testExit !== 0) {
     console.error(
-      `HARNESS FAILURE: the component probe host (${COMPONENT_HOST_SRC}) failed to build (cargo exit ${exit}) — ` +
+      `HARNESS FAILURE: the component probe host (${COMPONENT_HOST_SRC}) failed its own tests (cargo test exit ${testExit}) — ` +
+      "the component execution leg cannot trust its protocol observations; no verdicts were written. " +
+      "Opt the leg out with --no-component / VERIFY_COMPONENT=0 if this environment cannot build wasmtime.",
+    );
+    process.exit(2);
+  }
+  const buildExit = runExit(["cargo", "build", "--manifest-path", manifest], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPONENT_TARGET }, COMPILE_WARM_TIMEOUT);
+  const bin = join(COMPONENT_TARGET, "debug", "component-probe-host");
+  if (buildExit !== 0 || !existsSync(bin)) {
+    console.error(
+      `HARNESS FAILURE: the component probe host (${COMPONENT_HOST_SRC}) failed to build after its tests passed (cargo build exit ${buildExit}) — ` +
       "the component execution leg cannot observe anything without it; no verdicts were written. " +
       "Opt the leg out with --no-component / VERIFY_COMPONENT=0 if this environment cannot build wasmtime.",
     );
@@ -1802,6 +1815,7 @@ function componentBuildAndDrive(cell: string, out: string, resource: string, vec
   const argv = [
     "verdict=component-probe-v1",
     `host=${componentHostHash}`,
+    `host-preparation=${COMPONENT_HOST_PREPARATION_MARKER}`,
     "cwd=component", "cargo", "build", "--target", "wasm32-wasip2",
     "cwd=rust", "cargo", "run", "--bin", "component_probe_oracle",
     "drive=component-probe-host",
