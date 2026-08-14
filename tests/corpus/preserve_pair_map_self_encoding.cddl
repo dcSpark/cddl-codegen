@@ -1,0 +1,9 @@
+; A positional `@duplicates preserve` pair-map whose key AND value are nominal records. Under
+; `--preserve-encodings`, each `Entry` owns its array-head sidecar internally, so the pair-map's
+; serialize loop has no `*_key_encodings.get(i)` or `*_value_encodings.get(i)` to read. This is
+; the `_i` loop-binding leg: naming it `i` is an unused-variable warning, while naming it `_i`
+; when either lookup exists would make the generated crate fail with E0425. The corpus snapshot
+; and compile floor pin the both-self-encoding branch on both Rust and wasm faces.
+entry = [n: uint]
+self_map = { * entry => entry } ; @duplicates preserve
+holder = [m: self_map]

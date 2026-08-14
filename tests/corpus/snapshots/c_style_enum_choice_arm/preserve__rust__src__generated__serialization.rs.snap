@@ -1,0 +1,270 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for ChoiceHolder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            ChoiceHolder::FixedEnum {
+                fixed_enum,
+                fixed_enum_encoding,
+            } => {
+                match fixed_enum {
+                    FixedEnum::I0 => serializer
+                        .write_unsigned_integer_sz(0u64, fit_sz(0u64, *fixed_enum_encoding)),
+                    FixedEnum::I1 => serializer
+                        .write_unsigned_integer_sz(1u64, fit_sz(1u64, *fixed_enum_encoding)),
+                    FixedEnum::I2 => serializer
+                        .write_unsigned_integer_sz(2u64, fit_sz(2u64, *fixed_enum_encoding)),
+                }
+            }
+            ChoiceHolder::Bytes {
+                bytes,
+                bytes_encoding,
+            } => serializer.write_bytes_sz(bytes, bytes_encoding.to_str_len_sz(bytes.len() as u64)),
+        }
+    }
+}
+
+impl Deserialize for ChoiceHolder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let (fixed_enum, fixed_enum_encoding) = (|| -> Result<_, DeserializeError> {
+                        let initial_position = raw.position();
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i0_value, i0_encoding) = raw.unsigned_integer_sz()?;
+                                if i0_value != 0 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i0_value),
+                                        expected: Key::Uint(0),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i0_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(fixed_enum_encoding) => {
+                                return Ok((FixedEnum::I0, fixed_enum_encoding));
+                            }
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i1_value, i1_encoding) = raw.unsigned_integer_sz()?;
+                                if i1_value != 1 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i1_value),
+                                        expected: Key::Uint(1),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i1_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(fixed_enum_encoding) => {
+                                return Ok((FixedEnum::I1, fixed_enum_encoding));
+                            }
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i2_value, i2_encoding) = raw.unsigned_integer_sz()?;
+                                if i2_value != 2 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i2_value),
+                                        expected: Key::Uint(2),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i2_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(fixed_enum_encoding) => {
+                                return Ok((FixedEnum::I2, fixed_enum_encoding));
+                            }
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        Err(DeserializeError::new(
+                            "FixedEnum",
+                            DeserializeFailure::NoVariantMatched,
+                        ))
+                    })()?;
+                    Ok(Self::FixedEnum {
+                        fixed_enum,
+                        fixed_enum_encoding,
+                    })
+                }
+                cbor_event::Type::Bytes => {
+                    let (bytes, bytes_encoding) = raw
+                        .bytes_sz()
+                        .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+                    Ok(Self::Bytes {
+                        bytes,
+                        bytes_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("ChoiceHolder"))
+    }
+}
+
+impl cbor_event::se::Serialize for GcHolder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            GcHolder::A {
+                a,
+                a_encoding,
+                len_encoding,
+            } => {
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                match a {
+                    FixedEnum::I0 => {
+                        serializer.write_unsigned_integer_sz(0u64, fit_sz(0u64, *a_encoding))
+                    }
+                    FixedEnum::I1 => {
+                        serializer.write_unsigned_integer_sz(1u64, fit_sz(1u64, *a_encoding))
+                    }
+                    FixedEnum::I2 => {
+                        serializer.write_unsigned_integer_sz(2u64, fit_sz(2u64, *a_encoding))
+                    }
+                }?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            GcHolder::B {
+                b,
+                b_encoding,
+                len_encoding,
+            } => {
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_text_sz(b, b_encoding.to_str_len_sz(b.len() as u64))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for GcHolder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => {
+                    let mut read_len = CBORReadLen::new(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let (a, a_encoding) = (|| -> Result<_, DeserializeError> {
+                        let initial_position = raw.position();
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i0_value, i0_encoding) = raw.unsigned_integer_sz()?;
+                                if i0_value != 0 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i0_value),
+                                        expected: Key::Uint(0),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i0_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(a_encoding) => return Ok((FixedEnum::I0, a_encoding)),
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i1_value, i1_encoding) = raw.unsigned_integer_sz()?;
+                                if i1_value != 1 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i1_value),
+                                        expected: Key::Uint(1),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i1_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(a_encoding) => return Ok((FixedEnum::I1, a_encoding)),
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i2_value, i2_encoding) = raw.unsigned_integer_sz()?;
+                                if i2_value != 2 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i2_value),
+                                        expected: Key::Uint(2),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i2_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(a_encoding) => return Ok((FixedEnum::I2, a_encoding)),
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        Err(DeserializeError::new(
+                            "FixedEnum",
+                            DeserializeFailure::NoVariantMatched,
+                        ))
+                    })()?;
+                    match len {
+                        cbor_event::LenSz::Len(_, _) => (),
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Self::A {
+                        a,
+                        a_encoding,
+                        len_encoding,
+                    })
+                }
+                cbor_event::Type::Text => {
+                    let mut read_len = CBORReadLen::new(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let (b, b_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    match len {
+                        cbor_event::LenSz::Len(_, _) => (),
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(Self::B {
+                        b,
+                        b_encoding,
+                        len_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("GcHolder"))
+    }
+}

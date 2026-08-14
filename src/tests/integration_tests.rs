@@ -3366,11 +3366,14 @@ const NO_ANNOTATE_FLAVORS: &[(&str, &str)] = &[
 ///
 /// `bounds_spellings` carries the bounded-`nint` MEMBER (`m_nint_range`); `fixed_bool_member` and
 /// `optional_fixed_member` carry the encoding-less fixed members in mandatory and optional-presence
-/// position.
+/// position. `c_style_enum_choice_arm` carries the c-style-enum DATA type-choice arm and its
+/// group-choice sibling: both must keep their early successful variant return framed under each
+/// annotate=false flavor.
 const NO_ANNOTATE_FLOOR_STEMS: &[&str] = &[
     "bounds_spellings",
     "fixed_bool_member",
     "optional_fixed_member",
+    "c_style_enum_choice_arm",
 ];
 
 /// The corpus cells whose rust crate does NOT compile under an [`NO_ANNOTATE_FLAVORS`] row today,
@@ -10813,6 +10816,145 @@ fn reframed_emissions_round_trip_byte_exactly() {{{CANONICAL_VECTORS}{extra_vect
         assert!(
             test.status.success(),
             "{label}: the generated crate failed to build or round-trip\n{}\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// `--binary-wrappers=true` gives bounded byte-string definitions their own Rust owners. Their
+/// wrongness is therefore a wire concern, not merely a generated-crate compile concern: a member
+/// can double-frame the wrapper, forget its bound during decode, or (under preserve) lose the
+/// byte-string's original length-head width while every Rust type still checks cleanly.
+///
+/// This is deliberately a bespoke scratch spec rather than a corpus fixture: it owns one flag's
+/// default/preserve execution cells and hand-derived vectors, rather than claiming broad CDDL
+/// construct coverage. `Token` has a range bound, `Digest` an exact bound, and `Packet` places
+/// both nominal byte owners in one array so its ordinary byte strings prove they are framed once,
+/// not as a byte string containing another encoded byte string. The preserve vectors widen EACH
+/// byte-string head independently (including a 32-bit head), so retaining only a parent encoding
+/// or normalizing an owned wrapper's head is observably wrong.
+#[test]
+fn binary_wrappers_round_trip_byte_exactly_and_enforce_bounds() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_binary_wrappers_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let target_dir = scratch.join("target");
+
+    const SPEC: &str = "token = bytes .size (2..4)\n\
+                        digest = bytes .size 3\n\
+                        packet = [token: token, digest: digest]\n";
+
+    // These are deliberately ordinary byte strings, not bytes .cbor payloads: each `Packet`
+    // member must own exactly one CBOR byte-string frame. A double wrapper would turn either
+    // member into a payload beginning with `0x42`/`0x43`, changing these bytes.
+    const CANONICAL_VECTORS: &str = r#"
+    rt!(Token, &[0x42, 0xa1, 0xb2]);
+    rt!(Digest, &[0x43, 0xc3, 0xd4, 0xe5]);
+    rt!(Packet, &[0x82, 0x42, 0xa1, 0xb2, 0x43, 0xc3, 0xd4, 0xe5]);
+    reject!(Token, &[0x41, 0xa1]); // below Token's 2-byte lower bound
+    reject!(Token, &[0x45, 0x00, 0x01, 0x02, 0x03, 0x04]); // above its 4-byte upper bound
+    reject!(Digest, &[0x42, 0xc3, 0xd4]); // Digest requires exactly 3 bytes
+    reject!(Packet, &[0x82, 0x41, 0xa1, 0x43, 0xc3, 0xd4, 0xe5]); // nested Token bound
+"#;
+
+    // Preserve-only, hand-derived non-canonical byte-string heads. `Packet`'s array head is
+    // widened too, but the three different byte-string widths are the point: a parent sidecar
+    // cannot substitute for Token/Digest's separately owned StringEncoding values.
+    const NON_CANONICAL_VECTORS: &str = r#"
+    rt!(Token, &[0x58, 0x02, 0xa1, 0xb2]);
+    rt!(Digest, &[0x59, 0x00, 0x03, 0xc3, 0xd4, 0xe5]);
+    rt!(Packet, &[0x98, 0x02, 0x58, 0x02, 0xa1, 0xb2, 0x5a, 0x00, 0x00, 0x00, 0x03, 0xc3, 0xd4, 0xe5]);
+"#;
+
+    for (label, flags, extra_vectors) in [
+        (
+            "binary_wrappers_preserve",
+            &[
+                "--binary-wrappers=true",
+                "--preserve-encodings=true",
+                "--wasm=false",
+            ][..],
+            NON_CANONICAL_VECTORS,
+        ),
+        (
+            "binary_wrappers_default",
+            &["--binary-wrappers=true", "--wasm=false"][..],
+            "",
+        ),
+    ] {
+        let case_root = scratch.join(label);
+        std::fs::create_dir_all(&case_root).unwrap();
+        let input = case_root.join("input.cddl");
+        std::fs::write(&input, SPEC).unwrap();
+        let out = case_root.join("out");
+        let generated = codegen_cmd()
+            .arg(format!("--input={}", input.display()))
+            .arg(format!("--output={}", out.display()))
+            .arg(format!(
+                "--static-dir={}/static",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .args(flags)
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{label}: generation failed\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+
+        std::fs::create_dir_all(out.join("rust/tests")).unwrap();
+        std::fs::write(
+            out.join("rust/tests/binary_wrappers.rs"),
+            format!(
+                r#"use cbor_event::se::{{Serialize, Serializer}};
+use cddl_lib::serialization::Deserialize;
+use cddl_lib::*;
+
+macro_rules! rt {{
+    ($t:ty, $bytes:expr) => {{{{
+        let b: &[u8] = $bytes;
+        let v = <$t>::from_cbor_bytes(b)
+            .unwrap_or_else(|e| panic!("{{b:02x?}} failed to decode: {{e}}"));
+        let mut s = Serializer::new_vec();
+        v.serialize(&mut s).unwrap();
+        assert_eq!(s.finalize(), b, "re-encoding {{b:02x?}} changed the bytes");
+    }}}};
+}}
+
+macro_rules! reject {{
+    ($t:ty, $bytes:expr) => {{{{
+        let b: &[u8] = $bytes;
+        match <$t>::from_cbor_bytes(b) {{
+            Ok(_) => panic!("{{b:02x?}} unexpectedly decoded"),
+            Err(_) => {{}},
+        }}
+    }}}};
+}}
+
+#[test]
+fn binary_wrappers_preserve_owned_byte_string_fidelity() {{{CANONICAL_VECTORS}{extra_vectors}}}
+"#
+            ),
+        )
+        .unwrap();
+
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "{label}: the generated crate failed to build, round-trip, or reject its bounds\n{}\n{}",
             String::from_utf8_lossy(&test.stdout),
             String::from_utf8_lossy(&test.stderr)
         );

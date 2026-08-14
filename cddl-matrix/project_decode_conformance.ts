@@ -718,6 +718,14 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "bool_choice.bool_or_text": ["3", "7"],   // `bool / tstr` — tstr → major 3, bool → major 7
   "bool_choice.uint_or_bool": ["7", "int"], // `uint / bool` — uint → int (0/1-merged), bool → major 7
   "c_style_enum.fixed_enum": ["int"],
+  // This fixture targets a c-style enum used as a DATA type-choice arm, rather than as the root
+  // rule alone. Its standalone `fixed_enum` remains the ordinary three-fixed-uint choice ("int").
+  // For `choice_holder = fixed_enum / bytes`, the conservative resolver exempts the named
+  // fixed-enum arm and records its `bytes` sibling as major 2. The mint also carries enum vectors,
+  // but this floor only requires the resolvable bytes arm. The fixture's group-choice rule has
+  // separate generated-code coverage but is intentionally outside this TYPE-choice-only floor.
+  "c_style_enum_choice_arm.choice_holder": ["2"],
+  "c_style_enum_choice_arm.fixed_enum": ["int"],
   "c_style_enum_map_key.fixed_enum": ["int"],
   "c_style_enum_newtype.fixed_enum": ["int"],
   // A c-style enum used as the CONTENT of encoding-carrying wrappers (`bytes .cbor` / a tag). Only

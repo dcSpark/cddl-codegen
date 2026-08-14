@@ -1557,6 +1557,14 @@ path. `--canonical-form=true` requires `--preserve-encodings` (on its own it emi
 crate); that combination is rejected in `api::with_types` and pinned by
 `flag_value_rejects_canonical_without_preserve`.
 
+`binary_wrappers_round_trip_byte_exactly_and_enforce_bounds` is the semantic companion for
+`--binary-wrappers=true`: a bespoke scratch spec generates bounded byte-string wrappers under both
+default and preserve rows, then its generated crate decodes/re-encodes hand-derived direct and
+nested vectors. The vectors prove range/exact-size rejection, a nested wrapper's one-frame ownership
+(not a byte string containing an encoded byte string), and preserve-mode fidelity for independently
+widened byte-string heads (8-, 16-, and 32-bit). It closes the byte-level gap that a compile smoke
+cannot see.
+
 `generated_code_clippy_clean` runs `cargo clippy` over every generated crate a case mints, for four
 cases. Two run the rich extern-free input `flag_value_smoke` uses, under default flags and under
 `--preserve-encodings --canonical-form`, generated into the gate's own temp dir (so it can't race
@@ -3170,6 +3178,11 @@ construct must round-trip, not just compile, on both the rust and the wasm side.
 never compiles `#[cfg(test)]` code, so nothing but `cargo test` type-checks or runs the emitted
 `cddl_generated_wasm_tests` module below; the preserve/json profiles and json-gen stay check-only.)
 
+`preserve_pair_map_self_encoding` is the positional `@duplicates preserve` table where both
+key and value are nominal records and therefore own their encoding sidecars. Its enclosing record
+forces the serialize loop to bind `_i` with neither positional `.get(i)` lookup live, pinning the
+unused-binding/E0425 boundary in snapshots and the ordinary Rust/wasm corpus compile floor.
+
 **A fixture that names user-supplied code is SEEDED, not skipped.** `CORPUS_DEF_SPLICE` keys the
 definitions each such fixture needs by stem, rendered per fixture from the shared
 `tests/def_templates/` and appended to the thin `rust/src/lib.rs` / `wasm/src/lib.rs` crate roots
@@ -3272,9 +3285,10 @@ feature_corpus_compiles` selects both legs; `feature_corpus_compiles_no_annotate
 alone. Measured on top of the base leg: +37 s cold (264 s → 301 s with `GATE_CACHE=0`), +14–19 s warm
 (33 s → 47–52 s).
 
-Two floors keep it honest. `NO_ANNOTATE_FLOOR_STEMS` names the three fixtures whose shapes are why
+Two floors keep it honest. `NO_ANNOTATE_FLOOR_STEMS` names the four fixtures whose shapes are why
 the leg exists (`bounds_spellings`' bounded `nint` member, `fixed_bool_member` and
-`optional_fixed_member`'s encoding-less fixed members); the whole-corpus pin test asserts each is
+`optional_fixed_member`'s encoding-less fixed members, and `c_style_enum_choice_arm`'s c-style
+enum DATA type-choice arm plus group-choice sibling); the whole-corpus pin test asserts each is
 still in `tests/corpus`, and the shard that completes the set asserts each was actually swept — so
 neither pruning a fixture nor newly skipping one can silently delete the coverage.
 `NO_ANNOTATE_KNOWN_RED` ledgers the cells whose rust crate does NOT compile under a flavor row

@@ -1,0 +1,9 @@
+; A c-style enum reaches two inline dispatch frames here. `choice_holder` is a DATA type-choice
+; arm, while `gc_holder` is its array group-choice sibling. Both need the enum's early successful
+; probe (`Ok(()) => return Ok(FixedEnum::I0)`) contained in the caller's variant-probe closure;
+; splicing it into an ordinary deserializer would return the enum where the enclosing holder is
+; required. The corpus's all-profile snapshots and compile floor, including both
+; `--annotate-fields=false` flavors, keep the two call sites live.
+fixed_enum = 0 / 1 / 2
+choice_holder = fixed_enum / bytes
+gc_holder = [ a: fixed_enum // b: tstr ]

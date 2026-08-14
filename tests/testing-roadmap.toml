@@ -118,12 +118,7 @@ entries = [
   "part-bare-fixed-table-value-refusal-continued-say-named",
   "testing.directive-effect-round-trip-coherence-sweep-accepted-custom",
   "testing.warm-up-refresh-dep-universe-lock-trust-fresh",
-  "testing.corpus-preserve-pair-map-key-value-self-encoding",
-  "testing.corpus-c-style-enum-data-type-choice-arm",
-  "testing.execution-binary-wrappers-true-last-documented-flag-value",
-  "part-nested-cargo-test",
   "testing.synthetic-protocol-controls-component-probe-host-s-defensive",
-  "testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror",
   "testing.verify-ts-elapsed-time-covers-startup-activity",
 ]
 
@@ -1129,84 +1124,6 @@ action_on_fire_md = '''Set testing.control-bytes-committed-source-files-proven-i
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.control-bytes-committed-source-files-proven-instance-machinery's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.corpus-c-style-enum-data-type-choice-arm"
-title = "A corpus cell for a c-style enum as a DATA type-choice arm — the one inline-dispatch leg no corpus cell exercises."
-legacy_aliases = ["Next work 21"]
-
-[record.payload]
-kind = "work"
-body_md = '''21. **A corpus cell for a c-style enum as a DATA type-choice arm — the one inline-dispatch leg no
-    corpus cell exercises.** The c-style-enum deserialize arm has two emission forms, and the form
-    it picks is a frame decision: the IIFE (self-supplied frame) whenever the caller splices or —
-    since the annotate=false delivery — whenever the caller wants a plain value with no annotation
-    closure to catch the early `return`s; the bare statement form only where a `Result`-returning
-    closure is guaranteed. That guarantee was verified by HAND-ENUMERATING every
-    `DeserializeBeforeAfter::new("", "", true)` call site (all are annotate-gated or sit inside the
-    enums.rs variant-probe closure), because no gate exercises the kept leg: the corpus spells a
-    c-style enum standalone (`c_style_enum`), as a map key (`c_style_enum_map_key`), behind
-    `@newtype` (`c_style_enum_newtype`) and behind encoding-carrying wrappers
-    (`cbor_enum_payload`), but never as an arm of a DATA type choice (`t = fixed_enum / bytes`) —
-    the one spelling that routes through the probe-closure statement form. A hand enumeration is
-    evidence for the tree it was done on and nothing after it; one corpus input carrying that
-    spelling (plus a group-choice-arm sibling if it routes differently) turns the guarantee into a
-    standing cell: a compile-floor row under BOTH annotate=false flavors, a snapshot pin, and the
-    usual registration (snapshot bless, `CORPUS_PARITY_INPUTS` row). Starting premise, probed on
-    the delivering tree so the pickup starts green rather than shape-hunting: both spellings
-    (`choice_holder = fixed_enum / bytes`; `gc_holder = [ a: fixed_enum // b: tstr ]`) generate at
-    exit 0 and `cargo check` green under BOTH annotate=false flavors, with the statement-form leg
-    visibly emitted (`Ok(()) => return Ok(FixedEnum::I0)` inside the variant-probe closures) —
-    probed `--wasm=false` only; the floor's own cells will run `--wasm=true`. Same input-poverty class
-    as this list's "A corpus cell for the preserve pair-map whose key AND value are self-encoding"
-    item: the emission branch exists, the fix cycle proved it load-bearing, and no committed input
-    reaches it.
-
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "coverage_cell"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.corpus-c-style-enum-data-type-choice-arm's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-
-[[record]]
-id = "testing.corpus-preserve-pair-map-key-value-self-encoding"
-title = "A corpus cell for the preserve pair-map whose key AND value are self-encoding — the one `@duplicates preserve` emission arm no committed snapshot pins."
-legacy_aliases = ["Next work 19"]
-
-[record.payload]
-kind = "work"
-body_md = '''19. **A corpus cell for the preserve pair-map whose key AND value are self-encoding — the one
-    `@duplicates preserve` emission arm no committed snapshot pins.** The positional
-    (non-canonical) pair-map serialize loop binds its `.enumerate()` index `i` when a per-entry
-    key/value sidecar lookup reads it and `_i` when neither does, and the committed corpus
-    exercises only the first: `table_preserve`'s five positional loops all read a
-    `*_key_encodings.get(i)`, while the `_i` leg — reached exactly when key and value are BOTH
-    nominal self-encoding types (`m = { * ref => ref } ; @duplicates preserve` with `ref` a
-    struct/collection rule, each entry carrying its own sidecar internally) — is pinned by no
-    snapshot and compiled by no corpus gate. Its only current coverage is the
-    `tests/recursive-collection-ref` integration fixture, which is where the `unused variable: i`
-    emission defect this leg shipped with was finally seen — by the `run_test` generator-owned
-    warning scan on that scan's first sweep, not by any corpus layer (fixed in the same
-    delivery). The stakes are compile-shaped in both directions: a wrong emptiness condition
-    either emits `_i` under a live `.get(i)` lookup (E0425 in every consumer build of the
-    affected shape) or `i` under none (the warning class the scan now holds at zero). One corpus
-    input with the both-nominal shape buys the leg a snapshot pin plus a
-    `feature_corpus_compiles` cell — standard corpus registration (snapshot bless,
-    `CORPUS_PARITY_INPUTS` row).
-
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "coverage_cell"
-risk = "silent_wrong_bytes"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.corpus-preserve-pair-map-key-value-self-encoding's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
 '''
 
 [[record]]
@@ -2216,27 +2133,6 @@ rationale_md = '''The decided boundary and its reasons are the exact preserved d
 '''
 authority_reference_id = "readme-extern-interface-export-extern-import-the-machine"
 permanence = "permanent"
-
-[[record]]
-id = "testing.execution-binary-wrappers-true-last-documented-flag-value"
-title = "An execution cell for `--binary-wrappers=true` — the last documented flag value whose only coverage is a compile smoke while its emission risk is byte-level."
-legacy_aliases = ["Next work 22"]
-
-[record.payload]
-kind = "work"
-body_md = '''22. **An execution cell for `--binary-wrappers=true` — the last documented flag value whose only
-    coverage is a compile smoke while its emission risk is byte-level.** The annotate=false
-    delivery established the pattern for flag-conditioned emission branches whose failure is
-    byte-level rather than compile-level: a bespoke scratch spec + hand-derived round-trip vectors
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "coverage_cell"
-risk = "silent_wrong_bytes"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.execution-binary-wrappers-true-last-documented-flag-value's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
 
 [[record]]
 id = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
@@ -5127,41 +5023,6 @@ work_intent = "add_regression"
 work_kind = "coverage_cell"
 risk = "compile_failure"
 acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.lint-provocation-shapes-generated-code-clippy-clean-partially's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-
-[[record]]
-id = "testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror"
-title = "A lockstep drift gate for the rust↔TS kebab-ident mirror — today the pin is one-directional and the rust side can drift silently-soft."
-legacy_aliases = ["Next work 24"]
-
-[record.payload]
-kind = "work"
-body_md = '''24. **A lockstep drift gate for the rust↔TS kebab-ident mirror — today the pin is one-directional
-    and the rust side can drift silently-soft.** `cddl-matrix/verify.ts::toKebabCase` mirrors
-    `src/utils.rs::convert_to_kebab_case` to name the WIT resource the component leg's mint check
-    and host look for; the verify startup self-test pins the TS side against a fixture table
-    copied from the rust test `convert_to_kebab_case_table`, and LOCKSTEP doc comments on the
-    rust side name the TS table. But nothing EXECUTABLE ties the two tables together: a rust-side
-    conversion change updates the rust table (its own test forces that) while the TS fixtures
-    keep passing against the OLD rules, and the divergence surfaces only as a soft annotations
-    diff ("no minted component surface" on selected rows) after a full verify run. The
-    systematic layer: a drift check that reads BOTH tables and asserts the shared rows agree —
-    cheapest as an extension of the existing verify self-test (parse the `convert_to_kebab_case_table`
-    assertion rows out of `src/utils.rs` and require every TS fixture row to appear there with
-    the same expectation), which puts it on `verify_selftest`'s local-tier path where the
-    taxonomy pins already live. The general class is the one the LOCKSTEP convention exists for
-    (moved code carries its comments; here the two halves live in different LANGUAGES so no
-    comment survives a refactor mechanically), and the corpus-detect mirror's gate-enforced
-    precedent is the model.
-
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.lockstep-drift-gate-rust-ts-kebab-ident-mirror's payload prose; do not widen adjacent future work.
 '''
 priority_rationale_md = '''The source owner places this item in Next priority order.
 '''
@@ -8673,30 +8534,6 @@ body_md = '''   - (The per-role wasm-ABI/multifile grid rows for both flavors ar
      union-rooted ordering that used to abort now defers its keys-list mint to finalize, and both
      rootings hold a compile-and-wire floor in the `key_`/`ukey_`/`upres_` blocks of
      `tests/recursive-collection-ref/input.cddl`.)
-
-'''
-
-[[part]]
-part_id = "part-nested-cargo-test"
-parent_record_id = "testing.execution-binary-wrappers-true-last-documented-flag-value"
-title = "nested `cargo test`"
-body_md = '''    + nested `cargo test`
-    (`no_annotate_reframed_emissions_round_trip_non_canonical_wire_byte_exactly`), added because a
-    compile floor structurally cannot tell "compiles" from "compiles and re-encodes the same
-    bytes". Walking the other documented flag values against that standard:
-    `--annotate-fields=false` now has the semantic floor; `--canonical-form` (with preserve) has
-    real execution (`tests/canonical` via `run_test`, the `golden_hex_canonical` KATs,
-    `open_array_preserve_e2e`); `--to-from-bytes-methods=false` removes API surface, so its
-    failure mode is compile-level and `flag_value_smoke`'s compile cell is the right depth. That
-    leaves `--binary-wrappers=true`: it mints new rust types that OWN byte-string
-    serialize/deserialize, its wrongness would be byte-level (a wrapper that re-encodes with a
-    different width, drops a `bytes .size` bound check, or double-wraps), and its only gate is
-    `flag_value_smoke`'s `cargo check`. One semantic cell in the delivered pattern — generate a
-    byte-string-rich spec under the flag (default AND preserve rows; non-canonical byte-string
-    heads under preserve) and round-trip hand-derived vectors byte-exactly — closes the gap.
-    Scoped probe record for the claim above: "compile-only" was established by enumerating the
-    `--binary-wrappers` passers in `src/tests/` (`flag_value_smoke`, `config_tests`) on the tree
-    that delivered the annotate=false floors, not by grep vocabulary alone.
 
 '''
 

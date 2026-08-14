@@ -1,0 +1,46 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource choice-holder {
+    new-fixed-enum: static func(fixed-enum: fixed-enum) -> choice-holder;
+    as-fixed-enum: func() -> option<fixed-enum>;
+    new-bytes: static func(bytes: list<u8>) -> choice-holder;
+    as-bytes: func() -> option<list<u8>>;
+    kind: func() -> choice-holder-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<choice-holder, string>;
+  }
+  enum choice-holder-kind {
+    fixed-enum,
+    bytes,
+  }
+  enum fixed-enum {
+    i0,
+    i1,
+    i2,
+  }
+  resource gc-holder {
+    new-a: static func(a: fixed-enum) -> gc-holder;
+    as-a: func() -> option<fixed-enum>;
+    new-b: static func(b: string) -> gc-holder;
+    as-b: func() -> option<string>;
+    kind: func() -> gc-holder-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<gc-holder, string>;
+  }
+  enum gc-holder-kind {
+    a,
+    b,
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

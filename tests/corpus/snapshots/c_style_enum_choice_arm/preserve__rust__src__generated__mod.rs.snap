@@ -1,0 +1,91 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+
+#[derive(Clone, Debug)]
+pub enum ChoiceHolder {
+    FixedEnum {
+        fixed_enum: FixedEnum,
+        fixed_enum_encoding: Option<cbor_event::Sz>,
+    },
+    Bytes {
+        bytes: Vec<u8>,
+        bytes_encoding: StringEncoding,
+    },
+}
+
+impl ChoiceHolder {
+    pub fn new_fixed_enum(fixed_enum: FixedEnum) -> Self {
+        Self::FixedEnum {
+            fixed_enum,
+            fixed_enum_encoding: None,
+        }
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self::Bytes {
+            bytes,
+            bytes_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum FixedEnum {
+    I0,
+    I1,
+    I2,
+}
+
+#[derive(Clone, Debug)]
+pub enum GcHolder {
+    A {
+        a: FixedEnum,
+        a_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+    },
+    B {
+        b: String,
+        b_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl GcHolder {
+    pub fn new_a(a: FixedEnum) -> Self {
+        Self::A {
+            a,
+            a_encoding: None,
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self::B {
+            b,
+            b_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}

@@ -1,0 +1,60 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::vec::Vec;
+pub mod error;
+pub mod ordered_hash_map;
+pub mod pair_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::pair_map::PairMap;
+use cbor_encodings::{EntryEncoding, HolderEncoding};
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Entry {
+    pub n: u64,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
+    pub encodings: Option<EntryEncoding>,
+}
+
+impl Entry {
+    pub fn new(n: u64) -> Self {
+        Self { n, encodings: None }
+    }
+}
+
+pub type EntryList = Vec<Entry>;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub m: SelfMap,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(m: SelfMap) -> Self {
+        Self { m, encodings: None }
+    }
+}
+
+pub type SelfMap = PairMap<Entry, Entry>;

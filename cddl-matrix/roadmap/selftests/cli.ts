@@ -937,7 +937,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const testing = liveTestingV3Document();
       for (const [name, document, expectedSlots, expectedParts] of [
         ["matrix", matrix, 4, 9],
-        ["testing", testing, 0, 27],
+        ["testing", testing, 0, 26],
       ] as const) {
         assert(document.parts.every((part) => part.body_md.byteLength > 0),
           `${name} part prose is empty`);
@@ -946,7 +946,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
           `${name} subordinate denominator drifted`);
       }
       const testingNested = testing.parts.find((part) => part.part_id === "part-nested-cargo-test");
-      assert(testingNested !== undefined, "testing nested-cargo supporting part drifted");
+      assert(testingNested === undefined, "retired nested-cargo supporting part remains in the testing roadmap");
       return pass("positive");
     }
     case "cli_as_of_valid_leap_day": {

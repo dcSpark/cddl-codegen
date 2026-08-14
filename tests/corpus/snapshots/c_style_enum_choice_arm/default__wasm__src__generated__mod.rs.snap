@@ -1,0 +1,156 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+pub use cddl_lib::FixedEnum;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ChoiceHolder(pub(crate) cddl_lib::ChoiceHolder);
+
+#[wasm_bindgen]
+impl ChoiceHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ChoiceHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_fixed_enum(fixed_enum: FixedEnum) -> Self {
+        Self(cddl_lib::ChoiceHolder::new_fixed_enum(fixed_enum))
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self(cddl_lib::ChoiceHolder::new_bytes(bytes))
+    }
+
+    pub fn kind(&self) -> ChoiceHolderKind {
+        match &self.0 {
+            cddl_lib::ChoiceHolder::FixedEnum(_) => ChoiceHolderKind::FixedEnum,
+            cddl_lib::ChoiceHolder::Bytes(_) => ChoiceHolderKind::Bytes,
+        }
+    }
+
+    pub fn as_fixed_enum(&self) -> Option<FixedEnum> {
+        match &self.0 {
+            cddl_lib::ChoiceHolder::FixedEnum(fixed_enum) => Some(*fixed_enum),
+            _ => None,
+        }
+    }
+
+    pub fn as_bytes(&self) -> Option<Vec<u8>> {
+        match &self.0 {
+            cddl_lib::ChoiceHolder::Bytes(bytes) => Some(bytes.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::ChoiceHolder> for ChoiceHolder {
+    fn from(native: cddl_lib::ChoiceHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ChoiceHolder> for cddl_lib::ChoiceHolder {
+    fn from(wasm: ChoiceHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ChoiceHolder> for ChoiceHolder {
+    fn as_ref(&self) -> &cddl_lib::ChoiceHolder {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum ChoiceHolderKind {
+    FixedEnum,
+    Bytes,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct GcHolder(pub(crate) cddl_lib::GcHolder);
+
+#[wasm_bindgen]
+impl GcHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<GcHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_a(a: FixedEnum) -> Self {
+        Self(cddl_lib::GcHolder::new_a(a))
+    }
+
+    pub fn new_b(b: String) -> Self {
+        Self(cddl_lib::GcHolder::new_b(b))
+    }
+
+    pub fn kind(&self) -> GcHolderKind {
+        match &self.0 {
+            cddl_lib::GcHolder::A(_) => GcHolderKind::A,
+            cddl_lib::GcHolder::B(_) => GcHolderKind::B,
+        }
+    }
+
+    pub fn as_a(&self) -> Option<FixedEnum> {
+        match &self.0 {
+            cddl_lib::GcHolder::A(a) => Some(*a),
+            _ => None,
+        }
+    }
+
+    pub fn as_b(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::GcHolder::B(b) => Some(b.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::GcHolder> for GcHolder {
+    fn from(native: cddl_lib::GcHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<GcHolder> for cddl_lib::GcHolder {
+    fn from(wasm: GcHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::GcHolder> for GcHolder {
+    fn as_ref(&self) -> &cddl_lib::GcHolder {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum GcHolderKind {
+    A,
+    B,
+}

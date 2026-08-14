@@ -1501,6 +1501,121 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "c_style_enum_choice_arm.choice_holder"
+axis = "corpus"
+example = "fixed_enum = 0 / 1 / 2\nchoice_holder = fixed_enum / bytes"
+fixture = "c_style_enum_choice_arm"
+rule = "choice_holder"
+spec = "__probe_holder = [0, choice_holder]\nfixed_enum = 0 / 1 / 2\nchoice_holder = fixed_enum / bytes"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820000"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820001"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820002"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004764727569642773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200485075746e616d2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004b63656c6c756c6f69642773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004d776865726561626f7574732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "c_style_enum_choice_arm.fixed_enum"
+axis = "corpus"
+example = "fixed_enum = 0 / 1 / 2"
+fixture = "c_style_enum_choice_arm"
+rule = "fixed_enum"
+spec = "__probe_holder = [0, fixed_enum]\nfixed_enum = 0 / 1 / 2"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820000"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820001"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820002"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "c_style_enum_choice_arm.gc_holder"
+axis = "corpus"
+example = "fixed_enum = 0 / 1 / 2\ngc_holder = [ a: fixed_enum // b: tstr ]"
+fixture = "c_style_enum_choice_arm"
+rule = "gc_holder"
+spec = "__probe_holder = [0, gc_holder]\nfixed_enum = 0 / 1 / 2\ngc_holder = [ a: fixed_enum // b: tstr ]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008100"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008101"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008102"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081696675726e6974757265"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816a536f6e646865696d2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816b726f626f63616c6c696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816b77617465726c6f67676564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "c_style_enum_map_key.enum_keyed_map"
 axis = "corpus"
 example = "fixed_enum = 0 / 1 / 2\nenum_keyed_map = { * fixed_enum => uint }"
@@ -8876,6 +8991,82 @@ expect = "accept"
 hex = "820090c24c757262616e697a6174696f6ed8206474687567c347656e636c617665c24d726561646162696c69747927736a6879706e6f736973277349746f70636f617427731901d3c34e726566726573686d656e74732773c074393835342d31312d30327430323a31353a34315ad821675761727769636bd82269657870696174696e67d82369646563656173696e67d8246a686967687761796d656ed8184c656e63617073756c61746564c48219101f3902cbc5821905a639022c"
 source = "ruby-generate"
 expect = "accept"
+
+[[row]]
+id = "preserve_pair_map_self_encoding.entry"
+axis = "corpus"
+example = "entry = [n: uint]"
+fixture = "preserve_pair_map_self_encoding"
+rule = "entry"
+spec = "__probe_holder = [0, entry]\nentry = [n: uint]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008118f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190258"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190383"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190441"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008119058d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190681"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190a67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190c8f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190ec0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008119120f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "preserve_pair_map_self_encoding.holder"
+axis = "corpus"
+example = "entry = [n: uint]\nself_map = { * entry => entry } ; @duplicates preserve\nholder = [m: self_map]"
+fixture = "preserve_pair_map_self_encoding"
+rule = "holder"
+pinned_reason = "all 10 generated candidate(s) failed two-oracle cross-validation (ruby accepted 10/10, rust --ci accepted 0/10 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "preserve_pair_map_self_encoding.self_map"
+axis = "corpus"
+example = "entry = [n: uint]\nself_map = { * entry => entry } ; @duplicates preserve"
+fixture = "preserve_pair_map_self_encoding"
+rule = "self_map"
+pinned_reason = "all 9 generated candidate(s) failed two-oracle cross-validation (ruby accepted 9/9, rust --ci accepted 0/9 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
 
 [[row]]
 id = "primitives.primitives"

@@ -769,8 +769,72 @@ interface ComponentVectorCounts { accepts: number; rejects: number }
 // (6) `toKebabCase` mirrors the generator's rust-ident -> WIT-ident conversion, and the component
 // leg names the resource it looks for with it. A drift here fails QUIETLY in the understating
 // direction — the mint check misses, the row reads "no minted component surface", and the round
-// trip that would have run silently doesn't. The fixtures are the generator's own table
-// (`src/utils.rs::convert_to_kebab_case_table`), so a change on either side has to move both.
+// trip that would have run silently doesn't. `parseRustKebabCaseTable` below makes the Rust test
+// table executable authority: every fixture here must be one of its exact literal assertion rows.
+// It deliberately accepts no other Rust shape, so a table refactor fails loudly instead of silently
+// weakening the cross-language pin.
+function parseRustKebabCaseTable(): Map<string, string> {
+  const path = join(CODEGEN_DIR, "src", "utils.rs");
+  let source: string;
+  try {
+    source = readFileSync(path, "utf8");
+  } catch (error) {
+    throw new Error(`could not read ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const functions = [...source.matchAll(/^\s*fn convert_to_kebab_case_table\(\)\s*\{\s*$/gm)];
+  if (functions.length !== 1) {
+    throw new Error(`expected exactly one fn convert_to_kebab_case_table(), found ${functions.length}`);
+  }
+  const functionStart = functions[0].index! + functions[0][0].lastIndexOf("{");
+  let depth = 0;
+  let lineComment = false;
+  let blockComment = false;
+  let stringLiteral = false;
+  let bodyEnd = -1;
+  for (let i = functionStart; i < source.length; i++) {
+    const character = source[i]!;
+    const next = source[i + 1];
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") { blockComment = false; i++; }
+      continue;
+    }
+    if (stringLiteral) {
+      if (character === "\\") { i++; continue; }
+      if (character === "\"") stringLiteral = false;
+      continue;
+    }
+    if (character === "/" && next === "/") { lineComment = true; i++; continue; }
+    if (character === "/" && next === "*") { blockComment = true; i++; continue; }
+    if (character === "\"") { stringLiteral = true; continue; }
+    if (character === "{") depth++;
+    if (character === "}" && --depth === 0) { bodyEnd = i; break; }
+  }
+  if (bodyEnd === -1 || depth !== 0 || blockComment || stringLiteral) {
+    throw new Error("could not find a balanced body for fn convert_to_kebab_case_table()");
+  }
+
+  const rows = new Map<string, string>();
+  const body = source.slice(functionStart + 1, bodyEnd);
+  const assertionLines = body.split("\n").filter(line => line.includes("assert_eq!"));
+  if (assertionLines.length === 0) throw new Error("fn convert_to_kebab_case_table() contains no assert_eq! rows");
+  const row = /^\s*assert_eq!\(convert_to_kebab_case\("([^"\\]*)"\),\s*"([^"\\]*)"\);\s*(?:\/\/.*)?$/;
+  for (const line of assertionLines) {
+    const match = line.match(row);
+    if (!match) {
+      throw new Error(`unsupported assertion row in fn convert_to_kebab_case_table(): ${JSON.stringify(line.trim())}`);
+    }
+    const [, from, expected] = match;
+    if (rows.has(from!)) throw new Error(`duplicate Rust fixture input ${JSON.stringify(from)}`);
+    rows.set(from!, expected!);
+  }
+  return rows;
+}
+
 {
   const cases: [string, string][] = [
     ["ProbeHolder", "probe-holder"],   // the synthetic holder every holder-mode catalog row decodes through
@@ -782,15 +846,37 @@ interface ComponentVectorCounts { accepts: number; rejects: number }
     ["Foo2Bar", "foo2-bar"],                         // an interior digit continues a word
   ];
   const failures = cases.filter(([from, want]) => toKebabCase(from) !== want);
-  if (failures.length) {
+  const emptyFixtureTable = cases.length === 0;
+  const fixtureInputs = new Set<string>();
+  const duplicateFixtures = cases
+    .map(([from]) => from)
+    .filter(from => (fixtureInputs.has(from) ? true : (fixtureInputs.add(from), false)));
+  let rustRows: Map<string, string> | undefined;
+  let parseFailure: string | undefined;
+  try {
+    rustRows = parseRustKebabCaseTable();
+  } catch (error) {
+    parseFailure = error instanceof Error ? error.message : String(error);
+  }
+  const drift = rustRows === undefined ? [] : cases.flatMap(([from, want]) => {
+    const rustExpected = rustRows.get(from);
+    if (rustExpected === undefined) return [`${JSON.stringify(from)} is absent from src/utils.rs`];
+    return rustExpected === want ? [] : [`${JSON.stringify(from)}: TypeScript expects ${JSON.stringify(want)}, Rust table has ${JSON.stringify(rustExpected)}`];
+  });
+  if (emptyFixtureTable || failures.length || duplicateFixtures.length || parseFailure !== undefined || drift.length) {
     console.error(
       "HARNESS FAILURE: the rust-ident -> WIT-ident mirror drifted from the generator's — " +
-      failures.map(([from, want]) => `${JSON.stringify(from)}: expected ${JSON.stringify(want)}, got ${JSON.stringify(toKebabCase(from))}`).join("; ") +
+      (emptyFixtureTable ? ["the TypeScript fixture table is empty"] : [])
+        .concat(failures.map(([from, want]) => `${JSON.stringify(from)}: expected ${JSON.stringify(want)}, got ${JSON.stringify(toKebabCase(from))}`))
+        .concat(duplicateFixtures.map(from => `duplicate TypeScript fixture input ${JSON.stringify(from)}`))
+        .concat(parseFailure === undefined ? [] : [`could not parse Rust fixture table: ${parseFailure}`])
+        .concat(drift)
+        .join("; ") +
       " — the component leg would look for a resource the world does not declare and read as unminted; refusing to run.",
     );
     process.exit(2);
   }
-  if (SELFTEST) console.log(`component kebab-ident mirror self-test OK (${cases.length} fixtures)`);
+  if (SELFTEST) console.log(`component kebab-ident mirror self-test OK (${cases.length} TypeScript fixtures lockstep with Rust)`);
 }
 // Catalog rows whose component crate GENERATES and does not BUILD today — the sweep's expectation
 // ledger, the direct sibling of `component_tests::EXPECTED_COMPILE_FAIL` and held to the same

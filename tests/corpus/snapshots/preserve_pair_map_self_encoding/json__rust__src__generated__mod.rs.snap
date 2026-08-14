@@ -1,0 +1,59 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::vec::Vec;
+pub mod error;
+mod extern_interface_check;
+pub mod json_schema_gen;
+pub mod json_value_ser;
+pub mod pair_map;
+pub mod serialization;
+
+use crate::generated::pair_map::PairMap;
+
+#[derive(
+    Clone,
+    Debug,
+    serde::Deserialize,
+    serde::Serialize,
+    schemars::JsonSchema,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+)]
+pub struct Entry {
+    pub n: u64,
+}
+
+impl Entry {
+    pub fn new(n: u64) -> Self {
+        Self { n }
+    }
+}
+
+pub type EntryList = Vec<Entry>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Holder {
+    pub m: SelfMap,
+}
+
+impl Holder {
+    pub fn new(m: SelfMap) -> Self {
+        Self { m }
+    }
+}
+
+pub type SelfMap = PairMap<Entry, Entry>;

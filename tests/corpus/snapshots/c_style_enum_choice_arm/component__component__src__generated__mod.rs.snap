@@ -1,0 +1,149 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type ChoiceHolder = WitChoiceHolder;
+    type GcHolder = WitGcHolder;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn fixed_enum_to_wit(v: &cddl_lib::FixedEnum) -> wit_types::FixedEnum {
+    match v {
+        cddl_lib::FixedEnum::I0 => wit_types::FixedEnum::I0,
+        cddl_lib::FixedEnum::I1 => wit_types::FixedEnum::I1,
+        cddl_lib::FixedEnum::I2 => wit_types::FixedEnum::I2,
+    }
+}
+
+fn fixed_enum_from_wit(v: wit_types::FixedEnum) -> cddl_lib::FixedEnum {
+    match v {
+        wit_types::FixedEnum::I0 => cddl_lib::FixedEnum::I0,
+        wit_types::FixedEnum::I1 => cddl_lib::FixedEnum::I1,
+        wit_types::FixedEnum::I2 => cddl_lib::FixedEnum::I2,
+    }
+}
+
+pub struct WitChoiceHolder(pub RefCell<cddl_lib::ChoiceHolder>);
+
+impl wit_types::GuestChoiceHolder for WitChoiceHolder {
+    fn new_fixed_enum(fixed_enum: wit_types::FixedEnum) -> wit_types::ChoiceHolder {
+        let fixed_enum = fixed_enum_from_wit(fixed_enum);
+        let inner = cddl_lib::ChoiceHolder::new_fixed_enum(fixed_enum);
+        wit_types::ChoiceHolder::new(WitChoiceHolder(RefCell::new(inner)))
+    }
+
+    fn as_fixed_enum(&self) -> Option<wit_types::FixedEnum> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ChoiceHolder::FixedEnum(fixed_enum) => Some(fixed_enum_to_wit(fixed_enum)),
+            _ => None,
+        }
+    }
+
+    fn new_bytes(bytes: Vec<u8>) -> wit_types::ChoiceHolder {
+        let bytes = bytes.into_iter().collect();
+        let inner = cddl_lib::ChoiceHolder::new_bytes(bytes);
+        wit_types::ChoiceHolder::new(WitChoiceHolder(RefCell::new(inner)))
+    }
+
+    fn as_bytes(&self) -> Option<Vec<u8>> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ChoiceHolder::Bytes(bytes) => Some(bytes.iter().map(|x| *x).collect()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::ChoiceHolderKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::ChoiceHolder::FixedEnum(_) => wit_types::ChoiceHolderKind::FixedEnum,
+            cddl_lib::ChoiceHolder::Bytes(_) => wit_types::ChoiceHolderKind::Bytes,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::ChoiceHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::ChoiceHolder, String> {
+        <cddl_lib::ChoiceHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::ChoiceHolder::new(WitChoiceHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitGcHolder(pub RefCell<cddl_lib::GcHolder>);
+
+impl wit_types::GuestGcHolder for WitGcHolder {
+    fn new_a(a: wit_types::FixedEnum) -> wit_types::GcHolder {
+        let a = fixed_enum_from_wit(a);
+        let inner = cddl_lib::GcHolder::new_a(a);
+        wit_types::GcHolder::new(WitGcHolder(RefCell::new(inner)))
+    }
+
+    fn as_a(&self) -> Option<wit_types::FixedEnum> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::GcHolder::A(a) => Some(fixed_enum_to_wit(a)),
+            _ => None,
+        }
+    }
+
+    fn new_b(b: String) -> wit_types::GcHolder {
+        let inner = cddl_lib::GcHolder::new_b(b);
+        wit_types::GcHolder::new(WitGcHolder(RefCell::new(inner)))
+    }
+
+    fn as_b(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::GcHolder::B(b) => Some(b.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::GcHolderKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::GcHolder::A(_) => wit_types::GcHolderKind::A,
+            cddl_lib::GcHolder::B(_) => wit_types::GcHolderKind::B,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::GcHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::GcHolder, String> {
+        <cddl_lib::GcHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::GcHolder::new(WitGcHolder(RefCell::new(v))))
+            .map_err(err)
+    }
+}

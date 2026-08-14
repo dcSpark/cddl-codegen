@@ -82,9 +82,9 @@ pub fn convert_to_snake_case(ident: &str) -> String {
 ///
 /// **This conversion is MIRRORED outside rust**: `cddl-matrix/verify.ts`'s component-execution leg
 /// re-implements it as `toKebabCase` to name the WIT resource its mint check and its wasmtime host
-/// look for. The mirror is pinned by a fixture table taken from
-/// [`convert_to_kebab_case_table`] below (verify.ts's "component kebab-ident mirror self-test"), so
-/// a rule changed HERE must be changed THERE in the same commit — the two tables are the lockstep.
+/// look for. The mirror's startup self-test parses the fixture table in
+/// [`convert_to_kebab_case_table`] below and requires every TypeScript fixture to be present with
+/// the same expected output, so a rule changed HERE cannot leave the component leg on an old rule.
 /// Drift fails in the understating direction on the matrix side (the resource lookup misses, the
 /// row reads "no minted component surface" and its round trip silently stops running), which is why
 /// the mirror is asserted at verify.ts startup rather than left to the annotations diff.
@@ -304,12 +304,17 @@ mod tests {
     /// The WIT identifier converter's pinned table. Every row is a name the component face actually
     /// emits, and the two interesting classes are the digit merge and the acronym runs.
     ///
-    /// LOCKSTEP: `cddl-matrix/verify.ts` mirrors this converter (`toKebabCase`) and pins the SAME
-    /// rows in its "component kebab-ident mirror self-test". A row added or changed here belongs in
-    /// that fixture table in the same commit; see [`convert_to_kebab_case`]'s doc comment for why
-    /// the matrix side cannot notice drift on its own.
+    /// LOCKSTEP: `cddl-matrix/verify.ts` mirrors this converter (`toKebabCase`) and its startup
+    /// self-test parses these exact literal `assert_eq!` rows. Every TypeScript fixture must appear
+    /// here with the same expectation; malformed or duplicate rows deliberately fail the verifier
+    /// rather than being skipped. See [`convert_to_kebab_case`]'s doc comment for why the matrix
+    /// side cannot notice drift on its own.
     #[test]
     fn convert_to_kebab_case_table() {
+        // component execution reaches its synthetic holder, and `Foo` is the seeded external-type
+        // name in the component matrix; both are TS fixture rows as well as emitted Rust names.
+        assert_eq!(convert_to_kebab_case("ProbeHolder"), "probe-holder");
+        assert_eq!(convert_to_kebab_case("Foo"), "foo");
         // digit merge: the generator emits `index_0`/`index_1` accessors for unnamed array members
         // (see tests/extern-deps-wasm), and `index-0` is rejected by wasm-tools <= 1.231 consumers.
         assert_eq!(convert_to_kebab_case("index_0"), "index0");
