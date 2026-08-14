@@ -25390,9 +25390,10 @@ fn decode_conformance_replay() {
     // says so itself. That removes the hand-maintenance in both directions (a new preserve row owes
     // no entries, and a re-minted vector cannot make a live exemption look stale).
     //
-    // Stale-guarded: a listed (row, label) whose variant now decodes+re-encodes cleanly fails the
-    // gate, so a closed decoder gap can't rot into a silent skip. (Derived skips carry no stale
-    // guard — see `VariantSkip::DerivedPreservePairMap`.)
+    // A listed (row, label) whose variant stops failing emits a loud diagnostic. It may prove the
+    // decoder gap closed, or that randomized evidence stopped exercising the label; only the first
+    // permits removal, while the second needs a scoped re-mint restoring diversity. (Derived skips
+    // carry no such guard — see `VariantSkip::DerivedPreservePairMap`.)
     const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[];
 
     // (row id, replay test-name, reason) pairs whose DEFAULT-leg replay test legitimately rejects
@@ -25686,7 +25687,8 @@ fn decode_conformance_replay() {
             .map(|(r, l, why)| ((*r, *l), *why))
             .collect();
     // (row, label) pairs whose variant test failed AND was suppressed by an ENCODING_VARIANT_SKIP
-    // entry; the stale guard flags any listed entry that is NOT here (the gap closed).
+    // entry. A listed entry missing here may mean its decoder gap closed OR its randomized vector
+    // shape disappeared; the stale diagnostic names the distinct remove-vs-scoped-remint actions.
     let mut variant_skip_still_failing: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
     // (row, label) pairs whose variant test failed AND was suppressed by the DERIVED class-(b)
@@ -26309,14 +26311,17 @@ fn decode_conformance_replay() {
     }
 
     // Stale-entry guard for ENCODING_VARIANT_SKIP: a listed (row, label) whose variant test no longer
-    // fails (it now decodes+re-encodes cleanly, or the row/label stopped emitting that variant) must be
-    // removed — the gap it documents has closed. Mirrors the PRESERVE_SKIP stale guard.
+    // fails has TWO causes this loop cannot distinguish. It may now decode+re-encode cleanly (the
+    // decoder gap closed: remove the pin), OR a full randomized re-mint may have stopped producing a
+    // vector whose structure emits the label (restore that diversity with a scoped re-mint; keep the
+    // still-live pin). The diagnostic must name both actions rather than deleting coverage on a draw.
     for (id, label, _reason) in ENCODING_VARIANT_SKIP {
         if !variant_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
             failures.push(format!(
-                "ENCODING_VARIANT_SKIP names ({id}, {label}) but that variant no longer FAILS — the \
-                 gap closed (or the row/label no longer emits a variant test); remove the entry \
-                 (stale pin)"
+                "ENCODING_VARIANT_SKIP names ({id}, {label}) but that variant no longer FAILS. \
+                 Either the decoder gap closed: remove the entry (stale pin); OR committed \
+                 randomized vectors no longer exercise this variant: restore structural diversity \
+                 with a scoped --only re-mint and keep the pin."
             ));
         }
     }
@@ -26538,7 +26543,8 @@ fn corpus_decode_replay() {
     // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately
     // fails. Same contract as the matrix gate's ledger (see its comment): CLASS (a) ONLY — a real
     // decoder gap over a genuinely spec-equal re-encoding, cited to a `cddl-matrix/roadmap.toml`
-    // § findings entry, hand-reviewed and stale-guarded. EMPTY at HEAD.
+    // § findings entry, hand-reviewed. A non-firing entry is diagnosed as either a closed gap or
+    // lost randomized diversity, never an unconditional instruction to remove it. EMPTY at HEAD.
     //
     // The `table_preserve.*` and `open_table.open_table_dup` rows that used to fill this list were
     // class (b) — pair-map rows whose entry order is VALUE-BEARING, so the map-reordering
@@ -26822,6 +26828,8 @@ fn corpus_decode_replay() {
             .iter()
             .map(|(r, l, why)| ((*r, *l), *why))
             .collect();
+    // See the matrix replay's sibling: absence can mean a closed decoder gap OR a lost randomized
+    // vector shape, and the later diagnostic tells the operator which action each cause needs.
     let mut variant_skip_still_failing: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
     // (row, label) pairs whose variant test failed AND was suppressed by the DERIVED class-(b)
@@ -27383,9 +27391,10 @@ fn corpus_decode_replay() {
     for (id, label, _reason) in ENCODING_VARIANT_SKIP {
         if !variant_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
             failures.push(format!(
-                "ENCODING_VARIANT_SKIP names ({id}, {label}) but that variant no longer FAILS — the \
-                 gap closed (or the row/label no longer emits a variant test); remove the entry \
-                 (stale pin)"
+                "ENCODING_VARIANT_SKIP names ({id}, {label}) but that variant no longer FAILS. \
+                 Either the decoder gap closed: remove the entry (stale pin); OR committed \
+                 randomized vectors no longer exercise this variant: restore structural diversity \
+                 with a scoped --only re-mint and keep the pin."
             ));
         }
     }

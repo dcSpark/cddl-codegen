@@ -702,8 +702,10 @@ artifacts — `cargo test` then exits 0 without compiling the cell's bytes (a la
 exactly that window: on a cache miss, between the cell's generation and its `cargo test`; the
 eager-warm `GATE_CACHE=0` path never can, which made the poison a pure cached-run asymmetry). The
 defenses: every generation gets a fresh, counter-suffixed output dir (keep-last-1 deletion; the
-Rust gates' per-cell-dir design); `touchTree` bumps every tree file's mtime right before each
-MISSED nested cargo (after any warm-up), so the cell's sources are always newer than any
+Rust gates' per-cell-dir design). This invariant covers an emission-profile base generation and its
+synthetic `embedFallback` generation as separate calls; the startup self-test drives that exact pair
+through `runCodegen` and pins distinct output paths. `touchTree` bumps every tree file's mtime right
+before each MISSED nested cargo (after any warm-up), so the cell's sources are always newer than any
 same-name fingerprint and the rebuild is honest; and the warm-ups write their spec to their OWN
 `warm.cddl`, never the cell's probe file — a lazy warm-up runs mid-cell, and a shared spec file
 would make the cell's later legs (the wasm probe reuses the spec file) silently generate the WARM
@@ -2354,7 +2356,14 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   another fold) refreshes the row's decode-foreign evidence clause, which otherwise still reads
   "no committed decode vectors" from the pre-mint probe. Generation is
   randomized, so verdict stability comes from the COMMIT: the deterministic gates below replay
-  committed bytes only. `project_decode_conformance.ts` also compares each supported row's committed
+  committed bytes only. Before either full foreign or corpus refresh writes, the mint compares each
+  shared row's randomized, spec-valid `source = "ruby-generate"`, `expect = "accept"` structural
+  classes with its committed predecessor. The bounded classifier retains nested array/map shape and
+  empty/singleton/multi cardinality (while ignoring scalar payload values); losing an old class
+  refuses the mint and reports the row plus missing and proposed classes in deterministic order.
+  `--only` deliberately bypasses that full-refresh loss check so it remains the review/recovery route
+  for restoring the specific row's diversity, while preserving every unselected row byte-identically.
+  `project_decode_conformance.ts` also compares each supported row's committed
   evidence clause with the catalog's spec-valid accept-vector count, excluding
   `class="over-acceptance"`; this catches the proven scoped-mint-after-probe drift where
   `record_array_tagged` minted vectors while its evidence still claimed none. A spec-valid vector the
@@ -2497,7 +2506,10 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     the decoder REJECTS (over-strict, the motivating class) or mis-decodes to a different value
     fails the gate. `ENCODING_VARIANT_SKIP` (stale-guarded, empty at HEAD) ledgers any
     (row, label) that legitimately fails against a `cddl-matrix/roadmap.toml` finding — a claim about
-    the DECODER, which stays hand-reviewed; a variant-test vacuity floor keeps the leg live.
+    the DECODER, which stays hand-reviewed; a variant-test vacuity floor keeps the leg live. If its
+    stale guard stops reproducing a listed entry, remove the pin only after confirming the decoder gap
+    closed; if randomized committed vectors no longer exercise the variant, restore the structural
+    diversity with a scoped `--only` re-mint and keep the live pin.
     A second exemption class is DERIVED rather than listed: the two map-reordering labels
     (`reverse_maps`, `everything`) assume entry order is an encoding detail, which an
     `@duplicates preserve` pair-map's contract makes false — its order is part of the value, so the
@@ -2655,7 +2667,8 @@ the matrix catalog. The enumerator and the per-rule dependency-closure builder l
 mint derived. Refresh flow: `cd cddl-matrix && bun run verify.ts --mint-decode-corpus` (`--only=`
 takes row ids AND bare fixture stems — a stem expands to the fixture's rows — preserving every
 unselected row byte-identically; mint-ONLY: it writes this catalog and nothing else, never
-annotations or the matrix catalog). **Always scope an additive mint with `--only`**: a bare mint
+annotations or the matrix catalog). **Use scoped `--only` for additive, review, and recovery mints**:
+a bare mint
 re-mints the WHOLE catalog, re-rolling every ruby-generated random vector in it (~1,900 changed
 lines observed for a four-row addition, and 20 minutes against 23 seconds) — replacing the
 committed regression vectors wholesale, which is a lossy trade even before the gap-11 caveat in

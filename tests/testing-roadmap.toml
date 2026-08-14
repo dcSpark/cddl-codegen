@@ -259,7 +259,6 @@ entries = [
   "testing.gate-s-own-stdout-print-column-result-pass",
   "testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag",
   "testing.failing-snapshot-test-surfaces-mismatch-per-test-run",
-  "testing.stale-pin-guard-cannot-distinguish-gap-closed-vector",
   "testing.config-run-s-convergence-warning-name-crate-already",
   "testing.extern-interface-export-public-interchange-format",
   "testing.exclusion-reasons-informational-interchange",
@@ -275,7 +274,6 @@ entries = [
   "part-surfaces-still-online",
   "part-verify-ts-evidence-absorber-stays",
   "part-sighting-offline-gate-run-new-class",
-  "testing.verify-cache-transparency-b-split-emission-profile-embed",
 ]
 
 [[section]]
@@ -6815,66 +6813,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.stale-pin-guard-cannot-distinguish-gap-closed-vector"
-title = "A stale-pin guard cannot distinguish \"the gap closed\" from \"the vector that proved the gap went blunt\" — and a wholesale re-mint of RANDOMLY GENERATED vectors produces the second while reporting the first."
-
-[record.payload]
-kind = "testing_operational_watch"
-body_md = '''- **A stale-pin guard cannot distinguish "the gap closed" from "the vector that proved the gap went
-  blunt" — and a wholesale re-mint of RANDOMLY GENERATED vectors produces the second while reporting
-  the first.** Proven 2026-07-30 (native-float preserve delivery): adding one corpus rule required a
-  catalog row, and `verify.ts --mint-decode-corpus` was run in its FULL-refresh form, which re-rolled
-  every row's ruby-generated vectors (3817-line diff for one new row). `corpus_decode_replay` then
-  failed with `ENCODING_VARIANT_SKIP names (table_preserve.md, reverse_maps) … the gap closed —
-  remove the entry (stale pin)`. It had not: that pin exists because reversing a `@duplicates
-  preserve` pair-map's entry order changes the VALUE, and the re-rolled vector set had replaced
-  HEAD's multi-entry maps (`8200a2…`, `8200a3…`) with the empty map `8200a0`, which reverses to
-  itself. Taking the guard at its word would have deleted a live order-collapse tripwire AND left the
-  coverage silently gone — the guard's message names exactly one of its two possible causes, and it
-  names the wrong one whenever the data moved. The mint's own `--only=<id|fixture>` form is the fix
-  and the working rule: **re-mint the row you changed, never the catalog** (108-line diff, other rows'
-  vectors preserved verbatim, `table_preserve.md` still carrying multi-entry maps). The mechanical
-  layer on a second instance: have the mint refuse a full refresh that REDUCES any row's vector-shape
-  diversity (it already classifies vectors by shape — `vectorShapeClass` — so an empty-map-only row
-  where the committed one had multi-entry maps is detectable at mint time, before the pin ever goes
-  stale). Trigger: a second pin retired or nearly-retired by vector churn rather than by a fix. (The
-  order-sensitivity pins that produced the proven instance are gone — those exemptions are now
-  derived from each row's `spec` and carry no stale guard, precisely because "this vector's
-  reordering was the identity" is not evidence about the row. Every remaining stale-guarded pin is
-  still exposed to the class, which is why the watch stands.)
-
-'''
-watch_state = "watching"
-signature_md = '''A stale-pin guard claims closure after a mint reduced the pinned row's vector-shape diversity.
-'''
-response_md = '''Restore the proven vector, remint only the changed row, and re-run the owning replay gate.
-'''
-retirement_semantics_md = '''Retire only when that guard covers every randomized catalog mint.
-'''
-
-[record.payload.watch_escalation]
-failure_signature_md = '''A stale-pin guard claims closure after a mint reduced the pinned row's vector-shape diversity.
-'''
-capture_procedure_md = '''Preserve pre/post row vectors, shape classes, mint command, stale-pin output, and single-row rerun.
-'''
-response_md = '''Restore the proven vector, remint only the changed row, and re-run the owning replay gate.
-'''
-escalation_action_md = '''On a second vector-churn retirement or near-retirement, add the mint-time no-diversity-reduction guard.
-'''
-retirement_semantics_md = '''Retire only when that guard covers every randomized catalog mint.
-'''
-
-[[record.payload.capture_step]]
-step_id = "signature"
-capture_md = '''Preserve pre/post row vectors, shape classes, mint command, stale-pin output, and single-row rerun.
-'''
-
-[[record.payload.capture_step]]
-step_id = "scope"
-capture_md = '''Record the full untruncated log or consumer report, command, full commit, date, environment, relevant versions, and the explicitly unprobed remainder; never cite a disposable draft log as durable evidence.
-'''
-
-[[record]]
 id = "testing.std-generated-crates"
 title = "no_std generated crates."
 
@@ -7523,60 +7461,6 @@ action_on_fire_md = '''Set testing.value-anchor-rot-field-addition-delivery-grow
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.value-anchor-rot-field-addition-delivery-grows-existing's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.verify-cache-transparency-b-split-emission-profile-embed"
-title = "`verify_cache_transparency` A/B split on an emission-profile EMBED cell — intermittent, distinct from the ruby and registry classes."
-
-[record.payload]
-kind = "testing_operational_watch"
-body_md = '''- **`verify_cache_transparency` A/B split on an emission-profile EMBED cell — intermittent, distinct
-  from the ruby and registry classes.** Observed 2026-07-13: one `cache_transparency.ts` leg diverged
-  on `prelude.tstr`'s `emission.preserve.evidence` — the synthetic-holder embed round-trip
-  (`embedFallback`) landed `embedded=true` ("round-trips when embedded") in one run and `embedded=false`
-  ("no minted round-trip surface") in another, same input. A back-to-back offline re-run
-  (`CARGO_NET_OFFLINE=true`) was byte-identical (714 cache hits), so it is INTERMITTENT, not a
-  deterministic cache-reconstruction bug: the `minted` bit of the embed holder's generated
-  `generated/mod.rs` varies run-to-run (a transparent-alias-under-preserve cell whose holder sometimes
-  mints a standalone test surface, sometimes not — the residual tail of the fresh-output-dir /
-  warm-up-clobber class the `72cf4ce`/`a796b7c`/`dbcead7` fixes addressed for the base probe, not yet
-  the emission-embed path). The tell that separates it from a ruby flake (now deterministic — README
-  § "Gotchas") and the registry-transient class (shifting cell + `unable to update registry`): a SINGLE
-  emission-embed evidence line flipping on the `embedded`/`minted` bit, reproducing on neither an
-  offline re-run nor a solo probe. Re-run once (offline) to confirm transience before hand-reverting.
-  The mechanical fix, when the rate warrants: make the emission-embed generation use a fresh output dir
-  per cell (mirror the base-probe fix) so a prior cell's minted `mod.rs` can't be read for the current
-  holder.
-'''
-watch_state = "watching"
-signature_md = '''One emission-embed evidence row flips its embedded/minted bit across the A/B run, while offline immediate retry is stable.
-'''
-response_md = '''Rerun once offline and do not hand-revert unless the deterministic retry reproduces.
-'''
-retirement_semantics_md = '''Retire after the A/B gate repeatedly proves deterministic fresh-dir behavior.
-'''
-
-[record.payload.watch_escalation]
-failure_signature_md = '''One emission-embed evidence row flips its embedded/minted bit across the A/B run, while offline immediate retry is stable.
-'''
-capture_procedure_md = '''Capture both evidence rows, holder generated source, cache hit provenance, versions, and solo/offline retry.
-'''
-response_md = '''Rerun once offline and do not hand-revert unless the deterministic retry reproduces.
-'''
-escalation_action_md = '''When recurrence rate justifies work, make emission-embed generation use a fresh output directory per cell.
-'''
-retirement_semantics_md = '''Retire after the A/B gate repeatedly proves deterministic fresh-dir behavior.
-'''
-
-[[record.payload.capture_step]]
-step_id = "signature"
-capture_md = '''Capture both evidence rows, holder generated source, cache hit provenance, versions, and solo/offline retry.
-'''
-
-[[record.payload.capture_step]]
-step_id = "scope"
-capture_md = '''Record the full untruncated log or consumer report, command, full commit, date, environment, relevant versions, and the explicitly unprobed remainder; never cite a disposable draft log as durable evidence.
 '''
 
 [[record]]

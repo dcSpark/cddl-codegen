@@ -517,6 +517,229 @@ function selectivelyReplaceSupportRows(existing: string, rendered: string, selec
   return output;
 }
 
+// FULL-MINT STRUCTURAL-DIVERSITY GUARD -------------------------------------------------------------
+// A mint's accept vectors are randomized, yet they are the catalog's only executable evidence for
+// values the generator did not choose. Preserve their SHAPES across a whole-catalog refresh: losing,
+// for example, the one multi-entry-map draw and retaining only an empty map weakens decode coverage
+// while every remaining vector can still look individually valid. This parser is deliberately local
+// to the mint rather than `vectorShapeClass` in lib.ts: that helper is the intentionally coarse
+// leading-major classifier for choice-arm floors, whereas this needs the complete CBOR structure.
+//
+// The classifier is bounded in all attacker-controlled dimensions. Catalog hex is not an external
+// service input, but a malformed/oversized value must make the guard conservative rather than making
+// a mint hang or throw: it yields the explicit `invalid` class, which a valid previous class cannot
+// silently replace. Scalar payloads (including tags) are ignored; arrays/maps retain empty/singleton/
+// multi cardinality and the recursively observed child shape classes. Multi child classes are sets,
+// not exact item counts/order, so ordinary random length/order variation does not turn into a false
+// diversity regression while a nested empty -> multi change remains visible.
+const STRUCTURAL_INVALID = "invalid";
+const STRUCTURAL_MAX_BYTES = 1024 * 1024;
+const STRUCTURAL_MAX_DEPTH = 128;
+const STRUCTURAL_MAX_NODES = 100_000;
+
+interface StructuralNode {
+  readonly major: number;
+  readonly unsigned?: bigint; // kept only to recognize holder's literal `0` sentinel
+  readonly items?: readonly StructuralNode[];
+  readonly entries?: readonly (readonly [StructuralNode, StructuralNode])[];
+  readonly tagged?: StructuralNode;
+  readonly indefinite: boolean;
+}
+
+interface StructuralCursor { at: number; nodes: number }
+
+function structuralHexBytes(hex: string): Uint8Array {
+  if (hex.length === 0 || hex.length > STRUCTURAL_MAX_BYTES * 2 || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex))
+    throw new Error("invalid hex");
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let index = 0; index < bytes.length; index++) bytes[index] = parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  return bytes;
+}
+
+function structuralUnsigned(bytes: Uint8Array, cursor: StructuralCursor, count: number): bigint {
+  if (cursor.at + count > bytes.length) throw new Error("truncated argument");
+  let value = 0n;
+  for (let index = 0; index < count; index++) value = (value << 8n) | BigInt(bytes[cursor.at++]!);
+  return value;
+}
+
+function structuralArgument(bytes: Uint8Array, cursor: StructuralCursor, additional: number): bigint | null {
+  if (additional < 24) return BigInt(additional);
+  if (additional === 24) return structuralUnsigned(bytes, cursor, 1);
+  if (additional === 25) return structuralUnsigned(bytes, cursor, 2);
+  if (additional === 26) return structuralUnsigned(bytes, cursor, 4);
+  if (additional === 27) return structuralUnsigned(bytes, cursor, 8);
+  if (additional === 31) return null;
+  throw new Error("reserved additional-information value");
+}
+
+function structuralCount(value: bigint): number {
+  if (value > BigInt(STRUCTURAL_MAX_NODES)) throw new Error("container is above node bound");
+  return Number(value);
+}
+
+function structuralItem(bytes: Uint8Array, cursor: StructuralCursor, depth: number): StructuralNode {
+  if (depth > STRUCTURAL_MAX_DEPTH) throw new Error("nesting is above depth bound");
+  if (++cursor.nodes > STRUCTURAL_MAX_NODES) throw new Error("node count is above bound");
+  if (cursor.at >= bytes.length) throw new Error("truncated item");
+  const head = bytes[cursor.at++]!;
+  const major = head >> 5;
+  const additional = head & 0x1f;
+  const argument = structuralArgument(bytes, cursor, additional);
+  const indefinite = argument === null;
+  if (indefinite && ![2, 3, 4, 5].includes(major)) throw new Error("indefinite scalar/tag/break");
+
+  if (major <= 1) return { major, unsigned: major === 0 ? argument! : undefined, indefinite: false };
+  if (major === 2 || major === 3) {
+    if (!indefinite) {
+      if (argument! > BigInt(bytes.length - cursor.at)) throw new Error("truncated definite string");
+      cursor.at += Number(argument!);
+      return { major, indefinite: false };
+    }
+    // An indefinite byte/text string consists ONLY of definite chunks of its own major class.
+    while (true) {
+      if (cursor.at >= bytes.length) throw new Error("unterminated indefinite string");
+      if (bytes[cursor.at] === 0xff) { cursor.at++; break; }
+      const chunk = structuralItem(bytes, cursor, depth + 1);
+      if (chunk.major !== major || chunk.indefinite) throw new Error("invalid indefinite string chunk");
+    }
+    return { major, indefinite: true };
+  }
+  if (major === 4) {
+    const items: StructuralNode[] = [];
+    if (indefinite) {
+      while (true) {
+        if (cursor.at >= bytes.length) throw new Error("unterminated indefinite array");
+        if (bytes[cursor.at] === 0xff) { cursor.at++; break; }
+        items.push(structuralItem(bytes, cursor, depth + 1));
+      }
+    } else {
+      for (let index = 0; index < structuralCount(argument!); index++) items.push(structuralItem(bytes, cursor, depth + 1));
+    }
+    return { major, items, indefinite };
+  }
+  if (major === 5) {
+    const entries: [StructuralNode, StructuralNode][] = [];
+    const addEntry = () => entries.push([structuralItem(bytes, cursor, depth + 1), structuralItem(bytes, cursor, depth + 1)]);
+    if (indefinite) {
+      while (true) {
+        if (cursor.at >= bytes.length) throw new Error("unterminated indefinite map");
+        if (bytes[cursor.at] === 0xff) { cursor.at++; break; }
+        addEntry();
+      }
+    } else {
+      for (let index = 0; index < structuralCount(argument!); index++) addEntry();
+    }
+    return { major, entries, indefinite };
+  }
+  if (major === 6) return { major, tagged: structuralItem(bytes, cursor, depth + 1), indefinite: false };
+  // Major 7's payload is a simple value or float. Its width/value are payload, so read and discard it.
+  if (additional === 31) throw new Error("unpaired break");
+  return { major, indefinite: false };
+}
+
+function structuralCardinality(length: number): "empty" | "singleton" | "multi" {
+  return length === 0 ? "empty" : length === 1 ? "singleton" : "multi";
+}
+
+function structuralChildSet(values: readonly string[]): string {
+  return [...new Set(values)].sort().join(",");
+}
+
+function structuralClass(node: StructuralNode): string {
+  if (node.major <= 3 || node.major === 7) return `major-${node.major}`;
+  if (node.major === 4) {
+    const items = node.items!;
+    const card = structuralCardinality(items.length);
+    return card === "empty" ? "array-empty" : `array-${card}(${structuralChildSet(items.map(structuralClass))})`;
+  }
+  if (node.major === 5) {
+    const entries = node.entries!;
+    const card = structuralCardinality(entries.length);
+    const shapes = entries.map(([key, value]) => `${structuralClass(key)}=>${structuralClass(value)}`);
+    return card === "empty" ? "map-empty" : `map-${card}(${structuralChildSet(shapes)})`;
+  }
+  // Tags retain major 6 while their numeric tag payload stays deliberately ignored.
+  return `major-6(${structuralClass(node.tagged!)})`;
+}
+
+// Holder rows encode `__probe_holder = [0, <under-test value>]`. Match that ARRAY and sentinel as
+// decoded CBOR nodes, not a byte prefix: larger integer heads, indefinite arrays, or any future holder
+// encoding change cannot make us accidentally strip the wrong first two bytes.
+function unwrapStructuralHolder(node: StructuralNode): StructuralNode {
+  const items = node.major === 4 ? node.items : undefined;
+  if (!items || items.length !== 2 || items[0]!.major !== 0 || items[0]!.unsigned !== 0n)
+    throw new Error("invalid holder shape");
+  return items[1]!;
+}
+
+function structuralVectorClass(hex: string, holder: boolean): string {
+  try {
+    const bytes = structuralHexBytes(hex);
+    if (bytes.length > STRUCTURAL_MAX_BYTES) throw new Error("vector is above byte bound");
+    const cursor: StructuralCursor = { at: 0, nodes: 0 };
+    let node = structuralItem(bytes, cursor, 0);
+    if (cursor.at !== bytes.length) throw new Error("trailing CBOR data");
+    if (holder) node = unwrapStructuralHolder(node);
+    return structuralClass(node);
+  } catch {
+    return STRUCTURAL_INVALID;
+  }
+}
+
+interface StructuralDiversityLoss { readonly id: string; readonly missing: readonly string[]; readonly proposed: readonly string[] }
+
+function randomizedStructuralClasses(row: CatalogRow): Set<string> {
+  return new Set(
+    row.vectors
+      .filter(vector => vector.source === "ruby-generate" && vector.expect === "accept")
+      .map(vector => structuralVectorClass(vector.hex, row.mode === "holder")),
+  );
+}
+
+// `fullRefresh=false` is intentionally part of this pure decision rather than a caller-side early
+// return, so the startup test proves the documented `--only=` recovery path stays unblocked.
+function structuralDiversityLosses(previous: ReadonlyMap<string, CatalogRow>, proposed: ReadonlyMap<string, CatalogRow>, fullRefresh: boolean): StructuralDiversityLoss[] {
+  if (!fullRefresh) return [];
+  const losses: StructuralDiversityLoss[] = [];
+  for (const id of [...previous.keys()].filter(id => proposed.has(id)).sort()) {
+    const oldClasses = randomizedStructuralClasses(previous.get(id)!);
+    const proposedClasses = randomizedStructuralClasses(proposed.get(id)!);
+    const missing = [...oldClasses].filter(cls => !proposedClasses.has(cls)).sort();
+    if (missing.length) losses.push({ id, missing, proposed: [...proposedClasses].sort() });
+  }
+  return losses;
+}
+
+function refuseStructuralDiversityLosses(previous: ReadonlyMap<string, CatalogRow>, proposed: ReadonlyMap<string, CatalogRow>): void {
+  const losses = structuralDiversityLosses(previous, proposed, MINT_ONLY === null);
+  if (!losses.length) return;
+  console.error("STRUCTURAL-DIVERSITY GUARD: full refresh would discard randomized accept-vector class(es); refusing before catalog write.");
+  for (const loss of losses) {
+    console.error(`  - ${loss.id}: missing [${loss.missing.join(", ")}]; proposed [${loss.proposed.join(", ")}]`);
+  }
+  console.error("Re-mint the affected row with --only=<row-id> after reviewing the changed randomized coverage.");
+  process.exit(1);
+}
+
+interface OutputPathSequence { next: number }
+
+// The only allocator used by rust `runCodegen`'s clean-out seam. Keeping allocation independent of
+// deletion makes its unique-path contract executable without a cargo invocation or a scratch write.
+function takeFreshOutputPath(root: string, prefix: string, sequence: OutputPathSequence): string {
+  return join(root, `${prefix}_${sequence.next++}`);
+}
+
+// Startup's architectural pin invokes `runCodegen` itself with these fake process-boundary operations:
+// a future edit that bypasses the fresh-output reservation in `runCodegen` fails before it can reuse a
+// generated crate in the real emission base -> embed-fallback path.
+interface RustGenerationOps {
+  readonly codegenInput: string;
+  readonly takeFreshOutput: () => string;
+  readonly run: (argv: string[], cwd: string) => number;
+  readonly splice: (out: string, options: { wasm: boolean; json: boolean; preserve: boolean }) => void;
+}
+
 {
   const before = "head\n[[support]]\nid = \"a\"\nstatus = \"old\"\n\n[[support]]\nid = \"b\"\nstatus = \"stay\"\n\n# --- per-control-op support\n";
   const rendered = "[[support]]\nid = \"a\"\nstatus = \"new\"\n\n[[support]]\nid = \"c\"\nstatus = \"new\"\n\n";
@@ -529,11 +752,67 @@ function selectivelyReplaceSupportRows(existing: string, rendered: string, selec
   if (SELFTEST) console.log("probe-only selective-publish self-test OK (replacement + insertion + byte preservation)");
 }
 
-// ASSERT-AT-STARTUP self-tests for the three pure evidence-vocabulary deciders. They run on EVERY
-// invocation before any oracle work, because all three fail SILENTLY in production — a wrong verdict
-// token, stage name, or policy classification reads as a plausible annotation or hidden triage
-// exemption, not as an error. `--selftest` runs ONLY these blocks and exits, for a sub-second
-// red/green check without the multi-minute pipeline.
+// The full-mint guard is pure, so prove its evidence vocabulary and full-vs-scoped decision without
+// a randomized catalog mint. The map case is the original failure shape: a refresh that replaces the
+// only multi-entry map sample with an empty map must stop before it writes either catalog.
+{
+  const rubyAccept = (hex: string): CatalogVector => ({ hex, source: "ruby-generate", expect: "accept" });
+  const handAccept = (hex: string): CatalogVector => ({ hex, source: "hand", expect: "accept" });
+  const reject = (hex: string): CatalogVector => ({ hex, source: "ruby-generate", expect: "reject" });
+  const row = (id: string, vectors: CatalogVector[], mode?: string): CatalogRow => ({ id, axis: "synthetic", example: "x = any", mode, vectors });
+  const emptyMap = "a0";
+  const multiMap = "a200010203";
+  const previous = new Map([["map.row", row("map.row", [rubyAccept(multiMap), handAccept(emptyMap), reject(emptyMap)])]]);
+  const reduced = new Map([["map.row", row("map.row", [rubyAccept(emptyMap)])]]);
+  const retainedPlusExtra = new Map([["map.row", row("map.row", [rubyAccept(multiMap), rubyAccept(emptyMap)])]]);
+  const losses = structuralDiversityLosses(previous, reduced, true);
+  const holderClass = structuralVectorClass(`8200${multiMap}`, true);
+  const nestedClass = structuralVectorClass("81820001", false);
+  const malformed = [structuralVectorClass("a0ff", false), structuralVectorClass("9f00", false), structuralVectorClass("zz", false)];
+  const indefiniteClasses = [structuralVectorClass("9f0001ff", false), structuralVectorClass("5f4101ff", false), structuralVectorClass("7f6161ff", false)];
+  const outputSequence: OutputPathSequence = { next: 41 };
+  const capturedOutputs: string[] = [];
+  const fakeRustGeneration: RustGenerationOps = {
+    codegenInput: "/synthetic-probe/input.cddl",
+    takeFreshOutput: () => takeFreshOutputPath("/synthetic-probe", "cc_out", outputSequence),
+    run: (argv) => {
+      const output = argv.find(arg => arg.startsWith("--output="));
+      if (output === undefined) throw new Error("runCodegen omitted --output");
+      capturedOutputs.push(output.slice("--output=".length));
+      return 1; // do not invoke the splice or any external codegen process
+    },
+    splice: () => { throw new Error("non-zero fake generation must not splice"); },
+  };
+  // This is the exact pair an emission profile executes: base `runCodegen`, then the unminted
+  // surface's embed fallback calls `runCodegen(extraFlags)` again.
+  runCodegen([], fakeRustGeneration);
+  runCodegen(["--preserve-encodings=true"], fakeRustGeneration);
+  const [emissionBaseOut, embedFallbackOut] = capturedOutputs;
+  const failures: string[] = [];
+  if (losses.length !== 1 || losses[0]!.id !== "map.row" || losses[0]!.missing.join(",") !== "map-multi(major-0=>major-0)" ||
+      losses[0]!.proposed.join(",") !== "map-empty")
+    failures.push(`multi-entry map -> empty-map loss was not reported as expected (${JSON.stringify(losses)})`);
+  if (holderClass !== "map-multi(major-0=>major-0)") failures.push(`holder did not unwrap structurally (${holderClass})`);
+  if (nestedClass !== "array-singleton(array-multi(major-0))") failures.push(`nested container cardinality was not retained (${nestedClass})`);
+  if (structuralDiversityLosses(previous, retainedPlusExtra, true).length !== 0) failures.push("retained old class plus extra class was reported as a loss");
+  if (structuralDiversityLosses(previous, reduced, false).length !== 0) failures.push("scoped re-mint was blocked by the full-refresh guard");
+  if (randomizedStructuralClasses(previous.get("map.row")!).size !== 1) failures.push("hand/reject vector entered randomized diversity classes");
+  if (malformed.some(cls => cls !== STRUCTURAL_INVALID)) failures.push(`malformed/trailing input did not classify invalid (${malformed.join(", ")})`);
+  if (indefiniteClasses[0] !== "array-multi(major-0)" || indefiniteClasses[1] !== "major-2" || indefiniteClasses[2] !== "major-3")
+    failures.push(`definite/indefinite container or string classification regressed (${indefiniteClasses.join(", ")})`);
+  if (emissionBaseOut === undefined || embedFallbackOut === undefined || emissionBaseOut === embedFallbackOut || outputSequence.next !== 43)
+    failures.push(`successive emission base/fallback rust generations reused an output path (${emissionBaseOut}, ${embedFallbackOut})`);
+  if (failures.length) {
+    console.error(`HARNESS FAILURE: mint structural-diversity/fresh-output self-test failed — ${failures.join("; ")}; refusing to run.`);
+    process.exit(2);
+  }
+  if (SELFTEST) console.log("mint structural-diversity/fresh-output self-test OK (loss guard, holder/nesting, malformed input, scoped bypass, fresh paths)");
+}
+
+// ASSERT-AT-STARTUP self-tests for pure evidence-vocabulary deciders. They run on EVERY invocation
+// before any oracle work, because a wrong verdict token, stage name, or policy classification reads
+// as plausible annotation or hidden triage exemption rather than as an error. `--selftest` runs ONLY
+// these blocks and exits, for a sub-second red/green check without the multi-minute pipeline.
 // (1) The ruby-generate Bernoulli classifier (Change A's deterministic verdict source): a
 // mis-classification would silently route a Bernoulli row back onto the flaky `generate` verdict (or a
 // deterministic row onto the nondet token), surfacing only as a spurious annotations flip.
@@ -1350,8 +1629,8 @@ diskHeadroomPreflight("scratch-preflight");
 // cargo fingerprint the leaf crate per cell (deps stay amortized in the shared target — they are
 // path-independent), which is the Rust-side gates' per-cell-dir design. The gate-cache tree hash uses
 // RELATIVE paths and the key argv is path-normalized, so keys are unchanged by the moving dirs.
-let outSeq = 0;
-let ccOut = join(probeDir, `cc_out_${outSeq++}`);
+const outputSequence: OutputPathSequence = { next: 0 };
+let ccOut = takeFreshOutputPath(probeDir, "cc_out", outputSequence);
 const ccWarmOut = join(probeDir, "cc_warm_out");
 // Shared cargo target for the compile-gate so the generated crate's deps (cbor_event, …) build ONCE and
 // every subsequent `cargo check` is incremental (fits PROBE_TIMEOUT). Warmed before the probe loops.
@@ -1368,7 +1647,7 @@ const COMPILE_WARM_TIMEOUT = 600; // first build (all deps) can exceed the per-p
 // own out/target dirs keep it from disturbing the rust probe's compile classification.
 const WASM_PROBE =
   !VERIFY_ARGS.includes("--no-wasm") && !["0", "false"].includes((process.env.VERIFY_WASM ?? "").toLowerCase());
-let ccOutWasm = join(probeDir, `cc_out_wasm_${outSeq++}`);
+let ccOutWasm = takeFreshOutputPath(probeDir, "cc_out_wasm", outputSequence);
 const ccWarmOutWasm = join(probeDir, "cc_warm_out_wasm");
 const WASM_TARGET = WASM_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_wasm_target_")) : "";
 if (WASM_TARGET) scratchTargets.push(WASM_TARGET);
@@ -1384,7 +1663,7 @@ if (WASM_TARGET) scratchTargets.push(WASM_TARGET);
 const DECODE_FOREIGN =
   !VERIFY_ARGS.includes("--no-decode-foreign") &&
   !["0", "false"].includes((process.env.VERIFY_DECODE_FOREIGN ?? "").toLowerCase());
-let ccOutForeign = join(probeDir, `cc_out_foreign_${outSeq++}`);
+let ccOutForeign = takeFreshOutputPath(probeDir, "cc_out_foreign", outputSequence);
 // The committed vectors keyed by matrix row id (empty in the mint path / when opted out / before the
 // catalog is first committed). Loaded once; a missing file is not an error here (D6 gates completeness).
 const catalogRows: Map<string, CatalogRow> =
@@ -1404,7 +1683,7 @@ const COMPONENT_PROBE =
 const COMPONENT_PROBE_SET = new Set(COMPONENT_PROBE_ROWS);
 const componentCatalogRows: Map<string, CatalogRow> =
   COMPONENT_PROBE && !MINT_DECODE && existsSync(CATALOG_PATH) ? parseCatalog(CATALOG_PATH) : new Map();
-let ccOutComponent = join(probeDir, `cc_out_component_${outSeq++}`);
+let ccOutComponent = takeFreshOutputPath(probeDir, "cc_out_component", outputSequence);
 // One cargo target shared by every component cell: the wasip2 dep graph (wit-bindgen, wit-component)
 // is the expensive half and is path-independent, so only the leaf crates rebuild per cell. Sharing it
 // is exactly why every cell must `touchTree` before its build — cargo's leaf fingerprint is keyed by
@@ -1561,13 +1840,21 @@ function runJsonGenCheck(cell: string, timeoutS = PROBE_TIMEOUT): number {
 // The generator MERGES into an existing output dir (it never clears it), so a partially-written crate
 // from a panicking probe — or any future conditionally-emitted module — would leak into the next
 // probe's compile gate. Start every generation from an empty dir.
-// (Bumping to a fresh path is the stale-fingerprint defense — see the `outSeq` comment above.)
-const cleanOut = () => { rmSync(ccOut, { recursive: true, force: true }); ccOut = join(probeDir, `cc_out_${outSeq++}`); };
+// (Bumping to a fresh path is the stale-fingerprint defense — see the sequence comment above.)
+const cleanOut = (): string => {
+  rmSync(ccOut, { recursive: true, force: true });
+  ccOut = takeFreshOutputPath(probeDir, "cc_out", outputSequence);
+  return ccOut;
+};
 // Fresh-dir bump for the foreignGenCrate flows (decode-foreign probe + the mint paths): delete the
 // current dir, allocate the next, return it — callers pass the return straight to foreignGenCrate and
 // keep reading the module binding for the replay that follows.
-const nextForeignOut = (): string => { rmSync(ccOutForeign, { recursive: true, force: true }); ccOutForeign = join(probeDir, `cc_out_foreign_${outSeq++}`); return ccOutForeign; };
-const nextOut = (): string => { cleanOut(); return ccOut; };
+const nextForeignOut = (): string => {
+  rmSync(ccOutForeign, { recursive: true, force: true });
+  ccOutForeign = takeFreshOutputPath(probeDir, "cc_out_foreign", outputSequence);
+  return ccOutForeign;
+};
+const nextOut = (): string => cleanOut();
 // `extraFlags` appends an emission profile's CLI flags (preserve/json) so the SAME generate pipeline
 // serves both the default probe (no extra flags) and the per-emission-profile probes.
 // The codegen probes' input path: `probeFile` for ordinary single-file examples, or a synthesized
@@ -1590,14 +1877,17 @@ function setCodegenInput(example: string, externStub?: string) {
   writeFileSync(join(dir, "_CDDL_CODEGEN_EXTERN_DEPS_DIR_", "extern_dep", "lib.cddl"), externStub + "\n");
   codegenInput = dir;
 }
-function runCodegen(extraFlags: string[] = []): number {
-  cleanOut();
-  const exit = runProbe(["cargo", "run", "-q", "--", `--input=${codegenInput}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true", ...extraFlags], CODEGEN_DIR);
+function runCodegen(extraFlags: string[] = [], ops?: RustGenerationOps): number {
+  const out = ops ? ops.takeFreshOutput() : cleanOut();
+  const input = ops ? ops.codegenInput : codegenInput;
+  const run = ops ? ops.run : runProbe;
+  const splice = ops ? ops.splice : applyDefSplice;
+  const exit = run(["cargo", "run", "-q", "--", `--input=${input}`, `--output=${out}`, "--wasm=false", "--emit-tests=true", ...extraFlags], CODEGEN_DIR);
   // Seed the user-supplied side (see DEF_SPLICE) BEFORE any compile stage reads the crate. The flags
   // decide the flavor: the encoding-variable signature under preserve, the serde/schemars derives the
   // json contract imposes on user types.
   if (exit === 0)
-    applyDefSplice(ccOut, {
+    splice(out, {
       wasm: false,
       json: extraFlags.some(f => f.startsWith("--json-")),
       preserve: extraFlags.includes("--preserve-encodings=true"),
@@ -1609,7 +1899,7 @@ function runCodegen(extraFlags: string[] = []): number {
 // `cargo test` the wasm crate — which builds the rust crate as a (non-test) path dep AND compiles+runs
 // the emitted `cddl_generated_wasm_tests` module. Separate out dir so it never perturbs the rust
 // probe's ccOut; separate target so its wasm-bindgen deps don't invalidate the rust compile cache.
-const cleanOutWasm = () => { rmSync(ccOutWasm, { recursive: true, force: true }); ccOutWasm = join(probeDir, `cc_out_wasm_${outSeq++}`); };
+const cleanOutWasm = () => { rmSync(ccOutWasm, { recursive: true, force: true }); ccOutWasm = takeFreshOutputPath(probeDir, "cc_out_wasm", outputSequence); };
 function runCodegenWasm(): number {
   cleanOutWasm();
   const exit = runProbe(["cargo", "run", "-q", "--", `--input=${codegenInput}`, `--output=${ccOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR);
@@ -1800,7 +2090,7 @@ function ensureComponentHost(): string {
 
 const nextComponentOut = (): string => {
   rmSync(ccOutComponent, { recursive: true, force: true });
-  ccOutComponent = join(probeDir, `cc_out_component_${outSeq++}`);
+  ccOutComponent = takeFreshOutputPath(probeDir, "cc_out_component", outputSequence);
   return ccOutComponent;
 };
 
@@ -2965,6 +3255,7 @@ function runMintDecodeForeign(): never {
     console.log(`[mint] ${id}: ${tag}`);
   }
 
+  refuseStructuralDiversityLosses(existing, outRows);
   const content = composeCatalog([...outRows.values()]);
   try { Bun.TOML.parse(content); }
   catch (e) { console.error(`HARNESS FAILURE: composed catalog.toml does not parse as TOML (${e}) — a writer bug, not a verdict. Refusing to write.`); process.exit(2); }
@@ -3290,6 +3581,7 @@ function runMintDecodeCorpus(): never {
     console.log(`[mint-corpus] ${o.id}: ${tag}`);
   }
 
+  refuseStructuralDiversityLosses(existing, outRows);
   const content = composeCatalog([...outRows.values()], CORPUS_CATALOG_INTRO);
   try { Bun.TOML.parse(content); }
   catch (e) { console.error(`HARNESS FAILURE: composed corpus_catalog.toml does not parse as TOML (${e}) — a writer bug, not a verdict. Refusing to write.`); process.exit(2); }

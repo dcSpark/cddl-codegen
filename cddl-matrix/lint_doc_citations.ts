@@ -446,12 +446,12 @@ const RETIRED_PROJECTION_PATHS = ["cddl-matrix/ROADMAP.md", "tests/TESTING_ROADM
 const MANAGED_BURNDOWN5_DOCS = new Set([
   "draft/burndown5/README.md",
   "draft/burndown5/tier1-silent-wrong-results.md",
-  "draft/burndown5/tier2-tool-honesty.md",
   "draft/burndown5/tier3-due-test-systems.md",
   "draft/burndown5/tier4-ready-features.md",
   "draft/burndown5/tier5-decisions-and-filings.md",
   "draft/burndown5/bookkeeping.md",
   "draft/burndown5/parked-validated.md",
+  "draft/burndown5/history.md",
 ]);
 // These spellings name deleted projections, not current documents. Keep the compatibility surface
 // closed: every other tracked text file must use the TOML authorities or a stable roadmap record ID.
