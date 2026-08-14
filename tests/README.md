@@ -2125,6 +2125,24 @@ because it compiles the guest resource glue rather than the general fixture suit
   sites (the table canonical key sort and the open-struct-map canonical merge); its vectors pin
   that the merge sorts by the bytes the write arm emits, the table-VALUE leg's `force_canonical`
   re-minimization, and a serializer refusal surfacing from both call sites.
+- **Complete-pair coherence denominator** — `tests/custom-codec-coherence-e2e`
+  (`integration_tests::custom_codec_coherence_e2e`, local, rust-only): one holder crate per
+  explicit default, preserve, and canonical profile executes its 17 unmodified complete-pair
+  carriers:
+  transparent alias; array/map record fields and owners; ordinary, generic, bounded,
+  duplicate-rejecting, duplicate-preserving, non-empty, and bounded/non-empty pair-map nominal
+  tables; table key/value aliases; and open-map rest key/value aliases.
+  Its text-over-bytes/record/map codecs are non-default, profile-correct (including inferred
+  preserve encodings and canonical flags), and assert both semantic decode and byte replay through
+  the holder, so a single direction reverting to a generated codec cannot pass. The row-entry
+  spelling itself remains an explicit rejection control in `dsl_position_tests`. Its companion
+  `custom_pair_modifier_placement_matrix` is an 18 × 2 generator-only modifier-context matrix:
+  it adds the open-table typed-row dispatcher to the 17 base carriers, because that context
+  necessarily carries `@custom_wire_major` and cannot be modifier-free. `@custom_encodings` must
+  create the declared preserve signature/sidecar (zero-demand bases make that observable) or
+  reject; `@custom_wire_major` must drive open-table dispatch or reject. The matrix caught a
+  field-level major declaration that generated successfully but had no
+  consumer; it is now an explicit graceful rejection.
 - **Declared wire framing (`@custom_encodings`) e2e** — `tests/custom-encodings-e2e`
   (`integration_tests::custom_encodings_e2e`, compiled, rust-only, preserve + canonical; hand-fn
   fragment `tests/custom_serialization_encodings`): the declaration that lets a codec state its OWN

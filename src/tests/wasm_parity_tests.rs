@@ -432,6 +432,12 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          no wasm surface to differential and the crate is intended NOT to compile",
     ),
     (
+        "custom-codec-coherence-e2e",
+        "rust-only custom-codec coherence fixture: its three integration profiles generate with \
+         --wasm=false and inject profile-specific hand-written Rust codec signatures, while wasm \
+         wrappers delegate to Rust and do not consume those functions",
+    ),
+    (
         "extern-generic-raw-bytes",
         "rust-only `@raw_bytes_flavor` fixture (an extern generic instantiated with a raw-bytes \
          element): its integration gate generates with --wasm=false and injects hand-written extern \

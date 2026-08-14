@@ -113,7 +113,6 @@ entries = [
   "part-default-head-refusal-s-remedy-list-offered-bare",
   "part-generics-repeat-refusal-s-first-drafted-remedy-advertised",
   "part-bare-fixed-table-value-refusal-continued-say-named",
-  "testing.directive-effect-round-trip-coherence-sweep-accepted-custom",
   "testing.verify-ts-elapsed-time-covers-startup-activity",
 ]
 
@@ -350,17 +349,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof", "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"]
 incident_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one", "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"]
-
-[[record]]
-id = "testing.admission-path.directive-effect-round-trip-coherence-sweep-accepted-custom"
-title = "Admission for testing.directive-effect-round-trip-coherence-sweep-accepted-custom."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "silent_corruption"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-evidence_ids = ["testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"]
 
 [[record]]
 id = "testing.admission-path.gate-demands-premise-probed-against-gate-evidence-about"
@@ -1339,63 +1327,6 @@ action_on_fire_md = '''Set testing.directive-dependent-emitter-edge-case-trigger
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.directive-dependent-emitter-edge-case-triggering-shape-hand's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
-title = "A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement executes write-then-read as an identity, with inverse stub codecs."
-legacy_aliases = ["Next work 16"]
-
-[record.payload]
-kind = "work"
-body_md = '''16. **A directive-effect ROUND-TRIP COHERENCE sweep: every accepted custom-codec placement
-    executes write-then-read as an identity, with inverse stub codecs.** The class this catches is
-    invisible to both existing systems: `no_silent_directive` measures whether a directive has an
-    EFFECT (a routed single half passes it), and the executed custom-pair e2e fixtures assert
-    round-trips only for the complete-pair placements someone hand-wrote. What slipped between
-    them, twice on 2026-08-06 (both by ad-hoc probing rather than any gate): a single
-    codec half on a transparent alias was accepted and ROUTED — every embed site wrote the custom
-    wire and read the default one, a silent asymmetric round-trip; and the FIELD-level single half
-    shipped exactly that asymmetry at exit 0. Both are refused now, and their GRID rejection cells
-    are the control — but what those refusals close is the two spellings someone happened to probe,
-    not the class: every ACCEPTED placement remains unmeasured for round-trip identity.
-    Mechanical shape: for each accepted `@custom_serialize`/`@custom_deserialize` placement (field,
-    alias, record rule, complete-item table owner, both table positions, open-map rest row) × profile (default, preserve,
-    canonical), generate with stub codecs that are true inverses of each other but NOT of the
-    default wire (the hex-text pair from the e2e fixtures is the template), then execute
-    `from_cbor_bytes(to_cbor_bytes(v)) == v` through a holder. Any placement whose two directions
-    disagree fails identity immediately. Include the rule-CLASS flavor axis the transparent
-    custom-codec-alias delivery had
-    to enumerate by hand (loose/non-empty/bounded/`@duplicates` collection flavors): a coherence
-    sweep that misses a flavor leaves that flavor exactly the silent carrier the pair rejections
-    just closed.
-    **Pending implementation phase — add the modifier matrix.** Cross EVERY accepted complete-pair
-    placement (at minimum the named-record and complete whole-table rule-level owners) with BOTH
-    `@custom_encodings` and `@custom_wire_major`. The test's expected-outcome table must make each
-    cell prove one of two results: the modifier changes an emitted signature/storage slot at a real
-    consumption channel, or generation rejects. Exit-0 generation is a FAILURE for every cell that
-    names no such channel. The rule-level-owner minimum is:
-
-    | owner | `@custom_encodings` | `@custom_wire_major` |
-    | --- | --- | --- |
-    | named record | reject: self-carrying struct, no encoding tuple crosses the codec call | reject: only a transparent alias keying an open table can consume a major |
-    | complete whole-table wrapper | reject: self-carrying wrapper, no encoding tuple crosses the codec call | reject: only a transparent alias keying an open table can consume a major |
-
-    The table owner’s `@custom_encodings` row is the inspection escape that prompted this phase:
-    acceptance at exit 0 is specifically a silent-directive failure, not a pass. Add equivalent
-    expected-outcome rows for the remaining accepted alias/field/table-position/open-row channels;
-    those that are honored must assert the actual emitted signature and storage change, not merely a
-    round trip.
-
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "silent_wrong_bytes"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.directive-effect-round-trip-coherence-sweep-accepted-custom's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-admission_ids = ["testing.admission-path.directive-effect-round-trip-coherence-sweep-accepted-custom"]
 
 [[record]]
 id = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
@@ -5884,25 +5815,6 @@ priority_rationale_md = '''The parent defect owns repair; this record owns the s
 '''
 
 [[record]]
-id = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
-title = "Incident evidence for testing.directive-effect-round-trip-coherence-sweep-accepted-custom."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-freshness = "as_of"
-reference_ids = ["testing-directive-effect-round-trip-coherence-sweep", "testing-roadmap-next-work-n46"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
-
-[[record]]
 id = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 title = "Historical execution proof for the warm-up dep-universe lock-trust gap."
 
@@ -8109,16 +8021,6 @@ kind = "parent_of"
 target = "testing.guard.directive-dependent-emitter-edge-case-triggering-shape-hand"
 
 [[relation]]
-source = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
-kind = "parent_of"
-target = "testing.admission-path.directive-effect-round-trip-coherence-sweep-accepted-custom"
-
-[[relation]]
-source = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
-kind = "parent_of"
-target = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
-
-[[relation]]
 source = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
 kind = "parent_of"
 target = "testing.guard.directive-s-documented-sentence-stay-true-consumer-visible"
@@ -9454,19 +9356,6 @@ id = "gate-no-std-check"
 source = "testing.profile-driven-compile-gate-covers-compositions-profiles-specs"
 kind = "gate"
 gate_id = "no_std_check"
-
-[[reference]]
-id = "testing-roadmap-next-work-n46"
-source = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-directive-effect-round-trip-coherence-sweep"
-source = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
-kind = "roadmap"
-target_id = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
 
 [[reference]]
 id = "test-check-ts-warmup-refresh-plan"

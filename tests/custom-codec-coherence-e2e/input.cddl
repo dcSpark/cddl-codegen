@@ -1,0 +1,46 @@
+; Complete @custom_serialize/@custom_deserialize placement denominator.  Every codec writes text,
+; never the replaced bytes/record/table wire.  Preserve/canonical helpers carry the inferred
+; StringEncoding signature; modifier declarations stay out of this pair-placement denominator.
+
+alias = bytes ; @custom_serialize write_alias @custom_deserialize read_alias
+
+array_record = [ value: uint ] ; @custom_serialize write_array_record @custom_deserialize read_array_record
+map_record = { value: uint } ; @custom_serialize write_map_record @custom_deserialize read_map_record
+
+whole_table = { * text => uint } ; @custom_serialize write_whole_table @custom_deserialize read_whole_table
+generic_table<K, V> = { * K => V } ; @custom_serialize write_generic_table @custom_deserialize read_generic_table
+generic_table_use = generic_table<text, uint>
+pair_table = { * text => uint } ; @duplicates preserve @custom_serialize write_pair_table @custom_deserialize read_pair_table
+non_empty_table = {+ text => uint } ; @custom_serialize write_non_empty_table @custom_deserialize read_non_empty_table
+bounded_table = {2*3 text => uint} ; @custom_serialize write_bounded_table @custom_deserialize read_bounded_table
+reject_table = { * text => uint } ; @duplicates reject @custom_serialize write_reject_table @custom_deserialize read_reject_table
+non_empty_pair_table = {+ text => uint} ; @duplicates preserve @custom_serialize write_non_empty_pair_table @custom_deserialize read_non_empty_pair_table
+bounded_pair_table = {2*3 text => uint} ; @duplicates preserve @custom_serialize write_bounded_pair_table @custom_deserialize read_bounded_pair_table
+
+table_key = bytes ; @custom_serialize write_key @custom_deserialize read_key
+table_value = bytes ; @custom_serialize write_value @custom_deserialize read_value
+rest_key = bytes ; @custom_serialize write_rest_key @custom_deserialize read_rest_key
+rest_value = bytes ; @custom_serialize write_rest_value @custom_deserialize read_rest_value
+
+open = {
+  1: uint,
+  * rest_key => rest_value,
+}
+
+holder = [
+  alias: alias,
+  array_field: bytes, ; @custom_serialize write_array_field @custom_deserialize read_array_field
+  map_field: bytes, ; @custom_serialize write_map_field @custom_deserialize read_map_field
+  array_record: array_record,
+  map_record: map_record,
+  whole_table: whole_table,
+  generic_table: generic_table_use,
+  pair_table: pair_table,
+  non_empty_table: non_empty_table,
+  bounded_table: bounded_table,
+  reject_table: reject_table,
+  non_empty_pair_table: non_empty_pair_table,
+  bounded_pair_table: bounded_pair_table,
+  positions: { * table_key => table_value },
+  open: open,
+]

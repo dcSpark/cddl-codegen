@@ -7173,6 +7173,18 @@ fn parse_record_from_group_choice(
                     &format!("field `{field_name}` of rule `{source_name}`"),
                     &rule_metadata,
                 );
+                // A field can carry the codec pair and its encoding tuple, but no reader consumes a
+                // declared wire MAJOR there: major dispatch exists only before an open TABLE typed
+                // row's key deserializer runs. Without this refusal the token parsed successfully
+                // and then vanished from emitted code.
+                if rule_metadata.custom_wire_major.is_some()
+                    && rule_metadata.custom_serialize.is_some()
+                    && rule_metadata.custom_deserialize.is_some()
+                {
+                    types.record_rejection(format!(
+                        "@custom_wire_major on field `{field_name}` of rule `{source_name}`: nothing consumes the declared major. It is read only when a transparent alias rule keys an OPEN TABLE's typed row. Put the pair and declaration on a named key alias (`<key> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> @custom_wire_major <major>`), or remove the declaration."
+                    ));
+                }
             }
             // A LONE half of the pair at a field/member position — the field twin of the record-rule
             // and transparent-alias single-half rejections, refused for their stated reason: one

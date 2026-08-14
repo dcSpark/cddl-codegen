@@ -11596,6 +11596,49 @@ fn custom_encodings_e2e() {
     );
 }
 
+/// The denominator for custom-codec round-trip coherence.  One generated crate per profile holds
+/// every accepted complete-pair carrier: aliases, both record representations and field paths,
+/// nominal table owners (including generic/pair-map/non-empty flavors), table key/value aliases,
+/// and both open-map rest aliases.  The fixture's custom wire is TEXT where the declared type is
+/// bytes/map/record, so either direction falling back to the generated codec makes the executable
+/// byte round trip fail instead of passing as an equality-only false green.
+#[test]
+fn custom_codec_coherence_e2e() {
+    use std::str::FromStr;
+
+    let helpers = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("custom_codec_coherence");
+    for (profile, flags, helper) in [
+        ("default", vec!["--wasm=false"], helpers.join("default.rs")),
+        (
+            "preserve",
+            vec!["--wasm=false", "--preserve-encodings=true"],
+            helpers.join("preserve.rs"),
+        ),
+        (
+            "canonical",
+            vec![
+                "--wasm=false",
+                "--preserve-encodings=true",
+                "--canonical-form=true",
+            ],
+            helpers.join("canonical.rs"),
+        ),
+    ] {
+        println!("custom-codec coherence profile: {profile}");
+        run_test(
+            "custom-codec-coherence-e2e",
+            &flags,
+            Some(profile),
+            &[helper],
+            &[],
+            false,
+            &[],
+        );
+    }
+}
+
 /// The ALIAS-OF-MARKER custom pair as contract: a type-level `@custom_serialize`/`@custom_deserialize`
 /// on an alias whose BODY references a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule. No new mechanism — a
 /// type-level pair is honored wherever the alias resolves, and this alias resolves to the marker's

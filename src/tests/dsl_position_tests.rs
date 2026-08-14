@@ -2000,6 +2000,240 @@ enum Outcome {
     Panic,
 }
 
+/// The modifier denominator is deliberately separate from [`GRID`]: GRID owns every attachment
+/// position, while this table owns EVERY placement that a *complete* custom codec pair can carry.
+/// A successful generation is never a verdict here unless the listed source anchor proves a real
+/// consumer (a preserve sidecar/signature, or open-table major dispatch).
+struct CustomPairModifierCell {
+    label: &'static str,
+    enc_spec: &'static str,
+    enc_expect: Expect,
+    major_spec: &'static str,
+    major_expect: Expect,
+}
+
+const CUSTOM_PAIR_MODIFIER_MATRIX: &[CustomPairModifierCell] = &[
+    CustomPairModifierCell {
+        label: "transparent-alias",
+        enc_spec: "a = bool ; @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: a]\n",
+        enc_expect: Expect::Effect {
+            must: &[
+                "pub f_encoding: StringEncoding",
+                "let (f, f_encoding) =",
+                "s(\n            serializer,",
+            ],
+            must_not: &[],
+        },
+        major_spec: "a = bytes ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: a]\n",
+        major_expect: Expect::Reject("nothing consumes the declared major"),
+    },
+    CustomPairModifierCell {
+        label: "array-record-field",
+        enc_spec: "h = [f: bool, ; @custom_serialize s @custom_deserialize d @custom_encodings str\n]\n",
+        enc_expect: Expect::Effect {
+            must: &["pub f_encoding: StringEncoding", "let (f, f_encoding) ="],
+            must_not: &[],
+        },
+        major_spec: "h = [f: bytes, ; @custom_serialize s @custom_deserialize d @custom_wire_major text\n]\n",
+        major_expect: Expect::Reject("nothing consumes the declared major"),
+    },
+    CustomPairModifierCell {
+        label: "map-record-field",
+        enc_spec: "h = { f: bool ; @custom_serialize s @custom_deserialize d @custom_encodings str\n}\n",
+        enc_expect: Expect::Effect {
+            must: &[
+                "pub f_encoding: StringEncoding",
+                "let (tmp_f, tmp_f_encoding) =",
+            ],
+            must_not: &[],
+        },
+        major_spec: "h = { f: bytes ; @custom_serialize s @custom_deserialize d @custom_wire_major text\n}\n",
+        major_expect: Expect::Reject("nothing consumes the declared major"),
+    },
+    CustomPairModifierCell {
+        label: "array-record-owner",
+        enc_spec: "r = [f: uint] ; @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: r]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "r = [f: uint] ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: r]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "map-record-owner",
+        enc_spec: "r = { f: uint } ; @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: r]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "r = { f: uint } ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: r]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "table-owner-ordinary",
+        enc_spec: "t = { * text => uint } ; @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: t]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "t = { * text => uint } ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: t]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "table-owner-generic",
+        enc_spec: "t<K, V> = { * K => V } ; @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: t<text, uint>]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "t<K, V> = { * K => V } ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: t<text, uint>]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "table-owner-duplicates-preserve",
+        enc_spec: "t = { * text => uint } ; @duplicates preserve @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: t]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "t = { * text => uint } ; @duplicates preserve @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: t]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "table-owner-non-empty",
+        enc_spec: "t = {+ text => uint } ; @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: t]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "t = {+ text => uint } ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: t]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "table-owner-bounded",
+        enc_spec: "t = {2*3 text => uint} ; @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: t]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "t = {2*3 text => uint} ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: t]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "table-owner-duplicates-reject",
+        enc_spec: "t = { * text => uint } ; @duplicates reject @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: t]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "t = { * text => uint } ; @duplicates reject @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: t]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "table-owner-non-empty-duplicates-preserve",
+        enc_spec: "t = {+ text => uint} ; @duplicates preserve @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: t]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "t = {+ text => uint} ; @duplicates preserve @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: t]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "table-owner-bounded-duplicates-preserve",
+        enc_spec: "t = {2*3 text => uint} ; @duplicates preserve @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: t]\n",
+        enc_expect: Expect::Reject("this rule mints a STRUCT"),
+        major_spec: "t = {2*3 text => uint} ; @duplicates preserve @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: t]\n",
+        major_expect: Expect::Reject("this rule mints a STRUCT"),
+    },
+    CustomPairModifierCell {
+        label: "table-key-alias",
+        enc_spec: "k = bool ; @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: { * k => uint }]\n",
+        enc_expect: Expect::Effect {
+            must: &[
+                "pub f_key_encodings: BTreeMap",
+                "let (f_key, f_key_encoding) =",
+            ],
+            must_not: &[],
+        },
+        major_spec: "k = bytes ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: { * k => uint }]\n",
+        major_expect: Expect::Reject("nothing consumes the declared major"),
+    },
+    CustomPairModifierCell {
+        label: "table-value-alias",
+        enc_spec: "v = bool ; @custom_serialize s @custom_deserialize d @custom_encodings str\nh = [f: { * uint => v }]\n",
+        enc_expect: Expect::Effect {
+            must: &[
+                "pub f_value_encodings: BTreeMap",
+                "let (f_value, f_value_encoding) =",
+            ],
+            must_not: &[],
+        },
+        major_spec: "v = bytes ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nh = [f: { * uint => v }]\n",
+        major_expect: Expect::Reject("nothing consumes the declared major"),
+    },
+    CustomPairModifierCell {
+        label: "open-map-rest-key-alias",
+        enc_spec: "k = bool ; @custom_serialize s @custom_deserialize d @custom_encodings str\no = { 1: uint, * k => uint }\nh = [f: o]\n",
+        enc_expect: Expect::Effect {
+            must: &["rest_key_encodings", "let (rest_key, rest_key_encoding) ="],
+            must_not: &[],
+        },
+        major_spec: "k = bytes ; @custom_serialize s @custom_deserialize d @custom_wire_major text\no = { 1: uint, * k => uint }\nh = [f: o]\n",
+        major_expect: Expect::Reject("nothing consumes the declared major"),
+    },
+    CustomPairModifierCell {
+        label: "open-map-rest-value-alias",
+        enc_spec: "v = bool ; @custom_serialize s @custom_deserialize d @custom_encodings str\no = { 1: uint, * uint => v }\nh = [f: o]\n",
+        enc_expect: Expect::Effect {
+            must: &[
+                "rest_value_encodings",
+                "let (rest_value, rest_value_encoding) =",
+            ],
+            must_not: &[],
+        },
+        major_spec: "v = bytes ; @custom_serialize s @custom_deserialize d @custom_wire_major text\no = { 1: uint, * uint => v }\nh = [f: o]\n",
+        major_expect: Expect::Reject("nothing consumes the declared major"),
+    },
+    CustomPairModifierCell {
+        label: "open-table-typed-row-alias",
+        enc_spec: "e = _CDDL_CODEGEN_EXTERN_TYPE_\na = e ; @custom_serialize s @custom_deserialize d @custom_encodings str @custom_wire_major text\nt = { * a => uint, * uint => uint }\nh = [f: t]\n",
+        enc_expect: Expect::Effect {
+            // This is the sole cross-modifier cell: an open table needs the declared major to
+            // select the typed row before it can consume the declared StringEncoding sidecar.
+            must: &["entries_key_encodings", "s(serializer, key,"],
+            must_not: &[],
+        },
+        major_spec: "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\na = rb ; @custom_serialize s @custom_deserialize d @custom_wire_major text\nt = { * a => uint, * uint => uint }\nh = [f: t]\n",
+        major_expect: Expect::Effect {
+            must: &["cbor_event::Type::Text =>", "d(raw)"],
+            must_not: &["cbor_event::Type::Bytes =>"],
+        },
+    },
+];
+
+#[test]
+fn custom_pair_modifier_placement_matrix() {
+    let expected = 18usize;
+    assert_eq!(
+        CUSTOM_PAIR_MODIFIER_MATRIX.len(),
+        expected,
+        "add a row for every accepted complete-pair carrier before changing this denominator"
+    );
+    for cell in CUSTOM_PAIR_MODIFIER_MATRIX {
+        for (modifier, spec, flags, expect) in [
+            (
+                "custom_encodings",
+                cell.enc_spec,
+                &["--preserve-encodings=true"][..],
+                &cell.enc_expect,
+            ),
+            (
+                "custom_wire_major",
+                cell.major_spec,
+                &[][..],
+                &cell.major_expect,
+            ),
+        ] {
+            let probe = Cell {
+                directive: modifier,
+                position: cell.label,
+                spec,
+                flags,
+                wasm: false,
+                expect: match expect {
+                    Expect::Effect { must, must_not } => Expect::Effect { must, must_not },
+                    Expect::Reject(reason) => Expect::Reject(reason),
+                },
+            };
+            let outcome = run(
+                &probe,
+                &format!("custom_pair_modifier_{modifier}_{}", cell.label),
+            );
+            assert!(
+                satisfied(&probe, &outcome),
+                "[{modifier} @ {}] must either reject gracefully or prove its named consumption channel; exit-0 without an anchor is a failure:\n{}",
+                cell.label,
+                describe(&outcome)
+            );
+        }
+    }
+}
+
 fn run(cell: &Cell, tag: &str) -> Outcome {
     let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         generate(cell.spec, cell.flags, cell.wasm, tag)
