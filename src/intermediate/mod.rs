@@ -13,6 +13,20 @@ use crate::utils::{
 use std::sync::LazyLock;
 pub static ROOT_SCOPE: LazyLock<ModuleScope> = LazyLock::new(|| vec![String::from("lib")].into());
 
+fn rust_struct_kind(rust_struct: &RustStruct) -> &'static str {
+    match rust_struct.variant() {
+        RustStructType::Record(_) => "record",
+        RustStructType::Table { .. } => "table",
+        RustStructType::Array { .. } => "array",
+        RustStructType::TypeChoice { .. } => "type-choice enum",
+        RustStructType::GroupChoice { .. } => "group-choice enum",
+        RustStructType::Wrapper { .. } => "wrapper",
+        RustStructType::Extern => "extern marker",
+        RustStructType::CStyleEnum { .. } => "C-style enum",
+        RustStructType::RawBytesType => "raw-bytes marker",
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ModuleScope {
     export: bool,
@@ -268,16 +282,6 @@ pub struct IntermediateTypes<'a> {
     /// build pass; empty on every spec with no such cycle, so byte-identical output is untouched.
     /// Determinism: `BTreeSet`, and the set itself is a canonical property of the cycle.
     auto_newtype_rules: BTreeSet<RustIdent>,
-    // Structural `<Elem>List` idents whose keys-list mint OVERWROTE an incompatible authored rule of
-    // the same ident, mapped to the element the list wraps. `create_and_register_array_type`'s
-    // `register_rust_struct` is last-wins, so once it has run the authored rule is GONE from
-    // `rust_structs` and no later scan can tell an overwritten record from a rule that was never
-    // there — the swallow is only observable at the instant it happens. Recorded here (wasm only,
-    // the sole condition under which the mint runs at all) so
-    // `non_empty_wrapper_name_collisions`' direct-claim leg can reject it in the family's voice.
-    // A COMPATIBLE authored rule (`foo_list = [* foo]`, which IS the builder) is deliberate aliasing
-    // and is not recorded: its re-mint is byte-identical. Determinism: `BTreeMap`.
-    swallowed_structural_list_claims: BTreeMap<String, RustType>,
     // Idents of extern / raw-bytes rules tagged `@copy`: the externally-defined rust type derives
     // `Copy`, so `ConceptualRustType::is_copy` treats a `Rust(ident)` reference to one as Copy and
     // the generator drops the defensive boundary `.clone()`. The declaring crate emits a compile-time
@@ -419,7 +423,6 @@ impl<'a> IntermediateTypes<'a> {
             key_demand_roots: BTreeMap::new(),
             used_as_elem: BTreeSet::new(),
             auto_newtype_rules: BTreeSet::new(),
-            swallowed_structural_list_claims: BTreeMap::new(),
             copy_externs: BTreeSet::new(),
             extern_companions: BTreeMap::new(),
             no_json_schema_export: BTreeSet::new(),
@@ -436,6 +439,25 @@ impl<'a> IntermediateTypes<'a> {
             rejections: Vec::new(),
             root_scope: ROOT_SCOPE.clone(),
         }
+    }
+
+    /// Release the one pre-registered `int` prelude marker when an authored rule uses the exact
+    /// lowercase CDDL spelling `int`. This runs before any authored rule is parsed, so the rule may
+    /// become the real `Int` owner; every other spelling that merely camel-cases to `Int` keeps the
+    /// marker and reaches the ordinary incompatible-registration rejection.
+    ///
+    /// This is deliberately not part of `mark_source_rule_name`: source-name bookkeeping must not
+    /// change ownership, and only `api::with_types` knows it is at the pre-parse lifecycle seam.
+    pub fn release_pre_registered_int_marker_for_authored_lowercase_rule(&mut self) {
+        let int = RustIdent::new(CDDLIdent::new("int"));
+        let marker = self
+            .rust_structs
+            .remove(&int)
+            .expect("IntermediateTypes::new must pre-register the built-in Int marker");
+        assert!(
+            matches!(marker.variant(), RustStructType::Extern),
+            "only the pre-registered built-in Int marker may be released"
+        );
     }
 
     /// Record a construct the parse walk rejects by design (it can't return an `Err` itself).
@@ -2756,6 +2778,39 @@ impl<'a> IntermediateTypes<'a> {
         if self.custom_json_rules.contains(&rust_struct.ident) {
             rust_struct.set_custom_json();
         }
+        // A `@newtype`- or TAG-forced wrapper over an INLINE COLLECTION (`#6.258([* a]) ; @newtype`,
+        // `[* a] ; @newtype @duplicates reject`, `#6.24({* k => v}) ; @duplicates preserve`) selects
+        // its inner representation by the effective `@duplicates` policy exactly as a transparent
+        // alias does. This is local normalization of the incoming claim, so it belongs before the
+        // structural comparison below; alias registration and every other IR-map mutation follow it.
+        if let Some(policy) = rust_struct.config().duplicates
+            && let RustStructType::Wrapper { wrapped, .. } = &mut rust_struct.variant
+            && matches!(
+                wrapped.conceptual_type,
+                ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
+            )
+        {
+            *wrapped = wrapped.clone().with_duplicates_policy(Some(policy));
+        }
+        // Every generated nominal shares this namespace. Decide ownership only after the incoming
+        // claim's local configuration is complete, but before it can create an alias, synthesize a
+        // table keys-list, or mutate any other IR map: last-registration-wins would silently
+        // retarget every existing reference to a different wire shape. Equivalent structures are
+        // deliberate shared ownership (not replacement).
+        if let Some(existing) = self.rust_structs.get(rust_struct.ident()) {
+            if existing.structurally_equivalent(&rust_struct) {
+                return;
+            }
+            let ident = rust_struct.ident();
+            self.record_rejection(format!(
+                "generated Rust type `{ident}` has incompatible registrations: the first claimant \
+                 is a {}, but the later claimant is a {}. Keep one wire shape per generated Rust \
+                 name; rename one authored rule or the synthesized claimant that collides with it.",
+                rust_struct_kind(existing),
+                rust_struct_kind(&rust_struct),
+            ));
+            return;
+        }
         match &rust_struct.variant {
             RustStructType::Table {
                 domain,
@@ -2848,33 +2903,6 @@ impl<'a> IntermediateTypes<'a> {
                 self.mark_new_can_fail(rust_struct.ident.clone());
             }
             _ => (),
-        }
-        // A `@newtype`- or TAG-forced wrapper over an INLINE COLLECTION (`#6.258([* a]) ; @newtype`,
-        // `[* a] ; @newtype @duplicates reject`, `#6.24({* k => v}) ; @duplicates preserve`) selects
-        // its inner representation by the effective
-        // `@duplicates` policy exactly as a transparent alias does (the `Array`/`Table` arms above
-        // `with_duplicates_policy` their stored member type): on an ARRAY, reject ⇒ the
-        // `OrderedSet`/`NonEmptyOrderedSet`
-        // uniqueness twin, preserve ⇒ today's plain `Vec`/`NonEmptyVec`; on a MAP, preserve ⇒ the
-        // `PairMap`/`NonEmptyPairMap` vec-of-pairs twin (reject is the table default, a no-op). The
-        // policy is written on THIS
-        // rule (an explicit `@duplicates` directive or the single-arm registry default) so it lives in
-        // the wrapper's struct config, but the inline collection type built at the parse site carries
-        // none —
-        // thread it onto the STORED wrapped type here so `generate_wrapper_struct` (which reads the inner
-        // via the wrapped type, not the struct config) and every IR walker see one consistent shape.
-        // Only override when this rule actually carries a policy: a `@newtype` over a REFERENCED set
-        // rule (`homogeneous = #6.24(homogeneous_inner)`) has no directive of its own, and its wrapped
-        // type already carries the referenced rule's policy through the alias — overwriting with `None`
-        // would clobber that inherited reject/preserve back to a plain `Vec`.
-        if let Some(policy) = rust_struct.config().duplicates
-            && let RustStructType::Wrapper { wrapped, .. } = &mut rust_struct.variant
-            && matches!(
-                wrapped.conceptual_type,
-                ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
-            )
-        {
-            *wrapped = wrapped.clone().with_duplicates_policy(Some(policy));
         }
         self.rust_structs
             .insert(rust_struct.ident().clone(), rust_struct);
@@ -3238,10 +3266,10 @@ impl<'a> IntermediateTypes<'a> {
     /// registered": a table whose domain was final at parse minted its keys-list there and is a no-op
     /// here — so the byte output for any spec without a deferred domain is unchanged. Deterministic
     /// (`BTreeMap` order).
-    /// If two deferred tables resolve to the SAME domain, both pass the not-registered filter before
-    /// either mints; the second `create_and_register_array_type` re-mints the identical keys-list
-    /// struct, which `register_rust_struct` overwrites with a byte-identical entry — the same
-    /// last-wins-on-shared-shape idiom the parse-time keys-list mint already relies on, so it is benign.
+    /// If two deferred tables resolve to the SAME boundary name, both pass the not-registered filter
+    /// before either mints; the table-keys registration mode retains the first synthesized loose
+    /// boundary carrier. Bounds and encodings on the original key occurrence are deliberately not
+    /// properties of the returned keys-list class.
     fn finalize_deferred_table_keys_lists(&mut self, parent_visitor: &ParentVisitor, cli: &Cli) {
         if !cli.wasm {
             return;
@@ -3308,26 +3336,20 @@ impl<'a> IntermediateTypes<'a> {
             // Whether anything already occupies the structural ident, and independently whether an
             // EXPORTED SOURCE RULE claims it. Another table may have synthesized the same boundary
             // class first; that is compatible structural reuse, not an authored collision.
-            let already_registered = self.rust_structs.contains_key(&array_type_ident);
             let authored_claim = self.wasm_ident_claimed_by_user_rule(array_type_name);
-            // ...and whether that prior registration is INCOMPATIBLE — a rule of this ident that is
-            // not the same-element loose builder. The `register_rust_struct` below is last-wins, so
-            // it is about to delete that rule outright: record the claim while it is still visible,
-            // for `non_empty_wrapper_name_collisions` to reject in `finalize`. Nothing else can see
-            // it afterwards — the overwritten entry is byte-identical to a purely synthesized one.
-            if already_registered
-                && authored_claim
-                && !self.provides_compatible_loose_list(
-                    array_type_name,
-                    &element_type.clone().resolve_aliases(),
-                )
-            {
-                self.swallowed_structural_list_claims
-                    .insert(array_type_name.to_owned(), element_type.clone());
+            // An authored rule already claims this structural name (all rule idents are known
+            // before parsing). Do not mint a temporary keys-list owner that would either replace
+            // the authored rule or make the later authored registration collide with a synthesized
+            // placeholder. `non_empty_wrapper_name_collisions` sees the table's final keys() need
+            // and the authored owner, so it keeps its established family-specific diagnostic for
+            // an incompatible shape in either source order; a same-element `[* …]` owner remains
+            // the valid shared builder.
+            if authored_claim {
+                return raw_arr_type.into();
             }
             // we don't pass in tags here. If a tag-wrapped array is done I think it generates
             // 2 separate types (array wrapper -> tag wrapper struct)
-            self.register_rust_struct(
+            self.register_synthesized_table_keys_list(
                 parent_visitor,
                 RustStruct::new_array(
                     array_type_ident.clone(),
@@ -3344,8 +3366,8 @@ impl<'a> IntermediateTypes<'a> {
             // site) so `--no-synthesized-rust-collection-aliases` can suppress only it, AND so the
             // wasm struct walk's Array arm does not pass `rule_declared: true` for it (a false
             // criterion-9 shadow warning over a keys-list no rule declares). Re-apply the marker on
-            // every synthesis-only re-mint: registration just replaced the alias record, so testing
-            // only `already_registered` would lose the provenance on the second compatible table.
+            // every synthesis-only mint. Non-byte-equivalent table re-mints retain the first alias
+            // record through the narrow table-key registration mode, so its provenance stays intact.
             if !authored_claim
                 && let Some(alias) = self.type_aliases.get_mut(&array_type_ident.into())
             {
@@ -3353,6 +3375,28 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         ConceptualRustType::Array(Box::new(element_type)).into()
+    }
+
+    /// Table `keys()` exposes one loose wasm-boundary list per structural name. Several table key
+    /// occurrences can project onto that one class while retaining distinct source bounds or
+    /// encodings; the first synthesized class is therefore its canonical owner. This narrow mode is
+    /// the only registration bypass: it never replaces an owner, and an authored claimant is kept
+    /// out by `create_and_register_array_type` so `non_empty_wrapper_name_collisions` can issue its
+    /// established family-specific rejection instead.
+    /// `table_keys_list_syntheses_share_the_established_loose_boundary_carrier` covers the
+    /// intentionally non-byte-identical source occurrences that share this class.
+    fn register_synthesized_table_keys_list(
+        &mut self,
+        parent_visitor: &ParentVisitor,
+        rust_struct: RustStruct,
+        cli: &Cli,
+    ) {
+        if self.rust_struct(rust_struct.ident()).is_some()
+            && self.is_synthesized_collection(rust_struct.ident())
+        {
+            return;
+        }
+        self.register_rust_struct(parent_visitor, rust_struct, cli);
     }
 
     pub fn register_generic_def(&mut self, def: GenericDef) {
@@ -4759,10 +4803,9 @@ impl<'a> IntermediateTypes<'a> {
     /// 4. A DIRECT claim: any of those plain uses MINTS the loose `<Elem>List` on its own, with no
     ///    `[+ …]` shape anywhere, and a user rule of the same ident and an incompatible shape
     ///    shadows it. Classes 2 and 3 both arrive through a `[+ …]` wrapper, so this is the leg a
-    ///    spec containing no `[+ …]` at all reaches — and the table-keys member of it is the one
-    ///    claim in this family that is otherwise SILENT rather than a compile error
-    ///    (`create_and_register_array_type` overwrites the authored rule; see
-    ///    `swallowed_structural_list_claims`, whose record is that overwrite's only evidence).
+    ///    spec containing no `[+ …]` at all reaches. The table-keys member must stay here even
+    ///    though synthesis now leaves an authored claimant in place: this detector owns the
+    ///    family-specific explanation of why that claimant cannot serve the keys() wrapper.
     fn non_empty_wrapper_name_collisions(&self) -> Vec<String> {
         // BTreeSet: deterministic message order (repo determinism invariant)
         let mut msgs = BTreeSet::new();
@@ -4952,35 +4995,19 @@ impl<'a> IntermediateTypes<'a> {
 
         // (4) DIRECT claims. Every leg above reaches `plain_loose_needs` through a `[+ …]` shape —
         // as a try_from source or as a self-named rule — so a spec with no `[+ …]` anywhere never
-        // consults it, and the plain mints it collects go unchecked. That gap is not merely
-        // undiagnosed: a named table's keys-list is minted into `rust_structs` by
-        // `create_and_register_array_type`, whose last-wins `register_rust_struct` REPLACES a user
-        // rule of the same ident outright — the rule vanishes from the crate, a field of its type
-        // silently becomes an array of the key element, and generation exits 0. The other plain
-        // mints (rest rows, rest tails, inline `[* …]` uses) reach the generic duplicate-ident
-        // backstop instead, which is loud but reports the ident rather than the claim. One leg over
-        // the collected needs covers all of them in this family's voice, exactly as the map side's
-        // rest-row leg does for `MapKToV`.
+        // consults it, and the plain mints it collects go unchecked. A named table's keys-list
+        // participates here even when its structural name is already author-claimed: the synthesis
+        // leaves that owner intact and this leg gives the table-specific remedy. The other plain
+        // mints (rest rows, rest tails, inline `[* …]` uses) arrive through the same collected needs.
+        // One leg covers all of them in this family's voice, exactly as the map side's rest-row leg
+        // does for `MapKToV`.
         //
         // A rule that IS `[* elem]` of the same element is NOT a collision: it is that very builder,
-        // and the re-mint is byte-identical (deliberate aliasing — the idiom
-        // `create_and_register_array_type` anticipates). A SELF-NAMED `[+ elem]` rule is skipped
+        // shared by the table keys() accessor. A SELF-NAMED `[+ elem]` rule is skipped
         // too: leg (3) above owns it, with a message that names the `[+ …]` rule as the claimant.
-        //
-        // A SWALLOWED claim (`swallowed_structural_list_claims`) is reported here too, and is the
-        // only member of this leg that cannot be re-derived from the finalized IR: the mint already
-        // replaced the authored rule, so `provides_compatible_loose_list` now answers about the
-        // BUILDER and says "compatible". The recorded claim is the sole surviving evidence.
-        for (loose, element) in &self.swallowed_structural_list_claims {
-            plain_loose_needs
-                .entry(loose.clone())
-                .or_insert_with(|| ("a table keys() wrapper".to_owned(), element.clone()));
-        }
         for (loose, (need, element)) in &plain_loose_needs {
             if self.wasm_ident_claimed_by_user_rule(loose)
-                && (self.swallowed_structural_list_claims.contains_key(loose)
-                    || !self
-                        .provides_compatible_loose_list(loose, &element.clone().resolve_aliases()))
+                && !self.provides_compatible_loose_list(loose, &element.clone().resolve_aliases())
                 && !self.claims_ident_as_self_named_non_empty_list(loose)
             {
                 msgs.insert(format!(
@@ -5849,13 +5876,25 @@ impl<'a> IntermediateTypes<'a> {
                     }
                     // already materialized with the SAME rep — nothing to do
                     Some(Some(_)) => {}
-                    // A plain group only ever materializes via `parse_group` below, i.e. as a
-                    // Record or GroupChoice — any other variant here is an internal invariant
-                    // break, kept as loud as the `assert_eq!` this match replaced (which failed
-                    // on `None != Some(rep)`), not silently absorbed.
-                    Some(None) => unreachable!(
-                        "plain group `{ident}` already materialized as a non-Record/non-GroupChoice struct"
-                    ),
+                    // A plain group normally materializes via `parse_group` below as a Record or
+                    // GroupChoice. A pre-existing non-group owner is instead a generated-name
+                    // collision; reject it in the global registration's voice rather than panicking
+                    // before that seam can receive the group's would-be claim. This is reachable
+                    // for an authored `Int` plain group, whose source spelling does not release the
+                    // pre-registered lowercase-`int` prelude marker.
+                    Some(None) => {
+                        let existing_kind = self
+                            .rust_structs
+                            .get(ident)
+                            .map(rust_struct_kind)
+                            .expect("plain-group materialization observed an existing owner");
+                        self.record_rejection(format!(
+                            "generated Rust type `{ident}` has incompatible registrations: the first claimant \
+                             is a {existing_kind}, but the later claimant is a plain group. Keep one wire shape \
+                             per generated Rust name; rename one authored rule or the synthesized claimant that \
+                             collides with it."
+                        ));
+                    }
                     None => {
                         // you can't tag plain groups hence the None
                         // we also don't support generics in plain groups hence the other None
@@ -6445,8 +6484,10 @@ pub use rust_type::*;
 /// std/prelude type (`option` → `Option`, `box` → `Box`, `fn` → `Fn`, `self`/`Self` → `Self`), or a
 /// CDDL keyword (`true` / `false` / prelude type names) — so the same names those asserts would
 /// panic on are instead rejected gracefully when caught at the parse-walk seam (`api::with_types`).
-/// `int` is excluded from the keyword branch identically to `RustIdent::new`: it names the project's
-/// own pre-registered extern struct, not a colliding user type.
+/// Exact lowercase `int` is excluded from the keyword branch identically to `RustIdent::new`: at
+/// `api::with_types`' pre-parse lifecycle seam it releases the project's built-in `Int` marker, so
+/// an authored `int` rule may become that type's owner. A different source spelling that camel-cases
+/// to `Int` does not release the marker and is rejected by global struct registration instead.
 ///
 /// The asserts stay as a backstop for synthesized/internal idents (which never route through here);
 /// this function is only for user-chosen names, where a panic on valid CDDL is the bug being fixed.
@@ -6536,6 +6577,88 @@ fn custom_codec_zero_demand_rejection(position: &str, replaced_is_named_type: bo
          comma-separated list of `sz` / `str` / `len`), or state that it needs nothing \
          (`@custom_encodings none`) if the wire genuinely has no framing.{extern_remedy}"
     )
+}
+
+#[cfg(test)]
+mod registration_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn register_rust_struct_keeps_first_incompatible_owner_in_both_orders() {
+        for first_is_extern in [true, false] {
+            let cddl = cddl::parser::cddl_from_str("anchor = uint\n", true).unwrap();
+            let parent_visitor = ParentVisitor::new(&cddl).unwrap();
+            let cli = Cli::parse_from([
+                "cddl-codegen",
+                "--input",
+                "registration_test_input",
+                "--output",
+                "registration_test_output",
+                "--wasm=false",
+            ]);
+            let ident = RustIdent::new(CDDLIdent::new("contested"));
+            let mut types = IntermediateTypes::new();
+            let first = if first_is_extern {
+                RustStruct::new_extern(ident.clone())
+            } else {
+                RustStruct::new_raw_bytes(ident.clone())
+            };
+            let second = if first_is_extern {
+                RustStruct::new_raw_bytes(ident.clone())
+            } else {
+                RustStruct::new_extern(ident.clone())
+            };
+
+            types.register_rust_struct(&parent_visitor, first, &cli);
+            types.register_rust_struct(&parent_visitor, second, &cli);
+
+            assert!(
+                matches!(
+                    types.rust_struct(&ident).unwrap().variant(),
+                    RustStructType::Extern
+                ) == first_is_extern,
+                "the first incompatible owner must stay registered"
+            );
+            let err = types
+                .finalize(&parent_visitor, &cli)
+                .expect_err("an incompatible duplicate registration must reject gracefully")
+                .to_string();
+            assert!(
+                err.contains("generated Rust type `Contested` has incompatible registrations")
+                    && err.contains("extern marker")
+                    && err.contains("raw-bytes marker"),
+                "the rejection must name the contested ident and both structural kinds: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn register_rust_struct_accepts_structurally_equivalent_reuse() {
+        let cddl = cddl::parser::cddl_from_str("anchor = uint\n", true).unwrap();
+        let parent_visitor = ParentVisitor::new(&cddl).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            "registration_test_input",
+            "--output",
+            "registration_test_output",
+            "--wasm=false",
+        ]);
+        let ident = RustIdent::new(CDDLIdent::new("shared"));
+        let mut types = IntermediateTypes::new();
+
+        types.register_rust_struct(&parent_visitor, RustStruct::new_extern(ident.clone()), &cli);
+        types.register_rust_struct(&parent_visitor, RustStruct::new_extern(ident.clone()), &cli);
+
+        types
+            .finalize(&parent_visitor, &cli)
+            .expect("byte-identical registrations must reuse the first owner");
+        assert!(matches!(
+            types.rust_struct(&ident).unwrap().variant(),
+            RustStructType::Extern
+        ));
+    }
 }
 
 mod idents;

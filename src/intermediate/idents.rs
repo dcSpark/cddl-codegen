@@ -54,7 +54,9 @@ impl RustIdent {
         if STD_TYPES.contains(&&super::convert_to_camel_case(token)[..]) {
             Some(ReservedIdentKind::RustTypeName)
         } else if token != "int" && is_identifier_reserved(token) {
-            // int is special here since it refers to our own rust struct, not a primitive
+            // Exact lowercase `int` is special: it can name the built-in Int prelude type, or an
+            // authored rule after api::with_types releases that pre-registered marker. Other
+            // spellings that normalize to Int remain ordinary global-registration collisions.
             Some(ReservedIdentKind::CddlKeyword)
         } else {
             None

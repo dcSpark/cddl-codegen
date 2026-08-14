@@ -8,10 +8,10 @@ expression: catalog
 # `panic!`/`assert!`. Reserved-name rule/group definitions (a name camel-casing to a reserved
 # Rust std/prelude type, or a CDDL keyword) reject gracefully via a pre-scan in
 # `api::with_types` (`intermediate::reserved_ident_rejection`); the `RustIdent::new` asserts
-# remain a backstop for synthesized idents. The one committed PANIC left — `group-name int` —
-# is a DISTINCT collision: a plain group named `int` clashes with the project's pre-registered
-# extern `int` struct and trips the plain-group representation assert, not a reserved-name
-# guard (`int` is special-cased out of the reserved check, so it is not pre-scanned). `ok` is
+# remain a backstop for synthesized idents. Exact lowercase rule/group `int` is the one
+# deliberate exception: `api::with_types` releases the built-in `Int` marker before authored
+# parsing, so it may become the real owner; a differently spelled rule that normalizes to
+# `Int` keeps the marker and rejects through global registration. `ok` is
 # generate-only — a rule/group name that generates but does NOT compile (the historical r/w
 # generic collision, now fixed) still records `ok`; the compile verdict is the
 # `identifier_hazard_crates_compile` gate (full tier). Source: src/tests/identifier_hazard_tests.rs.
@@ -334,7 +334,7 @@ group-name      ok         error (graceful)
 group-name      err        error (graceful)
 group-name      vec        error (graceful)
 group-name      string     error (graceful)
-group-name      int        PANIC
+group-name      int        ok
 group-name      error      ok
 name-directive  as         error (graceful)
 name-directive  break      error (graceful)

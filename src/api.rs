@@ -872,6 +872,15 @@ pub fn with_types<R>(
         let mut types = IntermediateTypes::new();
         types.set_auto_newtype_rules(auto_newtype_rules.clone());
 
+        // `IntermediateTypes::new` seeds `Int` as the built-in CDDL `int` prelude marker. The
+        // exact lowercase authored rule is the sole spelling allowed to replace that marker, and
+        // it must do so before scopes/plain groups/authored structs are registered. A differently
+        // cased or punctuated name that also camel-cases to `Int` deliberately leaves the marker in
+        // place and reaches the global incompatible-registration rejection.
+        if cddl.rules.iter().any(|rule| rule.name() == "int") {
+            types.release_pre_registered_int_marker_for_authored_lowercase_rule();
+        }
+
         // Reserved-name pre-scan — runs BEFORE any `rule_ident` / `RustIdent::new` call (which start
         // in the scope filter just below and recur through the whole IR build). A rule/plain-group
         // whose camel-cased name collides with a reserved Rust type (`option` → `Option`, `box` →

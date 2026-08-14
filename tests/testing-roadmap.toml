@@ -217,7 +217,6 @@ entries = [
   "testing.documented-flag-pairing-broken-fixture-stays-green-because",
   "testing.documented-failure-shape-exercises-prose-cross-crate-int",
   "testing.dsl-position-tests-string-level-design-green-emitted",
-  "testing.nothing-asserts-two-ir-sites-cannot-mint-same",
   "testing.message-s-level-classification-review-owned-two-ways",
   "testing.wac-composed-component-transpiled-jco-loses-cross-instance",
   "testing.make-fixture-comment-s-claimed-wire-bytes-executable",
@@ -3948,20 +3947,6 @@ boundary_md = '''This control owns current containment only. It does not claim t
 '''
 
 [[record]]
-id = "testing.guard.nothing-asserts-two-ir-sites-cannot-mint-same"
-title = "Current control for testing.nothing-asserts-two-ir-sites-cannot-mint-same."
-
-[record.payload]
-kind = "control"
-control_kind = "test"
-control_state = "live"
-reference_ids = ["test-embeddable-group-choice-arm-may-share-a-rule-name", "test-group-choice-arm-ident-collision-rejects-gracefully", "test-identical-group-choice-arms-in-different-rules"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.nothing-asserts-two-ir-sites-cannot-mint-same's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
 id = "testing.guard.observed-baseline-comments-beside-gate-floors-rot-silently"
 title = "Current control for testing.observed-baseline-comments-beside-gate-floors-rot-silently."
 
@@ -5134,10 +5119,14 @@ body_md = '''14. **A minted-identifier spellability floor: every identifier the 
     autopsy. Enumerate the name families from the IR types (`RustIdent`, `VariantIdent`, field
     name storage) rather than grepping for minters — a negative claim ("no other minter emits bad
     names") needs the registry, not a keyword search. That enumeration is shared surface: the
-    residuals "Nothing asserts that two IR sites cannot mint the SAME `RustIdent`" (uniqueness)
-    and the synthesized-name referenced-but-never-minted (E0425) flavor want predicates over the
-    same emitted-name registry — whichever is built first, the others become added predicates
-    rather than fresh enumerations. **Activated by B3-024A (2026-08-09):** its synthesized
+    remaining pre-registration mint-claim and synthesized-name referenced-but-never-minted (E0425)
+    predicates want the same emitted-name registry, so whichever is built first makes the others
+    added predicates rather than fresh enumerations. The global `RustStruct` registration seam now
+    retains the first owner and rejects a structurally incompatible later owner, but it begins
+    only after a claim reaches that seam: it does not recover a semantic claim discarded before
+    registration, prove
+    an emitted name spellable, retain variant provenance, or prove a referenced name was minted.
+    **Activated by B3-024A (2026-08-09):** its synthesized
     fixed-singleton owner is the third minting site and initially deduplicated `true` with
     `#6.7(true)` by `FixedValue` alone, making parse order choose the wrong wire codec. The local
     owner check now keys the complete `RustType` wire shape and rejects authored collisions in both
@@ -5372,62 +5361,6 @@ action_on_fire_md = '''Set testing.nothing-asserts-how-many-times-rejection-mess
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.nothing-asserts-how-many-times-rejection-message-emitted's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
-title = "Nothing asserts that two IR sites cannot mint the SAME `RustIdent`: `register_rust_struct` ends in a bare map insert, so a second claimant silently overwrites the first."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Nothing asserts that two IR sites cannot mint the SAME `RustIdent`: `register_rust_struct` ends
-  in a bare map insert, so a second claimant silently overwrites the first.** Proven instance
-  (reported by a consumer as a panic, root-caused here): a multi-arm group-choice arm registers its
-  record under the arm's own name while parsing, so an arm named for an existing rule took that
-  rule's slot — then, if the arm was embeddable, `remove_rust_struct` DELETED the rule outright and
-  generation panicked at the first lookup of it. The louder half was not the panic: for a
-  non-embeddable arm the overwrite STOOD, so the rule vanished from the emitted crate, references to
-  it retargeted onto the arm's record, and two arms sharing a name emitted one struct carrying the
-  other's fields AND the other's fixed tag — a wrong-wire-shape crate that compiled clean with no
-  diagnostic. Which of the four outcomes fired was decided purely by topological rule order, so an
-  unrelated reference edge added elsewhere in the spec flipped a working spec to a broken one.
-  Standing coverage now: `arm_ident_collision` (order-independent — rule idents are all scope-marked
-  before the parse loop, and two arms reject symmetrically), the structural-equivalence door that
-  keeps benign same-shape name reuse generating, and the
-  `group_choice_arm_ident_collision_rejects_gracefully` /
-  `identical_group_choice_arms_in_different_rules_share_one_struct` /
-  `embeddable_group_choice_arm_may_share_a_rule_name` trio. That detector is arm-specific by
-  construction: the OTHER synthesizing sites (collection wrappers, generic instances, the
-  `prelude_*` rules) mint into the same namespace and are guarded, if at all, by their own bespoke
-  per-kind detectors. Working rule meanwhile: a change that mints a `RustIdent` from anything other
-  than a rule name states what it collides with and how that is detected. The mechanical layer — a
-  debug-time uniqueness assertion inside `register_rust_struct`, overwrite = panic against an
-  allowlist of the legitimate re-registration seams (`set_rep_if_plain_group` and the `finalize`
-  resolution passes rewrite in place by design) — should be armed as a DETECTOR first and its
-  allowlist sized from that arming run, since "how many overwrites are legitimate today" is exactly
-  the premise nobody has measured. '''
-signal_md = '''Reopening signal, on the dimension the cost actually grows: a
-  THIRD minting site needing its own bespoke collision detector (two are on record — this one and
-  the wasm wrapper-name family), or any consumer reporting a declared rule absent from, or
-  wrong-shaped in, its generated crate.
-
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "wrong_public_api"
-control_ids = ["testing.guard.nothing-asserts-two-ir-sites-cannot-mint-same"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.nothing-asserts-two-ir-sites-cannot-mint-same"
-dimension = "Nothing asserts that two IR sites cannot mint the SAME `RustIdent`: `register_rust_struct` ends in a bare map insert, so a second claimant silently overwrites the first."
-observable = "- **Nothing asserts that two IR sites cannot mint the SAME `RustIdent`: `register_rust_struct` ends in a bare map insert, so a second claimant silently overwrites the first.** Proven instance (reported by a consumer as a panic, root-caused here): a multi-arm group-choice arm registers its record under the arm's own name while parsing, so an arm named for an existing rule took that rule's slot — then, if the arm was embeddable, `remove_rust_struct` DELETED the rule outright and generation panicked at the first lookup of it. The louder half was not the panic: for a non-embeddable arm the overwrite STOOD, so the rule vanished from the emitted crate, references to it retargeted onto the arm's record, and two arms sharing a name emitted one struct carrying the other's fields AND the other's fixed tag — a wrong-wire-shape crate that compiled clean with no diagnostic. Which of the four outcomes fired was decided purely by topological rule order, so an unrelated reference edge added elsewhere in the spec flipped a working spec to a broken one. Standing coverage now: `arm_ident_collision` (order-independent — rule idents are all scope-marked before the parse loop, and two arms reject symmetrically), the structural-equivalence door that keeps benign same-shape name reuse generating, and the `group_choice_arm_ident_collision_rejects_gracefully` / `identical_group_choice_arms_in_different_rules_share_one_struct` / `embeddable_group_choice_arm_may_share_a_rule_name` trio. That detector is arm-specific by construction: the OTHER synthesizing sites (collection wrappers, generic instances, the `prelude_*` rules) mint into the same namespace and are guarded, if at all, by their own bespoke per-kind detectors. Working rule meanwhile: a change that mints a `RustIdent` from anything other than a rule name states what it collides with and how that is detected. The mechanical layer — a debug-time uniqueness assertion inside `register_rust_struct`, overwrite = panic against an allowlist of the legitimate re-registration seams (`set_rep_if_plain_group` and the `finalize` resolution passes rewrite in place by design) — should be armed as a DETECTOR first and its allowlist sized from that arming run, since \"how many overwrites are legitimate today\" is exactly the premise nobody has measured. Reopening signal, on the dimension the cost actually grows: a THIRD minting site needing its own bespoke collision detector (two are on record — this one and the wasm wrapper-name family), or any consumer reporting a declared rule absent from, or wrong-shaped in, its generated crate."
-action_on_fire_md = '''Set testing.nothing-asserts-two-ir-sites-cannot-mint-same to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.nothing-asserts-two-ir-sites-cannot-mint-same's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]
@@ -8730,11 +8663,6 @@ kind = "parent_of"
 target = "testing.guard.nothing-asserts-how-many-times-rejection-message-emitted"
 
 [[relation]]
-source = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
-kind = "parent_of"
-target = "testing.guard.nothing-asserts-two-ir-sites-cannot-mint-same"
-
-[[relation]]
 source = "testing.observed-baseline-comments-beside-gate-floors-rot-silently"
 kind = "parent_of"
 target = "testing.guard.observed-baseline-comments-beside-gate-floors-rot-silently"
@@ -9653,27 +9581,6 @@ source = "testing.nothing-asserts-how-many-times-rejection-message-emitted"
 kind = "file_heading"
 path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
-
-[[reference]]
-id = "test-embeddable-group-choice-arm-may-share-a-rule-name"
-source = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::embeddable_group_choice_arm_may_share_a_rule_name"
-symbol = "tests::robustness_tests::embeddable_group_choice_arm_may_share_a_rule_name"
-
-[[reference]]
-id = "test-group-choice-arm-ident-collision-rejects-gracefully"
-source = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::group_choice_arm_ident_collision_rejects_gracefully"
-symbol = "tests::robustness_tests::group_choice_arm_ident_collision_rejects_gracefully"
-
-[[reference]]
-id = "test-identical-group-choice-arms-in-different-rules"
-source = "testing.nothing-asserts-two-ir-sites-cannot-mint-same"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::identical_group_choice_arms_in_different_rules_share_one_struct"
-symbol = "tests::robustness_tests::identical_group_choice_arms_in_different_rules_share_one_struct"
 
 [[reference]]
 id = "gate-corpus-decode-replay-n2"

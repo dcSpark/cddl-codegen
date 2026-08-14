@@ -222,10 +222,10 @@ fn identifier_hazard_robustness_catalog() {
          # `panic!`/`assert!`. Reserved-name rule/group definitions (a name camel-casing to a reserved\n\
          # Rust std/prelude type, or a CDDL keyword) reject gracefully via a pre-scan in\n\
          # `api::with_types` (`intermediate::reserved_ident_rejection`); the `RustIdent::new` asserts\n\
-         # remain a backstop for synthesized idents. The one committed PANIC left — `group-name int` —\n\
-         # is a DISTINCT collision: a plain group named `int` clashes with the project's pre-registered\n\
-         # extern `int` struct and trips the plain-group representation assert, not a reserved-name\n\
-         # guard (`int` is special-cased out of the reserved check, so it is not pre-scanned). `ok` is\n\
+         # remain a backstop for synthesized idents. Exact lowercase rule/group `int` is the one\n\
+         # deliberate exception: `api::with_types` releases the built-in `Int` marker before authored\n\
+         # parsing, so it may become the real owner; a differently spelled rule that normalizes to\n\
+         # `Int` keeps the marker and rejects through global registration. `ok` is\n\
          # generate-only — a rule/group name that generates but does NOT compile (the historical r/w\n\
          # generic collision, now fixed) still records `ok`; the compile verdict is the\n\
          # `identifier_hazard_crates_compile` gate (full tier). Source: src/tests/identifier_hazard_tests.rs.\n\n",

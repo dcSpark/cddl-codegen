@@ -3076,11 +3076,9 @@ fn rest_row_loose_list_needs_vs_self_named_non_empty_rule_reject_gracefully() {
 
 /// The DIRECT-claim leg of the loose `<Elem>List` family, over every plain use that mints the class.
 /// Every other leg of this detector reaches its needs THROUGH a `[+ …]` shape, so a spec with no
-/// `[+ …]` anywhere never consulted them — and the table-sourced member of that gap was fully
-/// SILENT: `create_and_register_array_type`'s last-wins registration replaced the user's rule with
-/// the keys-list, generation exited 0, and a field of the vanished type serialized as an array of
-/// the key element. Each cell here is one claim source, and the messages must differ by source so a
-/// failing spec points at the use that mints the class.
+/// `[+ …]` anywhere never consulted them. The table-sourced member now leaves an authored claim in
+/// place for the detector to reject in its family-specific voice; each cell here pins that every
+/// claim source remains graceful and names the use that needs the class.
 #[test]
 fn loose_list_direct_claim_rejects_gracefully_per_source() {
     let run = |cddl: &str, tag: &str| -> String {
@@ -3177,7 +3175,7 @@ fn loose_list_direct_claim_rejects_gracefully_per_source() {
 /// a rule that IS `[* elem]` of the claimed ident's element is that very loose builder, so a table
 /// keys-list of the same element ALIASES it — one class, shared — instead of colliding. This is why
 /// the direct-claim leg asks `provides_compatible_loose_list` rather than rejecting every claim, and
-/// why the last-wins re-mint is safe: what it overwrites is byte-identical to what it writes.
+/// why the shared builder is safe: both the rule and table keys() accessor use the same shape.
 #[test]
 fn compatible_authored_loose_list_rule_aliases_the_keys_list() {
     // `md_list = [* md]` names the class the table's keys() wrapper mints, with the same element.
@@ -12010,6 +12008,85 @@ fn identical_group_choice_arms_in_different_rules_share_one_struct() {
         !src.contains("GroupChoiceArm"),
         "the synthesized registration ident must never be emitted, got:\n{src}"
     );
+}
+
+/// CDDL keeps `-` and `_` distinct, while `RustIdent::new` camel-cases both spellings. These two
+/// ordinary record rules therefore reach the global Rust-struct namespace with one `FooBar` ident,
+/// outside the bespoke group-choice and wasm-wrapper collision families. Both source orders must
+/// reject before any output is emitted; the direct IR seam test in `intermediate::registration_tests`
+/// separately pins retention of whichever concrete owner registered first.
+#[test]
+fn camel_case_equivalent_rule_idents_reject_at_global_struct_registration() {
+    for (tag, cddl) in [
+        ("hyphen_first", "foo-bar = [x: uint]\nfoo_bar = [y: tstr]\n"),
+        (
+            "underscore_first",
+            "foo_bar = [y: tstr]\nfoo-bar = [x: uint]\n",
+        ),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_global_rust_struct_collision_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let result = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "global_rust_struct_collision_unused",
+            "--wasm=false",
+        ]));
+        std::fs::remove_file(&path).ok();
+        let err = result
+            .expect_err("camel-case-equivalent record names must reject gracefully")
+            .to_string();
+        assert!(
+            err.contains("generated Rust type `FooBar` has incompatible registrations")
+                && err.contains("first claimant is a record")
+                && err.contains("later claimant is a record"),
+            "[{tag}] the global guard must name the contested ident and both record claimants: {err}"
+        );
+        assert!(
+            !err.contains("Two types cannot share one name"),
+            "[{tag}] this must reach the global guard, not the group-choice detector: {err}"
+        );
+    }
+}
+
+/// `IntermediateTypes::new` pre-registers the built-in `int` prelude marker so unshadowed CDDL
+/// `int` references resolve to the hand-written `Int`. An authored rule with that exact lowercase
+/// spelling owns the same emitted name instead, so the marker must be released before any authored
+/// registration. That exception belongs only to the literal source spelling: a distinct rule such
+/// as `Int` must still collide with the retained built-in owner and reject gracefully.
+#[test]
+fn exact_lowercase_int_rule_releases_only_the_builtin_int_marker() {
+    for (tag, spec) in [
+        ("record", "int = [x: uint]\n"),
+        ("enum", "int = uint / tstr\n"),
+        (
+            "referenced_plain_group",
+            "int = (x: uint)\nholder = [int]\n",
+        ),
+    ] {
+        expect_generates(&format!("authored_int_{tag}"), spec, &["--wasm=false"]);
+    }
+
+    for (tag, spec) in [
+        ("title_case_record", "Int = [x: uint]\n"),
+        ("title_case_enum", "Int = uint / tstr\n"),
+        (
+            "title_case_referenced_plain_group",
+            "Int = (x: uint)\nholder = [Int]\n",
+        ),
+    ] {
+        let err =
+            expect_graceful_rejection(&format!("nonexact_int_{tag}"), spec, &["--wasm=false"]);
+        assert!(
+            err.contains("generated Rust type `Int` has incompatible registrations"),
+            "[{tag}] only lowercase `int` may release the built-in marker, got: {err}"
+        );
+    }
 }
 
 /// The arms of one group choice all name variants of ONE generated enum, so their names share a

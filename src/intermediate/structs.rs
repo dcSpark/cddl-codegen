@@ -713,11 +713,12 @@ impl RustStruct {
     /// Whether `self` and `other` describe the same generated type up to their NAME — same wire
     /// shape, same fields, same config, same tag.
     ///
-    /// Used to tell a benign name overlap from a real one when two multi-arm group-choice arms in
-    /// different rules want the same struct ident (generic arm names like `first`/`second` are
-    /// idiomatic and recur across rules). Identical arms are one type that happens to be spelled
-    /// twice, so they share a single generated struct; differing arms are two types demanding one
-    /// name, which is rejected.
+    /// The global Rust-struct registration guard uses this to retain the first owner for every
+    /// generated-name overlap, reusing a structurally equivalent claimant and rejecting an
+    /// incompatible one before it can retarget shared IR. Multi-arm group-choice arms in different
+    /// rules are the original benign case: generic arm names like `first`/`second` are idiomatic and
+    /// recur across rules, so identical arms share one generated struct while differing arms are
+    /// rejected.
     ///
     /// Compared through `Debug` rather than a derived `PartialEq`: equality on the IR type tree
     /// would be a much broader semantic commitment (what `encodings` or a doc comment mean for
