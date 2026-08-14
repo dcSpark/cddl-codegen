@@ -22,6 +22,9 @@ comment" leaves it unmarked and asserts it is dropped, self-cancelled, or trappe
 - `keep_run_claims_doc_comments` — the bare form over `///` lines: the only form that can carry doc comments.
 - `keep_run_stops_at_blank_line` — a blank line ends the claimed run, so the comment below it is unclassified and trapped.
 - `keep_rustfmt_folded_tail_marker` — an inline marker `rustfmt` folded onto a match tail arm's `}`; the entry unfold moves it own-line and it still places.
+- `keep_positional_diversity_tails` — one file spanning keep markers at the last block statement,
+  if/else tail, struct-literal last field, last enum variant, nested-module closing brace, and impl
+  closing brace; each carries its own `POSITIONAL_DIVERSITY KEEP …` payload.
 - `keep_inside_replaced_span_conflict_fails_loudly` — a `keep` block whose anchor lands strictly inside a replaced byte span (op-composition conflict); the replace still splices, the `keep` block fails loudly as "a user comment", not "a user code block".
 
 ## Unclassified-comment cases (the ownership rule)
@@ -90,6 +93,9 @@ carries verbatim out of a `compile_error!`.
 - `insert_at_eof` — block with no following code lands at end of file.
 - `insert_crlf` — a CRLF block is placed as clean LF.
 - `insert_rustfmt_folded_tail_marker` — an insert block at a match's tail arm in `rustfmt`'s canonical folded form (`} // cddl-codegen:insert-start`, continuation lines re-indented); the entry unfold recognizes it and places it own-line above the match's closing brace.
+- `insert_positional_diversity_tails` — the same six tail positions, with grammar-valid inserted
+  statements, a struct field, enum variant, module item, and impl item, all marked by distinct
+  `POSITIONAL_DIVERSITY INSERT …` payloads.
 
 ## Replace-block cases
 
@@ -117,6 +123,19 @@ the harness's fixed-point property (`preserve(expected, new) == expected`) exerc
 - `replace_equal_delta_unbalanced_block_round_trips` — the CML CIP36 shape: one item with an insert block declaring a local flag plus three replace blocks, the third a Δ+1 `if flag {` / `if self.vp != 0 {` pair (equal-delta rule), the condition appearing 3× in the item; a pristine regeneration round-trips byte-identically via the item-identity path.
 - `replace_two_occurrences_of_duplicated_fragment` — two replace blocks in one item replace two different occurrences of the same duplicated fragment (identical recorded originals); both place positionally under a token-identical regeneration (impossible under both-sides uniqueness alone).
 - `replace_rustfmt_folded_tail_arm_markers` — a replace block whose user section is a match's tail arm, in `rustfmt`'s canonical folded form (`} // cddl-codegen:replaces`, the recorded-original + `:replace-end` lines re-indented as an aligned block); the entry unfold moves the trailing markers own-line so the arm's `}` stays in the user section, and the block splices verbatim. Pins that the tool's own `rustfmt` pass produces a stable fixed point.
+- `replace_positional_diversity_tails` — the same six tail positions, replacing grammar-valid
+  statements, a field, enum variant, nested module, and impl with distinct `POSITIONAL_DIVERSITY REPLACE …`
+  payloads.
+
+## Positional-diversity formatter posture
+
+The three positional-diversity triples are ordinary fixtures: `old.rs` is the pinned-rustfmt output
+of `expected.rs`, `new.rs` is pristine, and the glob's merge and formatter-cycle assertions cover
+them without a special harness path. The current pinned rustfmt actively folds the established
+match-tail family. A raw final unit-enum variant without a comma can also fold its marker, but the
+normal comma-bearing enum geometry needed for a preserve fixed point stays own-line; so all six new
+triple geometries are currently own-line after their full chain. They are deliberate
+version-bump/re-ownership tripwires, not a claim that every trailing position folds today.
 
 ## Replace-block fail-loudly cases (`compile_error!`, blessed `expected.rs`)
 

@@ -67,15 +67,16 @@
 //! v1 scope is own-line comments (only whitespace before them on their line). A user-added trailing
 //! (end-of-line) comment is detected but not re-placed — it fails loudly with a hint to move it to
 //! its own line — so the never-silent property holds without a trailing-anchor flavor. One class of
-//! trailing marker is NOT a user typo but rustfmt's own canonical form: a `// cddl-codegen:<tag>`
-//! comment that trails the closing `}` of a match's LAST arm folds onto that `}` as a trailing comment
-//! (`} // cddl-codegen:replaces`, following recorded-original lines re-indented as an aligned block).
-//! The tool's own rustfmt pass writes that shape on any regen that splices a match-tail replace/insert
-//! block, so [`unfold_trailing_markers`] runs at the shared entry of both scan paths ([`preserve`] and
-//! the never-silent harness) and moves any trailing `cddl-codegen:` marker back onto its own line
-//! below the code it trailed — both spellings then parse and the rustfmt'd on-disk form is a stable
-//! fixed point, so "run twice = run once" survives the format step with no consumer `cargo fmt`
-//! needed. Emission is unchanged (own-line everywhere); rustfmt re-folds on write. Trailing
+//! trailing marker is NOT a user typo but rustfmt's own canonical form: match-tail markers can fold
+//! onto the arm's closing `}` (`} // cddl-codegen:replaces`, with following recorded-original lines
+//! re-indented as an aligned block). [`unfold_trailing_markers`] accepts that form — and every other
+//! trailing `cddl-codegen:` marker regardless of construct — at the shared entry of both scan paths
+//! ([`preserve`] and the never-silent harness), moving it back onto its own line below the code it
+//! trailed. Both spellings then parse and the rustfmt'd on-disk form reaches a stable fixed point, so
+//! "run twice = run once" survives the format step with no consumer `cargo fmt` needed. The fixture
+//! corpus holds keep/insert/replace witnesses at six additional tail geometries; they are currently
+//! own-line fixed-point tripwires, while match tails are the known active folded family. Emission is
+//! unchanged (own-line everywhere); rustfmt re-folds where its current rules choose to. Trailing
 //! comments whose exact text appears in `new`'s trailing set cancel silently. INVARIANT: the
 //! generator emits NO trailing comment on a row a spec change can delete — such a comment strands on
 //! the deleted row and re-injects as a `compile_error!` trap that carries forward across regens, so
@@ -1539,13 +1540,12 @@ fn reindent_block(old_src: &str, b: &InsertBlock, target_indent: &str) -> String
 
 /// Normalize rustfmt's canonical marker placement back to the own-line form the scanner expects.
 ///
-/// rustfmt folds a `// cddl-codegen:<tag>` comment that trails the closing `}` of a match's LAST arm
-/// onto that `}` as a trailing comment (`} // cddl-codegen:replaces`), re-indenting the following
-/// recorded-original / `:replace-end` lines as an aligned continuation block. The tool's own
-/// [`rustfmt_generated_string`](crate::generation::export::rustfmt_generated_string) pass writes that
-/// folded form on any regen that splices a match-tail replace/insert block, so the next regen would
-/// read a marker the own-line scan gate can't see. We unfold at the shared entry of both scan paths
-/// so both spellings parse and the rustfmt'd on-disk form is a stable fixed point.
+/// rustfmt can fold a `// cddl-codegen:<tag>` marker onto trailing code. The known active form is a
+/// match's last arm closing `}` (`} // cddl-codegen:replaces`), re-indenting the following
+/// recorded-original / `:replace-end` lines as an aligned continuation block. Other tail geometries
+/// are represented in the fixture corpus as version-bump/re-ownership tripwires. We unfold every
+/// reserved trailing marker at the shared entry of both scan paths so either spelling parses and the
+/// rustfmt'd on-disk form is a stable fixed point.
 ///
 /// For every LINE comment that is NOT own-line but IS in the reserved `cddl-codegen:` namespace
 /// (`cddl_tag` matches — block comments can never match, and a namespace lookalike inside a string
@@ -1638,7 +1638,7 @@ pub(crate) fn comments_sharing_a_code_row(
 /// Overlay the user comments from `old` onto the freshly generated `new`. See the module docs for
 /// the tiered anchoring. Pure: no I/O; output is a function of `(old, new)`.
 ///
-/// `old` is first normalized by [`unfold_trailing_markers`] so rustfmt-folded match-tail markers parse
+/// `old` is first normalized by [`unfold_trailing_markers`] so rustfmt-folded trailing markers parse
 /// like their own-line spelling; a `PreserveError`'s line is mapped back to the on-disk line here, the
 /// one place that boundary is crossed. `new` (freshly generated) never carries markers, so it is not
 /// normalized.
@@ -2400,7 +2400,7 @@ fn place_replace(
 #[cfg(test)]
 #[allow(dead_code)]
 pub(crate) fn never_silent_units(src: &str) -> Result<Vec<String>, PreserveError> {
-    // Normalize rustfmt-folded match-tail markers exactly as [`preserve`] does at its entry, so a
+    // Normalize every rustfmt-folded trailing marker exactly as [`preserve`] does at its entry, so a
     // folded-form fixture's blocks are recognized here too (this drives the harness's never-silent
     // property; an un-normalized scan would miss the folded block and fail the property).
     let (src, _) = unfold_trailing_markers(src)?;

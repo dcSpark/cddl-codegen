@@ -938,11 +938,13 @@ A second glob test (`preserve_fixture_tests::preserve_fixtures_rustfmt_cycle_sta
 every expected-case fixture through the tool's exact rustfmt pass and asserts the POST-rustfmt
 on-disk fixed point — `rustfmt(preserve(rustfmt(expected), new)) == rustfmt(expected)`, the form
 the tool actually writes — plus never-silent survival baselined on `old.rs` (nothing user-authored
-lost across old → merge → format → merge). It never pins a specific folded spelling, so a rustfmt
-version bump that starts folding a construct the corpus contains goes red here instead of in a
-consumer regen. Honest scope, so the property is not over-claimed: it is a regression net over the
-fold/format classes the corpus already embodies (every new fixture buys it automatically), not a
-discovery instrument for fold positions no fixture holds.
+lost across old → merge → format → merge). Its ordinary triples span keep/insert/replace at a last
+block statement, if/else tail, struct-literal last field, last enum variant, nested-module closing
+brace, and impl closing brace, alongside the folded match-tail family. The current pinned formatter
+keeps the six new fixed-point geometries own-line (the raw comma-less unit-enum probe can fold, but
+is not the preserved fixed-point geometry); they are version-bump/re-ownership tripwires. It never
+pins a specific folded spelling, so the property remains a regression net over the corpus's actual
+fold/format classes, not a discovery instrument for formatter behavior outside it.
 
 Bless with `BLESS_PRESERVE_FIXTURES=1 cargo test --bin cddl-codegen preserve_fixtures`, then
 review the diff like a snapshot. Blessing never creates `error.txt` cases. The rustfmt-cycle sweep

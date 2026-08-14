@@ -86,7 +86,6 @@ entries = [
   "testing.duplicates.member-position-extension",
   "part-md-mdmap",
   "testing.rustfmt-seam-error-leg-still-witness-needs-subprocess",
-  "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives",
   "testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite",
   "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial",
   "part-what-hand-per-construct-buy-established-escape-produced",
@@ -407,17 +406,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof", "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"]
 incident_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one", "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"]
-
-[[record]]
-id = "testing.admission-path.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-title = "Admission for testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "silent_corruption"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-evidence_ids = ["testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"]
 
 [[record]]
 id = "testing.admission-path.rejection-message-s-remedy-string-executable-claim-pin"
@@ -5835,47 +5823,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-title = "Positional-diversity fold family for the preserve-fixture corpus — the authoring work that gives the rustfmt-cycle sweep discovery power."
-legacy_aliases = ["Next work 5"]
-
-[record.payload]
-kind = "work"
-body_md = '''5. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
-   gives the rustfmt-cycle sweep discovery power.**
-   `preserve_fixtures_rustfmt_cycle_stability` holds the post-rustfmt on-disk fixed point over
-   every fixture, but only over fold positions the corpus expresses — its own delivery record is
-   explicit that it would not have caught its motivating escape, because no pre-escape fixture
-   held a marker at a foldable tail. The gap is NOT in the unfold pre-pass:
-   `unfold_trailing_markers` cuts on any non-own-line `cddl-codegen:`-tagged comment regardless
-   of the construct it trails, so the pre-pass generalizes over positions by construction. What
-   has no standing witness per position is the WHOLE chain — rustfmt folds the marker, the
-   pre-pass unfolds it, the merge re-applies the block, and the on-disk form reaches its fixed
-   point — where indentation, marker geometry, and block-body reconstruction genuinely differ by
-   construct. The family: fixtures placing tagged blocks at each grammar-level trailing position
-   rustfmt can fold a comment onto — last match arm is in-corpus (the `*_rustfmt_folded_tail_*`
-   family); last statement of a block, if/else chain tails, struct-literal tail, last enum
-   variant, and the closing brace of a nested module/impl are not — across the three block
-   flavors. Authored as ordinary preserve fixtures, the sweep covers each automatically with zero
-   harness change (that compounding is the shipped design). Honest bound to keep with the entry:
-   this enumerates trailing-position folds only; rustfmt comment mechanisms that are not
-   trail-folds (the proven import-reorder marker-glue class recorded in the standing-system
-   residuals below) are a different family, and no finite fixture set anticipates a future
-   formatter's novel comment re-owning — the sweep's version-bump tripwire is the instrument for
-   those.
-
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-admission_ids = ["testing.admission-path.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"]
-
-[[record]]
 id = "testing.prettyplease-shelling-rustfmt"
 title = "`prettyplease` instead of shelling to `rustfmt`."
 
@@ -6234,25 +6181,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 freshness = "as_of"
 reference_ids = ["testing-directive-effect-round-trip-coherence-sweep", "testing-roadmap-next-work-n46"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
-
-[[record]]
-id = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-title = "Incident evidence for testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-freshness = "as_of"
-reference_ids = ["testing-positional-diversity-fold-preserve-fixture", "testing-roadmap-next-work-n48"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -9048,16 +8976,6 @@ kind = "parent_of"
 target = "testing.guard.parallel-constructor-fixture-diversity-parser-over-external-input"
 
 [[relation]]
-source = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-kind = "parent_of"
-target = "testing.admission-path.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-
-[[relation]]
-source = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-kind = "parent_of"
-target = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-
-[[relation]]
 source = "testing.process-boundary.rustc-after-panic-fix"
 kind = "parent_of"
 target = "testing.guard.process-boundary-rustc-after-panic-fix"
@@ -10090,19 +10008,6 @@ id = "testing-directive-effect-round-trip-coherence-sweep"
 source = "testing.proof.directive-effect-round-trip-coherence-sweep-accepted-custom"
 kind = "roadmap"
 target_id = "testing.directive-effect-round-trip-coherence-sweep-accepted-custom"
-
-[[reference]]
-id = "testing-roadmap-next-work-n48"
-source = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-positional-diversity-fold-preserve-fixture"
-source = "testing.proof.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
-kind = "roadmap"
-target_id = "testing.positional-diversity-fold-preserve-fixture-corpus-authoring-gives"
 
 [[reference]]
 id = "test-check-ts-warmup-refresh-plan"

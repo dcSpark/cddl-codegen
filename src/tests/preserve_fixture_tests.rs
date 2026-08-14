@@ -48,17 +48,18 @@ fn unit_survives(unit: &str, output: &str) -> bool {
 /// The never-silent leg uses `old.rs` as its baseline — the strongest available chain: nothing
 /// user-authored is lost across old → merge → format → merge.
 ///
-/// Honest framing: this sweep would NOT have caught its own motivating escape. The pre-escape
-/// corpus contained no marker in a position rustfmt folds, so formatting would have folded nothing
-/// and the sweep would have stayed green. It is a REGRESSION NET over the fold/format classes the
-/// corpus already embodies — plus automatic coverage of every fixture added later, plus a
-/// rustfmt-version-bump tripwire — NOT a discovery instrument for fold positions the corpus lacks.
+/// The corpus spans the match-tail fold family plus every block flavor at the last statement of a
+/// block, an if/else tail, a struct-literal last field, a last enum variant, and nested-module and
+/// impl closing-brace tails. It is a REGRESSION NET over those embodied fold/format classes — plus
+/// automatic coverage of every fixture added later and a rustfmt-version-bump tripwire — NOT a
+/// discovery instrument for formatter comment behavior outside the corpus.
 ///
 /// It both TESTS and DEPENDS ON the `unfold_trailing_markers` pre-pass: the three
-/// `*_rustfmt_folded_tail_*` fixtures are re-folded by the sweep's own rustfmt pass (step 1 below)
-/// and unfolded again at the subsequent `preserve` entry, giving that pre-pass sweep coverage
-/// across all three block flavors
-/// (replace / insert / keep) where the delivered unit test covers only replace.
+/// `*_rustfmt_folded_tail_*` match-tail fixtures re-fold during the sweep's rustfmt step and unfold
+/// at the subsequent `preserve` entry. The positional-diversity keep/insert/replace triples carry
+/// the same three flavors through all six additional tail geometries; on the current pinned
+/// rustfmt their fixed-point formatting remains own-line, so they are version-bump/re-ownership
+/// tripwires rather than claims that every tail currently folds.
 ///
 /// Error cases are exempt by construction: the 20 `error.txt` cases' `old.rs` are user-malformed
 /// inputs the tool never wrote, and a `PreserveError` propagates out of `export()` before the write
