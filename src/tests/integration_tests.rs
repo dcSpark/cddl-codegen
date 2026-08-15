@@ -9069,7 +9069,8 @@ fn exact_zero_typed_key_comparison_executes_in_both_preserve_modes() {
     ));
     let _ = std::fs::remove_dir_all(&scratch);
     const SPEC: &str = "rest_key = uint / tstr\n\
-                        holder = { required: uint, 0*0 forbidden: uint, * rest_key => uint }\n";
+                        holder = { required: uint, 0*0 forbidden: uint, * rest_key => uint }\n\
+                        tagged = { 1: uint, * #6.24(uint) => uint }\n";
     const TEST: &str = r#"
 use cddl_lib::serialization::Deserialize;
 use cddl_lib::error::DeserializeFailure;
@@ -9107,6 +9108,14 @@ fn nonminimal_typed_key_is_value_equal_at_every_checked_door() {
         .insert_rest(forbidden_key, 1)
         .expect_err("checked insertion compares the key by value");
     assert!(matches!(insert_error.failure(), DeserializeFailure::ForbiddenKey(_)));
+
+    let mut tagged = Tagged::new(7);
+    tagged
+        .insert_rest(1, 9)
+        .expect("tagged uint(1) is distinct from bare declared uint(1)");
+    let tagged_bytes = tagged.to_cbor_bytes();
+    Tagged::from_cbor_bytes(&tagged_bytes)
+        .expect("the accepted tagged key must replay and decode in this preserve mode");
 }
 "#;
 
@@ -12866,8 +12875,8 @@ fn emit_tests_any_float_execute() {
 /// generate the `open-struct-map-e2e` fixture (`{ 1: uint, 2: text, * uint => any }`,
 /// `{ ? 3: text, * uint => any }`, `{ 1: uint, * any => any }`) with `--preserve-encodings
 /// --emit-tests` and `cargo test` the crate. `record_roundtrip` now mints ONE captured entry through
-/// the generated `.rest` map API per rest-bearing record, so the round-trip loop actually serializes
-/// and re-reads rest content — and, the rest RANGE being `any`, each rest entry carries the
+/// the generated checked `insert_rest` API per rest-bearing record, so the round-trip loop actually
+/// serializes and re-reads rest content — and, the rest RANGE being `any`, each rest entry carries the
 /// `MintValue::Any` `[uint 5, float 1.5]` composite, feeding the `--preserve-encodings` encoding-
 /// fidelity mutator's `widen_float` class over rest-position content (the rest-position twin of
 /// `emit_tests_any_float_execute`, which exercises the same class at MEMBER position). The other
@@ -12908,12 +12917,12 @@ fn emit_tests_open_struct_rest_execute() {
 
     let src =
         std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
-    // The rest mint fires: a captured entry is inserted through the generated `.rest` map API, and
+    // The rest mint fires: a captured entry is inserted through the generated checked API, and
     // its `any`-typed range carries the float-head composite that the fidelity mutator's
     // `widen_float` class exercises at rest position.
     assert!(
-        src.contains("v.rest.insert("),
-        "the rest-row emit-tests mint did not populate `.rest` through the generated map API"
+        src.contains("v.insert_rest("),
+        "the rest-row emit-tests mint did not populate rest through the generated checked API"
     );
     assert!(
         src.contains("__AnyCborMint::new_float(1.5)"),
@@ -12987,11 +12996,11 @@ fn emit_tests_open_struct_ignore_execute() {
             "emit-tests skipped `{ty}` — an `@ignore` type must be minted like any closed struct"
         );
     }
-    // An ignore type stores nothing, so its mint never populates a `.rest` map (that surface is
-    // capture-only) — this is the reverse floor of the capture gate's `v.rest.insert(` assert.
+    // An ignore type stores nothing, so its mint never calls the checked rest door (that surface is
+    // capture-only) — this is the reverse floor of the capture gate's `v.insert_rest(` assert.
     assert!(
-        !src.contains(".rest.insert("),
-        "an `@ignore` type must not mint into a `.rest` map — it captures no unknown entries"
+        !src.contains(".insert_rest("),
+        "an `@ignore` type must not mint through `insert_rest` — it captures no unknown entries"
     );
 
     let test = tool_cmd("cargo")
@@ -13066,7 +13075,7 @@ fn emit_tests_open_array_execute() {
         );
     }
     // CAPTURE mints one trailing element through the generated `.rest` `Vec` `push` API (arrays push a
-    // positional element, unlike a map rest row's keyed `.rest.insert(`).
+    // positional element, unlike a map rest row's checked `insert_rest` call).
     assert!(
         src.contains(".rest.push("),
         "the open-array capture mint did not push a trailing element through the generated `.rest` Vec API"
@@ -21322,14 +21331,17 @@ fn workspace_key_requests_rest_row_contract() {
     ] {
         assert!(
             consumer_rust.contains(&format!("pub struct {record}"))
-                && consumer_rust.contains(&format!("pub rest: {carrier}"))
+                && consumer_rust.contains(&format!("rest: {carrier}"))
+                && !consumer_rust.contains(&format!("pub rest: {carrier}"))
+                && consumer_rust.contains(&format!("pub fn rest(&self) -> &{carrier}"))
+                && consumer_rust.contains("pub fn insert_rest(")
                 && consumer_rust.contains(empty_ctor),
-            "the loose {record} row must retain its default-empty `{carrier}` constructor behavior:\n{consumer_rust}"
+            "the loose {record} row must retain its default-empty `{carrier}` constructor behind the checked public API:\n{consumer_rust}"
         );
     }
     for signature in [
-        "pub fn new(key_3: u64, rest: BoundedMap<IdxPlain, u64, 2, 3>) -> Self",
-        "pub fn new(key_4: u64, rest: BoundedPairMap<IdxOrd, u64, 2, 3>) -> Self",
+        "pub fn new(\n        key_3: u64,\n        rest: BoundedMap<IdxPlain, u64, 2, 3>,\n    ) -> Result<Self, DeserializeError>",
+        "pub fn new(\n        key_4: u64,\n        rest: BoundedPairMap<IdxOrd, u64, 2, 3>,\n    ) -> Result<Self, DeserializeError>",
     ] {
         assert!(
             consumer_rust.contains(signature),

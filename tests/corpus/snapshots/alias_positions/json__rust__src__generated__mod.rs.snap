@@ -47,6 +47,7 @@ fn open_holder_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
                     "open struct-map rest key {ks:?} is not a valid uint"
                 ))
             })?;
+            OpenHolder::validate_rest_key(&k).map_err(serde::de::Error::custom)?;
             Ok((k, v))
         })
         .collect()
@@ -213,7 +214,7 @@ pub struct OpenHolder {
         serialize_with = "open_holder_rest_flatten_serialize",
         deserialize_with = "open_holder_rest_flatten_deserialize"
     )]
-    pub rest: BTreeMap<Epoch, BTreeMap<PolicyId, Label>>,
+    rest: BTreeMap<Epoch, BTreeMap<PolicyId, Label>>,
 }
 
 impl OpenHolder {
@@ -222,6 +223,32 @@ impl OpenHolder {
             key_1,
             rest: BTreeMap::new(),
         }
+    }
+
+    fn validate_rest_key(key: &Epoch) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &BTreeMap<Epoch, BTreeMap<PolicyId, Label>> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: Epoch,
+        value: BTreeMap<PolicyId, Label>,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }
 

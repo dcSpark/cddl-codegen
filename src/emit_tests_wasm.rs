@@ -436,7 +436,7 @@ fn wasm_named(
             let MintValue::Record { args, .. } = mv else {
                 return None;
             };
-            let Some(ctor_args) = record_wasm_ctor_args(record, args) else {
+            let Some(ctor_args) = record_wasm_ctor_args(types, record, args) else {
                 crate::warn!(
                     "cddl-codegen --emit-tests: no wasm build for {name} (minted constructor arguments drift from the record API)"
                 );
@@ -449,7 +449,7 @@ fn wasm_named(
             let call = format!("{name}::new({})", wasm_args.join(", "));
             Some(finish_fallible(
                 call,
-                record_wasm_ctor_can_fail(record),
+                record_wasm_ctor_can_fail(record, types),
                 &name,
             ))
         }
@@ -501,10 +501,11 @@ fn wasm_named(
 /// projection beside `wasm_named`, rather than pretending the native argument list is a WASM
 /// signature, so the emitted differential follows the same constructor callers receive.
 fn record_wasm_ctor_args<'a>(
+    types: &IntermediateTypes,
     record: &RustRecord,
     native_args: &'a [MintValue],
 ) -> Option<Vec<(RustType, &'a MintValue)>> {
-    let native_types = record_ctor_arg_types(record);
+    let native_types = record_ctor_arg_types(record, types);
     if native_types.len() != native_args.len() {
         return None;
     }
@@ -1058,7 +1059,7 @@ fn wasm_record_bounds(
     cli: &Cli,
 ) -> Option<String> {
     let ctor_fields = record_ctor_fields(record);
-    let ctor_arg_types = record_ctor_arg_types(record);
+    let ctor_arg_types = record_ctor_arg_types(record, types);
     // baseline args for every constructor argument, including valid-by-construction dynamic rows.
     let mut baseline: Vec<String> = Vec::new();
     for ty in &ctor_arg_types {

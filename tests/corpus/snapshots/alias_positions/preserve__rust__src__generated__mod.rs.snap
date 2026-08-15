@@ -186,7 +186,7 @@ impl Nested {
 pub struct OpenHolder {
     pub key_1: u64,
     /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
-    pub rest: OrderedHashMap<Epoch, OrderedHashMap<PolicyId, Label>>,
+    rest: OrderedHashMap<Epoch, OrderedHashMap<PolicyId, Label>>,
     pub encodings: Option<OpenHolderEncoding>,
 }
 
@@ -197,6 +197,32 @@ impl OpenHolder {
             rest: OrderedHashMap::new(),
             encodings: None,
         }
+    }
+
+    fn validate_rest_key(key: &Epoch) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &OrderedHashMap<Epoch, OrderedHashMap<PolicyId, Label>> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: Epoch,
+        value: OrderedHashMap<PolicyId, Label>,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }
 

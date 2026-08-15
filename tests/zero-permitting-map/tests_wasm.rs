@@ -150,3 +150,49 @@ fn wasm_open_rest_checked_parent_mutation_keeps_exact_zero_and_max_invariants() 
     );
     assert_eq!(bounded.rest().len(), 2, "overflow insertion is atomic");
 }
+
+#[test]
+fn wasm_protected_rest_insert_rejects_declared_keys_without_mutating_parent() {
+    let mut ordinary = WasmProtectedAny::new(7);
+    let distinct = AnyCbor::from_cbor_bytes(&[2]).unwrap();
+    ordinary
+        .insert_rest(&distinct, 9)
+        .expect("a distinct any-domain key mutates and remains replayable");
+    let before = ordinary.to_cbor_bytes();
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let declared = AnyCbor::from_cbor_bytes(&[1]).unwrap();
+            let _ = ordinary.insert_rest(&declared, 10);
+        }))
+        .is_err(),
+        "wasm host bridge observes the native DuplicateKey as JsError"
+    );
+    assert_eq!(ordinary.to_cbor_bytes(), before, "ordinary any insertion is atomic");
+    assert_eq!(ordinary.rest().len(), 1);
+    assert!(
+        WasmProtectedAny::from_cbor_bytes(&before).is_ok(),
+        "accepted any-domain mutation remains decodable through the wasm face"
+    );
+
+    let mut preserve = WasmProtectedPair::new(7);
+    preserve
+        .insert_rest(2, 9)
+        .expect("a distinct preserve key is accepted");
+    preserve
+        .insert_rest(2, 10)
+        .expect("preserve still retains rest/rest duplicates");
+    let before = preserve.to_cbor_bytes();
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = preserve.insert_rest(1, 11);
+        }))
+        .is_err(),
+        "declared/rest collision is rejected before a preserve append"
+    );
+    assert_eq!(preserve.to_cbor_bytes(), before, "preserve insertion is atomic");
+    assert_eq!(preserve.rest().len(), 2);
+    assert!(
+        WasmProtectedPair::from_cbor_bytes(&before).is_ok(),
+        "accepted preserve pairs still serialize/read back"
+    );
+}

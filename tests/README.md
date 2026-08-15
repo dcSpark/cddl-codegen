@@ -1870,12 +1870,14 @@ directives) is verified across the layers:
   directive-slot disjointness probes (entry-level `@name`/`@duplicates` vs rule-position reads),
   the marker-slot trap pinned loud, and the lone-`* K => V`-stays-a-TABLE no-drift assertion.
 - **Value-level e2e** — `tests/open-struct-map-e2e` (compiled, non-preserve): capture round-trip,
-  typed-domain wrong-key errors, duplicate fixed/rest key rejection, the fixed-keys-win-on-content-
-  mismatch ruling, empty-rest ≡ closed-struct bytes.
+  typed-domain wrong-key errors, checked `insert_<row>` mutation through the private captured
+  carrier, duplicate declared/rest CBOR-key rejection, the fixed-keys-win-on-content-mismatch
+  ruling, empty-rest ≡ closed-struct bytes.
 - **Wasm parent-mutation e2e** — `tests/zero-permitting-map` executes ordinary and
   `@duplicates preserve` loose-row mutation through `insert_rest`, proving the getter remains a
-  detached snapshot while reread/serialize/decode observe the same parent; its exact-zero bounded
-  control proves forbidden-key and maximum failures leave that parent unchanged. The separate
+  detached snapshot while reread/serialize/decode observe the same parent; typed and `any`
+  declared/rest collisions plus its exact-zero bounded control prove duplicate-, forbidden-key-,
+  and maximum failures leave that parent unchanged. The separate
   preserve-only `tests/wasm-open-rest-mutation` fixture decodes non-minimal ordinary and pair-map
   entries, mutates the decoded wasm parent, then proves replay retains old encodings and every entry.
 - **Preserve/canonical e2e** — `tests/open-struct-map-preserve-e2e` (compiled): byte-exact
@@ -1892,7 +1894,8 @@ directives) is verified across the layers:
   widths whose canonical output applies each RFC 8949 § 4.2 rule (`f93c00` shrink, `f97e00` NaN
   payload drop, `f98000` signed zero).
 - **JSON e2e** — `tests/open-struct-map-json-e2e` (compiled): flatten round-trip, declared-names-
-  bind-first loose read, and the write-error postures (declared-name collision, identical
+  bind-first loose read, CBOR-value collision rejection after member-name coercion (including
+  sized/typed keys), and the write-error postures (declared-name collision, identical
   stringifications — which is also how a pair-list holding real duplicates errors — complex `any`
   keys/values). The **TS-projection leg** (`assert_schema_projects_to_legal_ts`, § "JSON-schema →
   TypeScript JS-side pipeline") runs for every `--json-schema-export` fixture from `run_test`
@@ -1905,9 +1908,13 @@ directives) is verified across the layers:
   axis: their integration gates generate `--wasm=false`, so they emit no wasm surface to
   differential).
 - **Wire KATs** — the `open_map` rule in all three `tests/golden_hex*` fixtures (default /
-  preserve verbatim rest-key head / canonical minimized under the merge).
+  preserve verbatim rest-key head / canonical minimized under the merge), populated only through
+  the checked record API. `tests/custom-serialize-canonical-e2e` additionally proves that key
+  validation executes the authored custom codec, rejects its errors atomically, and compares its
+  successful CBOR image with declared keys. The workspace key-request contract compiles the same
+  validator through a common-runtime override, covering the cross-crate import seam.
 - **emit-tests** — the `emit_tests_open_struct_rest_execute` gate (see the emit-tests section
-  above): the round-trip mint populates `.rest` through the generated API and the fidelity
+  above): the round-trip mint populates protected rows through checked insertion and the fidelity
   classes exercise captured entries.
 - **Runtime JSON laws** — the natural-walk shims + corpus biconditional in the static-runtime
   property layer (below), which the flatten surface composes.

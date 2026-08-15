@@ -41,6 +41,12 @@ wasm_mutation_pair_open = {
   required: uint,
   * tstr => uint ; @duplicates preserve
 }
+wasm_protected_any = { 1: uint, * any => uint }
+wasm_protected_pair = {
+  1: uint,
+  * uint => uint ; @duplicates preserve
+}
+declared_bounded = { 1: uint, 1*2 uint => uint }
 zero_exact_named_multi = {
   required: uint,
   0*0 41: uint, ; @name no_uint

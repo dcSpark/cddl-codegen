@@ -919,9 +919,9 @@ fn roundtrip_body(
     Some(blocks.join("\n"))
 }
 
-/// Mirrors the record constructor's fallibility rule (`generation/records.rs` `new_can_fail`): `new()`
-/// returns `Result` iff a mandatory field OR a one-or-more array tail's first element is bounded.
-pub(crate) fn record_ctor_can_fail(record: &RustRecord) -> bool {
+/// Mirrors the record constructor's fallibility rule (`generation/records.rs` `new_can_fail`):
+/// bounds and protected complete-rest validation are the two reasons `new()` returns `Result`.
+pub(crate) fn record_ctor_can_fail(record: &RustRecord, types: &IntermediateTypes) -> bool {
     record
         .fields
         .iter()
@@ -929,7 +929,11 @@ pub(crate) fn record_ctor_can_fail(record: &RustRecord) -> bool {
         || record
             .captured_dynamic_rows()
             .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds())
-        || (record.has_forbidden_fields() && record.captured_rest().is_some())
+        || (record.has_forbidden_fields() && record.has_protected_rest_keys(types))
+        || (record.has_protected_rest_keys(types)
+            && record
+                .captured_rest()
+                .is_some_and(|row| !row.is_array_tail() && row.is_restricted()))
 }
 
 /// The wasm record constructor is normally as fallible as the native one.  One open-table shape
@@ -937,8 +941,8 @@ pub(crate) fn record_ctor_can_fail(record: &RustRecord) -> bool {
 /// receives a loose builder and turns it into the native checked carrier.
 /// Keep this beside `record_ctor_can_fail`, which `generation::records::codegen_struct` explicitly
 /// mirrors for the native constructor.
-pub(crate) fn record_wasm_ctor_can_fail(record: &RustRecord) -> bool {
-    record_ctor_can_fail(record)
+pub(crate) fn record_wasm_ctor_can_fail(record: &RustRecord, types: &IntermediateTypes) -> bool {
+    record_ctor_can_fail(record, types)
         || record.typed_row().is_some_and(|row| {
             !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
         })
@@ -947,7 +951,10 @@ pub(crate) fn record_wasm_ctor_can_fail(record: &RustRecord) -> bool {
 /// The generated record constructor's argument types, in its exact field-then-dynamic-row order.
 /// This is shared with the wasm emitted-test renderer so an added valid-by-construction dynamic row
 /// cannot make that face silently drop the record's round-trip test.
-pub(crate) fn record_ctor_arg_types(record: &RustRecord) -> Vec<RustType> {
+pub(crate) fn record_ctor_arg_types(
+    record: &RustRecord,
+    types: &IntermediateTypes,
+) -> Vec<RustType> {
     let mut args: Vec<RustType> = record
         .fields
         .iter()
@@ -970,7 +977,8 @@ pub(crate) fn record_ctor_arg_types(record: &RustRecord) -> Vec<RustType> {
             .captured_dynamic_rows()
             .filter(|row| {
                 !row.is_array_tail()
-                    && (row.is_restricted() || record.has_forbidden_fields())
+                    && (row.is_restricted()
+                        || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
                     && !(record.is_typed_row(row) && record.is_non_empty_open_table())
             })
             .map(|row| row.container_type()),
@@ -1189,7 +1197,8 @@ fn record_roundtrip(
     // construction and actually exercises the row rather than emitting an arity-invalid `new()`.
     for rest in record.captured_dynamic_rows().filter(|row| {
         !row.is_array_tail()
-            && (row.is_restricted() || record.has_forbidden_fields())
+            && (row.is_restricted()
+                || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
             && !(record.is_typed_row(row) && record.is_non_empty_open_table())
     }) {
         match mint_dynamic_map_row(types, record, rest, 0) {
@@ -1223,7 +1232,7 @@ fn record_roundtrip(
     let base = render_rust(&MintValue::Record {
         ident: name.to_owned(),
         args: valid_args,
-        can_fail: record_ctor_can_fail(record),
+        can_fail: record_ctor_can_fail(record, types),
     });
     let mut cases = vec![(base.clone(), "baseline".to_owned())];
     for f in record.fields.iter().filter(|f| f.optional) {
@@ -1317,9 +1326,10 @@ fn record_roundtrip(
                 }
                 match (valid_value(types, domain), valid_value(types, range)) {
                     (Some(k), Some(v)) => {
-                        let mint = if record.has_forbidden_fields() && !rest.is_array_tail() {
-                            // Exact-zero metadata makes the captured carrier private. Re-enter the
-                            // record's checked insertion door, which composes its forbidden-key
+                        let mint = if record.has_protected_rest_keys(types) && !rest.is_array_tail()
+                        {
+                            // A possible fixed/rest collision makes the carrier private. Re-enter
+                            // the record's checked insertion door, which composes declared/forbidden
                             // validation with the carrier's own cardinality/duplicate semantics.
                             format!(
                                 "v.insert_{}({}, {}).unwrap();",
@@ -1622,13 +1632,13 @@ fn record_deser_reject(
     record: &RustRecord,
     value_eq: bool,
 ) -> Option<String> {
-    let ctor_arg_types = record_ctor_arg_types(record);
+    let ctor_arg_types = record_ctor_arg_types(record, types);
     let ctor_arg_type_refs: Vec<&RustType> = ctor_arg_types.iter().collect();
     let mut bounded_array_probes = type_enforced_bounded_array_ctor_probes(
         types,
         &format!("{name}::new"),
         &ctor_arg_type_refs,
-        record_ctor_can_fail(record),
+        record_ctor_can_fail(record, types),
     );
 
     // constructor arg list: mandatory, non-fixed, non-default fields (mirrors codegen_struct)
@@ -2405,7 +2415,8 @@ pub(crate) fn mint_struct(
             // one out produces an arity-invalid `new()` only after the enclosing test is emitted.
             for rest in record.captured_dynamic_rows().filter(|row| {
                 !row.is_array_tail()
-                    && (row.is_restricted() || record.has_forbidden_fields())
+                    && (row.is_restricted()
+                        || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
                     && !(record.is_typed_row(row) && record.is_non_empty_open_table())
             }) {
                 args.push(mint_dynamic_map_row(types, record, rest, depth + 1)?);
@@ -2422,7 +2433,7 @@ pub(crate) fn mint_struct(
             Some(MintValue::Record {
                 ident: name,
                 args,
-                can_fail: record_ctor_can_fail(record),
+                can_fail: record_ctor_can_fail(record, types),
             })
         }
         RustStructType::Wrapper {

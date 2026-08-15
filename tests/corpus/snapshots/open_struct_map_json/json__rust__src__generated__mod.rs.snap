@@ -49,6 +49,7 @@ fn any_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
         .into_iter()
         .map(|(ks, v)| {
             let k = crate::generated::any_cbor::any_cbor_natural_key_from_string(&ks);
+            AnyRest::validate_rest_key(&k).map_err(serde::de::Error::custom)?;
             Ok((k, v.0))
         })
         .collect()
@@ -79,6 +80,7 @@ fn dup_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
                     "open struct-map rest key {ks:?} is not a valid uint"
                 ))
             })?;
+            DupRest::validate_rest_key(&k).map_err(serde::de::Error::custom)?;
             Ok((k, v))
         })
         .collect()
@@ -110,6 +112,7 @@ fn opt_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
                     "open struct-map rest key {ks:?} is not a valid uint"
                 ))
             })?;
+            OptRest::validate_rest_key(&k).map_err(serde::de::Error::custom)?;
             Ok((k, v.0))
         })
         .collect()
@@ -142,6 +145,7 @@ fn renamed_rest_extra_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
                     "open struct-map rest key {ks:?} is not a valid uint"
                 ))
             })?;
+            RenamedRest::validate_extra_key(&k).map_err(serde::de::Error::custom)?;
             Ok((k, v.0))
         })
         .collect()
@@ -172,6 +176,7 @@ fn typed_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
                     "open struct-map rest key {ks:?} is not a valid uint"
                 ))
             })?;
+            TypedRest::validate_rest_key(&k).map_err(serde::de::Error::custom)?;
             Ok((k, v))
         })
         .collect()
@@ -203,6 +208,7 @@ fn uint_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
                     "open struct-map rest key {ks:?} is not a valid uint"
                 ))
             })?;
+            UintRest::validate_rest_key(&k).map_err(serde::de::Error::custom)?;
             Ok((k, v.0))
         })
         .collect()
@@ -222,7 +228,7 @@ pub struct AnyRest {
         deserialize_with = "any_rest_rest_flatten_deserialize"
     )]
     #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
-    pub rest: BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
+    rest: BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
 }
 
 impl AnyRest {
@@ -231,6 +237,36 @@ impl AnyRest {
             key_1,
             rest: BTreeMap::new(),
         }
+    }
+
+    fn validate_rest_key(
+        key: &crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        if key.value_eq(&crate::generated::any_cbor::AnyCbor::new_uint(1)) {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(
+        &self,
+    ) -> &BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: crate::generated::any_cbor::AnyCbor,
+        value: crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }
 
@@ -246,7 +282,7 @@ pub struct DupRest {
     #[schemars(
         schema_with = "crate::generated::open_struct_rest_json::typed_rest_map_schema::<u64, String>"
     )]
-    pub rest: PairMap<u64, String>,
+    rest: PairMap<u64, String>,
 }
 
 impl DupRest {
@@ -255,6 +291,32 @@ impl DupRest {
             key_7,
             rest: PairMap::new(),
         }
+    }
+
+    fn validate_rest_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 7 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(7),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &PairMap<u64, String> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: u64,
+        value: String,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }
 
@@ -268,7 +330,7 @@ pub struct OptRest {
         deserialize_with = "opt_rest_rest_flatten_deserialize"
     )]
     #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
-    pub rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+    rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
 }
 
 impl OptRest {
@@ -277,6 +339,32 @@ impl OptRest {
             key_3: None,
             rest: BTreeMap::new(),
         }
+    }
+
+    fn validate_rest_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 3 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(3),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &BTreeMap<u64, crate::generated::any_cbor::AnyCbor> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: u64,
+        value: crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }
 
@@ -296,7 +384,7 @@ pub struct RenamedRest {
         deserialize_with = "renamed_rest_extra_flatten_deserialize"
     )]
     #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
-    pub extra: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+    extra: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
 }
 
 impl RenamedRest {
@@ -305,6 +393,32 @@ impl RenamedRest {
             key_1,
             extra: BTreeMap::new(),
         }
+    }
+
+    fn validate_extra_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn extra(&self) -> &BTreeMap<u64, crate::generated::any_cbor::AnyCbor> {
+        &self.extra
+    }
+
+    pub fn insert_extra(
+        &mut self,
+        entry_key: u64,
+        value: crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_extra_key(&entry_key)?;
+        let mut candidate = self.extra.clone();
+        candidate.insert(entry_key, value);
+        self.extra = candidate;
+        Ok(())
     }
 }
 
@@ -317,7 +431,7 @@ pub struct TypedRest {
         serialize_with = "typed_rest_rest_flatten_serialize",
         deserialize_with = "typed_rest_rest_flatten_deserialize"
     )]
-    pub rest: BTreeMap<u64, u64>,
+    rest: BTreeMap<u64, u64>,
 }
 
 impl TypedRest {
@@ -326,6 +440,32 @@ impl TypedRest {
             key_1,
             rest: BTreeMap::new(),
         }
+    }
+
+    fn validate_rest_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &BTreeMap<u64, u64> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: u64,
+        value: u64,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }
 
@@ -340,7 +480,7 @@ pub struct UintRest {
         deserialize_with = "uint_rest_rest_flatten_deserialize"
     )]
     #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
-    pub rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+    rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
 }
 
 impl UintRest {
@@ -350,5 +490,37 @@ impl UintRest {
             key_2,
             rest: BTreeMap::new(),
         }
+    }
+
+    fn validate_rest_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        if *key == 2 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(2),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &BTreeMap<u64, crate::generated::any_cbor::AnyCbor> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: u64,
+        value: crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }

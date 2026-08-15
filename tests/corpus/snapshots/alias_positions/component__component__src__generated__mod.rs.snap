@@ -234,7 +234,7 @@ impl wit_types::GuestOpenHolder for WitOpenHolder {
 
     fn rest(&self) -> Vec<(u64, Vec<(Vec<u8>, String)>)> {
         let me = self.0.borrow();
-        me.rest
+        me.rest()
             .iter()
             .map(|(x0, x1)| {
                 (

@@ -1328,6 +1328,42 @@ impl RustRecord {
     pub fn has_forbidden_fields(&self) -> bool {
         !self.forbidden_fields.is_empty()
     }
+
+    /// A captured MAP row is protected when one of its possible CBOR key values can equal a fixed
+    /// key in the same record. Such a row cannot expose its carrier for direct mutation: a collision
+    /// would make the record serialize a duplicate map key.
+    ///
+    /// Bare `uint` and `text` domains have faithful, statically-disjoint wire majors, so a record
+    /// whose fixed keys are all of the other kind needs no door. Everything on the typed seek path
+    /// remains conservatively protected: tags, encodings and custom codecs can change the actual
+    /// top-level wire value, and general domains can admit either fixed-key kind. Open tables have
+    /// no fixed fields, so their dynamic rows remain their existing public containers.
+    pub fn has_protected_rest_keys(&self, types: &IntermediateTypes) -> bool {
+        let Some(rest) = self.captured_rest().filter(|row| !row.is_array_tail()) else {
+            return false;
+        };
+        let has_fixed_kind = |want_uint: bool| {
+            self.forbidden_fields
+                .iter()
+                .map(|field| &field.key)
+                .chain(self.fields.iter().filter_map(|field| field.key.as_ref()))
+                .any(|key| {
+                    matches!(
+                        (want_uint, key),
+                        (true, FixedValue::Uint(_)) | (false, FixedValue::Text(_))
+                    )
+                })
+        };
+        if !rest.map_key_uses_peeked_path(types) {
+            return has_fixed_kind(true) || has_fixed_kind(false);
+        }
+        match rest.domain().conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Primitive(Primitive::U64) => has_fixed_kind(true),
+            ConceptualRustType::Primitive(Primitive::Str) => has_fixed_kind(false),
+            ConceptualRustType::Any => has_fixed_kind(true) || has_fixed_kind(false),
+            _ => unreachable!("the peeked rest-key path admits only bare uint/text/any"),
+        }
+    }
     /// The rest row IFF it CAPTURES (a `pub` map field is emitted and re-serialized). `None` for a
     /// closed struct AND for an `@ignore` (tolerate-and-drop) rest row, which stores nothing. Every
     /// capture-only emission (struct field, `new()` line, wasm getter, encoding sidecars, serialize

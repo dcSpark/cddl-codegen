@@ -39,7 +39,6 @@ const BARE_DECODE_REJECT_BASELINE: &[(&str, usize)] = &[
     ("open-array-e2e/tests.rs", 1),
     ("open-struct-map-e2e/tests.rs", 12),
     ("open-struct-map-ignore-e2e/tests.rs", 3),
-    ("open-struct-map-json-e2e/tests.rs", 1),
     ("open-struct-map-preserve-e2e/tests.rs", 3),
     ("open-table-cip25-acceptance/tests.rs", 6),
     ("open-table-e2e/tests.rs", 3),

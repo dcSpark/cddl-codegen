@@ -146,7 +146,7 @@ mod custom_serialize_canonical {
         let wire = bytes("b803 626162 1807 637a7a7a 01 6461626364 02");
         let v = OpenExt::from_cbor_bytes(&wire).unwrap();
         assert_eq!(v.zzz, 1);
-        assert_eq!(v.rest.len(), 2);
+        assert_eq!(v.rest().len(), 2);
         assert_eq!(v.to_cbor_bytes(), wire, "byte-exact rest-row round-trip");
     }
 
@@ -173,23 +173,24 @@ mod custom_serialize_canonical {
     }
 
     #[test]
-    fn rest_row_custom_serializer_refusal_surfaces_from_both_call_sites() {
-        // `write_ext_key` refuses a non-lowercase key. That refusal is observable from BOTH sites the
-        // fix is about: under `force_canonical` the merge's scratch pass reaches it before anything is
-        // written, and without it the write arm does. A key built in memory (not parsed) keeps this a
-        // statement about the serialize path only.
+    fn rest_row_custom_serializer_owns_checked_key_validation() {
+        // The protected rest door serializes through the REAL custom codec before mutation. That
+        // catches both a key whose custom writer refuses and a successfully written key equal to the
+        // declared CBOR text key. The accepted byte/canonical tests above retain the successful
+        // merge/write call-site coverage.
         let mut v = OpenExt::new(1);
-        v.rest.insert("AB".to_owned(), 2);
-        let mut canonical_buf = cbor_event::se::Serializer::new_vec();
-        assert!(
-            v.serialize(&mut canonical_buf, true).is_err(),
-            "canonical merge's scratch pass runs the custom serializer"
-        );
-        let mut plain_buf = cbor_event::se::Serializer::new_vec();
-        assert!(
-            v.serialize(&mut plain_buf, false).is_err(),
-            "write arm runs the custom serializer"
-        );
+        let refused = v
+            .insert_rest("AB".to_owned(), 2)
+            .expect_err("the checked door must surface the custom writer's refusal");
+        assert!(refused.to_string().contains("must be lowercase ASCII"));
+        let collision = v
+            .insert_rest("zzz".to_owned(), 2)
+            .expect_err("the custom-written rest key equals the declared CBOR text key");
+        assert!(matches!(
+            collision.failure(),
+            crate::generated::error::DeserializeFailure::DuplicateKey(_)
+        ));
+        assert_eq!(v.rest().len(), 0, "both rejected insertions are atomic");
     }
 
     // ---------------------------------------------------------------------------------------

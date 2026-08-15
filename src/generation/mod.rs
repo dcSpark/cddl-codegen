@@ -1480,7 +1480,7 @@ impl GenerationScope {
             // only crates that actually use CDDL `any` pull in the AnyCbor runtime — keeps every
             // non-`any` crate's output byte-identical (usage-gating). Present in BOTH modes (the
             // non-preserve variant is a distinct fragment), so gated on usage alone, not preserve.
-            if types.uses_any_cbor() || types.uses_forbidden_key_value_comparator() {
+            if types.uses_any_cbor() {
                 self.rust_lib().raw("pub mod any_cbor;");
             }
             // only crates with an open struct-map rest row pull in the flatten JSON helpers, and only

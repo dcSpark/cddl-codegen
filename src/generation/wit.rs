@@ -1792,7 +1792,8 @@ fn project_record(
     // calls `new`. The one typed `+` case above keeps its shipped first-entry ABI instead.
     for rest in record.captured_dynamic_rows().filter(|row| {
         !row.is_array_tail()
-            && (row.is_restricted() || record.has_forbidden_fields())
+            && (row.is_restricted()
+                || (record.has_forbidden_fields() && record.has_protected_rest_keys(ctx.types)))
             && !(record.is_typed_row(row) && record.is_non_empty_open_table())
     }) {
         let ty = WitType::List(Box::new(WitType::Tuple(vec![
@@ -1808,7 +1809,7 @@ fn project_record(
             validates,
             rust_type: Some(carrier),
         });
-        ctor_fallible |= validates || record.has_forbidden_fields();
+        ctor_fallible |= validates || record.has_protected_rest_keys(ctx.types);
     }
     // The one-or-more open-array tail's Rust `new` takes its first element rather than an
     // empty-capable list. WIT projects that same element door; the list getter remains a list and
@@ -1865,7 +1866,7 @@ fn project_record(
             fallible: false,
             op: WitMemberOp::RestGetter {
                 field: rest.field_name.clone(),
-                via_accessor: record.has_forbidden_fields() && !rest.is_array_tail(),
+                via_accessor: record.has_protected_rest_keys(ctx.types) && !rest.is_array_tail(),
             },
         });
     }

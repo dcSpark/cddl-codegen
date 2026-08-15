@@ -981,98 +981,56 @@ fn rest_staging_type(rest: &RestRow) -> crate::intermediate::RustType {
     rest.staging_container_type()
 }
 
-/// Statements for the native construction door of a record with exact-zero fixed members.  The
-/// key is inspected as a CBOR VALUE: primitive rows compare their typed value, while an `any` row
-/// uses the runtime's width-independent `value_eq` helper.
-fn forbidden_rest_validation(
-    record: &RustRecord,
-    rest: &RestRow,
-    cli: &Cli,
-    container: &str,
-) -> Vec<String> {
-    if rest.is_array_tail() || !record.has_forbidden_fields() {
-        return vec![];
-    }
-    let domain = rest.domain().conceptual_type.resolve_alias_shallow();
-    record
-        .forbidden_fields
-        .iter()
-        .map(|field| {
-            let (predicate, key) = match (domain, &field.key) {
-                (ConceptualRustType::Primitive(Primitive::U64), FixedValue::Uint(x)) =>
-                    (format!("*key == {x}"), format!("crate::generated::error::Key::Uint({x})")),
-                (ConceptualRustType::Primitive(Primitive::Str), FixedValue::Text(x)) =>
-                    (format!("key.as_str() == \"{}\"", escape_rust_str(x)), format!("crate::generated::error::Key::Str(String::from(\"{}\"))", escape_rust_str(x))),
-                (ConceptualRustType::Any, FixedValue::Uint(x)) => {
-                    let any = format!("{}::any_cbor", cli.common_import_rust());
-                    (format!("key.value_eq(&{any}::AnyCbor::new_uint({x}))"), format!("crate::generated::error::Key::Uint({x})"))
-                }
-                (ConceptualRustType::Any, FixedValue::Text(x)) => {
-                    let any = format!("{}::any_cbor", cli.common_import_rust());
-                    (format!("key.value_eq(&{any}::AnyCbor::new_text(String::from(\"{}\")))", escape_rust_str(x)), format!("crate::generated::error::Key::Str(String::from(\"{}\"))", escape_rust_str(x)))
-                }
-                (_, FixedValue::Uint(x)) => {
-                    let any = format!("{}::any_cbor", cli.common_import_rust());
-                    (format!("{any}::cbor_value_eq_serialized(key, &{any}::AnyCbor::new_uint({x}))?"), format!("crate::generated::error::Key::Uint({x})"))
-                }
-                (_, FixedValue::Text(x)) => {
-                    let any = format!("{}::any_cbor", cli.common_import_rust());
-                    (format!("{any}::cbor_value_eq_serialized(key, &{any}::AnyCbor::new_text(String::from(\"{}\")))?", escape_rust_str(x)), format!("crate::generated::error::Key::Str(String::from(\"{}\"))", escape_rust_str(x)))
-                }
-                _ => unreachable!("parser admits only uint/text exact-zero map keys"),
-            };
-            // Typed/union key comparison serializes then reparses the candidate and can fail; keep
-            // that `Result` in this constructor rather than hiding it in an `Iterator::any` closure.
-            // Primitive predicates remain infallible and retain the compact existing form.
-            if predicate.ends_with('?') {
-                format!(
-                    "for (key, _) in {container}.iter() {{ if {predicate} {{ return Err(DeserializeFailure::ForbiddenKey({key}).into()); }} }}"
-                )
-            } else {
-                format!(
-                    "if {container}.iter().any(|(key, _)| {predicate}) {{ return Err(DeserializeFailure::ForbiddenKey({key}).into()); }}"
-                )
-            }
-        })
-        .collect()
-}
-
-/// The single-entry twin of [`forbidden_rest_validation`].  A checked insertion door must inspect
+/// The protected captured-map key validator. A checked insertion door must inspect
 /// the candidate key BEFORE invoking a restricted carrier's `insert`: otherwise a full
 /// `BoundedMap`/`BoundedPairMap` would report its cardinality error first and leave the exact-zero
 /// constraint unaudited.  `key` below is deliberately `&key` at the call site, matching the
 /// iterator binding in the complete-container validator and keeping typed/union comparator calls
 /// on a borrowed value.
-fn forbidden_rest_insert_key_validation(
+fn protected_rest_insert_key_validation(
     record: &RustRecord,
     rest: &RestRow,
+    types: &IntermediateTypes,
     cli: &Cli,
 ) -> Vec<String> {
-    if rest.is_array_tail() || !record.has_forbidden_fields() {
+    if rest.is_array_tail() || !record.has_protected_rest_keys(types) {
         return vec![];
     }
     let domain = rest.domain().conceptual_type.resolve_alias_shallow();
+    let error = format!("{}::error", cli.common_import_rust());
     record
         .forbidden_fields
         .iter()
-        .map(|field| {
-            let (predicate, forbidden_key) = match (domain, &field.key) {
-                (ConceptualRustType::Primitive(Primitive::U64), FixedValue::Uint(x)) => (
-                    format!("*key == {x}"),
-                    format!("crate::generated::error::Key::Uint({x})"),
-                ),
+        .map(|field| (true, &field.key))
+        .chain(
+            record
+                .fields
+                .iter()
+                .filter_map(|field| field.key.as_ref().map(|key| (false, key))),
+        )
+        .filter_map(|(forbidden, fixed_key)| {
+            let (predicate, fixed_key) = match (domain, fixed_key) {
+                (ConceptualRustType::Primitive(Primitive::U64), FixedValue::Uint(x)) => {
+                    (format!("*key == {x}"), format!("{error}::Key::Uint({x})"))
+                }
+                (ConceptualRustType::Primitive(Primitive::U64), FixedValue::Text(_)) => {
+                    return None;
+                }
                 (ConceptualRustType::Primitive(Primitive::Str), FixedValue::Text(x)) => (
                     format!("key.as_str() == \"{}\"", escape_rust_str(x)),
                     format!(
-                        "crate::generated::error::Key::Str(String::from(\"{}\"))",
+                        "{error}::Key::Str(String::from(\"{}\"))",
                         escape_rust_str(x)
                     ),
                 ),
+                (ConceptualRustType::Primitive(Primitive::Str), FixedValue::Uint(_)) => {
+                    return None;
+                }
                 (ConceptualRustType::Any, FixedValue::Uint(x)) => {
                     let any = format!("{}::any_cbor", cli.common_import_rust());
                     (
                         format!("key.value_eq(&{any}::AnyCbor::new_uint({x}))"),
-                        format!("crate::generated::error::Key::Uint({x})"),
+                        format!("{error}::Key::Uint({x})"),
                     )
                 }
                 (ConceptualRustType::Any, FixedValue::Text(x)) => {
@@ -1083,37 +1041,66 @@ fn forbidden_rest_insert_key_validation(
                             escape_rust_str(x)
                         ),
                         format!(
-                            "crate::generated::error::Key::Str(String::from(\"{}\"))",
+                            "{error}::Key::Str(String::from(\"{}\"))",
                             escape_rust_str(x)
                         ),
                     )
                 }
-                (_, FixedValue::Uint(x)) => {
-                    let any = format!("{}::any_cbor", cli.common_import_rust());
-                    (
-                        format!(
-                            "{any}::cbor_value_eq_serialized(key, &{any}::AnyCbor::new_uint({x}))?"
-                        ),
-                        format!("crate::generated::error::Key::Uint({x})"),
-                    )
+                _ => unreachable!("only faithful uint/text/any rest domains use direct comparison"),
+            };
+            Some(format!(
+                "if {predicate} {{ return Err({error}::DeserializeFailure::{}({fixed_key}).into()); }}",
+                if forbidden {
+                    "ForbiddenKey"
+                } else {
+                    "DuplicateKey"
                 }
-                (_, FixedValue::Text(x)) => {
-                    let any = format!("{}::any_cbor", cli.common_import_rust());
-                    (
-                        format!(
-                            "{any}::cbor_value_eq_serialized(key, &{any}::AnyCbor::new_text(String::from(\"{}\")))?",
-                            escape_rust_str(x)
-                        ),
-                        format!(
-                            "crate::generated::error::Key::Str(String::from(\"{}\"))",
-                            escape_rust_str(x)
-                        ),
-                    )
-                }
-                _ => unreachable!("parser admits only uint/text exact-zero map keys"),
+            ))
+        })
+        .collect()
+}
+
+/// General (typed, aliased, encoded, or custom-codec) rest keys are serialized through the same
+/// generator path as their wire form, then their top-level CBOR value is compared with the fixed
+/// uint/text key. Parsing only those two admitted fixed-key kinds avoids coupling a
+/// `--common-import-override` consumer to whether its runtime crate happened to emit `AnyCbor`.
+fn protected_rest_serialized_key_validation(record: &RustRecord, cli: &Cli) -> Vec<String> {
+    let error = format!("{}::error", cli.common_import_rust());
+    record
+        .forbidden_fields
+        .iter()
+        .map(|field| (true, &field.key))
+        .chain(
+            record
+                .fields
+                .iter()
+                .filter_map(|field| field.key.as_ref().map(|key| (false, key))),
+        )
+        .map(|(forbidden, fixed_key)| {
+            let (expected, error_key) = match fixed_key {
+                FixedValue::Uint(x) => (
+                    format!("candidate_uint == Some({x})"),
+                    format!("{error}::Key::Uint({x})"),
+                ),
+                FixedValue::Text(x) => (
+                    format!(
+                        "candidate_text.as_deref() == Some(\"{}\")",
+                        escape_rust_str(x)
+                    ),
+                    format!(
+                        "{error}::Key::Str(String::from(\"{}\"))",
+                        escape_rust_str(x)
+                    ),
+                ),
+                _ => unreachable!("parser admits only uint/text fixed map keys"),
             };
             format!(
-                "if {predicate} {{ return Err(DeserializeFailure::ForbiddenKey({forbidden_key}).into()); }}"
+                "if {expected} {{ return Err({error}::DeserializeFailure::{}({error_key}).into()); }}",
+                if forbidden {
+                    "ForbiddenKey"
+                } else {
+                    "DuplicateKey"
+                }
             )
         })
         .collect()
@@ -1412,12 +1399,24 @@ fn emit_rest_flatten_json(
     // must re-enter the same `TryFrom` door CBOR uses.
     let staging_ty = rest_staging_type(rest).for_rust_member(types, false, cli);
     let staged = record.fresh_generated_member_ident("staged");
+    // A JSON member name can spell differently from the fixed JSON property while reconstructing a
+    // CBOR-value-equal key (for example `key_1` and `"1"`). Re-enter the record's one native key
+    // seam before staging it, so flattened JSON cannot construct a state the CBOR writer rejects.
+    let key_validate = if record.has_protected_rest_keys(types) {
+        format!(
+            "{name}::validate_{}_key(&k).map_err(serde::de::Error::custom)?;",
+            rest.field_name
+        )
+    } else {
+        String::new()
+    };
     let deserialize_finish = if rest.is_restricted() {
         format!(
             "let {staged}: {staging_ty} = pairs\n\
              \x20       .into_iter()\n\
              \x20       .map(|(ks, v)| {{\n\
              \x20           {key_coerce}\n\
+             \x20           {key_validate}\n\
              \x20           Ok((k, {value_unwrap}))\n\
              \x20       }})\n\
              \x20       .collect::<Result<_, D::Error>>()?;\n\
@@ -1429,6 +1428,7 @@ fn emit_rest_flatten_json(
              \x20       .into_iter()\n\
              \x20       .map(|(ks, v)| {{\n\
              \x20           {key_coerce}\n\
+             \x20           {key_validate}\n\
              \x20           Ok((k, {value_unwrap}))\n\
              \x20       }})\n\
              \x20       .collect()"
@@ -2847,7 +2847,11 @@ pub(super) fn codegen_struct(
         || record
             .captured_dynamic_rows()
             .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds())
-        || (record.has_forbidden_fields() && record.captured_rest().is_some());
+        || (record.has_forbidden_fields() && record.has_protected_rest_keys(types))
+        || (record.has_protected_rest_keys(types)
+            && record
+                .captured_rest()
+                .is_some_and(|row| !row.is_array_tail() && row.is_restricted()));
     // A bounded typed row stays flattened on the open-table class, so its wasm constructor accepts
     // the same-flavor *loose* builder and crosses the checked carrier door before calling the
     // native record constructor. That boundary can fail even though the native constructor itself
@@ -3183,7 +3187,8 @@ pub(super) fn codegen_struct(
         for rest in record.captured_dynamic_rows().filter(|row| {
             !record.is_typed_row(row)
                 && !row.is_array_tail()
-                && (row.is_restricted() || record.has_forbidden_fields())
+                && (row.is_restricted()
+                    || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
         }) {
             let rest_ty = rest_member_type(rest);
             wasm_new.arg(&rest.field_name, rest_ty.for_wasm_param(types));
@@ -3233,7 +3238,7 @@ pub(super) fn codegen_struct(
                 })
                 .line(rest_ty.to_wasm_boundary(
                     types,
-                    &if record.has_forbidden_fields() && !rest.is_array_tail() {
+                    &if record.has_protected_rest_keys(types) && !rest.is_array_tail() {
                         format!("self.0.{}()", rest.field_name)
                     } else {
                         format!("self.0.{}", rest.field_name)
@@ -3276,11 +3281,12 @@ pub(super) fn codegen_struct(
                 .arg("value", rest.range().for_wasm_param(types))
                 .ret("Result<(), JsError>")
                 .vis("pub")
-                .doc(if record.has_forbidden_fields() {
+                .doc(if record.has_protected_rest_keys(types) {
                     format!(
                         "Inserts an entry into this record's captured open-map row. The native record \
-                         validates forbidden fixed keys before changing the parent; failures are \
-                         returned as `JsError`. {snapshot_getter} remains a detached read snapshot."
+                         rejects collisions with declared and exact-zero fixed keys before changing \
+                         the parent; failures are returned as `JsError`. {snapshot_getter} remains \
+                         a detached read snapshot."
                     )
                 } else if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
                     format!(
@@ -3296,8 +3302,8 @@ pub(super) fn codegen_struct(
                          equal key."
                     )
                 });
-            if record.has_forbidden_fields() {
-                // Exact-zero records deliberately keep their rest field private.  Reuse the
+            if record.has_protected_rest_keys(types) {
+                // Collision-protected records deliberately keep their rest field private. Reuse the
                 // native record-level door so wasm cannot duplicate (and later drift from) its
                 // typed/any/preserve key comparison and clone-and-swap atomicity rules.
                 insert.line(format!(
@@ -3560,7 +3566,7 @@ pub(super) fn codegen_struct(
     // `@ignore` row/tail emits NO field (it drops unknown entries), so the struct is a closed struct's.
     for rest in record.captured_dynamic_rows() {
         let mut rest_field = codegen::Field::new(
-            if record.has_forbidden_fields() && !rest.is_array_tail() {
+            if record.has_protected_rest_keys(types) && !rest.is_array_tail() {
                 rest.field_name.clone()
             } else {
                 format!("pub {}", rest.field_name)
@@ -3677,7 +3683,10 @@ pub(super) fn codegen_struct(
                 "{}: {carrier}::new({key_arg}, {value_arg}),",
                 rest.field_name
             ));
-        } else if !rest.is_array_tail() && (rest.is_restricted() || record.has_forbidden_fields()) {
+        } else if !rest.is_array_tail()
+            && (rest.is_restricted()
+                || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
+        {
             let rest_ty = rest_member_type(rest).for_rust_move(types, cli);
             native_new.arg(&rest.field_name, &rest_ty);
             new_arg_count += 1;
@@ -3685,8 +3694,11 @@ pub(super) fn codegen_struct(
                 "* `{}` - the checked captured map row (its CDDL occurrence window is enforced by this carrier)",
                 rest.field_name
             ));
-            for validation in forbidden_rest_validation(record, rest, cli, &rest.field_name) {
-                native_new.line(validation);
+            if record.has_protected_rest_keys(types) {
+                native_new.line(format!(
+                    "for (key, _) in {}.iter() {{ Self::validate_{}_key(key)?; }}",
+                    rest.field_name, rest.field_name
+                ));
             }
             native_new_block.line(format!("{},", rest.field_name));
         } else if rest.is_non_empty_array_tail() {
@@ -3848,14 +3860,123 @@ pub(super) fn codegen_struct(
     };
     native_new.push_block(native_new_block);
     native_impl.push_fn(native_new);
-    // A forbidden fixed key makes a captured map private: callers may observe validated content,
-    // but cannot insert directly around the record's construction invariant.  The wasm getter uses
-    // this same immutable native view.
-    if record.has_forbidden_fields() {
+    // A possible fixed/rest key collision makes the captured map private: callers may observe
+    // validated content, but cannot insert directly around the declared/exact-zero invariant. The
+    // wasm getter uses this same immutable native view.
+    if record.has_protected_rest_keys(types) {
         for rest in record
             .captured_dynamic_rows()
             .filter(|row| !row.is_array_tail())
         {
+            let validator_name = format!("validate_{}_key", rest.field_name);
+            let mut validator = codegen::Function::new(&validator_name);
+            let direct = rest.map_key_uses_peeked_path(types)
+                && matches!(
+                    rest.domain().conceptual_type.resolve_alias_shallow(),
+                    ConceptualRustType::Any
+                        | ConceptualRustType::Primitive(Primitive::U64 | Primitive::Str)
+                );
+            let validations = if direct {
+                protected_rest_insert_key_validation(record, rest, types, cli)
+            } else {
+                protected_rest_serialized_key_validation(record, cli)
+            };
+            validator
+                .arg(
+                    if !direct || validations.iter().any(|line| line.contains("key")) {
+                        "key"
+                    } else {
+                        "_key"
+                    },
+                    format!("&{}", rest.domain().for_rust_move(types, cli)),
+                )
+                .ret(format!(
+                    "Result<(), {}::error::DeserializeError>",
+                    cli.common_import_rust()
+                ));
+            if !direct {
+                if cli.preserve_encodings && cli.canonical_form {
+                    validator.line(format!(
+                        "#[allow(unused_imports)] use {}::serialization::Serialize as _;",
+                        cli.common_import_rust()
+                    ));
+                    // Value equality deliberately replays the stored/default key spelling before
+                    // parsing away representation detail; canonicalizing here is unnecessary and
+                    // could select a different custom-codec call shape.
+                    validator.line("let force_canonical = false;");
+                } else {
+                    validator.line("#[allow(unused_imports)] use cbor_event::se::Serialize as _;");
+                }
+                validator.line("let mut serializer = cbor_event::se::Serializer::new_vec();");
+                // General keys may carry tag / `.cbor` / width sidecars under preserve. This
+                // validator intentionally normalizes VALUE equality, but it must still provide
+                // the ordinary default locals so the same key serializer can run in every mode.
+                if cli.preserve_encodings {
+                    validator.line(
+                        "#[allow(unused_imports)] use crate::generated::serialization::fit_sz;",
+                    );
+                    for encoding in encoding_fields(types, "rest_key", rest.domain(), false, cli) {
+                        validator.line(format!(
+                            "let {} = {};",
+                            encoding.field_name, encoding.default_expr
+                        ));
+                    }
+                }
+                let key_config = SerializeConfig::new("key", "rest_key")
+                    .expr_is_ref(true)
+                    .is_end(false)
+                    .encoding_var_no_option_struct()
+                    .encoding_var_is_ref(false)
+                    .serializer_name_overload(("serializer", true))
+                    .tag_depth(0);
+                gen_scope.generate_serialize(
+                    types,
+                    rest.domain().into(),
+                    &mut validator,
+                    key_config,
+                    cli,
+                );
+                validator.line(
+                    "let mut candidate = cbor_event::de::Deserializer::from(serializer.finalize());",
+                );
+                let has_fixed_key_kind = |want_uint: bool| {
+                    record
+                        .forbidden_fields
+                        .iter()
+                        .map(|field| &field.key)
+                        .chain(record.fields.iter().filter_map(|field| field.key.as_ref()))
+                        .any(|key| {
+                            matches!(
+                                (want_uint, key),
+                                (true, FixedValue::Uint(_)) | (false, FixedValue::Text(_))
+                            )
+                        })
+                };
+                let candidate_uint = if has_fixed_key_kind(true) {
+                    "candidate_uint"
+                } else {
+                    "_candidate_uint"
+                };
+                let candidate_text = if has_fixed_key_kind(false) {
+                    "candidate_text"
+                } else {
+                    "_candidate_text"
+                };
+                validator.line(format!(
+                    "let ({candidate_uint}, {candidate_text}) = match candidate.cbor_type()? {{"
+                ));
+                validator.line(
+                    "    cbor_event::Type::UnsignedInteger => (Some(candidate.unsigned_integer()?), None),",
+                );
+                validator.line("    cbor_event::Type::Text => (None, Some(candidate.text()?)),");
+                validator.line("    _ => (None, None),");
+                validator.line("};");
+            }
+            for validation in validations {
+                validator.line(validation);
+            }
+            validator.line("Ok(())");
+            native_impl.push_fn(validator);
             let mut getter = codegen::Function::new(&rest.field_name);
             getter
                 .arg_ref_self()
@@ -3875,14 +3996,13 @@ pub(super) fn codegen_struct(
                 .arg_mut_self()
                 .arg("entry_key", rest.domain().for_rust_move(types, cli))
                 .arg("value", rest.range().for_rust_move(types, cli))
-                .ret("Result<(), DeserializeError>")
+                .ret(format!(
+                    "Result<(), {}::error::DeserializeError>",
+                    cli.common_import_rust()
+                ))
                 .vis("pub")
-                .line("let key = &entry_key;");
-            for validation in forbidden_rest_insert_key_validation(record, rest, cli) {
-                insert.line(validation);
-            }
-            // `key` above borrows `entry_key` so comparator predicates see the same reference
-            // shape as `iter()`. The borrow ends before the carrier mutation below.
+                .line(format!("Self::{validator_name}(&entry_key)?;"));
+            // Validation borrows `entry_key`; that borrow ends before the carrier mutation below.
             if rest.is_restricted() {
                 if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
                     insert.line(format!(
@@ -3902,9 +4022,6 @@ pub(super) fn codegen_struct(
                         rest.field_name
                     ))
                     .line("candidate.insert(entry_key, value);");
-                for validation in forbidden_rest_validation(record, rest, cli, "candidate") {
-                    insert.line(validation);
-                }
                 insert.line(format!("self.{} = candidate;", rest.field_name));
             }
             insert.line("Ok(())");

@@ -1140,12 +1140,12 @@ fn component_glue_reenters_bounded_dynamic_map_row_doors() {
         (
             "impl wit_types::GuestDynamicOpenStructRestAny for WitDynamicOpenStructRestAny {",
             "collect::<Result<Vec<_>, String>>().and_then(|values| values.try_into().map_err(err))?;",
-            "let inner = cddl_lib::DynamicOpenStructRestAny::new(key1, rest);",
+            "let inner = cddl_lib::DynamicOpenStructRestAny::new(key1, rest).map_err(err)?;",
         ),
         (
             "impl wit_types::GuestDynamicOpenStructRest for WitDynamicOpenStructRest {",
             "let rest = (rest.into_iter().collect::<Vec<_>>())\n            .try_into()\n            .map_err(err)?;",
-            "let inner = cddl_lib::DynamicOpenStructRest::new(key1, rest);",
+            "let inner = cddl_lib::DynamicOpenStructRest::new(key1, rest).map_err(err)?;",
         ),
         (
             "impl wit_types::GuestDynamicOpenTableTyped for WitDynamicOpenTableTyped {",
@@ -1167,7 +1167,8 @@ fn component_glue_reenters_bounded_dynamic_map_row_doors() {
             body.contains("fn new(")
                 && body.contains(") -> Result<Self, String> {")
                 && body.contains(conversion)
-                && body.contains(native_constructor),
+                && body.contains(native_constructor)
+                && (!implementation.contains("OpenStruct") || body.contains("me.rest().iter()")),
             "the bounded dynamic row must restore its checked carrier before native construction:\n{body}"
         );
     }

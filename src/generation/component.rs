@@ -282,7 +282,9 @@ impl Emitter<'_, '_> {
             return true;
         }
         match self.types.rust_struct(ident).map(|s| s.variant()) {
-            Some(RustStructType::Record(record)) => crate::emit_tests::record_ctor_can_fail(record),
+            Some(RustStructType::Record(record)) => {
+                crate::emit_tests::record_ctor_can_fail(record, self.types)
+            }
             _ => false,
         }
     }

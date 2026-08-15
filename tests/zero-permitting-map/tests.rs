@@ -203,6 +203,29 @@ fn exact_zero_restricted_rest_insertions_preserve_carrier_windows() {
         .expect_err("forbidden pair must be rejected before append");
     assert!(matches!(forbidden.failure(), DeserializeFailure::ForbiddenKey(_)));
     assert_eq!(pairs.rest().len(), 2);
+
+    let collision = BoundedMap::<u64, u64, 1, 2>::try_from(
+        [(1, 9)].into_iter().collect::<std::collections::BTreeMap<_, _>>(),
+    )
+    .unwrap();
+    let error = DeclaredBounded::new(7, collision)
+        .expect_err("complete bounded construction rejects declared/rest uint(1)");
+    assert!(matches!(error.failure(), DeserializeFailure::DuplicateKey(_)));
+
+    let valid = BoundedMap::<u64, u64, 1, 2>::try_from(
+        [(2, 9)].into_iter().collect::<std::collections::BTreeMap<_, _>>(),
+    )
+    .unwrap();
+    let mut declared = DeclaredBounded::new(7, valid).unwrap();
+    let before = declared.to_cbor_bytes();
+    let collision = declared
+        .insert_rest(1, 10)
+        .expect_err("collision wins before a full bounded carrier's max error");
+    assert!(matches!(collision.failure(), DeserializeFailure::DuplicateKey(_)));
+    assert_eq!(declared.to_cbor_bytes(), before, "bounded collision is atomic");
+    declared.insert_rest(3, 10).unwrap();
+    assert_eq!(declared.rest().len(), 2);
+    assert!(declared.insert_rest(4, 11).is_err(), "max remains checked and atomic");
 }
 
 #[test]

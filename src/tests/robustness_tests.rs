@@ -10951,8 +10951,10 @@ fn open_struct_map_rest_row_front_end() {
         .expect("an open struct-map with a uint => any rest row must generate (plain flavor)");
     let ok_src = src(&ok);
     assert!(
-        ok_src.contains("pub rest: BTreeMap<u64, ") && ok_src.contains("::any_cbor::AnyCbor>"),
-        "the rest row must lower to a `pub rest: BTreeMap<u64, AnyCbor>` field, got:\n{ok_src}"
+        ok_src.contains("rest: BTreeMap<u64, ")
+            && !ok_src.contains("pub rest: BTreeMap<u64,")
+            && ok_src.contains("pub fn rest(&self) -> &BTreeMap<u64,"),
+        "a fixed-key open record must keep rest private behind its immutable getter, got:\n{ok_src}"
     );
     assert!(
         ok_src.contains("self.rest.len()"),
@@ -11005,7 +11007,8 @@ fn open_struct_map_rest_row_front_end() {
         .unwrap_or_else(|err| panic!("a `{occurrence}` open-struct rest row must generate: {err}"));
         let restricted_src = src(&restricted);
         assert!(
-            restricted_src.contains(&format!("pub rest: {carrier}<u64,"))
+            restricted_src.contains(&format!("rest: {carrier}<u64,"))
+                && !restricted_src.contains(&format!("pub rest: {carrier}<u64,"))
                 && restricted_src.contains("pub fn new(")
                 && restricted_src.contains(&format!("rest: {carrier}<u64,")),
             "a `{occurrence}` rest row must cross native construction as its checked {carrier} carrier, got:\n{restricted_src}"
@@ -11022,9 +11025,60 @@ fn open_struct_map_rest_row_front_end() {
     let bytes_domain = run("foo = { 1: uint, * bstr => any }\n", "bstr")
         .expect("a bstr key domain rest row generates (typed seek path)");
     assert!(
-        src(&bytes_domain).contains("pub rest: BTreeMap<Vec<u8>, "),
-        "a typed bstr key domain must land in a `BTreeMap<Vec<u8>, _>` rest field, got:\n{}",
+        src(&bytes_domain).contains("rest: BTreeMap<Vec<u8>, ")
+            && !src(&bytes_domain).contains("pub rest: BTreeMap<Vec<u8>,"),
+        "a fixed-key typed bstr rest field must be private, got:\n{}",
         src(&bytes_domain)
+    );
+
+    // A direct uint/text validator must ignore fixed keys from the other CBOR major rather than
+    // treating the mixed fixed-key set as an unreachable generator state.
+    let mixed_fixed = run(
+        "foo = { 1: uint, label: uint, * uint => uint }\n",
+        "mixed_fixed_key_kinds",
+    )
+    .expect("a uint rest row beside both uint and text fixed keys must generate");
+    assert!(
+        src(&mixed_fixed).contains("if *key == 1")
+            && src(&mixed_fixed).contains("pub fn insert_rest("),
+        "the direct validator must retain its same-major collision check:\n{}",
+        src(&mixed_fixed)
+    );
+
+    // The inverse control: a faithful bare uint rest key cannot collide with a record whose fixed
+    // keys are all text. Do not mint a vacuous validator/Result API (or its error import) for that
+    // statically-disjoint pair; the carrier remains safely public just like an open table's.
+    let disjoint_fixed = run(
+        "foo = { label: uint, * uint => uint }\n",
+        "disjoint_fixed_key_kinds",
+    )
+    .expect("a uint rest row beside only text fixed keys must generate");
+    let disjoint_src = disjoint_fixed
+        .get("rust/src/generated/mod.rs")
+        .expect("the disjoint fixture emits its root generated module");
+    assert!(
+        disjoint_src.contains("pub rest: BTreeMap<u64, u64>")
+            && !disjoint_src.contains("validate_rest_key")
+            && !disjoint_src.contains("pub fn insert_rest(")
+            && !disjoint_src.contains("use crate::generated::error::*;"),
+        "a faithful cross-major rest row must not emit a protected carrier or error-only residue:\n{disjoint_src}"
+    );
+
+    // A tagged uint is conceptually a uint but its actual CBOR value includes the tag, so its key
+    // validator takes the serialize-and-parse path. Keep this fixture isolated from authored `any`:
+    // the validator must not create a hidden AnyCbor runtime dependency (especially under
+    // `--common-import-override`).
+    let tagged_domain = run(
+        "foo = { 1: uint, * #6.24(uint) => uint }\n",
+        "tagged_key_comparator_runtime",
+    )
+    .expect("a tagged uint rest key must generate without an authored any type");
+    let tagged_src = src(&tagged_domain);
+    assert!(
+        tagged_src.contains("let mut candidate = cbor_event::de::Deserializer::from(")
+            && tagged_src.contains("cbor_event::Type::UnsignedInteger")
+            && !tagged_src.contains("pub mod any_cbor;"),
+        "the serialized key validator must parse the admitted fixed-key kinds without inventing an AnyCbor dependency:\n{tagged_src}"
     );
 
     // --- guard: float key domain (the one type-level domain rejection left) ---
@@ -11115,7 +11169,8 @@ fn open_struct_map_rest_row_front_end() {
     )
     .expect("a typed key domain generates without the JSON flags");
     assert!(
-        src(&typed_plain).contains("pub rest: BTreeMap<Md, ")
+        src(&typed_plain).contains("rest: BTreeMap<Md, ")
+            && !src(&typed_plain).contains("pub rest: BTreeMap<Md,")
             && !src(&typed_plain).contains("open_struct_rest_json"),
         "a typed union key domain must land in a `BTreeMap<Md, _>` rest field, got:\n{}",
         src(&typed_plain)
@@ -11180,7 +11235,8 @@ fn open_struct_map_rest_row_front_end() {
     .expect("open structs GENERATE under --preserve-encodings");
     let preserve_src = src(&preserve);
     assert!(
-        preserve_src.contains("pub rest: OrderedHashMap<u64, ")
+        preserve_src.contains("rest: OrderedHashMap<u64, ")
+            && !preserve_src.contains("pub rest: OrderedHashMap<u64,")
             && preserve_src.contains("::any_cbor::AnyCbor>"),
         "the preserve rest field must lower to an insertion-ordered `OrderedHashMap`, got:\n{preserve_src}"
     );
@@ -11349,9 +11405,11 @@ fn open_struct_map_rest_row_front_end() {
     )
     .expect("@duplicates preserve on a rest row GENERATES the PairMap twin");
     assert!(
-        src(&dup_preserve).contains("pub rest: PairMap<u64, ")
+        src(&dup_preserve).contains("rest: PairMap<u64, ")
+            && !src(&dup_preserve).contains("pub rest: PairMap<u64,")
+            && src(&dup_preserve).contains("pub fn rest(&self) -> &PairMap<u64,")
             && src(&dup_preserve).contains("::any_cbor::AnyCbor>"),
-        "an @duplicates preserve rest row must lower to a `PairMap` (duplicate-permitting), got:\n{}",
+        "an @duplicates preserve rest row must lower to a private, duplicate-permitting `PairMap`, got:\n{}",
         src(&dup_preserve)
     );
 
@@ -11363,8 +11421,11 @@ fn open_struct_map_rest_row_front_end() {
     .expect("@name on the rest row must generate");
     let named_src = src(&named);
     assert!(
-        named_src.contains("pub extra: BTreeMap<u64,") && !named_src.contains("pub rest:"),
-        "@name on the rest row must rename the capture field to `extra`, got:\n{named_src}"
+        named_src.contains("extra: BTreeMap<u64,")
+            && !named_src.contains("pub extra: BTreeMap<u64,")
+            && named_src.contains("pub fn extra(&self) -> &BTreeMap<u64,")
+            && named_src.contains("pub fn insert_extra("),
+        "@name must rename the private capture field and both checked accessors to `extra`, got:\n{named_src}"
     );
     // the type name must be unchanged (an entry-level @name must NOT leak to the rule/type name).
     assert!(
@@ -11381,8 +11442,10 @@ fn open_struct_map_rest_row_front_end() {
     .expect("a marker-slot directive must not break generation");
     let marker_src = src(&marker);
     assert!(
-        marker_src.contains("pub rest:") && !marker_src.contains("pub marker:"),
-        "a directive on the `*` marker's comment slot must NOT be honored (field stays `rest`), got:\n{marker_src}"
+        marker_src.contains("rest: BTreeMap")
+            && marker_src.contains("pub fn rest(&self)")
+            && !marker_src.contains("pub fn marker(&self)"),
+        "a directive on the `*` marker's comment slot must NOT be honored (private field/getter stay `rest`), got:\n{marker_src}"
     );
 
     // --- rule-trailing slot: a RULE-position @duplicates (same line as `}`) is read at
@@ -11538,15 +11601,17 @@ fn open_struct_map_rest_row_front_end() {
     );
 
     // --- marker-slot trap: an `@ignore` on the `*` marker's own comment slot (before the entry
-    // type) is NOT honored — the row stays CAPTURE (a `pub rest` field appears), pinned loud. ---
+    // type) is NOT honored — the row stays CAPTURE (a private rest field/getter appears), pinned
+    // loud. ---
     let ign_marker = run(
         "foo = {\n  1: uint,\n  *  ; @ignore\n  uint => any\n}\n",
         "ignore_marker",
     )
     .expect("a marker-slot `@ignore` must not break generation");
     assert!(
-        src(&ign_marker).contains("pub rest:"),
-        "an `@ignore` on the `*` marker's comment slot must NOT be honored (row stays capture, `pub rest` present), got:\n{}",
+        src(&ign_marker).contains("rest: BTreeMap")
+            && src(&ign_marker).contains("pub fn rest(&self)"),
+        "an `@ignore` on the `*` marker's comment slot must NOT be honored (row stays captured behind its getter), got:\n{}",
         src(&ign_marker)
     );
 }
@@ -12113,15 +12178,20 @@ fn bounded_dynamic_map_rows_lower_through_checked_carriers() {
             &[],
         );
         for (member, carrier) in [
-            ("pub rest: ", default_carriers[0]),
+            ("rest: ", default_carriers[0]),
             ("pub entries: ", default_carriers[1]),
             ("pub rest: ", default_carriers[2]),
         ] {
             assert!(
                 default.contains(&format!("{member}{carrier}")),
-                "the `{occurrence}` {tag} default row must retain `{carrier}` in its public member:\n{default}"
+                "the `{occurrence}` {tag} default row must retain `{carrier}` in its member:\n{default}"
             );
         }
+        assert!(
+            !default.contains(&format!("pub rest: {}", default_carriers[0]))
+                && default.contains(&format!("pub fn rest(&self) -> &{}", default_carriers[0])),
+            "the fixed-key open-struct carrier must be private while the two open-table rows stay public:\n{default}"
+        );
         for (local, carrier) in [
             ("rest", default_carriers[0]),
             ("entries", default_carriers[1]),
@@ -12144,15 +12214,20 @@ fn bounded_dynamic_map_rows_lower_through_checked_carriers() {
             &[],
         );
         for (member, carrier) in [
-            ("pub rest: ", preserve_carriers[0]),
+            ("rest: ", preserve_carriers[0]),
             ("pub entries: ", preserve_carriers[1]),
             ("pub rest: ", preserve_carriers[2]),
         ] {
             assert!(
                 preserve.contains(&format!("{member}{carrier}")),
-                "the `{occurrence}` {tag} preserve row must retain pair-counting `{carrier}` in its public member:\n{preserve}"
+                "the `{occurrence}` {tag} preserve row must retain pair-counting `{carrier}` in its member:\n{preserve}"
             );
         }
+        assert!(
+            !preserve.contains(&format!("pub rest: {}", preserve_carriers[0]))
+                && preserve.contains(&format!("pub fn rest(&self) -> &{}", preserve_carriers[0])),
+            "the fixed-key preserve carrier must be private while the two open-table rows stay public:\n{preserve}"
+        );
         for (local, carrier) in [
             ("rest", preserve_carriers[0]),
             ("entries", preserve_carriers[1]),
@@ -13649,11 +13724,14 @@ fn custom_codec_pair_in_row_entry_slot_rejects_gracefully() {
     // custom pair is refused there.
     let src = expect_custom_codec_source(
         "custom_row_entry_control_slot",
-        "opn = {\n  1: uint,\n  * text => uint ; @name extras\n}\n",
+        "opn = {\n  fixed: uint,\n  * text => uint ; @name extras\n}\n",
     );
     assert!(
-        src.contains("pub extras"),
-        "`@name` in the rest-row slot must still rename the captured field, got:\n{src}"
+        src.contains("extras: BTreeMap<String, u64>")
+            && !src.contains("pub extras: BTreeMap<String, u64>")
+            && src.contains("pub fn extras(&self)")
+            && src.contains("pub fn insert_extras("),
+        "`@name` in the rest-row slot must still rename the private captured field and its checked API, got:\n{src}"
     );
 }
 

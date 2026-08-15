@@ -985,7 +985,7 @@ impl GenerationScope {
                 types.uses_non_empty_map() || self.requested_non_empty_map,
                 types.uses_ordered_set() || self.requested_ordered_set,
                 types.uses_pair_map() || self.requested_pair_map,
-                types.uses_any_cbor() || types.uses_forbidden_key_value_comparator(),
+                types.uses_any_cbor(),
                 types.uses_open_struct_rest(),
                 types.uses_open_table(),
                 types.uses_double_option(),

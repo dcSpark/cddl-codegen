@@ -590,21 +590,6 @@ impl<'a> IntermediateTypes<'a> {
         found
     }
 
-    /// A forbidden exact-zero fixed key on an open map with a general typed rest domain needs the
-    /// `AnyCbor` value comparator even when the authored CDDL never otherwise names `any`.
-    pub fn uses_forbidden_key_value_comparator(&self) -> bool {
-        self.rust_structs.values().any(|rs| {
-            matches!(rs.variant(), RustStructType::Record(record)
-            if record.has_forbidden_fields()
-                && record.captured_rest().is_some_and(|rest| !rest.is_array_tail()
-                    && !matches!(
-                        rest.domain().conceptual_type.resolve_alias_shallow(),
-                        ConceptualRustType::Primitive(Primitive::U64 | Primitive::Str)
-                            | ConceptualRustType::Any
-                    )))
-        })
-    }
-
     pub fn uses_non_empty_vec(&self) -> bool {
         let mut found = false;
         self.visit_all_rust_types(&mut |rt| found |= rt.contains_non_empty_array());

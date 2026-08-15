@@ -19,7 +19,7 @@ use crate::generated::b::bar::{RelayHost, RelayPort, RestValue};
 pub struct OpenFlat {
     pub key_1: u64,
     /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
-    pub rest: BTreeMap<Epoch, RestValue>,
+    rest: BTreeMap<Epoch, RestValue>,
 }
 
 impl OpenFlat {
@@ -29,13 +29,39 @@ impl OpenFlat {
             rest: BTreeMap::new(),
         }
     }
+
+    fn validate_rest_key(key: &Epoch) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &BTreeMap<Epoch, RestValue> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: Epoch,
+        value: RestValue,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct OpenNested {
     pub key_1: u64,
     /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
-    pub rest: BTreeMap<Epoch, BTreeMap<Epoch, Foo>>,
+    rest: BTreeMap<Epoch, BTreeMap<Epoch, Foo>>,
 }
 
 impl OpenNested {
@@ -44,6 +70,32 @@ impl OpenNested {
             key_1,
             rest: BTreeMap::new(),
         }
+    }
+
+    fn validate_rest_key(key: &Epoch) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &BTreeMap<Epoch, BTreeMap<Epoch, Foo>> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: Epoch,
+        value: BTreeMap<Epoch, Foo>,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }
 

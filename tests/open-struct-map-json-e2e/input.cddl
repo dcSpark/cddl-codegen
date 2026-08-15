@@ -46,4 +46,5 @@ trow = { name: text, * text => uint }
 ; round-tripping through CBOR, and a `bytes` K has no member-name image at all — its flattened region
 ; is a pure error surface in both directions. Both routes are compiled here, not only snapshotted.
 pk = { 1: uint, * uint .size 1 => uint }
+tagged = { 1: uint, * #6.24(uint) => uint }
 bk = { 1: uint, * bytes => uint }

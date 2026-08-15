@@ -1,5 +1,5 @@
 // Open struct-map (loose CBOR "rest row") value-level end-to-end vectors. A trailing `* k => v` after
-// fixed keys captures unknown map entries into a `pub rest` map instead of erroring. These pin the
+// fixed keys captures unknown map entries behind the checked `rest()` / `insert_rest` API. These pin
 // plain-mode (non-preserve) capture semantics:
 //   * empty rest ≡ closed-struct bytes (adding a rest row is backward compatible on the wire);
 //   * unknown uint/text keys captured (per the key domain), wrong-type keys rejected (typing enforced);
@@ -26,12 +26,12 @@ mod open_struct_map {
     fn empty_rest_equals_closed_struct_bytes() {
         // A `foo` with no captured entries must serialize as a closed `{ 1: 7, 2: "hi" }` (map of 2).
         let f = Foo::new(7, "hi".to_string());
-        assert_eq!(f.rest.len(), 0);
+        assert_eq!(f.rest().len(), 0);
         let closed = bytes("a2 01 07 02 6268 69");
         assert_eq!(f.to_cbor_bytes(), closed);
         let round = Foo::from_cbor_bytes(&closed).unwrap();
         assert_eq!(round.key_1, 7);
-        assert_eq!(round.rest.len(), 0);
+        assert_eq!(round.rest().len(), 0);
     }
 
     #[test]
@@ -41,8 +41,8 @@ mod open_struct_map {
         let f = Foo::from_cbor_bytes(&wire).unwrap();
         assert_eq!(f.key_1, 7);
         assert_eq!(f.key_2, "hi");
-        assert_eq!(f.rest.len(), 1);
-        assert_eq!(f.rest.get(&99).unwrap().as_uint(), Some(5));
+        assert_eq!(f.rest().len(), 1);
+        assert_eq!(f.rest().get(&99).unwrap().as_uint(), Some(5));
         // Re-serialize: declared fields first, then the rest entry — byte-identical here.
         assert_eq!(f.to_cbor_bytes(), wire);
     }
@@ -76,10 +76,10 @@ mod open_struct_map {
         assert!(Bar::from_cbor_bytes(&bytes("a1 03 05")).is_err());
         // { 3: "ok" } binds the optional field; rest stays empty.
         let b = Bar::from_cbor_bytes(&bytes("a1 03 626f6b")).unwrap();
-        assert_eq!(b.rest.len(), 0);
+        assert_eq!(b.rest().len(), 0);
         // { 7: 5 } (key 3 absent) captures 7 => 5 into rest.
         let b2 = Bar::from_cbor_bytes(&bytes("a1 07 05")).unwrap();
-        assert_eq!(b2.rest.get(&7).unwrap().as_uint(), Some(5));
+        assert_eq!(b2.rest().get(&7).unwrap().as_uint(), Some(5));
     }
 
     #[test]
@@ -89,17 +89,17 @@ mod open_struct_map {
         let wire = bytes("a4 01 00 6174 01 41ff 02 f5 03");
         let b = Baz::from_cbor_bytes(&wire).unwrap();
         assert_eq!(b.key_1, 0);
-        assert_eq!(b.rest.len(), 3);
+        assert_eq!(b.rest().len(), 3);
         assert_eq!(
-            b.rest.get(&AnyCbor::new_text("t".to_string())).unwrap().as_uint(),
+            b.rest().get(&AnyCbor::new_text("t".to_string())).unwrap().as_uint(),
             Some(1)
         );
         assert_eq!(
-            b.rest.get(&AnyCbor::new_bytes(vec![0xff])).unwrap().as_uint(),
+            b.rest().get(&AnyCbor::new_bytes(vec![0xff])).unwrap().as_uint(),
             Some(2)
         );
         assert_eq!(
-            b.rest.get(&AnyCbor::new_bool(true)).unwrap().as_uint(),
+            b.rest().get(&AnyCbor::new_bool(true)).unwrap().as_uint(),
             Some(3)
         );
     }
@@ -137,11 +137,11 @@ mod open_struct_map_typed {
         let q = Qux::from_cbor_bytes(&wire).unwrap();
         assert_eq!(q.key_1, 7);
         assert_eq!(q.nm, "hi");
-        assert_eq!(q.rest.len(), 4);
-        assert_eq!(*q.rest.get(&Md::new_int(Int::new_uint(5))).unwrap(), 1);
-        assert_eq!(*q.rest.get(&Md::new_int(Int::new_nint(2))).unwrap(), 2);
-        assert_eq!(*q.rest.get(&Md::new_bytes(vec![0xff])).unwrap(), 3);
-        assert_eq!(*q.rest.get(&Md::new_text("zz".to_string())).unwrap(), 4);
+        assert_eq!(q.rest().len(), 4);
+        assert_eq!(*q.rest().get(&Md::new_int(Int::new_uint(5))).unwrap(), 1);
+        assert_eq!(*q.rest().get(&Md::new_int(Int::new_nint(2))).unwrap(), 2);
+        assert_eq!(*q.rest().get(&Md::new_bytes(vec![0xff])).unwrap(), 3);
+        assert_eq!(*q.rest().get(&Md::new_text("zz".to_string())).unwrap(), 4);
         // The `BTreeMap<Md, u64>` order (Int < Bytes < Text; Uint < Nint) is the wire order here.
         assert_eq!(q.to_cbor_bytes(), wire);
     }
@@ -155,7 +155,7 @@ mod open_struct_map_typed {
         assert!(Qux::from_cbor_bytes(&bytes("a3 01 07 626e6d 6161 626e6d 6162")).is_err());
         // …while an unknown text key IS captured, as the text arm of `md`.
         let q = Qux::from_cbor_bytes(&bytes("a3 01 07 626e6d 626869 627a7a 04")).unwrap();
-        assert_eq!(*q.rest.get(&Md::new_text("zz".to_string())).unwrap(), 4);
+        assert_eq!(*q.rest().get(&Md::new_text("zz".to_string())).unwrap(), 4);
     }
 
     #[test]
@@ -175,9 +175,9 @@ mod open_struct_map_typed {
         // { 1: 0, h'': 6, h'ab': 5 } — written in `BTreeMap<Vec<u8>, _>` order so it round-trips.
         let wire = bytes("a3 01 00 40 06 41ab 05");
         let q = Quux::from_cbor_bytes(&wire).unwrap();
-        assert_eq!(q.rest.len(), 2);
-        assert_eq!(*q.rest.get(&vec![]).unwrap(), 6);
-        assert_eq!(*q.rest.get(&vec![0xab]).unwrap(), 5);
+        assert_eq!(q.rest().len(), 2);
+        assert_eq!(*q.rest().get(&vec![]).unwrap(), 6);
+        assert_eq!(*q.rest().get(&vec![0xab]).unwrap(), 5);
         assert_eq!(q.to_cbor_bytes(), wire);
         // A uint key is outside the domain: the declared arm's catch-all rewinds and `bytes` fails.
         assert!(Quux::from_cbor_bytes(&bytes("a2 01 00 05 01")).is_err());
@@ -190,9 +190,11 @@ mod open_struct_map_typed {
         // length check runs on the way in.
         let wire = bytes("a2 01 00 656162636465 01");
         let g = Grault::from_cbor_bytes(&wire).unwrap();
-        assert_eq!(g.rest.len(), 1);
+        assert_eq!(g.rest().len(), 1);
         assert_eq!(
-            *g.rest.get(&Five::new("abcde".to_string()).unwrap()).unwrap(),
+            *g.rest()
+                .get(&Five::new("abcde".to_string()).unwrap())
+                .unwrap(),
             1
         );
         assert_eq!(g.to_cbor_bytes(), wire);
@@ -207,8 +209,8 @@ mod open_struct_map_typed {
         // { 1: 0, 255: "a" } round-trips; { 1: 0, 256: "a" } is out of the domain and errors.
         let wire = bytes("a2 0100 18ff 6161");
         let w = Waldo::from_cbor_bytes(&wire).unwrap();
-        assert_eq!(w.rest.len(), 1);
-        assert_eq!(w.rest.get(&255u8).unwrap(), "a");
+        assert_eq!(w.rest().len(), 1);
+        assert_eq!(w.rest().get(&255u8).unwrap(), "a");
         assert_eq!(w.to_cbor_bytes(), wire);
         assert!(
             Waldo::from_cbor_bytes(&bytes("a2 0100 190100 6161")).is_err(),
@@ -223,9 +225,9 @@ mod open_struct_map_typed {
         // order (no key sort), so the bytes round-trip exactly.
         let wire = bytes("a4 01 07 05 01 05 02 6161 03");
         let g = Garply::from_cbor_bytes(&wire).unwrap();
-        assert_eq!(g.rest.len(), 3);
+        assert_eq!(g.rest().len(), 3);
         assert_eq!(
-            g.rest.get_all(&Md::new_int(Int::new_uint(5))),
+            g.rest().get_all(&Md::new_int(Int::new_uint(5))),
             vec![&1u64, &2u64]
         );
         assert_eq!(g.to_cbor_bytes(), wire);

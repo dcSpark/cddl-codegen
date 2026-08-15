@@ -26,7 +26,7 @@ use crate::generated::pair_map::PairMap;
 pub struct AnyRest {
     pub key_1: u64,
     /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
-    pub rest: BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
+    rest: BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
 }
 
 impl AnyRest {
@@ -36,13 +36,43 @@ impl AnyRest {
             rest: BTreeMap::new(),
         }
     }
+
+    fn validate_rest_key(
+        key: &crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        if key.value_eq(&crate::generated::any_cbor::AnyCbor::new_uint(1)) {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(
+        &self,
+    ) -> &BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: crate::generated::any_cbor::AnyCbor,
+        value: crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct DupRest {
     pub key_7: u64,
     /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
-    pub rest: PairMap<u64, String>,
+    rest: PairMap<u64, String>,
 }
 
 impl DupRest {
@@ -52,13 +82,39 @@ impl DupRest {
             rest: PairMap::new(),
         }
     }
+
+    fn validate_rest_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 7 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(7),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &PairMap<u64, String> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: u64,
+        value: String,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct OptRest {
     pub key_3: Option<String>,
     /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
-    pub rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+    rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
 }
 
 impl OptRest {
@@ -67,6 +123,32 @@ impl OptRest {
             key_3: None,
             rest: BTreeMap::new(),
         }
+    }
+
+    fn validate_rest_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 3 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(3),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &BTreeMap<u64, crate::generated::any_cbor::AnyCbor> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: u64,
+        value: crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }
 
@@ -80,7 +162,7 @@ impl Default for OptRest {
 pub struct RenamedRest {
     pub key_1: u64,
     /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
-    pub extra: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+    extra: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
 }
 
 impl RenamedRest {
@@ -90,13 +172,39 @@ impl RenamedRest {
             extra: BTreeMap::new(),
         }
     }
+
+    fn validate_extra_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn extra(&self) -> &BTreeMap<u64, crate::generated::any_cbor::AnyCbor> {
+        &self.extra
+    }
+
+    pub fn insert_extra(
+        &mut self,
+        entry_key: u64,
+        value: crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_extra_key(&entry_key)?;
+        let mut candidate = self.extra.clone();
+        candidate.insert(entry_key, value);
+        self.extra = candidate;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct TypedRest {
     pub key_1: u64,
     /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
-    pub rest: BTreeMap<u64, u64>,
+    rest: BTreeMap<u64, u64>,
 }
 
 impl TypedRest {
@@ -106,6 +214,32 @@ impl TypedRest {
             rest: BTreeMap::new(),
         }
     }
+
+    fn validate_rest_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &BTreeMap<u64, u64> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: u64,
+        value: u64,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -113,7 +247,7 @@ pub struct UintRest {
     pub key_1: u64,
     pub key_2: String,
     /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
-    pub rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+    rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
 }
 
 impl UintRest {
@@ -123,5 +257,37 @@ impl UintRest {
             key_2,
             rest: BTreeMap::new(),
         }
+    }
+
+    fn validate_rest_key(key: &u64) -> Result<(), crate::generated::error::DeserializeError> {
+        if *key == 1 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(1),
+            )
+            .into());
+        }
+        if *key == 2 {
+            return Err(crate::generated::error::DeserializeFailure::DuplicateKey(
+                crate::generated::error::Key::Uint(2),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub fn rest(&self) -> &BTreeMap<u64, crate::generated::any_cbor::AnyCbor> {
+        &self.rest
+    }
+
+    pub fn insert_rest(
+        &mut self,
+        entry_key: u64,
+        value: crate::generated::any_cbor::AnyCbor,
+    ) -> Result<(), crate::generated::error::DeserializeError> {
+        Self::validate_rest_key(&entry_key)?;
+        let mut candidate = self.rest.clone();
+        candidate.insert(entry_key, value);
+        self.rest = candidate;
+        Ok(())
     }
 }

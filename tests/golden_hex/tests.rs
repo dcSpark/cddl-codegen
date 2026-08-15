@@ -286,7 +286,7 @@ mod golden_hex {
     fn open_map_rest(entries: &[(u64, u64)]) -> OpenMap {
         let mut v = OpenMap::new(5);
         for &(k, val) in entries {
-            v.rest.insert(k, val);
+            v.insert_rest(k, val).unwrap();
         }
         v
     }

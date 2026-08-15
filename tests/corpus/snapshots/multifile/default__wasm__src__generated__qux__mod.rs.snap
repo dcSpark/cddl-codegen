@@ -32,13 +32,14 @@ impl OpenFlat {
 
     /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
     pub fn rest(&self) -> MapEpochToRestValue {
-        self.0.rest.clone().into()
+        self.0.rest().clone().into()
     }
 
-    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    /// Inserts an entry into this record's captured open-map row. The native record rejects collisions with declared and exact-zero fixed keys before changing the parent; failures are returned as `JsError`. `rest()` remains a detached read snapshot.
     pub fn insert_rest(&mut self, key: Epoch, value: &RestValue) -> Result<(), JsError> {
-        self.0.rest.insert(key, value.clone().into());
-        Ok(())
+        self.0
+            .insert_rest(key, value.clone().into())
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 
     pub fn new(key_1: u64) -> Self {
@@ -86,13 +87,14 @@ impl OpenNested {
 
     /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
     pub fn rest(&self) -> MapEpochToMapEpochToFoo {
-        self.0.rest.clone().into()
+        self.0.rest().clone().into()
     }
 
-    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    /// Inserts an entry into this record's captured open-map row. The native record rejects collisions with declared and exact-zero fixed keys before changing the parent; failures are returned as `JsError`. `rest()` remains a detached read snapshot.
     pub fn insert_rest(&mut self, key: Epoch, value: &MapEpochToFoo) -> Result<(), JsError> {
-        self.0.rest.insert(key, value.clone().into());
-        Ok(())
+        self.0
+            .insert_rest(key, value.clone().into())
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 
     pub fn new(key_1: u64) -> Self {

@@ -292,6 +292,50 @@ const COMPONENT_PARITY_EXEMPT: &[(&str, &str, &str)] = &[
         "ExactZeroOpen::insert_rest",
         "native exact-zero invariant door; the component face exposes constructor validation plus a detached rest snapshot",
     ),
+    // Protected open-struct rest carriers use the same read-only component posture as exact-zero:
+    // construction re-enters the native checked door and the getter returns a detached snapshot,
+    // while mutation remains a native-only invariant door. The multifile rows prove that this is
+    // the record class's contract rather than a component-bounds-fixture special case.
+    (
+        "component-bounds",
+        "DynamicOpenStructRest::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-bounds",
+        "DynamicOpenStructRestAny::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-bounds-preserve",
+        "DynamicOpenStructRest::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-bounds-preserve",
+        "DynamicOpenStructRestAny::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-bounds-canonical",
+        "DynamicOpenStructRest::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-bounds-canonical",
+        "DynamicOpenStructRestAny::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "multifile",
+        "OpenFlat::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "multifile",
+        "OpenNested::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
 ];
 
 /// `.rs` basenames the differential does NOT parse, under `rust/src/generated/`. Everything else

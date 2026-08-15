@@ -540,22 +540,24 @@ an out-of-window map. Its carrier matches the table switch and the `@duplicates`
 | `+` / `1*` default or preserve | `NonEmptyMap<K, V>` / `NonEmptyPairMap<K, V>` |
 | every other restricted window default or preserve | `BoundedMap<K, V, MIN, MAX>` / `BoundedPairMap<K, V, MIN, MAX>` |
 
-An exact-zero fixed member (`0*0 key: value` or `*0 key: value`) is a different constraint: the
-fixed key is forbidden, not an optional field. It emits no value field or schema property. When such
-a record has a captured map row, `rest` is private even for a loose row; `new` accepts the complete
-carrier and returns `Result`, `rest()` lends it immutably, and `insert_rest` validates each key before
-changing the carrier. This prevents an otherwise-public loose map from constructing an invalid record.
+When an open record's captured key domain can produce a declared or exact-zero fixed CBOR key, its
+carrier is private even for a loose row: `rest()` lends it immutably and `insert_rest` validates each
+key before changing the carrier. Statically disjoint bare primitive domains retain their public
+carrier; typed, encoded, and custom-codec domains are checked conservatively because their emitted
+wire major can differ from their Rust representation. Declared-key collisions report `DuplicateKey`;
+exact-zero keys retain `ForbiddenKey`. Open tables have no fixed keys, so their dynamic rows remain
+unaffected. An exact-zero fixed member
+(`0*0 key: value` or `*0 key: value`) is a different constraint: it emits no value field or schema
+property, and its existing complete-rest fallible constructor remains the construction door.
 
 **Serialize / round-trip.** The map header counts the declared members **plus** every rest entry
 (`N + rest.len()`); declared members serialize first, then the captured entries. The default
 `@duplicates reject` policy refuses a duplicate captured key (value-equality — a `DuplicateKey` decode
 error); `@duplicates preserve` keeps duplicates via the `PairMap` twin.
 
-**Current limitation.** A native public `rest` mutation or the wasm `insert_<row>` door can currently
-put a captured key equal to a declared **CBOR** key into the same record. Serialization then writes
-that key twice and the generated decoder rejects its own output on reread. This is tracked as
-`testing.open-rest-declared-cbor-key-collision-reject-before-write`; do not rely on such a value
-being serializable.
+Captured keys CBOR-value-equal to declared keys are rejected before mutation or serialization, even
+when their Rust representation, preserved width, or JSON spelling differs. `@duplicates preserve`
+still retains duplicates among rest entries, but never a declared/rest collision.
 
 **Preserve / canonical.** Under `--preserve-encodings` the original **wire order** (declared and
 captured entries interleaved) is recorded and replayed byte-exact, and each captured entry's key/value
