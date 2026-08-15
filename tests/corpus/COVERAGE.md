@@ -23,9 +23,9 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
   file under all three profiles, so a ✅ entry must produce **compiling** Rust under *all* of them —
   and under the default profile it also generates with `--emit-tests` and `cargo test`s the crate, so
   every constructible corpus type must **round-trip byte-identically** (plus bounded-reject checks),
-  not just compile. Exception: fixtures on the harness's `COMPILE_SKIP` list (user-supplied-code
-  constructs, e.g. `dsl_custom.cddl`), which are snapshot-only here and compile-exercised via their
-  integration fixtures instead.
+  not just compile. The harness's `COMPILE_SKIP` list is currently empty: fixtures that reference
+  user-supplied code are seeded through shared templates and compile-exercised here too. A future
+  whole-fixture blocker that no seeded definition can answer must be named explicitly in that list.
 - **Axis:** the corpus snapshots generated *source*, not wire bytes — wire encodings are golden_hex's
   axis (`tests/golden_hex/COVERAGE.md`, RFC 8949). A ✅ here means "a fixture isolates this construct,"
   not "every encoding of it is asserted."

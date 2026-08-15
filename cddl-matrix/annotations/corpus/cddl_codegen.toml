@@ -388,11 +388,12 @@ fixture = "dsl_custom.cddl"
 
 # Sentinel typenames + the flavor tag. `extern_generic_raw_bytes.cddl` composes all three (an
 # `@raw_bytes_flavor` extern generic instantiated with a raw-bytes element) — the first corpus cell
-# to exercise them. Its generated crate references user-owned wrapper/raw-bytes types; both crates
-# compile against seeded definitions, but the fixture stays COMPILE_SKIP in the integration corpus
-# gate over the wasm extern re-export the glue emits for a raw-bytes type reached only as a generic
-# ARGUMENT (see that const's reason, and the findings ledger). Behavioral coverage is the
-# `extern_generic_raw_bytes` integration fixture; the matrix face is compile-gated on both crates.
+# to exercise them. Its generated crate references user-owned wrapper/raw-bytes types; every profile
+# compiles against seeded definitions. Rust supplies `ExtSet`, `ExtSetRawBytes`, and `PubKey`, while
+# wasm supplies only the concrete `ExtSetPlain`/`ExtSetPubKey` wrappers its boundary names: a
+# raw-bytes type reached only as a generic argument needs no dead wasm `PubKey` re-export. Behavioral
+# coverage is the `extern_generic_raw_bytes` integration fixture; the matrix face is compile-gated on
+# both crates.
 [[cover]]
 id = "ext.extern"
 fixture = "extern_generic_raw_bytes.cddl"

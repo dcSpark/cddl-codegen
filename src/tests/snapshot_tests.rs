@@ -2644,6 +2644,46 @@ fn extern_interface_check_skips_generic_base() {
     );
 }
 
+/// The wasm own-spec extern-root obligation follows the names the generated wasm boundary actually
+/// uses, rather than every marker in the IR. A generic-extern instance deliberately skips the rust
+/// `Base<Args>` alias in the wasm alias walk, so `ext_set<pub_key>` needs only its concrete
+/// `ExtSetPubKey` wrapper — not the raw-bytes `PubKey` argument. The nested-list half takes the
+/// other route through `scope_references`: its collection wrapper names `PubKey` at its own scope,
+/// so the raw-bytes glue must remain even though the referring record only names the list class.
+#[test]
+fn wasm_extern_reexports_follow_boundary_references() {
+    let generic = crate::api::generated_strings(&cli_for(
+        std::path::Path::new("tests/extern-generic-raw-bytes/input.cddl"),
+        &["--wasm=true"],
+    ))
+    .expect("generic raw-bytes fixture must generate");
+    let generic_wasm = generic
+        .get("wasm/src/generated/mod.rs")
+        .expect("wasm generated root must be emitted");
+    assert!(
+        generic_wasm.contains("pub use crate::ExtSetPlain;")
+            && generic_wasm.contains("pub use crate::ExtSetPubKey;"),
+        "the concrete extern-generic wrappers named by wasm must keep their glue:\n{generic_wasm}"
+    );
+    assert!(
+        !generic_wasm.contains("pub use crate::PubKey;"),
+        "a raw-bytes marker reached only as a generic argument is not a wasm boundary name:\n{generic_wasm}"
+    );
+
+    let direct = crate::api::generated_strings(&cli_for(
+        std::path::Path::new("tests/wasm-extern-reexport-reachability/input.cddl"),
+        &["--wasm=true"],
+    ))
+    .expect("nested raw-bytes fixture must generate");
+    let direct_wasm = direct
+        .get("wasm/src/generated/mod.rs")
+        .expect("wasm generated root must be emitted");
+    assert!(
+        direct_wasm.contains("pub use crate::PubKey;"),
+        "a raw-bytes type named by a nested wasm collection wrapper must keep its glue:\n{direct_wasm}"
+    );
+}
+
 /// The extern-interface self-check counterpart to `extern_interface_check_skips_generic_base` for a
 /// generic-extern base with ZERO instances (`ext_unused<T>` in `json-extern-rows`). `ExtSet` there
 /// has an instance, so `generic_instance_bases` catches it; `ext_unused` has none, so the `None`

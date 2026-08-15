@@ -264,8 +264,9 @@ pub struct GenerationScope {
     /// never appears here. Consumed by the run-output print and the seed-once-`lib.rs`
     /// missing-re-export diagnostic (both in `export`). Empty for any spec with no own-spec externs.
     required_rust_reexports: BTreeSet<String>,
-    /// The wasm-crate counterpart of `required_rust_reexports`, collected at the
-    /// `wasm_externs_by_scope` `pub use crate::{ident};` loop. Only populated under `--wasm`.
+    /// The wasm-crate counterpart of `required_rust_reexports`, collected at the live
+    /// `wasm_externs_by_scope` `pub use crate::{ident};` loop after the IR boundary-reference walk
+    /// filters out wrappers generated wasm never names. Only populated under `--wasm`.
     required_wasm_reexports: BTreeSet<String>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
     /// Every cross-scope generator-minted type ident pushed into some module by
@@ -1863,11 +1864,11 @@ impl GenerationScope {
         // imports for generated structs from other files (struct files)
         // The rust pass registers no collection-wrapper class imports (those are wasm-only), so
         // deferral never applies here — pass an empty map so rust output is untouched by the flag.
-        let rust_imports =
+        let rust_scope_references =
             types.scope_references(false, &BTreeMap::new(), &[], &BTreeSet::new(), None);
         // Record every cross-scope ident these imports push, so the usage-derived prune can name-scan
         // away the ones a referencing module never uses (`scope_references` over-approximates).
-        for per_scope in rust_imports.values() {
+        for per_scope in rust_scope_references.imports.values() {
             for idents in per_scope.values() {
                 self.scope_ref_import_idents
                     .extend(idents.iter().map(|i| i.to_string()));
@@ -1877,7 +1878,7 @@ impl GenerationScope {
             add_imports_from_scope_refs(
                 scope,
                 content,
-                &rust_imports,
+                &rust_scope_references.imports,
                 "crate::generated",
                 None,
                 types.rust_name_pins(),
@@ -2074,13 +2075,15 @@ impl GenerationScope {
                 .filter(|(_, scope)| **scope == requested_scope)
                 .map(|(ident, _)| ident.clone())
                 .collect();
-            let wasm_imports = types.scope_references(
+            let wasm_scope_references = types.scope_references(
                 true,
                 &self.deferred_wrappers,
                 &self.requested_wrapper_types,
                 &requested_hosted,
                 Some(&requested_scope),
             );
+            let wasm_imports = &wasm_scope_references.imports;
+            let wasm_boundary_idents = &wasm_scope_references.wasm_boundary_idents;
             for per_scope in wasm_imports.values() {
                 for idents in per_scope.values() {
                     self.scope_ref_import_idents
@@ -2093,7 +2096,7 @@ impl GenerationScope {
                 add_imports_from_scope_refs(
                     scope,
                     content,
-                    &wasm_imports,
+                    wasm_imports,
                     "crate::generated",
                     Some(&extern_wasm_crate_map),
                     types.rust_name_pins(),
@@ -2199,19 +2202,17 @@ impl GenerationScope {
                     content.push_import(path, m, None);
                 }
             }
-            // Extern-type re-export glue (wasm crate). The wasm generated code names each in-crate
-            // extern by its bare WRAPPER ident within the declaring scope (`req: ExternalFoo`, and via
-            // `use super::*;` in nested modules), exactly as the rust crate names the native type — same
-            // E0433 shape under the thin-root split, since a crate-root name isn't visible inside
+            // Extern-type re-export glue (wasm crate). The wasm generated code names each REACHABLE
+            // in-crate extern by its bare WRAPPER ident within the declaring scope (`req: ExternalFoo`,
+            // and via `use super::*;` in nested modules), exactly as the rust crate names the native type
+            // — same E0433 shape under the thin-root split, since a crate-root name isn't visible inside
             // `mod generated`. The contract mirrors rust: DEFINE the wasm wrapper in a hand-written
             // wasm-crate module and RE-EXPORT it at the wasm crate root (`pub use utils::Name;`); the tool
-            // re-exports it from crate root INTO the declaring scope's generated module so every such
-            // reference resolves against the user's wrapper. Covers BOTH user-supplied extern flavors —
-            // `Extern` and `RawBytesType` — exactly like the rust-side glue above: the raw-bytes wasm
-            // wrapper is user-owned too, and generated wasm code names it bare (getters/ctors and wasm
-            // `pub type` aliases), so an in-crate raw-bytes type under the real crate-root contract
-            // failed E0425 in the wasm crate while the rust crate compiled (proven by the cip36-shaped
-            // scratch repro after the rust half shipped — the rust E0412 had masked it). Skipped:
+            // re-exports it from crate root INTO the declaring scope's generated module only when the IR's
+            // wasm boundary-reference walk says generated wasm code names that wrapper. The walk records
+            // same-scope references too, while preserving the existing cross-scope import map. Covers BOTH
+            // user-supplied extern flavors — `Extern` and `RawBytesType` — exactly like the rust-side glue.
+            // Skipped:
             //   - the built-in `Int` extern (the tool generates its own wasm wrapper when referenced, so
             //     `pub use crate::Int;` would collide),
             //   - generic-extern instances that already emit a wasm `pub type` alias here (`gen_wasm_alias`
@@ -2240,6 +2241,7 @@ impl GenerationScope {
                 ) && rust_ident.as_ref() != "Int"
                     && !wasm_aliased.contains(rust_ident)
                     && !generic_bases.contains(rust_ident)
+                    && wasm_boundary_idents.contains(rust_ident)
                 {
                     let scope = types.scope(rust_ident);
                     if scope.export() {
@@ -2259,12 +2261,12 @@ impl GenerationScope {
                     self.required_wasm_reexports.insert(ident.to_string());
                 }
             }
-            // wasm module declarations. Emitted AFTER the extern re-export glue above, for the same
-            // reason as the rust crate: an extern-ONLY scope's entry is created solely by the glue's
-            // `wasm_scopes.entry(..).or_default()`, so a scope list snapshotted before the glue would
-            // materialize that scope's `generated/<scope>/mod.rs` yet never declare `pub mod <scope>;`
-            // in the root (E0432). `wasm_lib` ordering is unchanged: nothing between the old and new
-            // positions writes `wasm_lib`.
+            // wasm module declarations. Emitted AFTER the live extern re-export glue above, for the
+            // same reason as the rust crate: a scope whose only emitted wasm content is reachable
+            // extern glue is created solely by `wasm_scopes.entry(..).or_default()`, so a scope list
+            // snapshotted before the glue would materialize that scope's `generated/<scope>/mod.rs` yet
+            // never declare `pub mod <scope>;` in the root (E0432). `wasm_lib` ordering is unchanged:
+            // nothing between the old and new positions writes `wasm_lib`.
             let wasm_scope_names = self
                 .wasm_scopes
                 .keys()

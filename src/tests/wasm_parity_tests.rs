@@ -342,6 +342,13 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         "raw-bytes-preserve",
         &[("preserve", &["--preserve-encodings=true"])],
     ),
+    (
+        // A raw-bytes marker reached through a nested list is the positive reachability control for
+        // own-spec wasm extern glue. Its committed regression generates the ordinary default wasm
+        // surface, so the parity axis must keep the marker's rust type paired with that live re-export.
+        "wasm-extern-reexport-reachability",
+        &[("default", &[])],
+    ),
     ("rust-wasm-split", &[("default", &[])]),
     (
         "wasm_json",

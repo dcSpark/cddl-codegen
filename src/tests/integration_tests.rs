@@ -248,24 +248,33 @@ pub(crate) const CORPUS_DEF_SPLICE: &[CorpusDefs] = &[
         ],
         wasm: &[],
     },
+    // A flavored extern generic binds both a trait-bound plain element and a raw-bytes element.
+    // Rust names the generic base plus its RawBytes sibling and the raw-bytes argument. wasm-bindgen
+    // has no generic class, so the wasm face names only its two concrete instance wrappers. In
+    // particular it deliberately does NOT seed `PubKey`: if generic-argument-only reachability ever
+    // regresses to re-export that raw-bytes marker, the wasm crate fails loudly at `crate::PubKey`.
+    CorpusDefs {
+        stem: "extern_generic_raw_bytes",
+        rust: &[
+            DefTemplate::ty("generic_extern", "ExtSet"),
+            DefTemplate::ty("generic_extern_raw_bytes_flavor", "ExtSet"),
+            DefTemplate::ty("raw_bytes", "PubKey"),
+        ],
+        wasm: &[
+            DefTemplate::ty("opaque_wrapper", "ExtSetPlain"),
+            DefTemplate::ty("opaque_wrapper", "ExtSetPubKey"),
+        ],
+    },
 ];
 
 /// Corpus fixtures `feature_corpus_compiles` still skips outright — NOT "references user-supplied
 /// code" (that is now seeded, see [`CORPUS_DEF_SPLICE`]), but a blocker no definition can answer.
 ///
-/// `extern_generic_raw_bytes`: its rust and wasm crates both compile against seeded defs under all
-/// three profiles — the blocker is a WARNING the gate treats as a failure, and it is a real
-/// generator finding rather than a fixture defect. The wasm extern re-export glue emits
-/// `pub use crate::<Name>;` for EVERY in-crate extern / raw-bytes rule, whether or not the wasm tree
-/// references it. Here `pub_key` is reached only as a generic ARGUMENT (`ext_set<pub_key>`), so the
-/// wasm face names `ExtSetPubKey` and never `PubKey` — the re-export is unused
-/// (`warning: unused import: crate::PubKey` at a generated location), while the user is still
-/// obliged to hand-write a wasm `PubKey` wrapper for it to resolve at all. Making the wasm
-/// re-export usage-conditional changes what the "Own-spec extern re-export contract" demands of a
-/// consumer, so it is a contract decision, not a test fix; ledgered in `cddl-matrix/roadmap.toml`
-/// § findings. The fixture's behavioural coverage is the `extern-generic-raw-bytes` integration
-/// fixture; its matrix face (`dsl.raw_bytes_flavor`) is compile-gated on both crates.
-pub(crate) const COMPILE_SKIP: &[&str] = &["extern_generic_raw_bytes"];
+/// EMPTY. Every current corpus fixture either needs no user code or has it declared in
+/// [`CORPUS_DEF_SPLICE`], including `extern_generic_raw_bytes`: its wasm splice intentionally
+/// supplies only the concrete `ExtSetPlain`/`ExtSetPubKey` wrappers the wasm boundary names, making
+/// an unnecessary `PubKey` re-export a compile failure rather than a warning-hidden obligation.
+pub(crate) const COMPILE_SKIP: &[&str] = &[];
 
 /// `(fixture stem, profile, reason)` triples whose GENERATION deliberately aborts under that
 /// profile because the fixture reaches a tracked unimplemented path. Unlike `COMPILE_SKIP` (whole
@@ -3450,9 +3459,9 @@ feature_corpus_compiles_no_annotate_shards! {
 /// here.
 ///
 /// **Why the same skip and the same splice.** The flag changes rust deserialize internals only; it
-/// cannot make a fixture need different user-supplied code, nor answer [`COMPILE_SKIP`]'s resident
-/// (which has no [`CORPUS_DEF_SPLICE`] entry at all — no definitions to seed means no crate to
-/// compile, under any flag). Tier: check.ts `local` (the `test` gate).
+/// cannot make a fixture need different user-supplied code. Any future [`COMPILE_SKIP`] entry would
+/// therefore remain outside this leg too, while every current user-code fixture is seeded through
+/// [`CORPUS_DEF_SPLICE`]. Tier: check.ts `local` (the `test` gate).
 fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
     let all_entries = feature_corpus_entries();
     let entries: Vec<&std::path::PathBuf> = all_entries
@@ -13560,8 +13569,8 @@ fn ir_conformance_corpus() {
     //     correctly reject conforming output — the fixture's bytes are right and the spec is not
     //     what produced them.
     // This is a DIFFERENT reason from the compile floor's, so it is stated here rather than aliased
-    // to `COMPILE_SKIP`: that list now seeds the user-supplied side and compiles two of these three,
-    // and an alias would have silently un-skipped them here on a reason that never applied.
+    // to `COMPILE_SKIP`: that list now seeds the user-supplied side and compiles all three, and an
+    // alias would silently un-skip them here on a reason that never applied.
     // (The twin-list form drifted once before — `extern_generic_raw_bytes` landed in `COMPILE_SKIP`
     // only, leaving this gate deterministically red — so the stale-pin guard below covers this list
     // in its own right.)

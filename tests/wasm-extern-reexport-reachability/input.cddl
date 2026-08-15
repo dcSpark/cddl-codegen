@@ -1,0 +1,7 @@
+pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+; The raw-bytes marker is nested under a list so the wasm collection wrapper, rather than only a
+; direct record field, names `PubKey` in its own boundary surface.
+direct = [
+  nested: [* pub_key],
+]

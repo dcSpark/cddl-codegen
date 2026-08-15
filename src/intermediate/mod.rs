@@ -414,6 +414,19 @@ impl Default for IntermediateTypes<'_> {
     }
 }
 
+/// The imports needed by each scope, plus the named idents the wasm boundary actually uses.
+///
+/// `wasm_boundary_idents` deliberately records same-scope references too. Import placement needs
+/// only cross-scope edges, but own-spec wasm extern/raw-bytes glue must know whether the emitted
+/// wasm surface names its wrapper at all — a same-scope bare reference still needs that crate-root
+/// re-export. Synthesized collection-wrapper idents may appear in the set; callers select only the
+/// user-owned extern/raw-bytes candidates they can re-export.
+#[derive(Debug, Default)]
+pub struct ScopeReferences {
+    pub imports: BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+    pub wasm_boundary_idents: BTreeSet<RustIdent>,
+}
+
 impl<'a> IntermediateTypes<'a> {
     pub fn new() -> Self {
         let mut rust_structs = BTreeMap::new();
@@ -1328,23 +1341,28 @@ impl<'a> IntermediateTypes<'a> {
         requested: &[(RustIdent, RustType)],
         requested_hosted: &BTreeSet<RustIdent>,
         requested_scope: Option<&ModuleScope>,
-    ) -> BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>> {
+    ) -> ScopeReferences {
         // we only want to mark TOP-LEVEL references without recursing into those types
         // which is why we don't use visit_types() here
-        let mut refs = BTreeMap::new();
+        let mut refs = ScopeReferences::default();
         // Resolve wasm-map wrapper imports to the SAME module emission places them: a shape with a
         // sole owner is minted (class + structural alias) in that owner's module, everything else
         // falls back to the crate root. Computed once via the shared helper so the two sites can't drift.
         let table_shape_sole_owners = self.table_shape_sole_owners();
         fn set_ref(
-            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            refs: &mut ScopeReferences,
             types: &IntermediateTypes,
+            wasm: bool,
             current_scope: &ModuleScope,
             rust_ident: &RustIdent,
         ) {
+            if wasm {
+                refs.wasm_boundary_idents.insert(rust_ident.clone());
+            }
             let ref_scope = types.scope(rust_ident);
             if current_scope != ref_scope {
-                refs.entry(current_scope.clone())
+                refs.imports
+                    .entry(current_scope.clone())
                     .or_default()
                     .entry(ref_scope.clone())
                     .or_default()
@@ -1358,7 +1376,7 @@ impl<'a> IntermediateTypes<'a> {
         // not deferred (its class is local, same module). Independent of `current_scope`: it follows
         // the map class, not the using site.
         fn register_deferred_keys_list(
-            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            refs: &mut ScopeReferences,
             types: &IntermediateTypes,
             deferred: &BTreeMap<RustIdent, ModuleScope>,
             emit_scope: &ModuleScope,
@@ -1369,7 +1387,8 @@ impl<'a> IntermediateTypes<'a> {
                     .name_as_wasm_array(types),
             ));
             if let Some(dep_scope) = deferred.get(&keys_ident) {
-                refs.entry(emit_scope.to_owned())
+                refs.imports
+                    .entry(emit_scope.to_owned())
                     .or_default()
                     .entry(dep_scope.clone())
                     .or_default()
@@ -1389,7 +1408,7 @@ impl<'a> IntermediateTypes<'a> {
         // loose wrapper is not deferred (it is a local class in the same scope). Empty `deferred`
         // (rust pass / flag unused) makes this a no-op, so output is byte-identical without the flag.
         fn register_deferred_restricted_list_source(
-            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            refs: &mut ScopeReferences,
             types: &IntermediateTypes,
             deferred: &BTreeMap<RustIdent, ModuleScope>,
             wrapper_ident: &RustIdent,
@@ -1408,7 +1427,8 @@ impl<'a> IntermediateTypes<'a> {
             let loose_ident = RustIdent::new(CDDLIdent::new(loose));
             if let Some(dep_scope) = deferred.get(&loose_ident) {
                 let emit_scope = types.scope(wrapper_ident).clone();
-                refs.entry(emit_scope)
+                refs.imports
+                    .entry(emit_scope)
                     .or_default()
                     .entry(dep_scope.clone())
                     .or_default()
@@ -1423,7 +1443,7 @@ impl<'a> IntermediateTypes<'a> {
         // the owner's local `pub type MapKToV = <Owner>;` alias, never a deferred class.
         #[allow(clippy::too_many_arguments)]
         fn register_deferred_restricted_map_source(
-            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            refs: &mut ScopeReferences,
             types: &IntermediateTypes,
             deferred: &BTreeMap<RustIdent, ModuleScope>,
             sole_owners: &BTreeMap<String, RustIdent>,
@@ -1442,7 +1462,8 @@ impl<'a> IntermediateTypes<'a> {
             }
             if let Some(dep_scope) = deferred.get(&loose_ident) {
                 let emit_scope = types.scope(wrapper_ident).clone();
-                refs.entry(emit_scope)
+                refs.imports
+                    .entry(emit_scope)
                     .or_default()
                     .entry(dep_scope.clone())
                     .or_default()
@@ -1461,7 +1482,7 @@ impl<'a> IntermediateTypes<'a> {
         // the dep's `collections` module instead). Independent of the using site: it follows the
         // table class, like `register_deferred_keys_list`.
         fn register_root_keys_list(
-            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            refs: &mut ScopeReferences,
             types: &IntermediateTypes,
             wasm: bool,
             deferred: &BTreeMap<RustIdent, ModuleScope>,
@@ -1484,7 +1505,8 @@ impl<'a> IntermediateTypes<'a> {
             if deferred.contains_key(&keys_ident) {
                 return;
             }
-            refs.entry(emit_scope.to_owned())
+            refs.imports
+                .entry(emit_scope.to_owned())
                 .or_default()
                 .entry(ROOT_SCOPE.clone())
                 .or_default()
@@ -1504,7 +1526,7 @@ impl<'a> IntermediateTypes<'a> {
         // the dep's `collections` module instead).
         #[allow(clippy::too_many_arguments)]
         fn register_root_restricted_list_source(
-            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            refs: &mut ScopeReferences,
             types: &IntermediateTypes,
             wasm: bool,
             sole_owners: &BTreeMap<String, RustIdent>,
@@ -1530,7 +1552,8 @@ impl<'a> IntermediateTypes<'a> {
             }
             let loose_scope = types.scope(&loose_ident).clone();
             if loose_scope != *emit_scope {
-                refs.entry(emit_scope.to_owned())
+                refs.imports
+                    .entry(emit_scope.to_owned())
                     .or_default()
                     .entry(loose_scope.clone())
                     .or_default()
@@ -1548,7 +1571,7 @@ impl<'a> IntermediateTypes<'a> {
         // wrapper ident (self-named rule) or the loose builder is deferred.
         #[allow(clippy::too_many_arguments)]
         fn register_root_restricted_map_source(
-            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            refs: &mut ScopeReferences,
             types: &IntermediateTypes,
             wasm: bool,
             sole_owners: &BTreeMap<String, RustIdent>,
@@ -1573,7 +1596,8 @@ impl<'a> IntermediateTypes<'a> {
                 .map(|owner| types.scope(owner).clone())
                 .unwrap_or_else(|| types.scope(&loose_ident).clone());
             if loose_scope != *emit_scope {
-                refs.entry(emit_scope.to_owned())
+                refs.imports
+                    .entry(emit_scope.to_owned())
                     .or_default()
                     .entry(loose_scope.clone())
                     .or_default()
@@ -1591,7 +1615,7 @@ impl<'a> IntermediateTypes<'a> {
             );
         }
         fn mark_refs(
-            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            refs: &mut ScopeReferences,
             types: &IntermediateTypes,
             wasm: bool,
             sole_owners: &BTreeMap<String, RustIdent>,
@@ -1615,14 +1639,15 @@ impl<'a> IntermediateTypes<'a> {
                         // empty for the rust pass and whenever the flag families are unused, so
                         // output is byte-identical without the flag.
                         if let Some(dep_scope) = deferred.get(rust_ident) {
-                            refs.entry(current_scope.to_owned())
+                            refs.imports
+                                .entry(current_scope.to_owned())
                                 .or_default()
                                 .entry(dep_scope.clone())
                                 .or_default()
                                 .insert(rust_ident.clone());
                             return;
                         }
-                        set_ref(refs, types, current_scope, rust_ident);
+                        set_ref(refs, types, wasm, current_scope, rust_ident);
                         // A named COLLECTION rule (`recs = [* foo]` / `withdrawals = {* k => v}`, or a
                         // generic instance like `gcn = gcoll<foo>`) registers a transparent alias, so
                         // a field referencing it is `Alias(Recs, Array(Foo))`. In the WASM pass the
@@ -1674,7 +1699,7 @@ impl<'a> IntermediateTypes<'a> {
                 // as `Alias(Rust(ident), …)` and is handled there. A bare `Rust(ident)` is a
                 // Record / choice / Wrapper struct, none of which is ever a defer candidate.
                 ConceptualRustType::Rust(rust_ident) => {
-                    set_ref(refs, types, current_scope, rust_ident)
+                    set_ref(refs, types, wasm, current_scope, rust_ident)
                 }
                 ConceptualRustType::Array(elem_ty) => {
                     // Resolve the wasm wrapper this occurrence crosses the boundary as, and its
@@ -1692,7 +1717,8 @@ impl<'a> IntermediateTypes<'a> {
                             // no longer lives locally — import it from the dep's `collections` module
                             // from EVERY using scope (root included) and do NOT recurse (wrapper and
                             // element are both the dependency's).
-                            refs.entry(current_scope.to_owned())
+                            refs.imports
+                                .entry(current_scope.to_owned())
                                 .or_default()
                                 .entry(dep_scope.clone())
                                 .or_default()
@@ -1703,7 +1729,8 @@ impl<'a> IntermediateTypes<'a> {
                         // scope (a no-op when they coincide, e.g. an anonymous same-shape use inside
                         // the wrapper's own module).
                         if emit_scope != *current_scope {
-                            refs.entry(current_scope.to_owned())
+                            refs.imports
+                                .entry(current_scope.to_owned())
                                 .or_default()
                                 .entry(emit_scope.clone())
                                 .or_default()
@@ -1787,7 +1814,8 @@ impl<'a> IntermediateTypes<'a> {
                             // `--extern-wrapper-index`: import it from the dep's `collections` module
                             // from every using scope (root included); wrapper, key, and value are all
                             // the dependency's, so don't recurse.
-                            refs.entry(current_scope.to_owned())
+                            refs.imports
+                                .entry(current_scope.to_owned())
                                 .or_default()
                                 .entry(dep_scope.clone())
                                 .or_default()
@@ -1795,7 +1823,8 @@ impl<'a> IntermediateTypes<'a> {
                             return;
                         }
                         if emit_scope != *current_scope {
-                            refs.entry(current_scope.to_owned())
+                            refs.imports
+                                .entry(current_scope.to_owned())
                                 .or_default()
                                 .entry(emit_scope.clone())
                                 .or_default()
@@ -2255,8 +2284,9 @@ impl<'a> IntermediateTypes<'a> {
         // the SAME helper, so the emitted target and its import cannot drift) — that ident is
         // invisible in the stripped `base_type`, so import it additionally (from the dep's
         // `collections` module when deferred, like every deferred wrapper reference).
-        // `set_ref`/`mark_refs` record only CROSS-scope idents, so single-module output is
-        // byte-identical.
+        // Their import map records only CROSS-scope idents, so single-module output is
+        // byte-identical; in the wasm pass the separate boundary-use set also retains same-scope
+        // names for own-spec extern glue.
         for (alias_ident, alias_info) in self.type_aliases() {
             let AliasIdent::Rust(ident) = alias_ident else {
                 continue;
@@ -2300,7 +2330,8 @@ impl<'a> IntermediateTypes<'a> {
                 ) {
                     let base_scope = self.scope(&gi.generic_ident).clone();
                     if base_scope != *current_scope {
-                        refs.entry(current_scope.clone())
+                        refs.imports
+                            .entry(current_scope.clone())
                             .or_default()
                             .entry(base_scope)
                             .or_default()
@@ -2322,13 +2353,14 @@ impl<'a> IntermediateTypes<'a> {
             }
             if wasm && let Some(target) = alias_info.resolved_wasm_alias_target(self) {
                 if let Some(dep_scope) = deferred.get(target) {
-                    refs.entry(current_scope.clone())
+                    refs.imports
+                        .entry(current_scope.clone())
                         .or_default()
                         .entry(dep_scope.clone())
                         .or_default()
                         .insert(target.clone());
                 } else {
-                    set_ref(&mut refs, self, current_scope, target);
+                    set_ref(&mut refs, self, wasm, current_scope, target);
                 }
             }
             mark_refs(
@@ -2357,25 +2389,23 @@ impl<'a> IntermediateTypes<'a> {
             // loop reaches its entry — so skip it rather than let `wasm_collection_wrapper` misroute the
             // structural name to the crate root (`types.scope` doesn't know the requested wrappers). Every
             // other member routes through the shared `mark_refs`, resolving to the member's true home.
-            let mark_requested_member =
-                |refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
-                 member: &RustType| {
-                    if let Some((wrapper, _)) =
-                        self.wasm_collection_wrapper(member, &table_shape_sole_owners)
-                        && requested_hosted.contains(&wrapper)
-                    {
-                        return;
-                    }
-                    mark_refs(
-                        refs,
-                        self,
-                        wasm,
-                        &table_shape_sole_owners,
-                        deferred,
-                        req_scope,
-                        member,
-                    );
-                };
+            let mark_requested_member = |refs: &mut ScopeReferences, member: &RustType| {
+                if let Some((wrapper, _)) =
+                    self.wasm_collection_wrapper(member, &table_shape_sole_owners)
+                    && requested_hosted.contains(&wrapper)
+                {
+                    return;
+                }
+                mark_refs(
+                    refs,
+                    self,
+                    wasm,
+                    &table_shape_sole_owners,
+                    deferred,
+                    req_scope,
+                    member,
+                );
+            };
             for (wid, rt) in requested {
                 match &rt.conceptual_type {
                     ConceptualRustType::Array(elem) => {

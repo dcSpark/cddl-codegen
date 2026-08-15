@@ -158,7 +158,6 @@ entries = [
   "matrix.float-table-key-domain",
   "matrix.fixed-map-key-kinds",
   "matrix.nint-capability",
-  "matrix.wasm-extern-wrapper-demand",
   "matrix.extern-execution-multifile",
   "extern-execution",
   "matrix.multifile.extern-shape-coverage",
@@ -2631,49 +2630,6 @@ predicate_md = '''A published validator changes the rejection signature for f7 b
 
 [[record.payload.branch.action]]
 action_id = "signature-only-change"
-
-[[record]]
-id = "matrix.wasm-extern-wrapper-demand"
-title = "The wasm extern re-export glue demands a wrapper the wasm crate never uses."
-
-[record.payload]
-kind = "work"
-body_md = '''- **The wasm extern re-export glue demands a wrapper the wasm crate never uses.** Every in-crate
-  `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule gets `pub use crate::<Name>;`
-  emitted into the wasm crate's generated module, and the "Own-spec extern re-export contract"
-  stderr line asks the consumer to supply that name — whether or not the wasm face references it.
-  A raw-bytes type reached only as a generic ARGUMENT is the shape where the two come apart:
-  `tests/corpus/extern_generic_raw_bytes.cddl` binds `ext_set<pub_key>`, so the wasm face names
-  `ExtSetPubKey` and never `PubKey`, and a consumer who dutifully writes the `PubKey` wrapper gets
-  `warning: unused import: crate::PubKey` at a generated location for their trouble. The rust side
-  does not have the problem here only by accident (its `pub type ExtSetPubKey = ExtSetRawBytes<PubKey>;`
-  names it). Everything about the fixture ALREADY compiles against seeded definitions on both faces
-  under all three profiles — the warning is the whole of what is left, and
-  `integration_tests::COMPILE_SKIP` holds that one fixture for exactly it.
-  Making the wasm re-export usage-conditional is the obvious fix and is NOT a test change: it
-  narrows a documented consumer obligation, and under-emitting it is an E0432 in someone else's
-  crate, so the emitter must be sure a name is unreachable rather than merely unreferenced by the
-  shapes a fixture happens to use.
-'''
-signal_md = '''  **Reopening signal:** a consumer reports the unused-import warning (or silences it) on a wrapper
-  the tool asked them to write — they can see it in their own build, which we cannot, and it is the
-  same observable whether they hit it once or on twenty types.
-'''
-work_state = "deferred"
-work_intent = "repair"
-work_kind = "regression_gap"
-risk = "misleading_docs"
-
-[record.payload.reopening_signal]
-observer = "generated-crate consumer"
-dimension = "unused wrapper obligations"
-action_on_fire_md = '''make reachability-conditional emission
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "event"
-event_md = '''consumer reports or silences the generated unused import
-'''
 
 [[record]]
 id = "matrix.wasm-macro-behavior-boundary"

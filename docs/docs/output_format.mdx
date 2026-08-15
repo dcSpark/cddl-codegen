@@ -1273,14 +1273,19 @@ forget to re-export the type at the crate root, the glue fails **loudly** with a
 unresolved-import error naming the type, rather than a confusing "cannot find type" deep in the
 generated code.
 
-The **wasm crate gets the same glue**, again for both markers. Its generated code names the
-extern's hand-written `#[wasm_bindgen]` wrapper (e.g. `pub fn ext(&self) -> MyExt`) by bare ident inside
-`wasm/src/generated/**`, invisible there for the same reason. So the tool emits `pub use crate::MyExt;`
-into the wasm declaring scope's generated module too, and the contract is identical: define the wasm
-wrapper in a hand-written wasm-crate module and re-export it at the **wasm crate root** (`pub mod utils;
-pub use utils::MyExt;` in `wasm/src/lib.rs`, with the wrapper supplying the `From`/`AsRef` conversions
-the generated boundary code calls). (Types imported from a *dependency* crate — either marker — are
+The **wasm crate gets analogous glue, but only for wrappers its generated boundary actually names**.
+Its generated code names an extern's hand-written `#[wasm_bindgen]` wrapper (e.g. `pub fn ext(&self) ->
+MyExt`) by bare ident inside `wasm/src/generated/**`, invisible there for the same reason. For each such
+reachable wrapper the tool emits `pub use crate::MyExt;` into the wasm declaring scope's generated module:
+define that wrapper in a hand-written wasm-crate module and re-export it at the **wasm crate root** (`pub
+mod utils; pub use utils::MyExt;` in `wasm/src/lib.rs`, with the wrapper supplying the `From`/`AsRef`
+conversions the generated boundary code calls). A marker that the wasm face never names has no wasm glue
+and needs no wasm root re-export. (Types imported from a *dependency* crate — either marker — are
 unaffected by this glue; they resolve through the dependency's import path.)
+
+The Rust behavior is intentionally broader: its generated aliases and codec paths retain the native
+marker names they use, so Rust emits the corresponding own-spec marker/flavor glue and lists those names
+as required. The wasm required-name output is instead exactly its live glue set.
 
 Because the root is user-owned, the tool never re-clobbers this wiring — the failure mode where a
 regeneration dropped a hand-added `pub mod utils;` and broke every reference to the extern type is
@@ -1303,13 +1308,11 @@ deleted from the generated `mod.rs` via a [`cddl-codegen:replace`](./preserving_
 warning is decided from this run's *written* output, so once the `pub use crate::<Name>;` glue no
 longer survives there the tool no longer requires that re-export and stops nagging for it.
 
-One sharp edge of that demanded set, worth knowing before you write a wrapper: it is derived from
-every in-crate marker rule, not from what the wasm face actually references. A raw-bytes or extern
-type reached **only as a generic argument** (`ext_set<pub_key>`, where the wasm code names only the
-concrete `ExtSetPubKey` wrapper) is still demanded and re-exported, so the wrapper you dutifully
-supply earns an `unused import` warning at the generated re-export line. Supplying it is harmless
-beyond that warning; if you would rather not maintain a dead wrapper, delete that one glue line via
-the [`cddl-codegen:replace`](./preserving_edits) route above and the requirement disappears with it.
+A generic argument is the important asymmetry: for `ext_set<pub_key>`, Rust's
+`ExtSetRawBytes<PubKey>` alias names `PubKey`, while the wasm face names only its concrete
+`ExtSetPubKey` wrapper. The wasm glue and its required-name output therefore ask for `ExtSetPubKey`,
+not a dead `PubKey` wrapper; a direct field, alias, list, or map use of `PubKey` still makes the wasm
+walk emit its glue and require the wrapper.
 
 ### Per-scope hand modules: the facade pattern
 

@@ -3309,16 +3309,13 @@ definitions each such fixture needs by stem, rendered per fixture from the share
 `tests/def_templates/` and appended to the thin `rust/src/lib.rs` / `wasm/src/lib.rs` crate roots
 (never `generated/**`, which is clobbered every run and where the tool's own extern re-export glue
 would collide) — so a stem absent from that list and from `COMPILE_SKIP` needs no user code at all.
-`COMPILE_SKIP` is then the narrow residue: fixtures the gate skips outright for a blocker no
-definition can answer. Its one resident, `extern_generic_raw_bytes`, compiles on BOTH faces under
-all three profiles against seeded defs — what holds it out is a WARNING this gate treats as a
-failure, and a real generator finding rather than a fixture defect: the wasm extern re-export glue
-emits `pub use crate::<Name>;` for every in-crate extern / raw-bytes rule whether or not the wasm
-tree references it, and here `pub_key` is reached only as a generic ARGUMENT (`ext_set<pub_key>`),
-so the re-export is unused. That const's own doc comment carries the full story, and the contract
-decision it waits on is ledgered in `cddl-matrix/roadmap.toml` § findings; the fixture's behavioural
-coverage meanwhile is the `extern-generic-raw-bytes` integration fixture. Both lists are read by
-the sibling gates that share this gate's compile machinery, each named where it uses them.
+`COMPILE_SKIP` is currently empty: every corpus fixture has either no user-code dependency or a
+complete shared-template splice. `extern_generic_raw_bytes` is now the sharpest seeded contract: Rust
+gets `ExtSet`, `ExtSetRawBytes`, and `PubKey`, while wasm gets only the concrete
+`ExtSetPlain`/`ExtSetPubKey` wrappers that its generated boundary names. This both compile-gates the
+fixture on all faces/profiles and makes a regression to a generic-argument-only `PubKey` wasm re-export
+fail loudly. The sibling gates share the empty skip list and the splice table rather than restating
+either one.
 
 **Why `tests/corpus/` is the input of record for a shape whose defect is not visible in-process.**
 Each cell SHELLS the real CLI (a subprocess writing a real crate to a scratch dir), so it exercises
@@ -4735,10 +4732,8 @@ emission conditions that replaced them are pinned in `src/tests/component_tests.
 `snapshot_tests::PROFILE_GENERATION_SKIP` instead. Fixtures whose RUST crate references
 user-supplied code get that code SEEDED before the check (`integration_tests::append_corpus_defs_for`
 over `tests/def_templates/`, because the component crate takes the rust crate as a path dependency
-and needs exactly the seeding `feature_corpus_compiles` does); the only exclusion is
-`integration_tests::COMPILE_SKIP`, which this gate shares rather than restates — its one resident
-compiles against seeded defs and is held by the wasm re-export warning that const's own doc
-comment records, not by compilability.
+and needs exactly the seeding `feature_corpus_compiles` does); it also shares the currently-empty
+`integration_tests::COMPILE_SKIP` rather than restating a future blocker list.
 
 ### component build sweep over the decode catalog (`cddl-matrix/verify.ts --component-build-sweep`, gate `component_build_sweep`, `full`)
 
@@ -4868,10 +4863,9 @@ for its compile gate, nested cargo, where a floor-and-deletion profile costs one
 **Why the compile half is its own gate.** Whether the regenerated crate still BUILDS warning-clean
 is the only leg that pays nested cargo, and it is the one that catches the orphaned-`use` class —
 `unused import` is a WARNING, so no assertion about generation exiting 0 can see it. It reuses
-`feature_corpus_compiles`' scans, its `COMPILE_SKIP` (whatever holds a fixture out of the base
-compile floor — today the one resident's wasm re-export warning, per that const's doc comment —
-holds after a regeneration too: the warning is emitted by the same glue, so sharing the list is
-the same reason, not an alias of convenience) and its def splice, and is gate-cached per generated-crate content hash with its own `regen-edit=v1`
+`feature_corpus_compiles`' scans, its currently-empty `COMPILE_SKIP` (a future whole-fixture blocker
+would hold after regeneration for the same reason) and its def splice, and is gate-cached per
+generated-crate content hash with its own `regen-edit=v1`
 verdict-logic marker. The splice is applied ONCE, before the regeneration, which makes the seed-once
 thin `lib.rs` contract part of what this gate asserts: a consumer's hand-written extern definitions
 must still be there, and still resolve, after the tool has run over their tree a second time. Its own

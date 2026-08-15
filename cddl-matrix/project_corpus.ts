@@ -578,9 +578,9 @@ o("- **Compile + execution gate:** `integration_tests::feature_corpus_compiles` 
 o("  file under all three profiles, so a ✅ entry must produce **compiling** Rust under *all* of them —");
 o("  and under the default profile it also generates with `--emit-tests` and `cargo test`s the crate, so");
 o("  every constructible corpus type must **round-trip byte-identically** (plus bounded-reject checks),");
-o("  not just compile. Exception: fixtures on the harness's `COMPILE_SKIP` list (user-supplied-code");
-o("  constructs, e.g. `dsl_custom.cddl`), which are snapshot-only here and compile-exercised via their");
-o("  integration fixtures instead.");
+o("  not just compile. The harness's `COMPILE_SKIP` list is currently empty: fixtures that reference");
+o("  user-supplied code are seeded through shared templates and compile-exercised here too. A future");
+o("  whole-fixture blocker that no seeded definition can answer must be named explicitly in that list.");
 o("- **Axis:** the corpus snapshots generated *source*, not wire bytes — wire encodings are golden_hex's");
 o("  axis (`tests/golden_hex/COVERAGE.md`, RFC 8949). A ✅ here means \"a fixture isolates this construct,\"");
 o("  not \"every encoding of it is asserted.\"");
