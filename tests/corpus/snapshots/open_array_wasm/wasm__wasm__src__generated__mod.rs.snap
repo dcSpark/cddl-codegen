@@ -12,6 +12,7 @@ expression: content
 )]
 pub mod collections;
 
+use cddl_lib::bounded::BoundedVec;
 use cddl_lib::non_empty::NonEmptyVec;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
@@ -229,6 +230,55 @@ impl AsRef<cddl_lib::Anytail> for Anytail {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct Bounded(pub(crate) cddl_lib::Bounded);
+
+#[wasm_bindgen]
+impl Bounded {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Bounded, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    /// The captured bounded trailing array elements beyond the declared members, as their checked wasm list wrapper.
+    pub fn rest(&self) -> BytesListMin2Max3 {
+        self.0.rest.clone().into()
+    }
+
+    /// * `rest` - the complete checked trailing-array wrapper (its CDDL occurrence window is enforced before construction)
+    pub fn new(index_0: u64, rest: &BytesListMin2Max3) -> Self {
+        Self(cddl_lib::Bounded::new(index_0, rest.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Bounded> for Bounded {
+    fn from(native: cddl_lib::Bounded) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Bounded> for cddl_lib::Bounded {
+    fn from(wasm: Bounded) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Bounded> for Bounded {
+    fn as_ref(&self) -> &cddl_lib::Bounded {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct BytesList(pub(crate) Vec<Vec<u8>>);
 
 #[wasm_bindgen]
@@ -264,6 +314,51 @@ impl From<BytesList> for Vec<Vec<u8>> {
 
 impl AsRef<Vec<Vec<u8>>> for BytesList {
     fn as_ref(&self) -> &Vec<Vec<u8>> {
+        &self.0
+    }
+}
+
+/// `[2*3 bytes]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesListMin2Max3(pub(crate) BoundedVec<Vec<u8>, 2, 3>);
+
+#[wasm_bindgen]
+impl BytesListMin2Max3 {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u8> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u8>) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(list: &BytesList) -> Result<BytesListMin2Max3, JsError> {
+        let inner: Vec<Vec<u8>> = list.clone().into();
+        BoundedVec::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedVec<Vec<u8>, 2, 3>> for BytesListMin2Max3 {
+    fn from(native: BoundedVec<Vec<u8>, 2, 3>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesListMin2Max3> for BoundedVec<Vec<u8>, 2, 3> {
+    fn from(wasm: BytesListMin2Max3) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedVec<Vec<u8>, 2, 3>> for BytesListMin2Max3 {
+    fn as_ref(&self) -> &BoundedVec<Vec<u8>, 2, 3> {
         &self.0
     }
 }

@@ -412,11 +412,12 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         "tests/open-struct-map/input.cddl",
         ("wasm", &[]),
     ),
-    // loose-CBOR open ARRAYS (a final-position `* t` rest tail after ≥1 fixed member → a `pub rest:
-    // Vec<T>` capture, or a dropped `@ignore` tail). Snapshotted under `default`/`json`/`wasm`; the
+    // open ARRAYS (a final-position occurrence-bearing rest tail after ≥1 fixed member → a loose
+    // `Vec<T>`, compatibility `NonEmptyVec<T>`, or bounded `BoundedVec<T, MIN, MAX>` capture, or a
+    // dropped loose `@ignore` tail). Snapshotted under `default`/`json`/`wasm`; the
     // `default`/`json` rows pass `--wasm=false` to isolate the rust/json surfaces, and the `wasm` row
     // pins the emitted `rest()` list-wrapper getter + minted `TList`/`AnyList` wrappers. Covers a typed
-    // tail, an `any` tail, a `@name`d tail, an `@ignore` tail, and the degenerate shape combos
+    // tail, a bounded tail, an `any` tail, a `@name`d tail, an `@ignore` tail, and the degenerate shape combos
     // (all-mandatory prefix + `@ignore` — the empty-conditional `definite_info` path — single fixed
     // member + tail, and an optional fixed-value member + a type-distinct tail). The PRESERVE surface
     // (byte-exact per-element tail encodings via the positional `{field}_elem_encodings` sidecar) is

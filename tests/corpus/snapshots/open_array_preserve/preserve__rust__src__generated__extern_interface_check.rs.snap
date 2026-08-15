@@ -23,6 +23,8 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
+    _assert_serialize::<crate::generated::Bounded>();
+    _assert_deserialize::<crate::generated::Bounded>();
     _assert_serialize::<crate::generated::Cap>();
     _assert_deserialize::<crate::generated::Cap>();
     _assert_serialize::<crate::generated::CapAny>();

@@ -761,8 +761,8 @@ pub(super) fn generate_array_struct_deserialization(
         }
     }
     // Open-array rest tail: after the straight-line fixed prefix, read the trailing elements. CAPTURE
-    // stages each typed element in a `Vec`; a one-or-more tail enters `NonEmptyVec::try_from` exactly
-    // once at final assembly, while a loose tail moves that Vec directly. IGNORE typed-deserializes and
+    // stages each typed element in a `Vec`; every restricted tail enters its NonEmptyVec/BoundedVec
+    // `TryFrom` door exactly once at final assembly, while a loose tail moves that Vec directly. IGNORE typed-deserializes and
     // DROPS it (both advance the stream past nested containers — the stream-position regression class).
     // The loop reads until the definite length is exhausted (`read_len.read() < n`, where `read_len`
     // already accounts the prefix) or, for an indefinite array, the `0xff` break byte is reached — a
@@ -858,8 +858,9 @@ pub(super) fn generate_array_struct_deserialization(
         }
         deser_code.content.push_block(tail_loop);
         if rest.semantics == RestSemantics::Capture {
-            let rest_expr = if rest.is_non_empty_array_tail() {
-                format!("NonEmptyVec::try_from({})?", rest.field_name)
+            let rest_expr = if rest.is_restricted() {
+                let carrier = rest_member_type(rest).for_rust_member(types, false, cli);
+                format!("<{carrier}>::try_from({})?", rest.field_name)
             } else {
                 rest.field_name.clone()
             };
@@ -3180,6 +3181,25 @@ pub(super) fn codegen_struct(
                 "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
             ));
         }
+        // Every bounded array tail is supplied as its complete checked list wrapper. Unlike the
+        // min-one compatibility ABI above it must not be rebuilt from a first element, and unlike a
+        // loose tail it must not default empty (zero-minimum windows still admit non-empty values).
+        for rest in record.captured_dynamic_rows().filter(|row| {
+            row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail()
+        }) {
+            let rest_ty = rest_member_type(rest);
+            wasm_new.arg(&rest.field_name, rest_ty.for_wasm_param(types));
+            wasm_new_args.push(ToWasmBoundaryOperations::format(
+                rest_ty
+                    .from_wasm_boundary_clone(types, &rest.field_name, false)
+                    .into_iter(),
+            ));
+            wasm_new_comments.push(format!(
+                "* `{}` - the complete checked trailing-array wrapper (its CDDL occurrence window \
+                 is enforced before construction)",
+                rest.field_name
+            ));
+        }
         // A restricted open-struct rest or open-table catch-all has a read-only wasm getter, so it
         // cannot default to an empty carrier without making admitted non-empty values impossible to
         // build on this face.  Pass its complete checked structural wrapper through to the native
@@ -3226,6 +3246,9 @@ pub(super) fn codegen_struct(
                 .doc(if rest.is_non_empty_array_tail() {
                     "The captured one-or-more trailing array elements beyond the declared members \
                      (CDDL `+ t` / `1* t` rest tail), as the restricted wasm list wrapper."
+                } else if rest.is_array_tail() && rest.is_restricted() {
+                    "The captured bounded trailing array elements beyond the declared members, as \
+                     their checked wasm list wrapper."
                 } else if rest.is_array_tail() {
                     "The captured trailing array elements beyond the declared members (CDDL \
                      `* t` rest tail), as the wasm list wrapper."
@@ -3576,6 +3599,9 @@ pub(super) fn codegen_struct(
         rest_field.doc(if rest.is_non_empty_array_tail() {
             "Captured one-or-more trailing array elements beyond the declared members (CDDL `+ t` / \
              `1* t` rest tail). Serialized after the declared members; never empty."
+        } else if rest.is_array_tail() && rest.is_restricted() {
+            "Captured trailing array elements whose inclusive CDDL occurrence window is enforced by \
+             this checked carrier. Serialized after the declared members; supplied complete to `new()`."
         } else if rest.is_array_tail() {
             "Captured trailing array elements beyond the declared members (CDDL `* t` rest tail). \
              Serialized after the declared members; defaults empty."
@@ -3622,7 +3648,7 @@ pub(super) fn codegen_struct(
         // `Seq` adapter (a typed element uses its own serde).
         if !manual_json {
             if rest.is_array_tail() {
-                if cli.json_serde_derives && !rest.is_non_empty_array_tail() {
+                if cli.json_serde_derives && !rest.is_restricted() {
                     rest_field
                         .annotation("#[serde(skip_serializing_if = \"Vec::is_empty\", default)]");
                 }
@@ -3635,6 +3661,11 @@ pub(super) fn codegen_struct(
                         cli,
                         if rest.is_non_empty_array_tail() {
                             super::NaturalAnyPosition::NonEmptySeq
+                        } else if rest.is_restricted() {
+                            let (min, max) = rest
+                                .occurrence
+                                .expect("restricted array tail carries a normalized occurrence");
+                            super::NaturalAnyPosition::BoundedSeq(min, max)
                         } else {
                             super::NaturalAnyPosition::Seq
                         },
@@ -3726,6 +3757,15 @@ pub(super) fn codegen_struct(
             if let Some(line) = value_bounds_check_line(rest.element(), &first_arg, true) {
                 native_new.line(&line);
             }
+        } else if rest.is_array_tail() && rest.is_restricted() {
+            let rest_ty = rest_member_type(rest).for_rust_move(types, cli);
+            native_new.arg(&rest.field_name, &rest_ty);
+            new_arg_count += 1;
+            native_new_comments.push(format!(
+                "* `{}` - the complete checked trailing-array carrier (its CDDL occurrence window is enforced by this carrier)",
+                rest.field_name
+            ));
+            native_new_block.line(format!("{},", rest.field_name));
         } else {
             native_new_block.line(format!(
                 "{}: {}::new(),",

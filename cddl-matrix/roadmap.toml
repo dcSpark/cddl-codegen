@@ -1194,35 +1194,37 @@ priority_rationale_md = '''The invariant currently has multiple enforcement site
 
 [[record]]
 id = "matrix.heterogeneous-array.occurrence-bounds"
-title = "Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record fields."
+title = "Honor remaining middle/non-final count-permitting occurrences on heterogeneous ARRAY-record fields."
 
 [record.payload]
 kind = "work"
-body_md = '''### Honor non-final and bounded count-permitting occurrences on heterogeneous ARRAY-record fields.
+body_md = '''### Honor remaining middle/non-final count-permitting occurrences on heterogeneous ARRAY-record fields.
 
-A **final-position** `* t` after ≥1 fixed member is the loose open-array rest tail;
-  final `+ t` / `1* t` is its `NonEmptyVec` twin with a first-element construction door (both
-  supported by `contain.occurrence-target.grpent.member.{zero_array,plus_array}`). Still rejected
-  gracefully: bounded (`n*m`) final tails and any **non-final / middle** `*` / `+` member
-  (`[uint, * bytes, tstr]`); those boundaries are pinned by
-  `occurrence_on_array_record_field_rejects_gracefully`. The rejection avoids the silent
-  exactly-once narrowing that makes a generated decoder reject spec-valid repetition counts —
-  invisible to round-trip tests, surfaced only by spec-derived decode vectors. Real support for the
-  middle-position case needs an occurrence-decoding design that honors RFC 8610's greedy,
-  non-backtracking semantics; repeated occurrences additionally need a representation and residue
-  policy of their own. Any honored carrier must prevent invalid construction and cover
-  serialization, deserialization, every generated projection, matrix classification, and
-  spec-derived boundary vectors.
+A **final-position** occurrence after ≥1 fixed member is supported: bare `*` / `0*` uses the loose
+  open-array `Vec` rest tail, `+` / `1*` uses its `NonEmptyVec` twin with the shipped first-element
+  construction door, and every other bounded window uses a complete checked `BoundedVec` carrier
+  (including finite, max-only, min-only, and exact-zero windows), as covered by
+  `contain.occurrence-target.grpent.member.{zero_array,plus_array,bounded_array}`. Still rejected
+  gracefully: any **non-final / middle** occurrence-bearing member (`[uint, * bytes, tstr]`),
+  multiple occurrence-bearing members, inline-group occurrences, group-choice-arm tails, and plain
+  group tails; those boundaries are pinned by `occurrence_on_array_record_field_rejects_gracefully`.
+  The rejection avoids silent exactly-once narrowing that makes a generated decoder reject
+  spec-valid repetition counts — invisible to round-trip tests, surfaced only by spec-derived decode
+  vectors. Real support for middle-position repetition needs an occurrence-decoding design that
+  honors RFC 8610's greedy, non-backtracking semantics; repeated occurrences additionally need a
+  representation and residue policy of their own. Any honored carrier must prevent invalid
+  construction and cover serialization, deserialization, every generated projection, matrix
+  classification, and spec-derived boundary vectors.
 
 '''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = '''Define invariant-preserving carriers and construction doors for middle or non-final repetition and bounded heterogeneous final or open tails; honor RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
+acceptance_md = '''Define invariant-preserving carriers and construction doors for middle or non-final heterogeneous repetition; honor RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
 '''
 priority_band = "high"
-priority_rationale_md = '''Spec-valid middle repetitions and bounded heterogeneous final or open tails remain valid rejections, so this selected capability closes a real supported-language boundary without reviving already delivered final unbounded tails.
+priority_rationale_md = '''Spec-valid middle repetitions and other non-final heterogeneous occurrence placements remain valid rejections, so this selected capability closes a real supported-language boundary without reopening the delivered final-tail carrier family.
 '''
 
 [[record]]
@@ -1591,7 +1593,7 @@ body_md = '''- **Enumerate the named-group REFERENCE kind (`grpent.groupname`) a
   a splice writes no marker of its own and so leaves the array's LENGTH as the only evidence of
   presence, which an embedded decoder that length-checks just its own members cannot read
   (`optional_plain_group_array_field_rejects_gracefully_at_every_spelling`; real support is the
-  occurrence/bounds design owned by the finding "Honor non-final and bounded count-permitting
+  occurrence/bounds design owned by the finding "Honor remaining middle/non-final count-permitting
   occurrences on heterogeneous ARRAY-record fields" — cited below as "the occurrence/bounds
   family" — and its guard covered a TAGGED
   spelling that had been shipping a codec whose own decoder rejected its own bytes). So enumerate

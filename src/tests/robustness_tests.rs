@@ -5419,10 +5419,10 @@ fn zero_permitting_occurrence_on_keyed_map_field_uses_optional_carrier() {
 /// silently narrowed to a mandatory exactly-once field, generating a decoder that rejects
 /// spec-valid CBOR with any other repetition count (invisible to round-trip tests; surfaced by
 /// spec-derived decode vectors). Unlike the keyed-map case above, `+` does NOT collapse in an
-/// array (repetitions are real items), so EVERY count-permitting marker must reject. This pins
-/// the graceful rejection AND the boundaries the guard must preserve:
-///   - `*` / `+` / `2*3`, in any position → Err (the marker admits repetition counts the
-///     narrowed field cannot decode);
+/// array (repetitions are real items), so a final tail must either own the remainder or reject.
+/// This pins the supported bounded-tail polarity and the boundaries the guard must preserve:
+///   - final `*` / `+` / `2*3` → Ok (a loose, NonEmptyVec, or BoundedVec rest carrier); non-final
+///     occurrences still reject because the tail cannot greedily leave a later fixed member;
 ///   - `1*1` → Ok (exactly-once IS the semantics — same boundary the inline-group guard pins);
 ///   - `?` → Ok (the supported optional-field path);
 ///   - `[* bytes]` alone → Ok (single-entry groups take the homogeneous Vec path, not the record
@@ -5464,8 +5464,13 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
         .expect("a final `+` tail is a supported restricted rest-tail occurrence");
     run("m = [uint, 1* bytes]\n", "one_star")
         .expect("a final `1*` tail is the equivalent restricted rest-tail occurrence");
-    run("m = [uint, 2*3 bytes]\n", "bounded").expect_err(
-        "`2*3` admits 2..=3 repetitions — not a supported rest-tail occurrence (must reject)",
+    let bounded = run("m = [uint, 2*3 bytes]\n", "bounded")
+        .expect("a final `2*3` tail is a checked bounded rest-tail occurrence");
+    assert!(
+        bounded
+            .values()
+            .any(|source| source.contains("pub rest: BoundedVec<Vec<u8>, 2, 3>")),
+        "a finite final rest tail must store its complete BoundedVec carrier: {bounded:#?}"
     );
     // A leading/non-final repetition keeps rejecting (the rest tail must be the LAST member).
     let leading = run("m = [* bytes, uint]\n", "leading")
@@ -5609,8 +5614,37 @@ fn open_array_front_end() {
     // multiple count-permitting members
     run("a = [uint, * uint, * tstr]\n").expect_err("multiple `*` members must reject");
     run("a = [uint, + uint, * tstr]\n").expect_err("multiple count-permitting members must reject");
-    // bounded `n*m` on the final entry remains unsupported
-    run("a = [uint, 2*3 uint]\n").expect_err("`n*m` is not a supported rest-tail occurrence");
+    // bounded final tails share the generic checked-carrier seam, including finite, max-only,
+    // min-only, loose-equivalent 0*, and exact-zero forms.
+    for (spec, carrier) in [
+        ("a = [uint, 2*3 bytes]\n", "BoundedVec<Vec<u8>, 2, 3>"),
+        ("a = [uint, *3 bytes]\n", "BoundedVec<Vec<u8>, 0, 3>"),
+        (
+            "a = [uint, 2* bytes]\n",
+            "BoundedVec<Vec<u8>, 2, { u64::MAX }>",
+        ),
+        ("a = [uint, 0* bytes]\n", "Vec<Vec<u8>>"),
+        ("a = [uint, *0 bytes]\n", "BoundedVec<Vec<u8>, 0, 0>"),
+    ] {
+        let out = run(spec).expect("a supported final occurrence must generate");
+        assert!(
+            src(&out).contains(carrier),
+            "{spec:?} must use the normalized carrier {carrier}, got:\n{}",
+            src(&out)
+        );
+    }
+    let exact_once = run("a = [uint, 1*1 bytes]\n")
+        .expect("the established exactly-once field path remains supported");
+    assert!(
+        src(&exact_once).contains("pub index_1: Vec<u8>"),
+        "1*1 remains an ordinary mandatory field, not a rest carrier"
+    );
+    let out_of_range = run("a = [uint, 18446744073709551616* bytes]\n")
+        .expect_err("an occurrence endpoint beyond u64 must reject gracefully");
+    assert!(
+        out_of_range.contains("Occurrence bound out of range"),
+        "the shared occurrence normalizer must report the endpoint, got: {out_of_range}"
+    );
     // a fixed-value tail element has no Rust representation (a `Vec<FixedValue>` is not a type), so it
     // is rejected before the homogeneous-array fixed-value panic class
     let fixed = run("a = [uint, * 5]\n").expect_err("a fixed-value tail element must reject");
@@ -5637,6 +5671,27 @@ fn open_array_front_end() {
         .expect_err("@ignore + @duplicates on the tail must reject (no keys)");
     run("a = [\n  uint,\n  + uint ; @ignore\n]\n")
         .expect_err("@ignore on a non-empty tail must reject (it would re-emit zero elements)");
+    for (spec, is_zero_minimum) in [
+        ("a = [\n  uint,\n  2*3 uint ; @ignore\n]\n", false),
+        ("a = [\n  uint,\n  *0 uint ; @ignore\n]\n", true),
+    ] {
+        let err = run(spec).expect_err("@ignore cannot discard a checked array-tail carrier");
+        assert!(
+            err.contains("restricted open-array rest tail")
+                && err.contains("re-serialize zero occurrences")
+                && err.contains("positive minimum"),
+            "restricted tail @ignore must reject on the invariant-preservation rationale: {err}"
+        );
+        if is_zero_minimum {
+            assert!(
+                err.contains(
+                    "zero-minimum restricted window would lose the bounded or exact state"
+                ),
+                "an exact-zero tail must explain that @ignore loses its checked-state invariant, not \
+                 falsely claim zero violates its window: {err}"
+            );
+        }
+    }
     let dup = run("a = [\n  uint,\n  * uint ; @duplicates preserve\n]\n")
         .expect_err("@duplicates on an array tail must reject (no keys)");
     assert!(
@@ -5704,6 +5759,59 @@ fn non_empty_open_array_tail_wasm_wrapper_ident_collisions_reject_gracefully() {
     run("bytes_list", "BytesList");
 }
 
+/// Bounded final tails mint a distinct `<Elem>ListMin/Max` checked wrapper and, when the element is
+/// non-exposable, need the loose `<Elem>List` builder as its `try_from` source. These direct claims
+/// must use the bounded-tail detector's two specialized diagnostics instead of failing only once a
+/// malformed wasm crate reaches the generic duplicate-ident backstop.
+#[test]
+fn bounded_open_array_tail_wasm_wrapper_ident_collisions_reject_gracefully() {
+    let run = |cddl: &str, tag: &str| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_bounded_open_array_wrapper_collision_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let result = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "bounded_open_array_wrapper_collision_unused",
+            "--wasm=true",
+        ]));
+        std::fs::remove_file(&path).ok();
+        result
+            .expect_err("an incompatible bounded-tail wasm wrapper claim must reject gracefully")
+            .to_string()
+    };
+
+    let restricted = run(
+        "bytes_list_min2_max3 = [x: uint]\n\
+         holder = [prefix: uint, 2*3 bytes]\n",
+        "restricted",
+    );
+    assert!(
+        restricted.contains("BytesListMin2Max3")
+            && restricted.contains("bounded open-array rest tail")
+            && restricted.contains("restricted BoundedVec wrapper")
+            && !restricted.contains("duplicate top-level ident"),
+        "the bounded-tail restricted-wrapper diagnostic must win over the generic backstop: {restricted}"
+    );
+
+    let loose_source = run(
+        "elem = [x: uint]\n\
+         elem_list = [x: uint]\n\
+         holder = [prefix: uint, 2*3 elem]\n",
+        "loose_source",
+    );
+    assert!(
+        loose_source.contains("loose 'ElemList' list builder needs as the `try_from` source")
+            && loose_source.contains("the bounded open-array wrapper 'ElemListMin2Max3'")
+            && !loose_source.contains("duplicate top-level ident"),
+        "the bounded-tail loose-source diagnostic must name both structural classes: {loose_source}"
+    );
+}
+
 /// The first constructor element of a non-empty tail is a normal value-bounded constructor input:
 /// Rust must validate it, which makes Rust/wasm/component constructors consistently fallible, and
 /// both emitted-test faces must mint it rather than skipping the record.
@@ -5754,6 +5862,66 @@ fn bounded_non_empty_open_array_tail_is_checked_on_every_constructor_face() {
         rust.contains("fn roundtrip_bounded_required()")
             && wasm.contains("fn wasm_roundtrip_bounded_required()"),
         "both emitted-test faces must mint the bounded non-empty record instead of silently skipping it"
+    );
+}
+
+/// A finite final tail crosses every boundary as its whole BoundedVec carrier: native construction
+/// cannot accept a bypassable Vec, wasm receives the checked list wrapper, and WIT deliberately
+/// despecializes to list then lets guest glue re-enter TryFrom.  The emitted Rust and wasm test
+/// renderers consume the same constructor vector, so this source pin also catches a newly-required
+/// argument being silently skipped by either renderer.
+#[test]
+fn bounded_open_array_tail_is_checked_on_every_constructor_face() {
+    const CDDL: &str = "bounded_tail = [prefix: uint, 2*3 uint]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_bounded_open_array_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "bounded_open_array_unused",
+        "--wasm=true",
+        "--component=true",
+        "--emit-tests=true",
+    ]))
+    .expect("a finite final rest tail must generate on every constructor face");
+    std::fs::remove_file(&path).ok();
+    let rust = out["rust/src/generated/mod.rs"].as_str();
+    let rust_deser = out["rust/src/generated/serialization.rs"].as_str();
+    let wasm = out["wasm/src/generated/mod.rs"].as_str();
+    let wit = out["component/wit/world.wit"].as_str();
+    let glue = out["component/src/generated/mod.rs"].as_str();
+
+    assert!(
+        rust.contains("pub rest: BoundedVec<u64, 2, 3>")
+            && rust.contains("pub fn new(prefix: u64, rest: BoundedVec<u64, 2, 3>) -> Self")
+            && rust_deser.contains("<BoundedVec<u64, 2, 3>>::try_from(rest)?"),
+        "native decode and construction must share the complete checked carrier:\n{rust}\n{rust_deser}"
+    );
+    assert!(
+        wasm.contains("pub fn new(prefix: u64, rest: &U64ListMin2Max3) -> Self")
+            && wasm.contains("cddl_lib::BoundedTail::new(prefix, rest.clone().into())")
+            && wasm.contains(
+                "pub fn try_from(elements: Vec<u64>) -> Result<U64ListMin2Max3, JsError>"
+            ),
+        "wasm must accept only the checked bounded list wrapper and retain its failure door:\n{wasm}"
+    );
+    assert!(
+        wit.contains("constructor(prefix: u64, rest: list<u64>) -> result<bounded-tail, string>;")
+            && glue.contains("let rest = (rest.into_iter().collect::<Vec<_>>())")
+            && glue.contains(".try_into()")
+            && glue.contains(".map_err(err)?;")
+            && glue.contains("cddl_lib::BoundedTail::new(prefix, rest)"),
+        "component must re-enter the bounded carrier after WIT's list despecialization:\n{wit}\n{glue}"
+    );
+    assert!(
+        rust.contains("fn roundtrip_bounded_tail()")
+            && wasm.contains("fn wasm_roundtrip_bounded_tail()"),
+        "both emitted-test faces must mint the complete bounded-tail constructor argument"
     );
 }
 
@@ -6810,10 +6978,11 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
             format!("{GROUP}t = [ c: uint, d: tstr, * kv ]\n"),
             "longer_prefix",
         ),
-        // `+` / `1*` are now supported tail occurrences, so they reach the same element-shape
-        // refusal rather than the bounded-occurrence guard.
+        // Every final occurrence window is now a supported tail shape, so restricted spellings
+        // reach the same element-shape refusal rather than an occurrence-form guard.
         (format!("{GROUP}t = [ c: uint, + kv ]\n"), "plus"),
         (format!("{GROUP}t = [ c: uint, 1* kv ]\n"), "one_star"),
+        (format!("{GROUP}t = [ c: uint, 2*3 kv ]\n"), "bounded"),
     ] {
         let msg =
             run(&spec, tag, &[]).expect_err(&format!("`{}` must reject gracefully", spec.trim()));
@@ -6922,11 +7091,6 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
             format!("{GROUP}t = [ c: uint, * kv, d: uint ]\n"),
             "non_final",
             "must be the LAST member of the array",
-        ),
-        (
-            format!("{GROUP}t = [ c: uint, 2*3 kv ]\n"),
-            "bounded_occurrence",
-            "Other `n*m` bounds are not supported",
         ),
         (
             format!("{GROUP}t = [ c: uint, * k: kv ]\n"),
@@ -11488,10 +11652,14 @@ fn open_struct_map_rest_row_front_end() {
     );
 
     // A tolerate-and-drop row can only remain semantically honest when it is loose: after it
-    // discards every incoming entry, serialization writes zero entries.  Both the established
-    // min-one and a finite bounded window must therefore refuse `@ignore` at the row seam, before
-    // it can silently widen the declared occurrence on output.
-    for (occurrence, tag) in [("+", "ignore_plus"), ("2*3", "ignore_bounded")] {
+    // discards every incoming entry, serialization writes zero entries. That violates a positive
+    // minimum, while even an exact-zero window must retain its checked bounded/exact state rather
+    // than silently becoming loose on output.
+    for (occurrence, tag, zero_minimum) in [
+        ("+", "ignore_plus", false),
+        ("2*3", "ignore_bounded", false),
+        ("*0", "ignore_exact_zero", true),
+    ] {
         let err = run(
             &format!("foo = {{\n  1: uint,\n  {occurrence} uint => any ; @ignore\n}}\n"),
             tag,
@@ -11500,9 +11668,18 @@ fn open_struct_map_rest_row_front_end() {
         assert!(
             err.contains("`@ignore` cannot apply to a restricted open struct-map rest row")
                 && err.contains("re-serialize zero occurrences")
-                && err.contains("declared cardinality"),
+                && err.contains("positive minimum"),
             "a `{occurrence}` ignored rest row must reject the cardinality-losing form precisely, got: {err}"
         );
+        if zero_minimum {
+            assert!(
+                err.contains(
+                    "zero-minimum restricted window would lose the bounded or exact state"
+                ),
+                "an exact-zero row must explain the lost checked state, not falsely claim zero \
+                 violates its window: {err}"
+            );
+        }
     }
 
     // --- combination guard: `@ignore` + `--preserve-encodings` REJECTS (a preserve crate's

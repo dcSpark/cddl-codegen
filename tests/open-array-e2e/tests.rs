@@ -1,6 +1,6 @@
-// Open array (loose CBOR "rest tail") value-level end-to-end vectors. A final-position `* t` after
-// the fixed members captures the trailing elements into a `pub rest: Vec<T>` (CAPTURE) or drops them
-// (`@ignore`). These pin the plain-mode (non-preserve) semantics:
+// Open-array rest-tail value-level end-to-end vectors. A final occurrence after the fixed members
+// captures trailing elements in its loose, min-one, or bounded carrier; loose `@ignore` drops them.
+// These pin the plain-mode (non-preserve) semantics:
 //   * empty tail ≡ closed-struct bytes (adding a rest tail is backward compatible on the wire);
 //   * definite AND indefinite arrays with extra elements (incl. a nested-container element);
 //   * typing enforced on a typed tail (a wrong-type trailing element errors);
@@ -12,6 +12,7 @@
 #[cfg(test)]
 mod open_array {
     use super::*;
+    use crate::generated::bounded::BoundedVec;
     use serialization::Deserialize;
 
     fn bytes(hex: &str) -> Vec<u8> {
@@ -111,6 +112,42 @@ mod open_array {
         assert_eq!(valid.rest.as_slice(), &[5]);
         let err = BoundedRequired::new(7, 6).expect_err("the first tail element exceeds .le 5");
         assert!(err.to_string().contains("6 not at most 5"));
+    }
+
+    // --- finite/min-only/exact-zero bounded tails ---
+
+    #[test]
+    fn finite_bounded_tail_uses_one_checked_carrier_at_constructor_and_decode() {
+        let rest = BoundedVec::try_from(vec![vec![0xaa], vec![0xbb]])
+            .expect("two elements are inside the 2..=3 tail window");
+        let b = Bounded::new(7, rest);
+        assert_eq!(b.rest.as_slice(), &[vec![0xaa], vec![0xbb]]);
+        assert_eq!(b.to_cbor_bytes(), bytes("83 07 41aa 41bb"));
+
+        for wire in [bytes("82 07 41aa"), bytes("9f 07 41aa ff")] {
+            assert_decode_reject_reason::<Bounded>(&wire, "1 not in range 2 - 3");
+        }
+        for wire in [
+            bytes("85 07 41aa 41bb 41cc 41dd"),
+            bytes("9f 07 41aa 41bb 41cc 41dd ff"),
+        ] {
+            assert_decode_reject_reason::<Bounded>(&wire, "4 not in range 2 - 3");
+        }
+        let definite = Bounded::from_cbor_bytes(&bytes("83 07 41aa 41bb")).unwrap();
+        let indefinite = Bounded::from_cbor_bytes(&bytes("9f 07 41aa 41bb ff")).unwrap();
+        assert_eq!(definite.rest.as_slice(), indefinite.rest.as_slice());
+        assert_eq!(definite.to_cbor_bytes(), bytes("83 07 41aa 41bb"));
+    }
+
+    #[test]
+    fn min_only_and_exact_zero_bounded_tails_keep_their_windows() {
+        let min = BoundedMin::new(7, BoundedVec::try_from(vec![2, 3]).unwrap());
+        assert_eq!(min.rest.as_slice(), &[2, 3]);
+        assert_decode_reject_reason::<BoundedMin>(&bytes("81 07"), "0 not at least 2");
+
+        let zero = BoundedZero::new(7, BoundedVec::try_from(Vec::<u64>::new()).unwrap());
+        assert_eq!(zero.to_cbor_bytes(), bytes("81 07"));
+        assert_decode_reject_reason::<BoundedZero>(&bytes("82 07 01"), "1 not in range 0 - 0");
     }
 
     // --- CAPTURE, `any` tail with a nested-container element (`cap_any = [uint, * any]`) ---
@@ -227,6 +264,18 @@ mod open_array {
             let outer = OuterRequired::from_cbor_bytes(&wire).unwrap();
             assert_eq!(outer.inner_required.index_0, 1);
             assert_eq!(outer.inner_required.rest.as_slice(), &[2, 3]);
+            assert_eq!(outer.index_1, 99);
+        }
+    }
+
+    #[test]
+    fn bounded_tail_stream_position_leaves_the_outer_sibling_after_definite_and_indefinite_inner() {
+        // outer_bounded = [inner_bounded, uint], inner_bounded = [uint, 2*3 uint]. The inner
+        // tail consumes exactly 2 and 3; the enclosing sibling 99 must remain unread for both
+        // definite and indefinite inner arrays.
+        for wire in [bytes("82 83 01 02 03 1863"), bytes("82 9f 01 02 03 ff 1863")] {
+            let outer = OuterBounded::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(outer.inner_bounded.rest.as_slice(), &[2, 3]);
             assert_eq!(outer.index_1, 99);
         }
     }

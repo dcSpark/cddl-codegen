@@ -625,6 +625,17 @@ impl<'a> IntermediateTypes<'a> {
                                 != Some(crate::comment_ast::DuplicatesPolicy::Reject)
                 )
             })
+            // An open-array rest tail stores its element flat in RestRow, so the generic type walk
+            // does not see the reconstructed BoundedVec container. Provision the runtime from the
+            // same row-local occurrence that `RestRow::container_type` uses for emitted members.
+            || self.rust_structs.values().any(|rs| {
+                matches!(rs.variant(), RustStructType::Record(record)
+                    if record.dynamic_rows().any(|row| {
+                        row.is_array_tail()
+                            && row.is_restricted()
+                            && !row.is_non_empty_array_tail()
+                    }))
+            })
     }
 
     /// Whether ANY generated type uses the `{+ k => v}` NonEmptyMap shape, so `export`/import wiring
@@ -4877,6 +4888,47 @@ impl<'a> IntermediateTypes<'a> {
                 &mut msgs,
             );
         }
+        // A bounded final open-array tail stores only its element in RestRow, so it is absent from
+        // the generic RustType walk above. Its wasm getter nevertheless mints exactly the same
+        // structural BoundedVec wrapper as an inline `[2*3 T]`; audit its restricted name and loose
+        // builder source here rather than letting a user rule shadow either class during emission.
+        for rs in self.rust_structs.values() {
+            let RustStructType::Record(record) = rs.variant() else {
+                continue;
+            };
+            for rest in record.dynamic_rows().filter(|row| {
+                row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail()
+            }) {
+                let container = rest.container_type();
+                let ConceptualRustType::Array(element) = &container.conceptual_type else {
+                    unreachable!("an array rest tail's container is an Array");
+                };
+                let (min, _) = container
+                    .bounded_array_u64_bounds()
+                    .expect("bounded array-tail occurrence bounds were validated during parsing");
+                if self
+                    .bounded_array_named_owner(element, container.config.bounds.unwrap())
+                    .is_some()
+                {
+                    continue;
+                }
+                let restricted = container.bounded_wasm_wrapper_name(self);
+                if self.wasm_ident_claimed_by_user_rule(&restricted) {
+                    msgs.insert(format!(
+                        "name collision: rule '{restricted}' collides with the '{restricted}' wasm \
+                         wrapper generated for a bounded open-array rest tail — rename the rule to \
+                         avoid shadowing the restricted BoundedVec wrapper"
+                    ));
+                }
+                check_loose_source(
+                    &restricted,
+                    element,
+                    min,
+                    &format!("the bounded open-array wrapper '{restricted}'"),
+                    &mut msgs,
+                );
+            }
+        }
         msgs.into_iter().collect()
     }
 
@@ -4959,8 +5011,8 @@ impl<'a> IntermediateTypes<'a> {
                 // An open struct's rest row names a list wrapper the same way a field of the row's
                 // CONTAINER type would, and the IR stores the row's inner types flat, so neither the
                 // `visit_all_rust_types` walk above nor the Table arm sees the claim: a `* K => V`
-                // row's wasm class needs the loose `<K>List` for its `keys()`, and a `* T` tail's
-                // getter needs the loose `<T>List` itself. Only a CAPTURED row mints anything — an
+                // row's wasm class needs the loose `<K>List` for its `keys()`, and an array tail's
+                // getter needs its loose builder or checked list class. Only a CAPTURED row mints anything — an
                 // `@ignore` row has no field and no getter.
                 //
                 // BOTH dynamic rows, because an open table's TYPED row claims a `<K_t>List` too: its
@@ -4973,8 +5025,9 @@ impl<'a> IntermediateTypes<'a> {
                             // A final `+ T` tail is an inline restricted Array RustType even though
                             // the generic type walk sees only its element. Its getter mints the same
                             // NonEmpty<Elem>List class as an inline `[+ T]`, so it must enter the
-                            // restricted-wrapper collision leg before generation gets a chance to
-                            // silently shadow a user rule of that ident.
+                            // existing restricted-wrapper collision leg before generation gets a
+                            // chance to silently shadow a user rule of that ident. Bounded tails
+                            // enter the sibling bounded-wrapper audit above.
                             if rest.is_non_empty_array_tail() {
                                 inline_non_empty.push(rest.container_type());
                             }
@@ -4984,6 +5037,8 @@ impl<'a> IntermediateTypes<'a> {
                                     (
                                         if rest.is_non_empty_array_tail() {
                                             "a one-or-more open array `+ …` rest tail".to_owned()
+                                        } else if rest.is_restricted() {
+                                            "a bounded open array rest tail".to_owned()
                                         } else {
                                             "an open array `* …` rest tail".to_owned()
                                         },

@@ -1,11 +1,13 @@
-; Open arrays (loose CBOR "rest tail"): a final-position `* t` after ≥1 fixed member captures the
-; trailing elements into a `pub rest: Vec<T>` (default) or drops them (`@ignore`). Snapshotted under
+; Open arrays (CBOR "rest tail"): a final-position occurrence after ≥1 fixed member captures the
+; trailing elements into a loose `Vec<T>`, a min-one `NonEmptyVec<T>`, or a checked `BoundedVec<T, MIN, MAX>`
+; (default), or drops loose data with `@ignore`. Snapshotted under
 ; the plain (`default`) and json flavors (--wasm=false to isolate the rust/json surfaces). Byte-exact
-; per-element tail encodings under --preserve-encodings are a later work package, so no preserve
-; profile here.
+; per-element tail encodings under --preserve-encodings are covered by the capture-only
+; `open-array-preserve-e2e` fixture, so this mixed capture/ignore input has no preserve profile.
 typed = [uint, tstr, * uint]        ; typed tail
 anytail = [uint, * any]             ; any tail (nested-container elements)
 required = [uint, + bytes]          ; restricted one-or-more tail; wasm getter uses NonEmptyBytesList
+bounded = [uint, 2*3 bytes]         ; checked finite carrier; wasm getter uses BytesListMin2Max3
 named = [
   uint,
   tstr,

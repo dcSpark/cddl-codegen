@@ -1,11 +1,12 @@
-// Open array (loose CBOR "rest tail") JSON end-to-end vectors. The captured tail renders as an
+// Open-array rest-tail JSON end-to-end vectors. The captured tail renders as an
 // ORDINARY JSON array under the field name; to_json on an `any` tail is fallible on data (RFC 8949
 // §6.1's injective subset — a non-injective node like a byte string errors, never a silent
-// substitute); an empty tail ≡ closed-struct JSON (skip-if-empty on write, default-on-read).
+// substitute); only a loose empty tail is skipped on write and defaulted on read.
 #[cfg(test)]
 mod open_array_json {
     use super::*;
     use crate::generated::any_cbor::AnyCbor;
+    use crate::generated::bounded::BoundedVec;
 
     #[test]
     fn typed_tail_renders_as_array_and_round_trips() {
@@ -75,5 +76,44 @@ mod open_array_json {
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("\"rest\":[5]"), "natural any JSON, not tagged AnyCbor: {json}");
         assert!(serde_json::from_str::<RequiredAny>(r#"{"index_0":7,"rest":[]}"#).is_err());
+    }
+
+    #[test]
+    fn bounded_tail_is_required_json_with_honest_min_and_max_schema() {
+        let bounded = Bounded::new(7, BoundedVec::try_from(vec![2, 3]).unwrap());
+        let json = serde_json::to_string(&bounded).unwrap();
+        assert!(json.contains("\"rest\":[2,3]"), "bounded tail is required: {json}");
+        let back: Bounded = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.rest.as_slice(), &[2, 3]);
+        for bad in [
+            r#"{"index_0":7,"rest":[2]}"#,
+            r#"{"index_0":7,"rest":[2,3,4,5]}"#,
+            r#"{"index_0":7}"#,
+        ] {
+            assert!(serde_json::from_str::<Bounded>(bad).is_err(), "{bad} must reject");
+        }
+        let schema = serde_json::to_value(schemars::schema_for!(Bounded)).unwrap();
+        assert_eq!(schema["properties"]["rest"]["minItems"], 2);
+        assert_eq!(schema["properties"]["rest"]["maxItems"], 3);
+    }
+
+    #[test]
+    fn bounded_any_tail_stays_natural_and_non_injective_values_fail_loudly() {
+        let bounded = BoundedAny::new(
+            7,
+            BoundedVec::try_from(vec![AnyCbor::new_uint(5)]).unwrap(),
+        );
+        assert!(
+            serde_json::to_string(&bounded).unwrap().contains("\"rest\":[5]"),
+            "bounded any tail must use natural JSON"
+        );
+        let invalid = BoundedAny::new(
+            7,
+            BoundedVec::try_from(vec![AnyCbor::new_bytes(vec![1, 2, 3])]).unwrap(),
+        );
+        assert!(
+            serde_json::to_string(&invalid).is_err(),
+            "bounded any must not silently substitute a non-injective JSON representation"
+        );
     }
 }

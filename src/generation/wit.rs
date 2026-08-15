@@ -1841,6 +1841,24 @@ fn project_record(
         });
         ctor_fallible |= validates;
     }
+    // A bounded open-array tail is a complete checked native carrier. WIT has no const-generic
+    // window, so it despecializes to `list<T>` and the guest glue re-enters BoundedVec::try_from
+    // before native construction, exactly as bounded map-row parameters do.
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|row| row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail())
+    {
+        let carrier = rest.container_type();
+        let validates = wit_param_validates(&carrier, ctx.types);
+        params.push(WitParam {
+            name: convert_to_kebab_case(&rest.field_name),
+            rust_name: rest.field_name.clone(),
+            ty: WitType::List(Box::new(map_rust_type(rest.element(), ctx)?)),
+            validates,
+            rust_type: Some(carrier),
+        });
+        ctor_fallible |= validates;
+    }
     // An open struct's rest row: a getter over the captured content, mirroring the wasm face. An
     // `@ignore` row stores nothing, so it has no accessor at all.
     // BOTH dynamic rows: an open table's TYPED row is a second captured container with its own

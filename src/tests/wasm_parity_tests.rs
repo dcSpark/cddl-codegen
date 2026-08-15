@@ -400,8 +400,8 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
             ),
         ],
     ),
-    // loose-CBOR open ARRAYS: each capture rule's rust `pub rest: Vec<T>` field must carry its
-    // `rest()` wasm list-wrapper getter (`TList`/`AnyList`). Swept under `default` and `json` (the two
+    // open ARRAYS: each capture rule's loose, NonEmpty, or Bounded `rest` carrier must carry its
+    // `rest()` wasm list-wrapper getter (`TList`/`AnyList`/bounded list wrapper). Swept under `default` and `json` (the two
     // profiles the snapshot fixture commits): the fixture mixes capture and `@ignore` rules, and
     // `@ignore` is rejected under --preserve-encodings, so a preserve row can't generate the whole
     // file — and the getter's wasm surface is profile-invariant (per-element encodings are rust-only),
@@ -514,19 +514,19 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
     ),
     (
         "open-array-e2e",
-        "loose-CBOR open array (rest tail) e2e round-trip fixture: its integration gate generates \
-         --wasm=false (it exercises CBOR round-trip, not the wasm boundary); the wasm rest getter is \
+        "open array (rest tail) e2e round-trip fixture: its integration gate generates \
+         --wasm=false (it exercises CBOR round-trip, not the wasm boundary); the bounded/loose wasm rest getter is \
          validated by the `open-array` snapshot fixture's parity rows above",
     ),
     (
         "open-array-preserve-e2e",
-        "loose-CBOR open array (rest tail) PRESERVE fidelity e2e fixture: its integration gate \
+        "open array (rest tail) PRESERVE fidelity e2e fixture: its integration gate \
          generates --preserve-encodings --canonical-form --wasm=false (CBOR fidelity, not the wasm \
          boundary); the wasm rest getter is validated by the `open-array` snapshot fixture's rows",
     ),
     (
         "open-array-json-e2e",
-        "loose-CBOR open array (rest tail) JSON e2e fixture: its integration gate generates \
+        "open array (rest tail) JSON e2e fixture: its integration gate generates \
          --json-serde-derives --json-schema-export --wasm=false (it exercises the JSON boundary); the \
          wasm rest getter is validated by the `open-array` snapshot fixture's parity rows",
     ),

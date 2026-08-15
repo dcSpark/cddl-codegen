@@ -963,14 +963,12 @@ fn extern_import_export_with_records_parses_cleanly() {
     );
 }
 
-/// An open struct-map rest-bearing
-/// RECORD projects OPAQUE across the crate seam — the ordinary class-backed-types-are-opaque posture
-/// — so it needs NO projected field-model / `* K => V` member rendering. A CONCRETE-typed rest row
-/// with no `any` anywhere (`* uint => text`) exports under the v1 header (opaque marker), which is
-/// v1-compatible and safe, and re-imports cleanly via `--extern-import`; an `any`-containing rest
-/// row exports v2 (the existing whole-IR `uses_any_cbor()` bump). Because the record projects OPAQUE
-/// (no structural rest spelling crosses the seam), the v2 bump condition needs no widening — this is
-/// a pure verification that the opaque projection round-trips.
+/// Open-rest-bearing RECORDs project OPAQUE across the crate seam — the ordinary
+/// class-backed-types-are-opaque posture — so they need NO projected field model. A concrete
+/// map row (`* uint => text`) and a bounded final array tail (`2*3 bytes`) both remain v1 opaque
+/// externs and re-import cleanly; an `any` map row alone bumps the existing whole-IR export to v2.
+/// The dep-side compiled self-check separately proves the bounded-tail record's actual runtime
+/// surface, while this real export/import seam pins its intentionally opaque representation.
 #[test]
 fn extern_import_open_struct_map_rest_row_projects_opaque() {
     // A concrete-typed rest row: no `any` anywhere -> v1 header, opaque marker.
@@ -987,6 +985,18 @@ fn extern_import_open_struct_map_rest_row_projects_opaque() {
     assert!(
         concrete_root.contains("concrete_rest = _CDDL_CODEGEN_EXTERN_TYPE_"),
         "a rest-bearing record must project OPAQUE (class-backed-types-are-opaque): {concrete_root}"
+    );
+
+    let bounded = mint_export(
+        "bounded_tail = [prefix: uint, 2*3 bytes]\n",
+        "dep",
+        "rest_bounded_array",
+    );
+    let bounded_root = &bounded["extern-interface/dep/mod.cddl"];
+    assert!(
+        bounded_root.contains("; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1")
+            && bounded_root.contains("bounded_tail = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "a bounded final array-tail record must stay a v1 opaque extern across the seam: {bounded_root}"
     );
 
     // An `any`-containing rest row: the whole-IR `uses_any_cbor()` bump -> v2 header, still opaque.
@@ -1023,6 +1033,31 @@ fn extern_import_open_struct_map_rest_row_projects_opaque() {
     assert!(
         map.contains_key("rust/src/generated/mod.rs"),
         "generation must produce the consumer's root module"
+    );
+
+    let bounded_root_dir = scratch("rest_bounded_array_consumer");
+    write(&bounded_root_dir, "lib.cddl", "thing = [r: bounded_tail]\n");
+    let bounded_export_dir = scratch("rest_bounded_array_export");
+    for (path, content) in &bounded {
+        write(&bounded_export_dir, path, content);
+    }
+    let bounded_import = format!(
+        "dep={}",
+        bounded_export_dir
+            .join("extern-interface/dep")
+            .to_str()
+            .unwrap()
+    );
+    let bounded_map = generate(
+        &bounded_root_dir.join("lib.cddl"),
+        &["--extern-import", &bounded_import],
+    )
+    .expect("a bounded-tail export must re-import as an opaque extern");
+    let _ = std::fs::remove_dir_all(&bounded_root_dir);
+    let _ = std::fs::remove_dir_all(&bounded_export_dir);
+    assert!(
+        bounded_map.contains_key("rust/src/generated/mod.rs"),
+        "a consumer of the bounded-tail opaque export must generate its root module"
     );
 }
 

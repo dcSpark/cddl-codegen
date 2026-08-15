@@ -989,6 +989,14 @@ pub(crate) fn record_ctor_arg_types(
             .filter(|row| row.is_non_empty_array_tail())
             .map(|row| row.element().clone()),
     );
+    args.extend(
+        record
+            .captured_dynamic_rows()
+            .filter(|row| {
+                row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail()
+            })
+            .map(|row| row.container_type()),
+    );
     args
 }
 
@@ -1224,6 +1232,22 @@ fn record_roundtrip(
             None => {
                 crate::warn!(
                     "cddl-codegen --emit-tests: no round-trip for {name} (NonEmpty rest tail not cheaply mintable)"
+                );
+                return None;
+            }
+        }
+    }
+    // Bounded array tails enter `new` as a full checked carrier, so emitted mints must construct
+    // that carrier rather than omit the argument or mutate a default Vec after construction.
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|row| row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail())
+    {
+        match valid_value(types, &rest.container_type()) {
+            Some(carrier) => valid_args.push(carrier),
+            None => {
+                crate::warn!(
+                    "cddl-codegen --emit-tests: no round-trip for {name} (bounded rest tail not cheaply mintable)"
                 );
                 return None;
             }
@@ -2429,6 +2453,11 @@ pub(crate) fn mint_struct(
                 .filter(|row| row.is_non_empty_array_tail())
             {
                 args.push(valid_value_at(types, rest.element(), depth + 1)?);
+            }
+            for rest in record.captured_dynamic_rows().filter(|row| {
+                row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail()
+            }) {
+                args.push(valid_value_at(types, &rest.container_type(), depth + 1)?);
             }
             Some(MintValue::Record {
                 ident: name,

@@ -1,6 +1,6 @@
-; Open array (loose CBOR "rest tail") JSON end-to-end vectors. The captured tail renders as an
+; Open-array rest-tail JSON end-to-end vectors. The captured tail renders as an
 ; ORDINARY JSON array under the field name (positions are already erased in JSON; serde flatten has no
-; array analog): skip-if-empty on write + default-on-read (empty tail ≡ closed-struct JSON), and an
+; array analog): the loose carrier skips/defaults empty, restricted carriers are required, and an
 ; `any`-element tail renders natural-fallible (RFC 8949 §6.1's injective subset — a non-injective node
 ; like a byte string makes to_json error, never a silent substitute). --json-serde-derives
 ; --json-schema-export, --wasm=false. See tests/open-array-json-e2e/tests.rs.
@@ -8,3 +8,5 @@ cap = [uint, tstr, * uint]          ; typed tail — ordinary JSON array of numb
 cap_any = [uint, * any]             ; any tail — natural-fallible JSON
 required = [uint, + uint]           ; required NonEmptyVec JSON array
 required_any = [uint, + any]        ; required natural-fallible AnyCbor JSON array
+bounded = [uint, 2*3 uint]          ; required finite BoundedVec JSON array
+bounded_any = [uint, 1*2 any]       ; bounded natural-fallible AnyCbor JSON array

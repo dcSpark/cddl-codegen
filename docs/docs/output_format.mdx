@@ -669,6 +669,10 @@ rustdoc breadcrumb saying so), which is why it is **rejected under `--preserve-e
 preserve crate's byte-exact contract cannot hold for it) along with `@duplicates`/`@name` on the same
 row.
 
+`@ignore` is deliberately limited to loose `*` / `0*` rows. Dropping a restricted row would
+re-serialize zero entries: that violates a positive minimum, while a zero-minimum restricted window
+would lose the bounded or exact state its checked carrier retains.
+
 Because the type is a closed struct, its **JSON and schemars** surfaces are an ordinary closed
 struct's — the plain derive, no `flatten`, no `additionalProperties`/`patternProperties` open-map
 schema. Unknown JSON keys are tolerated on read (serde's default ignore-unknown-fields behavior, the
@@ -817,15 +821,16 @@ the duplicate-member detection, the rebinding carve-out, the three-attempt read 
 
 ## Open arrays (rest tails)
 
-A CDDL array that mixes **fixed members with a trailing `* t` or `+ t` element** — `[uint, tstr, * uint]` or `[uint, + uint]` — is
+A CDDL array that mixes **fixed members with a trailing occurrence-bearing element** — `[uint, tstr, * uint]`, `[uint, + uint]`, or `[uint, 2*3 bytes]` — is
 an *open array*: the fixed members deserialize positionally as declared, and every **trailing**
 element is captured into a generated `rest` field instead of ending the decode (a plain closed struct
 would stop at the declared arity). This is the array analog of the [open struct-map](#open-struct-maps-rest-rows)
 rest row — structurally simpler because arrays are positional: there are no keys, so no duplicate
 policy, no key dispatch, and no ordering machinery. The rest tail must be the array's **last**
-element and follow ≥1 fixed member. `*` is loose; `+` and `1*` are the restricted min-one form.
-Other spellings (a bounded occurrence, a non-final tail, a rest tail inside a group-choice arm or inside a plain group's body,
-a fixed-value element type like `* 5`, or a **plain-group element type**) are graceful rejections
+element and follow ≥1 fixed member. Bare `*` / `0*` is loose; `+` / `1*` is the compatibility
+min-one form; every other final window (`2*3`, `*3`, `2*`, `*0`, `0*0`, …) is bounded. Non-final
+or multiple tails, a rest tail inside a group-choice arm or inside a plain group's body, a fixed-value
+element type like `* 5`, or a **plain-group element type** are graceful rejections
 naming the supported form. The plain-group element type
 (`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses
 because a rest tail collects one value per remaining array element and a plain group is not one —
@@ -837,10 +842,13 @@ a tag belongs on that framed reference (`* #6.10(w)`) rather than on the group. 
 supported; the full splice-position matrix is
 [Plain group placement](current_capacities#plain-group-placement).
 
-**The `rest` field.** A loose `*` tail is `pub Vec<T>`, excluded from `new()` and defaulting empty.
-A `+` / `1*` tail is `pub NonEmptyVec<T>`: `new()` takes its first tail element, and decoding stages
-into `Vec<T>` before entering the same `NonEmptyVec::try_from` door. Empty definite and indefinite
-tails therefore reject with the stable min-one RangeCheck.
+**The `rest` field.** A loose `*` / `0*` tail is `pub Vec<T>`, excluded from `new()` and defaulting
+empty. A `+` / `1*` tail is `pub NonEmptyVec<T>`: `new()` takes its first tail element, preserving
+that public ABI. Every other final window is `pub BoundedVec<T, MIN, MAX>`: `new()` takes the
+**complete checked carrier**, including zero-minimum and exact-zero windows, so callers can construct
+every admitted value without a bypassable `Vec` door. Decode stages one loose `Vec<T>` tail then
+enters exactly one `TryFrom` door for either restricted carrier; definite and indefinite values below
+or above the inclusive window reject with its `RangeCheck`.
 
 **Serialize / round-trip.** The array header counts the declared members **plus** every tail element
 (`N + rest.len()`); declared members serialize first, then the captured elements in `Vec` order.
@@ -858,19 +866,21 @@ a tail is positional, not keyed).
 **JSON (`--json-serde-derives`).** The captured tail renders as an **ordinary field** — a JSON array
 under the field's name (`"rest": [ … ]`), **not** flattened. Array positions are already erased in
 JSON and serde `flatten` has no array analog, so nesting under the field name is the honest symmetric
-rendering. *Write* (`to_json`) **skips the field when the tail is empty**; *read* (`from_json`)
-**defaults it to empty when absent** — so empty tail ≡ closed-struct JSON, mirroring the CBOR
-invariant. A restricted `+` / `1*` tail is required with `minItems: 1` and enters the same non-empty
-door on JSON read. An `any`-element tail renders **natural-fallible** (the same
+rendering. Only the loose tail *writes* by **skipping the field when empty** and *reads* by
+**defaulting it to empty when absent** — so empty loose tail ≡ closed-struct JSON. Restricted tails
+are required: `+` / `1*` publishes `minItems: 1`; bounded tails publish their applicable `minItems`
+and `maxItems`, including zero; all enter their same checked door on JSON read. An `any`-element tail
+renders **natural-fallible** (the same
 [injective-subset rules](#natural-rendering-rfc-8949-61-injective-subset-strict-fail-elsewhere) as any
 `[* any]`: a non-injective node like a byte string makes `to_json` error rather than silently
-substitute). The JSON Schema is the ordinary array shape, with `minItems: 1` for the restricted
-form.
+substitute). The JSON Schema is the ordinary array shape with the carrier's bounds.
 
 **wasm.** The rest field is exposed as a **read-only getter named after the field** (`rest()` by
 default) returning the minted list wrapper. The loose form has no constructor argument; the
-restricted form takes its first tail element and returns a restricted non-empty wrapper;
-see [wasm differences](wasm_differences#open-struct-map-rest-rows).
+min-one form retains its first-tail-element constructor; each bounded form takes its matching checked
+bounded list wrapper. WIT despecializes that wrapper to `list<T>` and component glue fallsibly
+converts it back to `BoundedVec` before native construction; see
+[wasm differences](wasm_differences#open-struct-map-rest-rows).
 
 ### The `@ignore` (tolerate-and-drop) flavor
 
@@ -883,6 +893,10 @@ rustdoc breadcrumb saying so, worded for trailing array elements), which is why 
 `--preserve-encodings`** (a preserve crate's byte-exact contract cannot hold for it) along with
 `@duplicates`/`@name` on the same entry. Its **JSON, schemars, and wasm** surfaces are an ordinary
 closed struct's — trailing elements are tolerated on read and dropped, and there is no `rest()` getter.
+
+`@ignore` is deliberately limited to loose `*` / `0*` tails. Dropping a restricted tail would
+re-serialize zero elements: that violates a positive minimum, while a zero-minimum restricted window
+would lose the bounded or exact state its checked carrier retains.
 
 ## Non-empty containers
 

@@ -1,6 +1,6 @@
-; Open array (loose CBOR "rest tail") end-to-end round-trip vectors. Plain flavor only
-; (--wasm=false, non-preserve): byte-exact per-element tail encodings under --preserve-encodings are
-; a later work package. See tests/open-array-e2e/tests.rs for the value-level vectors.
+; Open-array rest-tail end-to-end round-trip vectors. Plain flavor only (--wasm=false,
+; non-preserve); the sibling preserve fixture owns byte-exact per-element encoding coverage. See
+; tests/open-array-e2e/tests.rs for the loose, min-one, and bounded value-level vectors.
 cap = [uint, tstr, * uint]          ; typed tail (each trailing element is a uint)
 cap_any = [uint, * any]             ; any tail (captures nested-container elements)
 byte_alias = bytes
@@ -10,6 +10,9 @@ named_required = [
   + byte_alias ; @name extras
 ]
 bounded_required = [uint, + uint .le 5]
+bounded = [uint, 2*3 byte_alias]   ; complete BoundedVec constructor carrier
+bounded_min = [uint, 2* uint]      ; min-only BoundedVec
+bounded_zero = [uint, *0 uint]     ; exact-zero BoundedVec
 opt = [uint, ? tstr, * uint]        ; optional member + type-distinct tail (uint vs tstr)
 ign = [
   uint,
@@ -21,6 +24,8 @@ outer = [inner, uint]
 inner = [uint, * uint]
 outer_required = [inner_required, uint]
 inner_required = [uint, + uint]
+outer_bounded = [inner_bounded, uint]
+inner_bounded = [uint, 2*3 uint]
 outer_ign = [inner_ign, uint]
 inner_ign = [
   uint,

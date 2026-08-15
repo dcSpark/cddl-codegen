@@ -11585,13 +11585,13 @@ fn open_struct_map_e2e() {
 
 #[test]
 fn open_array_e2e() {
-    // Loose-CBOR open ARRAY (rest tail) value-level round-trip vectors: a final-position `* t` after
-    // the fixed members captures the trailing elements into `pub rest: Vec<T>` (capture) or drops them
-    // (`@ignore`). Pins empty-tail ≡ closed bytes, definite/indefinite arrays with extra elements
-    // (incl. nested-container elements), typed-tail typing enforcement, an optional member + a
-    // type-distinct tail, and the stream-position (sibling-after-open-array) regression class for BOTH
-    // flavors. Plain flavor only (`--wasm=false`, non-preserve): byte-exact per-element tail encodings
-    // under --preserve-encodings are a later work package. See tests/open-array-e2e/tests.rs.
+    // Open ARRAY (rest tail) value-level round-trip vectors: final loose/min-one/bounded tails after
+    // fixed members capture their trailing elements into the matching carrier (or loose `@ignore`
+    // drops them). Pins finite/min-only/exact-zero construction and definite/indefinite RangeChecks,
+    // empty-tail ≡ closed bytes, typed-tail typing enforcement, an optional member + a type-distinct
+    // tail, and the stream-position (sibling-after-open-array) regression class. Plain flavor only
+    // (`--wasm=false`, non-preserve); preserve fidelity has the companion fixture below. See
+    // tests/open-array-e2e/tests.rs.
     run_test(
         "open-array-e2e",
         &["--wasm=false"],
@@ -11605,7 +11605,7 @@ fn open_array_e2e() {
 
 #[test]
 fn open_array_preserve_e2e() {
-    // Loose-CBOR open ARRAY (rest tail) PRESERVE fidelity round-trip vectors: byte-exact non-canonical
+    // Open ARRAY (rest tail) PRESERVE fidelity round-trip vectors: byte-exact non-canonical bounded
     // tail-element widths via the positional `{field}_elem_encodings` sidecar, self-carried `any`-tail
     // encodings, indefinite owner-array + tail, empty-tail ≡ closed bytes, the canonical normalization
     // of a non-minimal tail element (position order, no sort), and stream position. Generated under
@@ -11628,10 +11628,10 @@ fn open_array_preserve_e2e() {
 
 #[test]
 fn open_array_json_e2e() {
-    // Loose-CBOR open ARRAY (rest tail) JSON round-trip vectors: the captured tail renders as an
-    // ordinary JSON array under the field name, an empty tail ≡ closed-struct JSON (skip-if-empty
-    // write, default-on-read), and an `any`-element tail renders natural-fallible (a non-injective
-    // node like a byte string errors loudly). --wasm=false to isolate the json surface. See
+    // Open ARRAY (rest tail) JSON round-trip vectors: the captured tail renders as an ordinary JSON
+    // array under the field name; loose remains skip-if-empty/default-on-read; bounded fields are
+    // required and publish min/max schema; and an `any`-element tail renders natural-fallible (a
+    // non-injective node like a byte string errors loudly). --wasm=false to isolate the json surface. See
     // tests/open-array-json-e2e/tests.rs.
     run_test(
         "open-array-json-e2e",
@@ -13020,12 +13020,13 @@ fn emit_tests_open_struct_ignore_execute() {
 }
 
 /// Executes `--emit-tests` over the open-ARRAY rest-tail shapes. One non-preserve generation covers a
-/// loose typed tail (`cap`), an `any` tail (`cap_any`), a required typed tail (`required`), its
-/// `@name`d sibling (`named_required`), and a tolerate-and-drop `@ignore` tail (`ign`). It is the array twin of the
+/// loose typed tail (`cap`), an `any` tail (`cap_any`), a required typed tail (`required`), finite,
+/// min-only, and exact-zero bounded tails, its `@name`d sibling (`named_required`), and a
+/// tolerate-and-drop `@ignore` tail (`ign`). It is the array twin of the
 /// open struct-map rest / `@ignore` execute gates, and pins two things the mint promises:
 ///   * loose CAPTURE mints one trailing element through the generated `.rest` `Vec` `push` API; a
-///     required tail instead mints its first element in the generated `new()` call, exercising the
-///     restricted construction door before the tail loop;
+///     required tail instead mints its first element in the generated `new()` call, while every
+///     bounded tail mints and passes its complete checked carrier;
 ///   * the `@ignore` tail gets the SAME ordinary `roundtrip_<type>` treatment as any closed struct with
 ///     NO ignore-specific gating — its minted value goes through `new()` (declared prefix only), so it
 ///     carries no unknown trailing elements and byte-identity holds trivially.
@@ -13067,6 +13068,9 @@ fn emit_tests_open_array_execute() {
         "roundtrip_required",
         "roundtrip_named_required",
         "roundtrip_bounded_required",
+        "roundtrip_bounded",
+        "roundtrip_bounded_min",
+        "roundtrip_bounded_zero",
         "roundtrip_ign",
     ] {
         assert!(
@@ -13083,8 +13087,11 @@ fn emit_tests_open_array_execute() {
     assert!(
         src.contains("Required::new(")
             && src.contains("NamedRequired::new(")
-            && src.contains("BoundedRequired::new("),
-        "required tails must be minted through their real first-element constructors, not skipped or defaulted empty"
+            && src.contains("BoundedRequired::new(")
+            && src.contains("Bounded::new(")
+            && src.contains("BoundedMin::new(")
+            && src.contains("BoundedZero::new("),
+        "restricted tails must be minted through their real first-element or checked-carrier constructors, not skipped or defaulted empty"
     );
     assert!(
         !src.contains(".rest.insert("),
@@ -13132,6 +13139,9 @@ fn emit_tests_open_array_execute() {
         "wasm_roundtrip_required",
         "wasm_roundtrip_named_required",
         "wasm_roundtrip_bounded_required",
+        "wasm_roundtrip_bounded",
+        "wasm_roundtrip_bounded_min",
+        "wasm_roundtrip_bounded_zero",
     ] {
         assert!(
             wasm_src.contains(&format!("fn {ty}()")),

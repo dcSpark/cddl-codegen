@@ -1066,8 +1066,8 @@ pub struct RestRow {
     /// `0..`; `Some((1, u64::MAX))` is the established `+` / `1*` NonEmpty carrier; every other
     /// value selects the appropriate Bounded carrier. The normalization lives on the row rather than
     /// in an emitter-local flag, so field spelling, decode conversion, JSON, wasm, WIT, and wrapper
-    /// ownership all see the SAME invariant. Array tails currently use only the loose/non-empty
-    /// forms, while dynamic map rows use the full table vocabulary.
+    /// ownership all see the SAME invariant. Both array tails and dynamic map rows use the full
+    /// loose/NonEmpty/Bounded carrier vocabulary.
     pub occurrence: Option<(u64, u64)>,
 }
 
@@ -1194,7 +1194,7 @@ impl RestRow {
         }
     }
 
-    /// Whether this rest is an array `* T` tail (vs a map `* K => V` row).
+    /// Whether this rest is an occurrence-bearing array tail (vs a dynamic map `* K => V` row).
     pub fn is_array_tail(&self) -> bool {
         matches!(self.kind, RestKind::ArrayTail { .. })
     }

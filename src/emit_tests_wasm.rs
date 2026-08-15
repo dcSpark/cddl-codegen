@@ -551,6 +551,13 @@ fn record_wasm_ctor_args<'a>(
         let (_, value) = native.next()?;
         wasm.push((row.element().clone(), value));
     }
+    for row in record
+        .captured_dynamic_rows()
+        .filter(|row| row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail())
+    {
+        let (_, value) = native.next()?;
+        wasm.push((row.container_type(), value));
+    }
     native.next().is_none().then_some(wasm)
 }
 

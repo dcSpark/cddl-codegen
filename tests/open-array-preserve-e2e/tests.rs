@@ -1,4 +1,4 @@
-// Open array (loose CBOR "rest tail") PRESERVE fidelity vectors. These pin the preserve/canonical
+// Open-array rest-tail PRESERVE fidelity vectors. These pin the preserve/canonical
 // tail core: per-element encoding sidecars for a typed tail (byte-exact non-canonical widths),
 // self-carried encodings for an `any` tail, indefinite owner-array + tail, empty-tail ≡ closed
 // bytes, the canonical normalization of a non-canonical-width tail element (position order, no sort),
@@ -82,6 +82,21 @@ mod open_array_preserve {
             r.to_canonical_cbor_bytes(),
             bytes("83 07 02 1903e8"),
             "canonical normalizes each non-empty tail element in order"
+        );
+    }
+
+    #[test]
+    fn bounded_tail_preserves_and_normalizes_non_minimal_elements_positionally() {
+        // [7, 2(as 0x1802), 1000] is inside the finite 2..=3 window. The checked carrier's
+        // boundary is crossed once after the positional sidecar has captured both encodings.
+        let wire = bytes("83 07 1802 1903e8");
+        let b = Bounded::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(b.rest.as_slice(), &[2u64, 1000]);
+        assert_eq!(b.to_cbor_bytes(), wire, "bounded tail preserve is byte-exact");
+        assert_eq!(
+            b.to_canonical_cbor_bytes(),
+            bytes("83 07 02 1903e8"),
+            "bounded tail canonical normalization is positional"
         );
     }
 

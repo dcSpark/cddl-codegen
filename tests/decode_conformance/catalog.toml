@@ -4053,6 +4053,64 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.occurrence-target.grpent.member.bounded_array"
+axis = "containment"
+example = "a = [uint, 2*3 bytes]"
+spec = "a = [uint, 2*3 bytes]"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "831902084c6472616674696e65737327734b616e64726f67796e6f7573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "831911ba497061636b696e6727734877616c6c65796573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "841906f446436173736965486a756e637475726548726f6d616e746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8419079248666f6464657227734963726f7373627265644953696b6b696d657365"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8419097b45636f6d706f466265616b65724b6c61636f6e6963616c6c79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "84190ac5466368696368694847656f726769616e4b43696e656d6153636f7065"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "84190b2b474c65696c61277348726567726f7570734c4d75726672656573626f726f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "84190d294d636f6e63696c6961746f72277348626f727363682773446c6f6f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "84190de54d636f6d70617261746976656c79487265736375657273494f6e73616765722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "841911d5446166617249646163687368756e644e69736f6c6174696f6e69736d2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.occurrence-target.grpent.member.plus_array"
 axis = "containment"
 example = "a = [uint, + bytes]"

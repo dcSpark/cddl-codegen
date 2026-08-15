@@ -14,6 +14,10 @@ tc = uint / text
 ; its bound to Serialize only (asserting Deserialize would fail the dep's own build).
 ambig = [? uint, * uint]
 
+; A finite final open-array tail is also a class-backed record, so its export/import boundary is
+; opaque while this dep-side self-check proves the BoundedVec runtime + Serialize/Deserialize bounds.
+bounded_tail = [prefix: uint, 2*3 bytes]
+
 ; transparent rows -> a `use crate::generated::<Name> as _;` existence check
 ce = 0 / 1 / 2
 coin = uint

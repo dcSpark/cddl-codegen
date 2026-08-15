@@ -4907,13 +4907,13 @@ fn reject_out_of_range_occurrence_bounds(
     }
 }
 
-/// Normalize one DYNAMIC MAP row's occurrence to the same inclusive carrier window a homogeneous
-/// table uses.  `None` is RFC 8610's exact-once `1..=1`; `*` / `0*` are loose; `+` / `1*` retain
-/// the established `1..` NonEmpty carrier; every other spelling retains both endpoints for a
-/// `BoundedMap` / `BoundedPairMap`.  Dynamic rows store the already-normalized `u64` window in the
-/// IR because that is the public carrier's const-generic domain — no emitter may reinterpret an
-/// occurrence marker or silently widen it later.
-fn normalized_dynamic_map_row_window(
+/// Normalize one dynamic sequence's occurrence to the inclusive carrier window used by a
+/// homogeneous collection. `None` is RFC 8610's exact-once `1..=1`; `*` / `0*` are loose; `+` /
+/// `1*` retain the established `1..` NonEmpty carrier; every other spelling retains both endpoints
+/// for its Bounded carrier. Dynamic map rows and array tails store the already-normalized `u64`
+/// window in the IR because that is the public carrier's const-generic domain — no emitter may
+/// reinterpret an occurrence marker or silently widen it later.
+fn normalized_dynamic_sequence_occurrence_window(
     types: &mut IntermediateTypes,
     occur: Option<&Occur>,
 ) -> Option<(u64, u64)> {
@@ -7873,7 +7873,7 @@ fn open_table_row(
     // is not a statement about the typed region: it is `NonEmptyMap` over captured entries, exactly
     // as a `2*3` catch-all is a BoundedMap over captured entries.  Both rows stage loose during
     // decoding and cross their one checked door afterwards.
-    let occurrence = normalized_dynamic_map_row_window(types, occur);
+    let occurrence = normalized_dynamic_sequence_occurrence_window(types, occur);
     let (domain, range) = match ge_entry {
         GroupEntry::ValueMemberKey { ge, .. } => {
             let domain = match &ge.member_key {
@@ -8090,7 +8090,7 @@ fn recognize_rest_row(
         _ => None,
     };
     let occurrence_src = occur.map(|occur| format!("{occur} ")).unwrap_or_default();
-    let occurrence = normalized_dynamic_map_row_window(types, occur);
+    let occurrence = normalized_dynamic_sequence_occurrence_window(types, occur);
     // Extract the key (domain) and value (range) types from the arrow entry, keeping the SOURCE
     // spellings of both slots — the slot-shape rejections below print the author's own row back.
     let (domain, range, domain_src, range_src) = match candidate_ge {
@@ -8241,15 +8241,16 @@ fn recognize_rest_row(
     // rejection naming the remedy (never a silent drop). Placement/domain guards above fire FIRST, so
     // `@ignore` on an unsupported placement gets the placement rejection, not one of these.
     if rest_metadata.ignore {
-        // Tolerate-and-drop re-serializes no captured entries.  That is deliberately lossy but only
-        // faithful for the existing loose `*`/`0*` form; every restricted row would make the stated
-        // count impossible to preserve, so refuse it precisely rather than widening it on output.
+        // Tolerate-and-drop re-serializes no captured entries. That is deliberately lossy but only
+        // faithful for the existing loose `*`/`0*` form: zero violates a positive minimum, and a
+        // zero-minimum restricted row would lose the bounded/exact state its checked carrier holds.
         if occurrence.is_some() {
             types.record_rejection(format!(
                 "rule `{src}`: `@ignore` cannot apply to a restricted open struct-map rest row — \
-                 dropping every captured entry would re-serialize zero occurrences and violate the \
-                 row's declared cardinality. Keep the loose `* k => v ; @ignore` form, or drop \
-                 `@ignore` to retain the checked carrier."
+                 dropping every captured entry would re-serialize zero occurrences: that violates \
+                 a positive minimum, while a zero-minimum restricted window would lose the bounded \
+                 or exact state its checked carrier retains. Keep the loose `* k => v ; @ignore` \
+                 form, or drop `@ignore` to retain the checked carrier."
             ));
             return (None, Some(candidate));
         }
@@ -8317,8 +8318,8 @@ fn recognize_rest_row(
     (Some(Box::new(rest_row)), Some(candidate))
 }
 
-/// The array-rep analog of `recognize_rest_row`: recognize a final-position `* T` / `+ T` tail
-/// (`[a, b, * t]` / `[a, b, + t]`)
+/// The array-rep analog of `recognize_rest_row`: recognize a final-position occurrence-bearing
+/// tail (`[a, b, * t]`, `[a, b, + t]`, or `[a, b, 2*3 t]`)
 /// after ≥1 fixed member as an open-array rest tail (the positional sibling of the map rest row), or
 /// reject an unsupported placement/shape gracefully. Returns the built `RestRow` (if recognized) and
 /// the flattened index of the tail CANDIDATE (so the caller's field loop skips it — whether recognized
@@ -8343,8 +8344,8 @@ fn recognize_array_rest_tail(
     };
     // Count-permitting occurrences are exactly the markers the field-loop narrowing guard matches:
     // anything present that is NOT `?` (optional) or the pedantic `1*1` (exactly-once). `*` / `+` /
-    // `n*m` all qualify as tail CANDIDATES here (only `*` and min-one are ultimately honored — the rest reject
-    // below naming the supported spelling). Only `ValueMemberKey`/`TypeGroupname` carry `ge.occur`;
+    // `n*m` all qualify as tail CANDIDATES here (every final bare-type window is ultimately honored;
+    // unsupported placement/shape boundaries reject below). Only `ValueMemberKey`/`TypeGroupname` carry `ge.occur`;
     // an inline group has none (never count-permitting → never a candidate → its later `* (…)`
     // narrowing rejection in the field loop stands).
     let count_permits = |ge: &GroupEntry| {
@@ -8433,29 +8434,17 @@ fn recognize_array_rest_tail(
         return (None, Some(candidate));
     }
     let (candidate_ge, candidate_comma) = flattened[candidate];
-    // Occurrence must be exactly `*` (loose capture) or `+` / `1*` (the min-one restricted capture).
-    // Other bounded cardinalities are deliberately still unimplemented.
+    // Normalize the accepted tail occurrence ONCE, at the parser boundary. `None` is loose
+    // `*`/`0*`; `(1, u64::MAX)` retains the shipped NonEmptyVec ABI; every other window is the
+    // complete BoundedVec carrier. This is deliberately the same normalizer and graceful u64
+    // diagnostic used for homogeneous arrays and dynamic map rows -- emitters must never parse a
+    // source occurrence spelling for themselves.
     let candidate_occur = match candidate_ge {
         GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
         GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
         GroupEntry::InlineGroup { .. } => None,
     };
-    let non_empty = matches!(
-        candidate_occur,
-        Some(Occur::OneOrMore { .. })
-            | Some(Occur::Exact {
-                lower: Some(1),
-                upper: None,
-                ..
-            })
-    );
-    if !matches!(candidate_occur, Some(Occur::ZeroOrMore { .. })) && !non_empty {
-        types.record_rejection(format!(
-            "rule `{src}`: an open-array rest tail must use `*` (unbounded capture) or `+` / `1*` \
-             (one-or-more capture). Other `n*m` bounds are not supported on a rest tail."
-        ));
-        return (None, Some(candidate));
-    }
+    let occurrence = normalized_dynamic_sequence_occurrence_window(types, candidate_occur);
     // A member KEY on the tail entry (`* 1: uint` in array rep) is nonsense — an array tail is
     // positional. Reject rather than silently dropping the label. (An inline group never reaches here:
     // it carries no `ge.occur`, so it is never count-permitting → never a candidate.)
@@ -8560,11 +8549,13 @@ fn recognize_array_rest_tail(
         return (None, Some(candidate));
     }
     if tail_metadata.ignore {
-        if non_empty {
+        if occurrence.is_some() {
             types.record_rejection(format!(
-                "rule `{src}`: `@ignore` cannot apply to a one-or-more open-array rest tail (`+ t` / \
-                 `1* t`), because dropping every captured element would re-serialize zero occurrences \
-                 and violate the rule's own minimum. Drop `@ignore` to capture the non-empty tail."
+                "rule `{src}`: `@ignore` cannot apply to a restricted open-array rest tail, because \
+                 dropping every captured element would re-serialize zero occurrences: that violates \
+                 a positive minimum, while a zero-minimum restricted window would lose the bounded \
+                 or exact state its checked carrier retains. Drop `@ignore` to capture the checked \
+                 tail."
             ));
             return (None, Some(candidate));
         }
@@ -8609,10 +8600,7 @@ fn recognize_array_rest_tail(
         field_name,
         // An array tail has no keys, so no major-type dispatch and no claimed major.
         dispatch_major: None,
-        // Array tails deliberately retain their existing two supported flavors; represent the
-        // min-one form through the shared normalized row field so no emitter-local boolean can
-        // disagree with `RestRow::container_type`.
-        occurrence: non_empty.then_some((1, u64::MAX)),
+        occurrence,
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }

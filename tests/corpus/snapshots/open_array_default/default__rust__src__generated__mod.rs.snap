@@ -15,11 +15,13 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 pub mod any_cbor;
+pub mod bounded;
 pub mod error;
 mod extern_interface_check;
 pub mod non_empty;
 pub mod serialization;
 
+use crate::generated::bounded::BoundedVec;
 use crate::generated::non_empty::NonEmptyVec;
 
 /// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.
@@ -48,6 +50,20 @@ impl Anytail {
             index_0,
             rest: Vec::new(),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Bounded {
+    pub index_0: u64,
+    /// Captured trailing array elements whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized after the declared members; supplied complete to `new()`.
+    pub rest: BoundedVec<Vec<u8>, 2, 3>,
+}
+
+impl Bounded {
+    /// * `rest` - the complete checked trailing-array carrier (its CDDL occurrence window is enforced by this carrier)
+    pub fn new(index_0: u64, rest: BoundedVec<Vec<u8>, 2, 3>) -> Self {
+        Self { index_0, rest }
     }
 }
 
