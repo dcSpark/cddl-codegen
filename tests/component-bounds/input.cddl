@@ -71,6 +71,10 @@ mapped = {
 ; object. WIT necessarily despecializes these checked carriers to list<tuple<…>>, so the generated
 ; guest must restore the matching BoundedMap before it calls the native record constructor.
 dynamic_open_struct_rest = { 1: uint, 2*3 uint => tstr }
+; `any` crosses the component seam as CBOR bytes, making the row conversion fallible. This is the
+; inference-sensitive sibling: the bounded `+` rest must still stage those fallible rows as a Vec
+; before BoundedMap's TryFrom door.
+dynamic_open_struct_rest_any = { 1: uint, + uint => any }
 dynamic_open_table_typed = { 2*3 uint => tstr, * tstr => uint }
 dynamic_open_table_catch_all = { * uint => tstr, 2*3 tstr => uint }
 

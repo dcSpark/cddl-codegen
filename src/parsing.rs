@@ -7578,12 +7578,53 @@ fn parse_record_from_group_choice(
         })
         .collect();
     reject_encoding_companion_collisions(types, rep, name, &fields);
+    reject_wasm_open_map_insert_collisions(types, cli, name, &fields, &rest);
     RustRecord {
         rep,
         fields,
         forbidden_fields,
         rest,
         typed_row,
+    }
+}
+
+/// A captured open-map row exposes a wasm parent-mutation operation named `insert_<row>`.  That
+/// public spelling intentionally follows the row name (rather than gaining an opaque suffix), so a
+/// declared field whose ordinary wasm getter has that same name would otherwise emit two inherent
+/// methods and leave an otherwise-valid CDDL rule as a non-compiling wasm crate.  Reject the wasm
+/// profile deterministically and point at `@name`: the wire key stays unchanged, while silently
+/// suffixing either public method would make the generated API depend on emitter internals.
+fn reject_wasm_open_map_insert_collisions(
+    types: &mut IntermediateTypes,
+    cli: &Cli,
+    name: &RustIdent,
+    fields: &[RustField],
+    rest: &Option<Box<RestRow>>,
+) {
+    if !cli.wasm {
+        return;
+    }
+    let source_name = source_rule_name_of(types, name);
+    // `rest` is already the sole catch-all: an open table's separate typed row owns the
+    // established flattened `insert`, not an `insert_<row>` operation.
+    for row in rest
+        .iter()
+        .filter(|row| !row.is_array_tail() && row.semantics == RestSemantics::Capture)
+    {
+        let method = format!("insert_{}", row.field_name);
+        if let Some(field) = fields.iter().find(|field| {
+            field.name == method
+                // Mandatory fixed values have no wasm getter, hence no inherent-method clash.
+                && (field.optional || !field.rust_type.is_fixed_value())
+        }) {
+            types.record_rejection(format!(
+                "rule `{source_name}`: captured map row `{}` generates wasm method `{method}()`, \
+                 which collides with the wasm getter for field `{}`. Rename either member with \
+                 `; @name <other>`; the CBOR key is unchanged. The generator does not suffix this \
+                 public mutation door automatically.",
+                row.field_name, field.name
+            ));
+        }
     }
 }
 

@@ -2362,7 +2362,7 @@ function componentBuildSweepCell(cell: string, out: string): { exit: number; std
   return { ...r, cached: false };
 }
 
-/** Last `n` lines of a compiler stream — enough to name the class, short enough to read 165 of. */
+/** Last `n` lines of a compiler stream — enough to name the class, short enough for a full sweep. */
 const tailLines = (s: string, n = 24): string =>
   s.split("\n").filter(l => l.trim().length).slice(-n).map(l => `    ${l}`).join("\n");
 
@@ -2408,9 +2408,9 @@ function runComponentBuildSweep(): never {
   const stale: string[] = [];
   let built = 0;
   for (const [i, row] of selected.entries()) {
-    // The scratch volume is what 165 generated crates plus one shared wasip2 target dir consume, and
-    // the ENOSPC signature is a run of identical bogus failures rather than one loud error — so the
-    // startup preflight is re-run periodically rather than only once.
+    // The scratch volume is what a full catalog of generated crates plus one shared wasip2 target
+    // dir consumes, and the ENOSPC signature is a run of identical bogus failures rather than one
+    // loud error — so the startup preflight is re-run periodically rather than only once.
     if (i > 0 && i % 25 === 0) diskHeadroomPreflight("component-build-sweep");
     const started = Date.now();
     writeFileSync(specFile, row.spec!.replace(/\n*$/, "\n"));
@@ -2454,8 +2454,8 @@ function runComponentBuildSweep(): never {
   stale.push(...orphanLedger);
 
   // Second harness-health layer, the twin of the probe pipeline's "no feature probed supported": a
-  // whole-catalog sweep in which NOTHING generated is a broken generator reported as 165 quiet
-  // refusals — a green run covering nothing. (The upstream generation self-test / rust warm-up makes
+  // whole-catalog sweep in which NOTHING generated is a broken generator reported as a catalog of
+  // quiet refusals — a green run covering nothing. (The upstream generation self-test / rust warm-up makes
   // this near-unreachable; it is the floor that stays true if either ever moves.) A `--only` subset
   // is exempt: one deliberately-refused row is a legitimate selection.
   if (!MINT_ONLY && built === 0 && failed.length === 0 && expectedFail.length === 0) {

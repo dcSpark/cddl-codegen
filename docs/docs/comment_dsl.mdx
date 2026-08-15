@@ -565,8 +565,10 @@ metadata = {
 }
 ```
 
-- **`@name`** renames the generated capture field (default `rest`) — here to `extra`. It renames only
-  the field; the containing type keeps its rule name.
+- **`@name`** renames the generated capture field (default `rest`) — here to `extra`. It also names
+  the wasm parent-mutation door (`insert_extra(key, value)` rather than `insert_rest`); the
+  containing type keeps its rule name. A field whose wasm getter would collide with that generated
+  method is refused under `--wasm` with an `@name` remedy rather than silently suffixing public API.
 - **`@duplicates`** selects the rest row's duplicate-key policy, exactly as for a standalone table:
   the default is `reject` (a repeated captured key is a `DuplicateKey` decode error), and
   `@duplicates preserve` switches the capture container to the byte-exact `PairMap<K, V>` twin so

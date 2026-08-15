@@ -174,59 +174,6 @@ const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
         "DeepAny",
         "top-level `any` alias chained onto another -> `pub type DeepAny = AnyCbor` (no wasm type-alias export); use the `AnyCbor` class",
     ),
-    // Exact-zero open records keep their native rest map private and therefore add a checked
-    // record-level `insert_rest` door. The wasm face still has the shipped snapshot-only rest
-    // posture documented in `wasm_differences.mdx`; its missing parent-mutation door is owned by
-    // `testing.wasm-open-rest-owned-clone-is-not-a-mutation-door`. Keep each live differential row
-    // explicit until that repair lands; the resurfaced check retires these entries with it.
-    (
-        "default",
-        "tests/component-bounds",
-        "ExactZeroOpen::insert_rest",
-        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
-    ),
-    (
-        "json",
-        "tests/zero-permitting-map",
-        "ZeroExactAnyOpen::insert_rest",
-        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
-    ),
-    (
-        "json",
-        "tests/zero-permitting-map",
-        "ZeroExactBoundedOpen::insert_rest",
-        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
-    ),
-    (
-        "json",
-        "tests/zero-permitting-map",
-        "ZeroExactLoosePairOpen::insert_rest",
-        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
-    ),
-    (
-        "json",
-        "tests/zero-permitting-map",
-        "ZeroExactNonEmptyOpen::insert_rest",
-        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
-    ),
-    (
-        "json",
-        "tests/zero-permitting-map",
-        "ZeroExactOpen::insert_rest",
-        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
-    ),
-    (
-        "json",
-        "tests/zero-permitting-map",
-        "ZeroExactPairOpen::insert_rest",
-        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
-    ),
-    (
-        "json",
-        "tests/zero-permitting-map",
-        "ZeroExactTypedOpen::insert_rest",
-        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
-    ),
 ];
 
 /// `(profile, input label, reason)` pairs whose generation deliberately aborts. Four-state verdict
@@ -365,6 +312,12 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
             "json",
             &["--json-serde-derives=true", "--json-schema-export=true"],
         )],
+    ),
+    (
+        // The generated wasm test executes decoded-parent insertion under this exact non-canonical
+        // preserve profile; parity keeps the source-surface sweep aligned with that committed ABI.
+        "wasm-open-rest-mutation",
+        &[("preserve", &["--preserve-encodings=true"])],
     ),
     ("nullable-wasm", &[("default", &[])]),
     (

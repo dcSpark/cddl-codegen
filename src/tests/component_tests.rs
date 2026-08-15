@@ -1138,6 +1138,11 @@ fn component_glue_reenters_bounded_dynamic_map_row_doors() {
     );
     for (implementation, conversion, native_constructor) in [
         (
+            "impl wit_types::GuestDynamicOpenStructRestAny for WitDynamicOpenStructRestAny {",
+            "collect::<Result<Vec<_>, String>>().and_then(|values| values.try_into().map_err(err))?;",
+            "let inner = cddl_lib::DynamicOpenStructRestAny::new(key1, rest);",
+        ),
+        (
             "impl wit_types::GuestDynamicOpenStructRest for WitDynamicOpenStructRest {",
             "let rest = (rest.into_iter().collect::<Vec<_>>())\n            .try_into()\n            .map_err(err)?;",
             "let inner = cddl_lib::DynamicOpenStructRest::new(key1, rest);",

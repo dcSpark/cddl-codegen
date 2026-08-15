@@ -97,6 +97,12 @@ impl BytesRest {
         self.0.rest.clone().into()
     }
 
+    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    pub fn insert_rest(&mut self, key: Vec<u8>, value: String) -> Result<(), JsError> {
+        self.0.rest.insert(key, value);
+        Ok(())
+    }
+
     pub fn new(key_1: u64) -> Self {
         Self(cddl_lib::BytesRest::new(key_1))
     }
@@ -158,6 +164,12 @@ impl DupRest {
     /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
     pub fn rest(&self) -> PairMapMdToText {
         self.0.rest.clone().into()
+    }
+
+    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    pub fn insert_rest(&mut self, key: &Md, value: String) -> Result<(), JsError> {
+        self.0.rest.insert(key.clone().into(), value);
+        Ok(())
     }
 
     pub fn new(key_9: u64) -> Self {
@@ -667,6 +679,12 @@ impl SizedRest {
         self.0.rest.clone().into()
     }
 
+    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    pub fn insert_rest(&mut self, key: u8, value: u64) -> Result<(), JsError> {
+        self.0.rest.insert(key, value);
+        Ok(())
+    }
+
     pub fn new(key_1: u64) -> Self {
         Self(cddl_lib::SizedRest::new(key_1))
     }
@@ -728,6 +746,12 @@ impl TaggedRest {
     /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
     pub fn rest(&self) -> MapU64ToU64 {
         self.0.rest.clone().into()
+    }
+
+    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    pub fn insert_rest(&mut self, key: u64, value: u64) -> Result<(), JsError> {
+        self.0.rest.insert(key, value);
+        Ok(())
     }
 
     pub fn new(key_2: u64) -> Self {
@@ -795,6 +819,12 @@ impl UnionRest {
     /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
     pub fn rest(&self) -> MapMdToU64 {
         self.0.rest.clone().into()
+    }
+
+    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    pub fn insert_rest(&mut self, key: &Md, value: u64) -> Result<(), JsError> {
+        self.0.rest.insert(key.clone().into(), value);
+        Ok(())
     }
 
     pub fn new(key_1: u64, nm: String) -> Self {

@@ -3201,8 +3201,10 @@ pub(super) fn codegen_struct(
         // Open rest (CAPTURE only): a getter returning the captured content as its minted wasm wrapper
         // — a map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin) for a `* k => v`
         // row, or a list wrapper (`TList` / `AnyList`) for an array `* t` tail. Loose rows have no
-        // `new()` arg and default empty through the wrapper's own mutation surface; restricted map
-        // rows enter `new()` as a complete checked wrapper and remain read-only here. The wrapper
+        // `new()` arg and default empty. The returned wrapper is a detached snapshot; captured map
+        // rows mutate the parent through the record-level `insert_<row>` door below. Restricted map
+        // rows enter `new()` as a complete checked wrapper and use that same checked mutation door.
+        // The wrapper
         // class is minted in the wasm pass (`mint_wasm_wrapper_for_visited_type` for the rest map/list).
         // An `@ignore` row/tail stores nothing, so it has no getter (its wasm class is a closed struct's).
         // An open table's TYPED row is excluded — its surface is flattened above.
@@ -3239,6 +3241,82 @@ pub(super) fn codegen_struct(
                     false,
                 ));
             wrapper.s_impl.push_fn(getter);
+        }
+        // An open-map getter deliberately returns an owned snapshot: wasm-bindgen cannot lend the
+        // native field through a JS object.  Its map-wrapper `insert` therefore mutates only that
+        // snapshot.  Give every captured MAP row an explicit mutation door on the OWNER instead.
+        // Array tails remain snapshot-only, as do `@ignore` rows (which have no stored carrier at
+        // all); the open-table typed row is already the owner's flattened `insert` surface above.
+        //
+        // The return is uniformly `Result<(), JsError>`.  A map wrapper's `insert` returns a
+        // displaced value, but that result is not meaningful for the record operation (and a
+        // PairMap has no displaced value because it appends).  The common unit result instead
+        // makes every invariant-bearing case honest: exact-zero records delegate to their native
+        // validation door, and bounded carriers preserve their checked/atomic insert path.
+        for rest in record
+            .captured_dynamic_rows()
+            .filter(|row| !record.is_typed_row(row) && !row.is_array_tail())
+        {
+            let method_name = format!("insert_{}", rest.field_name);
+            let snapshot_getter = format!("`{}()`", rest.field_name);
+            let key = ToWasmBoundaryOperations::format(
+                rest.domain()
+                    .from_wasm_boundary_clone(types, "key", false)
+                    .into_iter(),
+            );
+            let value = ToWasmBoundaryOperations::format(
+                rest.range()
+                    .from_wasm_boundary_clone(types, "value", false)
+                    .into_iter(),
+            );
+            let mut insert = codegen::Function::new(&method_name);
+            insert
+                .arg_mut_self()
+                .arg("key", rest.domain().for_wasm_param(types))
+                .arg("value", rest.range().for_wasm_param(types))
+                .ret("Result<(), JsError>")
+                .vis("pub")
+                .doc(if record.has_forbidden_fields() {
+                    format!(
+                        "Inserts an entry into this record's captured open-map row. The native record \
+                         validates forbidden fixed keys before changing the parent; failures are \
+                         returned as `JsError`. {snapshot_getter} remains a detached read snapshot."
+                    )
+                } else if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
+                    format!(
+                        "Inserts an entry into this record's captured open-map row through its checked \
+                         occurrence carrier. A maximum-window failure leaves the parent unchanged and \
+                         is returned as `JsError`. {snapshot_getter} remains a detached read snapshot."
+                    )
+                } else {
+                    format!(
+                        "Inserts an entry into this record's captured open-map row. This mutates the \
+                         parent record; {snapshot_getter} remains a detached read snapshot. Under \
+                         `@duplicates preserve`, each call appends a pair rather than replacing an \
+                         equal key."
+                    )
+                });
+            if record.has_forbidden_fields() {
+                // Exact-zero records deliberately keep their rest field private.  Reuse the
+                // native record-level door so wasm cannot duplicate (and later drift from) its
+                // typed/any/preserve key comparison and clone-and-swap atomicity rules.
+                insert.line(format!(
+                    "self.0.{method_name}({key}, {value}).map_err(|e| JsError::new(&e.to_string()))"
+                ));
+            } else if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
+                insert.line(format!(
+                    "self.0.{}.insert({key}, {value}).map(|_| ()).map_err(|e| JsError::new(&e.to_string()))",
+                    rest.field_name
+                ));
+            } else {
+                insert
+                    .line(format!(
+                        "self.0.{}.insert({key}, {value});",
+                        rest.field_name
+                    ))
+                    .line("Ok(())");
+            }
+            wrapper.s_impl.push_fn(insert);
         }
         if new_can_fail {
             wasm_new.line(format!(

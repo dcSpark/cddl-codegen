@@ -283,6 +283,12 @@ impl OpenTable {
         self.0.rest.clone().into()
     }
 
+    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    pub fn insert_rest(&mut self, key: &Md, value: &Md) -> Result<(), JsError> {
+        self.0.rest.insert(key.clone().into(), value.clone().into());
+        Ok(())
+    }
+
     pub fn new() -> Self {
         Self(cddl_lib::OpenTable::new())
     }
@@ -359,6 +365,12 @@ impl OpenTableDup {
         self.0.rest.clone().into()
     }
 
+    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    pub fn insert_rest(&mut self, key: &Md, value: &Md) -> Result<(), JsError> {
+        self.0.rest.insert(key.clone().into(), value.clone().into());
+        Ok(())
+    }
+
     pub fn new() -> Self {
         Self(cddl_lib::OpenTableDup::new())
     }
@@ -433,6 +445,12 @@ impl OpenTableNonEmpty {
     /// The captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row), as the wasm map wrapper.
     pub fn rest(&self) -> MapMdToMd {
         self.0.rest.clone().into()
+    }
+
+    /// Inserts an entry into this record's captured open-map row. This mutates the parent record; `rest()` remains a detached read snapshot. Under `@duplicates preserve`, each call appends a pair rather than replacing an equal key.
+    pub fn insert_rest(&mut self, key: &Md, value: &Md) -> Result<(), JsError> {
+        self.0.rest.insert(key.clone().into(), value.clone().into());
+        Ok(())
     }
 
     /// * `first_key` - the key of the first typed entry (CDDL `+ k1 => v1`: an open table spelled with `+` holds at least one typed entry)

@@ -136,8 +136,10 @@ resource, named after the row (`rest` by default, or whatever
 [`@name`](comment_dsl#name) gives it). A map row is `list<tuple<k, v>>`, an array tail is `list<t>`,
 which is the collection spelling above with nothing new added.
 
-Each such getter is read-only in the strong sense and has **no setter**, so on this face a captured
-region can be read but not written. A loose rest row/tail is **not** a constructor parameter; a
+Each such getter is read-only in the strong sense and has **no setter or record-level insertion
+method**, so on this face a captured region can be read but not written. In particular, unlike the
+wasm `insert_<row>` parent-mutation door, component keeps the returned list as a snapshot-only
+read surface. A loose rest row/tail is **not** a constructor parameter; a
 non-empty array tail (`+ t` / `1* t`) contributes its first element to the constructor so the
 resource starts valid, while the getter remains list-shaped. Restricted dynamic map rows keep their
 row-local window at this boundary too: the shipped typed-row `+` form contributes its first key and

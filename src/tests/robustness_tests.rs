@@ -716,6 +716,68 @@ fn expect_graceful_rejection(tag: &str, spec: &str, extra: &[&str]) -> String {
         .to_string()
 }
 
+/// A wasm record-level open-map mutation door is deliberately named `insert_<row>` (rather than
+/// being silently suffixed). A field getter with that spelling would be a duplicate inherent wasm
+/// method, so the wasm profile must reject with a stable `@name` remedy while the rust-only profile
+/// remains valid — this is a wasm-surface collision, not a CDDL-shape rejection.
+#[test]
+fn wasm_open_map_parent_insert_name_collision_rejects_gracefully() {
+    const SPEC: &str = "holder = { insert_rest: uint, * text => uint }\n";
+    let error = expect_graceful_rejection("wasm_open_map_insert_collision", SPEC, &["--wasm=true"]);
+    assert!(
+        error.contains("insert_rest()")
+            && error.contains("collides with the wasm getter")
+            && error.contains("@name"),
+        "the wasm method collision needs a deterministic public-name remedy: {error}"
+    );
+
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_wasm_open_map_insert_collision_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, SPEC).unwrap();
+    let rust_only = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "wasm_open_map_insert_collision_unused",
+        "--wasm=false",
+    ]));
+    std::fs::remove_file(&path).ok();
+    assert!(
+        rust_only.is_ok(),
+        "the collision belongs only to the generated wasm method namespace: {rust_only:?}"
+    );
+
+    let renamed_path = std::env::temp_dir().join(format!(
+        "cddl_codegen_wasm_open_map_insert_collision_renamed_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &renamed_path,
+        "holder = {\n  insert_rest: uint,\n  * text => uint ; @name captured\n}\n",
+    )
+    .unwrap();
+    let renamed = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        renamed_path.to_str().unwrap(),
+        "--output",
+        "wasm_open_map_insert_collision_renamed_unused",
+        "--wasm=true",
+    ]))
+    .expect("renaming the row removes the wasm-method collision");
+    std::fs::remove_file(&renamed_path).ok();
+    let renamed_src = renamed.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        renamed_src.contains(
+            "pub fn insert_captured(&mut self, key: String, value: u64) -> Result<(), JsError>"
+        ) && renamed_src.contains("pub fn insert_rest(&self) -> u64"),
+        "the explicit row rename must produce the corresponding parent door while retaining the field getter:\n{renamed_src}"
+    );
+}
+
 /// An anonymous nested MAP outside its narrow member-position naming door remains a graceful
 /// rejection (rather than a panic). The no-name variants below pin that its message advertises both
 /// working remedies: a named rule and the `@name` door where the anonymous map is the member's

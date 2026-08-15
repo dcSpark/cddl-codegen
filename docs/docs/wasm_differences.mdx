@@ -355,14 +355,18 @@ An [open struct-map](output_format#open-struct-maps-rest-rows) (`{ 1: uint, * K 
 unknown entries into a `rest` field. On the wasm boundary that field is a **read-only `rest()` getter**
 returning the minted map wrapper for the row's `K`/`V` shape (`MapU64ToAny`, `MapAnyToAny`, …, or the
 `PairMap`-backed wrapper under `@duplicates preserve`) — the same map-wrapper surface as any table.
-For a loose `*` / `0*` row there is **no** `rest` constructor argument and no setter (v1): the field
-defaults empty. The returned wrapper is a detached snapshot, so its `insert`/`get`/`keys` API changes
-that wrapper rather than the parent record. A restricted `+` / `1*` / bounded row instead crosses
-`new` as its complete checked structural wrapper, and `new` is fallible where boundary conversion
-re-enters that carrier; the getter remains read-only. An exact-zero fixed member changes the loose
-case too: its open record takes the complete rest wrapper at fallible `new`, so forbidden keys fail
-before the record exists, and exposes only the same snapshot getter. The declared members keep their
-ordinary per-field constructor arguments and getters.
+For a loose `*` / `0*` row there is **no** `rest` constructor argument: the field defaults empty.
+The returned wrapper is a detached snapshot, so its `insert`/`get`/`keys` API changes that wrapper
+rather than the parent record. To mutate the record, call its explicit
+`insert_<row>(key, value) -> Result<(), JsError>` method (`insert_rest` by default). It converts at
+the wasm boundary and updates the native parent itself: ordinary maps replace an equal key, while
+`@duplicates preserve` appends a pair. A restricted `+` / `1*` / bounded row still crosses `new` as
+its complete checked structural wrapper, and the parent insertion method takes the carrier's checked
+path so a maximum failure leaves the record unchanged. An exact-zero fixed member changes the loose
+constructor case too: its open record takes the complete rest wrapper at fallible `new`; its parent
+method delegates to the native `insert_<row>` validation door, so forbidden keys surface as
+`JsError` without changing the record. The declared members keep their ordinary per-field
+constructor arguments and getters.
 
 A **typed key domain** (`* K => V` with `K` a rule of your own rather than `uint`/`text`/`any`) adds no
 new name family: the getter returns the same structural class named after `K`'s and `V`'s wasm faces
@@ -403,9 +407,10 @@ The class carries **two different surfaces, one per row**:
   getter** for this row.
 - the **catch-all** row keeps the ordinary
   [rest-row](#open-struct-map-rest-rows) contract: a **read-only `rest()` getter** returning the
-  minted map wrapper for `K_r`/`V_r` (`MapMdToMd`, or `PairMapMdToMd` under `@duplicates preserve`),
-  no setter. Loose rows have no constructor argument; restricted rows cross as a checked wrapper.
-  Its own entry count is `t.rest().len()`.
+  minted map wrapper for `K_r`/`V_r` (`MapMdToMd`, or `PairMapMdToMd` under `@duplicates preserve`).
+  Its record-level `insert_rest(key, value) -> Result<(), JsError>` mutates that catch-all parent
+  row; the wrapper returned by `rest()` remains a snapshot. Loose rows have no constructor argument;
+  restricted rows cross as a checked wrapper. Its own entry count is `t.rest().len()`.
 
 For the loose `*` form, `new()` is nullary and both rows default empty. A typed `+` / `1*` row is the
 exception: `new(first_key, first_value)` enters the native `NonEmptyMap` (or preserve-mode

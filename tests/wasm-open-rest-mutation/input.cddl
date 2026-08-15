@@ -1,0 +1,8 @@
+; Preserve-profile behavioral fixture for the wasm record-owned open-map mutation door.  The
+; hand-written wasm tests decode non-minimal entry encodings, mutate the parent, and assert the
+; old entries replay byte-exactly while the new entry is appended with default encodings.
+open = { required: uint, * tstr => uint }
+pair = {
+  required: uint,
+  * tstr => uint ; @duplicates preserve
+}

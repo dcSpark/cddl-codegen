@@ -9007,7 +9007,11 @@ fn nullable_wasm() {
 fn zero_permitting_keyed_map_fields() {
     run_test(
         "zero-permitting-map",
-        &["--json-schema-export=true", "--json-serde-derives=true"],
+        &[
+            "--json-schema-export=true",
+            "--json-serde-derives=true",
+            "--wasm=true",
+        ],
         None,
         &[],
         &[],
@@ -9020,6 +9024,9 @@ fn zero_permitting_keyed_map_fields() {
     assert!(
         wasm.contains("pub fn rest(&self)")
             && wasm.contains(
+                "pub fn insert_rest(&mut self, key: String, value: u64) -> Result<(), JsError>",
+            )
+            && wasm.contains(
                 "pub fn new(required: u64, rest: &MapTextToU64) -> Result<ZeroExactOpen, JsError>"
             )
             && wasm.contains("cddl_lib::ZeroExactOpen::new(required, rest.clone().into())")
@@ -9027,6 +9034,23 @@ fn zero_permitting_keyed_map_fields() {
             && !wasm.contains("pub fn no_uint(")
             && !wasm.contains("pub fn no_text("),
         "exact-zero wasm new must take the complete wrapper through the fallible native door, emit no forbidden accessor, and retain only the validated rest getter:\n{wasm}"
+    );
+}
+
+/// The default/json exact-zero fixture above proves checked parent mutation. This preserve-only
+/// fixture reaches the other half of the contract: a decoded parent grows through `insert_rest`,
+/// invalidating its old replay length and rebuilding the order without losing pre-existing entry
+/// sidecars. `tests_wasm.rs` executes that behavior in the generated wasm crate.
+#[test]
+fn wasm_open_rest_parent_mutation_preserves_replay_after_decode() {
+    run_test(
+        "wasm-open-rest-mutation",
+        &["--preserve-encodings=true", "--wasm=true"],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
     );
 }
 
@@ -25753,6 +25777,29 @@ fn decode_conformance_replay() {
             "a bare-bstr typed key has no JSON member-name image, so to_json errors loudly on every \
              typed entry — the documented open-table contract; remedied spellings are executed in \
              tests/open-table-json-e2e (cddl-matrix/README.md § Gotchas)",
+        ),
+        // Cycle 5 added the bounded/catch-all occurrence variants to the same bstr-keyed open-table
+        // family. Their row-local carrier changes do not create a JSON member-name image, so they
+        // retain the identical decided strict-fail posture as the original loose/non-empty typed rows.
+        (
+            "contain.occurrence-target.memberkey.type1.open_table_typed_bounded",
+            "a bare-bstr typed key has no JSON member-name image, so to_json errors loudly on every \
+             typed entry — the documented open-table contract; remedied spellings are executed in \
+             tests/open-table-json-e2e (cddl-matrix/README.md § Gotchas)",
+        ),
+        (
+            "contain.occurrence-target.memberkey.type1.open_table_catchall_plus",
+            "the sibling typed row's bare-bstr key has no JSON member-name image, so to_json errors \
+             loudly on every typed entry — the catch-all's uint occurrence window does not change \
+             that documented open-table contract; remedied spellings are \
+             executed in tests/open-table-json-e2e (cddl-matrix/README.md § Gotchas)",
+        ),
+        (
+            "contain.occurrence-target.memberkey.type1.open_table_catchall_bounded",
+            "the sibling typed row's bare-bstr key has no JSON member-name image, so to_json errors \
+             loudly on every typed entry — the catch-all's uint occurrence window does not change \
+             that documented open-table contract; remedied spellings are \
+             executed in tests/open-table-json-e2e (cddl-matrix/README.md § Gotchas)",
         ),
         // The open STRUCT-map rest row's `bytes` key domain: same class as the open-table entries
         // above through the rest row's own hand-written face — the delivered posture images

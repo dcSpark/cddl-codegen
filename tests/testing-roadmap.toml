@@ -73,7 +73,8 @@ body_md = '''## Next work items, in priority order
 
 '''
 entries = [
-  "testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
+  "testing.open-rest-declared-cbor-key-collision-reject-before-write",
+  "testing.proof-gap.open-rest-declared-cbor-key-collision",
   "testing.grammar-fuzzer-escalations",
   "testing.grammar-fuzzer.embed-site-alias-roots",
   "testing.grammar-fuzzer.arbitrary-supported-ast",
@@ -1995,6 +1996,26 @@ action_on_fire_md = '''Set testing.emitter-drops-overloadable-parameter-building
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
+
+[[record]]
+id = "testing.evidence.open-rest-declared-cbor-key-collision"
+title = "Committed typed native vector for the declared/rest CBOR-key collision."
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "committed_vector"
+claim_md = '''`open_struct_map_json_e2e` executes the committed fixture vector that inserts captured `uint(1)` beside declared CBOR key `1`, asserts the duplicate wire bytes, and confirms reread rejection.
+'''
+freshness = "live"
+reference_ids = ["test-open-rest-declared-cbor-key-collision"]
+unprobed_remainder_md = '''This committed vector witnesses the typed native default-carrier path only; the proof-gap record owns the missing preserve, `any`, constructor, bounded/exact-zero, and wasm paths.
+'''
+refresh_reference_id = "test-open-rest-declared-cbor-key-collision"
+
+[record.payload.scope]
+surfaces = ["open-record CBOR serialization", "owner-recorded-failure-class"]
+faces = ["rust"]
+profiles = ["json"]
 
 [[record]]
 id = "testing.exclusion-reasons-informational-interchange"
@@ -5355,6 +5376,26 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
+id = "testing.open-rest-declared-cbor-key-collision-reject-before-write"
+title = "An open record can serialize a captured rest key equal to a declared CBOR key, producing a duplicate key that its own decoder rejects."
+
+[record.payload]
+kind = "work"
+body_md = '''- **An open record can serialize a captured rest key equal to a declared CBOR key, producing a duplicate key that its own decoder rejects.** The existing generated-fixture regression `a_rest_key_equal_to_a_declared_cbor_key_writes_a_duplicate_cbor_key` constructs `Tkk`, inserts captured `uint(1)` beside declared CBOR key `1`, and pins the emitted `a2 01 09 01 62 68 69`: valid construction writes an invalid duplicate-key map, then the same library refuses it on reread. JSON happens to stay well-formed because the declared JSON property is `key_1` while the captured key images to `1`; this is a CBOR write-side silent-wrong-bytes defect, not a JSON collision. The new wasm record `insert_<row>` door exposes the same existing native/public-carrier hazard; it does not create it.
+
+  The collision test must compare CBOR-key equality, not Rust representation or JSON spelling. It covers a declared key represented through the typed/key-domain path today; the repair needs ordinary and `@duplicates preserve` carriers plus both typed and `any` key comparisons, because preserve must not retain an unrepresentable declared/rest duplicate merely to preserve capture order. Every way a caller can supply or subsequently mutate captured state — native/public construction, native carrier mutation, wasm constructors and record insertion, including checked bounded/exact-zero paths — must make the collision unrepresentable or reject it atomically before any wire output.
+'''
+work_state = "ready"
+work_intent = "repair"
+work_kind = "defect"
+risk = "silent_wrong_bytes"
+acceptance_md = '''Across ordinary and `@duplicates preserve` open records, and across typed and `any` CBOR-key comparisons, a captured key equal to any declared CBOR key is either unrepresentable at every native/wasm/public construction and mutation door or rejected atomically before serialization. Assert no rejected attempt changes the record, no successful value can emit a duplicate declared/rest CBOR key, and valid distinct captured keys retain their established encode/decode and preserve-order behavior.
+'''
+priority_rationale_md = '''The shipped public carrier can construct bytes that the same generated decoder rejects. The existing executable regression catches the precise wire output, but no roadmap item owned its repair until Cycle 6 review exposed the wasm door as another route into the already-existing state.
+'''
+regression_gap_ids = ["testing.proof-gap.open-rest-declared-cbor-key-collision"]
+
+[[record]]
 id = "testing.opt-rfc-faithful-total-cbor-json-rendering-json"
 title = "Opt-in RFC 8949 §6.1-faithful total CBOR→JSON rendering (a `to_json_rfc8949`-style lossy flavor)."
 
@@ -5890,18 +5931,21 @@ priority_rationale_md = '''The parent defect owns repair; this record owns the s
 '''
 
 [[record]]
-id = "testing.proof-gap.wasm-open-rest-owned-clone-is-not-a-mutation-door"
-title = "Behavioral regression gap for wasm open-rest parent mutation."
+id = "testing.proof-gap.open-rest-declared-cbor-key-collision"
+title = "The existing declared/rest CBOR-key regression covers only one native typed default-map mutation path."
 
 [record.payload]
 kind = "work"
+body_md = '''- **The existing declared/rest CBOR-key regression covers only one native typed default-map mutation path.** `open_struct_map_json_e2e` proves the real duplicate-wire outcome, but it does not yet traverse preserve pair maps, `any` key equality, complete constructors, bounded/exact-zero checked paths, or the wasm parent mutation door. The defect repair must add those executable vectors so its no-duplicate-before-wire claim is systematic rather than inferred from one carrier.
+'''
 work_state = "ready"
 work_intent = "add_regression"
 work_kind = "regression_gap"
-risk = "wrong_public_api"
-acceptance_md = '''Generate ordinary and duplicate-preserving loose open records, mutate each through the wasm API, then reread, serialize, and decode the same parent record to prove the entry changed parent-owned state rather than a detached getter clone.
+risk = "silent_wrong_bytes"
+evidence_ids = ["testing.evidence.open-rest-declared-cbor-key-collision"]
+acceptance_md = '''Add red-first native and wasm vectors for ordinary/preserve and typed/`any` declared-vs-rest CBOR-key comparisons, covering construction and mutation paths. Each rejected attempt must be atomic; each accepted distinct key must retain its existing round-trip and preserve-order behavior.
 '''
-priority_rationale_md = '''The existing door-vocabulary gate proves method presence only; the parent defect needs an executed aliasing/state-transfer assertion before repair can be trusted.
+priority_rationale_md = '''The parent defect has a live typed native witness, but its required repair surfaces exceed that one regression's coverage.
 '''
 
 [[record]]
@@ -7658,36 +7702,6 @@ event_md = '''a consumer reports an undefined wasm member and identifies the rus
 '''
 
 [[record]]
-id = "testing.wasm-open-rest-owned-clone-is-not-a-mutation-door"
-title = "A wasm open-rest getter returns an owned clone, so its map API is not a mutation door for the record."
-
-[record.payload]
-kind = "work"
-body_md = '''- **A wasm open-rest getter returns an owned clone, so its map API is not a mutation door for the
-  record.** Generated loose open records expose `rest()` as `self.0.rest.clone().into()`. Calling
-  `insert` on that wrapper mutates only the detached wrapper; rereading `record.rest()` and
-  serializing the same record both silently show the original empty map. This left loose open
-  records with no wasm-side way to populate a region the API appeared to make mutable. The B5-308
-  door-vocabulary test checks only which method names exist; it cannot prove aliasing or parent-state
-  mutation, so adding `rest`/`insert` to that table would remain green on this defect. Repair the
-  wasm record surface with an explicit record-level mutation door (including the checked variant
-  where the native record owns an invariant), and document the returned wrapper as a snapshot rather
-  than an alias. The behavioral acceptance is one generated loose open record whose wasm API mutates
-  an entry, rereads that entry from the **same record**, serializes that same record, and decodes the
-  entry back; cover both the ordinary map and duplicate-preserving carrier rather than asserting
-  method vocabulary alone.
-'''
-work_state = "ready"
-work_intent = "repair"
-work_kind = "defect"
-risk = "wrong_public_api"
-acceptance_md = '''Expose a wasm mutation operation that updates the parent loose open record; execute mutate, reread, serialize, and decode against the same record for ordinary and duplicate-preserving rest carriers. Keep snapshot getters honest and route invariant-bearing records through their native checked door.
-'''
-priority_rationale_md = '''The generated API silently accepts mutation on a detached value while leaving the parent unchanged; this was reproduced during B5-411 review and no existing behavioral gate covers it.
-'''
-regression_gap_ids = ["testing.proof-gap.wasm-open-rest-owned-clone-is-not-a-mutation-door"]
-
-[[record]]
 id = "testing.wasm32-link-floor-deferred-reject-twin"
 title = "A wasm32 LINK floor for the deferred reject twin."
 
@@ -8816,11 +8830,6 @@ kind = "parent_of"
 target = "testing.guard.wac-composed-component-transpiled-jco-loses-cross-instance"
 
 [[relation]]
-source = "testing.wasm-open-rest-owned-clone-is-not-a-mutation-door"
-kind = "parent_of"
-target = "testing.proof-gap.wasm-open-rest-owned-clone-is-not-a-mutation-door"
-
-[[relation]]
 source = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
 kind = "parent_of"
 target = "testing.guard.wrapper-name-user-set-name-synthesized-collection-wrapper"
@@ -9033,6 +9042,13 @@ source = "testing.emitter-drops-overloadable-parameter-building-fresh-config-inv
 kind = "file_heading"
 path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
+
+[[reference]]
+id = "test-open-rest-declared-cbor-key-collision"
+source = "testing.evidence.open-rest-declared-cbor-key-collision"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::integration_tests::open_struct_map_json_e2e"
+symbol = "tests::integration_tests::open_struct_map_json_e2e"
 
 [[reference]]
 id = "testing-roadmap-operational-watches"

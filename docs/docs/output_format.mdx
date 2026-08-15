@@ -551,6 +551,12 @@ changing the carrier. This prevents an otherwise-public loose map from construct
 `@duplicates reject` policy refuses a duplicate captured key (value-equality — a `DuplicateKey` decode
 error); `@duplicates preserve` keeps duplicates via the `PairMap` twin.
 
+**Current limitation.** A native public `rest` mutation or the wasm `insert_<row>` door can currently
+put a captured key equal to a declared **CBOR** key into the same record. Serialization then writes
+that key twice and the generated decoder rejects its own output on reread. This is tracked as
+`testing.open-rest-declared-cbor-key-collision-reject-before-write`; do not rely on such a value
+being serializable.
+
 **Preserve / canonical.** Under `--preserve-encodings` the original **wire order** (declared and
 captured entries interleaved) is recorded and replayed byte-exact, and each captured entry's key/value
 header widths are preserved — via per-entry encoding sidecars for concrete domains, or self-carried by
@@ -559,10 +565,14 @@ header widths are preserved — via per-entry encoding sidecars for concrete dom
 and each captured key's header is minimized.
 
 **wasm.** The rest field is exposed as a **read-only `rest()` getter** returning a minted map-wrapper
-snapshot. A loose row has no `new()` argument and defaults empty; a restricted row takes its complete
-checked wrapper at the fallible constructor boundary. Exact-zero records instead take the complete
-wrapper at their fallible constructor boundary even for a loose row, so its forbidden-key check cannot
-be bypassed. Neither flavor has a setter; see [wasm
+snapshot: mutating that returned wrapper never mutates the record. The record's parent mutation door
+is `insert_rest(key, value) -> Result<(), JsError>` (or `insert_<name>` when the row has `@name`).
+It replaces equal keys for the ordinary carrier and appends for `@duplicates preserve`; a bounded
+carrier returns `JsError` before an overflow can change the record. A loose row has no `new()`
+argument and defaults empty; a restricted row takes its complete checked wrapper at the fallible
+constructor boundary. Exact-zero records instead take the complete wrapper at their fallible
+constructor boundary even for a loose row, and their wasm insertion delegates to the native
+forbidden-key check. There is no general setter; see [wasm
 differences](wasm_differences#open-struct-map-rest-rows).
 
 **JSON (`--json-serde-derives`).** Captured entries render **flattened at the same JSON

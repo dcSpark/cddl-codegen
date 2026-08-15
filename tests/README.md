@@ -1872,6 +1872,12 @@ directives) is verified across the layers:
 - **Value-level e2e** — `tests/open-struct-map-e2e` (compiled, non-preserve): capture round-trip,
   typed-domain wrong-key errors, duplicate fixed/rest key rejection, the fixed-keys-win-on-content-
   mismatch ruling, empty-rest ≡ closed-struct bytes.
+- **Wasm parent-mutation e2e** — `tests/zero-permitting-map` executes ordinary and
+  `@duplicates preserve` loose-row mutation through `insert_rest`, proving the getter remains a
+  detached snapshot while reread/serialize/decode observe the same parent; its exact-zero bounded
+  control proves forbidden-key and maximum failures leave that parent unchanged. The separate
+  preserve-only `tests/wasm-open-rest-mutation` fixture decodes non-minimal ordinary and pair-map
+  entries, mutates the decoded wasm parent, then proves replay retains old encodings and every entry.
 - **Preserve/canonical e2e** — `tests/open-struct-map-preserve-e2e` (compiled): byte-exact
   wire-order interleave at non-minimal widths, concrete key/value encoding sidecars, the
   value-duplicate rejection under BOTH key domains that reject (`0x01`-vs-`0x1801` under `* uint =>
@@ -1920,7 +1926,8 @@ forbidden-key constraints rather than rest-row carriers:
   set, executes absent round trips and forbidden-present rejection for closed/open records; checked
   complete construction and insertion; uint/text, typed-union and `any` value-equality (including a
   non-minimal text key); `@ignore` ordering; bounded, non-empty and duplicate-preserving carriers;
-  JSON property rejection/schema omission; and the wasm optional/forbidden-accessor boundary.
+  JSON property rejection/schema omission; and the wasm optional/forbidden-accessor boundary plus
+  its checked parent insertion door.
 - **Preserve modes** —
   `integration_tests::exact_zero_typed_key_comparison_executes_in_both_preserve_modes` executes the
   typed comparator at decode, complete-construction and insertion doors under preserve and
@@ -4729,7 +4736,7 @@ comment records, not by compilability.
 ### component build sweep over the decode catalog (`cddl-matrix/verify.ts --component-build-sweep`, gate `component_build_sweep`, `full`)
 
 Every drivable row of `tests/decode_conformance/catalog.toml`, generated `--component=true
---wasm=false` and BUILT for `wasm32-wasip2`. 165 of the catalog's 184 rows are drivable; the other 19
+--wasm=false` and BUILT for `wasm32-wasip2`. 197 of the catalog's 221 rows are drivable; the other 24
 are pinned entries, which are vector-less AND spec-less by construction and so have nothing to
 generate from.
 
@@ -4792,9 +4799,9 @@ entry is added the moment the sweep finds a row that generates and does not buil
 **Subsetting**: `--only=<row-id>[,<row-id>…]`, validated against the drivable set, so a typo fails
 loudly instead of sweeping nothing.
 
-**Cost**, measured over all 165 rows: **3 m 3 s cold** (every cell builds — the first pays the shared
-wasip2 dependency graph, then ~1 s each) and **2 m 6 s warm**. A warm run still pays generation, the
-lockfile preflight and the tree hash per cell, which is nearly all of what is left.
+**Cost** is tracked under `component_build_sweep` in `tests/timings.json`; the gate reports the current
+row count and elapsed time on every run. A warm run still pays generation, the lockfile preflight and
+the tree hash per cell, which is nearly all of what is left.
 
 **Memoization** under the cache label `verify.component_build_sweep` — a namespace DISJOINT from the
 execution leg's `verify.component_probe` on purpose: this closure asserts strictly less about the

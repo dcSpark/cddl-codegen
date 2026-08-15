@@ -2035,7 +2035,11 @@ impl<'a> IntermediateTypes<'a> {
                     // worked because `current_scope == emit_scope` made the flat marking
                     // coincidentally correct. Rust-side output is unchanged: with `wasm == false`
                     // both container arms fall through to marking the inners at the using scope,
-                    // which is what this did.
+                    // which is what this did. The wasm record-level `insert_<row>` operation is the
+                    // one extra consumer: unlike the snapshot getter it names K and V directly in
+                    // the OWNER's signature, so map-row inners are also marked at the owner scope
+                    // below. That direct mark is load-bearing for multifile and deferred extern
+                    // rows whose wrapper class lives somewhere else.
                     //
                     // The one row that does NOT go through its container is an open table's TYPED
                     // row under wasm: it has no container CLASS to import, because its map surface
@@ -2129,6 +2133,19 @@ impl<'a> IntermediateTypes<'a> {
                             current_scope,
                             &rest.container_type(),
                         );
+                        if wasm && !rest.is_array_tail() {
+                            for inner in [rest.domain(), rest.range()] {
+                                mark_refs(
+                                    &mut refs,
+                                    self,
+                                    wasm,
+                                    &table_shape_sole_owners,
+                                    deferred,
+                                    current_scope,
+                                    inner,
+                                );
+                            }
+                        }
                     }
                 }
                 RustStructType::Table {

@@ -562,9 +562,18 @@ impl Emitter<'_, '_> {
                 let values = if key.expr == "x0" && value.expr == "x1" {
                     Conv::plain(format!("{expr}.into_iter().collect::<Vec<_>>()"))
                 } else if key.fallible || value.fallible {
+                    // A restricted map must first materialize as the loose vec-of-pairs carrier
+                    // before it re-enters its checked `TryFrom` door below. Without the concrete
+                    // `Vec` here, `Result<_>` leaves the `and_then` closure's `values` type
+                    // unconstrained (for example, a `+ uint => any` open-struct rest).
+                    let collect = if restricted {
+                        "collect::<Result<Vec<_>, String>>()"
+                    } else {
+                        "collect::<Result<_, String>>()"
+                    };
                     Conv {
                         expr: format!(
-                            "{expr}.into_iter().map(|(x0, x1)| (|| -> Result<_, String> {{ Ok({row}) }})()).collect::<Result<_, String>>()"
+                            "{expr}.into_iter().map(|(x0, x1)| (|| -> Result<_, String> {{ Ok({row}) }})()).{collect}"
                         ),
                         fallible: true,
                     }

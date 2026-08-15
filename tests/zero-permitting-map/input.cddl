@@ -33,6 +33,14 @@ zero_exact_pair_open = {
   0*0 forbidden: uint,
   1*2 tstr => uint ; @duplicates preserve
 }
+
+; The wasm fixture executes parent-owned insertion for both loose carrier policies. `rest()` stays
+; a detached snapshot; `insert_rest` is the record mutation door.
+wasm_mutation_open = { required: uint, * tstr => uint }
+wasm_mutation_pair_open = {
+  required: uint,
+  * tstr => uint ; @duplicates preserve
+}
 zero_exact_named_multi = {
   required: uint,
   0*0 41: uint, ; @name no_uint
