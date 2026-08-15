@@ -155,7 +155,6 @@ is not evidence about a gate in another TIER" (the mechanical half is a maintain
 
 '''
 entries = [
-  "testing.gate-exists-registry-nowhere-tests-readme-md-hand",
   "testing.lint-doc-citations-accepts-docs-heading-durable-citation",
   "testing.representation-changing-directive-goes-live-new-container-ship",
   "testing.emission-branch-generated-output-fixture-exercises-invisible-gate",
@@ -2858,51 +2857,6 @@ priority_rationale_md = '''The preserved Standing detail records that its second
 admission_ids = ["testing.admission-path.gate-demands-premise-probed-against-gate-evidence-about"]
 
 [[record]]
-id = "testing.gate-exists-registry-nowhere-tests-readme-md-hand"
-title = "A gate exists in the registry but nowhere in `tests/README.md`, and a hand-written count of gates disagrees with the registry — no mechanism ties the two."
-
-[record.payload]
-kind = "work"
-body_md = '''- **A gate exists in the registry but nowhere in `tests/README.md`, and a hand-written count of
-  gates disagrees with the registry — no mechanism ties the two.** Two instances, so the trigger has
-  fired on the count half and is one short on the catalogue half. *Instance 1 (count):* the
-  concurrency section read "the thirteen `#[ignore]`d manual-only heavy gates" while the runner
-  printed `parallel batch: 15 gate(s) in group 'manual_heavy'` — and the SAME file two paragraphs
-  earlier carries the correct 15 inside a `<!-- gen:sh:tests-ignored-gates -->` generated block, so
-  the doc disagreed with itself across a generated/hand boundary. Fixed by deleting the derived count
-  rather than correcting it, the remedy this repo already chose for the identical class in prose
-  refusal counts. *Instance 2 (catalogue):* `pin_cold_fetch` shipped as a `full`-tier gate and was
-  described in `check.ts` and `static/manifest_changes/README.md` but never in `tests/README.md`,
-  where its siblings are catalogued; added by hand on discovery. **Owner meanwhile:** review, plus
-  the existing `project_status_headers.ts` generated roll-call, which covers only the `#[ignore]`d
-  RUST gates — the script-shaped gates (`verify.ts`, `corpus_detect.ts`, the fuzz compile-rot check,
-  `pin_cold_fetch`, the two gate-cache gates) are prose and unguarded, which is exactly where the miss
-  landed. **The layer, when built:** a fast-tier lint asserting (a) every registry gate id appears in
-  `tests/README.md`, and (b) no prose integer adjacent to a gate-group name disagrees with the
-  registry's own membership — or, simpler and preferred on the (b) half, that no such integer is
-  written at all. Cheap, no cargo. **Trigger:** a third instance, OR the next gate added to the
-  registry by anyone who is not also editing `tests/README.md` in the same commit.
-
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "misleading_docs"
-control_ids = ["testing.guard.gate-exists-registry-nowhere-tests-readme-md-hand"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.gate-exists-registry-nowhere-tests-readme-md-hand"
-dimension = "A gate exists in the registry but nowhere in `tests/README.md`, and a hand-written count of gates disagrees with the registry — no mechanism ties the two."
-observable = "- **A gate exists in the registry but nowhere in `tests/README.md`, and a hand-written count of gates disagrees with the registry — no mechanism ties the two.** Two instances, so the trigger has fired on the count half and is one short on the catalogue half. *Instance 1 (count):* the concurrency section read \"the thirteen `#[ignore]`d manual-only heavy gates\" while the runner printed `parallel batch: 15 gate(s) in group 'manual_heavy'` — and the SAME file two paragraphs earlier carries the correct 15 inside a `<!-- gen:sh:tests-ignored-gates -->` generated block, so the doc disagreed with itself across a generated/hand boundary. Fixed by deleting the derived count rather than correcting it, the remedy this repo already chose for the identical class in prose refusal counts. *Instance 2 (catalogue):* `pin_cold_fetch` shipped as a `full`-tier gate and was described in `check.ts` and `static/manifest_changes/README.md` but never in `tests/README.md`, where its siblings are catalogued; added by hand on discovery. **Owner meanwhile:** review, plus the existing `project_status_headers.ts` generated roll-call, which covers only the `#[ignore]`d RUST gates — the script-shaped gates (`verify.ts`, `corpus_detect.ts`, the fuzz compile-rot check, `pin_cold_fetch`, the two gate-cache gates) are prose and unguarded, which is exactly where the miss landed. **The layer, when built:** a fast-tier lint asserting (a) every registry gate id appears in `tests/README.md`, and (b) no prose integer adjacent to a gate-group name disagrees with the registry's own membership — or, simpler and preferred on the (b) half, that no such integer is written at all. Cheap, no cargo. **Trigger:** a third instance, OR the next gate added to the registry by anyone who is not also editing `tests/README.md` in the same commit."
-action_on_fire_md = '''Set testing.gate-exists-registry-nowhere-tests-readme-md-hand to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.gate-exists-registry-nowhere-tests-readme-md-hand's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
 id = "testing.gate-s-own-stdout-print-column-result-pass"
 title = "A gate's own stdout can print a column-0 `RESULT: PASS (...)` line, so a log poll that greps for `RESULT:` (even line-anchored) reads a sub-check's verdict as the tier's."
 
@@ -3733,20 +3687,6 @@ control_kind = "review_rule"
 control_state = "live"
 reference_ids = ["testing-roadmap-next-work-n13"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.gate-cache-closure-audit-structurally-blind-gate-authored's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.gate-exists-registry-nowhere-tests-readme-md-hand"
-title = "Current control for testing.gate-exists-registry-nowhere-tests-readme-md-hand."
-
-[record.payload]
-kind = "control"
-control_kind = "gate"
-control_state = "live"
-reference_ids = ["gate-pin-cold-fetch"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.gate-exists-registry-nowhere-tests-readme-md-hand's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -8325,11 +8265,6 @@ kind = "parent_of"
 target = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
 
 [[relation]]
-source = "testing.gate-exists-registry-nowhere-tests-readme-md-hand"
-kind = "parent_of"
-target = "testing.guard.gate-exists-registry-nowhere-tests-readme-md-hand"
-
-[[relation]]
 source = "testing.gate-script-health-cache-staleness-key-fresh-worktree"
 kind = "parent_of"
 target = "testing.guard.gate-script-health-cache-staleness-key-fresh-worktree"
@@ -9099,12 +9034,6 @@ source = "testing.gate-cache-costs"
 kind = "file_heading"
 path = "tests/README.md"
 heading = "The gate cache (memoize-and-skip for nested cargo)"
-
-[[reference]]
-id = "gate-pin-cold-fetch"
-source = "testing.gate-exists-registry-nowhere-tests-readme-md-hand"
-kind = "gate"
-gate_id = "pin_cold_fetch"
 
 [[reference]]
 id = "agents-build-verify-n2"

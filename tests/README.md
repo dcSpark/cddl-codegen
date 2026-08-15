@@ -39,11 +39,12 @@ before being projected, which is that doc-rot class's trigger to derive rather t
 make `full` cheap.
 
 `fast` is exactly what CI runs (`build.yml` is a thin `bun run check.ts fast` invoker — see the CI
-policy below). Beside fmt/clippy/snapshot tests it carries the whole **sub-second no-cargo
+policy below). Beside `fmt`/`clippy`/snapshot tests it carries the whole **sub-second no-cargo
 file-scanner class**: the matrix-drift gates plus the decode-conformance catalog, recombination
 ingredients, `query_q*`, status-header count, doc-citation, and tracked-text cleanliness gates
-(`project_decode_conformance.ts`, `project_recombination.ts`, the four `query_q*.ts`,
-`project_status_headers.ts`, `lint_doc_citations.ts`, `lint_tracked_text.ts`). The tracked-text lint
+(`project_decode_conformance`, `project_recombination_check`, `query_q4_directional`,
+`query_q1_gaps`, `query_q5_completeness`, `query_q6_diff`, `project_status_headers`,
+`lint_doc_citations`, `lint_tracked_text`). The tracked-text lint
 reads only `git ls-files -z` paths, strictly decodes authored text extensions (including `.mdx`),
 rejects C0/DEL controls except tab/LF/CR, and scans snapshot doc lines for doubled rustdoc markers.
 What makes a gate a member — and what a new
@@ -91,7 +92,7 @@ not interchangeable: a nominal reference to a collection typedef needed an `enco
 fix that exists ONLY under `--preserve-encodings`, and every other profile was green while it was
 missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
 `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 20 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `ir_conformance_multifile` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `wrapper_participation_mode_floors` / `wrapper_participation_requested_host_floor` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 20 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `ir_conformance_multifile` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `wrapper_participation_mode_floors` / `wrapper_participation_requested_host_floor` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, the `corpus_detect` gate, and
 the two byte-fuzzer gates (`fuzz_compile_rot`, the compile-rot check, and `fuzz_bounded_run`, a time-boxed live libFuzzer walk of both targets — `fuzz/README.md`), `pin_cold_fetch` (every git `rev` mentioned in a pin-carrying surface must resolve against its remote from a scratch `CARGO_HOME` — the tier's one deliberately-online gate, because a warm local cargo DB answers "does this rev exist?" wrongly and confidently, which is how a never-pushed rev once passed three cycles of green gates), plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` / `NOT RUN (--only)` + per-gate durations), so a gate that
 didn't run is always
@@ -188,16 +189,15 @@ that declares nothing is a **barrier**, so registry order still means what it sa
 `fmt → clippy → build → test` chain stays strictly ordered, and `verify` still finishes before
 `verify_cache_transparency` observes the cache it warmed.
 
-Exactly one group exists: the `#[ignore]`d manual-only heavy gates, which are `cmd`-shaped
+The `#[ignore]`d manual-only heavy gates form the concurrency group; they are `cmd`-shaped
 and each own a `temp_dir()` scratch root nothing else touches. (The membership is the registry's
-`concurrent: "manual_heavy"` declarations and the run prints its own size — `parallel batch: N
-gate(s) in group 'manual_heavy'`. A count stated here instead would be a second source of truth that
-drifts silently every time a gate joins the group, which is exactly what it did: this sentence read
-"thirteen" while the runner reported fifteen.) `gate_cache_closure_audit` is
-deliberately outside it — it is an strace input-closure audit, and ambient concurrent file activity is
-precisely what it must not observe. `self_checks`' meta-check 4 rejects a group declared on an `fn`
-gate (their output would interleave and their cell rows would be mislabelled) and a group whose
-members are not contiguous (such a member would run alone while declaring otherwise).
+`concurrent: "manual_heavy"` declarations and the runner reports its runtime shape as `parallel batch: N
+gate(s) in group 'manual_heavy'`. A count stated here would be a second source of truth that drifts
+silently whenever membership changes.) `gate_cache_closure_audit` is deliberately outside it — it is
+an strace input-closure audit, and ambient concurrent file activity is precisely what it must not
+observe. `self_checks`' concurrency meta-check rejects a group declared on an `fn` gate (their output
+would interleave and their cell rows would be mislabelled) and a group whose members are not contiguous
+(such a member would run alone while declaring otherwise).
 
 Why it pays, and what bounds it. The heavy gates are internally serial loops over catalog rows, so
 solo they leave most of a many-core box idle — measured at 16.1 % CPU, 5.1 of 32 cores, for the
@@ -913,7 +913,7 @@ The intended change classes surface as high-count lines; anything unexpected hid
 singleton tail, so read that tail line by line — an audit that stops at the common classes proves
 nothing about strays.
 
-CI also runs `cargo insta test --unreferenced=reject` so a snapshot orphaned by a refactor (one
+The local `insta_orphan` gate runs `cargo insta test --unreferenced=reject` so a snapshot orphaned by a refactor (one
 that stops generating a file) fails the build instead of lingering unnoticed.
 
 ## Preservation-merge fixtures (`tests/preserve-fixtures/` + `src/tests/preserve_fixture_tests.rs`)
@@ -1751,7 +1751,7 @@ wrong in compensating ways round-trips green everywhere else):
 
 - **`tests/golden_hex`** — default flags; RFC 8949 Appendix A known-answer vectors, both
   directions. Coverage map: [`tests/golden_hex/COVERAGE.md`](golden_hex/COVERAGE.md), projected and
-  CI-drift-gated by `cddl-matrix/project_golden_hex.ts`.
+  CI-drift-gated by the `project_golden_hex_check` gate (`cddl-matrix/project_golden_hex.ts`).
 - **`tests/golden_hex_preserve`** — `--preserve-encodings`; irregular §3 encodings (non-minimal
   header arguments, indefinite/chunked items, map key order) must re-encode byte-identically.
 - **`tests/golden_hex_canonical`** — `--canonical-form`; the same irregular inputs must re-encode
@@ -2073,7 +2073,8 @@ survive:
   `_carries_every_row_flavor` / `_keys_list_is_named_off_the_typed_key_alias` /
   `_wasm_wrapper_ident_collisions_reject_gracefully` /
   `_catch_all_named_for_a_flattened_accessor_rejects_gracefully`, plus the `otbl__*` cells in
-  `project_wasm_matrix` and the `otblrec__*` dirs in `project_multifile_matrix` (both FAST tier).
+  `project_wasm_matrix` and the `otblrec__*` dirs in `project_multifile_matrix` (both FAST tier; the
+  latter's drift gate is `project_multifile_matrix_check`).
 - **Component/WIT** — `robustness_tests::open_table_component_face_projects_both_rows`.
 - **Cross-crate** — `extern_import_tests::extern_import_open_table_borrows_its_typed_key_like_a_table`
   and `config_tests::a_config_workspace_settles_an_open_table_in_one_pass`.
@@ -4013,7 +4014,7 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
 
 - **The projection** (`cddl-matrix/project_wasm_matrix.ts`, `bun run`) emits one minimal `.cddl` per
   `(type-shape × boundary role)` cell. Output is deterministic — **never hand-edit `tests/matrix_wasm/`**;
-  edit the projection and re-run. `--check` is the drift gate (fails on a stale/missing/orphaned fixture)
+  edit the projection and re-run. `--check` is the `project_wasm_matrix_check` drift gate (fails on a stale/missing/orphaned fixture)
   and runs in CI's `matrix-drift` job.
 - **The two axes** — the authoritative list + copy-paste CDDL live in the projection's `SHAPES`/`ROLES`:
   - **Type-shape**: how a type crosses the wasm boundary — `prim`, `palias`, `talias`, `coll`/`collmap`
@@ -4144,7 +4145,7 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > occurrence-target coverage. The reject catalog's payoff is catching a parser/codegen change that
 > *silently* makes a rejected construct parse — the exact regression a past cddl-fork bump caused for 14
 > control ops — as a snapshot diff in the default `cargo test` run instead of only on a manual verify.ts
-> sweep; `project_robustness.ts --check` independently pins each reject row's expected label to its matrix
+> sweep; the `project_robustness_check` gate (`project_robustness.ts --check`) independently pins each reject row's expected label to its matrix
 > evidence class, so a re-bless can't quietly launder such a flip. Every graceful reject row also
 > snapshots its rejection-line count, with a non-vacuous graceful-row floor; separately authored
 > nodes with equal rendered text remain distinct reports under the node-identity regression.
@@ -4481,7 +4482,7 @@ component row leaves `--wasm` at its default `true`, so its manifests keep the w
 doc](../docs/docs/command_line_flags.mdx) prescribes for that shape — after asserting the wide form
 is what it was handed.
 
-### rust↔WIT API-surface parity (`component_parity_tests::component_api_parity`)
+### rust↔WIT API-surface parity (gate `component_parity`; `component_parity_tests::component_api_parity`)
 
 The component face's sibling of the gate above, asking the same one-directional question of the
 other boundary. It matters for the same structural reason and one sharper one: the component gates

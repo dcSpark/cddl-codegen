@@ -64,7 +64,7 @@
  * CHECK_ONLINE=1 skips the offline forcing; a pre-set CARGO_NET_OFFLINE=true skips the fetch.
  * The fast tier (CI) is untouched.
  *
- * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs five meta-checks
+ * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs six meta-checks
  * so a new gate that nobody registers fails the run rather than silently not existing:
  *   1. ignored-test classification — every `#[ignore]` test must be registered here as either a
  *      manual gate (run it) or a known-failing stub (never run it, shown as STUB).
@@ -76,6 +76,8 @@
  *      trees a fast gate READS is a filter edit, and the promoted doc scanners depend on one.
  *   4. concurrency declarations are well-formed (`cmd`-only, group members contiguous).
  *   5. `requires:` edges are well-formed — the `--only` dependency fence's only enforcement.
+ *   6. registry/readme integrity — every gate is named in `tests/README.md`, and prose next to a
+ *      concurrent group carries no authored cardinal count that can drift from the registry.
  *
  * Meta-checks mutation-verified red-first at landing (repo idiom):
  *   - adding a throwaway `#[ignore]` test           -> meta-check 1 FAILED (unclassified ignore)
@@ -198,6 +200,198 @@ export interface Gate {
    * reads only committed files or owns its scratch root. Meta-check 5 keeps the field honest.
    */
   requires?: { gate: string; why: string }[];
+}
+
+/** The registry fields the README-integrity check owns; kept small for synthetic self-tests. */
+export interface GateReadmeLintGate {
+  id: string;
+  concurrent?: string;
+}
+
+interface TextRange { start: number; end: number }
+interface CodeSpan extends TextRange { text: string }
+
+/** Fenced blocks are not prose and cannot contribute inline-code spans. */
+function markdownFencedCodeRanges(markdown: string): TextRange[] {
+  const ranges: TextRange[] = [];
+  let open: { start: number; marker: "`" | "~"; length: number } | undefined;
+  let offset = 0;
+  for (const lineWithEnding of markdown.matchAll(/[^\n]*(?:\n|$)/g)) {
+    const line = lineWithEnding[0].replace(/\n$/, "").replace(/\r$/, "");
+    const fence = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (!open && fence) {
+      open = { start: offset, marker: fence[1][0] as "`" | "~", length: fence[1].length };
+    } else if (open && fence && fence[1][0] === open.marker && fence[1].length >= open.length &&
+      new RegExp(`^ {0,3}${open.marker}{${open.length},}[ \\t]*$`).test(line)) {
+      ranges.push({ start: open.start, end: offset + lineWithEnding[0].length });
+      open = undefined;
+    }
+    offset += lineWithEnding[0].length;
+  }
+  if (open) ranges.push({ start: open.start, end: markdown.length });
+  return ranges;
+}
+
+/**
+ * CommonMark-style code spans outside fences. A delimiter run closes only against an ENTIRE run of
+ * the same length, never a prefix of a longer run. Newlines become spaces; a single padding space
+ * is stripped at both ends unless the span is all spaces, matching CommonMark's code-span rule.
+ */
+function markdownCodeSpans(markdown: string, fences = markdownFencedCodeRanges(markdown)): CodeSpan[] {
+  const spans: CodeSpan[] = [];
+  let fenceIndex = 0;
+  for (let i = 0; i < markdown.length;) {
+    while (fenceIndex < fences.length && fences[fenceIndex].end <= i) fenceIndex++;
+    if (fenceIndex < fences.length && i >= fences[fenceIndex].start) {
+      i = fences[fenceIndex].end;
+      continue;
+    }
+    if (markdown[i] !== "`") {
+      i++;
+      continue;
+    }
+    let openerEnd = i + 1;
+    while (markdown[openerEnd] === "`") openerEnd++;
+    const delimiterLength = openerEnd - i;
+    let closeStart = openerEnd;
+    let closed = false;
+    while (closeStart < markdown.length) {
+      if (fenceIndex < fences.length && closeStart >= fences[fenceIndex].start) break;
+      if (markdown[closeStart] !== "`") {
+        closeStart++;
+        continue;
+      }
+      let closeEnd = closeStart + 1;
+      while (markdown[closeEnd] === "`") closeEnd++;
+      if (closeEnd - closeStart === delimiterLength) {
+        let text = markdown.slice(openerEnd, closeStart).replace(/\r\n?|\n/g, " ");
+        if (text.length > 1 && text.startsWith(" ") && text.endsWith(" ") && /[^ ]/.test(text))
+          text = text.slice(1, -1);
+        spans.push({ start: i, end: closeEnd, text });
+        i = closeEnd;
+        closed = true;
+        break;
+      }
+      closeStart = closeEnd;
+    }
+    if (!closed) i = openerEnd;
+  }
+  return spans;
+}
+
+/** Markdown prose paragraphs, excluding headings and code blocks that are not authored prose. */
+function markdownProseParagraphs(markdown: string, fences: readonly TextRange[]): TextRange[] {
+  const paragraphs: TextRange[] = [];
+  let start: number | undefined;
+  let end = 0;
+  let fenceIndex = 0;
+  const flush = () => {
+    if (start !== undefined) paragraphs.push({ start, end });
+    start = undefined;
+  };
+  let offset = 0;
+  for (const lineWithEnding of markdown.matchAll(/[^\n]*(?:\n|$)/g)) {
+    const line = lineWithEnding[0].replace(/\n$/, "").replace(/\r$/, "");
+    while (fenceIndex < fences.length && fences[fenceIndex].end <= offset) fenceIndex++;
+    const fenced = fenceIndex < fences.length && offset >= fences[fenceIndex].start;
+    if (fenced || /^\s*$/.test(line) || /^ {0,3}#{1,6}\s/.test(line) || /^ {4}/.test(line)) {
+      flush();
+    } else {
+      start ??= offset;
+      end = offset + lineWithEnding[0].length;
+    }
+    offset += lineWithEnding[0].length;
+  }
+  flush();
+  return paragraphs;
+}
+
+/** Removes spans by source range, including a span crossing a prose paragraph boundary. */
+function withoutCodeSpans(markdown: string, range: TextRange, spans: readonly CodeSpan[]): string {
+  let result = "";
+  let cursor = range.start;
+  for (const span of spans) {
+    if (span.end <= range.start) continue;
+    if (span.start >= range.end) break;
+    const start = Math.max(span.start, range.start);
+    const end = Math.min(span.end, range.end);
+    result += markdown.slice(cursor, start) + " ";
+    cursor = end;
+  }
+  return result + markdown.slice(cursor, range.end);
+}
+
+/**
+ * Reports gate-registry facts that `tests/README.md` must state without duplicating their derived
+ * cardinalities. An id is covered only by an exact Markdown inline-code span, never a substring.
+ */
+export function registryReadmeIntegrityProblems(
+  registry: readonly GateReadmeLintGate[],
+  readme: string,
+): string[] {
+  const problems: string[] = [];
+  const fences = markdownFencedCodeRanges(readme);
+  const codeSpans = markdownCodeSpans(readme, fences);
+  const inlineCode = new Set(codeSpans.map(span => span.text));
+  for (const { id } of registry)
+    if (!inlineCode.has(id))
+      problems.push(`meta-6: registry gate '${id}' has no exact inline-code span in tests/README.md`);
+
+  const groups = new Set(
+    registry.map(g => g.concurrent).filter((group): group is string => group !== undefined && group.length > 0),
+  );
+  const paragraphs = markdownProseParagraphs(readme, fences);
+  const cardinal = /\b(?:\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion)\b/gi;
+  for (const group of groups) {
+    const escaped = group.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const namesGroup = new RegExp(`(^|[^A-Za-z0-9_-])${escaped}(?=$|[^A-Za-z0-9_-])`);
+    for (const paragraph of paragraphs) {
+      const original = readme.slice(paragraph.start, paragraph.end);
+      if (!namesGroup.test(original)) continue;
+      const prose = withoutCodeSpans(readme, paragraph, codeSpans);
+      for (const token of prose.matchAll(cardinal))
+        problems.push(`meta-6: concurrent group '${group}' has authored prose cardinal '${token[0]}' in tests/README.md`);
+    }
+  }
+  return problems;
+}
+
+/** Pure synthetic floor for the documentation-integrity half of `--selftest`. */
+export function registryReadmeIntegritySelftest(): void {
+  const missing = registryReadmeIntegrityProblems(
+    [{ id: "needed_gate" }],
+    "plain needed_gate and `needed_gate_suffix` are not exact coverage.",
+  );
+  if (!missing.some(p => p.includes("registry gate 'needed_gate'")))
+    throw new Error("README-integrity self-test failed to reject a missing exact gate-id span");
+
+  const counted = registryReadmeIntegrityProblems(
+    [{ id: "named_gate", concurrent: "manual_heavy" }],
+    "`named_gate`\n\nThe thirteen gates in `manual_heavy` run together.",
+  );
+  if (!counted.some(p => p.includes("group 'manual_heavy'") && p.includes("thirteen")))
+    throw new Error("README-integrity self-test failed to reject a prose concurrent-group count");
+
+  const symbolic = registryReadmeIntegrityProblems(
+    [{ id: "named_gate", concurrent: "manual_heavy" }],
+    "`named_gate`\n\nThe group `manual_heavy` reports `N gate(s)` at runtime.",
+  );
+  if (symbolic.length)
+    throw new Error(`README-integrity self-test rejected count-free symbolic prose: ${symbolic.join("; ")}`);
+
+  const multiline = registryReadmeIntegrityProblems(
+    [{ id: "named_gate", concurrent: "manual_heavy" }],
+    "`named_gate`\n\nThe `manual_heavy` group reports `batch: 15\ngates` without a prose count.",
+  );
+  if (multiline.length)
+    throw new Error(`README-integrity self-test failed to strip a multiline code span: ${multiline.join("; ")}`);
+
+  const longerDelimiter = registryReadmeIntegrityProblems(
+    [{ id: "named_gate", concurrent: "manual_heavy" }],
+    "``named_gate``\n\nThe ``manual_heavy`` group reports ``batch: 15 `gates` `` without a prose count.",
+  );
+  if (longerDelimiter.length)
+    throw new Error(`README-integrity self-test mishandled a longer-delimiter code span: ${longerDelimiter.join("; ")}`);
 }
 
 // ---- process helpers -----------------------------------------------------------------------------
@@ -1057,7 +1251,7 @@ function ignoredTestsFromCargo(): string[] {
   return names;
 }
 
-// ---- the three self-completeness meta-checks (first gate) ----------------------------------------
+// ---- the six self-completeness meta-checks (first gate) ------------------------------------------
 function runSelfChecks(): Outcome {
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -1137,6 +1331,11 @@ function runSelfChecks(): Outcome {
       }
   }
 
+  // 6. The hand-written test guide is the human-facing registry catalogue. Keep every gate
+  // discoverable by exact inline-code id, while refusing prose counts near concurrent-group names:
+  // membership belongs solely to the registry and the runner's symbolic runtime receipt.
+  problems.push(...registryReadmeIntegrityProblems(REGISTRY, readFileSync(join(ROOT, "tests/README.md"), "utf8")));
+
   for (const w of warnings) console.log("  WARN " + w);
   if (problems.length) {
     for (const p of problems) console.log("  FAIL " + p);
@@ -1147,7 +1346,8 @@ function runSelfChecks(): Outcome {
     `  OK — ${ignored.size} #[ignore] test(s) classified (${manual.size} manual gate(s), ${stubs.size} stub(s)), ` +
       `${scripts.length} matrix script(s) covered, CI runs the fast tier only, ` +
       `${groups.size} concurrency group(s) well-formed, ` +
-      `${REGISTRY.reduce((n, g) => n + (g.requires?.length ?? 0), 0)} requires-edge(s) well-formed`,
+      `${REGISTRY.reduce((n, g) => n + (g.requires?.length ?? 0), 0)} requires-edge(s) well-formed, ` +
+      `tests/README.md covers every registry gate`,
   );
   return { status: "PASS" };
 }
@@ -1399,7 +1599,7 @@ const MANUAL_HEAVY = "manual_heavy";
 
 export const REGISTRY: Gate[] = [
   { id: "self_checks", tier: "fast", kind: "fn", run: runSelfChecks,
-    desc: "self-completeness meta-checks (ignored-test + matrix-script coverage + CI-is-fast-tier)" },
+    desc: "self-completeness meta-checks (ignored-test + matrix-script + CI + registry/README coverage)" },
 
   // --- fast tier (CI + the inner loop) ---
   { id: "fmt", tier: "fast", kind: "cmd", cmd: ["cargo", "fmt", "--all", "--", "--check"],
@@ -2795,7 +2995,8 @@ async function runSelfLogged(): Promise<never> {
 if (import.meta.main) {
   if (process.argv.includes("--selftest")) {
     warmupCommandsSelftest();
-    console.log("check.ts self-test OK (warm-up refresh/fetch command order)");
+    registryReadmeIntegritySelftest();
+    console.log("check.ts self-test OK (warm-up refresh/fetch command order + README-integrity controls)");
     process.exit(0);
   }
   // --help prints and exits; no evidence to preserve, so no log file for it.
