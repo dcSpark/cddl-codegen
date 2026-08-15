@@ -3053,6 +3053,21 @@
           }
         },
         "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.occurrence-target.grpent.member.bounded_array",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.member.plus_array",
         "status": "supported"
       },
@@ -3465,21 +3480,6 @@
         "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.top-level.type2.unwrap",
         "status": "unsupported"
-      },
-      {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
-        "id": "contain.occurrence-target.grpent.member.bounded_array",
-        "status": "supported"
       },
       {
         "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
