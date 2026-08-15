@@ -1,0 +1,40 @@
+; Each zero-permitting marker on a unique fixed map key has the same meaningful
+; cardinality as `?`: absent or one. The distinct spellings keep that normalization
+; from becoming an accidental parser-only rule; `fixed` also reaches the fixed-value
+; presence-bool path.
+zero_permitting_map = {
+  required: uint,
+  * zero_star: uint,
+  0*1 zero_bounded: tstr,
+  *2 max_only: bool,
+  * fixed: 5
+}
+
+; Exact zero is a key constraint, never an optional value field.
+zero_exact_closed = { required: uint, 0*0 forbidden: uint }
+zero_exact_open = { required: uint, 0*0 forbidden: uint, * tstr => uint }
+zero_exact_non_empty_open = { required: uint, 0*0 forbidden: uint, + tstr => uint }
+zero_exact_loose_pair_open = {
+  required: uint,
+  0*0 forbidden: uint,
+  * tstr => uint ; @duplicates preserve
+}
+rest_key = uint / tstr
+zero_exact_typed_open = { required: uint, 0*0 forbidden: uint, * rest_key => uint }
+zero_exact_any_open = { required: uint, 0*0 forbidden: uint, * any => uint }
+zero_exact_ignore = {
+  required: uint,
+  0*0 forbidden: uint,
+  * tstr => uint ; @ignore
+}
+zero_exact_bounded_open = { required: uint, 0*0 forbidden: uint, 1*2 tstr => uint }
+zero_exact_pair_open = {
+  required: uint,
+  0*0 forbidden: uint,
+  1*2 tstr => uint ; @duplicates preserve
+}
+zero_exact_named_multi = {
+  required: uint,
+  0*0 41: uint, ; @name no_uint
+  0*0 original_text: uint ; @name no_text
+}

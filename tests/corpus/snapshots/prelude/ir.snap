@@ -49,6 +49,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "big_u",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -89,6 +90,7 @@ expression: ir
                     },
                     RustField {
                         name: "uri",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -129,6 +131,7 @@ expression: ir
                     },
                     RustField {
                         name: "big_i",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -169,6 +172,7 @@ expression: ir
                     },
                     RustField {
                         name: "unsigned",
+                        source_index: 3,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -209,6 +213,7 @@ expression: ir
                     },
                     RustField {
                         name: "t",
+                        source_index: 4,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 Str,
@@ -247,6 +252,7 @@ expression: ir
                     },
                     RustField {
                         name: "b",
+                        source_index: 5,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 Bytes,
@@ -285,6 +291,7 @@ expression: ir
                     },
                     RustField {
                         name: "intg",
+                        source_index: 6,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -325,6 +332,7 @@ expression: ir
                     },
                     RustField {
                         name: "big_n",
+                        source_index: 7,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -365,6 +373,7 @@ expression: ir
                     },
                     RustField {
                         name: "date",
+                        source_index: 8,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -405,6 +414,7 @@ expression: ir
                     },
                     RustField {
                         name: "b64u",
+                        source_index: 9,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -445,6 +455,7 @@ expression: ir
                     },
                     RustField {
                         name: "b64l",
+                        source_index: 10,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -485,6 +496,7 @@ expression: ir
                     },
                     RustField {
                         name: "re",
+                        source_index: 11,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -525,6 +537,7 @@ expression: ir
                     },
                     RustField {
                         name: "mime",
+                        source_index: 12,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -565,6 +578,7 @@ expression: ir
                     },
                     RustField {
                         name: "ec",
+                        source_index: 13,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -605,6 +619,7 @@ expression: ir
                     },
                     RustField {
                         name: "df",
+                        source_index: 14,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -645,6 +660,7 @@ expression: ir
                     },
                     RustField {
                         name: "bf",
+                        source_index: 15,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -684,6 +700,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -798,6 +815,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "e2",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -838,6 +856,7 @@ expression: ir
                     },
                     RustField {
                         name: "m",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -877,6 +896,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -1065,6 +1085,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "e10",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -1105,6 +1126,7 @@ expression: ir
                     },
                     RustField {
                         name: "m",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -1144,6 +1166,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

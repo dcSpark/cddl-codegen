@@ -1099,6 +1099,75 @@ fn component_glue_reenters_bounded_array_doors_inside_direct_table_values() {
     );
 }
 
+/// A B5-403 dynamic map row is a checked carrier in Rust but necessarily a `list<tuple<…>>` in
+/// WIT. Each record constructor must therefore be fallible and restore its OWN bounded carrier
+/// before it calls native `new`; this pin covers the open-struct rest plus both open-table rows.
+#[test]
+fn component_glue_reenters_bounded_dynamic_map_row_doors() {
+    let wit = wit_of("tests/component-bounds/input.cddl", &[]);
+    for constructor in [
+        "constructor(key1: u64, rest: list<tuple<u64, string>>) -> result<dynamic-open-struct-rest, string>;",
+        "constructor(entries: list<tuple<u64, string>>) -> result<dynamic-open-table-typed, string>;",
+        "constructor(rest: list<tuple<string, u64>>) -> result<dynamic-open-table-catch-all, string>;",
+        "constructor(required: u64, rest: list<tuple<string, u64>>) -> result<exact-zero-open, string>;",
+    ] {
+        assert!(
+            wit.contains(constructor),
+            "a bounded dynamic row must despecialize to a fallible list-of-tuples constructor `{constructor}`:\n{wit}"
+        );
+    }
+
+    let glue = component_glue("tests/component-bounds/input.cddl", &[]);
+    let exact = glue
+        .split("impl wit_types::GuestExactZeroOpen for WitExactZeroOpen {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}\n\npub struct").next())
+        .expect("exact-zero open record has component glue");
+    assert!(
+        exact.contains("fn new(")
+            && exact.contains(") -> Result<Self, String> {")
+            && exact.contains("let rest = rest.into_iter().collect();")
+            && exact.contains(
+                "let inner = cddl_lib::ExactZeroOpen::new(required, rest).map_err(err)?;"
+            ),
+        "an exact-zero loose rest must cross WIT as a fallible complete list and call the native checked door:\n{exact}"
+    );
+    assert!(
+        !exact.contains("fn forbidden(") && !exact.contains("forbidden:"),
+        "the component resource must not expose an exact-zero value member:\n{exact}"
+    );
+    for (implementation, conversion, native_constructor) in [
+        (
+            "impl wit_types::GuestDynamicOpenStructRest for WitDynamicOpenStructRest {",
+            "let rest = (rest.into_iter().collect::<Vec<_>>())\n            .try_into()\n            .map_err(err)?;",
+            "let inner = cddl_lib::DynamicOpenStructRest::new(key1, rest);",
+        ),
+        (
+            "impl wit_types::GuestDynamicOpenTableTyped for WitDynamicOpenTableTyped {",
+            "let entries = (entries.into_iter().collect::<Vec<_>>())\n            .try_into()\n            .map_err(err)?;",
+            "let inner = cddl_lib::DynamicOpenTableTyped::new(entries);",
+        ),
+        (
+            "impl wit_types::GuestDynamicOpenTableCatchAll for WitDynamicOpenTableCatchAll {",
+            "let rest = (rest.into_iter().collect::<Vec<_>>())\n            .try_into()\n            .map_err(err)?;",
+            "let inner = cddl_lib::DynamicOpenTableCatchAll::new(rest);",
+        ),
+    ] {
+        let body = glue
+            .split(implementation)
+            .nth(1)
+            .and_then(|rest| rest.split("\n}\n\npub struct").next())
+            .unwrap_or_else(|| panic!("the glue carries no `{implementation}`:\n{glue}"));
+        assert!(
+            body.contains("fn new(")
+                && body.contains(") -> Result<Self, String> {")
+                && body.contains(conversion)
+                && body.contains(native_constructor),
+            "the bounded dynamic row must restore its checked carrier before native construction:\n{body}"
+        );
+    }
+}
+
 /// The typed map walk also owns the map's OUTER despecialization: a `{+ K => V}` travels through
 /// WIT as a plain list of rows, so the glue must stage those rows in the loose vec-of-pairs carrier
 /// before re-entering `NonEmptyMap`'s `TryFrom` door.

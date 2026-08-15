@@ -55,23 +55,11 @@
     },
     {
       "gate": "clippy",
-      "warm_ms": 3000,
+      "warm_ms": 150,
       "n": 20,
-      "measured": "2026-08-14",
+      "measured": "2026-08-15",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-14",
-          "warm_ms": 3000
-        },
-        {
-          "date": "2026-08-14",
-          "warm_ms": 6000
-        },
-        {
-          "date": "2026-08-14",
-          "warm_ms": 3000
-        },
         {
           "date": "2026-08-14",
           "warm_ms": 175
@@ -79,14 +67,26 @@
         {
           "date": "2026-08-14",
           "warm_ms": 3000
+        },
+        {
+          "date": "2026-08-15",
+          "warm_ms": 6000
+        },
+        {
+          "date": "2026-08-15",
+          "warm_ms": 3000
+        },
+        {
+          "date": "2026-08-15",
+          "warm_ms": 150
         }
       ]
     },
     {
       "gate": "component_build_sweep",
-      "warm_ms": 135000,
-      "n": 13,
-      "measured": "2026-08-10",
+      "warm_ms": 107000,
+      "n": 10,
+      "measured": "2026-08-15",
       "machine": "86216c55",
       "history": [
         {
@@ -96,6 +96,10 @@
         {
           "date": "2026-08-10",
           "warm_ms": 135000
+        },
+        {
+          "date": "2026-08-15",
+          "warm_ms": 107000
         }
       ]
     },
@@ -114,9 +118,9 @@
     },
     {
       "gate": "component_corpus_compiles",
-      "warm_ms": 89000,
+      "warm_ms": 66000,
       "n": 11,
-      "measured": "2026-08-13",
+      "measured": "2026-08-15",
       "machine": "86216c55",
       "history": [
         {
@@ -134,6 +138,10 @@
         {
           "date": "2026-08-13",
           "warm_ms": 89000
+        },
+        {
+          "date": "2026-08-15",
+          "warm_ms": 66000
         }
       ]
     },
@@ -1000,15 +1008,11 @@
     },
     {
       "gate": "rust_oracle_fingerprint",
-      "warm_ms": 56000,
-      "n": 10,
-      "measured": "2026-08-14",
+      "warm_ms": 44000,
+      "n": 11,
+      "measured": "2026-08-15",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-28",
-          "warm_ms": 24000
-        },
         {
           "date": "2026-08-05",
           "warm_ms": 29000
@@ -1024,6 +1028,10 @@
         {
           "date": "2026-08-14",
           "warm_ms": 56000
+        },
+        {
+          "date": "2026-08-15",
+          "warm_ms": 44000
         }
       ]
     },

@@ -40,8 +40,9 @@ the pinned rust-cddl validator panic prevents all three fixed-byte member rows p
 feature row from gaining independently certified reject vectors until upstream gap #17 closes.
 For homogeneous tables, `*` is loose, `+`/`1*` is non-empty, and every other occurrence window
 (including omitted exact-once) is checked: unique keys use `BoundedMap`, while duplicate-preserving
-tables use entry-ordered `BoundedPairMap`. Only bounded rows in open-table/open-struct contexts remain
-rejected.
+tables use entry-ordered `BoundedPairMap`. Open-struct rest and both open-table rows use the same
+row-local carriers: readers stage their own loose partition and cross one checked door, rather than
+counting the enclosing map.
 The green, four-row unverified, and over-accepts (empty) sets are
 each pinned exactly by `query_q4_directional.ts --check` (the over-acceptance vector class stays armed
 for the next certified instance).
@@ -147,16 +148,12 @@ entries = [
   "matrix.incremental-group-choice-extension",
   "matrix.heterogeneous-array.occurrence-bounds",
   "matrix.open-array.optional-adjacency",
-  "matrix.open-table.bounded-rest-rows",
-  "matrix.open-table.min-one-hardening",
   "matrix.heterogeneous-array.atomic-bounds-handover",
   "matrix.fixed-bytes.static-representation",
   "matrix.fixed-array.static-representation",
   "shared-carrier-delivery-requirements",
-  "matrix.keyed-struct-map.zero-permitting-fields",
   "matrix.inline-group-occurrence-carrier",
   "matrix.cbor-any-boundary",
-  "matrix.anonymous-nested-map",
   "matrix.inline-group-choice-arm",
   "matrix.float-table-key-domain",
   "matrix.fixed-map-key-kinds",
@@ -323,42 +320,6 @@ action_on_fire_md = '''add its annotation file and adapter
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
 event_md = '''another consumer adopts the master
-'''
-
-[[record]]
-id = "matrix.anonymous-nested-map"
-title = "Real support for the anonymous nested MAP in a type position"
-
-[record.payload]
-kind = "work"
-body_md = '''- **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
-  its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
-  group-choice-arm siblings). Every one of those shapes rejects gracefully
-  under both profiles, naming the map's supported named form (`m = {x: int, y: uint}`, referenced by
-  `m`); that rejection is pinned by `inline_map_member_rejects_gracefully` and its keyless spelling
-  by `tests/robustness/inline_map_keyless_member.cddl`. But the
-  ARRAY sibling goes further: a `@name` comment on the type2 mints the struct in place. The map side
-  has no such door because `Type2::Map`'s member-position walk never reads rule metadata. Giving it
-  one would close the last asymmetry between the two anonymous-composite families. '''
-signal_md = '''Reopening signal:
-  the count of anonymous nested maps a consumer must hoist to named rules to compile ONE committed
-  spec reaches 5 — hoisting is a mechanical per-occurrence edit, so the cost grows inside a single
-  spec rather than across consumers, and the consumer can count it from their own rejection output.
-'''
-work_state = "deferred"
-work_intent = "build_capability"
-work_kind = "feature"
-risk = "valid_rejection"
-
-[record.payload.reopening_signal]
-observer = "affected spec owner"
-dimension = "required map hoists"
-action_on_fire_md = '''add the anonymous map door
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "event"
-event_md = '''one committed spec requires five
 '''
 
 [[record]]
@@ -1509,35 +1470,6 @@ missed_action_md = '''Block the row when enforcement is unclassified.
 '''
 
 [[record]]
-id = "matrix.keyed-struct-map.zero-permitting-fields"
-title = "Honor zero-permitting occurrences on keyed struct-map fields"
-
-[record.payload]
-kind = "work"
-body_md = '''### Honor zero-permitting occurrences on keyed struct-map fields
-
-Zero-permitting occurrences (`*` / `0*n` / `*n`) on a keyed struct-map field are **rejected
-gracefully** (pinned by `contain.occurrence-target.memberkey.bareword.{zero_map,zero_bounded_map}`
-  in `tests/matrix_reject/`) rather than silently narrowed to a mandatory field. `+` / `n*m` with a
-  lower bound ≥ 1 still generate a mandatory field — under unique map keys they collapse to
-  exactly-one, so mandatory is the honored semantics (a deliberate boundary). Real support for `*`
-  (an `Option<T>` field, like `?`) is a candidate feature. Its carrier and construction door must
-  make absence representable without silently widening the keyed-map semantics and must cover
-  serialization, deserialization, every applicable generated projection, matrix classification,
-  and spec-derived boundary vectors.
-
-'''
-work_state = "ready"
-work_intent = "build_capability"
-work_kind = "feature"
-risk = "valid_rejection"
-acceptance_md = '''Add an invariant-preserving optional carrier for *, 0*n, and *n keyed struct-map fields without changing the deliberate exactly-one collapse for lower bounds of at least one, then cover every generated face, cross-crate projection, matrix classification, and spec-derived boundary vector.
-'''
-priority_band = "high"
-priority_rationale_md = '''Zero-permitting keyed struct-map fields are valid input and remain selected because the current mandatory representation would silently narrow them, while an Option-like carrier can preserve their absence semantics.
-'''
-
-[[record]]
 id = "matrix.matching-semantics-boundary"
 title = "F8 — matching semantics"
 legacy_aliases = ["F8"]
@@ -1923,69 +1855,6 @@ event_md = '''A reviewed discriminator and residue proof exists for a specific o
 check_procedure_md = '''Verify that proof against RFC greedy non-backtracking examples, including the overlapping [? uint, uint] refusal control.
 '''
 due_action_md = '''Implement and vector only the proven adjacency classes; retain graceful refusal for every unresolved overlap.
-'''
-
-[[record]]
-id = "matrix.open-table.bounded-rest-rows"
-title = "Honor bounded occurrences on open-table rows"
-
-[record.payload]
-kind = "work"
-body_md = '''### Honor bounded occurrences on open-table rows
-
-Bounded typed or catch-all rows in an open table/open struct remain rejected rather than being
-silently lowered to a loose or mandatory field. Support requires a per-row carrier and construction
-door that cannot create an out-of-window value, plus matching deserialize residue and bound checks
-across Rust, wasm, JSON, component, and cross-crate projections. This is distinct from the min-1
-typed-row hardening question below and from zero-permitting fixed-key fields, which have their own
-lifecycle.
-
-'''
-work_state = "ready"
-work_intent = "build_capability"
-work_kind = "feature"
-risk = "valid_rejection"
-acceptance_md = '''Define carriers and construction doors for bounded typed and catch-all rows in open-table and open-struct contexts, preserve every admitted cardinality, and cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
-'''
-priority_band = "high"
-priority_rationale_md = '''Bounded typed and catch-all rows remain selected because silently narrowing their cardinality is invalid and a graceful refusal is not the desired end state.
-'''
-
-[[record]]
-id = "matrix.open-table.min-one-hardening"
-title = "Harden an open table's min-1 typed row when an invalid value is observed"
-
-[record.payload]
-kind = "work"
-body_md = '''### Harden an open table's min-1 typed row when an invalid value is observed
-
-An open table's min-1 typed row (`t = { + K_t => V_t, * K_r => V_r }`) is the one min-1 shape
-that does NOT use the unrepresentable model, because the container it bounds is one `pub` member
-of a struct whose OTHER member is an unbounded sibling. It is enforced at a seeded door
-(`new(first_key, first_value)`, so a constructed value satisfies it) plus one check after each
-reader's loop, raising the very `RangeCheck` `NonEmptyMap`'s `TryFrom` raises — but clearing the
-field afterwards is representable. Making it unrepresentable means giving that member the
-`NonEmptyMap`/`NonEmptyPairMap` type, which ripples through the JSON, wasm, WIT and
-extern-interface faces of a shape that currently reuses the rest row's container spelling
-verbatim. '''
-signal_md = '''Reopening signal: a consumer reporting a value that reached the wire — or a
-cross-crate boundary — with an empty typed row, i.e. the bypass observed rather than argued.
-
-'''
-work_state = "deferred"
-work_intent = "repair"
-work_kind = "regression_gap"
-risk = "invalid_acceptance"
-
-[record.payload.reopening_signal]
-observer = "affected consumer"
-dimension = "empty typed row reaching wire/cross-crate boundary"
-action_on_fire_md = '''adopt NonEmptyMap/PairMap across faces
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "event"
-event_md = '''bypass is observed
 '''
 
 [[record]]
@@ -2999,24 +2868,9 @@ kind = "parent_of"
 target = "matrix.heterogeneous-array.atomic-bounds-handover"
 
 [[relation]]
-source = "matrix.heterogeneous-array.occurrence-bounds"
-kind = "parent_of"
-target = "matrix.open-table.min-one-hardening"
-
-[[relation]]
-source = "matrix.heterogeneous-array.occurrence-bounds"
-kind = "related"
-target = "matrix.open-table.bounded-rest-rows"
-
-[[relation]]
 source = "matrix.incremental-group-choice-extension"
 kind = "blocked_by"
 target = "matrix.multi-choice-group-rule"
-
-[[relation]]
-source = "matrix.open-table.bounded-rest-rows"
-kind = "related"
-target = "matrix.open-table.min-one-hardening"
 
 [[relation]]
 source = "matrix.refusal-spelling-space"

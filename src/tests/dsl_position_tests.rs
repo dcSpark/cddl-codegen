@@ -222,16 +222,31 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Reject("Anonymous groups not allowed"),
     },
-    // 9d. SHAPE CONTROL for cell 9: the MAP flavor has no naming door at all (its rejection does
-    //     not advertise `@name`), so the member-position slot must not reach it — an inline map
-    //     member keeps rejecting with its own message.
+    // 9d. MAP sibling of cell 9: the same member-position slot names a heterogeneous inline map
+    //     record and the field that holds it.
     Cell {
         directive: "@name",
         position: "anon-map-member",
         spec: "t = [0, {a: uint} ; @name inner\n]\n",
         flags: &[],
         wasm: false,
-        expect: Expect::Reject("an inline map (`{ a: int, b: uint }`) used as a member"),
+        expect: Expect::Effect {
+            must: &["struct Inner", "pub inner: Inner"],
+            must_not: &[],
+        },
+    },
+    // 9f. TAG spelling of cell 9d: tag layers are transparent to the map naming door exactly as
+    //     they are to the array door in cell 9e.
+    Cell {
+        directive: "@name",
+        position: "anon-map-member-behind-tag",
+        spec: "t = [0, #6.42({a: uint}) ; @name inner\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["struct Inner", "pub inner: Inner", "write_tag(42u64)"],
+            must_not: &[],
+        },
     },
     // 9b. PLACEMENT CONTROL for the anon-group-member pin (the KNOWN_SILENT_DROP authoring rule):
     //     the same directive + comment placement (after the inline composite) in the CHOICE-MEMBER
@@ -246,6 +261,32 @@ const GRID: &[Cell] = &[
         wasm: false,
         expect: Expect::Effect {
             must: &["struct ArrVariant"],
+            must_not: &[],
+        },
+    },
+    // 9g. MAP sibling at the direct type-choice comment slot. This reaches
+    //     `get_comment_after(type2)` rather than the enclosing-group-entry ascent.
+    Cell {
+        directive: "@name",
+        position: "anon-map-choice-member",
+        spec: "x = {a: uint} ; @name map_variant\n  / uint\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["struct MapVariant"],
+            must_not: &[],
+        },
+    },
+    // 9h. An occurrence marker changes the outer collection carrier, not ownership of the member's
+    //     comment slot; the map remains the whole occurrence target and is nameable there.
+    Cell {
+        directive: "@name",
+        position: "anon-map-occurrence-target",
+        spec: "x = [* {a: uint} ; @name inner\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["struct Inner", "pub type X = Vec<Inner>"],
             must_not: &[],
         },
     },

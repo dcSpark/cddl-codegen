@@ -728,6 +728,10 @@
       "role": "role.occurrence-target"
     },
     {
+      "feature": "memberkey.value",
+      "role": "role.occurrence-target"
+    },
+    {
       "feature": "type2.array",
       "role": "role.occurrence-target"
     },

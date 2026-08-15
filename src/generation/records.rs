@@ -960,6 +960,165 @@ fn rest_member_type(rest: &RestRow) -> crate::intermediate::RustType {
     rest.container_type()
 }
 
+/// One dynamic MAP row's sole loose-to-checked carrier door.  Keep the fully-qualified type in an
+/// angle-bracket path: unlike the old NonEmpty-only spelling, BoundedMap/Pairs carry generic key,
+/// value, and const-window arguments, and `<Type>::try_from` is unambiguous in generated Rust.
+fn rest_checked_conversion(rest: &RestRow, types: &IntermediateTypes, cli: &Cli) -> Option<String> {
+    (!rest.is_array_tail() && rest.is_restricted()).then(|| {
+        let carrier = rest_member_type(rest).for_rust_member(types, false, cli);
+        format!(
+            "let {} = <{carrier}>::try_from({})?;",
+            rest.field_name, rest.field_name
+        )
+    })
+}
+
+/// The loose container used while a rest row is decoding. A restricted row must not insert into its
+/// public carrier one entry at a time: the empty prefix is legitimate staging state, and the one
+/// conversion at final assembly is its invariant door. `RestRow` owns this spelling so every face
+/// agrees on the same loose source for its checked carrier.
+fn rest_staging_type(rest: &RestRow) -> crate::intermediate::RustType {
+    rest.staging_container_type()
+}
+
+/// Statements for the native construction door of a record with exact-zero fixed members.  The
+/// key is inspected as a CBOR VALUE: primitive rows compare their typed value, while an `any` row
+/// uses the runtime's width-independent `value_eq` helper.
+fn forbidden_rest_validation(
+    record: &RustRecord,
+    rest: &RestRow,
+    cli: &Cli,
+    container: &str,
+) -> Vec<String> {
+    if rest.is_array_tail() || !record.has_forbidden_fields() {
+        return vec![];
+    }
+    let domain = rest.domain().conceptual_type.resolve_alias_shallow();
+    record
+        .forbidden_fields
+        .iter()
+        .map(|field| {
+            let (predicate, key) = match (domain, &field.key) {
+                (ConceptualRustType::Primitive(Primitive::U64), FixedValue::Uint(x)) =>
+                    (format!("*key == {x}"), format!("crate::generated::error::Key::Uint({x})")),
+                (ConceptualRustType::Primitive(Primitive::Str), FixedValue::Text(x)) =>
+                    (format!("key.as_str() == \"{}\"", escape_rust_str(x)), format!("crate::generated::error::Key::Str(String::from(\"{}\"))", escape_rust_str(x))),
+                (ConceptualRustType::Any, FixedValue::Uint(x)) => {
+                    let any = format!("{}::any_cbor", cli.common_import_rust());
+                    (format!("key.value_eq(&{any}::AnyCbor::new_uint({x}))"), format!("crate::generated::error::Key::Uint({x})"))
+                }
+                (ConceptualRustType::Any, FixedValue::Text(x)) => {
+                    let any = format!("{}::any_cbor", cli.common_import_rust());
+                    (format!("key.value_eq(&{any}::AnyCbor::new_text(String::from(\"{}\")))", escape_rust_str(x)), format!("crate::generated::error::Key::Str(String::from(\"{}\"))", escape_rust_str(x)))
+                }
+                (_, FixedValue::Uint(x)) => {
+                    let any = format!("{}::any_cbor", cli.common_import_rust());
+                    (format!("{any}::cbor_value_eq_serialized(key, &{any}::AnyCbor::new_uint({x}))?"), format!("crate::generated::error::Key::Uint({x})"))
+                }
+                (_, FixedValue::Text(x)) => {
+                    let any = format!("{}::any_cbor", cli.common_import_rust());
+                    (format!("{any}::cbor_value_eq_serialized(key, &{any}::AnyCbor::new_text(String::from(\"{}\")))?", escape_rust_str(x)), format!("crate::generated::error::Key::Str(String::from(\"{}\"))", escape_rust_str(x)))
+                }
+                _ => unreachable!("parser admits only uint/text exact-zero map keys"),
+            };
+            // Typed/union key comparison serializes then reparses the candidate and can fail; keep
+            // that `Result` in this constructor rather than hiding it in an `Iterator::any` closure.
+            // Primitive predicates remain infallible and retain the compact existing form.
+            if predicate.ends_with('?') {
+                format!(
+                    "for (key, _) in {container}.iter() {{ if {predicate} {{ return Err(DeserializeFailure::ForbiddenKey({key}).into()); }} }}"
+                )
+            } else {
+                format!(
+                    "if {container}.iter().any(|(key, _)| {predicate}) {{ return Err(DeserializeFailure::ForbiddenKey({key}).into()); }}"
+                )
+            }
+        })
+        .collect()
+}
+
+/// The single-entry twin of [`forbidden_rest_validation`].  A checked insertion door must inspect
+/// the candidate key BEFORE invoking a restricted carrier's `insert`: otherwise a full
+/// `BoundedMap`/`BoundedPairMap` would report its cardinality error first and leave the exact-zero
+/// constraint unaudited.  `key` below is deliberately `&key` at the call site, matching the
+/// iterator binding in the complete-container validator and keeping typed/union comparator calls
+/// on a borrowed value.
+fn forbidden_rest_insert_key_validation(
+    record: &RustRecord,
+    rest: &RestRow,
+    cli: &Cli,
+) -> Vec<String> {
+    if rest.is_array_tail() || !record.has_forbidden_fields() {
+        return vec![];
+    }
+    let domain = rest.domain().conceptual_type.resolve_alias_shallow();
+    record
+        .forbidden_fields
+        .iter()
+        .map(|field| {
+            let (predicate, forbidden_key) = match (domain, &field.key) {
+                (ConceptualRustType::Primitive(Primitive::U64), FixedValue::Uint(x)) => (
+                    format!("*key == {x}"),
+                    format!("crate::generated::error::Key::Uint({x})"),
+                ),
+                (ConceptualRustType::Primitive(Primitive::Str), FixedValue::Text(x)) => (
+                    format!("key.as_str() == \"{}\"", escape_rust_str(x)),
+                    format!(
+                        "crate::generated::error::Key::Str(String::from(\"{}\"))",
+                        escape_rust_str(x)
+                    ),
+                ),
+                (ConceptualRustType::Any, FixedValue::Uint(x)) => {
+                    let any = format!("{}::any_cbor", cli.common_import_rust());
+                    (
+                        format!("key.value_eq(&{any}::AnyCbor::new_uint({x}))"),
+                        format!("crate::generated::error::Key::Uint({x})"),
+                    )
+                }
+                (ConceptualRustType::Any, FixedValue::Text(x)) => {
+                    let any = format!("{}::any_cbor", cli.common_import_rust());
+                    (
+                        format!(
+                            "key.value_eq(&{any}::AnyCbor::new_text(String::from(\"{}\")))",
+                            escape_rust_str(x)
+                        ),
+                        format!(
+                            "crate::generated::error::Key::Str(String::from(\"{}\"))",
+                            escape_rust_str(x)
+                        ),
+                    )
+                }
+                (_, FixedValue::Uint(x)) => {
+                    let any = format!("{}::any_cbor", cli.common_import_rust());
+                    (
+                        format!(
+                            "{any}::cbor_value_eq_serialized(key, &{any}::AnyCbor::new_uint({x}))?"
+                        ),
+                        format!("crate::generated::error::Key::Uint({x})"),
+                    )
+                }
+                (_, FixedValue::Text(x)) => {
+                    let any = format!("{}::any_cbor", cli.common_import_rust());
+                    (
+                        format!(
+                            "{any}::cbor_value_eq_serialized(key, &{any}::AnyCbor::new_text(String::from(\"{}\")))?",
+                            escape_rust_str(x)
+                        ),
+                        format!(
+                            "crate::generated::error::Key::Str(String::from(\"{}\"))",
+                            escape_rust_str(x)
+                        ),
+                    )
+                }
+                _ => unreachable!("parser admits only uint/text exact-zero map keys"),
+            };
+            format!(
+                "if {predicate} {{ return Err(DeserializeFailure::ForbiddenKey({forbidden_key}).into()); }}"
+            )
+        })
+        .collect()
+}
+
 impl RestKeyDomain {
     fn of(types: &IntermediateTypes, rest: &RestRow) -> Self {
         if !rest.map_key_uses_peeked_path(types) {
@@ -1095,9 +1254,12 @@ fn emit_rest_flatten_json(
         // a TYPED range the `BTreeMap<K, V>` schema (uint keys → `patternProperties "^\d+$"`, text
         // keys → `additionalProperties`).
         //
-        // For the primitive uint/text domains only the loose (non-preserve) container is left to
-        // contribute that typed schema itself: it IS the `BTreeMap`/`OrderedHashMap` the position
-        // calls for, so its delegation and the position's answer are the same bytes. The
+        // For the primitive uint/text domains only an UNRESTRICTED loose non-preserve container is
+        // left to contribute that typed schema itself: it IS the `BTreeMap`/`OrderedHashMap` the
+        // position calls for, so its delegation and the position's answer are the same bytes. A
+        // bounded carrier is still a map at this position, but its standalone `JsonSchema` contains
+        // min/max-properties keywords. Flattening those onto the containing object would count fixed
+        // fields and sibling dynamic rows, so it too names the position's unbounded map schema. The
         // `@duplicates preserve` twin is array-shaped (`PairMap` → `Vec<(K, V)>`, honest for a
         // standalone duplicate-permitting table, wrong for a FLATTENED row: no index signature, plus
         // array keywords merged onto the parent object), so it names the position's schema
@@ -1117,7 +1279,7 @@ fn emit_rest_flatten_json(
             annotations.push(format!(
                 "#[schemars(schema_with = \"{flatten}::general_key_rest_map_schema::<{value_ty}>\")]"
             ));
-        } else if rest_is_pair_map(rest) {
+        } else if rest.is_restricted() || rest_is_pair_map(rest) {
             let key_ty = rest.domain().for_rust_member(types, false, cli);
             let value_ty = rest.range().for_rust_member(types, false, cli);
             annotations.push(format!(
@@ -1139,7 +1301,57 @@ fn emit_rest_flatten_json(
         .filter(|f| !f.rust_type.is_fixed_value() || f.optional)
         .map(|f| format!("{:?}", f.name.to_string()))
         .collect();
+    let mut reserved = reserved;
+    // Exact-zero names are neither properties nor rest entries.  Reserving them here also keeps a
+    // direct serde construction from laundering the forbidden key through `flatten`.
+    reserved.extend(
+        record
+            .forbidden_fields
+            .iter()
+            .map(|f| format!("{:?}", f.name)),
+    );
     let reserved_lit = format!("&[{}]", reserved.join(", "));
+    // Most open records have no exact-zero members. Keep their generated JSON reader byte-for-byte
+    // free of this check (and, importantly, avoid an always-false scan plus a dead `key` binding).
+    let forbidden_check = if record.has_forbidden_fields() {
+        let forbidden_lit = format!(
+            "&[{}]",
+            record
+                .forbidden_fields
+                .iter()
+                .map(|f| format!("{:?}", f.name))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let forbidden_error = format!(
+            "match key.as_str() {{ {} _ => unreachable!(\"checked against the exact-zero property set\"), }}",
+            record
+                .forbidden_fields
+                .iter()
+                .map(|field| {
+                    let failure = match &field.key {
+                        FixedValue::Uint(value) => format!(
+                            "DeserializeError::from(DeserializeFailure::ForbiddenKey(Key::Uint({value})))"
+                        ),
+                        FixedValue::Text(value) => format!(
+                            "DeserializeError::from(DeserializeFailure::ForbiddenKey(Key::Str(String::from(\"{}\"))))",
+                            escape_rust_str(value)
+                        ),
+                        _ => unreachable!("parser admits only uint/text exact-zero map keys"),
+                    };
+                    format!("{:?} => {failure}.to_string(),", field.name)
+                })
+                .collect::<String>()
+        );
+        format!(
+            "if let Some((key, _)) = pairs.iter().find(|(key, _)| ({forbidden_lit}).contains(&key.as_str())) {{\n\
+             \x20       return Err(serde::de::Error::custom({forbidden_error}));\n\
+             \x20   }}\n\
+             \x20   "
+        )
+    } else {
+        String::new()
+    };
 
     let field = &rest.field_name;
     // Per-domain key <-> string (RFC 8949 §6.1 write, §6.2 read).
@@ -1195,6 +1407,33 @@ fn emit_rest_flatten_json(
             "v".to_owned(),
         )
     };
+    // Flattened JSON reads a temporary loose map/pair-map. A checked carrier deliberately has no
+    // `FromIterator`: a below-minimum prefix is valid only while decoding, so the complete region
+    // must re-enter the same `TryFrom` door CBOR uses.
+    let staging_ty = rest_staging_type(rest).for_rust_member(types, false, cli);
+    let staged = record.fresh_generated_member_ident("staged");
+    let deserialize_finish = if rest.is_restricted() {
+        format!(
+            "let {staged}: {staging_ty} = pairs\n\
+             \x20       .into_iter()\n\
+             \x20       .map(|(ks, v)| {{\n\
+             \x20           {key_coerce}\n\
+             \x20           Ok((k, {value_unwrap}))\n\
+             \x20       }})\n\
+             \x20       .collect::<Result<_, D::Error>>()?;\n\
+             \x20   <{container_ty}>::try_from({staged}).map_err(serde::de::Error::custom)"
+        )
+    } else {
+        format!(
+            "pairs\n\
+             \x20       .into_iter()\n\
+             \x20       .map(|(ks, v)| {{\n\
+             \x20           {key_coerce}\n\
+             \x20           Ok((k, {value_unwrap}))\n\
+             \x20       }})\n\
+             \x20       .collect()"
+        )
+    };
 
     let functions = format!(
         "fn {ser_fn}<S: serde::Serializer>(\n\
@@ -1214,17 +1453,99 @@ fn emit_rest_flatten_json(
          ) -> Result<{container_ty}, D::Error> {{\n\
          \x20   let pairs: Vec<(String, {value_de_ty})> =\n\
          \x20       {flatten}::read_flattened_rest_pairs(deserializer)?;\n\
-         \x20   pairs\n\
-         \x20       .into_iter()\n\
-         \x20       .map(|(ks, v)| {{\n\
-         \x20           {key_coerce}\n\
-         \x20           Ok((k, {value_unwrap}))\n\
-         \x20       }})\n\
-         \x20       .collect()\n\
+         \x20   {forbidden_check}{deserialize_finish}\n\
          }}\n"
     );
     gen_scope.rust(types, name).raw(&functions);
     annotations
+}
+
+/// Private unit fields that reserve exact-zero JSON property names on a CLOSED record. Serde's
+/// default closed-struct behavior deliberately ignores unrelated unknown properties, so
+/// `deny_unknown_fields` would be a semantic broadening. A named field wins normal serde field
+/// dispatch before unknown-field handling and its custom reader can therefore reject only the
+/// exact generated name. The unit value is skipped on write and schema export, and both generated
+/// construction paths initialize it — it is constraint plumbing, never a value surface.
+fn exact_zero_json_sentinel_fields(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    record: &RustRecord,
+    manual_json: bool,
+    cli: &Cli,
+) -> Vec<(String, codegen::Field)> {
+    if !record.has_forbidden_fields()
+        || record.captured_rest().is_some()
+        || manual_json
+        || !cli.json_serde_derives
+    {
+        return vec![];
+    }
+
+    let sentinel_names = exact_zero_json_sentinel_names(record);
+    let owner_snake = crate::utils::convert_to_snake_case(name.as_ref());
+    let mut functions = String::new();
+    let mut sentinels = Vec::new();
+    for (forbidden, field_name) in record.forbidden_fields.iter().zip(sentinel_names) {
+        let deser_fn = format!(
+            "{owner_snake}_{}_exact_zero_json_forbidden",
+            forbidden.source_index
+        );
+        let failure = match &forbidden.key {
+            FixedValue::Uint(value) => {
+                format!(
+                    "DeserializeError::from(DeserializeFailure::ForbiddenKey(Key::Uint({value})))"
+                )
+            }
+            FixedValue::Text(value) => format!(
+                "DeserializeError::from(DeserializeFailure::ForbiddenKey(Key::Str(String::from(\"{}\"))))",
+                escape_rust_str(value)
+            ),
+            _ => unreachable!("parser admits only uint/text exact-zero map keys"),
+        };
+        if cli.json_serde_derives {
+            functions.push_str(&format!(
+                "fn {deser_fn}<'de, D: serde::Deserializer<'de>>(_deserializer: D) -> Result<(), D::Error> {{\n\
+                 \x20   Err(serde::de::Error::custom({failure}.to_string()))\n\
+                 }}\n"
+            ));
+        }
+        let mut field = codegen::Field::new(&field_name, "()");
+        if cli.json_serde_derives {
+            field.annotation(format!("#[serde(rename = {:?})]", forbidden.name));
+            field.annotation("#[serde(default, skip_serializing)]");
+            field.annotation(format!("#[serde(deserialize_with = \"{deser_fn}\")]"));
+        }
+        if cli.json_schema_export {
+            field.annotation("#[schemars(skip)]");
+        }
+        sentinels.push((field_name, field));
+    }
+    if !functions.is_empty() {
+        gen_scope.rust(types, name).raw(&functions);
+    }
+    sentinels
+}
+
+fn exact_zero_json_sentinel_names(record: &RustRecord) -> Vec<String> {
+    let mut occupied: BTreeSet<String> = record
+        .fields
+        .iter()
+        .map(|field| field.name.clone())
+        .chain(record.dynamic_rows().map(|row| row.field_name.clone()))
+        .collect();
+    let mut names = Vec::new();
+    for forbidden in &record.forbidden_fields {
+        let base = format!("__cddl_exact_zero_{}", forbidden.source_index);
+        let mut field_name = base.clone();
+        let mut suffix = 2usize;
+        while !occupied.insert(field_name.clone()) {
+            field_name = format!("{base}_{suffix}");
+            suffix += 1;
+        }
+        names.push(field_name);
+    }
+    names
 }
 
 /// The `(key_closure, key_coerce)` pair for a TYPED rest-row key domain — the JSON member-name image
@@ -1487,36 +1808,82 @@ fn emit_open_table_json(
     let (captured_map, captured_value_de, captured_value_unwrap) = value_view(captured);
     let (captured_image, captured_read) =
         open_table_captured_key_arms(types, captured, &key_r, &base, &flatten, cli);
-    // The NonEmpty flavor cannot open the visitor with `{name}::new()` — its door takes the first
-    // typed entry — so the visitor STAGES both regions in read order and assembles at the end,
-    // refusing there if the typed region stayed empty. That refusal is the JSON twin of the CBOR
-    // face's post-loop `is_empty()` check, and it counts TYPED entries for the same reason. Staging
-    // preserves each region's own read order exactly as the direct inserts did (the two regions were
-    // never interleaved WITHIN a container), so nothing but the empty case changes.
-    let (visitor_open, typed_insert, captured_insert, visitor_close) = if record
-        .is_non_empty_open_table()
-    {
+    // A restricted row cannot receive JSON members one by one: the incomplete prefix is not a
+    // public value, and BoundedMap deliberately offers no unchecked mutation. Stage BOTH regions
+    // whenever either is restricted, then construct each checked carrier once. This keeps a typed
+    // and a catch-all window independent. The older typed-`+` ABI is the one compatibility case:
+    // it still enters through `new(first_key, first_value)`, while every other restricted row is a
+    // complete carrier input to the record constructor.
+    let any_restricted = typed.is_restricted() || captured.is_restricted();
+    let (visitor_open, typed_insert, captured_insert, visitor_close) = if any_restricted {
+        // These bindings live beside public row fields in the generated visitor. A row may legally
+        // be `@name typed_staged` / `captured_staged` (or one of the checked-carrier names), so do
+        // not let a field declaration change which value a later conversion or loop sees.
+        let typed_staged = record.fresh_generated_member_ident("typed_staged");
+        let captured_staged = record.fresh_generated_member_ident("captured_staged");
+        let checked_typed = record.fresh_generated_member_ident("checked_typed");
+        let checked_captured = record.fresh_generated_member_ident("checked_captured");
+        let typed_carrier = rest_member_type(typed).for_rust_member(types, false, cli);
+        let captured_carrier = rest_member_type(captured).for_rust_member(types, false, cli);
+        let typed_restricted = typed.is_restricted();
+        let captured_restricted = captured.is_restricted();
+        let typed_non_empty_abi = record.is_non_empty_open_table();
+        let mut close = String::new();
+        let mut ctor_args = Vec::new();
+        if typed_non_empty_abi {
+            close.push_str(&format!(
+                "let mut {typed_staged} = {typed_staged}.into_iter();\n\
+                 \x20              let (first_key, first_value) = match {typed_staged}.next() {{\n\
+                 \x20                  Some(entry) => entry,\n\
+                 \x20                  None => return Err(serde::de::Error::custom({flatten}::open_table_min_one_typed())),\n\
+                 \x20              }};\n\
+                 \x20              "
+            ));
+            ctor_args.extend(["first_key".to_owned(), "first_value".to_owned()]);
+        } else if typed_restricted {
+            close.push_str(&format!(
+                "let {checked_typed} = <{typed_carrier}>::try_from({typed_staged}).map_err(serde::de::Error::custom)?;\n\
+                 \x20              "
+            ));
+            ctor_args.push(checked_typed);
+        }
+        if captured_restricted {
+            close.push_str(&format!(
+                "let {checked_captured} = <{captured_carrier}>::try_from({captured_staged}).map_err(serde::de::Error::custom)?;\n\
+                 \x20              "
+            ));
+            ctor_args.push(checked_captured);
+        }
+        close.push_str(&format!(
+            "let mut out = {name}::new({});\n\
+             \x20              ",
+            ctor_args.join(", ")
+        ));
+        if typed_non_empty_abi || !typed_restricted {
+            close.push_str(&format!(
+                "for (k, v) in {typed_staged} {{\n\
+                 \x20                  out.{typed_field}.insert(k, v);\n\
+                 \x20              }}\n\
+                 \x20              "
+            ));
+        }
+        if !captured_restricted {
+            close.push_str(&format!(
+                "for (k, v) in {captured_staged} {{\n\
+                 \x20                  out.{captured_field}.insert(k, v);\n\
+                 \x20              }}\n\
+                 \x20              "
+            ));
+        }
+        close.push_str("Ok(out)");
         (
-            "let mut typed_staged = alloc::vec::Vec::new();\n\
-                 \x20              let mut captured_staged = alloc::vec::Vec::new();"
-                .to_owned(),
-            format!("typed_staged.push((k, {typed_value_unwrap}));"),
-            format!("captured_staged.push((k, {captured_value_unwrap}));"),
             format!(
-                "let mut typed_staged = typed_staged.into_iter();\n\
-                     \x20              let (first_key, first_value) = match typed_staged.next() {{\n\
-                     \x20                  Some(entry) => entry,\n\
-                     \x20                  None => return Err(serde::de::Error::custom({flatten}::open_table_min_one_typed())),\n\
-                     \x20              }};\n\
-                     \x20              let mut out = {name}::new(first_key, first_value);\n\
-                     \x20              for (k, v) in typed_staged {{\n\
-                     \x20                  out.{typed_field}.insert(k, v);\n\
-                     \x20              }}\n\
-                     \x20              for (k, v) in captured_staged {{\n\
-                     \x20                  out.{captured_field}.insert(k, v);\n\
-                     \x20              }}\n\
-                     \x20              Ok(out)"
+                "let mut {typed_staged} = alloc::vec::Vec::new();\n\
+                 \x20              let mut {captured_staged} = alloc::vec::Vec::new();"
             ),
+            format!("{typed_staged}.push((k, {typed_value_unwrap}));"),
+            format!("{captured_staged}.push((k, {captured_value_unwrap}));"),
+            close,
         )
     } else {
         (
@@ -2479,12 +2846,22 @@ pub(super) fn codegen_struct(
         .any(|f| !f.optional && f.rust_type.has_value_bounds())
         || record
             .captured_dynamic_rows()
-            .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds());
+            .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds())
+        || (record.has_forbidden_fields() && record.captured_rest().is_some());
+    // A bounded typed row stays flattened on the open-table class, so its wasm constructor accepts
+    // the same-flavor *loose* builder and crosses the checked carrier door before calling the
+    // native record constructor. That boundary can fail even though the native constructor itself
+    // just accepts an already-checked BoundedMap. This applies at minimum zero too: seeding an
+    // empty carrier would lose the native door's complete checked-construction contract.
+    let typed_bounded_wasm_builder = record.typed_row().filter(|row| {
+        !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
+    });
+    let wasm_new_can_fail = new_can_fail || typed_bounded_wasm_builder.is_some();
     // wasm wrapper
     if cli.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, name, true, cli);
         let mut wasm_new = codegen::Function::new("new");
-        if new_can_fail {
+        if wasm_new_can_fail {
             wasm_new.ret(format!("Result<{name}, JsError>"));
         } else {
             wasm_new.ret("Self");
@@ -2684,27 +3061,66 @@ pub(super) fn codegen_struct(
             // The NonEmpty flavor's construction door, mirroring the rust `new(first_key,
             // first_value)` it calls: the ONE case where an open table's wasm `new` takes arguments.
             if record.is_non_empty_open_table() {
+                let first_key =
+                    record.fresh_open_table_non_empty_param_ident("first_key", std::iter::empty());
+                let first_value = record.fresh_open_table_non_empty_param_ident(
+                    "first_value",
+                    std::iter::once(first_key.clone()),
+                );
                 wasm_new
-                    .arg("first_key", typed.domain().for_wasm_param(types))
-                    .arg("first_value", typed.range().for_wasm_param(types));
+                    .arg(&first_key, typed.domain().for_wasm_param(types))
+                    .arg(&first_value, typed.range().for_wasm_param(types));
                 wasm_new_args.push(ToWasmBoundaryOperations::format(
                     typed
                         .domain()
-                        .from_wasm_boundary_clone(types, "first_key", false)
+                        .from_wasm_boundary_clone(types, &first_key, false)
                         .into_iter(),
                 ));
                 wasm_new_args.push(ToWasmBoundaryOperations::format(
                     typed
                         .range()
-                        .from_wasm_boundary_clone(types, "first_value", false)
+                        .from_wasm_boundary_clone(types, &first_value, false)
                         .into_iter(),
                 ));
-                wasm_new_comments.push(
-                    "* `first_key` - the key of the first typed entry (CDDL `+ k1 => v1`: an open \
+                wasm_new_comments.push(format!(
+                    "* `{first_key}` - the key of the first typed entry (CDDL `+ k1 => v1`: an open \
                      table spelled with `+` holds at least one typed entry)"
-                        .to_owned(),
-                );
-                wasm_new_comments.push("* `first_value` - its value".to_owned());
+                ));
+                wasm_new_comments.push(format!("* `{first_value}` - its value"));
+            } else if let Some((min, max)) = typed.container_type().bounded_map_u64_bounds() {
+                // The bounded typed field has no whole-row wasm class — its public API remains the
+                // owner's flattened map surface. A loose structural builder is the one auxiliary
+                // class needed to hand a complete row to the checked native carrier, including a
+                // zero-minimum row: the native construction door must accept all valid complete
+                // values instead of forcing callers to reconstruct them by later mutation.
+                let builder_name = record.fresh_bounded_typed_wasm_builder_ident(&format!(
+                    "{}_builder",
+                    typed.field_name
+                ));
+                let builder = typed.staging_container_type();
+                wasm_new.arg(&builder_name, builder.for_wasm_param(types));
+                // The wrapper-to-loose-map `Into` must be given its native source type before it
+                // enters the bounded carrier's `TryFrom` door. A bare
+                // `entries_builder.clone().into().try_into()` leaves both conversions inferred
+                // from the final `?`, which rustc cannot solve for a wasm constructor argument.
+                // This code is emitted into the WASM crate, so its key/value types must use the
+                // rust-crate-qualified spelling (`cddl_lib::Pid`, not the wasm `Pid` wrapper).
+                // `for_rust_member(..., true, ...)` is the established wasm-to-rust spelling used
+                // by the collection wrapper doors.
+                let staging_ty = builder.for_rust_member(types, true, cli);
+                let carrier_ty = rest_member_type(typed).for_rust_member(types, true, cli);
+                wasm_new_args.push(format!(
+                    "<{carrier_ty}>::try_from(<{staging_ty}>::from({builder_name}.clone())).map_err(|e| JsError::new(&e.to_string()))?"
+                ));
+                wasm_new_comments.push(format!(
+                    "* `{builder_name}` - the loose typed-row builder for the bounded CDDL \
+                     `{min}*{}` window; its complete contents are checked before construction",
+                    if max == u64::MAX {
+                        String::new()
+                    } else {
+                        max.to_string()
+                    }
+                ));
             }
             wrapper
                 .s_impl
@@ -2724,7 +3140,10 @@ pub(super) fn codegen_struct(
                 typed.domain(),
                 typed.range(),
                 &format!("self.0.{}", typed.field_name),
-                false,
+                // A finite typed-row maximum is held by BoundedMap/BoundedPairMap, so flattened
+                // wasm insertion must surface the carrier's checked Result instead of exposing an
+                // unchecked mutation path. Min-only `+` retains its established infallible grow.
+                rest_member_type(typed).bounded_map_u64_bounds().is_some(),
                 cli,
             );
         }
@@ -2757,14 +3176,36 @@ pub(super) fn codegen_struct(
                 "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
             ));
         }
+        // A restricted open-struct rest or open-table catch-all has a read-only wasm getter, so it
+        // cannot default to an empty carrier without making admitted non-empty values impossible to
+        // build on this face.  Pass its complete checked structural wrapper through to the native
+        // constructor.  The typed row is deliberately excluded: it remains flattened above.
+        for rest in record.captured_dynamic_rows().filter(|row| {
+            !record.is_typed_row(row)
+                && !row.is_array_tail()
+                && (row.is_restricted() || record.has_forbidden_fields())
+        }) {
+            let rest_ty = rest_member_type(rest);
+            wasm_new.arg(&rest.field_name, rest_ty.for_wasm_param(types));
+            wasm_new_args.push(ToWasmBoundaryOperations::format(
+                rest_ty
+                    .from_wasm_boundary_clone(types, &rest.field_name, false)
+                    .into_iter(),
+            ));
+            wasm_new_comments.push(format!(
+                "* `{}` - the complete checked captured map row (its declared occurrence window \
+                 is enforced before construction)",
+                rest.field_name
+            ));
+        }
         // Open rest (CAPTURE only): a getter returning the captured content as its minted wasm wrapper
         // — a map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin) for a `* k => v`
-        // row, or a list wrapper (`TList` / `AnyList`) for an array `* t` tail. Deliberately no `new()`
-        // arg and no setter — the rest defaults empty and rides the wrapper's own mutation surface
-        // (matching the rust side, where `new()` excludes it). The wrapper class is minted in the wasm
-        // pass (`mint_wasm_wrapper_for_visited_type` for the rest map/list). An `@ignore` row/tail
-        // stores nothing, so it has no getter (its wasm class is a closed struct's). An open table's
-        // TYPED row is excluded — its surface is flattened above.
+        // row, or a list wrapper (`TList` / `AnyList`) for an array `* t` tail. Loose rows have no
+        // `new()` arg and default empty through the wrapper's own mutation surface; restricted map
+        // rows enter `new()` as a complete checked wrapper and remain read-only here. The wrapper
+        // class is minted in the wasm pass (`mint_wasm_wrapper_for_visited_type` for the rest map/list).
+        // An `@ignore` row/tail stores nothing, so it has no getter (its wasm class is a closed struct's).
+        // An open table's TYPED row is excluded — its surface is flattened above.
         for rest in record
             .captured_dynamic_rows()
             .filter(|r| !record.is_typed_row(r))
@@ -2781,13 +3222,20 @@ pub(super) fn codegen_struct(
                 } else if rest.is_array_tail() {
                     "The captured trailing array elements beyond the declared members (CDDL \
                      `* t` rest tail), as the wasm list wrapper."
+                } else if rest.is_restricted() {
+                    "The complete checked captured open-map row, as its read-only restricted wasm \
+                     map wrapper. Its CDDL occurrence window was enforced before construction."
                 } else {
                     "The captured open-map entries whose keys are not declared fields (CDDL \
                      `* k => v` rest row), as the wasm map wrapper."
                 })
                 .line(rest_ty.to_wasm_boundary(
                     types,
-                    &format!("self.0.{}", rest.field_name),
+                    &if record.has_forbidden_fields() && !rest.is_array_tail() {
+                        format!("self.0.{}()", rest.field_name)
+                    } else {
+                        format!("self.0.{}", rest.field_name)
+                    },
                     false,
                 ));
             wrapper.s_impl.push_fn(getter);
@@ -2795,6 +3243,12 @@ pub(super) fn codegen_struct(
         if new_can_fail {
             wasm_new.line(format!(
                 "{}::new({}).map(Into::into).map_err(Into::into)",
+                rust_crate_struct_from_wasm(types, name, cli),
+                wasm_new_args.join(", ")
+            ));
+        } else if wasm_new_can_fail {
+            wasm_new.line(format!(
+                "Ok(Self({}::new({})))",
                 rust_crate_struct_from_wasm(types, name, cli),
                 wasm_new_args.join(", ")
             ));
@@ -3010,15 +3464,29 @@ pub(super) fn codegen_struct(
             native_struct.push_field(codegen_field);
         }
     }
+    // Closed exact-zero records need named serde sentinels: unlike an open rest adapter, ordinary
+    // closed serde would silently ignore the forbidden property. Keep unrelated unknown-property
+    // behavior unchanged; only these exact names route to `ForbiddenKey`.
+    for (field_name, sentinel) in
+        exact_zero_json_sentinel_fields(gen_scope, types, name, record, manual_json, cli)
+    {
+        native_new_block.line(format!("{field_name}: (),"));
+        native_struct.push_field(sentinel);
+    }
     // Open rest (CAPTURE only): a `pub` field holding the captured content — a map container for a
-    // `* k => v` rest row, a `Vec<T>` for a loose array `* t` tail, or `NonEmptyVec<T>` for a `+ t`
-    // tail. Loose tails stay out of `new()` and default empty; a non-empty tail takes its first
-    // element so constructed values cannot violate the schema. Map containers match the table switch (non-preserve `BTreeMap`;
-    // `OrderedHashMap` under `--preserve-encodings`). An `@ignore` row/tail emits NO field (it drops
-    // unknown entries), so the struct is a closed struct's.
+    // `* k => v` rest row, a `Vec<T>` for a loose array `* t` tail, or a checked carrier for a
+    // restricted dynamic row. Loose rows/tails stay out of `new()` and default empty; every
+    // restricted carrier enters as a complete checked value (the typed `+` compatibility door takes
+    // its first entry), so constructed values cannot violate the schema. Map containers match the
+    // table switch (non-preserve `BTreeMap`; `OrderedHashMap` under `--preserve-encodings`). An
+    // `@ignore` row/tail emits NO field (it drops unknown entries), so the struct is a closed struct's.
     for rest in record.captured_dynamic_rows() {
         let mut rest_field = codegen::Field::new(
-            format!("pub {}", rest.field_name),
+            if record.has_forbidden_fields() && !rest.is_array_tail() {
+                rest.field_name.clone()
+            } else {
+                format!("pub {}", rest.field_name)
+            },
             rest_member_type(rest).for_rust_member(types, false, cli),
         );
         rest_field.doc(if rest.is_non_empty_array_tail() {
@@ -3030,15 +3498,35 @@ pub(super) fn codegen_struct(
         } else if record.is_typed_row(rest) {
             // The one `pub` rust field with no wasm getter by design — the string is a provenance
             // marker the parity differential reads, so it lives beside the marker it belongs with.
-            super::OPEN_TABLE_TYPED_ROW_DOC
+            if rest.is_non_empty() {
+                super::OPEN_TABLE_NON_EMPTY_TYPED_ROW_DOC
+            } else if rest.is_restricted() {
+                super::OPEN_TABLE_BOUNDED_TYPED_ROW_DOC
+            } else {
+                super::OPEN_TABLE_TYPED_ROW_DOC
+            }
         } else if record.is_open_table() {
-            "The open table's CAPTURED entries (CDDL `* k2 => v2`, the trailing catch-all row): every \
-             map entry the typed row did not claim. Defaults empty. `@duplicates preserve` makes this \
-             a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container."
+            if rest.is_restricted() {
+                "The open table's restricted CAPTURED entries (the trailing catch-all row): every map \
+                 entry the typed row did not claim. This checked carrier is a complete construction \
+                 input, so its row-local occurrence window cannot be bypassed. `@duplicates preserve` \
+                 selects the pair-map twin, which counts every retained pair."
+            } else {
+                "The open table's CAPTURED entries (CDDL `* k2 => v2`, the trailing catch-all row): every \
+                 map entry the typed row did not claim. Defaults empty. `@duplicates preserve` makes this \
+                 a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container."
+            }
         } else {
-            "Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). \
-             Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this \
-             a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container."
+            if rest.is_restricted() {
+                "Restricted captured open-map entries whose keys are not declared fields (a row-local \
+                 CDDL occurrence window on `k => v`). Serialized after the declared fields. This \
+                 checked carrier is a complete construction input, so its window cannot be bypassed. \
+                 `@duplicates preserve` selects the pair-map twin, which counts every retained pair."
+            } else {
+                "Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). \
+                 Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this \
+                 a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container."
+            }
         });
         // The rest field's JSON surface. Skipped when the struct owns a custom json impl (no derive to
         // steer) — matches the declared-field handling. A MAP `* k => v` row flattens its entries to
@@ -3078,33 +3566,51 @@ pub(super) fn codegen_struct(
             }
         }
         native_struct.push_field(rest_field);
-        // The NonEmpty open table's typed row is the ONE captured row `new()` does not default empty:
+        // The NonEmpty open table's typed row is the ONE captured row that retains its shipped
+        // first-entry constructor ABI. Every OTHER restricted MAP row enters `new()` as its complete
+        // checked carrier, including zero-minimum bounded rows: a wasm/component rest getter is
+        // read-only, so defaulting such a row empty would make admitted non-empty values impossible
+        // to construct on those faces.
         // its min-1 bound must hold for every constructed value, so the door takes the first entry —
         // `NonEmptyMap::new(first_key, first_value)` verbatim (`static/non_empty_map.rs`), the same
         // door the wasm `{+ k => v}` wrapper offers. Infallible by construction, so `new` keeps its
         // return type and no caller has a `Result` to unwrap.
         if record.is_non_empty_open_table() && record.is_typed_row(rest) {
-            let (key_arg, value_arg) = ("first_key", "first_value");
-            native_new.arg(key_arg, rest.domain().for_rust_move(types, cli));
-            native_new.arg(value_arg, rest.range().for_rust_move(types, cli));
+            let key_arg =
+                record.fresh_open_table_non_empty_param_ident("first_key", std::iter::empty());
+            let value_arg = record.fresh_open_table_non_empty_param_ident(
+                "first_value",
+                std::iter::once(key_arg.clone()),
+            );
+            native_new.arg(&key_arg, rest.domain().for_rust_move(types, cli));
+            native_new.arg(&value_arg, rest.range().for_rust_move(types, cli));
             new_arg_count += 2;
             native_new_comments.push(format!(
                 "* `{key_arg}` - the key of the first typed entry (CDDL `+ k1 => v1`: an open table \
                  spelled with `+` holds at least one typed entry)"
             ));
             native_new_comments.push(format!("* `{value_arg}` - its value"));
-            // The staging local is a FIXED name, deliberately not the row's field name: the row's
-            // name is `@name`-settable, and a row named `first_key` would have the block's own
-            // binding shadow the parameter it is being handed.
-            let mut seed = Block::new(format!("{}:", rest.field_name));
-            seed.line(format!(
-                "let mut seed = {}::new();",
-                rest_container_ctor(rest, cli)
+            let carrier = if rest_is_pair_map(rest) {
+                "NonEmptyPairMap"
+            } else {
+                "NonEmptyMap"
+            };
+            native_new_block.line(format!(
+                "{}: {carrier}::new({key_arg}, {value_arg}),",
+                rest.field_name
             ));
-            seed.line(format!("seed.insert({key_arg}, {value_arg});"));
-            seed.line("seed");
-            seed.after(",");
-            native_new_block.push_block(seed);
+        } else if !rest.is_array_tail() && (rest.is_restricted() || record.has_forbidden_fields()) {
+            let rest_ty = rest_member_type(rest).for_rust_move(types, cli);
+            native_new.arg(&rest.field_name, &rest_ty);
+            new_arg_count += 1;
+            native_new_comments.push(format!(
+                "* `{}` - the checked captured map row (its CDDL occurrence window is enforced by this carrier)",
+                rest.field_name
+            ));
+            for validation in forbidden_rest_validation(record, rest, cli, &rest.field_name) {
+                native_new.line(validation);
+            }
+            native_new_block.line(format!("{},", rest.field_name));
         } else if rest.is_non_empty_array_tail() {
             let mut first_arg = format!("first_{}_element", rest.field_name);
             let reserved: Vec<String> = record
@@ -3264,6 +3770,69 @@ pub(super) fn codegen_struct(
     };
     native_new.push_block(native_new_block);
     native_impl.push_fn(native_new);
+    // A forbidden fixed key makes a captured map private: callers may observe validated content,
+    // but cannot insert directly around the record's construction invariant.  The wasm getter uses
+    // this same immutable native view.
+    if record.has_forbidden_fields() {
+        for rest in record
+            .captured_dynamic_rows()
+            .filter(|row| !row.is_array_tail())
+        {
+            let mut getter = codegen::Function::new(&rest.field_name);
+            getter
+                .arg_ref_self()
+                .ret(format!(
+                    "&{}",
+                    rest_member_type(rest).for_rust_member(types, false, cli)
+                ))
+                .vis("pub")
+                .line(format!("&self.{}", rest.field_name));
+            native_impl.push_fn(getter);
+            // The private field replaces a formerly public mutation surface, so EVERY map carrier
+            // gets one checked insertion door.  Bounded carriers retain their own fallible insert
+            // (and therefore their max-window invariant); NonEmpty variants keep their infallible
+            // grow operation; loose containers retain their clone-and-swap atomicity.
+            let mut insert = codegen::Function::new(format!("insert_{}", rest.field_name));
+            insert
+                .arg_mut_self()
+                .arg("entry_key", rest.domain().for_rust_move(types, cli))
+                .arg("value", rest.range().for_rust_move(types, cli))
+                .ret("Result<(), DeserializeError>")
+                .vis("pub")
+                .line("let key = &entry_key;");
+            for validation in forbidden_rest_insert_key_validation(record, rest, cli) {
+                insert.line(validation);
+            }
+            // `key` above borrows `entry_key` so comparator predicates see the same reference
+            // shape as `iter()`. The borrow ends before the carrier mutation below.
+            if rest.is_restricted() {
+                if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
+                    insert.line(format!(
+                        "self.{}.insert(entry_key, value)?;",
+                        rest.field_name
+                    ));
+                } else {
+                    insert.line(format!(
+                        "self.{}.insert(entry_key, value);",
+                        rest.field_name
+                    ));
+                }
+            } else {
+                insert
+                    .line(format!(
+                        "let mut candidate = self.{}.clone();",
+                        rest.field_name
+                    ))
+                    .line("candidate.insert(entry_key, value);");
+                for validation in forbidden_rest_validation(record, rest, cli, "candidate") {
+                    insert.line(validation);
+                }
+                insert.line(format!("self.{} = candidate;", rest.field_name));
+            }
+            insert.line("Ok(())");
+            native_impl.push_fn(insert);
+        }
+    }
 
     // A whole-record custom pair owns the complete CBOR item. Generate only the shared-contract
     // trait shells: root references dispatch to the same free functions before their kind-specific
@@ -3327,7 +3896,7 @@ pub(super) fn codegen_struct(
                     &mut ser_func,
                     cli,
                 );
-                let code = generate_array_struct_deserialization(
+                let mut code = generate_array_struct_deserialization(
                     gen_scope,
                     types,
                     record,
@@ -3336,6 +3905,13 @@ pub(super) fn codegen_struct(
                     true,
                     cli,
                 );
+                if record.captured_rest().is_none() && !manual_json && cli.json_serde_derives {
+                    code.deser_ctor_fields.extend(
+                        exact_zero_json_sentinel_names(record)
+                            .into_iter()
+                            .map(|sentinel| (sentinel, "()".to_owned())),
+                    );
+                }
                 code.deser_code.add_to_code(&mut deser_code);
                 let mut deser_ctor = Block::new(format!("Ok({name}"));
                 for (var, expr) in code.deser_ctor_fields {
@@ -3488,6 +4064,36 @@ pub(super) fn codegen_struct(
                         cli,
                     );
                     ser_content.push((field_index, field, map_ser_content));
+                }
+                // Exact-zero fixed members have no value field and hence no serialization arm, but
+                // they are still declared map keys.  Match them before the dynamic-rest catch-all:
+                // otherwise an open record would accidentally capture the one key its CDDL forbids.
+                // This compares the decoded CBOR VALUE (`u64`/`String`), not its width spelling.
+                for forbidden in &record.forbidden_fields {
+                    match &forbidden.key {
+                        FixedValue::Uint(x) => {
+                            let mut arm = if cli.preserve_encodings {
+                                Block::new(format!("({x}, _key_enc) =>"))
+                            } else {
+                                Block::new(format!("{x} =>"))
+                            };
+                            arm.line(format!(
+                                "return Err(DeserializeFailure::ForbiddenKey(Key::Uint({x})).into());"
+                            ));
+                            arm.after(",");
+                            uint_field_deserializers.push(arm);
+                        }
+                        FixedValue::Text(x) => {
+                            let mut arm = Block::new(format!("\"{}\" =>", escape_rust_str(x)));
+                            arm.line(format!(
+                                "return Err(DeserializeFailure::ForbiddenKey(Key::Str(String::from(\"{}\"))).into());",
+                                escape_rust_str(x)
+                            ));
+                            arm.after(",");
+                            text_field_deserializers.push(arm);
+                        }
+                        _ => unreachable!("parser admits only uint/text fixed map keys"),
+                    }
                 }
                 if cli.preserve_encodings {
                     let rest_index_base = record.fields.len();
@@ -3783,7 +4389,7 @@ pub(super) fn codegen_struct(
                         deser_code.content.line(&format!(
                             "let mut {}: {} = {}::new();",
                             rest.field_name,
-                            rest_member_type(rest).for_rust_member(types, false, cli),
+                            rest_staging_type(rest).for_rust_member(types, false, cli),
                             rest_container_ctor(rest, cli)
                         ));
                     } else {
@@ -4198,18 +4804,14 @@ pub(super) fn codegen_struct(
                 deser_loop.push_block(type_match);
                 deser_loop.line("read += 1;");
                 deser_code.content.push_block(deser_loop);
-                // The NonEmpty open table's min-1 bound (`{ + K_t => V_t, * K_r => V_r }`), enforced
-                // where the mandatory-field checks below are: after the loop, on the capture LOCAL,
-                // before it moves into the struct. It counts TYPED entries only — a map of purely
-                // captured entries is not a non-empty table — and raises the very error
-                // `NonEmptyMap`'s `TryFrom` door raises, so the wire door and every API door report
-                // the bound identically.
-                if let Some(typed) = record.typed_row().filter(|t| t.non_empty) {
-                    let mut min_one = Block::new(format!("if {}.is_empty()", typed.field_name));
-                    min_one.line(
-                        "return Err(DeserializeFailure::RangeCheck { found: 0, min: Some(1), max: None }.into());",
-                    );
-                    deser_code.content.push_block(min_one);
+                // Every restricted dynamic MAP row stages loose while the loop is consuming
+                // entries, then crosses exactly ONE checked carrier door after it. This is per row:
+                // the open table's typed and catch-all windows count independently, and a preserve
+                // pair-map counts every retained pair rather than distinct keys.
+                for rest in record.captured_dynamic_rows() {
+                    if let Some(conversion) = rest_checked_conversion(rest, types, cli) {
+                        deser_code.content.line(&conversion);
+                    }
                 }
                 let mut ctor_block = Block::new("Ok(Self");
                 // make sure the field is present, and unwrap the Option<T>
@@ -4288,6 +4890,14 @@ pub(super) fn codegen_struct(
                 // `@ignore` row declared no container and adds no field, so nothing moves in.
                 for rest in record.captured_dynamic_rows() {
                     ctor_block.line(format!("{},", rest.field_name));
+                }
+                // Private serde sentinels are ordinary Rust fields too, so direct CBOR decoding
+                // must initialize them just as the public constructor does. They carry no wire
+                // state and never participate in CBOR serialization.
+                if record.captured_rest().is_none() && !manual_json && cli.json_serde_derives {
+                    for sentinel in exact_zero_json_sentinel_names(record) {
+                        ctor_block.line(format!("{sentinel}: (),"));
+                    }
                 }
                 if cli.preserve_encodings {
                     let mut encoding_ctor = Block::new(format!("encodings: Some({name}Encoding"));

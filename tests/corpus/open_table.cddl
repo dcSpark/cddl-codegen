@@ -17,5 +17,6 @@ open_table_dup = {
   * md => md ; @duplicates preserve
 }
 
-; the NonEmpty twin: `new(first_key, first_value)` plus one post-loop check
+; the NonEmpty twin: a restricted typed carrier, direct first-entry construction, and checked loose
+; CBOR staging conversion
 open_table_non_empty = { + bstr => uint, * md => md }

@@ -298,7 +298,7 @@ fn revisited_rejection_nodes_report_once_without_collapsing_distinct_nodes() {
         (
             "inline_map",
             "g = (x: uint)\na = [{ g }]\n",
-            "an inline map (`{ a: int, b: uint }`)",
+            "Anonymous groups not allowed: a heterogeneous inline map",
         ),
         (
             "single_element_type_choice",
@@ -716,13 +716,11 @@ fn expect_graceful_rejection(tag: &str, spec: &str, extra: &[&str]) -> String {
         .to_string()
 }
 
-/// An anonymous nested MAP in a position that requires a TYPE — an array element, a map value, a
-/// `.cbor` payload, a `/` choice alternative, a generic argument, an occurrence target, a
-/// group-choice arm — is rejected BY DESIGN, via a GRACEFUL `Err` (deferred through
-/// `record_rejection` → drained by `finalize`), never a `panic!`. The ARRAY sibling of this shape
-/// can be named through a `@name` comment at the type2; the map side has no such door, so the
-/// NAMED form (`m = {x: int, y: uint}` referenced by name) is the supported spelling and the
-/// message points at it — verified to generate under both profiles for every keyed vector below.
+/// An anonymous nested MAP outside its narrow member-position naming door remains a graceful
+/// rejection (rather than a panic). The no-name variants below pin that its message advertises both
+/// working remedies: a named rule and the `@name` door where the anonymous map is the member's
+/// whole type up to tags. The keyless vector (`{ g }`) still reaches its own precise map-field
+/// rejection once named; this no-name path must not claim that a name alone repairs every body.
 ///
 /// Both profiles are asserted because the rejection must be profile-INDEPENDENT: `finalize`
 /// short-circuits on a recorded rejection before any emission, so no flag can rescue the shape (and
@@ -756,13 +754,29 @@ fn inline_map_member_rejects_gracefully() {
                 msg.contains("inline map"),
                 "rejection should name the inline-map construct ({tag}, {extra:?}), got: {msg}"
             );
-            // ...and points at the named-rule spelling that IS supported.
+            // ...and points at both supported remedies, without pretending the name applies in
+            // every enclosing position.
             assert!(
-                msg.contains("name it as its own rule") && msg.contains("reference"),
-                "rejection should point at the named-rule spelling ({tag}, {extra:?}), got: {msg}"
+                msg.contains("create an explicit rule")
+                    && msg.contains("reference")
+                    && msg.contains("@name"),
+                "rejection should point at both scoped remedies ({tag}, {extra:?}), got: {msg}"
             );
         }
     }
+
+    // Taking the naming door does not make an invalid record body valid: a keyless map member now
+    // gets far enough to receive the record path's own precise no-key refusal.
+    let keyless_named = expect_graceful_rejection(
+        "anon_map_keyless_named",
+        "g = (x: uint)\na = [{ g } ; @name Inner\n]\n",
+        &[],
+    );
+    assert!(
+        keyless_named.contains("map field `g` has no key")
+            && !keyless_named.contains("Anonymous groups not allowed"),
+        "a named keyless map must keep the record body's own refusal: {keyless_named}"
+    );
 }
 
 /// An inline GROUP as the sole entry of a group-choice arm (`t = [ (uint, tstr) // bytes ]`, and
@@ -1329,8 +1343,9 @@ fn expected_conversion_wasm_emit_tests_import_the_rust_any_mint() {
 /// A heterogeneous anonymous inline ARRAY in a position that requires a TYPE (`a = [[int]]`, a
 /// `.cbor` payload, a `/` choice alternative, a map key, a map value, an occurrence target) is
 /// rejected BY DESIGN — a GRACEFUL `Err`, never a `panic!`. This is the BRACKET sibling of
-/// `inline_map_member_rejects_gracefully`: the array side has a naming door the map side lacks, so
-/// the message carries BOTH remedies (an explicit rule, or a `; @name` on the type2).
+/// `inline_map_member_rejects_gracefully`: both heterogeneous composite families have a scoped
+/// naming door, so the message carries BOTH remedies (an explicit rule, or a `; @name` on the
+/// type2).
 ///
 /// The final vector is a CONTROL, not a rejection: at the choice-member position the `@name`
 /// comment does reach the naming site, so the struct is minted and generation succeeds. Without it
@@ -1396,7 +1411,7 @@ fn anonymous_nested_array_rejects_gracefully() {
 ///
 /// A tag mints no type of its own: `#6.42([x: uint])` wraps whatever its payload parses to, so the
 /// anonymous array behind it is the sole nameable referent and `@name` there can only mean the
-/// struct. That is why `anon_array_member_name` walks tag layers instead of stopping at them — the
+/// struct. That is why `anon_composite_member_name` walks tag layers instead of stopping at them — the
 /// "Anonymous groups not allowed" rejection advertises `@name` as a remedy, and a door the tagged
 /// spelling could not open would make that advice false.
 ///
@@ -1517,6 +1532,114 @@ fn tagged_anon_array_member_name_emits_the_named_rule_remedy() {
     }
 }
 
+/// The heterogeneous fixed-field inline MAP door is the array door's direct sibling: at a member's
+/// own comment slot, bare and tag-wrapped maps mint the named record the explicit-rule remedy would
+/// have minted.
+/// Compare generated SOURCE under every flag profile that changes an emitted face. This test proves
+/// route equivalence, not compiled behavior; the `comment-dsl` integration fixture owns the latter.
+/// The extern-interface assertion file legitimately retains the named rule as an exported declaration,
+/// so its known rule-list delta is excluded. The twin control proves the AST-parent climb reads each
+/// member's own slot.
+#[test]
+fn anonymous_map_member_name_emits_the_named_rule_remedy_across_faces() {
+    const UNTAPPED_DOOR: &str = "t = {\n inner: {x: uint} ; @name Inner\n, y: uint\n}\n";
+    const UNTAPPED_REMEDY: &str = "inner = {x: uint}\nt = { inner: inner, y: uint }\n";
+    const TAGGED_DOOR: &str = "t = {\n inner: #6.42({x: uint}) ; @name Inner\n, y: uint\n}\n";
+    const TAGGED_REMEDY: &str = "inner = {x: uint}\nt = { inner: #6.42(inner), y: uint }\n";
+    const EXPORT_CHECK: &str = "extern_interface_check.rs";
+
+    for (scope, flags) in [
+        ("default_rust_only", &["--wasm=false"][..]),
+        (
+            "preserve_rust_only",
+            &["--wasm=false", "--preserve-encodings=true"][..],
+        ),
+        (
+            "json",
+            &[
+                "--wasm=false",
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+            ][..],
+        ),
+        ("wasm", &["--wasm=true"][..]),
+        ("component", &["--wasm=false", "--component=true"][..]),
+    ] {
+        let emit = |tag: &str, spec: &str| {
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_mapdoor_{scope}_{tag}_{}.cddl",
+                std::process::id()
+            ));
+            std::fs::write(&path, spec).unwrap();
+            let mut argv = vec![
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "anonymous_map_door_unused",
+            ];
+            argv.extend_from_slice(flags);
+            let out = crate::api::generated_strings(&Cli::parse_from(argv));
+            std::fs::remove_file(&path).ok();
+            out.unwrap_or_else(|e| panic!("[{scope}/{tag}] must generate: {e}\n{spec}"))
+        };
+        for (shape, door, remedy) in [
+            ("untagged", UNTAPPED_DOOR, UNTAPPED_REMEDY),
+            ("tagged", TAGGED_DOOR, TAGGED_REMEDY),
+        ] {
+            let door = emit(&format!("{shape}_door"), door);
+            let remedy = emit(&format!("{shape}_remedy"), remedy);
+            assert_eq!(
+                door.keys().collect::<Vec<_>>(),
+                remedy.keys().collect::<Vec<_>>()
+            );
+            for (file, source) in &door {
+                if file.ends_with(EXPORT_CHECK) {
+                    continue;
+                }
+                assert_eq!(source, &remedy[file], "[{scope}/{shape}] {file} diverged");
+            }
+            let (export_file, door_export) = door
+                .iter()
+                .find(|(file, _)| file.ends_with(EXPORT_CHECK))
+                .unwrap_or_else(|| panic!("[{scope}/{shape}] no {EXPORT_CHECK} was emitted"));
+            let remedy_export = &remedy[export_file];
+            let door_only = door_export
+                .lines()
+                .filter(|line| !remedy_export.lines().any(|candidate| candidate == *line))
+                .collect::<Vec<_>>();
+            assert!(
+                door_only.is_empty(),
+                "[{scope}/{shape}] the minted door must not add extern assertions: {door_only:?}"
+            );
+            let remedy_only = remedy_export
+                .lines()
+                .filter(|line| !door_export.lines().any(|candidate| candidate == *line))
+                .collect::<Vec<_>>();
+            assert!(
+                remedy_only.len() == 2
+                    && remedy_only
+                        .iter()
+                        .all(|line| line.contains("crate::generated::Inner")),
+                "[{scope}/{shape}] the only extern-interface delta must be the named remedy's two \
+                 top-level `inner` assertions: {remedy_only:?}"
+            );
+        }
+    }
+
+    let twins = expect_custom_codec_source(
+        "anonymous_map_member_name_twins",
+        "t = {\n alpha: {x: uint} ; @name Alpha\n, beta: {x: uint} ; @name Beta\n}\n",
+    );
+    assert!(
+        twins.contains("pub struct Alpha")
+            && twins.contains("pub struct Beta")
+            && twins.contains("pub alpha: Alpha")
+            && twins.contains("pub beta: Beta"),
+        "identical anonymous maps must read their OWN member slots, got:\n{twins}"
+    );
+}
+
 /// The SCOPE of the tag-walking member-position naming door: what it reaches and, more importantly,
 /// what it still refuses. The walk climbs `Type2 -> Type1 -> TypeChoice -> Type` rungs through tag
 /// layers only, each rung required to be operator-free and single-choice, so the anonymous array is
@@ -1527,9 +1650,8 @@ fn tagged_anon_array_member_name_emits_the_named_rule_remedy() {
 /// The boundary vectors are the ones that carry the argument. A `.cbor` payload's array belongs to
 /// the control operator, not to the member, so the name has no unambiguous referent; a multi-choice
 /// member type reintroduces the arm-vs-member ambiguity the untagged door already refuses; and the
-/// inline MAP has no naming door at all, so a tag over one must keep the map's OWN message rather
-/// than start consuming a name it cannot honor. Each is asserted at the tagged spelling because the
-/// walk is what could have widened them.
+/// same boundaries apply to the map sibling, whose positive route is pinned separately. Each
+/// refusal is asserted at the tagged spelling because the walk is what could have widened it.
 #[test]
 fn tagged_anon_array_member_name_walks_only_operator_free_single_choice_tag_layers() {
     // Nested tags are handled by the same loop — probed, so pinned: two layers emit both tag heads
@@ -1590,13 +1712,6 @@ fn tagged_anon_array_member_name_walks_only_operator_free_single_choice_tag_laye
             "tagged_multi_choice",
             "a = uint\nt = [ f: #6.42(a / [x: uint]) ; @name Inner\n, y: uint ]\n",
             ANON_GROUP,
-        ),
-        // A tagged inline MAP keeps the MAP's own message: the map side has no naming door, so the
-        // walk must not make one reachable by proxy.
-        (
-            "tagged_inline_map",
-            "t = [ f: #6.42({x: uint}) ; @name Inner\n, y: uint ]\n",
-            "used as a member or element type is unsupported unless it is a table",
         ),
         // No `@name` at all: the tagged anonymous array keeps the rejection whose `@name` advice
         // the walk has now made TRUE.
@@ -5075,49 +5190,167 @@ fn unsupported_control_operator_rejects_gracefully() {
     );
 }
 
-/// A ZERO-permitting occurrence (`*` / `0*n` / `*n`) on a keyed struct-map field means the entry
-/// may be ABSENT (RFC 8610) — silently narrowing it to a mandatory field generates a decoder that
-/// rejects valid CBOR, invisible to round-trip tests (only cross-producer data exposes it). This
-/// pins the graceful rejection AND the boundary: `+` (lower bound >= 1) must keep generating a
-/// mandatory field, because under unique map keys "one or more" collapses to exactly-one — that is
-/// honored semantics, not narrowing. The projected matrix reject fixtures pin the outcome category;
-/// this pins the message and the `+` boundary.
+/// A zero-permitting occurrence (`*` / `0*n` / `*n`) on a unique keyed struct-map field has the
+/// same two wire states as `?`: absent or exactly one entry. It must therefore use the established
+/// optional-field carrier. `*2` remains Option-like because a second fixed key cannot occur in a
+/// map; lower bound >= 1 (`+`, `1*n`) remains the deliberate mandatory collapse. `0*0` / `*0` are
+/// different: a public `Option` would make their forbidden key constructible, so they retain
+/// record-level forbidden-key metadata and no value carrier.
 #[test]
-fn zero_permitting_occurrence_on_keyed_map_field_rejects_gracefully() {
-    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+fn zero_permitting_occurrence_on_keyed_map_field_uses_optional_carrier() {
+    fn run(
+        spec: &str,
+        tag: &str,
+        component: bool,
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_zero_occur_{}_{}.cddl",
             tag,
             std::process::id()
         ));
         std::fs::write(&path, spec).unwrap();
-        let cli = Cli::parse_from([
-            "cddl-codegen",
-            "--input",
-            path.to_str().unwrap(),
-            "--output",
-            "zero_occur_unused",
-        ]);
+        let mut args = vec![
+            "cddl-codegen".to_owned(),
+            "--input".to_owned(),
+            path.to_string_lossy().into_owned(),
+            "--output".to_owned(),
+            "zero_occur_unused".to_owned(),
+        ];
+        if component {
+            args.push("--component=true".to_owned());
+        }
+        let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
         std::fs::remove_file(&path).ok();
         result
     }
 
-    let msg = run("m = { * t: uint }\n", "star").expect_err(
-        "`*` on a keyed map field must be a graceful Err (silent narrowing to mandatory is wrong)",
-    );
-    assert!(
-        msg.contains("zero-permitting occurrence") && msg.contains("rule `m`"),
-        "rejection message should be actionable and name the rule, got: {msg}"
-    );
-
-    run("m = { 0*1 t: uint }\n", "bounded")
-        .expect_err("`0*n` permits zero occurrences, so it must reject like `*`");
+    for (tag, spec) in [
+        ("star", "m = { fixed: uint, * t: uint }\n"),
+        ("bounded", "m = { fixed: uint, 0*1 t: uint }\n"),
+        ("max_only", "m = { fixed: uint, *2 t: uint }\n"),
+    ] {
+        let generated = run(spec, tag, false)
+            .unwrap_or_else(|error| panic!("{tag} must use the optional carrier, got: {error}"));
+        let rust = &generated["rust/src/generated/mod.rs"];
+        let rust_surface = generated
+            .iter()
+            .filter(|(path, _)| path.starts_with("rust/"))
+            .map(|(_, source)| source.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            rust.contains("pub t: Option<u64>"),
+            "{tag} must expose an Option field:\n{rust}"
+        );
+        assert!(
+            rust_surface.contains("if let Some(field) = &self.t"),
+            "{tag} serializer must omit an absent field:\n{rust_surface}"
+        );
+        assert!(
+            rust_surface.contains("let mut t = None;"),
+            "{tag} decoder must accept an omitted field:\n{rust_surface}"
+        );
+        let wasm = &generated["wasm/src/generated/mod.rs"];
+        assert!(
+            wasm.contains("pub fn t(&self) -> Option<u64>"),
+            "{tag} wasm projection must retain optionality:\n{wasm}"
+        );
+        let component_generated = run(spec, &format!("{tag}_component"), true)
+            .unwrap_or_else(|error| panic!("{tag} component generation must succeed: {error}"));
+        let wit = &component_generated["component/wit/world.wit"];
+        assert!(
+            wit.contains("t: func() -> option<u64>"),
+            "{tag} component WIT projection must retain optionality:\n{wit}"
+        );
+    }
 
     // The boundary: `+` collapses to exactly-one under unique map keys, so a mandatory field IS
     // the honored semantics — it must keep generating.
-    run("m = { + t: uint }\n", "plus")
+    let plus = run("m = { + t: uint }\n", "plus", false)
         .expect("`+` (lower bound >= 1) must still generate a mandatory field");
+    assert!(
+        plus["rust/src/generated/mod.rs"].contains("pub t: u64"),
+        "the mandatory boundary must not become Option-like"
+    );
+
+    for (tag, spec) in [
+        ("zero_exact", "m = { fixed: uint, 0*0 t: uint }\n"),
+        ("zero_max", "m = { fixed: uint, *0 t: uint }\n"),
+        (
+            "zero_exact_open_rest",
+            "m = { fixed: uint, 0*0 t: uint, * tstr => uint }\n",
+        ),
+    ] {
+        let generated = run(spec, tag, false).unwrap_or_else(|error| {
+            panic!("{tag} must materialize a forbidden-key constraint: {error}")
+        });
+        let rust = &generated["rust/src/generated/mod.rs"];
+        let serialization = &generated["rust/src/generated/serialization.rs"];
+        assert!(
+            !rust.contains("pub t:") && !rust.contains("fn t("),
+            "{tag} must expose no value field/accessor for an exact-zero member: {rust}"
+        );
+        assert!(
+            serialization.contains("DeserializeFailure::ForbiddenKey"),
+            "{tag} CBOR decoder must name the structured forbidden-key failure: {serialization}"
+        );
+        if tag == "zero_exact_open_rest" {
+            assert!(
+                rust.contains("rest: BTreeMap")
+                    && rust.contains("pub fn new(fixed: u64, rest: BTreeMap")
+                    && rust.contains("Result<Self, DeserializeError>"),
+                "the open-rest constructor must own a checked complete-rest door and the raw map must not be public: {rust}"
+            );
+        }
+    }
+
+    let ordinary_open = run(
+        "m = { fixed: uint, * tstr => uint }\n",
+        "ordinary_open_json",
+        false,
+    )
+    .expect("an ordinary open record must keep its pre-exact-zero JSON path");
+    assert!(
+        !ordinary_open["rust/src/generated/mod.rs"]
+            .contains("checked against the exact-zero property set"),
+        "open JSON must not emit a vacuous exact-zero property scan without forbidden metadata:\n{}",
+        ordinary_open["rust/src/generated/mod.rs"]
+    );
+
+    // An exact-zero member has no value field.  `@name` is the deliberately retained exception
+    // (it names the forbidden JSON property); these field-only directives would otherwise be
+    // parsed successfully and then disappear with the un-emitted value surface.
+    for (tag, spec, required) in [
+        (
+            "zero_exact_doc",
+            "m = {\n  0*0 forbidden: uint ; @doc no-value-doc\n}\n",
+            "@doc on exact-zero field `forbidden` of rule `m`",
+        ),
+        (
+            "zero_exact_custom_pair",
+            "m = {\n  0*0 forbidden: uint ; @custom_serialize write_forbidden @custom_deserialize read_forbidden\n}\n",
+            "@custom_serialize` / `@custom_deserialize` on exact-zero field `forbidden` of rule `m`",
+        ),
+        (
+            "zero_exact_custom_encodings",
+            "m = {\n  0*0 forbidden: uint ; @custom_serialize write_forbidden @custom_deserialize read_forbidden @custom_encodings sz\n}\n",
+            "@custom_encodings` on exact-zero field `forbidden` of rule `m`",
+        ),
+        (
+            "zero_exact_default",
+            "m = { 0*0 forbidden: uint .default 0 }\n",
+            "`.default` on exact-zero field `forbidden` of rule `m`",
+        ),
+    ] {
+        let error = run(spec, tag, false).expect_err(&format!(
+            "{tag} must refuse field-only metadata that has no exact-zero value surface"
+        ));
+        assert!(
+            error.contains(required),
+            "{tag} must diagnose the discarded exact-zero metadata, got:\n{error}"
+        );
+    }
 }
 
 /// An occurrence marker on a heterogeneous ARRAY-record field — `[uint, tstr, * bytes]` — was
@@ -6829,6 +7062,18 @@ fn plain_group_map_rest_row_rejects_gracefully_at_every_spelling() {
             "longer_prefix",
             "uses the bare plain group `kv` as its KEY domain",
         ),
+        // Restricted row windows are supported; the framing remedy must retain the authored
+        // occurrence rather than weakening it back to the loose `*` form.
+        (
+            format!("{GROUP}t = {{ c: uint, + kv => uint }}\n"),
+            "plus_key",
+            "`+ [kv] => uint` in place of this row",
+        ),
+        (
+            format!("{GROUP}t = {{ c: uint, 2*3 uint => kv }}\n"),
+            "bounded_value",
+            "`2*3 uint => [kv]` in place of this row",
+        ),
         // BOTH slots at once: each role is reported, so no spelling of the shape is silent.
         (
             format!("{GROUP}t = {{ c: uint, * kv => kv }}\n"),
@@ -6929,8 +7174,10 @@ fn plain_group_map_rest_row_rejects_gracefully_at_every_spelling() {
         "the mandatory splice should keep its own message, got: {splice}"
     );
 
-    // Guard ORDER. Everything that runs before the slot types are computed keeps its own message:
-    // one problem, one message, and never two.
+    // Guard ORDER. Every placement guard that runs before the slot types are computed keeps its
+    // own message: one problem, one message, and never two. Occurrence windows are not in this
+    // list: B5-403 made `+` and bounded dynamic rows supported, so they correctly reach the slot
+    // refusal above when their key or value is a plain group.
     for (spec, tag, needle) in [
         (
             format!("{GROUP}t = {{ x: uint // c: uint, * kv => uint }}\n"),
@@ -6951,16 +7198,6 @@ fn plain_group_map_rest_row_rejects_gracefully_at_every_spelling() {
             format!("{GROUP}t = {{ c: uint, * kv => uint, d: uint }}\n"),
             "non_final",
             "must be the LAST entry of the map",
-        ),
-        (
-            format!("{GROUP}t = {{ c: uint, + kv => uint }}\n"),
-            "plus_occurrence",
-            "must use the `*` occurrence",
-        ),
-        (
-            format!("{GROUP}t = {{ c: uint, 2*3 kv => uint }}\n"),
-            "bounded_occurrence",
-            "must use the `*` occurrence",
         ),
     ] {
         let msg = run(&spec, tag, &[]).expect_err(&format!("`{}` must reject", spec.trim()));
@@ -8010,9 +8247,10 @@ fn occurrence_on_single_entry_group_choice_arm_rejects_gracefully() {
 ///   (`// ; @doc <text>`) already documents the variant and is honored, and that is the remedy.
 ///
 /// `@name` is the one member of the family that is NOT a silent drop at this slot and is
-/// deliberately untouched: `anon_array_member_name` reads exactly this slot for a member-position
-/// anonymous inline array, so `[ a: uint // f: [x: uint] ; @name Inner ]` mints `pub struct Inner`
-/// — pinned below as the control that this delivery did not delete it.
+/// deliberately untouched: `anon_composite_member_name` reads exactly this slot for a
+/// member-position anonymous heterogeneous array or map, so
+/// `[ a: uint // f: [x: uint] ; @name Inner ]` mints `pub struct Inner` — pinned below as the
+/// control that this delivery did not delete it.
 #[test]
 fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
     // Every directive the record field walk READS, at the entry-trailing slot of a one-entry arm,
@@ -8190,8 +8428,8 @@ fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
     );
 
     // 2. `@name` at the ENTRY slot is NOT a silent drop here: it is the slot
-    //    `anon_array_member_name` reads for a member-position anonymous inline array. Refusing the
-    //    family must not have deleted that.
+    //    `anon_composite_member_name` reads for a member-position anonymous heterogeneous
+    //    composite. Refusing the family must not have deleted that.
     let anon = expect_custom_codec_source(
         "arm_entry_slot_anon_array_name_control",
         "t = [ a: uint\n// f: [x: uint] ; @name Inner\n]\n",
@@ -8327,14 +8565,15 @@ fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
     }
 }
 
-/// `@name` in the ENTRY-trailing slot of a SINGLE-ENTRY group-choice arm agrees with the ONE reader
-/// that slot has: honored exactly where `anon_array_member_name` consumes it — a member-position
-/// ANONYMOUS heterogeneous inline array, bare or behind any number of tag wrappers, which the name
+/// `@name` in the ENTRY-trailing slot of a SINGLE-ENTRY group-choice arm agrees with the reader that
+/// slot has: honored exactly where `anon_composite_member_name` consumes it — a member-position
+/// ANONYMOUS heterogeneous inline array or fixed-field map, bare or behind any number of tag
+/// wrappers, which the name
 /// mints the struct for — and refused everywhere else, where it was read by nothing
 /// (`// f: bytes ; @name renamed` still emitted variant `F`).
 ///
 /// The property this pins is the AGREEMENT, not a list of shapes: over a vocabulary of arm-entry
-/// member types, every `@name` is EITHER honored-as-mint (and only for the anon heterogeneous array)
+/// member types, every `@name` is EITHER honored-as-mint (and only for the anon heterogeneous composite)
 /// OR refused — never silent, never both. That matters because the refusal seam does not restate the
 /// reader's scope; it observes the reader's only effect (the member's parsed type IS the struct the
 /// name mints), so this test is what would catch the two drifting apart if the reader's scope ever
@@ -8346,11 +8585,12 @@ fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
 /// (`F(Inner)` → `Inner(Inner)`) while minting a second naming slot beside the arm's documented one.
 #[test]
 fn name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent() {
-    // (tag, member type as written, whether the anon-array reader consumes the name)
+    // (tag, member type as written, whether the anonymous-composite reader consumes the name)
     const VOCABULARY: &[(&str, &str, bool)] = &[
         // the ONE consuming shape: the anonymous heterogeneous inline array, whose struct the name
         // mints and whose variant then holds it.
         ("anon_hetero_array", "[x: uint]", true),
+        ("anon_hetero_map", "{x: uint}", true),
         // a HOMOGENEOUS inline array is a `Vec`, not a struct — nothing to name.
         ("homogeneous_array", "[* uint]", false),
         ("bare_primitive", "bytes", false),
@@ -8360,10 +8600,12 @@ fn name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent() {
         // row above does — the tag then wraps that struct. This is the SAME consuming shape, which
         // is why it agrees with the row above rather than forming a class of its own.
         ("tagged_anon_array", "#6.42([x: uint])", true),
-        // an inline MAP has no naming door at all (its own error points at the named form).
-        ("anon_map", "{x: uint}", false),
+        ("tagged_anon_map", "#6.42({x: uint})", true),
+        // A homogeneous inline table is a structural map, not a record — nothing to name.
+        ("inline_table", "{* uint => uint}", false),
     ];
-    const REFUSAL_HEAD: &str = "this slot names a member-position anonymous inline array";
+    const REFUSAL_HEAD: &str =
+        "this slot names a member-position anonymous inline array or heterogeneous map";
     for (tag, member, consumed) in VOCABULARY {
         for (rep, open, close) in [("array", "[", "]"), ("map", "{", "}")] {
             let prelude = if *tag == "alias" { "al = uint\n" } else { "" };
@@ -8379,7 +8621,7 @@ fn name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent() {
                 Ok(files) => {
                     assert!(
                         *consumed,
-                        "[{tag}/{rep}] only the anon heterogeneous array may HONOR the entry-slot \
+                        "[{tag}/{rep}] only the anon heterogeneous composite may HONOR the entry-slot \
                          name; this shape generated instead of refusing"
                     );
                     let src = files.into_values().collect::<Vec<_>>().join("\n");
@@ -8452,7 +8694,7 @@ fn name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent() {
     );
     assert!(
         door.contains("pub struct Inner") && door.contains("pub inner: Inner"),
-        "the member-position anonymous-array naming door must be untouched, got:\n{door}"
+        "the member-position anonymous-composite naming door must be untouched, got:\n{door}"
     );
 
     // CONTROL 2 — the ARM's own slot keeps naming the variant. It is the remedy this refusal names,
@@ -8933,9 +9175,11 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
 
     // Graceful rejections once on the record path: nint/float get the unsupported-fixed-kind message,
     // Every current fixed-literal class and fixed prelude spelling takes the shared
-    // `type2_to_fixed_value` route and names its fixed value, and a zero-permitting occurrence gets
-    // f18d764's occurrence message. The shared lowering — rather than a duplicate per-seam match —
-    // makes a future fixed-literal Type2 join this classifier when its central lowering lands.
+    // `type2_to_fixed_value` route and names its fixed value. A zero-permitting uint/text fixed key
+    // is the record-path optional carrier regardless of colon vs arrow spelling; unsupported fixed
+    // key kinds retain their shared graceful message. The shared lowering — rather than a duplicate
+    // per-seam match — makes a future fixed-literal Type2 join this classifier when its central
+    // lowering lands.
     let nint =
         run("m = { -1 => uint }\n", "nint").expect_err("nint arrow key must reject gracefully");
     assert!(
@@ -8983,12 +9227,15 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
         undefined.contains("unsupported fixed map key") && undefined.contains("Undefined"),
         "undefined arrow key should retain the unsupported-fixed-key boundary, got: {undefined}"
     );
-    let star = run("m = { * 1 => uint }\n", "star").expect_err(
-        "a zero-permitting occurrence on a routed arrow key must reject (silent narrowing is wrong)",
-    );
+    let star = gen_out("m = { * 1 => uint }\n", "star_arrow");
+    let star_colon = gen_out("m = { * 1: uint }\n", "star_colon");
     assert!(
-        star.contains("zero-permitting occurrence"),
-        "a `*` arrow key should get the zero-permitting occurrence message, got: {star}"
+        star.values().any(|file| file.contains("Option<u64>")),
+        "a `*` fixed uint arrow key must take the optional carrier: {star:?}"
+    );
+    assert_eq!(
+        star, star_colon,
+        "zero-permitting fixed uint arrow and colon keys must converge on the same optional record"
     );
     // A NAMED singleton key is a type domain, not the direct fixed-literal record spelling above.
     // It therefore takes the exact-table path and retains both the nominal key and the 1..=1 window.
@@ -10594,12 +10841,12 @@ fn concat_files_missing_path_yields_error_not_panic() {
     );
 }
 
-/// Open struct-map (rest row) front end: recognition, the graceful-rejection guard set,
-/// the two directive-attachment traps (the entry-trailing slot vs the marker-slot trap), and the table-detection
-/// no-drift boundary. Message-level pins for the front door plus source-shape assertions for the
-/// happy path (the value-level round-trip lives in the compiled e2e `open_struct_map_e2e`). Each
-/// guard has BOTH polarities where meaningful (a supported spelling that generates, an unsupported
-/// one that rejects with a message naming the supported form).
+/// Open struct-map (rest row) front end: recognition, every supported row-local occurrence carrier,
+/// the directive-attachment traps (the entry-trailing slot vs the marker-slot trap), and the
+/// table-detection no-drift boundary. Source-shape pins prove construction and decode re-enter each
+/// checked carrier; the value-level round-trip lives in the compiled e2e `open_struct_map_e2e`.
+/// Guards retain both polarities where meaningful (a supported spelling that generates, and an
+/// actually unsupported composition that rejects precisely).
 #[test]
 fn open_struct_map_rest_row_front_end() {
     // `run` = default flags EXCEPT --wasm=false (the wasm rest surface is a later WP that rejects);
@@ -10678,13 +10925,36 @@ fn open_struct_map_rest_row_front_end() {
         "multiple rest rows must name the single-trailing-row rule, got: {multiple}"
     );
 
-    // --- guard: bounded occurrence (`+`) ---
-    let plus =
-        run("foo = { 1: uint, + uint => any }\n", "plus").expect_err("a `+` rest row must reject");
-    assert!(
-        plus.contains("rule `foo`") && plus.contains("`*` occurrence"),
-        "a bounded (`+`) rest row must name the `*` requirement, got: {plus}"
-    );
+    // --- restricted occurrence windows: each is a row-local checked constructor input ---
+    // `+` retains its NonEmpty carrier; `?` and finite `n*m` windows use BoundedMap.  The complete
+    // six-spelling grid (`bounded_dynamic_map_rows_lower_through_checked_carriers`) applies the
+    // same normalization to all three dynamic-row seams.  This local front-door pin retains one
+    // representative of each carrier family: all must stage loose decode entries then re-enter the
+    // carrier's one TryFrom door — the fixed member does not satisfy any rest-row minimum.
+    for (occurrence, carrier, tag) in [
+        ("+", "NonEmptyMap", "plus"),
+        ("?", "BoundedMap", "optional"),
+        ("2*3", "BoundedMap", "bounded"),
+    ] {
+        let restricted = run(
+            &format!("foo = {{ 1: uint, {occurrence} uint => any }}\n"),
+            tag,
+        )
+        .unwrap_or_else(|err| panic!("a `{occurrence}` open-struct rest row must generate: {err}"));
+        let restricted_src = src(&restricted);
+        assert!(
+            restricted_src.contains(&format!("pub rest: {carrier}<u64,"))
+                && restricted_src.contains("pub fn new(")
+                && restricted_src.contains(&format!("rest: {carrier}<u64,")),
+            "a `{occurrence}` rest row must cross native construction as its checked {carrier} carrier, got:\n{restricted_src}"
+        );
+        assert!(
+            restricted_src.contains("let rest =")
+                && restricted_src.contains(&format!("<{carrier}<u64,"))
+                && restricted_src.contains("::try_from(rest)?"),
+            "a `{occurrence}` rest row must stage decode then re-enter {carrier}::try_from, got:\n{restricted_src}"
+        );
+    }
 
     // --- general key domain: `bstr` (and every other deserializable key type) GENERATES ---
     let bytes_domain = run("foo = { 1: uint, * bstr => any }\n", "bstr")
@@ -11092,6 +11362,24 @@ fn open_struct_map_rest_row_front_end() {
         "an `@ignore` rest row must typed-deserialize-and-DROP the value, got:\n{ign_src}"
     );
 
+    // A tolerate-and-drop row can only remain semantically honest when it is loose: after it
+    // discards every incoming entry, serialization writes zero entries.  Both the established
+    // min-one and a finite bounded window must therefore refuse `@ignore` at the row seam, before
+    // it can silently widen the declared occurrence on output.
+    for (occurrence, tag) in [("+", "ignore_plus"), ("2*3", "ignore_bounded")] {
+        let err = run(
+            &format!("foo = {{\n  1: uint,\n  {occurrence} uint => any ; @ignore\n}}\n"),
+            tag,
+        )
+        .expect_err("a restricted open-struct rest row cannot tolerate-and-drop");
+        assert!(
+            err.contains("`@ignore` cannot apply to a restricted open struct-map rest row")
+                && err.contains("re-serialize zero occurrences")
+                && err.contains("declared cardinality"),
+            "a `{occurrence}` ignored rest row must reject the cardinality-losing form precisely, got: {err}"
+        );
+    }
+
     // --- combination guard: `@ignore` + `--preserve-encodings` REJECTS (a preserve crate's
     // byte-exact round-trip contract can't hold for a deliberately-lossy type). ---
     let ign_preserve = run_flags(
@@ -11304,23 +11592,31 @@ fn open_table_front_end() {
         mixed.contains("drop the fixed keys to spell an open table"),
         "the mixed shape must point at the zero-fixed-field spelling, got: {mixed}"
     );
-    // INLINE anonymous open table: no structural name is synthesized. The pre-existing inline-map
-    // guard fires first (an inline map in member position is unsupported unless it is a table), and
-    // it already names the named-rule remedy — so the open-table recognizer's own inline backstop is
-    // reachable only if that guard ever stops covering the position. What is pinned is the CONTRACT:
-    // an inline spelling rejects gracefully, pointing at the named-rule form.
+    // INLINE anonymous open table: without a name, no structural nominal is synthesized. What is
+    // pinned is the contract: the anonymous spelling rejects gracefully and points at the named
+    // rule without pretending that the fixed-record `@name` door can mint its two-container owner.
     let inline = run(
         &format!("{MD}f = {{ x: {{ * bstr => uint, * md => md }} }}\n"),
         "inline",
     )
     .expect_err("an inline open table must reject");
     assert!(
-        inline.contains("name it as its own rule") || inline.contains("its own named rule"),
-        "the inline rejection must name the named-rule form, got: {inline}"
+        inline.contains("create an explicit rule") && inline.contains("fixed-field record"),
+        "the inline rejection must name the rule remedy without promising the fixed-record door, \
+         got: {inline}"
+    );
+    let inline_named = run(
+        &format!("{MD}f = {{ x: {{ * bstr => uint, * md => md }} ; @name InlineTable\n }}\n"),
+        "inline_named",
+    )
+    .expect_err("an `@name`d inline open table must retain its named-rule-only boundary");
+    assert!(
+        inline_named.contains("INLINE open table") && inline_named.contains("its own named rule"),
+        "the fixed-record naming door must not claim an inline open table: {inline_named}"
     );
     // The `{+ …}` NonEmpty twin: min-1 on the TYPED row is the delivered flavor. `+` and `1*` are
     // the same spelling (the table path's rule verbatim), and both mint the two-argument door plus
-    // the post-loop bound check.
+    // the checked loose-to-restricted conversion after the deserialize loop.
     for (spec_occ, tag) in [("+", "plus"), ("1*", "onestar")] {
         let ne = run(
             &format!("{MD}t = {{ {spec_occ} bstr => uint, * md => md }}\n"),
@@ -11333,13 +11629,35 @@ fn open_table_front_end() {
             "the NonEmpty door must take the first typed entry, got:\n{ne_src}"
         );
         assert!(
-            ne_src.contains("if entries.is_empty()")
-                && ne_src.contains("min: Some(1)")
-                && ne_src.contains("max: None"),
-            "the min-1 bound must be enforced after the deserialize loop with `NonEmptyMap`'s own \
-             RangeCheck, got:\n{ne_src}"
+            ne_src.contains("pub entries: NonEmptyMap<Vec<u8>, u64>")
+                && ne_src.contains("entries: NonEmptyMap::new(first_key, first_value)")
+                && ne_src
+                    .contains("let entries = <NonEmptyMap<Vec<u8>, u64>>::try_from(entries)?;"),
+            "the typed row must be a restricted NonEmptyMap and decode through its checked door, \
+             got:\n{ne_src}"
         );
     }
+    let preserve = run(
+        &format!(
+            "{MD}t = {{\n  + bstr => uint ; @duplicates preserve\n  ,\n  * md => md ; @duplicates preserve\n}}\n"
+        ),
+        "preserve",
+    )
+    .expect("a preserve NonEmpty open table must generate");
+    let preserve_src = src(&preserve);
+    assert!(
+        preserve_src.contains("pub entries: NonEmptyPairMap<Vec<u8>, u64>")
+            && preserve_src.contains("entries: NonEmptyPairMap::new(first_key, first_value)")
+            && preserve_src
+                .contains("let entries = <NonEmptyPairMap<Vec<u8>, u64>>::try_from(entries)?;"),
+        "the preserve typed row must select NonEmptyPairMap at construction and decode, got:\n{preserve_src}"
+    );
+    assert!(
+        !preserve_src.contains("pub mod non_empty_map;")
+            && !preserve_src.contains("use crate::generated::non_empty_map::NonEmptyMap;"),
+        "a preserve-only non-empty row must provision only its pair-map carrier, never the unused \
+         NonEmptyMap runtime/import, got:\n{preserve_src}"
+    );
     // The two door parameters are FIXED emitter names beside a `@name`-settable row name, so the
     // one identifier hazard they create is a row named for a parameter: the seeding block must not
     // bind the field's name as its local, or it would shadow the parameter it is handed (E0308 in
@@ -11352,8 +11670,9 @@ fn open_table_front_end() {
     )
     .expect("a row named for a door parameter must still generate");
     assert!(
-        src(&named_for_param).contains("let mut seed = BTreeMap::new();"),
-        "the seeding local must be a fixed name, not the row's, got:\n{}",
+        src(&named_for_param).contains("first_key: NonEmptyMap::new(first_key, first_value)"),
+        "the direct NonEmptyMap constructor must remain safe when a row is named for a parameter, \
+         got:\n{}",
         src(&named_for_param)
     );
     // …and `0*` is the same UNBOUNDED row `*` is, so it mints the argument-less door.
@@ -11367,36 +11686,52 @@ fn open_table_front_end() {
         "`0*` must stay the unbounded flavor, got:\n{}",
         src(&zero_star)
     );
-    // The min-1 counts TYPED entries, so it has no reading on the catch-all row.
+    // Each dynamic row owns its own count.  A `+` catch-all is a complete checked constructor
+    // parameter (rather than a fact about the typed row), and enters through its own post-loop
+    // carrier conversion.
     let plus_catch = run(
         &format!("{MD}t = {{ * bstr => uint, + md => md }}\n"),
         "pluscatch",
     )
-    .expect_err("`+` on the catch-all row must reject");
+    .expect("`+` on the catch-all row must carry a NonEmptyMap");
+    let plus_catch_src = src(&plus_catch);
     assert!(
-        plus_catch.contains("supported only on an open table's TYPED row")
-            && plus_catch.contains("minimum of 1 counts TYPED entries"),
-        "the catch-all `+` rejection must state where the bound belongs, got: {plus_catch}"
+        plus_catch_src.contains("pub rest: NonEmptyMap<Md, Md>")
+            && plus_catch_src.contains("pub fn new(rest: NonEmptyMap<Md, Md>) -> Self")
+            && plus_catch_src.contains("let rest = <NonEmptyMap<Md, Md>>::try_from(rest)?;"),
+        "the catch-all `+` must keep its own checked carrier and decode door, got:\n{plus_catch_src}"
     );
-    // `?` on a row is neither shape.
+    // A zero-minimum restricted typed row is still an explicit checked native construction input:
+    // callers may construct an in-window non-empty value without first mutating it. Its WASM
+    // wrapper can additionally seed an empty carrier because the typed map surface is flattened
+    // there and exposes checked insertion.
     let opt = run(
         &format!("{MD}t = {{ ? bstr => uint, * md => md }}\n"),
         "opt",
     )
-    .expect_err("a `?` row must reject");
+    .expect("a `?` typed row must carry BoundedMap<_, _, 0, 1>");
+    let opt_src = src(&opt);
     assert!(
-        opt.contains("`*` occurrence") && opt.contains("`+` (at least one TYPED entry)"),
-        "a bounded row must name the `*` requirement and the one `+` concession, got: {opt}"
+        opt_src.contains("pub entries: BoundedMap<Vec<u8>, u64, 0, 1>")
+            && opt_src.contains("pub fn new(entries: BoundedMap<Vec<u8>, u64, 0, 1>) -> Self")
+            && opt_src
+                .contains("let entries = <BoundedMap<Vec<u8>, u64, 0, 1>>::try_from(entries)?;"),
+        "an optional typed row must use the zero-minimum checked carrier, got:\n{opt_src}"
     );
-    // A genuinely bounded marker (`n*m`) is still a real cardinality this shape does not honor.
+    // A positive-minimum bounded typed row takes its complete checked carrier at the native record
+    // construction door, rather than silently seeding one arbitrary first key/value.
     let bounded = run(
         &format!("{MD}t = {{ 2*5 bstr => uint, * md => md }}\n"),
         "bounded",
     )
-    .expect_err("a `n*m` row must reject");
+    .expect("a `n*m` typed row must carry its full BoundedMap");
+    let bounded_src = src(&bounded);
     assert!(
-        bounded.contains("`*` occurrence"),
-        "a bounded row must name the `*` requirement, got: {bounded}"
+        bounded_src.contains("pub entries: BoundedMap<Vec<u8>, u64, 2, 5>")
+            && bounded_src.contains("pub fn new(entries: BoundedMap<Vec<u8>, u64, 2, 5>) -> Self")
+            && bounded_src
+                .contains("let entries = <BoundedMap<Vec<u8>, u64, 2, 5>>::try_from(entries)?;"),
+        "a bounded typed row must retain its complete checked carrier, got:\n{bounded_src}"
     );
     // `any` on the TYPED row claims all eight majors, leaving the catch-all nothing.
     let any_typed = run(
@@ -11585,6 +11920,215 @@ fn open_table_front_end() {
     );
 }
 
+/// Dynamic MAP rows use the same normalized occurrence vocabulary as homogeneous tables, but they
+/// keep their record/open-table ownership and dispatch semantics.  This is deliberately a source
+/// assertion as well as an e2e concern: a loose staging map plus one checked conversion per row is
+/// the only shape that prevents public construction or mutation from escaping a restricted window.
+#[test]
+fn bounded_dynamic_map_rows_lower_through_checked_carriers() {
+    fn source(spec: &str, tag: &str, flags: &[&str]) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_bounded_dynamic_row_{tag}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen".to_owned(),
+            "--input".to_owned(),
+            path.to_str().unwrap().to_owned(),
+            "--output".to_owned(),
+            "bounded_dynamic_row_unused".to_owned(),
+            "--wasm=false".to_owned(),
+        ];
+        args.extend(flags.iter().map(|flag| (*flag).to_owned()));
+        let out = crate::api::generated_strings(&Cli::parse_from(args))
+            .unwrap_or_else(|error| panic!("{tag} must generate: {error}"));
+        std::fs::remove_file(&path).ok();
+        out.values().cloned().collect::<Vec<_>>().join("\n")
+    }
+
+    // One compact NORMALIZATION grid reaches every dynamic-row recognizer independently.  The
+    // three positions share the same six valid spellings, but not a parser branch, public member,
+    // decode local, or cross-face owner — a table-only test would let an open-struct rest drift,
+    // and a catch-all-only test would let the typed-row dispatch drift.  `None` is exact-once;
+    // `*3` and `2*` prove that a missing endpoint becomes zero / `u64::MAX`, rather than silently
+    // widening to the loose `*` form.  The preserve twin makes the same assertion for pair-counting
+    // carriers, where each retained duplicate counts toward the window.
+    for (tag, occurrence, default_carriers, preserve_carriers) in [
+        (
+            "exact",
+            "",
+            [
+                "BoundedMap<u64, String, 1, 1>",
+                "BoundedMap<Vec<u8>, u64, 1, 1>",
+                "BoundedMap<Md, Md, 1, 1>",
+            ],
+            [
+                "BoundedPairMap<u64, String, 1, 1>",
+                "BoundedPairMap<Vec<u8>, u64, 1, 1>",
+                "BoundedPairMap<Md, Md, 1, 1>",
+            ],
+        ),
+        (
+            "optional",
+            "?",
+            [
+                "BoundedMap<u64, String, 0, 1>",
+                "BoundedMap<Vec<u8>, u64, 0, 1>",
+                "BoundedMap<Md, Md, 0, 1>",
+            ],
+            [
+                "BoundedPairMap<u64, String, 0, 1>",
+                "BoundedPairMap<Vec<u8>, u64, 0, 1>",
+                "BoundedPairMap<Md, Md, 0, 1>",
+            ],
+        ),
+        (
+            "non_empty",
+            "+",
+            [
+                "NonEmptyMap<u64, String>",
+                "NonEmptyMap<Vec<u8>, u64>",
+                "NonEmptyMap<Md, Md>",
+            ],
+            [
+                "NonEmptyPairMap<u64, String>",
+                "NonEmptyPairMap<Vec<u8>, u64>",
+                "NonEmptyPairMap<Md, Md>",
+            ],
+        ),
+        (
+            "bounded",
+            "2*3",
+            [
+                "BoundedMap<u64, String, 2, 3>",
+                "BoundedMap<Vec<u8>, u64, 2, 3>",
+                "BoundedMap<Md, Md, 2, 3>",
+            ],
+            [
+                "BoundedPairMap<u64, String, 2, 3>",
+                "BoundedPairMap<Vec<u8>, u64, 2, 3>",
+                "BoundedPairMap<Md, Md, 2, 3>",
+            ],
+        ),
+        (
+            "zero_to_max",
+            "*3",
+            [
+                "BoundedMap<u64, String, 0, 3>",
+                "BoundedMap<Vec<u8>, u64, 0, 3>",
+                "BoundedMap<Md, Md, 0, 3>",
+            ],
+            [
+                "BoundedPairMap<u64, String, 0, 3>",
+                "BoundedPairMap<Vec<u8>, u64, 0, 3>",
+                "BoundedPairMap<Md, Md, 0, 3>",
+            ],
+        ),
+        (
+            "min_to_unbounded",
+            "2*",
+            [
+                "BoundedMap<u64, String, 2, { u64::MAX }>",
+                "BoundedMap<Vec<u8>, u64, 2, { u64::MAX }>",
+                "BoundedMap<Md, Md, 2, { u64::MAX }>",
+            ],
+            [
+                "BoundedPairMap<u64, String, 2, { u64::MAX }>",
+                "BoundedPairMap<Vec<u8>, u64, 2, { u64::MAX }>",
+                "BoundedPairMap<Md, Md, 2, { u64::MAX }>",
+            ],
+        ),
+    ] {
+        let default = source(
+            &format!(
+                "md = uint / text\n\
+                 open_struct = {{ 1: uint, {occurrence} uint => text }}\n\
+                 typed = {{ {occurrence} bstr => uint, * md => md }}\n\
+                 captured = {{ * bstr => uint, {occurrence} md => md }}\n"
+            ),
+            &format!("default_{tag}"),
+            &[],
+        );
+        for (member, carrier) in [
+            ("pub rest: ", default_carriers[0]),
+            ("pub entries: ", default_carriers[1]),
+            ("pub rest: ", default_carriers[2]),
+        ] {
+            assert!(
+                default.contains(&format!("{member}{carrier}")),
+                "the `{occurrence}` {tag} default row must retain `{carrier}` in its public member:\n{default}"
+            );
+        }
+        for (local, carrier) in [
+            ("rest", default_carriers[0]),
+            ("entries", default_carriers[1]),
+            ("rest", default_carriers[2]),
+        ] {
+            assert!(
+                default.contains(&format!("let {local} = <{carrier}>::try_from({local})?;")),
+                "the `{occurrence}` {tag} default row must stage then check `{carrier}` once:\n{default}"
+            );
+        }
+
+        let preserve = source(
+            &format!(
+                "md = uint / text\n\
+                 open_struct = {{\n  1: uint,\n  {occurrence} uint => text ; @duplicates preserve\n}}\n\
+                 typed = {{\n  {occurrence} bstr => uint ; @duplicates preserve\n  , * md => md\n}}\n\
+                 captured = {{\n  * bstr => uint\n  , {occurrence} md => md ; @duplicates preserve\n}}\n"
+            ),
+            &format!("preserve_{tag}"),
+            &[],
+        );
+        for (member, carrier) in [
+            ("pub rest: ", preserve_carriers[0]),
+            ("pub entries: ", preserve_carriers[1]),
+            ("pub rest: ", preserve_carriers[2]),
+        ] {
+            assert!(
+                preserve.contains(&format!("{member}{carrier}")),
+                "the `{occurrence}` {tag} preserve row must retain pair-counting `{carrier}` in its public member:\n{preserve}"
+            );
+        }
+        for (local, carrier) in [
+            ("rest", preserve_carriers[0]),
+            ("entries", preserve_carriers[1]),
+            ("rest", preserve_carriers[2]),
+        ] {
+            assert!(
+                preserve.contains(&format!("let {local} = <{carrier}>::try_from({local})?;")),
+                "the `{occurrence}` {tag} preserve row must stage then check `{carrier}` once:\n{preserve}"
+            );
+        }
+    }
+
+    // JSON cannot deserialize a flattened object straight into a checked map: it stages both
+    // regions and re-enters the same checked door.  Schema deliberately stays silent because a
+    // `minProperties`/`maxProperties` claim would count the OTHER region too.
+    let json = source(
+        "md = uint / text\n\
+         t = { 2*3 bstr => uint, 0*1 md => md }\n",
+        "json",
+        &["--json-serde-derives=true", "--json-schema-export=true"],
+    );
+    assert!(
+        json.contains("typed_staged")
+            && json.contains("captured_staged")
+            && json.contains(
+                "let checked_typed = <BoundedMap<Vec<u8>, u64, 2, 3>>::try_from(typed_staged)"
+            )
+            && json.contains(
+                "let checked_captured = <BoundedMap<Md, Md, 0, 1>>::try_from(captured_staged)"
+            ),
+        "JSON must stage and check each row independently:\n{json}"
+    );
+    assert!(
+        !json.contains("minProperties") && !json.contains("maxProperties"),
+        "open-table schema must not misstate a per-row count as an object-wide count:\n{json}"
+    );
+}
+
 /// An open table's COMPONENT face carries a getter for BOTH rows. The WIT projection walked only
 /// the catch-all before this shape existed, so a typed row would have crossed the component boundary
 /// SILENTLY ABSENT — the cross-crate loss class, which is worse than an unprojectable error because
@@ -11597,7 +12141,7 @@ fn open_table_component_face_projects_both_rows() {
     ));
     std::fs::write(
         &path,
-        "pid = bytes .size 4\nmd = uint / text\nlabels = { * pid => uint, * md => md }\n",
+        "pid = bytes .size 4\nmd = uint / text\nlabels = { + pid => uint, * md => md }\n",
     )
     .unwrap();
     let cli = Cli::parse_from(vec![
@@ -11628,6 +12172,10 @@ fn open_table_component_face_projects_both_rows() {
     assert!(
         wit.contains("rest: func() -> list<tuple<md, md>>"),
         "the catch-all keeps its getter, got:\n{wit}"
+    );
+    assert!(
+        wit.contains("first-key") && wit.contains("first-value"),
+        "the NonEmpty typed row keeps its first-entry construction door in WIT, got:\n{wit}"
     );
 }
 
@@ -11668,7 +12216,7 @@ fn open_table_wasm_class_flattens_the_typed_row() {
     let src = open_table_wasm_src(
         "pid = bytes .size 4\n\
          md = uint / text\n\
-         labels = { * pid => uint, * md => md }\n",
+         labels = { + pid => uint, * md => md }\n",
         "flatten",
     );
     for member in [
@@ -11686,6 +12234,10 @@ fn open_table_wasm_class_flattens_the_typed_row() {
     assert!(
         src.contains("self.0.entries.insert(") && src.contains("self.0.entries.keys()"),
         "the flattened accessors must delegate to the TYPED container field, got:\n{src}"
+    );
+    assert!(
+        src.contains("pub fn new(first_key: &Pid, first_value: u64) -> Self"),
+        "the NonEmpty typed row's wasm class must retain the first-entry constructor, got:\n{src}"
     );
     assert!(
         !src.contains("pub fn entries(&self)"),
@@ -11752,6 +12304,124 @@ fn open_table_wasm_class_carries_every_row_flavor() {
     assert!(
         native.contains("pub fn keys(&self) -> Vec<String> {"),
         "a wasm-native typed key returns a bare Vec, got:\n{native}"
+    );
+
+    // A bounded typed row remains flattened (there is no restricted whole-row class), but every
+    // bounded window needs a loose builder at `new` so Rust can enter the checked carrier before
+    // the owner record exists. A restricted catch-all, by contrast, has a read-only getter and must
+    // cross `new` as its complete restricted wrapper.
+    let bounded = open_table_wasm_src(
+        "md = uint / text\n\
+         bounded = { 2*3 bstr => uint, 1*2 md => md }\n",
+        "bounded",
+    );
+    assert!(
+        bounded.contains("entries_builder")
+            && bounded.contains("<BoundedMap<Vec<u8>, u64, 2, 3>>::try_from(")
+            && bounded.contains(".map_err(|e| JsError::new(&e.to_string()))?")
+            && bounded.contains(
+                "pub fn insert(&mut self, key: Vec<u8>, value: u64) -> Result<Option<u64>, JsError>"
+            ),
+        "a bounded typed row needs its loose builder and checked flattened insert, got:\n{bounded}"
+    );
+    assert!(
+        bounded.contains("pub fn rest(&self) -> MapMdToMdMin1Max2")
+            && !bounded.contains("MapBytesToU64Min2Max3"),
+        "only the catch-all mints a restricted whole-row class; the typed row stays flattened, got:\n{bounded}"
+    );
+
+    // Minimum zero takes the SAME builder door, not a special nullary wasm `new()`. `Pid` is a
+    // generated record key, so this also pins the builder conversion's rust-crate-qualified key
+    // spelling (`cddl_lib::Pid`, never the wasm wrapper type) before the generated-crate compile
+    // resident exercises it.
+    let optional = open_table_wasm_src(
+        "pid = bytes .size 4\n\
+         md = uint / text\n\
+         optional = { 0*3 pid => uint, * md => md }\n",
+        "optional_bounded",
+    );
+    assert!(
+        optional.contains("pub fn new(entries_builder: &MapPidToU64) -> Result<Optional, JsError>")
+            && optional.contains("<BoundedMap<cddl_lib::Pid, u64, 0, 3>>::try_from(")
+            && optional.contains("entries_builder.clone()")
+            && optional.contains(
+                "pub fn insert(&mut self, key: &Pid, value: u64) -> Result<Option<u64>, JsError>"
+            ),
+        "a zero-minimum bounded typed row must use the same loose-builder + checked-carrier door, got:\n{optional}"
+    );
+}
+
+/// Generated constructor helpers are names beside — not aliases for — public row fields. A loose
+/// row named `first_key` remains ABI-compatible because it is not a constructor argument; a
+/// restricted catch-all named that way IS an argument and must force the typed `+` helper to suffix.
+/// The bounded typed-builder sibling has the same boundary on the wasm face. WIT follows the native
+/// parameter spelling (kebab-cased), so the component glue continues to call the rust constructor
+/// positionally without a duplicate guest binding.
+#[test]
+fn open_table_generated_constructor_params_avoid_actual_collisions() {
+    const NON_EMPTY: &str = "md = uint / text\n\
+         labels = {\n  + bstr => uint\n  , 2*3 md => md ; @name first_key\n}\n";
+    let wasm = open_table_wasm_src(NON_EMPTY, "ctor_param_collision");
+    assert!(
+        wasm.contains(
+            "pub fn new(first_key_2: Vec<u8>, first_value: u64, first_key: &MapMdToMdMin2Max3)"
+        ) && wasm.contains("NonEmptyMap::new(first_key_2, first_value)")
+            && wasm.contains("cddl_lib::Labels::new("),
+        "a restricted catch-all parameter named `first_key` must suffix only the colliding typed helper:\n{wasm}"
+    );
+
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_open_table_component_ctor_collision_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, NON_EMPTY).unwrap();
+    let component = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "open_table_component_ctor_collision_unused",
+        "--wasm=true",
+        "--component=true",
+    ]))
+    .expect("the colliding component constructor must generate");
+    std::fs::remove_file(&path).ok();
+    let wit = component
+        .iter()
+        .find(|(name, _)| name.ends_with(".wit"))
+        .map(|(_, source)| source)
+        .expect("the component face emits WIT");
+    assert!(
+        wit.contains("first-key2")
+            && wit.contains("first-value")
+            && wit.contains("first-key: list<tuple<borrow<md>, borrow<md>>>"),
+        "WIT must use the same collision-safe first-entry names and retain the catch-all parameter:\n{wit}"
+    );
+
+    let builder = open_table_wasm_src(
+        "md = uint / text\n\
+         bounded = {\n  2*3 bstr => uint ; @name entries\n  , 2*3 md => md ; @name entries_builder\n}\n",
+        "ctor_builder_collision",
+    );
+    assert!(
+        builder.contains("entries_builder_2: &MapBytesToU64")
+            && builder.contains("entries_builder: &MapMdToMdMin2Max3")
+            && builder.contains("try_from(<BTreeMap<Vec<u8>, u64>>::from(")
+            && builder.contains("entries_builder_2.clone()"),
+        "a restricted catch-all parameter named for the typed builder must suffix only that wasm builder:\n{builder}"
+    );
+
+    let optional_builder = open_table_wasm_src(
+        "md = uint / text\n\
+         bounded = {\n  0*3 bstr => uint ; @name entries\n  , 2*3 md => md ; @name entries_builder\n}\n",
+        "ctor_optional_builder_collision",
+    );
+    assert!(
+        optional_builder.contains("entries_builder_2: &MapBytesToU64")
+            && optional_builder.contains("entries_builder: &MapMdToMdMin2Max3")
+            && optional_builder.contains("try_from(<BTreeMap<Vec<u8>, u64>>::from(")
+            && optional_builder.contains("entries_builder_2.clone()"),
+        "a zero-minimum typed builder must avoid the same restricted catch-all parameter collision:\n{optional_builder}"
     );
 }
 
@@ -11854,6 +12524,99 @@ fn open_table_wasm_wrapper_ident_collisions_reject_gracefully() {
             && msg.contains("the `@duplicates preserve` catch-all row of 'Labels'")
             && msg.contains("PairMap wrapper"),
         "the preserve catch-all leg must name the flavored row and the PairMap twin, got: {msg}"
+    );
+
+    // Restricted captured rows have a SECOND structural class — the checked carrier itself.  The
+    // loose source tests above cannot see this collision, and admitting it would let a user rule
+    // shadow the only wasm door that preserves the row's occurrence window.
+    let msg = run(
+        "map_u64_to_text_min2_max3 = [x: uint]\n\
+         s = { 1: uint, 2*3 uint => text }\n",
+        "boundedrest",
+    );
+    assert!(
+        msg.contains("MapU64ToTextMin2Max3")
+            && msg.contains("bounded open struct-map rest row of 'S'")
+            && msg.contains("BoundedMap wrapper"),
+        "a bounded open-struct rest must diagnose its checked structural wrapper, got: {msg}"
+    );
+    let msg = run(
+        "non_empty_map_u64_to_text = [x: uint]\n\
+         s = { 1: uint, + uint => text }\n",
+        "nonemptyrest",
+    );
+    assert!(
+        msg.contains("NonEmptyMapU64ToText") && msg.contains("NonEmptyMap wrapper"),
+        "a `+` captured row must diagnose its checked NonEmptyMap structural wrapper, got: {msg}"
+    );
+
+    // The duplicate-preserving bounded twin has a distinct structural name and a distinct carrier;
+    // it must not accidentally take the default-map detector's message or class.
+    let msg = run(
+        "pair_map_u64_to_text_min2_max3 = [x: uint]\n\
+         s = {\n  1: uint\n  ,\n  2*3 uint => text ; @duplicates preserve\n}\n",
+        "boundedpreserverest",
+    );
+    assert!(
+        msg.contains("PairMapU64ToTextMin2Max3")
+            && msg.contains("bounded `@duplicates preserve` open struct-map rest row of 'S'")
+            && msg.contains("BoundedPairMap wrapper"),
+        "a bounded preserve rest must diagnose its BoundedPairMap structural wrapper, got: {msg}"
+    );
+
+    // A bounded TYPED row intentionally mints NO whole-row restricted wrapper: it stays flattened.
+    // The one wasm auxiliary is its loose constructor builder, so collision
+    // coverage must name that builder and must not invent a forbidden `Map…Min…` class.
+    let msg = run(
+        "map_bytes_to_u64 = [x: uint]\n\
+         md = uint / text\n\
+         labels = { 2*3 bstr => uint, * md => md }\n",
+        "boundedtypedbuilder",
+    );
+    assert!(
+        msg.contains("MapBytesToU64")
+            && msg.contains("bounded typed row of open table 'Labels'")
+            && !msg.contains("MapBytesToU64Min2Max3"),
+        "a bounded typed row must diagnose only its loose flattened builder, got: {msg}"
+    );
+    let msg = run(
+        "pair_map_bytes_to_u64 = [x: uint]\n\
+         md = uint / text\n\
+         labels = {\n  2*3 bstr => uint ; @duplicates preserve\n  ,\n  * md => md\n}\n",
+        "boundedtypedpreservebuilder",
+    );
+    assert!(
+        msg.contains("PairMapBytesToU64")
+            && msg.contains("bounded `@duplicates preserve` typed row")
+            && !msg.contains("PairMapBytesToU64Min2Max3"),
+        "a bounded preserve typed row must diagnose only its loose flattened builder, got: {msg}"
+    );
+    // The same detector obligations begin at zero. Without this row, the new constructor builder
+    // could be minted under a user-claimed class name only for the zero-minimum flavor and fail in
+    // the generated wasm crate rather than as a deterministic input error.
+    let msg = run(
+        "map_bytes_to_u64 = [x: uint]\n\
+         md = uint / text\n\
+         labels = { 0*3 bstr => uint, * md => md }\n",
+        "optionalboundedtypedbuilder",
+    );
+    assert!(
+        msg.contains("MapBytesToU64")
+            && msg.contains("bounded typed row of open table 'Labels'")
+            && !msg.contains("MapBytesToU64Min0Max3"),
+        "a zero-minimum bounded typed row must diagnose its loose flattened builder, got: {msg}"
+    );
+    let msg = run(
+        "pair_map_bytes_to_u64 = [x: uint]\n\
+         md = uint / text\n\
+         labels = {\n  0*3 bstr => uint ; @duplicates preserve\n  ,\n  * md => md\n}\n",
+        "optionalboundedtypedpreservebuilder",
+    );
+    assert!(
+        msg.contains("PairMapBytesToU64")
+            && msg.contains("bounded `@duplicates preserve` typed row")
+            && !msg.contains("PairMapBytesToU64Min0Max3"),
+        "a zero-minimum bounded preserve typed row must diagnose its loose flattened builder, got: {msg}"
     );
 }
 

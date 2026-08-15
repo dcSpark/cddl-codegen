@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "val",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -84,6 +85,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

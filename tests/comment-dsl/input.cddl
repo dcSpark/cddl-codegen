@@ -38,3 +38,12 @@ tagged_anon_holder = [
     ,
     text             ; @name label
 ]
+
+; The member-position naming door is shared by heterogeneous maps. Here the tag wraps the minted
+; `TaggedMapPoint` record, exactly as the named-rule spelling (`p = { x: uint }`, then `#6.42(p)`)
+; would; tests.rs pins the map wire and a non-minimal member-width preserve round-trip.
+tagged_anon_map_holder = [
+    #6.42({x: uint}) ; @name tagged_map_point
+    ,
+    text             ; @name label
+]

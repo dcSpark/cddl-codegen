@@ -139,9 +139,14 @@ which is the collection spelling above with nothing new added.
 Each such getter is read-only in the strong sense and has **no setter**, so on this face a captured
 region can be read but not written. A loose rest row/tail is **not** a constructor parameter; a
 non-empty array tail (`+ t` / `1* t`) contributes its first element to the constructor so the
-resource starts valid, while the getter remains list-shaped. That is the same
-posture the wasm face takes on the field itself, minus the mutable wrapper the wasm face hands back —
-here the whole-map snapshot rule applies, so what you get is a copy. An
+resource starts valid, while the getter remains list-shaped. Restricted dynamic map rows keep their
+row-local window at this boundary too: the shipped typed-row `+` form contributes its first key and
+value, while bounded typed rows and restricted open-struct/catch-all rows contribute a
+`list<tuple<k, v>>`; the fallible constructor restores the native `NonEmptyMap`/`BoundedMap` or
+duplicate-preserving pair-map carrier through its checked door. An exact-zero fixed member similarly
+makes even a loose open-struct rest list a fallible constructor input, so its forbidden key is
+checked before the native record exists. This is the same snapshot posture as the wasm getter — no
+returned collection mutates the parent resource. An
 [`@ignore`](comment_dsl#ignore) row stores nothing and therefore projects **no** getter at all.
 
 An open table projects **both** of its rows this way, the typed one and the trailing catch-all, each

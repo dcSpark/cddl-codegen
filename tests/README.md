@@ -1857,15 +1857,16 @@ idiom") is verified across the layers:
   tag-set idiom — recognized-shape boundary": non-idiom choice-bodied generic defs (refused at
   parse, not supported) and inline/anonymous two-arm choices (not recognized).
 
-### Open struct-maps (rest rows) — test map (loose-CBOR Phase B)
+### Open struct-maps (dynamic rest rows and exact-zero fixed keys) — test map
 
-The trailing-`* K => V`-after-fixed-keys capture feature (user docs:
+The trailing-`K => V`-after-fixed-keys capture feature, with its own occurrence window (user docs:
 `docs/docs/output_format.mdx` § "Open struct-maps", `docs/docs/comment_dsl.mdx` § rest-row
 directives) is verified across the layers:
 
 - **Front end + guards** — `robustness_tests::open_struct_map_rest_row_front_end`: recognition,
-  every graceful-rejection boundary with polarity fixtures (non-final / multiple / bounded-`+` /
-  plain-group / lone-non-fixed / group-choice-arm rest rows, unsupported key domains), the
+  representative loose / `NonEmptyMap` / `BoundedMap` carrier spellings, every remaining
+  graceful-rejection boundary with polarity fixtures (non-final / multiple / plain-group /
+  lone-non-fixed / group-choice-arm rest rows, unsupported key domains), the
   directive-slot disjointness probes (entry-level `@name`/`@duplicates` vs rule-position reads),
   the marker-slot trap pinned loud, and the lone-`* K => V`-stays-a-TABLE no-drift assertion.
 - **Value-level e2e** — `tests/open-struct-map-e2e` (compiled, non-preserve): capture round-trip,
@@ -1904,6 +1905,32 @@ directives) is verified across the layers:
   classes exercise captured entries.
 - **Runtime JSON laws** — the natural-walk shims + corpus biconditional in the static-runtime
   property layer (below), which the flatten surface composes.
+
+Exactly-zero fixed members (`0*0 key: value` / `*0 key: value`) share the record path but are
+forbidden-key constraints rather than rest-row carriers:
+
+- **Front end and every face** —
+  `robustness_tests::zero_permitting_occurrence_on_keyed_map_field_uses_optional_carrier` keeps the
+  positive-upper `Option` controls, exact-zero no-field representation, structured CBOR error,
+  checked open-rest door, closed-JSON sentinel, directive refusals, wasm getter absence, and
+  component/WIT projection in one polarity test. Component constructor compilation also lives in
+  `tests/component-bounds`; extern projection/import is pinned by the group fixtures.
+- **Executed default/JSON/wasm carriers** — `tests/zero-permitting-map`, driven by
+  `zero_permitting_keyed_map_fields` and registered in the wasm-parity fixture
+  set, executes absent round trips and forbidden-present rejection for closed/open records; checked
+  complete construction and insertion; uint/text, typed-union and `any` value-equality (including a
+  non-minimal text key); `@ignore` ordering; bounded, non-empty and duplicate-preserving carriers;
+  JSON property rejection/schema omission; and the wasm optional/forbidden-accessor boundary.
+- **Preserve modes** —
+  `integration_tests::exact_zero_typed_key_comparison_executes_in_both_preserve_modes` executes the
+  typed comparator at decode, complete-construction and insertion doors under preserve and
+  preserve+canonical, so their different serialization traits cannot hide behind source checks.
+- **Matrix/decode boundary** —
+  `contain.occurrence-target.memberkey.bareword.zero_exact_map` is support-probed across
+  default/JSON/preserve/wasm and projected into `tests/matrix_supported`. Its decode-conformance row
+  is deliberately vectorless/pinned because the two upstream validators disagree in both needed
+  directions; `cddl-matrix/README.md` upstream oracle gap #18 records the exact outcomes. The direct
+  runtime tests above, not an oracle-backed catalog vector, prove product behavior.
 
 A **typed key domain** — anything the decode loop's own key dispatch cannot faithfully rebuild, so
 everything except bare `uint`/`text`/`any` — routes the row to the seek path instead, and gets its
@@ -1988,12 +2015,29 @@ survive:
   the tagged order encoding, the canonical merge sorting both regions into one order, per-row
   encoding sidecars at non-minimal widths, the typed-row duplicate naming its own position, the
   typed-major-but-refused hard error beside its positive control, `@duplicates preserve` on both
-  rows, `@name` on each row independently, and the NonEmpty (`{+ …}`) twin's two doors.
+  rows, `@name` on each row independently, and the NonEmpty (`{+ …}`) twin's restricted
+  `NonEmptyMap`/`NonEmptyPairMap` field, checked decode conversion, construction door, and public
+  last-entry mutation refusal.
 - **JSON e2e** — `tests/open-table-json-e2e` (`integration_tests::open_table_json_e2e`, compiled,
   `--json-serde-derives --json-schema-export`): one flattened object over both regions, the two key
   images, the typed-first read partition and the T2 rebinding carve-out, the cross-region write
   collision, the explicit duplicate-member detection, the three-attempt read failure, and the
-  NonEmpty twin's post-visitor min-1 door plus the schema's deliberate silence about it.
+  NonEmpty twin's staged first-entry construction plus the schema's deliberate silence about it.
+- **Bounded dynamic rows** — `integration_tests::bounded_dynamic_map_rows_wasm_compile` executes
+  the emitted rust and wasm round-trip modules for bounded open-struct rest, typed open-table, and
+  catch-all rows (including a zero-minimum typed row keyed by a generated record) through the wasm
+  boundary; `open_table_e2e` and
+  `open_table_json_e2e` execute each row's below/in/above window, duplicate-preserving pair count,
+  and schema silence; `component_glue_reenters_bounded_dynamic_map_row_doors` and
+  `workspace_key_requests_rest_row_contract` pin component and cross-crate wrapper hosting.
+  These are focused residents, not four generalized negative claims. The remaining systems are
+  tracked explicitly in `tests/testing-roadmap.toml`: the scope-wide generated-local product
+  (`testing.generated-local-collision.scope-wide-probe`), synthesized-wrapper reference-set closure
+  (`testing.synthesized-name-referenced-never-minted-e0425-flavor`), a registry-derived generated
+  JSON-Schema position oracle
+  (`testing.generated-json-schema.partition-cardinality-position-semantics`), and one canonical
+  value-space view plus source-spelling intent assertion for emitted key mints
+  (`testing.emit-tests-gate-asserts-round-trip-green-cannot`).
 - **Acceptance** — `tests/open-table-cip25-acceptance`
   (`integration_tests::open_table_cip25_acceptance`, compiled, preserve + canonical; extern
   definitions `tests/external_rust_raw_bytes_cip25`, hand codecs

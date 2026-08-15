@@ -486,9 +486,12 @@ A CDDL map that mixes **fixed members with a trailing `* K => V` entry** — `{ 
 => any }` — is an *open struct-map*: the fixed members deserialize as declared, and every **unknown**
 map entry is captured into a generated `rest` field instead of being an error (a plain closed struct
 rejects unknown keys). This is the loose-CBOR "capture" shape for forward-compatible schemas. The rest
-row must be the map's **last** entry, must occur exactly `*`, and must follow ≥1 fixed member; other
-spellings (a bounded/`+` occurrence, a non-final rest row, a rest row in a group-choice arm or a plain
-group) are graceful rejections naming the supported form. The **key domain is a general type** —
+row must be the map's **last** entry and follow ≥1 fixed member. Its occurrence is **row-local**:
+`*`/`0*` use a loose empty-capable carrier, `+`/`1*` use `NonEmptyMap` (or the preserve pair-map
+twin), and every other window uses `BoundedMap`/`BoundedPairMap`; fixed fields never count toward
+that window. Restricted rows are explicit checked-carrier inputs to `new()`, while CBOR and JSON
+stage loose entries then cross one `TryFrom` door. A non-final rest row, a rest row in a group-choice
+arm or a plain group remains a graceful rejection. The **key domain is a general type** —
 `uint`, `text` and `any` take a fast path that reconstructs the key from the dispatch the decode loop
 already ran, and every other key type (bytes, nint, sized ints, bool, unions, structs, tagged and
 `.cbor` domains, externs, generic instances, aliases) is read and written by its own codec. Two key
@@ -524,17 +527,24 @@ everywhere else. A **declared** key always peels first, so a second occurrence o
 separate [`@ignore`](comment_dsl#ignore) flavor below, which still requires each entry to
 deserialize.
 
-**The `rest` field.** A `pub` map named `rest` (rename with `@name` on the row — see
+**The `rest` field.** Ordinarily this is a `pub` map named `rest` (rename with `@name` on the row — see
 [the comment DSL](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)), keyed by `K`, valued `V`.
-It is **excluded from `new()`** and defaults empty, so adding a rest row to an existing spec is both
-source-compatible (old `new(..)` calls keep working) and wire-compatible (empty rest ≡ the closed
-struct's bytes). Its container matches the table switch and the `@duplicates` policy:
+A loose row is **excluded from `new()`** and defaults empty, so adding it is source- and
+wire-compatible. A restricted row instead is a checked `new()` parameter, so callers cannot construct
+an out-of-window map. Its carrier matches the table switch and the `@duplicates` policy:
 
 | mode | container |
 |---|---|
-| default (non-preserve) | `BTreeMap<K, V>` |
-| `--preserve-encodings` | `OrderedHashMap<K, V>` |
-| `@duplicates preserve` on the row | `PairMap<K, V>` (the byte-exact duplicate-keyed twin) |
+| loose default | `BTreeMap<K, V>` (`OrderedHashMap<K, V>` under `--preserve-encodings`) |
+| loose `@duplicates preserve` | `PairMap<K, V>` (the byte-exact duplicate-keyed twin) |
+| `+` / `1*` default or preserve | `NonEmptyMap<K, V>` / `NonEmptyPairMap<K, V>` |
+| every other restricted window default or preserve | `BoundedMap<K, V, MIN, MAX>` / `BoundedPairMap<K, V, MIN, MAX>` |
+
+An exact-zero fixed member (`0*0 key: value` or `*0 key: value`) is a different constraint: the
+fixed key is forbidden, not an optional field. It emits no value field or schema property. When such
+a record has a captured map row, `rest` is private even for a loose row; `new` accepts the complete
+carrier and returns `Result`, `rest()` lends it immutably, and `insert_rest` validates each key before
+changing the carrier. This prevents an otherwise-public loose map from constructing an invalid record.
 
 **Serialize / round-trip.** The map header counts the declared members **plus** every rest entry
 (`N + rest.len()`); declared members serialize first, then the captured entries. The default
@@ -548,9 +558,12 @@ header widths are preserved — via per-entry encoding sidecars for concrete dom
 **merged and ordered together** length-first-then-bytewise (a rest key can sort before a declared key),
 and each captured key's header is minimized.
 
-**wasm.** The rest field is exposed as a **read-only `rest()` getter** returning the minted map wrapper
-(no `new()` argument, no setter — it defaults empty and is mutated through the wrapper's own surface);
-see [wasm differences](wasm_differences#open-struct-map-rest-rows).
+**wasm.** The rest field is exposed as a **read-only `rest()` getter** returning a minted map-wrapper
+snapshot. A loose row has no `new()` argument and defaults empty; a restricted row takes its complete
+checked wrapper at the fallible constructor boundary. Exact-zero records instead take the complete
+wrapper at their fallible constructor boundary even for a loose row, so its forbidden-key check cannot
+be bypassed. Neither flavor has a setter; see [wasm
+differences](wasm_differences#open-struct-map-rest-rows).
 
 **JSON (`--json-serde-derives`).** Captured entries render **flattened at the same JSON
 object level as the declared members** (via serde `flatten`), under the natural-JSON key rules above:
@@ -659,9 +672,10 @@ type**. The CDDL-side contract (what makes `K_t`'s major statically knowable, an
 graceful rejections) lives in [the comment DSL](comment_dsl#open-tables); what follows is the emitted
 face. It lowers to a struct with **two `pub` containers** — `entries` (the typed row) and `rest` (the
 catch-all), each `@name`-renameable, each with its own `@duplicates` policy, container spelling and
-encoding sidecars, and neither a `new()` argument. Everything the rest-row sections above say about a
-container's spelling, duplicate policy and preserve/canonical replay applies to each row unchanged;
-what is new is that **two rows share one map**, which is where the JSON face earns its own rules.
+encoding sidecars. The loose `*` form has no `new()` arguments and defaults both containers empty.
+Everything the rest-row sections above say about a container's spelling, duplicate policy and
+preserve/canonical replay applies to each row; what is new is that **two rows share one map**, which
+is where the JSON face earns its own rules.
 
 ### The two regions share one order vector
 
@@ -678,15 +692,27 @@ write interleaves the two regions freely.
 ### The NonEmpty twin
 
 Spelling the typed row `+`/`1*` (`t = { + K_t => V_t, * K_r => V_r }`) adds a **min-1 bound counting
-typed entries**. It changes exactly one thing about the emitted face: `new` takes the first typed
-entry — `new(first_key, first_value)`, the `NonEmptyMap::new` door verbatim — instead of taking no
-arguments, and the wasm and WIT constructors project those two parameters likewise. Both containers
-are otherwise unchanged, and the catch-all still defaults empty. The bound is re-checked once after
-the CBOR deserialize loop (raising `DeserializeFailure::RangeCheck { found: 0, min: Some(1), max:
-None }`, the error `NonEmptyMap`'s `TryFrom` door raises) and once after the JSON visitor has read
-every member. **JSON Schema publishes no expression of it** — `minProperties` would be wrong, since it
-counts both regions — so a schema consumer sees the unbounded open object and the bound lives in the
-reader alone.
+typed entries**. Its public `entries` field is the actual restricted carrier — `NonEmptyMap<K_t,
+V_t>`, or `NonEmptyPairMap<K_t, V_t>` under `@duplicates preserve` — so clearing or removing its final
+entry is not representable. `new` takes the first typed entry — `new(first_key, first_value)` enters
+that carrier's `new` door directly — and the wasm and WIT constructors project those two parameters
+likewise; the catch-all still defaults empty. CBOR decode stages in the corresponding loose map and
+then calls the carrier's `TryFrom`, preserving duplicate/order behavior while raising its shared
+`DeserializeFailure::RangeCheck { found: 0, min: Some(1), max: None }`; the JSON visitor stages then
+builds through `new` for the same reason. **JSON Schema publishes no expression of it** —
+`minProperties` would be wrong, since it counts both regions — so a schema consumer sees the
+unbounded open object and the bound lives in the reader alone.
+
+### Bounded rows
+
+Every other row window (`?`, `0*n`, `n*m`, `*n`, `n*`, and omitted exact-once) is a checked
+`BoundedMap`/`BoundedPairMap` **for that row alone**. A bounded typed row remains flattened on the
+owner's API: every bounded window takes a loose builder which converts fallibly before native `new`,
+and its finite-max `insert` returns the carrier's checked result. A bounded catch-all is a read-only
+restricted map wrapper passed whole to `new`. Component constructors take fallible `list<tuple<K, V>>`
+inputs and re-enter the carrier. CBOR/JSON both stage each partition separately. **JSON Schema
+deliberately has no `minProperties`/`maxProperties`**: either would count both rows (and an open
+struct's fixed fields), which is not the CDDL constraint.
 
 **JSON (`--json-serde-derives`): one flattened object holding BOTH regions**, written by a
 **hand-written** `Serialize`/`Deserialize` pair rather than the derives. Two `#[serde(flatten)]`

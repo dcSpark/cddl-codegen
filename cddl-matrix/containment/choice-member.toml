@@ -9,7 +9,7 @@ id = "contain.choice-member.type2.map"
 role = "role.choice-member"
 feature = "type2.map"
 spec = "allowed"
-note = "An INLINE map as a `/` choice alternative. Unsupported: an inline map in a position requiring a TYPE is not a table, and there is no anonymous representation for it — cddl-codegen rejects it gracefully and names the supported spelling (an enum of named structs). Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §2.2.2, §3.5."
+note = "An unnamed INLINE map as a `/` choice alternative. Unsupported: the example has no nominal record name, so cddl-codegen rejects it gracefully; a type2 `; @name` can mint the heterogeneous record where that comment slot belongs to the arm, while other contexts require named structs. Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §2.2.2, §3.5."
 example = "t = {a: int, c: uint} / {b: tstr, d: uint}"
 
 [[contain]]

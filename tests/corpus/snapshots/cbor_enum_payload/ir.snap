@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "bytes_payload",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -70,6 +71,7 @@ expression: ir
                     },
                     RustField {
                         name: "tagged_payload",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -113,6 +115,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

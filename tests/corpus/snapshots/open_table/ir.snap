@@ -117,6 +117,7 @@ expression: ir
             RustRecord {
                 rep: Map,
                 fields: [],
+                forbidden_fields: [],
                 rest: Some(
                     RestRow {
                         kind: MapEntries {
@@ -155,7 +156,7 @@ expression: ir
                         semantics: Capture,
                         field_name: "rest",
                         dispatch_major: None,
-                        non_empty: false,
+                        occurrence: None,
                     },
                 ),
                 typed_row: Some(
@@ -194,7 +195,7 @@ expression: ir
                         dispatch_major: Some(
                             Bytes,
                         ),
-                        non_empty: false,
+                        occurrence: None,
                     },
                 ),
             },
@@ -223,6 +224,7 @@ expression: ir
             RustRecord {
                 rep: Map,
                 fields: [],
+                forbidden_fields: [],
                 rest: Some(
                     RestRow {
                         kind: MapEntries {
@@ -263,7 +265,7 @@ expression: ir
                         semantics: Capture,
                         field_name: "rest",
                         dispatch_major: None,
-                        non_empty: false,
+                        occurrence: None,
                     },
                 ),
                 typed_row: Some(
@@ -304,7 +306,7 @@ expression: ir
                         dispatch_major: Some(
                             Bytes,
                         ),
-                        non_empty: false,
+                        occurrence: None,
                     },
                 ),
             },
@@ -333,6 +335,7 @@ expression: ir
             RustRecord {
                 rep: Map,
                 fields: [],
+                forbidden_fields: [],
                 rest: Some(
                     RestRow {
                         kind: MapEntries {
@@ -371,7 +374,7 @@ expression: ir
                         semantics: Capture,
                         field_name: "rest",
                         dispatch_major: None,
-                        non_empty: false,
+                        occurrence: None,
                     },
                 ),
                 typed_row: Some(
@@ -410,7 +413,12 @@ expression: ir
                         dispatch_major: Some(
                             Bytes,
                         ),
-                        non_empty: true,
+                        occurrence: Some(
+                            (
+                                1,
+                                18446744073709551615,
+                            ),
+                        ),
                     },
                 ),
             },

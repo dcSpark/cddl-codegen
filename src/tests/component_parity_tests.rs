@@ -273,6 +273,25 @@ const COMPONENT_PARITY_EXEMPT: &[(&str, &str, &str)] = &[
         "the rust-only error enum minted beside `Int` for its `FromStr`/`TryFrom` impls — not an IR \
          type, and the WIT face carries every failure as `result<_, string>`",
     ),
+    // Exact-zero open records add a checked native insertion door because their rest map is private.
+    // The component face deliberately retains the documented constructor-plus-snapshot posture; a
+    // returned list never mutates its parent resource. These three profile rows keep that asymmetry
+    // explicit and anti-rot guarded rather than pretending the native method crossed WIT.
+    (
+        "component-bounds",
+        "ExactZeroOpen::insert_rest",
+        "native exact-zero invariant door; the component face exposes constructor validation plus a detached rest snapshot",
+    ),
+    (
+        "component-bounds-preserve",
+        "ExactZeroOpen::insert_rest",
+        "native exact-zero invariant door; the component face exposes constructor validation plus a detached rest snapshot",
+    ),
+    (
+        "component-bounds-canonical",
+        "ExactZeroOpen::insert_rest",
+        "native exact-zero invariant door; the component face exposes constructor validation plus a detached rest snapshot",
+    ),
 ];
 
 /// `.rs` basenames the differential does NOT parse, under `rust/src/generated/`. Everything else

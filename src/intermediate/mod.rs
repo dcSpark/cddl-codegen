@@ -590,6 +590,21 @@ impl<'a> IntermediateTypes<'a> {
         found
     }
 
+    /// A forbidden exact-zero fixed key on an open map with a general typed rest domain needs the
+    /// `AnyCbor` value comparator even when the authored CDDL never otherwise names `any`.
+    pub fn uses_forbidden_key_value_comparator(&self) -> bool {
+        self.rust_structs.values().any(|rs| {
+            matches!(rs.variant(), RustStructType::Record(record)
+            if record.has_forbidden_fields()
+                && record.captured_rest().is_some_and(|rest| !rest.is_array_tail()
+                    && !matches!(
+                        rest.domain().conceptual_type.resolve_alias_shallow(),
+                        ConceptualRustType::Primitive(Primitive::U64 | Primitive::Str)
+                            | ConceptualRustType::Any
+                    )))
+        })
+    }
+
     pub fn uses_non_empty_vec(&self) -> bool {
         let mut found = false;
         self.visit_all_rust_types(&mut |rt| found |= rt.contains_non_empty_array());
@@ -653,18 +668,41 @@ impl<'a> IntermediateTypes<'a> {
                     RustStructType::Table { bounds, .. } if *bounds == Some((Some(1), None))
                 )
             })
+            // An open table's typed row stores its key/value flat in `RestRow`; its composite
+            // `NonEmptyMap<K, V>` is recovered by `RestRow::container_type`, so the generic walk
+            // deliberately cannot see it. Preserve rows are provisioned by `uses_pair_map` instead
+            // (they use `NonEmptyPairMap`, never this runtime/import).
+            || self.rust_structs.values().any(|rs| {
+                matches!(rs.variant(), RustStructType::Record(record)
+                    if record.dynamic_rows().any(|row| {
+                        row.is_non_empty()
+                            && !row.is_array_tail()
+                            && row.duplicates()
+                                != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    }))
+            })
     }
 
     /// Whether any owned type needs the finite/exact BoundedMap runtime.
     pub fn uses_bounded_map(&self) -> bool {
         let mut found = false;
         self.visit_all_rust_types(&mut |rt| found |= rt.contains_bounded_map());
-        found || self.rust_structs.values().any(|rs| matches!(
-            rs.variant(),
-            RustStructType::Table { bounds: Some(bounds), .. }
-                if *bounds != (None, None) && *bounds != (Some(1), None)
-                    && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-        ))
+        found
+            || self.rust_structs.values().any(|rs| matches!(
+                rs.variant(),
+                RustStructType::Table { bounds: Some(bounds), .. }
+                    if *bounds != (None, None) && *bounds != (Some(1), None)
+                        && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+            ))
+            // Dynamic map rows store their K/V types flat, so the generic walker intentionally
+            // cannot see the BoundedMap composite. Recover it through the row's single carrier
+            // source, mirroring the non-empty runtime gate above.
+            || self.rust_structs.values().any(|rs| matches!(rs.variant(), RustStructType::Record(record)
+                if record.dynamic_rows().any(|row| {
+                    !row.is_array_tail()
+                        && row.container_type().is_bounded_map()
+                        && row.duplicates() != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                })))
     }
 
     /// Whether ANY generated type uses the `@duplicates reject` `OrderedSet`/`NonEmptyOrderedSet`
@@ -721,6 +759,12 @@ impl<'a> IntermediateTypes<'a> {
         let mut found = false;
         self.visit_all_rust_types(&mut |rt| found |= rt.contains_bounded_pair_map());
         found
+            || self.rust_structs.values().any(|rs| {
+                matches!(rs.variant(), RustStructType::Record(record)
+                if record.dynamic_rows().any(|row| {
+                    !row.is_array_tail() && row.container_type().is_bounded_pair_map()
+                }))
+            })
     }
 
     /// Whether ANY generated record carries a CAPTURING open struct-map rest row (`* k => v` after
@@ -2055,6 +2099,23 @@ impl<'a> IntermediateTypes<'a> {
                                     deferred,
                                     &ROOT_SCOPE,
                                     &loose_domain,
+                                );
+                            }
+                            // Bounded typed rows keep their checked carrier flattened on this
+                            // record, but their fallible wasm `new` takes a loose same-flavor
+                            // structural builder. Mark only that auxiliary builder: it imports the
+                            // class and its key/value references into THIS owner scope without
+                            // pretending the forbidden restricted whole-row class exists.
+                            if rest.container_type().bounded_map_u64_bounds().is_some() {
+                                let builder = rest.staging_container_type();
+                                mark_refs(
+                                    &mut refs,
+                                    self,
+                                    wasm,
+                                    &table_shape_sole_owners,
+                                    deferred,
+                                    current_scope,
+                                    &builder,
                                 );
                             }
                             continue;
@@ -5063,7 +5124,7 @@ impl<'a> IntermediateTypes<'a> {
     /// Ordinary loose-table paths use `MapKToV` (`wasm_structural_map_name_for`); a bounded table
     /// uses its separately named loose direct-key source (`wasm_loose_table_builder_name_for`). A
     /// map is never directly exposable, so (unlike arrays) each such builder is a `try_from` source.
-    /// Five classes:
+    /// Six classes:
     ///
     /// 1. An inline `{+ k => v}` with no named owner (see `non_empty_map_named_owner`) mints a
     ///    synthesized `NonEmptyMapKToV` class: a user rule claiming that ident collides.
@@ -5083,6 +5144,9 @@ impl<'a> IntermediateTypes<'a> {
     ///    symmetric sibling of the list side's class 4. Rest rows are class 4 and preserve-flavored
     ///    shapes are `preserve_pair_map_loose_wrapper_name_collisions`, so this leg's source set is
     ///    restricted to keep one collision reported once, in one kind's voice.
+    /// 6. A bounded OPEN-TABLE TYPED row stays flattened on its owner but its fallible constructor
+    ///    needs one loose builder. It mints that builder only; no restricted whole-row wrapper
+    ///    exists for a user rule to shadow.
     fn non_empty_map_wrapper_name_collisions(&self) -> Vec<String> {
         let mut msgs = BTreeSet::new();
 
@@ -5179,12 +5243,70 @@ impl<'a> IntermediateTypes<'a> {
                     let ConceptualRustType::Map(_, _) = &container.conceptual_type else {
                         unreachable!("a map rest row's container is a Map");
                     };
+                    // A bounded row's checked wrapper takes its *loose direct-key builder*, not
+                    // the raw structural spelling.  The rest row stores K/V flat, so recover this
+                    // source here exactly as `generate_bounded_map_type` does.  In particular a
+                    // bounded collection KEY must not accidentally name its restricted key class
+                    // as the loose source.
+                    let preserve = container.is_preserve_pair_map();
+                    let structural = if container.is_bounded_map() {
+                        RustType::wasm_loose_table_builder_name_for(
+                            rest.domain(),
+                            rest.range(),
+                            preserve,
+                            self,
+                        )
+                        .to_string()
+                    } else {
+                        container.wasm_structural_map_name(self).to_string()
+                    };
                     plain_loose_needs.insert(
-                        container.wasm_structural_map_name(self).to_string(),
-                        "an open struct-map rest row".to_owned(),
+                        structural,
+                        if container.is_bounded_map() {
+                            "a bounded open struct-map rest row's loose `try_from` source"
+                                .to_owned()
+                        } else {
+                            "an open struct-map rest row".to_owned()
+                        },
                     );
+                    // The `+` map-row carrier has its own RESTRICTED structural class as well as
+                    // the loose source above.  A captured open-struct row or open-table catch-all
+                    // crosses wasm through that class; the typed row is intentionally absent here
+                    // because its `+` surface is flattened on the record class and mints no map
+                    // wrapper.  Reuse the inline restricted leg below so default and preserve
+                    // rows receive the same flavor-correct collision diagnostic.
+                    if rest.is_non_empty() {
+                        inline_non_empty.push(container);
+                    }
                 }
                 _ => {}
+            }
+        }
+
+        // A bounded TYPED row has a deliberately narrow exception to the flattened-table rule:
+        // wasm `new(entries_builder)` accepts one LOOSE structural builder and immediately enters
+        // the native BoundedMap/Pairs `TryFrom` door. It mints neither a `Map…Min…` class nor a
+        // whole-row getter, so only the builder's structural ident belongs in this detector. The
+        // complete checked carrier is instead represented on the native, JSON, and component faces.
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Record(record) = rs.variant() else {
+                continue;
+            };
+            let Some(typed) = record
+                .typed_row()
+                .filter(|row| row.container_type().bounded_map_u64_bounds().is_some())
+            else {
+                continue;
+            };
+            let builder = typed.staging_container_type();
+            let ConceptualRustType::Map(key, value) = &builder.conceptual_type else {
+                unreachable!("an open table typed row's staging carrier is a Map");
+            };
+            let structural = builder.wasm_structural_map_name(self).to_string();
+            let need = format!("the bounded typed row of open table '{ident}'");
+            plain_loose_needs.insert(structural.clone(), need.clone());
+            if !builder.is_preserve_pair_map() {
+                direct_claim_needs.insert(structural, (need, (**key).clone(), (**value).clone()));
             }
         }
 
@@ -5297,13 +5419,37 @@ impl<'a> IntermediateTypes<'a> {
             }) else {
                 continue;
             };
-            let structural =
-                RustType::wasm_structural_map_name_for(rest.domain(), rest.range(), false, self)
-                    .to_string();
+            let container = rest.container_type();
+            let bounded = container.is_bounded_map();
+            let (structural, key, row_kind) = if bounded {
+                (
+                    RustType::wasm_loose_table_builder_name_for(
+                        rest.domain(),
+                        rest.range(),
+                        false,
+                        self,
+                    )
+                    .to_string(),
+                    rest.domain().loosened_for_wasm_table_boundary_key(),
+                    "bounded",
+                )
+            } else {
+                (
+                    RustType::wasm_structural_map_name_for(
+                        rest.domain(),
+                        rest.range(),
+                        false,
+                        self,
+                    )
+                    .to_string(),
+                    rest.domain().clone(),
+                    "loose",
+                )
+            };
             if self.wasm_ident_claimed_by_user_rule(&structural)
                 && !self.provides_compatible_loose_table(
                     &structural,
-                    &rest.domain().clone().resolve_aliases(),
+                    &key.resolve_aliases(),
                     &rest.range().clone().resolve_aliases(),
                     false,
                 )
@@ -5315,8 +5461,8 @@ impl<'a> IntermediateTypes<'a> {
                 };
                 msgs.insert(format!(
                     "name collision: rule '{structural}' collides with the '{structural}' wasm \
-                     wrapper generated for {row} — rename the rule to avoid shadowing the loose map \
-                     wrapper (or make it a `{{* …}}` table of the same key/value, which IS that \
+                     wrapper generated for {row} — rename the rule to avoid shadowing the {row_kind} \
+                     map wrapper (or make it a `{{* …}}` table of the same key/value, which IS that \
                      wrapper)"
                 ));
             }
@@ -5393,6 +5539,54 @@ impl<'a> IntermediateTypes<'a> {
                 ));
             }
         });
+        // Rest rows keep K/V flat in the Record IR, so the generic RustType walk above cannot see
+        // the restricted BoundedMap class their wasm getter/constructor actually names.  Only a
+        // CAPTURED open-struct rest or open-table catch-all reaches that class; a typed row remains
+        // flattened on its owner and is deliberately covered only by its loose-builder audit.
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Record(record) = rs.variant() else {
+                continue;
+            };
+            let Some(rest) = record.captured_rest().filter(|row| {
+                !row.is_array_tail()
+                    && row.container_type().is_bounded_map()
+                    && !row.container_type().is_bounded_pair_map()
+            }) else {
+                continue;
+            };
+            let container = rest.container_type();
+            let source_bounds = container
+                .config
+                .bounds
+                .expect("bounded rest map carries occurrence bounds");
+            if self
+                .bounded_map_named_owner(rest.domain(), rest.range(), source_bounds, false)
+                .is_some()
+            {
+                continue;
+            }
+            let restricted = container.bounded_wasm_map_structural_name(self);
+            if self.wasm_ident_claimed_by_user_rule(&restricted) {
+                let (min, max) = container
+                    .bounded_map_u64_bounds()
+                    .expect("bounded rest map has representable occurrence bounds");
+                let window = if max == u64::MAX {
+                    format!("{min}*")
+                } else {
+                    format!("{min}*{max}")
+                };
+                let row = if record.is_open_table() {
+                    format!("the bounded catch-all row of open table '{ident}'")
+                } else {
+                    format!("the bounded open struct-map rest row of '{ident}'")
+                };
+                msgs.insert(format!(
+                    "name collision: rule '{restricted}' collides with the '{restricted}' wasm \
+                     wrapper generated for {row} (`{window}`) — rename the rule to avoid \
+                     shadowing the restricted BoundedMap wrapper"
+                ));
+            }
+        }
         msgs.into_iter().collect()
     }
 
@@ -5438,6 +5632,55 @@ impl<'a> IntermediateTypes<'a> {
                 ));
             }
         });
+        // The duplicate-preserving rest-row twin is separate on purpose: its structural name and
+        // remediation name the BoundedPairMap carrier, not the unique-key BoundedMap above.
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Record(record) = rs.variant() else {
+                continue;
+            };
+            let Some(rest) = record
+                .captured_rest()
+                .filter(|row| !row.is_array_tail() && row.container_type().is_bounded_pair_map())
+            else {
+                continue;
+            };
+            let container = rest.container_type();
+            let source_bounds = container
+                .config
+                .bounds
+                .expect("bounded preserve rest map carries occurrence bounds");
+            if self
+                .bounded_map_named_owner(rest.domain(), rest.range(), source_bounds, true)
+                .is_some()
+            {
+                continue;
+            }
+            let restricted = container.bounded_wasm_map_structural_name(self);
+            if self.wasm_ident_claimed_by_user_rule(&restricted) {
+                let (min, max) = container
+                    .bounded_map_u64_bounds()
+                    .expect("bounded preserve rest map has representable occurrence bounds");
+                let window = if max == u64::MAX {
+                    format!("{min}*")
+                } else {
+                    format!("{min}*{max}")
+                };
+                let row = if record.is_open_table() {
+                    format!(
+                        "the bounded `@duplicates preserve` catch-all row of open table '{ident}'"
+                    )
+                } else {
+                    format!(
+                        "the bounded `@duplicates preserve` open struct-map rest row of '{ident}'"
+                    )
+                };
+                msgs.insert(format!(
+                    "name collision: rule '{restricted}' collides with the '{restricted}' wasm \
+                     wrapper generated for {row} (`{window}`) — rename the rule to avoid \
+                     shadowing the restricted BoundedPairMap wrapper"
+                ));
+            }
+        }
         msgs.into_iter().collect()
     }
 
@@ -5653,21 +5896,53 @@ impl<'a> IntermediateTypes<'a> {
                     }) else {
                         continue;
                     };
-                    let structural = RustType::wasm_structural_map_name_for(
-                        rest.domain(),
-                        rest.range(),
-                        true,
-                        self,
-                    )
-                    .to_string();
+                    let container = rest.container_type();
+                    let bounded = container.is_bounded_map();
+                    let (structural, builder_key) = if bounded {
+                        (
+                            RustType::wasm_loose_table_builder_name_for(
+                                rest.domain(),
+                                rest.range(),
+                                true,
+                                self,
+                            )
+                            .to_string(),
+                            rest.domain().loosened_for_wasm_table_boundary_key(),
+                        )
+                    } else {
+                        (
+                            RustType::wasm_structural_map_name_for(
+                                rest.domain(),
+                                rest.range(),
+                                true,
+                                self,
+                            )
+                            .to_string(),
+                            rest.domain().clone(),
+                        )
+                    };
                     check(
                         structural,
-                        rest.domain(),
+                        &builder_key,
                         rest.range(),
                         if record.is_open_table() {
-                            format!("the `@duplicates preserve` catch-all row of '{ident}'")
+                            if bounded {
+                                format!(
+                                    "the bounded `@duplicates preserve` catch-all row of '{ident}' \
+                                     as its loose `try_from` source"
+                                )
+                            } else {
+                                format!("the `@duplicates preserve` catch-all row of '{ident}'")
+                            }
                         } else {
-                            format!("the `@duplicates preserve` rest row of '{ident}'")
+                            if bounded {
+                                format!(
+                                    "the bounded `@duplicates preserve` rest row of '{ident}' as \
+                                     its loose `try_from` source"
+                                )
+                            } else {
+                                format!("the `@duplicates preserve` rest row of '{ident}'")
+                            }
                         },
                         &mut msgs,
                     );
@@ -5696,6 +5971,36 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 _ => {}
             }
+        }
+        // A bounded TYPED row is flattened on its record class, but its fallible wasm constructor
+        // receives this one loose PairMap builder. It mints no restricted whole-row class, so audit
+        // precisely that builder ident and no fictional `PairMap…Min…` wrapper. The default-flavored
+        // sibling is the final Record loop in
+        // `non_empty_map_wrapper_name_collisions`.
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Record(record) = rs.variant() else {
+                continue;
+            };
+            let Some(typed) = record.typed_row().filter(|row| {
+                row.container_type().bounded_map_u64_bounds().is_some()
+                    && row.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+            }) else {
+                continue;
+            };
+            let builder = typed.staging_container_type();
+            let ConceptualRustType::Map(key, value) = &builder.conceptual_type else {
+                unreachable!("an open table typed row's staging carrier is a Map");
+            };
+            check(
+                builder.wasm_structural_map_name(self).to_string(),
+                key,
+                value,
+                format!(
+                    "the bounded `@duplicates preserve` typed row of open table \
+                     '{ident}'"
+                ),
+                &mut msgs,
+            );
         }
         msgs.into_iter().collect()
     }

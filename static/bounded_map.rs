@@ -4,8 +4,8 @@ use super::error::{DeserializeError, DeserializeFailure};
 
 /// A deterministic map whose inclusive CDDL occurrence window is part of its type.
 ///
-/// The sole loose-to-tight door is `TryFrom<BTreeMap<..>>`; mutable operations deliberately expose
-/// only values, never the carrier, so a valid window cannot be invalidated after construction.
+/// Every loose-carrier construction route goes through `TryFrom`; mutable operations deliberately
+/// expose only values, never the carrier, so a valid window cannot be invalidated after construction.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BoundedMap<K: Ord, V, const MIN: u64, const MAX: u64>(BTreeMap<K, V>);
 

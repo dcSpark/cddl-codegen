@@ -166,7 +166,7 @@ id = "contain.group-choice-arm.type2.map.array"
 role = "role.group-choice-arm"
 feature = "type2.map"
 spec = "allowed"
-note = "Array-representation group-choice arm containing an anonymous map type; this isolates the anonymous-composite generation limit inside a `//` arm. RFC8610 §2.2.2, §3.4, §3.5."
+note = "Array-representation group-choice arm containing an unnamed map type; this example isolates the remaining no-name rejection inside a `//` arm. Its entry-slot `; @name` can mint a heterogeneous record, while a homogeneous inline table still has no record to name. RFC8610 §2.2.2, §3.4, §3.5."
 example = "t = [ {a: int, b: uint} // tstr ]"
 
 # Fixed-value FLOAT arms, one per DISPATCH PATH. A float is a CBOR major-7 special, so unlike the

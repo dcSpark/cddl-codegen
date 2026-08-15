@@ -6,8 +6,15 @@
 ; Consumed by tests/extern-import/consumer-groups/lib.cddl.
 credential = bytes
 protocol_version = (major: uint, minor: uint)
+forbidden_payload = [uint]
+exact_zero_map_group = (
+  group_required: uint,
+  0*0 group_forbidden: forbidden_payload ; @name forbidden_json
+)
+exact_zero_map_group_framed = { exact_zero_map_group // alternate: tstr }
 stake_registration = (tag: 0, credential)
 stake_delegation = (tag: 2, credential, pool: bytes) ; @name pool_thing
 host = (tag: 4, ? port: uint)
 dep_holder = [pv: protocol_version, c: dep_cert]
+dep_open_holder = { embedded: exact_zero_map_group_framed, * tstr => uint }
 dep_cert = [ stake_registration // stake_delegation // host ]

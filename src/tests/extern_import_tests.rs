@@ -650,9 +650,11 @@ non_zero_int_64 = -9223372036854775808..9223372036854775807\n";
 
 /// The plain-group acceptance criterion (the proposal's, CML-shaped): a consumer that hand-copied a
 /// dependency's plain groups swaps to `--extern-import` with ZERO generated-output diff. The dep
-/// (`dep-groups`) carries a record-member plain group, three group-choice-variant plain groups with
-/// fixed tags, a `; @name`-renamed field, an optional field, and a nested group ref; the consumer
-/// (`consumer-groups`) splices them as a record member and group-choice variants. Run A feeds a
+/// (`dep-groups`) carries a record-member plain group, an exact-zero map group framed as a map group
+/// choice and embedded in an open consumer record, three group-choice-variant plain groups with fixed
+/// tags, a `; @name`-renamed field, an optional field, and a nested group ref; the consumer
+/// (`consumer-groups`) splices them as a record member, an open-map value, and group-choice variants.
+/// Run A feeds a
 /// physical hand-stub carrying the dep's ORIGINAL plain-group spelling (the CML hand-copy — including
 /// the `; @name` comment and NO `@rust_name` pins, plus opaque markers for the two non-group dep
 /// types the export also carries), while Run B feeds `--extern-import` at the minted export (whose
@@ -669,10 +671,17 @@ fn extern_import_group_migration_matches_original_hand_stub_byte_for_byte() {
     // comment intact) plus opaque markers for the two non-group dep types the minted export carries.
     let original_stub = "credential = bytes\n\
 protocol_version = (major: uint, minor: uint)\n\
+forbidden_payload = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+exact_zero_map_group = (\n\
+  group_required: uint,\n\
+  0*0 group_forbidden: forbidden_payload ; @name forbidden_json\n\
+)\n\
+exact_zero_map_group_framed = { exact_zero_map_group // alternate: tstr }\n\
 stake_registration = (tag: 0, credential)\n\
 stake_delegation = (tag: 2, credential, pool: bytes) ; @name pool_thing\n\
 host = (tag: 4, ? port: uint)\n\
 dep_holder = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+dep_open_holder = _CDDL_CODEGEN_EXTERN_TYPE_\n\
 dep_cert = _CDDL_CODEGEN_EXTERN_TYPE_\n";
     let stub_root = scratch("grpmig_stub");
     write(&stub_root, "lib.cddl", &consumer);
@@ -699,6 +708,20 @@ dep_cert = _CDDL_CODEGEN_EXTERN_TYPE_\n";
         &["--extern-import", &import_arg],
     )
     .expect("--extern-import generation must succeed");
+
+    let export_body = export
+        .values()
+        .find(|content| content.contains("exact_zero_map_group"))
+        .expect("the materialized map group must be in the dependency export");
+    assert!(
+        export_body.contains("0*0 group_forbidden: forbidden_payload ; @name forbidden_json\n)")
+            && export_body.contains("forbidden_payload = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "the exported map-representation group must retain its exact-zero member verbatim:\n{export_body}"
+    );
+    assert!(
+        via_flag["rust/src/generated/mod.rs"].contains("pub struct MyOpenHolder"),
+        "the consumer must regenerate the imported exact-zero group within an open record"
+    );
 
     let _ = std::fs::remove_dir_all(&stub_root);
     let _ = std::fs::remove_dir_all(&flag_root);
@@ -2085,6 +2108,10 @@ const EXTERN_INTERFACE_WRITER_VOCABULARY: &[(&str, &str)] = &[
     (
         "@duplicates reject",
         "extern_import_projects_duplicates_reject_no_cross_crate_skew",
+    ),
+    (
+        "@name",
+        "extern_import_group_migration_matches_original_hand_stub_byte_for_byte",
     ),
     (
         "@no_alias",

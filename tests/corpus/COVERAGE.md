@@ -373,9 +373,9 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `grpent.groupname` |  | ✅ |  |  |  |  | ✅ | ◐ |  |  |
 | `grpent.inline_group` | · | ✅ |  |  |  |  | ➖ | ◐ |  |  |
 | `grpent.member` |  |  |  |  |  |  | ✅ | ✅ |  |  |
-| `memberkey.bareword` |  |  |  | · |  |  | ✅ | ➖ |  |  |
+| `memberkey.bareword` |  |  |  | · |  |  | ✅ | ✅ |  |  |
 | `memberkey.type1` |  |  |  | ◐ |  |  | ➖ | ◐ |  |  |
-| `memberkey.value` |  |  |  | ◐ |  |  | ◐ |  |  |  |
+| `memberkey.value` |  |  |  | ◐ |  |  | ◐ | ✅ |  |  |
 | `occur.bounded` |  | · |  |  |  |  |  |  |  |  |
 | `occur.one_or_more` |  | · | · |  |  |  |  |  |  |  |
 | `occur.optional` |  | · | · |  |  |  |  |  |  |  |
@@ -428,10 +428,10 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `value.number` | · | ✅ | ✅ | · | · | · |  | · | · | · |
 | `value.text` | · | ✅ | ✅ | · |  | · |  | · |  |  |
 
-- Modelled `(role × feature)` cells: **70** (over 144 shape-granular containment rows).
+- Modelled `(role × feature)` cells: **71** (over 149 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **37**.
 - Exercised by the corpus, modelled by **nothing**: **172** (the `·` cells).
-- Modelled but not exercised by any corpus fixture: **33**.
+- Modelled but not exercised by any corpus fixture: **34**.
 
 ## Notable findings
 

@@ -40,6 +40,17 @@ pub(crate) const SYNTHESIZED_INSTANCE_ALIAS_DOC: &str = "Synthesized convenience
 /// that holds for every open table there will ever be.
 pub(crate) const OPEN_TABLE_TYPED_ROW_DOC: &str = "The open table's TYPED entries (CDDL `* k1 => v1`, the first row): every map entry whose key is of this row's declared CBOR major type. Its map surface is FLATTENED onto the wasm class (`insert`/`get`/`len`/`keys`), so there is no whole-map getter. Defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container, which rejects a duplicate key.";
 
+/// The NonEmpty open-table typed-row counterpart. Kept separately from the loose provenance marker
+/// above because this rustdoc is user-facing API truth: unlike the loose field, this carrier cannot
+/// be cleared or have its final default-map entry removed.
+pub(crate) const OPEN_TABLE_NON_EMPTY_TYPED_ROW_DOC: &str = "The open table's required TYPED entries (CDDL `+ k1 => v1`, the first row): every map entry whose key is of this row's declared CBOR major type. This `NonEmptyMap` (or `NonEmptyPairMap` under `@duplicates preserve`) always holds at least one typed entry. Its map surface is FLATTENED onto the wasm class (`insert`/`get`/`len`/`keys`), so there is no whole-map getter.";
+
+/// The bounded/restricted open-table typed-row counterpart. It is a third parity provenance marker,
+/// and must stay user-facing API truth: unlike the loose field, the checked Bounded carrier enters
+/// the record constructor as a complete value and its finite maximum is enforced by flattened wasm
+/// insertion rather than an unchecked public map mutation.
+pub(crate) const OPEN_TABLE_BOUNDED_TYPED_ROW_DOC: &str = "The open table's restricted TYPED entries (a row-local CDDL occurrence window other than loose `*` / `0*` or the `+` / `1*` compatibility form): every map entry whose key is of this row's declared CBOR major type. This checked `BoundedMap` (or `BoundedPairMap` under `@duplicates preserve`) is a complete construction input, so its declared minimum and maximum cannot be bypassed. Its map surface is FLATTENED onto the wasm class (`insert`/`get`/`len`/`keys`), and finite-max insertion returns a checked result; there is no whole-map getter.";
+
 // `pub(crate)` on the same terms as `layout`/`extern_interface`/`no_std_check` below: a pinned
 // message const in here (`DEPTH_LIMIT_REQUIRES_STD`) is read by a test outside `generation/`.
 pub(crate) mod export;
@@ -771,15 +782,24 @@ impl GenerationScope {
                                 .collect::<Vec<_>>()
                             {
                                 let rest_map = rest.container_type();
-                                mint_wasm_wrapper_for_visited_type(
-                                    self,
-                                    types,
-                                    &rest_map.conceptual_type,
-                                    &mut wasm_wrappers_generated,
-                                    &table_shape_sole_owner,
-                                    rest_map.is_preserve_pair_map(),
-                                    cli,
-                                );
+                                if rest_map.is_non_empty_map() || rest_map.is_bounded_map() {
+                                    // A restricted open-struct row / open-table catch-all crosses
+                                    // wasm through its checked structural wrapper, never through a
+                                    // loose map that would let JS erase the window before Rust sees
+                                    // it. `ensure_non_empty_wrappers` owns both the NonEmpty and
+                                    // Bounded map families despite its historical name.
+                                    self.ensure_non_empty_wrappers(types, &rest_map, cli);
+                                } else {
+                                    mint_wasm_wrapper_for_visited_type(
+                                        self,
+                                        types,
+                                        &rest_map.conceptual_type,
+                                        &mut wasm_wrappers_generated,
+                                        &table_shape_sole_owner,
+                                        rest_map.is_preserve_pair_map(),
+                                        cli,
+                                    );
+                                }
                                 self.ensure_non_empty_wrappers(types, rest.domain(), cli);
                                 self.ensure_non_empty_wrappers(types, rest.range(), cli);
                             }
@@ -796,6 +816,24 @@ impl GenerationScope {
                                 );
                                 self.ensure_non_empty_wrappers(types, typed.domain(), cli);
                                 self.ensure_non_empty_wrappers(types, typed.range(), cli);
+                                // A bounded typed row remains flattened on its owner class, so it
+                                // mints NO restricted whole-row class. Its wasm constructor
+                                // nevertheless needs one loose same-flavor builder to present the
+                                // complete row at the checked native carrier door — minimum zero
+                                // included. This is intentionally the only typed-row map-wrapper
+                                // exception.
+                                if typed.container_type().bounded_map_u64_bounds().is_some() {
+                                    let builder = typed.staging_container_type();
+                                    mint_wasm_wrapper_for_visited_type(
+                                        self,
+                                        types,
+                                        &builder.conceptual_type,
+                                        &mut wasm_wrappers_generated,
+                                        &table_shape_sole_owner,
+                                        builder.is_preserve_pair_map(),
+                                        cli,
+                                    );
+                                }
                             }
                             // Open ARRAY `* t` tail (CAPTURE only): its container is an
                             // `Array(element)` the conceptual visitor above never sees as a composite
@@ -1442,7 +1480,7 @@ impl GenerationScope {
             // only crates that actually use CDDL `any` pull in the AnyCbor runtime — keeps every
             // non-`any` crate's output byte-identical (usage-gating). Present in BOTH modes (the
             // non-preserve variant is a distinct fragment), so gated on usage alone, not preserve.
-            if types.uses_any_cbor() {
+            if types.uses_any_cbor() || types.uses_forbidden_key_value_comparator() {
                 self.rust_lib().raw("pub mod any_cbor;");
             }
             // only crates with an open struct-map rest row pull in the flatten JSON helpers, and only

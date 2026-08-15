@@ -9,7 +9,7 @@ id = "contain.occurrence-target.type2.map"
 role = "role.occurrence-target"
 feature = "type2.map"
 spec = "allowed"
-note = "An occurrence repeating an INLINE map entry. Unsupported: an inline map in a position requiring a TYPE is not a table, and there is no anonymous representation for it — cddl-codegen rejects it gracefully and names the supported spelling (hoist it to its own rule and reference it). Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §3.2, §3.5."
+note = "An occurrence repeating an unnamed INLINE map entry. Unsupported: the example has no nominal record name, so cddl-codegen rejects it gracefully; where the map is the member's whole type, `; @name` can mint that record, otherwise hoist it to its own rule. Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §3.2, §3.5."
 example = "a = [* {x: int, y: uint}]"
 
 [[contain]]
@@ -89,7 +89,7 @@ id = "contain.occurrence-target.memberkey.bareword.zero_map"
 role = "role.occurrence-target"
 feature = "memberkey.bareword"
 spec = "allowed"
-note = "A zero-permitting occurrence on a keyed struct-map field permits the entry to be absent. The generator should reject gracefully rather than silently narrowing it to mandatory; `?` is the supported optional spelling. RFC8610 §3.2, §3.5.1."
+note = "A zero-permitting occurrence on a unique keyed struct-map field permits the entry to be absent. cddl-codegen normalizes `*` to the same Option-style carrier as `?`; unique keys rule out a second entry. Exactly-zero `*0` / `0*0` is instead a supported forbidden-key constraint, not an optional carrier. RFC8610 §3.2, §3.5.1."
 example = "plain = { * t: uint }"
 
 [[contain]]
@@ -97,8 +97,24 @@ id = "contain.occurrence-target.memberkey.bareword.zero_bounded_map"
 role = "role.occurrence-target"
 feature = "memberkey.bareword"
 spec = "allowed"
-note = "A bounded occurrence with lower bound zero on a keyed struct-map field permits absence. The generator should reject gracefully rather than silently narrowing it to mandatory. RFC8610 §3.2, §3.5.1."
+note = "A bounded positive-upper occurrence with lower bound zero on a unique keyed struct-map field permits absence. cddl-codegen normalizes `0*1` (and positive `*n`) to the Option-style optional-field carrier; unique keys rule out a second entry. Exactly-zero `*0` / `0*0` is instead a supported forbidden-key constraint. RFC8610 §3.2, §3.5.1."
 example = "multi = { a: uint, 0*1 b: uint }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.bareword.zero_exact_map"
+role = "role.occurrence-target"
+feature = "memberkey.bareword"
+spec = "allowed"
+note = "An exactly-zero occurrence on a fixed keyed struct-map field forbids that key (`0*0` / `*0`), rather than making it optional. cddl-codegen retains the constraint outside ordinary fields, rejects the key in CBOR/JSON and checked open-map construction, and never exposes it through a rest map. RFC8610 §3.2, §3.5.1."
+example = "exact = { 0*0 t: uint }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.value.zero_map"
+role = "role.occurrence-target"
+feature = "memberkey.value"
+spec = "allowed"
+note = "A zero-permitting occurrence on a unique uint fixed-key record member (`* 1: uint`) permits the entry to be absent. The `1:` and `1 =>` spellings are the same record-path wire entry and cddl-codegen normalizes both to the Option-style carrier; exact-zero is the supported forbidden-key boundary. RFC8610 §3.2, §3.5.1."
+example = "literal = { * 1: uint }"
 
 [[contain]]
 id = "contain.occurrence-target.memberkey.type1.plus_table"
@@ -129,7 +145,7 @@ id = "contain.occurrence-target.memberkey.type1.open_struct"
 role = "role.occurrence-target"
 feature = "memberkey.type1"
 spec = "allowed"
-note = "The open struct-map: a `*`-occurrence type-domain arrow entry (`* K => V`) that is the FINAL row of a map with >=1 fixed key before it (`{ 1: uint, * uint => any }`). Home here because the varying axis is the occurrence MARKER on the arrow rest row (the `*` targets `uint => any`); its count-permitting sibling `contain.occurrence-target.memberkey.type1.open_struct_plus` pins the rejected `+` boundary. cddl-codegen recognizes the trailing `* K => V` after fixed keys as a REST ROW and CAPTURES unknown entries into a `rest` field — container by mode: BTreeMap non-preserve, OrderedHashMap under --preserve-encodings (byte-exact incl. wire-order interleave + canonical merge), Vec<(K, V)> PairMap twin under `@duplicates preserve` — instead of table-detecting to a plain table or rejecting the mixed struct+table shape (the old `mixed struct+table maps unsupported` posture is retired). v1 key domains are uint/text/any (the range type is unrestricted); flattened JSON, a read-only wasm `rest()` accessor, and opaque extern projection all land. Distinct from the plain table `{ * K => V }` (feature type2.map, table-style) which carries no fixed keys: the composition (>=1 fixed key + trailing rest row) is what this cell pins, and it FLIPS the plain-table `+` verdict at the sibling (a `+` lone table is a NonEmptyMap; a `+` rest row is rejected). Doc: output_format.mdx section 'Open struct-maps (rest rows)'. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
+note = "The loose open struct-map rest row: a final `* K => V` after >=1 fixed key (`{ 1: uint, * uint => any }`). cddl-codegen captures it in an empty-capable `rest` carrier (BTreeMap, preserve OrderedHashMap, or PairMap under `@duplicates preserve`), with flattened JSON, a wasm rest wrapper, and opaque extern projection. This is the `0*`/unbounded case; the sibling `open_struct_plus` and `open_struct_bounded` cells carry their own row-local checked NonEmpty/Bounded carrier rather than changing the enclosing record's count. CBOR and JSON stage loose entries then cross that carrier's one `TryFrom` door. `@ignore` remains loose-only because dropping a restricted row would re-serialize an invalid count. RFC8610 §3.2, §3.5.2."
 example = "m = { 1: uint, * uint => any }"
 
 [[contain]]
@@ -137,10 +153,18 @@ id = "contain.occurrence-target.memberkey.type1.open_struct_plus"
 role = "role.occurrence-target"
 feature = "memberkey.type1"
 spec = "allowed"
-note = "The count-permitting boundary of the open struct-map: a `+` (one-or-more) occurrence on the type-domain arrow REST row after fixed keys (`{ 1: uint, + uint => any }`). Spec-legal (RFC8610 §3.2 `+`, §3.5.2 admits a type1 key), but cddl-codegen REJECTS it gracefully — open-struct capture is unbounded-`*`-only, so `+`, `n*m`, and `?` on a rest row are refused with a message naming the supported `* k => v` spelling — making this a reject fixture (tests/matrix_reject/), not a decode-catalog row. Contrast the sibling `contain.occurrence-target.memberkey.type1.plus_table` (`{ + tstr => uint }`, no fixed key), where the SAME `+` marker IS supported as a NonEmptyMap: the composition (a `+` REST row after fixed keys vs a `+` on a lone table) flips the verdict — the (feature x context) distinction this matrix exists to record. Pinned loud by `open_struct_map_rest_row_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
+note = "A one-or-more occurrence on an open struct-map rest row (`{ 1: uint, + uint => any }`) is supported as `NonEmptyMap` (or `NonEmptyPairMap` under `@duplicates preserve`). It is an explicit checked-carrier constructor parameter, and CBOR/JSON stage a loose row then call its single `TryFrom`; the public carrier cannot be emptied. WASM crosses the restricted structural wrapper and component despecializes it to a fallible list-of-pairs constructor argument. This is row-local: the declared fixed member does not count. Pinned by `open_struct_map_rest_row_front_end`, `open_table_e2e`, and the component bounds fixture. RFC8610 §3.2, §3.5.2."
 example = "m = { 1: uint, + uint => any }"
 
-# The rest row's KEY-DOMAIN axis. The two cells above vary the occurrence MARKER over one fixed key
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_bounded"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "A finite row-local window on an open struct-map rest row (`{ 1: uint, 2*3 uint => text }`) is supported as `BoundedMap<u64, String, 2, 3>` (or its `BoundedPairMap` twin). The window counts captured rest entries only. Native construction accepts the complete checked carrier; CBOR/JSON first collect the loose carrier and enter one `TryFrom` door; WASM/component use their checked boundary conversion. Flattened JSON Schema deliberately omits object-wide `minProperties`/`maxProperties` because those would count the fixed member too. RFC8610 §3.2, §3.5.2."
+example = "m = { 1: uint, 2*3 uint => text }"
+
+# The rest row's KEY-DOMAIN axis. The three cells above vary the occurrence MARKER over one fixed key
 # domain (`uint`); these five vary the DOMAIN at a fixed `*` marker. The axis matters because the
 # generator's boundary sits here and nowhere else: any deserializable key type is accepted, and the
 # two exclusions are type-level properties of `K` (a float anywhere inside it, a `null` arm anywhere
@@ -196,7 +220,7 @@ id = "contain.occurrence-target.memberkey.type1.open_table"
 role = "role.occurrence-target"
 feature = "memberkey.type1"
 spec = "allowed"
-note = "The open table: a map of exactly TWO `*`-occurrence type-domain arrow entries and no fixed key (`t = { * bstr => uint, * uint => uint }`). Home here beside `contain.occurrence-target.memberkey.type1.open_struct` because the varying axis is again the occurrence MARKER on an arrow row — what differs is the COMPOSITION, two marked rows rather than fixed keys plus one. cddl-codegen lowers it to a Record with zero fixed fields and two capture containers, routed by CBOR WIRE MAJOR TYPE peeked before any deserializer runs: the typed (first) row claims exactly its key\'s single statically-known major, the catch-all (last) row sees only the complement, and a key of the typed row\'s major that the row\'s own type refuses is a HARD parse error rather than a capture. `K_t`\'s major must be statically knowable — a primitive, an alias of one, a raw-bytes marker or an alias of one, a `.size`-constrained bytes, or a tagged type; a key whose wire a `@custom_serialize`/`@custom_deserialize` pair owns declares it with `@custom_wire_major` (dsl.custom_wire_major). Both rows carry their own `@duplicates` policy, container spelling and encoding sidecars; under --preserve-encodings the two dynamic sequences share ONE order vector through a tagged slot encoding, and --canonical-form merges both regions into one sort by encoded key bytes. NAMED rules only: an inline anonymous spelling, a group-choice arm, a plain group, >2 non-fixed rows, and two rows mixed with fixed keys are each a graceful rejection naming the supported form. Doc: output_format.mdx section \'Open tables (a typed row plus a catch-all)\', comment_dsl.mdx section \'Open tables\'. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 \'=>\'."
+note = "The loose open table: a named map of exactly TWO non-fixed type-domain arrow rows and no fixed key (`t = { * bstr => uint, * uint => uint }`). The typed (first) row claims one statically-known CBOR major and the catch-all sees the complement; a typed-major key that its own type refuses is a hard error rather than a capture. Each row owns its own `@duplicates`, checked occurrence carrier, and preserve sidecars: `*`/`0*` are loose, `+`/`1*` are NonEmpty, and finite/other bounded windows use BoundedMap or BoundedPairMap. Under preserve the two dynamic sequences share one order vector and canonical form merges them by encoded key bytes. Named rules only: inline, group-choice/plain-group, >2-row, and fixed-key mixtures refuse. Docs: output_format.mdx section \'Open tables (a typed row plus a catch-all)\', comment_dsl.mdx section \'Open tables\'. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 \'=>\'."
 example = "t = { * bstr => uint, * uint => uint }"
 
 [[contain]]
@@ -204,16 +228,32 @@ id = "contain.occurrence-target.memberkey.type1.open_table_plus"
 role = "role.occurrence-target"
 feature = "memberkey.type1"
 spec = "allowed"
-note = "The count-permitting boundary of the open table: a one-or-more occurrence on an open table\'s TYPED row (`t = { + bstr => uint, * uint => uint }`) is the NonEmpty twin, whose minimum of 1 counts TYPED entries only — a map of purely captured entries is not a non-empty table. cddl-codegen enforces it at two doors: `new(first_key, first_value)` (so no constructed value violates it) and one check after each reader\'s loop, raising the same RangeCheck `NonEmptyMap`\'s own door raises. In this open-table typed-row context, `+` and `1*` are one spelling and `*` and `0*` another; every other marker is a bounded cardinality this composition does not honor and is refused rather than widened. A lone homogeneous unique-key table is different: all of its other windows generate as `BoundedMap`. Contrast `contain.occurrence-target.memberkey.type1.open_struct_plus` (a `+` REST row after fixed keys, rejected) and `contain.occurrence-target.memberkey.type1.plus_table` (a `+` on a lone table, a NonEmptyMap): three contexts, the same marker, three different verdicts — the (feature x context) distinction this matrix exists to record. Pinned by `open_table_front_end` (robustness_tests.rs) and executed in tests/open-table-e2e. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 \'=>\'."
+note = "A one-or-more occurrence on an open table\'s TYPED row (`t = { + bstr => uint, * uint => uint }`) is its own NonEmpty region: the minimum counts typed entries only. Its `NonEmptyMap`/`NonEmptyPairMap` public field cannot be emptied; native, wasm, WIT, and JSON retain the established `new(first_key, first_value)` ABI, while CBOR stages loose then uses the shared checked door. The catch-all's count is independent. `+`/`1*` are the NonEmpty spelling and `*`/`0*` loose; `?` and other windows are represented by Bounded carriers (the bounded typed sibling below). Pinned by `open_table_front_end` and `tests/open-table-e2e`. RFC8610 §3.2, §3.5.2."
 example = "t = { + bstr => uint, * uint => uint }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_table_typed_bounded"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "A bounded typed row in an open table (`t = { 2*3 bstr => uint, * uint => uint }`) is supported as a row-local `BoundedMap`/`BoundedPairMap`; catch-all entries neither satisfy nor consume its window. Native construction takes the checked carrier; CBOR/JSON stage loose entries then call `TryFrom`. WASM keeps the typed accessor surface flattened and fallibly converts its loose builder before native construction; component accepts a fallible list-of-pairs. JSON Schema intentionally omits object-wide property counts. RFC8610 §3.2, §3.5.2."
+example = "t = { 2*3 bstr => uint, * uint => uint }"
 
 [[contain]]
 id = "contain.occurrence-target.memberkey.type1.open_table_catchall_plus"
 role = "role.occurrence-target"
 feature = "memberkey.type1"
 spec = "allowed"
-note = "The other side of the open table\'s count-permitting boundary: a one-or-more occurrence on the CATCH-ALL row (`t = { * bstr => uint, + uint => uint }`). Spec-legal (RFC8610 §3.2 `+`, §3.5.2 admits a type1 key), but cddl-codegen REJECTS it gracefully — the open table\'s min-1 counts TYPED entries, so on the catch-all it would demand at least one entry the rule says nothing about — making this a reject fixture (tests/matrix_reject/), not a decode-catalog row. It is the cell that keeps `contain.occurrence-target.memberkey.type1.open_table_plus` from reading as \'`+` is fine on an open table\': the marker\'s verdict flips between the two ROWS of one rule. Pinned by `open_table_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 \'=>\'."
+note = "A one-or-more occurrence on the CATCH-ALL row (`t = { * bstr => uint, + uint => uint }`) is supported as an independent `NonEmptyMap`/`NonEmptyPairMap` region. It is an explicit checked-carrier constructor parameter on native, wasm, and component faces; CBOR/JSON stage the loose catch-all then enter `TryFrom`. Typed entries do not count toward this bound. RFC8610 §3.2, §3.5.2."
 example = "t = { * bstr => uint, + uint => uint }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_table_catchall_bounded"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "A bounded catch-all row in an open table (`t = { * bstr => uint, 2*3 uint => uint }`) is supported as a row-local `BoundedMap`/`BoundedPairMap`. Its checked wrapper crosses native/WASM construction and a fallible component list conversion; CBOR and JSON stage only the catch-all entries before the one `TryFrom`. The typed region is excluded from its count, and JSON Schema stays silent rather than claiming an object-wide property bound. RFC8610 §3.2, §3.5.2."
+example = "t = { * bstr => uint, 2*3 uint => uint }"
 
 [[contain]]
 id = "contain.occurrence-target.grpent.member.zero_array"

@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "elem_payloads",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -82,6 +83,7 @@ expression: ir
                     },
                     RustField {
                         name: "value_payloads",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Map(
                                 RustType {
@@ -149,6 +151,7 @@ expression: ir
                     },
                     RustField {
                         name: "after_payload",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -189,6 +192,7 @@ expression: ir
                     },
                     RustField {
                         name: "tail",
+                        source_index: 3,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 Str,
@@ -226,6 +230,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

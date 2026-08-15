@@ -107,6 +107,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "key_1",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Fixed(
                                 Uint(
@@ -151,6 +152,7 @@ expression: ir
                     },
                     RustField {
                         name: "key_2",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -192,6 +194,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -401,6 +404,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "a",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -443,6 +447,7 @@ expression: ir
                     },
                     RustField {
                         name: "x",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 Str,
@@ -484,6 +489,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -593,6 +599,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "f0",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -654,6 +661,7 @@ expression: ir
                     },
                     RustField {
                         name: "f1",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -702,6 +710,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

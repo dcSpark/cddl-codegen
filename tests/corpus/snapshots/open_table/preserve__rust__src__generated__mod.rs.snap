@@ -15,6 +15,7 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 pub mod error;
+pub mod non_empty_map;
 pub mod ordered_hash_map;
 pub mod pair_map;
 extern crate derivative;
@@ -22,6 +23,7 @@ pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
+use crate::generated::non_empty_map::NonEmptyMap;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::pair_map::PairMap;
 use crate::generated::serialization::StringEncoding;
@@ -126,8 +128,8 @@ impl Default for OpenTableDup {
 
 #[derive(Clone, Debug)]
 pub struct OpenTableNonEmpty {
-    /// The open table's TYPED entries (CDDL `* k1 => v1`, the first row): every map entry whose key is of this row's declared CBOR major type. Its map surface is FLATTENED onto the wasm class (`insert`/`get`/`len`/`keys`), so there is no whole-map getter. Defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container, which rejects a duplicate key.
-    pub entries: OrderedHashMap<Vec<u8>, u64>,
+    /// The open table's required TYPED entries (CDDL `+ k1 => v1`, the first row): every map entry whose key is of this row's declared CBOR major type. This `NonEmptyMap` (or `NonEmptyPairMap` under `@duplicates preserve`) always holds at least one typed entry. Its map surface is FLATTENED onto the wasm class (`insert`/`get`/`len`/`keys`), so there is no whole-map getter.
+    pub entries: NonEmptyMap<Vec<u8>, u64>,
     /// The open table's CAPTURED entries (CDDL `* k2 => v2`, the trailing catch-all row): every map entry the typed row did not claim. Defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub rest: OrderedHashMap<Md, Md>,
     pub encodings: Option<OpenTableNonEmptyEncoding>,
@@ -138,11 +140,7 @@ impl OpenTableNonEmpty {
     /// * `first_value` - its value
     pub fn new(first_key: Vec<u8>, first_value: u64) -> Self {
         Self {
-            entries: {
-                let mut seed = OrderedHashMap::new();
-                seed.insert(first_key, first_value);
-                seed
-            },
+            entries: NonEmptyMap::new(first_key, first_value),
             rest: OrderedHashMap::new(),
             encodings: None,
         }

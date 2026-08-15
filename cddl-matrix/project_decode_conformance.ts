@@ -147,6 +147,12 @@ const SEEDED_CONTROLS: { id: string; hex: string; comment: string }[] = [
     comment: "holder [0, []] — ZERO repetitions of a `* uint` element; anchors the array-side " +
       "over-strict class that rejects the empty-repetition instance",
   },
+  {
+    id: "contain.occurrence-target.memberkey.bareword.zero_bounded_map",
+    hex: "a1616100",
+    comment: "standalone `{a: 0}` — the `0*1 b` keyed-map member is ABSENT; anchors the exact " +
+      "zero-lower-bound over-strict-decoder regression B5-402 delivered",
+  },
 ];
 
 // --- matrix.json: supported ids + their examples --------------------------------------------------

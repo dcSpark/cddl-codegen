@@ -211,6 +211,12 @@ impl GenerationScope {
             );
         }
         self.requested_scope_override = Some(requested_scope.clone());
+        // A requested map wrapper's `keys()` accessor names the loose keys-list class even when the
+        // sidecar correctly requests only the map class. Own-spec generation mints that companion
+        // from the record/table walk; requested wrappers have no IR owner, so the host must mint it
+        // explicitly here. Keep one shared set for the whole union — two requested map shapes can
+        // return the same `<Key>List`, which is one wasm class in this requested scope.
+        let mut requested_keys_lists_generated = BTreeSet::new();
         for (_, rt, structural, _) in &to_emit {
             let ident = RustIdent::new(CDDLIdent::new(structural.clone()));
             match &rt.conceptual_type {
@@ -297,6 +303,11 @@ impl GenerationScope {
                             cli,
                         );
                     }
+                    // A map's body always exposes `keys()`. This mints its non-exposable key's
+                    // loose list companion after the map so the map's deferral decision remains
+                    // canonical, and makes the requested-scope closure self-contained even when
+                    // this dep's own spec never mentions the key as a table domain.
+                    mint_wasm_keys_list(self, types, k, &mut requested_keys_lists_generated, cli);
                 }
                 other => unreachable!("requested shape is not a collection: {other:?}"),
             }

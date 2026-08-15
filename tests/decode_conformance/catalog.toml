@@ -4177,6 +4177,108 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.occurrence-target.memberkey.bareword.zero_bounded_map"
+axis = "containment"
+example = "multi = { a: uint, 0*1 b: uint }"
+spec = "multi = { a: uint, 0*1 b: uint }"
+mode = "standalone"
+type_name = "Multi"
+
+[[row.vector]]
+hex = "a1616100"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616118c56162190e4f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616119077b61621910ed"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616119095a6162190d15"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a26161190aaf61621909f7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a2616119100e6162190898"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a261611910ce6162190fe9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.occurrence-target.memberkey.bareword.zero_exact_map"
+axis = "containment"
+example = "exact = { 0*0 t: uint }"
+pinned_reason = "the sole generated candidate is the spec-valid empty map; Ruby cddl 0.12.14 accepts it, but pinned rust-cddl local-fixes @ ac1b98e rejects it as missing exact-zero key `t`; both validators also accept the spec-invalid map containing `t`, so neither an accept nor a forbidden-present reject vector can be certified under the two-oracle rule; see cddl-matrix/README.md upstream oracle gap #18; each re-mint re-probes and activates the row when two-oracle cross-validation succeeds"
+
+[[row]]
+id = "contain.occurrence-target.memberkey.bareword.zero_map"
+axis = "containment"
+example = "plain = { * t: uint }"
+spec = "plain = { * t: uint }"
+mode = "standalone"
+type_name = "Plain"
+
+[[row.vector]]
+hex = "a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1617419016a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1617419046b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a161741904e0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a161741909ee"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a16174190ea5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a16174190f41"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a161741910bc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a161741911a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.occurrence-target.memberkey.type1.bounded_table"
 axis = "containment"
 example = "m = { 2*3 tstr => uint }"
@@ -4309,6 +4411,80 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_bounded"
+axis = "containment"
+example = "m = { 1: uint, 2*3 uint => text }"
+spec = "m = { 1: uint, 2*3 uint => text }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a20100026161"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the fixed `1: uint` member is valid, but the map has only one captured rest entry (`2: \"a\"`), below the rest row's independent `2*3 uint => text` window; this isolates the row-local BoundedMap lower-count check"
+expect_err = "1 not in range 2 - 3"
+
+[[row.vector]]
+hex = "a3011901f71901036963656c65627261746519057e6443617279"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a301190398190c9f6a636f72726f73697665731909566c756e69666f726d6974792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a30119041e19120b68626c617a65722773190d90686561727468696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a301190662190ba369506f6d6572616e6961190873674f7363656f6c61"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a4011904551911f46a70697a7a696361746f731909366547617573731903e3666c6566742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a401190613190e7369766974696174696f6e190a136b636f6e76616c6573636564190e286c657669736365726174696f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a40119064919019e67646975726e616c190c8c684a6f7669616e277319101067736176696f7572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a4011908d719122f6a70726f637265617465641902ce69737465616479696e67190b6d64426f7365"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a401190fa21902b46b666561747572656c6573731905d862546c190d03697265766572656e6365"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a40119113e190a786b65786368657175657227731906b968706f6c6c79776f6719041c666578706f7365"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a50100026161036162046163056164"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the fixed `1: uint` member is valid, but four captured rest entries (`2` through `5`) exceed the rest row's independent `2*3 uint => text` window; this isolates the row-local BoundedMap upper-count check"
+expect_err = "4 not in range 2 - 3"
+
+[[row]]
 id = "contain.occurrence-target.memberkey.type1.open_struct_bytes_key"
 axis = "containment"
 example = "m = { 1: uint, * bytes => any }"
@@ -4421,6 +4597,64 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_plus"
+axis = "containment"
+example = "m = { 1: uint, + uint => any }"
+spec = "m = { 1: uint, + uint => any }"
+mode = "standalone"
+type_name = "M"
+
+[[row.vector]]
+hex = "a3011905fd18b1685368657661742773190693676c6172676f2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a30119072d190ced686d6574616c6c69631910e56b73696d756c61746f722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a3011908ce19091062676f190c456773697461722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a401190231190ed6676561737465726e19015d6a706574726f6c6174756d19070c6c70656e6574726174696f6e73"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a40119029e1906f769666c617070657227731910d56b7061696e7374616b696e67190137697268696e6f63657269"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a50118b0190ac66e636f6d6d697365726174696f6e731839654e656765761909a06d70726f736372697074696f6e731907ea6d74656173706f6f6e66756c2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a5011901451910f066636f686f72741910c26b706c656173616e746573741906646861636372656469741901be6e64656d6f62696c697a6174696f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a5011905001906e16b666c6f7765726265642773190272684861726c656d27731905a7654265727279190ce46a717561647275706c6574"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a501190561190b6d686a756d7073756974190ec468776964656e696e671902526c70726f70756c73696f6e2773190639694b6c65656e65782773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a501190804190ec3665361786f6e73190a5b6864657874726f757319059468496d656c646127731911f7676d616464657374"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.occurrence-target.memberkey.type1.open_table"
 axis = "containment"
 example = "t = { * bstr => uint, * uint => uint }"
@@ -4455,6 +4689,138 @@ expect = "accept"
 
 [[row.vector]]
 hex = "a747636f64646c65641906a149626967616d69737473190dd7486c61746865722773190479191135190c2b1907861905fc19103d18ba1901931902e8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.occurrence-target.memberkey.type1.open_table_catchall_bounded"
+axis = "containment"
+example = "t = { * bstr => uint, 2*3 uint => uint }"
+spec = "t = { * bstr => uint, 2*3 uint => uint }"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "a10100"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the sole uint-keyed entry belongs to the CATCH-ALL region, leaving that row with one entry below its independent `2*3 uint => uint` window; the typed bstr region is empty and does not count toward it"
+expect_err = "1 not in range 2 - 3"
+
+[[row.vector]]
+hex = "a319082e1910ae1904891907e5191041190b60"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a3190caf19023019023d1903e11908d019108f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a40000010002000300"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "all four uint-keyed entries belong to the CATCH-ALL region, exceeding that row's independent `2*3 uint => uint` window; this targets its BoundedMap upper-count check rather than the loose typed bstr row"
+expect_err = "4 not in range 2 - 3"
+
+[[row.vector]]
+hex = "a4466c65766965641910e146736c61746564190b3e182c190e331901e5190941"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a44773617563657273182247666f72656d616e1909d0190d9a191151190e091901ec"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a44d6578747261766167616e746c79190aec4871756172747a27731910d9190f1b190bac1911b11906d3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a548466c6f726964616e1909eb47686f6f64696e6719098a45436c61726519037419084b1903271911c0190375"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a54a627265617374626f6e6519010d4868616e64796d656e190e0a45706174696f1905ac1903d6190c49190c32190690"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a647436f6d62732773190ec346666169726c79190e224970726f63746f7265641901884a61627374656d696f75731901d11904891911071901bd18ae"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a64a74656e6465726c6f696e1907784a666f7267617468657273190ddc496e656f6e61746527731905b3476167656e7427731901cd190ca9181b1908461907ad"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a64e706f6c6172697a6174696f6e277318554c6d6561646f776c61726b27731910f248696e6369736f72731902e11901851909071901bb19047919056c19034b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.occurrence-target.memberkey.type1.open_table_catchall_plus"
+axis = "containment"
+example = "t = { * bstr => uint, + uint => uint }"
+spec = "t = { * bstr => uint, + uint => uint }"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "a2485275646f6c6627731907f7190155190720"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a347486172746527731887477570636875636b190154190ff619076a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a4190d5819029b19068b190572190790190ea119086a190cbb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a447636c65726b27731910684b73696768747365657227731904b6190958190670190395190c02"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a448766572746562726119041e497072656f63637570791904901910ad19066f19045e190ffa"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a44a6d69736f67796e69737419018d4b696e6669726d61727927731907f41904cf190fac19075f190f76"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a44e696d707265676e6174696f6e2773190f82190ec2190fe71909bf1902e5190e57190d14"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a54563616e746f1909b949686f6c646f76657273190654496261726265637565731910e7190c661902ce19076918f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a5456579652773190a1c4567756e27731908ae190a771904c6190d0d190fcf190ff7190fcd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a6487072696e636573731908d3455665726e6519047e190d8b190cf51905d019071918b719066e190cb019124d"
 source = "ruby-generate"
 expect = "accept"
 
@@ -4503,6 +4869,80 @@ expect = "accept"
 
 [[row.vector]]
 hex = "a84477696e6f190b904a64696c657474616e74691901f9446f776c7319085c476d7574746572731907e519061e190814190f9c19063b190921190760190b84184d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.occurrence-target.memberkey.type1.open_table_typed_bounded"
+axis = "containment"
+example = "t = { 2*3 bstr => uint, * uint => uint }"
+spec = "t = { 2*3 bstr => uint, * uint => uint }"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "a1416100"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the single bstr-keyed entry belongs to the TYPED region, leaving it below its independent `2*3 bstr => uint` window; the loose uint CATCH-ALL region is empty and cannot satisfy the typed count"
+expect_err = "1 not in range 2 - 3"
+
+[[row.vector]]
+hex = "a2486372c3a86368657318e04c73757272656e646572696e671903ad"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a34463756473190493484c656f6e69646173190f4945636c616e6b190fc3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a34a416e7461726374696361190ea3466c6f766572731908674970617274697a616e73190b4b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a4416100416200416300416400"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "all four bstr-keyed entries belong to the TYPED region, exceeding its independent `2*3 bstr => uint` window; the loose uint CATCH-ALL region is empty and cannot offset the typed row's upper bound"
+expect_err = "4 not in range 2 - 3"
+
+[[row.vector]]
+hex = "a44774616767696e671912374a696e67c3a96e75652773190a4c1901e2041910e3190ae4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a448736c75747469736819023f49746573746966696564190836486e617573656127731901541903b9190e1b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a4496361766f7274696e67182d4f746f6e73696c6c6563746f6d7927731904184f646573656e736974697a6174696f6e18351901d1190e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a44f6461756e746c6573736e6573732773190d2d48646179627265616b1910ab1911071909c7191136190100"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a546707269636b73191081477061646469657319090845626962277313190bff190b9d190df71902c2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a547436f726e656c6c19088a497475636b6572696e67190d2c1901751910a4190c9c19121819042d190619"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a54963616c6c69706572731902bb46736c6f7427731905a1190dae1902df1906e31908a81905fa190cf0"
 source = "ruby-generate"
 expect = "accept"
 
@@ -4615,6 +5055,59 @@ expect = "accept"
 
 [[row.vector]]
 hex = "8200a46b776f726b666f7263652773190f2c6e70726f7068796c61637469632773190bf06b6865696e6f75736e6573731902db6a61647665727469736573190ebf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.occurrence-target.memberkey.value.zero_map"
+axis = "containment"
+example = "literal = { * 1: uint }"
+spec = "literal = { * 1: uint }"
+mode = "standalone"
+type_name = "Literal"
+
+[[row.vector]]
+hex = "a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1011886"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a10119014a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a101190232"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1011903db"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a10119056c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a101190d95"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a101190dd4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a101190e81"
 source = "ruby-generate"
 expect = "accept"
 

@@ -229,6 +229,12 @@ impl AnyCbor {
         buf.finalize()
     }
 
+    /// Value equality used by generated open-record constraint checks.  This assembly carries no
+    /// replay-width slots, so its normal serialization is already the value normal form.
+    pub fn value_eq(&self, other: &Self) -> bool {
+        self.to_cbor_bytes() == other.to_cbor_bytes()
+    }
+
     /// The serialization workhorse; the `cbor_event::se::Serialize` impl delegates here.
     pub fn serialize_ref<'a>(
         &self,
@@ -348,6 +354,19 @@ impl AnyCbor {
             }
         }
     }
+}
+
+/// Compare an arbitrary generated map-key type to a fixed key by its decoded CBOR VALUE.  The
+/// serialization may replay non-minimal preserve widths; parsing it back into `AnyCbor` and using
+/// `value_eq` intentionally discards that spelling before the comparison.
+pub fn cbor_value_eq_serialized<T: cbor_event::se::Serialize>(
+    value: &T,
+    expected: &AnyCbor,
+) -> Result<bool, DeserializeError> {
+    let mut serializer = cbor_event::se::Serializer::new_vec();
+    cbor_event::se::Serialize::serialize(value, &mut serializer)?;
+    <AnyCbor as Deserialize>::from_cbor_bytes(&serializer.finalize())
+        .map(|found| found.value_eq(expected))
 }
 
 impl Deserialize for AnyCbor {

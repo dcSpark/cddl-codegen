@@ -183,9 +183,9 @@ mod open_table_json {
     }
     #[test]
     fn non_empty_min_one_counts_typed_bindings() {
-        // The bound is a statement about the TYPED region, and the JSON face reads it AFTER the whole
-        // object: an object of purely captured members is refused, even though it is a perfectly
-        // well-formed open table object.
+        // The bound is a statement about the TYPED region, and the JSON face stages the whole object
+        // before entering its first-entry constructor: an object of purely captured members is
+        // refused, even though it is a perfectly well-formed open table object.
         for empty in [r#"{}"#, r#"{"zz":1}"#, r#"{"1":2,"zz":3}"#] {
             let e = serde_json::from_str::<NeLabels>(empty)
                 .expect_err("no member bound the typed row")
@@ -218,5 +218,72 @@ mod open_table_json {
             schema.get("additionalProperties").is_some(),
             "the open region is still published, got: {schema}"
         );
+    }
+
+    #[test]
+    fn bounded_dynamic_rows_stage_then_check_each_json_partition() {
+        // Open struct: declared `key_1` does not count toward its flattened text-key rest window.
+        for (json, label) in [
+            (r#"{"key_1":0,"a":1}"#, "below"),
+            (r#"{"key_1":0,"a":1,"b":2,"c":3,"d":4}"#, "above"),
+        ] {
+            let err = serde_json::from_str::<BoundedStruct>(json).unwrap_err();
+            assert!(
+                err.to_string().contains("not in range 2 - 3"),
+                "the open-struct {label}-window JSON must fail after rest staging: {err}"
+            );
+        }
+        let open: BoundedStruct = serde_json::from_str(r#"{"key_1":0,"a":1,"b":2}"#).unwrap();
+        assert_eq!(open.rest.len(), 2);
+
+        // The typed region owns its 2*3 window. `zz` is deliberately a non-hex policy id, so it
+        // travels through the text-capable catch-all and proves it does not contribute to entries.
+        for (json, label) in [
+            (r#"{"zz":1}"#, "below"),
+            (r#"{"aa":1,"bb":2,"cc":3,"dd":4,"zz":5}"#, "above"),
+        ] {
+            let err = serde_json::from_str::<BoundedTyped>(json).unwrap_err();
+            assert!(
+                err.to_string().contains("not in range 2 - 3"),
+                "the typed-row {label}-window JSON must fail after typed staging: {err}"
+            );
+        }
+        let typed: BoundedTyped =
+            serde_json::from_str(r#"{"aa":1,"bb":2,"zz":3}"#).unwrap();
+        assert_eq!(typed.entries.len(), 2);
+        assert_eq!(typed.rest.len(), 1);
+
+        // The catch-all's window is independent in the other direction: a typed policy-id member
+        // is present in each vector but neither rescues a below-min rest nor consumes its maximum.
+        for (json, label) in [
+            (r#"{"aa":1,"zz":2}"#, "below"),
+            (r#"{"aa":1,"z":2,"y":3,"x":4,"w":5}"#, "above"),
+        ] {
+            let err = serde_json::from_str::<BoundedCatchAll>(json).unwrap_err();
+            assert!(
+                err.to_string().contains("not in range 2 - 3"),
+                "the catch-all {label}-window JSON must fail after captured staging: {err}"
+            );
+        }
+        let captured: BoundedCatchAll =
+            serde_json::from_str(r#"{"aa":1,"z":2,"y":3}"#).unwrap();
+        assert_eq!(captured.entries.len(), 1);
+        assert_eq!(captured.rest.len(), 2);
+    }
+
+    #[test]
+    fn bounded_dynamic_row_schema_stays_silent_about_per_partition_counts() {
+        // `minProperties` / `maxProperties` would count BOTH dynamic rows (and, for the open
+        // struct, the declared key), so every bounded dynamic row keeps that truth at runtime.
+        for schema in [
+            serde_json::to_value(schemars::schema_for!(BoundedStruct)).unwrap(),
+            serde_json::to_value(schemars::schema_for!(BoundedTyped)).unwrap(),
+            serde_json::to_value(schemars::schema_for!(BoundedCatchAll)).unwrap(),
+        ] {
+            assert!(
+                schema.get("minProperties").is_none() && schema.get("maxProperties").is_none(),
+                "a per-row count must not become an object-wide schema claim: {schema}"
+            );
+        }
     }
 }

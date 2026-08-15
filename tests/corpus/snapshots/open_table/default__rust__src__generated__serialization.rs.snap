@@ -10,6 +10,7 @@ use super::*;
 use crate::generated::error::*;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
+use alloc::vec::Vec;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
@@ -268,14 +269,7 @@ impl Deserialize for OpenTableNonEmpty {
                 }
                 read += 1;
             }
-            if entries.is_empty() {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: 0,
-                    min: Some(1),
-                    max: None,
-                }
-                .into());
-            }
+            let entries = <NonEmptyMap<Vec<u8>, u64>>::try_from(entries)?;
             read_len.finish()?;
             Ok(Self { entries, rest })
         })()

@@ -34,6 +34,9 @@ pub enum DeserializeFailure {
     CBOR(cbor_event::Error),
     DefiniteLenMismatch(u64, Option<u64>),
     DuplicateKey(Key),
+    /// A `0*0` / `*0` fixed map member appeared.  This is distinct from an unknown key: open
+    /// records may accept other unknown entries, but this particular value is forbidden by CDDL.
+    ForbiddenKey(Key),
     EndingBreakMissing,
     ExpectedNull,
     ExpectedUndefined,
@@ -134,6 +137,7 @@ impl DeserializeError {
                 Ok(())
             },
             DeserializeFailure::DuplicateKey(key) => write!(f, "Duplicate key: {}", key),
+            DeserializeFailure::ForbiddenKey(key) => write!(f, "Forbidden key: {}", key),
             DeserializeFailure::EndingBreakMissing => write!(f, "Missing ending CBOR Break"),
             DeserializeFailure::ExpectedNull => write!(f, "Expected null, found other type"),
             DeserializeFailure::ExpectedUndefined => write!(f, "Expected undefined, found other special value"),

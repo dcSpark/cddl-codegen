@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "index_0",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -66,6 +67,7 @@ expression: ir
                     },
                     RustField {
                         name: "index_1",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -103,6 +105,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -154,6 +157,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "inner",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -205,6 +209,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -235,6 +240,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "inner",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -286,6 +292,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -316,6 +323,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "inner",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Map(
                                 RustType {
@@ -380,6 +388,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -410,6 +419,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "inner",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Map(
                                 RustType {
@@ -474,6 +484,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

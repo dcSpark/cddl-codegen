@@ -3,9 +3,10 @@
 //! crates, so nothing else in THIS crate compiles it).
 //!
 //! The heavy decode-conformance replay owns the end-to-end rejection-reason contract. This cheap
-//! lockstep test pins the four unique-key table boundaries whose generated decode door is
-//! `BoundedMap`: omitted exact-once, bounded below/above, and optional above. It catches a runtime
-//! diagnostic/catalog-oracle drift without rebuilding every decode-conformance crate.
+//! lockstep test pins the generic-table and dynamic-row boundaries whose generated decode door is
+//! `BoundedMap`: omitted exact-once, bounded below/above, optional above, and B5-403's three
+//! open-record/table row-local `2*3` seams. It catches a runtime diagnostic/catalog-oracle drift
+//! without rebuilding every decode-conformance crate.
 
 // The included runtime files legitimately trigger lints a generated crate silences at crate level:
 // `dead_code` (only the checked door is exercised here), `upper_case_acronyms` (`error.rs`'s `CBOR`
@@ -78,23 +79,38 @@ fn decode_catalog_bounded_table_reason_pins_match_runtime() {
         runtime_reason(exact),
     );
 
-    let below = BoundedMap::<u64, u64, 2, 3>::try_from(BTreeMap::from([(1, 1)])).unwrap_err();
-    assert_pin(
-        &catalog,
-        "contain.occurrence-target.memberkey.type1.bounded_table",
-        "8200a1616101",
-        runtime_reason(below),
+    let below = runtime_reason(
+        BoundedMap::<u64, u64, 2, 3>::try_from(BTreeMap::from([(1, 1)])).unwrap_err(),
     );
-
-    let above =
+    let above = runtime_reason(
         BoundedMap::<u64, u64, 2, 3>::try_from(BTreeMap::from([(1, 1), (2, 2), (3, 3), (4, 4)]))
-            .unwrap_err();
-    assert_pin(
-        &catalog,
-        "contain.occurrence-target.memberkey.type1.bounded_table",
-        "8200a4616101616202616303616404",
-        runtime_reason(above),
+            .unwrap_err(),
     );
+    for (row_id, below_hex, above_hex) in [
+        (
+            "contain.occurrence-target.memberkey.type1.bounded_table",
+            "8200a1616101",
+            "8200a4616101616202616303616404",
+        ),
+        (
+            "contain.occurrence-target.memberkey.type1.open_struct_bounded",
+            "a20100026161",
+            "a50100026161036162046163056164",
+        ),
+        (
+            "contain.occurrence-target.memberkey.type1.open_table_catchall_bounded",
+            "a10100",
+            "a40000010002000300",
+        ),
+        (
+            "contain.occurrence-target.memberkey.type1.open_table_typed_bounded",
+            "a1416100",
+            "a4416100416200416300416400",
+        ),
+    ] {
+        assert_pin(&catalog, row_id, below_hex, below.clone());
+        assert_pin(&catalog, row_id, above_hex, above.clone());
+    }
 
     let optional =
         BoundedMap::<u64, u64, 0, 1>::try_from(BTreeMap::from([(1, 1), (2, 2)])).unwrap_err();

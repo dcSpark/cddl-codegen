@@ -11,3 +11,16 @@ impl cbor_event::se::Serialize for AnyCbor {
         self.serialize_ref(serializer, false)
     }
 }
+
+/// Compare an arbitrary generated map-key type to a fixed key by CBOR value rather than its replay
+/// encoding. In particular `0x01` and `0x1801` reach the same verdict. This assembly's generated
+/// keys implement cbor-event's one-argument serialization trait.
+pub fn cbor_value_eq_serialized<T: cbor_event::se::Serialize>(
+    value: &T,
+    expected: &AnyCbor,
+) -> Result<bool, DeserializeError> {
+    let mut serializer = cbor_event::se::Serializer::new_vec();
+    cbor_event::se::Serialize::serialize(value, &mut serializer)?;
+    <AnyCbor as Deserialize>::from_cbor_bytes(&serializer.finalize())
+        .map(|found| found.value_eq(expected))
+}

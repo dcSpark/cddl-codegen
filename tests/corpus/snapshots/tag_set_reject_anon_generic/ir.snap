@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "g",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -67,6 +68,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

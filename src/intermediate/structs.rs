@@ -266,6 +266,9 @@ fn fixed_value_cbor_type(value: &FixedValue) -> CBORType {
 #[derive(Clone, Debug)]
 pub struct RustField {
     pub name: String,
+    /// Original group-entry order.  Most emitters deliberately use their own canonical ordering,
+    /// but transparent group-body projection must interleave value fields with exact-zero metadata.
+    pub source_index: usize,
     /// Invariant held by the record-field construction seam (`parse_record_from_group_choice`):
     /// `rust_type.config.default` is `Some` only when `optional` — a `.default` on a mandatory
     /// member is inert by RFC 8610 §3.8.2 (a default fills an ABSENT value) and is stripped, with
@@ -289,11 +292,17 @@ impl RustField {
     ) -> Self {
         Self {
             name,
+            source_index: usize::MAX,
             rust_type,
             optional,
             key,
             rule_metadata,
         }
+    }
+
+    pub fn with_source_index(mut self, source_index: usize) -> Self {
+        self.source_index = source_index;
+        self
     }
 
     /// Whether this member's rust type is a nested `Option<Option<…>>`: an OPTIONAL member
@@ -858,15 +867,30 @@ impl RustStruct {
                         ty.conceptual_type
                             .visit_types_excluding(types, f, already_visited)
                     }
-                    EnumVariantData::Inlined(record) => record.fields.iter().for_each(|field| {
-                        field
-                            .rust_type
-                            .visit_types_excluding(types, f, already_visited)
-                    }),
+                    EnumVariantData::Inlined(record) => {
+                        record.fields.iter().for_each(|field| {
+                            field
+                                .rust_type
+                                .visit_types_excluding(types, f, already_visited)
+                        });
+                        record.forbidden_fields.iter().for_each(|field| {
+                            field.rust_type.conceptual_type.visit_types_excluding(
+                                types,
+                                f,
+                                already_visited,
+                            )
+                        });
+                    }
                 })
             }
             RustStructType::Record(record) => {
                 record.fields.iter().for_each(|field| {
+                    field
+                        .rust_type
+                        .conceptual_type
+                        .visit_types_excluding(types, f, already_visited)
+                });
+                record.forbidden_fields.iter().for_each(|field| {
                     field
                         .rust_type
                         .conceptual_type
@@ -921,6 +945,11 @@ impl RustStruct {
 pub struct RustRecord {
     pub rep: Representation,
     pub fields: Vec<RustField>,
+    /// A fixed map member with the exact occurrence window `0*0` (spelled `*0` too).
+    /// It has no Rust value field: it is a constraint on the map key.  Keeping it in the IR (rather
+    /// than teaching only the decoder about a list of keys) is important for extern-interface
+    /// projection and for every construction boundary which must reject an open-row entry.
+    pub forbidden_fields: Vec<ForbiddenField>,
     /// The open ("rest") part of an open struct-map (`{ 1: a, ..., * K => V }`) or an open array
     /// (`[ a, ..., * T ]`) — the trailing `* K => V` row / `* T` tail captured alongside the fixed
     /// fields, rather than a fake `RustField` (fields drive `new()`/JSON/wasm/`orig_deser_order`
@@ -944,6 +973,18 @@ pub struct RustRecord {
     /// deserialize loop is the delivered zero-declared-keys form, which already IS pure major-type
     /// dispatch.
     pub typed_row: Option<Box<RestRow>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ForbiddenField {
+    pub key: FixedValue,
+    /// The member's generated JSON spelling.  There is deliberately no public value member with
+    /// this name, but JSON and extern-interface projection still need the authored identity.
+    pub name: String,
+    /// Retained for a faithful materialized-group projection and reference closure.
+    pub rust_type: RustType,
+    /// Source order among the group's entries, used by projections which preserve group order.
+    pub source_index: usize,
 }
 
 /// Which of the two open struct-map flavors a rest row selects.
@@ -995,10 +1036,11 @@ pub enum RestKind {
 
 /// The trailing open ("rest") part of an open struct-map (`* K => V`) or an open array (`* T` tail).
 /// Under the CAPTURE flavor the content lands in a `pub` field (`rest` by default, `@name`-overridable)
-/// — a map container (`BTreeMap`/`OrderedHashMap`) for a map rest, a `Vec<T>` for a loose array tail,
-/// or a `NonEmptyVec<T>` for a one-or-more array tail; under the IGNORE flavor nothing is stored. Not a
-/// `RustField`: a loose rest row/tail is excluded from `new()` (defaults empty), while a non-empty tail
-/// takes its first element at that construction door so the public value is valid by construction.
+/// — a map container (`BTreeMap`/`OrderedHashMap`) for a loose map rest, a `Vec<T>` for a loose
+/// array tail, or its checked `NonEmpty*` / `Bounded*` twin for a restricted window; under the
+/// IGNORE flavor nothing is stored. Not a `RustField`: a loose rest row/tail is excluded from
+/// `new()` (defaults empty), while every restricted map row is an explicit checked-carrier input so
+/// the public value is valid by construction.
 #[derive(Clone, Debug)]
 pub struct RestRow {
     /// The rep-specific inner shape (map `* K => V` vs array `* T`).
@@ -1020,15 +1062,13 @@ pub struct RestRow {
     /// row and array tail: those see the COMPLEMENT of the typed row's major (or, with no typed row,
     /// everything), which is not a single major and is expressed by the loop's arm layout instead.
     pub dispatch_major: Option<CBORType>,
-    /// The row carries a MIN-1 occurrence (`+` / `1*`) rather than the unbounded `*`. On an open
-    /// table's TYPED row (`t = { + K_t => V_t, * K_r => V_r }`) the minimum counts TYPED entries
-    /// only; on an array rest tail (`[a, + t]`) it counts every captured trailing element.
-    /// The bound is enforced by the representation's one checked conversion door. An array tail
-    /// stages CBOR/JSON input in `Vec<T>` and enters `NonEmptyVec::try_from`; an open table's typed
-    /// row runs its post-loop/JSON check and enters `NonEmptyMap`. Each raises the same
-    /// `RangeCheck { found: 0, min: Some(1), max: None }`, while construction takes its first
-    /// required element so a public value is valid by construction.
-    pub non_empty: bool,
+    /// The normalized inclusive occurrence window for this dynamic sequence. `None` is loose
+    /// `0..`; `Some((1, u64::MAX))` is the established `+` / `1*` NonEmpty carrier; every other
+    /// value selects the appropriate Bounded carrier. The normalization lives on the row rather than
+    /// in an emitter-local flag, so field spelling, decode conversion, JSON, wasm, WIT, and wrapper
+    /// ownership all see the SAME invariant. Array tails currently use only the loose/non-empty
+    /// forms, while dynamic map rows use the full table vocabulary.
+    pub occurrence: Option<(u64, u64)>,
 }
 
 /// Whether any alias in `ty`'s alias chain carries a `@custom_serialize`/`@custom_deserialize`
@@ -1163,12 +1203,36 @@ impl RestRow {
     /// `container_type` carries the same bound, so every type walk sees `NonEmptyVec<T>` rather than
     /// a detached boolean beside a loose `Vec<T>`.
     pub fn is_non_empty_array_tail(&self) -> bool {
-        self.is_array_tail() && self.non_empty
+        self.is_array_tail() && self.is_non_empty()
+    }
+
+    /// Whether this row is restricted at all (rather than the loose `*` / `0*` form).
+    pub fn is_restricted(&self) -> bool {
+        self.occurrence.is_some()
+    }
+
+    /// The row's established min-one window (`+` / `1*`). This remains its own predicate because
+    /// the public constructor ABI for a typed open-table `+` is the shipped first-entry door.
+    pub fn is_non_empty(&self) -> bool {
+        self.occurrence == Some((1, u64::MAX))
+    }
+
+    /// The RustType-form window used by the collection carriers: `u64::MAX` is rendered as the
+    /// existing unbounded endpoint, and a zero lower endpoint stays absent so `BoundedMap` derives
+    /// the conventional `min: None` range payload.
+    pub fn rust_bounds(&self) -> Option<(Option<i128>, Option<i128>)> {
+        self.occurrence.map(|(min, max)| {
+            (
+                (min != 0).then_some(i128::from(min)),
+                (max != u64::MAX).then_some(i128::from(max)),
+            )
+        })
     }
 
     /// The rest row's CONTAINER type — the composite the emitted code actually names: `Array(T)` for
-    /// an array `* T` tail, `Map(K, V)` carrying the row's `@duplicates` policy for a map `* K => V`
-    /// row (so `for_rust_member` routes a `preserve` row to the `PairMap<K, V>` twin and
+    /// an array `* T` tail, `Map(K, V)` carrying the row's `@duplicates` policy and, for a `+` typed
+    /// open-table row, its `>= 1` bound (so `for_rust_member` routes a `preserve` row to the
+    /// `PairMap<K, V>` / `NonEmptyPairMap<K, V>` twin and
     /// `for_wasm_member` / `wasm_collection_wrapper` name the `PairMapKToV` class rather than the
     /// loose `MapKToV`).
     ///
@@ -1218,11 +1282,33 @@ impl RestRow {
         match &self.kind {
             RestKind::ArrayTail { element } => {
                 let ty: RustType = ConceptualRustType::Array(Box::new(element.clone())).into();
-                if self.non_empty {
-                    ty.with_bounds((Some(1), None))
-                } else {
-                    ty
-                }
+                self.rust_bounds()
+                    .map_or(ty.clone(), |bounds| ty.with_bounds(bounds))
+            }
+            RestKind::MapEntries {
+                domain,
+                range,
+                duplicates,
+            } => {
+                let ty: RustType =
+                    ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
+                        .into();
+                let ty = ty.with_duplicates_policy(*duplicates);
+                self.rust_bounds()
+                    .map_or(ty.clone(), |bounds| ty.with_bounds(bounds))
+            }
+        }
+    }
+
+    /// The deliberately loose container used only while decoding or transporting a dynamic row to
+    /// its checked door. This is not a second representation: it is the source accepted by the
+    /// carrier's `TryFrom`, with the same key/value and duplicate policy but no occurrence window.
+    /// In particular, wasm uses it as the bounded typed-row constructor builder while keeping that
+    /// row's public surface flattened on the owner class.
+    pub fn staging_container_type(&self) -> RustType {
+        match &self.kind {
+            RestKind::ArrayTail { element } => {
+                ConceptualRustType::Array(Box::new(element.clone())).into()
             }
             RestKind::MapEntries {
                 domain,
@@ -1239,6 +1325,9 @@ impl RestRow {
 }
 
 impl RustRecord {
+    pub fn has_forbidden_fields(&self) -> bool {
+        !self.forbidden_fields.is_empty()
+    }
     /// The rest row IFF it CAPTURES (a `pub` map field is emitted and re-serialized). `None` for a
     /// closed struct AND for an `@ignore` (tolerate-and-drop) rest row, which stores nothing. Every
     /// capture-only emission (struct field, `new()` line, wasm getter, encoding sidecars, serialize
@@ -1287,12 +1376,91 @@ impl RustRecord {
             .chain(self.rest.as_deref())
     }
 
+    /// Choose a deterministic generated identifier that cannot shadow a user-visible record field
+    /// or dynamic row. Record constructors and the open-table JSON visitor both introduce names of
+    /// their own (`first_key`, `<typed>_builder`, staging maps); row `@name`s are public, so those
+    /// helpers suffix themselves instead of silently renaming the row.
+    pub fn fresh_generated_member_ident(&self, preferred: &str) -> String {
+        let occupied = self
+            .fields
+            .iter()
+            .map(|field| field.name.clone())
+            .chain(self.dynamic_rows().map(|row| row.field_name.clone()))
+            .collect();
+        Self::fresh_generated_ident_from_occupied(preferred, occupied)
+    }
+
+    /// Choose a generated parameter name for the typed `+` open-table constructor door. Only
+    /// names that are ACTUALLY parameters of that constructor reserve the spelling: a loose row
+    /// named `first_key`/`first_value` remains an ordinary field and must not perturb the shipped
+    /// ABI. A restricted catch-all, by contrast, is a complete constructor argument and therefore
+    /// must be avoided. `also_reserved` makes the second synthesized parameter avoid the first.
+    pub fn fresh_open_table_non_empty_param_ident(
+        &self,
+        preferred: &str,
+        also_reserved: impl IntoIterator<Item = String>,
+    ) -> String {
+        let occupied = self
+            .fields
+            .iter()
+            .filter(|field| !field.optional && !field.rust_type.is_fixed_value())
+            .map(|field| field.name.clone())
+            .chain(
+                self.captured_dynamic_rows()
+                    .filter(|row| {
+                        !row.is_array_tail()
+                            && row.is_restricted()
+                            && !(self.is_typed_row(row) && self.is_non_empty_open_table())
+                    })
+                    .map(|row| row.field_name.clone()),
+            )
+            .chain(also_reserved)
+            .collect();
+        Self::fresh_generated_ident_from_occupied(preferred, occupied)
+    }
+
+    /// Choose the loose-builder parameter for a bounded typed open-table row.
+    /// It shares a wasm constructor with mandatory fixed fields and restricted catch-all rows, but
+    /// NOT with loose rows, so reserve exactly those parameter names rather than every public field.
+    pub fn fresh_bounded_typed_wasm_builder_ident(&self, preferred: &str) -> String {
+        let occupied = self
+            .fields
+            .iter()
+            .filter(|field| !field.optional && !field.rust_type.is_fixed_value())
+            .map(|field| field.name.clone())
+            .chain(
+                self.captured_dynamic_rows()
+                    .filter(|row| {
+                        !self.is_typed_row(row) && !row.is_array_tail() && row.is_restricted()
+                    })
+                    .map(|row| row.field_name.clone()),
+            )
+            .collect();
+        Self::fresh_generated_ident_from_occupied(preferred, occupied)
+    }
+
+    fn fresh_generated_ident_from_occupied(
+        preferred: &str,
+        occupied: std::collections::BTreeSet<String>,
+    ) -> String {
+        if !occupied.contains(preferred) {
+            return preferred.to_owned();
+        }
+        for suffix in 2.. {
+            let candidate = format!("{preferred}_{suffix}");
+            if !occupied.contains(candidate.as_str()) {
+                return candidate;
+            }
+        }
+        unreachable!("unbounded suffix search must find a fresh generated member identifier")
+    }
+
     /// Whether this record is the NonEmpty open table (`t = { + K_t => V_t, * K_r => V_r }`): the
     /// min-1 flavor, whose typed container must hold at least one entry. The predicate every
-    /// bound-carrying emission keys on (the `new(first_key, first_value)` door, the post-loop
-    /// deserialize check, the JSON visitor's assembly, the WIT constructor's two params).
+    /// bound-carrying emission keys on (the `new(first_key, first_value)` door, the checked CBOR
+    /// staging conversion, the JSON visitor's staged assembly, the WIT constructor's two params).
     pub fn is_non_empty_open_table(&self) -> bool {
-        self.is_open_table() && self.typed_row.as_deref().is_some_and(|t| t.non_empty)
+        self.is_open_table() && self.typed_row.as_deref().is_some_and(RestRow::is_non_empty)
     }
 
     /// Whether `row` is THIS record's open-table TYPED row. Pointer identity against `typed_row`,
@@ -1318,7 +1486,11 @@ impl RustRecord {
         // deserialize length check accounts each rest entry via `read_len.read_elems(1)` in the loop
         // + `read_len.finish()` after, rather than asserting a fixed count up front) and steers
         // `definite_info` to the additive branch that folds in `rest.len()`.
-        if self.rest.is_some() || self.typed_row.is_some() {
+        // An exact-zero declaration has no serialized entry, but decode must still walk a map of
+        // any length far enough to report `ForbiddenKey` rather than rejecting its header before
+        // seeing the offending key.  Serialization remains the ordinary fixed-field count because
+        // `definite_info` below contains no forbidden-member contribution.
+        if self.rest.is_some() || self.typed_row.is_some() || self.has_forbidden_fields() {
             return None;
         }
         let mut count = 0;

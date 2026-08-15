@@ -355,8 +355,13 @@ An [open struct-map](output_format#open-struct-maps-rest-rows) (`{ 1: uint, * K 
 unknown entries into a `rest` field. On the wasm boundary that field is a **read-only `rest()` getter**
 returning the minted map wrapper for the row's `K`/`V` shape (`MapU64ToAny`, `MapAnyToAny`, …, or the
 `PairMap`-backed wrapper under `@duplicates preserve`) — the same map-wrapper surface as any table.
-There is **no** `rest` constructor argument and **no setter** (v1): the field defaults empty and is
-mutated through the returned wrapper's own `insert`/`get`/`keys` API. The declared members keep their
+For a loose `*` / `0*` row there is **no** `rest` constructor argument and no setter (v1): the field
+defaults empty. The returned wrapper is a detached snapshot, so its `insert`/`get`/`keys` API changes
+that wrapper rather than the parent record. A restricted `+` / `1*` / bounded row instead crosses
+`new` as its complete checked structural wrapper, and `new` is fallible where boundary conversion
+re-enters that carrier; the getter remains read-only. An exact-zero fixed member changes the loose
+case too: its open record takes the complete rest wrapper at fallible `new`, so forbidden keys fail
+before the record exists, and exposes only the same snapshot getter. The declared members keep their
 ordinary per-field constructor arguments and getters.
 
 A **typed key domain** (`* K => V` with `K` a rule of your own rather than `uint`/`text`/`any`) adds no
@@ -399,9 +404,20 @@ The class carries **two different surfaces, one per row**:
 - the **catch-all** row keeps the ordinary
   [rest-row](#open-struct-map-rest-rows) contract: a **read-only `rest()` getter** returning the
   minted map wrapper for `K_r`/`V_r` (`MapMdToMd`, or `PairMapMdToMd` under `@duplicates preserve`),
-  no constructor argument and no setter. Its own entry count is `t.rest().len()`.
+  no setter. Loose rows have no constructor argument; restricted rows cross as a checked wrapper.
+  Its own entry count is `t.rest().len()`.
 
-`new()` is nullary — both rows default empty, exactly as a rest row does on a closed struct.
+For the loose `*` form, `new()` is nullary and both rows default empty. A typed `+` / `1*` row is the
+exception: `new(first_key, first_value)` enters the native `NonEmptyMap` (or preserve-mode
+`NonEmptyPairMap`) field directly, so the flattened typed surface has no operation that can empty it;
+the catch-all remains an empty-capable `rest()` wrapper.
+
+A bounded typed row remains checked at this boundary. Its `new` takes a loose typed-row builder and
+returns `Result`, including for a zero-minimum finite window: it converts that builder to the native
+`BoundedMap`/`BoundedPairMap` before construction. Its flattened `insert` also returns `Result` when
+a finite maximum would be exceeded. A restricted catch-all (and an open-struct rest row) is a checked
+structural wrapper passed whole to the fallible constructor; it is never a loose map a JS caller could
+use to erase the window.
 
 `keys()` returns what a *table* on the same key type returns: a bare `Vec` when `K_t` is wasm-native,
 the minted `<K_t>List` class otherwise. The list is named after the key's **use-site** identifier, not

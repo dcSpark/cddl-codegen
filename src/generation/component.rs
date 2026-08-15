@@ -911,9 +911,10 @@ impl Emitter<'_, '_> {
             }
             WitType::List(inner) => {
                 // `iter()` rather than a container-specific door: every rust collection this face can
-                // reach (`Vec`, `NonEmptyVec`, `BTreeMap`, `OrderedHashMap`, `OrderedSet`, `PairMap`)
-                // has one, and the `|(k, v)|` head below destructures both a `&(K, V)` element and a
-                // map's `(&K, &V)` pair identically under default binding modes.
+                // reach (`Vec`, `NonEmptyVec`, `BTreeMap`, `OrderedHashMap`, `NonEmptyMap`,
+                // `BoundedMap`, `OrderedSet`, `PairMap`, `NonEmptyPairMap`, `BoundedPairMap`)
+                // has one, and the `|(k, v)|` head below destructures both a `&(K, V)` element
+                // and a map's `(&K, &V)` pair identically under default binding modes.
                 let (head, element) = match &**inner {
                     WitType::Tuple(parts) => {
                         let names: Vec<String> =
@@ -1669,13 +1670,30 @@ impl Emitter<'_, '_> {
         match &member.op {
             // Getters read through ONE shared borrow and clone out of it. Minting a handle inside the
             // closure is safe — it constructs a NEW `RefCell`, it never borrows an existing one.
-            WitMemberOp::Getter { field } | WitMemberOp::RestGetter { field } => {
+            WitMemberOp::Getter { field } => {
                 lines.push("let me = self.0.borrow();".to_owned());
                 let ty = member
                     .result
                     .as_ref()
                     .expect("a getter always returns something");
                 let conv = self.rust_to_wit(ty, &format!("me.{field}"), alias, false);
+                lines.push(self.returned(&conv, member.fallible));
+            }
+            WitMemberOp::RestGetter {
+                field,
+                via_accessor,
+            } => {
+                lines.push("let me = self.0.borrow();".to_owned());
+                let ty = member
+                    .result
+                    .as_ref()
+                    .expect("a rest getter always returns something");
+                let source = if *via_accessor {
+                    format!("me.{field}()")
+                } else {
+                    format!("me.{field}")
+                };
+                let conv = self.rust_to_wit(ty, &source, alias, false);
                 lines.push(self.returned(&conv, member.fallible));
             }
             // An optional FIXED-value field stores only whether it was present, which is a `bool` on

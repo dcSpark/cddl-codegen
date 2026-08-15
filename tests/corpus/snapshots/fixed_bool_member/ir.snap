@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "v",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Fixed(
                                 Bool(
@@ -68,6 +69,7 @@ expression: ir
                     },
                     RustField {
                         name: "x",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -105,6 +107,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -156,6 +159,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "k",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Fixed(
                                 Bool(
@@ -200,6 +204,7 @@ expression: ir
                     },
                     RustField {
                         name: "x",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -241,6 +246,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -271,6 +277,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "v2",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Fixed(
                                 Null,
@@ -313,6 +320,7 @@ expression: ir
                     },
                     RustField {
                         name: "x2",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -351,6 +359,7 @@ expression: ir
                     },
                     RustField {
                         name: "v3",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Fixed(
                                 Bool(
@@ -395,6 +404,7 @@ expression: ir
                     },
                     RustField {
                         name: "x3",
+                        source_index: 3,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -432,6 +442,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

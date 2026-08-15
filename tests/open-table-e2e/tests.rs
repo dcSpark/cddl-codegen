@@ -213,4 +213,135 @@ mod open_table {
             1
         );
     }
+
+    #[test]
+    fn non_empty_public_typed_row_cannot_drop_its_last_entry() {
+        let key = Pid::new(vec![0xaa, 0xbb, 0xcc, 0xdd]).unwrap();
+        let mut v = NonEmpty::new(key.clone(), 1);
+        let err = v
+            .entries
+            .remove(&key)
+            .expect_err("the restricted public carrier must refuse removing its last entry");
+        assert!(
+            format!("{err:?}").contains("RangeCheck"),
+            "the public mutation door must retain the shared min-1 payload, got {err:?}"
+        );
+        assert_eq!(v.entries.len(), 1, "the failed removal leaves the carrier intact");
+        assert_eq!(
+            v.to_canonical_cbor_bytes(),
+            bytes("a1 44aabbccdd 01"),
+            "a public mutation attempt cannot produce invalid empty-table CBOR"
+        );
+    }
+
+    #[test]
+    fn non_empty_preserve_uses_the_pair_carrier() {
+        let key = Pid::new(vec![0xaa, 0xbb, 0xcc, 0xdd]).unwrap();
+        let mut v = NonEmptyPreserve::new(key.clone(), 1);
+        v.entries.insert(key.clone(), 2);
+        assert_eq!(v.entries.len(), 2, "preserve retains duplicate typed keys");
+        // The public restricted pair-map has no removal/clear operation, so the only mutator grows
+        // it. The two-entry vector re-emits as a valid duplicate-keyed CBOR map.
+        assert_eq!(
+            v.to_canonical_cbor_bytes(),
+            bytes("a2 44aabbccdd 01 44aabbccdd 02")
+        );
+    }
+
+    #[test]
+    fn bounded_dynamic_rows_refuse_below_and_above_at_each_wire_partition() {
+        // Open struct: fixed key 1 plus the rest row. Its window counts ONLY the unknown rest
+        // keys, never the declared member that shares the enclosing map.
+        for (wire, label) in [
+            ("a2 01 00 02 6161", "below"),
+            ("a5 01 00 02 6161 03 6162 04 6163 05 6164", "above"),
+        ] {
+            let err = BoundedRest::from_cbor_bytes(&bytes(wire)).unwrap_err();
+            assert!(
+                format!("{err:?}").contains("RangeCheck"),
+                "the open-struct {label}-window wire must fail its rest carrier: {err:?}"
+            );
+        }
+        let open = BoundedRest::from_cbor_bytes(&bytes("a3 01 00 02 6161 03 6162")).unwrap();
+        assert_eq!(open.rest.len(), 2);
+        assert_eq!(
+            open.to_cbor_bytes(),
+            bytes("a3 01 00 02 6161 03 6162"),
+            "the in-window open-struct row still round-trips"
+        );
+
+        // The typed row counts only bytes-key entries. A catch-all entry beside them neither helps
+        // the lower bound nor consumes its finite maximum.
+        for (wire, label) in [
+            ("a1 01 6161", "below"),
+            (
+                "a5 44aaaaaaaa 01 44bbbbbbbb 02 44cccccccc 03 44dddddddd 04 01 6161",
+                "above",
+            ),
+        ] {
+            let err = BoundedTyped::from_cbor_bytes(&bytes(wire)).unwrap_err();
+            assert!(
+                format!("{err:?}").contains("RangeCheck"),
+                "the typed-row {label}-window wire must fail its own carrier: {err:?}"
+            );
+        }
+        let typed = BoundedTyped::from_cbor_bytes(&bytes(
+            "a3 44aaaaaaaa 01 44bbbbbbbb 02 01 6161",
+        ))
+        .unwrap();
+        assert_eq!(typed.entries.len(), 2);
+        assert_eq!(typed.rest.len(), 1);
+
+        // Conversely, the catch-all row counts only the complement of the bytes major. The one
+        // typed entry is deliberately present in every vector so the two partitions cannot leak
+        // into one another through the common enclosing map loop.
+        for (wire, label) in [
+            ("a2 44aaaaaaaa 01 01 6161", "below"),
+            (
+                "a5 44aaaaaaaa 01 01 6161 02 6162 03 6163 04 6164",
+                "above",
+            ),
+        ] {
+            let err = BoundedCatchAll::from_cbor_bytes(&bytes(wire)).unwrap_err();
+            assert!(
+                format!("{err:?}").contains("RangeCheck"),
+                "the catch-all {label}-window wire must fail its own carrier: {err:?}"
+            );
+        }
+        let captured = BoundedCatchAll::from_cbor_bytes(&bytes(
+            "a3 44aaaaaaaa 01 01 6161 617a 6162",
+        ))
+        .unwrap();
+        assert_eq!(captured.entries.len(), 1);
+        assert_eq!(captured.rest.len(), 2);
+    }
+
+    #[test]
+    fn bounded_preserve_row_counts_retained_duplicate_pairs() {
+        // BoundedPairMap counts PAIRS, not distinct keys: two byte-identical typed keys are two
+        // admitted rows; one and four are the below/above boundary failures for 2*3.
+        for (wire, label) in [
+            ("a1 44aaaaaaaa 01", "below"),
+            (
+                "a4 44aaaaaaaa 01 44aaaaaaaa 02 44aaaaaaaa 03 44aaaaaaaa 04",
+                "above",
+            ),
+        ] {
+            let err = BoundedPreserve::from_cbor_bytes(&bytes(wire)).unwrap_err();
+            assert!(
+                format!("{err:?}").contains("RangeCheck"),
+                "the preserve row's {label}-window pair count must fail: {err:?}"
+            );
+        }
+        let in_window = BoundedPreserve::from_cbor_bytes(&bytes(
+            "a2 44aaaaaaaa 01 44aaaaaaaa 02",
+        ))
+        .unwrap();
+        assert_eq!(in_window.entries.len(), 2, "both duplicate pairs are retained");
+        assert_eq!(
+            in_window.to_cbor_bytes(),
+            bytes("a2 44aaaaaaaa 01 44aaaaaaaa 02"),
+            "the pair-map replay keeps the duplicate count and order"
+        );
+    }
 }

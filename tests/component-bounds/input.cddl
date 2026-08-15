@@ -66,3 +66,14 @@ bounded = {
 mapped = {
   entries: { * uint => sized_list },
 }
+
+; B5-403: each dynamic map row owns its occurrence window rather than applying it to the enclosing
+; object. WIT necessarily despecializes these checked carriers to list<tuple<…>>, so the generated
+; guest must restore the matching BoundedMap before it calls the native record constructor.
+dynamic_open_struct_rest = { 1: uint, 2*3 uint => tstr }
+dynamic_open_table_typed = { 2*3 uint => tstr, * tstr => uint }
+dynamic_open_table_catch_all = { * uint => tstr, 2*3 tstr => uint }
+
+; An exact-zero fixed key is absent from the resource members; unlike an ordinary loose rest row,
+; its complete list crosses the fallible native construction door so the key cannot be inserted.
+exact_zero_open = { required: uint, 0*0 forbidden: uint, * tstr => uint }

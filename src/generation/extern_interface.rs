@@ -180,9 +180,53 @@ pub(crate) fn render_group_body(
     types: &IntermediateTypes,
 ) -> RenderResult {
     reject_custom_serialize(rule, metadata)?;
-    let mut members = Vec::with_capacity(record.fields.len());
-    for field in &record.fields {
-        members.push(render_group_member(rule, record.rep, field, types)?);
+    let mut members = Vec::with_capacity(record.fields.len() + record.forbidden_fields.len());
+    // A `0*0` member has no generated Rust value field but is still part of a materialized group
+    // contract.  Do not project it as `?`: that would admit the key and loses the invariant for an
+    // importing consumer.
+    let mut ordered = record
+        .fields
+        .iter()
+        .map(|field| (field.source_index, Some(field), None))
+        .chain(
+            record
+                .forbidden_fields
+                .iter()
+                .map(|field| (field.source_index, None, Some(field))),
+        )
+        .collect::<Vec<_>>();
+    ordered.sort_by_key(|(source_index, _, _)| *source_index);
+    for (_, ordinary, forbidden) in ordered {
+        if let Some(field) = ordinary {
+            members.push(render_group_member(rule, record.rep, field, types)?);
+            continue;
+        }
+        let field = forbidden.expect("one ordered member kind");
+        let key_s = match &field.key {
+            FixedValue::Uint(x) => format!("{x}: "),
+            FixedValue::Text(x) if is_cddl_bareword(x) => format!("{x}: "),
+            FixedValue::Text(x) => format!("{x:?}: "),
+            _ => return Err(unrenderable(rule, "a non-uint/text forbidden map key")),
+        };
+        let mut member = format!(
+            "0*0 {key_s}{}",
+            render_rust_type(
+                &format!("{rule} forbidden member `{}`", field.name),
+                &field.rust_type,
+                types
+            )?
+        );
+        let derived_name = match &field.key {
+            FixedValue::Uint(value) => format!("key_{value}"),
+            FixedValue::Text(value) => value.clone(),
+            _ => unreachable!("parser admits only uint/text exact-zero map keys"),
+        };
+        if field.name != derived_name {
+            // The comment DSL attaches to the preceding member; it must end before the group's
+            // closing `)` so that delimiter remains syntax rather than comment text.
+            member.push_str(&format!(" ; @name {}\n", field.name));
+        }
+        members.push(member);
     }
     Ok(format!("({})", members.join(", ")))
 }
@@ -1420,7 +1464,7 @@ fn format_rule_line(source: &str, body: &str, annotations: &[String]) -> String 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intermediate::{CDDLIdent, VariantIdent};
+    use crate::intermediate::{CDDLIdent, ForbiddenField, VariantIdent};
 
     fn types_with_sources(sources: &[(&str, &str)]) -> IntermediateTypes<'static> {
         let mut types = IntermediateTypes::new();
@@ -1963,6 +2007,7 @@ mod tests {
         RustRecord {
             rep,
             fields,
+            forbidden_fields: vec![],
             rest: None,
             typed_row: None,
         }
@@ -2031,6 +2076,69 @@ mod tests {
         assert_eq!(
             render_group_body("m", &rec, None, &t).unwrap(),
             "(1: uint, foo: tstr, \"has space\": bool)"
+        );
+    }
+
+    /// Extern-interface group-body rendering has only `?` as its absence spelling. A parser that
+    /// normalized a source `*` / `0*n` / `*n` unique keyed map field into `RustField::optional`
+    /// must therefore export it as `?`, letting a cross-crate consumer reconstruct the same
+    /// Option carrier without preserving an impossible second fixed key occurrence.
+    #[test]
+    fn group_body_map_rep_optional_fields_export_as_question_mark() {
+        let t = IntermediateTypes::new();
+        let rec = record(
+            Representation::Map,
+            vec![
+                field(
+                    "required",
+                    prim(Primitive::U64),
+                    false,
+                    Some(FixedValue::Text("required".to_owned())),
+                ),
+                field(
+                    "star",
+                    prim(Primitive::U64),
+                    true,
+                    Some(FixedValue::Text("star".to_owned())),
+                ),
+                field(
+                    "bounded",
+                    prim(Primitive::Str),
+                    true,
+                    Some(FixedValue::Text("bounded".to_owned())),
+                ),
+            ],
+        );
+        assert_eq!(
+            render_group_body("m", &rec, None, &t).unwrap(),
+            "(required: uint, ? star: uint, ? bounded: tstr)"
+        );
+    }
+
+    #[test]
+    fn group_body_map_rep_exact_zero_field_stays_exact_zero() {
+        let t = IntermediateTypes::new();
+        let mut rec = record(
+            Representation::Map,
+            vec![
+                field(
+                    "required",
+                    prim(Primitive::U64),
+                    false,
+                    Some(FixedValue::Text("required".to_owned())),
+                )
+                .with_source_index(1),
+            ],
+        );
+        rec.forbidden_fields.push(ForbiddenField {
+            key: FixedValue::Text("forbidden".to_owned()),
+            name: "forbidden".to_owned(),
+            rust_type: prim(Primitive::U64),
+            source_index: 0,
+        });
+        assert_eq!(
+            render_group_body("m", &rec, None, &t).unwrap(),
+            "(0*0 forbidden: uint, required: uint)"
         );
     }
 

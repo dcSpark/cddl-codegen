@@ -5,4 +5,5 @@
 ; the `; @name` comment and NO `@rust_name` pins), once via `--extern-import` at the minted export —
 ; and the generated rust must be byte-identical (the acceptance criterion).
 my_holder = [v: protocol_version, extra: uint]
+my_open_holder = { embedded: exact_zero_map_group_framed, * tstr => uint }
 my_cert = [ stake_registration // stake_delegation // host ]

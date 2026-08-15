@@ -35,8 +35,14 @@ dupp = {
 ; the published open region is the permissive one.
 anyval = { * policy_id => any, * md => any }
 
-; The NonEmpty twin (`{+ …}`) on the JSON face: the min-1 door is re-checked after the visitor has
-; read every member, and it counts TYPED bindings — an object of purely captured members refuses.
+; The NonEmpty twin (`{+ …}`) on the JSON face stages every member then constructs from the first
+; TYPED binding — an object of purely captured members refuses.
 ; JSON Schema has no way to say "at least one property matching K_t", so the published schema is the
 ; unbounded one; the bound lives in the hand-written `Deserialize` only.
 ne_labels = { + policy_id => uint, * md => uint }
+
+; B5-403 boundary vectors. Each cardinality belongs to its OWN dynamic region; object-wide schema
+; keywords would misstate that fact, so serde enforces them after staging the matching row.
+bounded_struct = { 1: uint, 2*3 text => uint }
+bounded_typed = { 2*3 policy_id => uint, * md => uint }
+bounded_catch_all = { * policy_id => uint, 2*3 md => uint }

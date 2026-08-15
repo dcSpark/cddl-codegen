@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "first",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 Str,
@@ -72,6 +73,7 @@ expression: ir
                     },
                     RustField {
                         name: "second",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -115,6 +117,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -166,6 +169,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "key_1",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 Str,
@@ -208,6 +212,7 @@ expression: ir
                     },
                     RustField {
                         name: "key_2",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -249,6 +254,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

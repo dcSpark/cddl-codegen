@@ -73,6 +73,7 @@ body_md = '''## Next work items, in priority order
 
 '''
 entries = [
+  "testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
   "testing.grammar-fuzzer-escalations",
   "testing.grammar-fuzzer.embed-site-alias-roots",
   "testing.grammar-fuzzer.arbitrary-supported-ast",
@@ -92,6 +93,9 @@ entries = [
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
   "testing.generated-local-collision.scope-wide-probe",
+  "testing.synthesized-name-referenced-never-minted-e0425-flavor",
+  "testing.generated-json-schema.partition-cardinality-position-semantics",
+  "testing.emit-tests-gate-asserts-round-trip-green-cannot",
   "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism",
   "part-why-parity-gate-cannot-host-generalization",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
@@ -172,7 +176,6 @@ entries = [
   "testing.process-boundary.rustfmt-pre-rustc",
   "testing.process-boundary.another-profile-escape",
   "testing.parallel-constructor-fixture-diversity-parser-over-external-input",
-  "testing.synthesized-name-referenced-never-minted-e0425-flavor",
   "testing.multifile-reference-position-coverage-two-position-keyed-escapes",
   "testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near",
   "testing.armed-idle-harness-arms-empty-head-ledgers-zero",
@@ -208,7 +211,6 @@ entries = [
   "testing.citation-resolves-naming-wrong-thing-invisible-citation-lint",
   "testing.matrix-s-note-names-panic-site-aborts-nothing",
   "testing.containment-note-s-stated-reason-go-false-any",
-  "testing.emit-tests-gate-asserts-round-trip-green-cannot",
   "testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible",
   "testing.cargo-feature-generated-crate-s-dependency-change-what",
   "testing.documented-flag-pairing-broken-fixture-stays-green-because",
@@ -351,6 +353,17 @@ evidence_ids = ["testing.incident-observation.build-registration-class-reference
 incident_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one", "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"]
 
 [[record]]
+id = "testing.admission-path.emit-tests-gate-asserts-round-trip-green-cannot"
+title = "Admission for testing.emit-tests-gate-asserts-round-trip-green-cannot."
+
+[record.payload]
+kind = "testing_system_admission"
+admission_kind = "silent_corruption"
+claim_md = '''The preserved owner detail records a reproducible wrong-but-green mint-selection class that the proposed system would detect.
+'''
+evidence_ids = ["testing.proof.emit-tests-gate-asserts-round-trip-green-cannot"]
+
+[[record]]
 id = "testing.admission-path.gate-demands-premise-probed-against-gate-evidence-about"
 title = "Admission for testing.gate-demands-premise-probed-against-gate-evidence-about."
 
@@ -361,6 +374,28 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof", "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"]
 incident_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one", "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"]
+
+[[record]]
+id = "testing.admission-path.generated-json-schema.partition-cardinality-position-semantics"
+title = "Admission for testing.generated-json-schema.partition-cardinality-position-semantics."
+
+[record.payload]
+kind = "testing_system_admission"
+admission_kind = "silent_corruption"
+claim_md = '''The preserved owner detail records a reproducible generated-schema false-contract class that the proposed system would detect.
+'''
+evidence_ids = ["testing.proof.generated-json-schema.partition-cardinality-position-semantics"]
+
+[[record]]
+id = "testing.admission-path.generated-local-collision.scope-wide-probe"
+title = "Admission for testing.generated-local-collision.scope-wide-probe."
+
+[record.payload]
+kind = "testing_system_admission"
+admission_kind = "silent_corruption"
+claim_md = '''The preserved owner detail records a reproducible generation-green/emitted-crate-red class that the proposed system would detect.
+'''
+evidence_ids = ["testing.proof.generated-local-collision.scope-wide-probe"]
 
 [[record]]
 id = "testing.admission-path.grammar-fuzzer-embed-site-alias-roots"
@@ -397,6 +432,17 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof", "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"]
 incident_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one", "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"]
+
+[[record]]
+id = "testing.admission-path.synthesized-name-referenced-never-minted-e0425-flavor"
+title = "Admission for testing.synthesized-name-referenced-never-minted-e0425-flavor."
+
+[record.payload]
+kind = "testing_system_admission"
+admission_kind = "silent_corruption"
+claim_md = '''The preserved owner detail records a reproducible generation-green/emitted-wasm-crate-red class that the proposed system would detect.
+'''
+evidence_ids = ["testing.proof.synthesized-name-referenced-never-minted-e0425-flavor"]
 
 [[record]]
 id = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
@@ -1836,27 +1882,25 @@ body_md = '''- **An `--emit-tests` gate that asserts only "the round-trip is gre
   literal from the same `MintValue` the renderer consumes and diff the two — so that no bounded
   mint can be wrong-but-passing. Trigger, on the axis the cost grows along: the COUNT of
   minted-value sites whose STORAGE space differs from the CDDL value space, measurable by whoever
-  next adds a bounded mint. Today that count is one (the `N64` magnitude, transformed through
-  `nint_bounds_to_u64`); a SECOND such site means the working rule is being carried by hand in more
-  than one place, and hand-carrying is what produced this instance.
+  next adds a bounded mint.
+
+  **Trigger fired during B5-403 (2026-08-15).** `N64` magnitude acquired a second value-space
+  consumer: the dynamic-row minter's fixed-key collision search. It initially treated magnitude 0
+  (`-1` on the CDDL wire) as equal to a fixed unsigned key 0 and silently shifted the minted key run
+  away from its intended baseline. The focused unit regression now distinguishes N64 magnitude 0
+  from uint 0 while retaining its equality with nint -1, but bounds selection and fixed-key
+  collision remain two separately hand-carried conversions of the same storage/value boundary.
 '''
-work_state = "armed"
+work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "silent_wrong_bytes"
+acceptance_md = '''Give minted primitive keys one canonical CDDL-value view and route bounds selection, fixed-key collision checks, and emitted-literal intent assertions through it. Sweep signed, unsigned, and N64 storage representations at both endpoints, including N64 magnitude 0 beside fixed uint 0 and fixed nint -1, and assert the emitted source spelling as well as round-trip success. Remove the duplicated hand conversions only after the differential is red-first against both recorded failures.
+'''
+priority_rationale_md = '''The record's recurrence threshold fired: a second helper independently translated N64 magnitude storage into CDDL value space and review caught a wrong-but-green mint selection.
+'''
 control_ids = ["testing.guard.emit-tests-gate-asserts-round-trip-green-cannot"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.emit-tests-gate-asserts-round-trip-green-cannot"
-dimension = "An `--emit-tests` gate that asserts only \"the round-trip is green\" cannot tell an INTENDED minted value from a wrong one that happens to land in-window."
-observable = "- **An `--emit-tests` gate that asserts only \"the round-trip is green\" cannot tell an INTENDED minted value from a wrong one that happens to land in-window.** Proven by the bounded-map-key minter: choosing a `nint` key base in VALUE space emitted that base as a u64 MAGNITUDE, so `{* nint .le -5 => uint}` minted magnitude 18446744073709551611 — wire value about -1.8e19, which SATISFIES `<= -5`, so the emitted round-trip passed. A false green, and the harder half to notice: the sign-mirror `{* nint .ge -5 => uint}` failed loudly on the identical wrong base, so a fixture carrying only ONE sign of the window would have certified the defect in whichever direction it was pointed. The conformance oracle (`--emit-tests-conformance`) cannot see this class either — the minted value is genuinely spec-VALID, merely degenerate — which is why it needs a layer of its own rather than a wider oracle. The standing rule that covers this today is IN FORCE and lives in `tests/README.md` § \"Authoring standard for a bounded-domain emit-tests fixture\" (both signs/endpoints of the window; the gate pins the minted SPELLING, compared whitespace-stripped, not just the round-trip verdict), with `tests/emit-tests-bounded-key/` as that fixture. What remains future here is only the mechanical layer: a mint-intent assertion — derive each bounded mint's expected literal from the same `MintValue` the renderer consumes and diff the two — so that no bounded mint can be wrong-but-passing. Trigger, on the axis the cost grows along: the COUNT of minted-value sites whose STORAGE space differs from the CDDL value space, measurable by whoever next adds a bounded mint. Today that count is one (the `N64` magnitude, transformed through `nint_bounds_to_u64`); a SECOND such site means the working rule is being carried by hand in more than one place, and hand-carrying is what produced this instance."
-action_on_fire_md = '''Set testing.emit-tests-gate-asserts-round-trip-green-cannot to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.emit-tests-gate-asserts-round-trip-green-cannot's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
+admission_ids = ["testing.admission-path.emit-tests-gate-asserts-round-trip-green-cannot"]
 
 [[record]]
 id = "testing.emitted-shape-lint-classes-outside-clippy-all-beyond"
@@ -2930,6 +2974,37 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
+id = "testing.generated-json-schema.partition-cardinality-position-semantics"
+title = "Generated JSON Schema needs a position-semantics oracle for row-local cardinality inside aggregate objects."
+
+[record.payload]
+kind = "work"
+body_md = '''B5-403 review found that delegating a restricted flattened dynamic row to
+`BoundedMap`'s standalone `JsonSchema` lifts that map's `minProperties`/`maxProperties` onto the
+containing object. The keywords then count fixed fields and sibling dynamic rows, not the row-local
+partition the CDDL occurrence constrains, so the published schema can reject valid JSON while every
+runtime Rust/CBOR/serde door remains correct. No pending roadmap item owned this: the hand-authored
+schema assertion record is specifically about consumer-supplied schemas, and the JSON-to-TypeScript
+gates consume whatever generated schema they receive without judging its accepted value set.
+
+Focused B5-403 tests now require schema silence for bounded open-struct rest, typed open-table, and
+catch-all positions, while runtime JSON tests execute below/in/above each row window. The missing
+system is a cross-position schema-semantics oracle: standalone bounded maps are the positive control
+that must retain property counts; partitioned/flattened rows must not claim object-wide counts; and
+minted in-window values with unrelated fixed/sibling properties must validate against the emitted
+schema while below/above runtime values remain rejected by the row's checked door.
+'''
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "wrong_public_api"
+acceptance_md = '''Extend the generated-schema validation harness with a registry-derived position grid covering standalone bounded maps, flattened open-struct rows, and both open-table partitions under default and preserve JSON profiles. For each position, validate minted in-window serializations against `schema_for!(T)`, include unrelated fixed/sibling properties that would distinguish partition-local from object-wide counts, assert below/above runtime rejection, and pin whether `minProperties`/`maxProperties` are present or deliberately absent. A newly added bounded aggregate position must join the grid through the same registry rather than a hand-only fixture list.
+'''
+priority_rationale_md = '''The shipped-schema contract could have become silently stricter than the CDDL/runtime contract; code review, not an existing systematic oracle, caught the first instance.
+'''
+admission_ids = ["testing.admission-path.generated-json-schema.partition-cardinality-position-semantics"]
+
+[[record]]
 id = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 title = "The generated-local collision class is refused, not mangled — and the refusal's shape scope comes from a bounded probe matrix, so a position that matrix never touched can still ship an uncompilable crate."
 legacy_aliases = ["Next work 8"]
@@ -2997,6 +3072,13 @@ body_md = '''    - **Residual: the scope is only as wide as the probe.** Members
       embedded plain group / group-choice arm) × three profiles × two field types, plus a
       `--wasm=true` pass. NOT probed: a field whose type is a named rule or newtype, `.cbor`-payload
       and bounded-type member positions, and the `--json-schema-export` / `--component` faces.
+
+      **Trigger fired during B5-403 (2026-08-15).** Restricted dynamic rows introduced generated
+      constructor/staging bindings in exactly the unprobed bounded/component positions. Legal row
+      names `first_key`, `first_value`, and `<typed>_builder` initially produced duplicate or
+      shadowed constructor bindings across native Rust, wasm, WIT, and JSON. `first_key` and
+      `first_value` are both in `GENERATED_LOCAL_PROBED_SAFE`; focused collision regressions now
+      protect this instance, but the scope-wide product remains absent.
 '''
 signal_md = '''      **Reopening signal:** a generated crate fails `cargo check` with a shadowed-binding error
       (E0599/E0308/E0124) on a field whose name is in `GENERATED_LOCAL_PROBED_SAFE`, or on a
@@ -3004,23 +3086,16 @@ signal_md = '''      **Reopening signal:** a generated crate fails `cargo check`
       binding, so the report arrives pre-diagnosed and says exactly which row to widen.
 
 '''
-work_state = "armed"
+work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
+acceptance_md = '''Build the scope-wide compile probe promised by this record: enumerate every `GENERATED_LOCAL_PROBED_SAFE` and scoped-reserved spelling over named/newtype, `.cbor` payload, bounded-member, JSON-schema, and component positions; compile every legal cell and pin each intentional refusal. Derive the spelling set from the source registry so a newly added generated local cannot silently miss the product. Include the B5-403 dynamic-row constructor/staging cells as permanent residents.
+'''
+priority_rationale_md = '''The exact promotion trigger fired in an explicitly unprobed bounded/component position; the focused fix does not close the remaining product.
+'''
 control_ids = ["testing.guard.generated-local-collision-scope-wide-probe"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.generated-local-collision.scope-wide-probe"
-dimension = "Residual: the scope is only as wide as the probe."
-observable = "- **Residual: the scope is only as wide as the probe.** Membership and per-name `ReservedScope` were measured over five shapes (array-rep / map-rep / tagged record / embedded plain group / group-choice arm) × three profiles × two field types, plus a `--wasm=true` pass. NOT probed: a field whose type is a named rule or newtype, `.cbor`-payload and bounded-type member positions, and the `--json-schema-export` / `--component` faces. **Reopening signal:** a generated crate fails `cargo check` with a shadowed-binding error (E0599/E0308/E0124) on a field whose name is in `GENERATED_LOCAL_PROBED_SAFE`, or on a reserved name used in a shape outside its declared scope — the compile error names the binding, so the report arrives pre-diagnosed and says exactly which row to widen."
-action_on_fire_md = '''Set testing.generated-local-collision.scope-wide-probe to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.generated-local-collision.scope-wide-probe's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
+admission_ids = ["testing.admission-path.generated-local-collision.scope-wide-probe"]
 
 [[record]]
 id = "testing.generic-raw-bytes-base-refused-generic-extern-base"
@@ -5815,6 +5890,98 @@ priority_rationale_md = '''The parent defect owns repair; this record owns the s
 '''
 
 [[record]]
+id = "testing.proof-gap.wasm-open-rest-owned-clone-is-not-a-mutation-door"
+title = "Behavioral regression gap for wasm open-rest parent mutation."
+
+[record.payload]
+kind = "work"
+work_state = "ready"
+work_intent = "add_regression"
+work_kind = "regression_gap"
+risk = "wrong_public_api"
+acceptance_md = '''Generate ordinary and duplicate-preserving loose open records, mutate each through the wasm API, then reread, serialize, and decode the same parent record to prove the entry changed parent-owned state rather than a detached getter clone.
+'''
+priority_rationale_md = '''The existing door-vocabulary gate proves method presence only; the parent defect needs an executed aliasing/state-transfer assertion before repair can be trusted.
+'''
+
+[[record]]
+id = "testing.proof.emit-tests-gate-asserts-round-trip-green-cannot"
+title = "Cycle 4 incident evidence for testing.emit-tests-gate-asserts-round-trip-green-cannot."
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "regression_pin"
+claim_md = '''B5-403's dynamic-row key minter reproduced a wrong-but-green N64 value-space conversion that a round-trip-only assertion did not distinguish.
+'''
+freshness = "live"
+reference_ids = ["test-cycle4-emit-tests-bounded-map-key-execute"]
+unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent mint-value conversions.
+'''
+refresh_reference_id = "test-cycle4-emit-tests-bounded-map-key-execute"
+
+[record.payload.scope]
+surfaces = ["dynamic-row key minting", "owner-recorded-failure-class"]
+faces = ["rust"]
+
+[[record]]
+id = "testing.proof.generated-json-schema.partition-cardinality-position-semantics"
+title = "Cycle 4 incident evidence for testing.generated-json-schema.partition-cardinality-position-semantics."
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "regression_pin"
+claim_md = '''B5-403 review reproduced row-local bounds being projected as object-wide JSON Schema property counts before the focused repair removed that false contract.
+'''
+freshness = "live"
+reference_ids = ["test-cycle4-open-table-json-e2e"]
+unprobed_remainder_md = '''The evidence proves the admitted flattened-row class only; it does not establish a closed denominator over future aggregate positions.
+'''
+refresh_reference_id = "test-cycle4-open-table-json-e2e"
+
+[record.payload.scope]
+surfaces = ["generated JSON Schema", "owner-recorded-failure-class"]
+faces = ["json"]
+profiles = ["json", "preserve"]
+
+[[record]]
+id = "testing.proof.generated-local-collision.scope-wide-probe"
+title = "Cycle 4 incident evidence for testing.generated-local-collision.scope-wide-probe."
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "regression_pin"
+claim_md = '''B5-403 reproduced legal dynamic-row names colliding with constructor and staging bindings across previously unprobed bounded and component positions.
+'''
+freshness = "live"
+reference_ids = ["test-cycle4-open-table-generated-constructor-collisions"]
+unprobed_remainder_md = '''The evidence proves the admitted dynamic-row positions only; it does not establish a closed denominator over generated locals and legal source positions.
+'''
+refresh_reference_id = "test-cycle4-open-table-generated-constructor-collisions"
+
+[record.payload.scope]
+surfaces = ["generated constructor and staging bindings", "owner-recorded-failure-class"]
+faces = ["component", "json", "rust", "wasm"]
+
+[[record]]
+id = "testing.proof.synthesized-name-referenced-never-minted-e0425-flavor"
+title = "Cycle 4 incident evidence for testing.synthesized-name-referenced-never-minted-e0425-flavor."
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "regression_pin"
+claim_md = '''B5-403 reproduced a requested bounded-map wrapper whose emitted keys method referenced a companion list wrapper absent from that scope's mint path.
+'''
+freshness = "live"
+reference_ids = ["test-cycle4-workspace-key-requests-rest-row-contract"]
+unprobed_remainder_md = '''The evidence proves the admitted requested bounded-map companion class only; it does not establish the reference-set subset invariant for every wrapper family.
+'''
+refresh_reference_id = "test-cycle4-workspace-key-requests-rest-row-contract"
+
+[record.payload.scope]
+surfaces = ["owner-recorded-failure-class", "requested wrapper companion minting"]
+faces = ["cross-crate", "wasm"]
+
+[[record]]
 id = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 title = "Historical execution proof for the warm-up dep-universe lock-trust gap."
 
@@ -6768,32 +6935,30 @@ body_md = '''- **Synthesized-name residual: the referenced-but-never-minted (E04
   by `synthesized_name_interaction_sweep` (families × interactions → graceful rejection with the
   colliding ident named, or a compiling batched wasm crate; see tests/README.md § "Synthesized-name
   interaction sweep + duplicate-ident backstop"). The remaining flavor is E0425: an emitter that
-  REFERENCES a synthesized wrapper name no mint path emits. It stays owned by the compile gates
-  (`wasm_matrix_compiles` + the full-tier recombination wasm leg). If it recurs outside their reach,
-  escalate to a scoped generation-time invariant — "every synthesized wrapper name an emitter
-  references must be in the minted set" — the reference-side complement of the emission-side
-  duplicate-ident backstop. (A fourth, CROSS-CRATE flavor — duplicate symbols at link under
+  REFERENCES a synthesized wrapper name no mint path emits.
+
+  **Trigger fired during B5-403 (2026-08-15).** A dependency-side requested bounded map wrapper
+  emitted its `keys()` method referencing `<Key>List`, while the requested-wrapper path minted only
+  the map class; the own-spec walk that normally mints the companion list had no IR owner in that
+  scope. The focused repair explicitly closes requested map wrappers over their key-list companion,
+  but the promised reference-set ⊆ minted-set invariant remains absent. Build that scoped
+  generation-time invariant — "every synthesized wrapper name an emitter references must be in the
+  minted set" — as the reference-side complement of the emission-side duplicate-ident backstop.
+  (A fourth, CROSS-CRATE flavor — duplicate symbols at link under
   `--extern-wrapper-index`, invisible to any in-crate layer — is owned by the wrapper-participation
   grid's per-mode wasm32 link floors, `tests/README.md`
   § "The wrapper-participation grid".)
 '''
-work_state = "armed"
+work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
+acceptance_md = '''At the finalized wasm generated-file seam, derive the synthesized-name reference set and minted-definition set from the same wrapper registry, fail generation with the missing name plus referencing owner/door whenever references are not a subset, and cover own-spec, requested-host, deferred cross-crate, loose, NonEmpty, Bounded, and pair-map flavors. The B5-403 requested bounded-map `keys()` companion is the red-first resident.
+'''
+priority_rationale_md = '''The record's E0425 recurrence occurred in the requested-wrapper scope outside the prior shape catalogs; a compile gate caught only the focused fixture after the new path existed.
+'''
 control_ids = ["testing.guard.synthesized-name-referenced-never-minted-e0425-flavor"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.synthesized-name-referenced-never-minted-e0425-flavor"
-dimension = "Synthesized-name residual: the referenced-but-never-minted (E0425) flavor."
-observable = "- **Synthesized-name residual: the referenced-but-never-minted (E0425) flavor.** The generator mints structural wasm idents (loose `{Elem}List` / `Map{K}To{V}` builders, restricted `NonEmpty*` wrappers, table `keys()` list wrappers) whose interactions with USER rule names and with EACH OTHER are a NAME-shaped axis the shape catalogs (wasm-ABI matrix, corpus, recombination) never spell. The two flavors of the \"generation exits 0 but the wasm crate doesn't compile\" class that live at generation time are owned by standing gates: the duplicate-ident (E0428) redefinition flavor by the generation-time backstop at the `generated_files` seam, and the dedup/shape-mismatch (E0277) flavor by `synthesized_name_interaction_sweep` (families × interactions → graceful rejection with the colliding ident named, or a compiling batched wasm crate; see tests/README.md § \"Synthesized-name interaction sweep + duplicate-ident backstop\"). The remaining flavor is E0425: an emitter that REFERENCES a synthesized wrapper name no mint path emits. It stays owned by the compile gates (`wasm_matrix_compiles` + the full-tier recombination wasm leg). If it recurs outside their reach, escalate to a scoped generation-time invariant — \"every synthesized wrapper name an emitter references must be in the minted set\" — the reference-side complement of the emission-side duplicate-ident backstop. (A fourth, CROSS-CRATE flavor — duplicate symbols at link under `--extern-wrapper-index`, invisible to any in-crate layer — is owned by the wrapper-participation grid's per-mode wasm32 link floors, `tests/README.md` § \"The wrapper-participation grid\".)"
-action_on_fire_md = '''Set testing.synthesized-name-referenced-never-minted-e0425-flavor to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.synthesized-name-referenced-never-minted-e0425-flavor's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
+admission_ids = ["testing.admission-path.synthesized-name-referenced-never-minted-e0425-flavor"]
 
 [[record]]
 id = "testing.tag-set.inline-anonymous-choice-boundary"
@@ -7493,6 +7658,36 @@ event_md = '''a consumer reports an undefined wasm member and identifies the rus
 '''
 
 [[record]]
+id = "testing.wasm-open-rest-owned-clone-is-not-a-mutation-door"
+title = "A wasm open-rest getter returns an owned clone, so its map API is not a mutation door for the record."
+
+[record.payload]
+kind = "work"
+body_md = '''- **A wasm open-rest getter returns an owned clone, so its map API is not a mutation door for the
+  record.** Generated loose open records expose `rest()` as `self.0.rest.clone().into()`. Calling
+  `insert` on that wrapper mutates only the detached wrapper; rereading `record.rest()` and
+  serializing the same record both silently show the original empty map. This left loose open
+  records with no wasm-side way to populate a region the API appeared to make mutable. The B5-308
+  door-vocabulary test checks only which method names exist; it cannot prove aliasing or parent-state
+  mutation, so adding `rest`/`insert` to that table would remain green on this defect. Repair the
+  wasm record surface with an explicit record-level mutation door (including the checked variant
+  where the native record owns an invariant), and document the returned wrapper as a snapshot rather
+  than an alias. The behavioral acceptance is one generated loose open record whose wasm API mutates
+  an entry, rereads that entry from the **same record**, serializes that same record, and decodes the
+  entry back; cover both the ordinary map and duplicate-preserving carrier rather than asserting
+  method vocabulary alone.
+'''
+work_state = "ready"
+work_intent = "repair"
+work_kind = "defect"
+risk = "wrong_public_api"
+acceptance_md = '''Expose a wasm mutation operation that updates the parent loose open record; execute mutate, reread, serialize, and decode against the same record for ordinary and duplicate-preserving rest carriers. Keep snapshot getters honest and route invariant-bearing records through their native checked door.
+'''
+priority_rationale_md = '''The generated API silently accepts mutation on a detached value while leaving the parent unchanged; this was reproduced during B5-411 review and no existing behavioral gate covers it.
+'''
+regression_gap_ids = ["testing.proof-gap.wasm-open-rest-owned-clone-is-not-a-mutation-door"]
+
+[[record]]
 id = "testing.wasm32-link-floor-deferred-reject-twin"
 title = "A wasm32 LINK floor for the deferred reject twin."
 
@@ -8073,6 +8268,11 @@ target = "testing.guard.emission-branch-generated-output-fixture-exercises-invis
 [[relation]]
 source = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
 kind = "parent_of"
+target = "testing.admission-path.emit-tests-gate-asserts-round-trip-green-cannot"
+
+[[relation]]
+source = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
+kind = "parent_of"
 target = "testing.guard.emit-tests-gate-asserts-round-trip-green-cannot"
 
 [[relation]]
@@ -8181,6 +8381,11 @@ kind = "parent_of"
 target = "testing.guard.gate-script-health-cache-staleness-key-fresh-worktree"
 
 [[relation]]
+source = "testing.generated-json-schema.partition-cardinality-position-semantics"
+kind = "parent_of"
+target = "testing.admission-path.generated-json-schema.partition-cardinality-position-semantics"
+
+[[relation]]
 source = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 kind = "parent_of"
 target = "testing.generated-local-collision.general-mangling-remedy"
@@ -8189,6 +8394,11 @@ target = "testing.generated-local-collision.general-mangling-remedy"
 source = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 kind = "parent_of"
 target = "testing.generated-local-collision.scope-wide-probe"
+
+[[relation]]
+source = "testing.generated-local-collision.scope-wide-probe"
+kind = "parent_of"
+target = "testing.admission-path.generated-local-collision.scope-wide-probe"
 
 [[relation]]
 source = "testing.generated-local-collision.scope-wide-probe"
@@ -8538,6 +8748,11 @@ target = "testing.guard.stale-known-limitation-prose-surviving-fix-finding-ledge
 [[relation]]
 source = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
 kind = "parent_of"
+target = "testing.admission-path.synthesized-name-referenced-never-minted-e0425-flavor"
+
+[[relation]]
+source = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
+kind = "parent_of"
 target = "testing.guard.synthesized-name-referenced-never-minted-e0425-flavor"
 
 [[relation]]
@@ -8599,6 +8814,11 @@ target = "testing.guard.value-anchor-rot-field-addition-delivery-grows-existing"
 source = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 kind = "parent_of"
 target = "testing.guard.wac-composed-component-transpiled-jco-loses-cross-instance"
+
+[[relation]]
+source = "testing.wasm-open-rest-owned-clone-is-not-a-mutation-door"
+kind = "parent_of"
+target = "testing.proof-gap.wasm-open-rest-owned-clone-is-not-a-mutation-door"
 
 [[relation]]
 source = "testing.wrapper-name-user-set-name-synthesized-collection-wrapper"
@@ -9356,6 +9576,34 @@ id = "gate-no-std-check"
 source = "testing.profile-driven-compile-gate-covers-compositions-profiles-specs"
 kind = "gate"
 gate_id = "no_std_check"
+
+[[reference]]
+id = "test-cycle4-emit-tests-bounded-map-key-execute"
+source = "testing.proof.emit-tests-gate-asserts-round-trip-green-cannot"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::integration_tests::emit_tests_bounded_map_key_execute"
+symbol = "tests::integration_tests::emit_tests_bounded_map_key_execute"
+
+[[reference]]
+id = "test-cycle4-open-table-json-e2e"
+source = "testing.proof.generated-json-schema.partition-cardinality-position-semantics"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::integration_tests::open_table_json_e2e"
+symbol = "tests::integration_tests::open_table_json_e2e"
+
+[[reference]]
+id = "test-cycle4-open-table-generated-constructor-collisions"
+source = "testing.proof.generated-local-collision.scope-wide-probe"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::robustness_tests::open_table_generated_constructor_params_avoid_actual_collisions"
+symbol = "tests::robustness_tests::open_table_generated_constructor_params_avoid_actual_collisions"
+
+[[reference]]
+id = "test-cycle4-workspace-key-requests-rest-row-contract"
+source = "testing.proof.synthesized-name-referenced-never-minted-e0425-flavor"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::integration_tests::workspace_key_requests_rest_row_contract"
+symbol = "tests::integration_tests::workspace_key_requests_rest_row_contract"
 
 [[reference]]
 id = "test-check-ts-warmup-refresh-plan"

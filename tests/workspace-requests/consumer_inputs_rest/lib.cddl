@@ -3,10 +3,11 @@
 ; (`* K => V`) rather than from a table rule or a `@used_as_key` tag, which is the channel a typed
 ; rest key needs and the one the flat IR shape hid.
 ;
-; `loose` keys a DEFAULT-flavored rest row on `idx_plain` -> a `bare` row (the container is a
-; `BTreeMap`, so the dep must derive the full Eq/Ord bundle).
-; `preserve` keys a `@duplicates preserve` rest row on `idx_ord` -> an `ord` row: the pair-map
-; compares keys with a linear scan, so the row asks for the Eq-containing flavor and not `Hash`.
+; `loose` keys a DEFAULT-flavored loose rest row on `idx_plain` -> a `bare` row (the `BTreeMap`
+; needs the full Eq/Ord bundle); `bounded` is its checked `2*3` BoundedMap sibling.
+; `preserve` keys a loose `@duplicates preserve` rest row on `idx_ord` -> an `ord` row (the PairMap
+; compares keys with a linear scan, so it asks for the Eq-containing flavor and not `Hash`);
+; `bounded_preserve` is its checked `2*3` BoundedPairMap sibling.
 ; `k: idx_key` is a PLAIN field of the Ord-refusing dep type: its `@used_as_key hash` tag is the
 ; sole demand source, so the two rest rows beside it must not widen it to `Ord`.
 loose = {
@@ -19,4 +20,14 @@ preserve = {
     * idx_ord => uint ; @duplicates preserve
 }
 
-holder = [k: idx_key, l: loose, p: preserve]
+bounded = {
+    3: uint,
+    2*3 idx_plain => uint
+}
+
+bounded_preserve = {
+    4: uint,
+    2*3 idx_ord => uint ; @duplicates preserve
+}
+
+holder = [k: idx_key, l: loose, p: preserve, b: bounded, bp: bounded_preserve]

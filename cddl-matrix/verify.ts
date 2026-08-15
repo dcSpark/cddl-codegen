@@ -308,6 +308,7 @@ const decodeMintPinReason = (id: string): string | undefined =>
 // otherwise generic post-probe reason, keeping the committed pin reviewable without a transient log.
 const DECODE_ALL_CANDIDATES_PIN_REASON: Record<string, string> = {
   "contain.choice-member.type2.value.bytes.fixed-kind": "pinned rust-cddl local-fixes @ ac1b98e validator panics for every generated candidate for the spec-valid `t = h'CAFE' / tstr`: fixed-byte CBOR at src/validator/cbor.rs:4840, and tstr candidates while formatting the fixed-byte mismatch; Ruby accepts; each re-mint re-probes and activates the row when two-oracle cross-validation succeeds",
+  "contain.occurrence-target.memberkey.bareword.zero_exact_map": "the sole generated candidate is the spec-valid empty map; Ruby cddl 0.12.14 accepts it, but pinned rust-cddl local-fixes @ ac1b98e rejects it as missing exact-zero key `t`; both validators also accept the spec-invalid map containing `t`, so neither an accept nor a forbidden-present reject vector can be certified under the two-oracle rule; see cddl-matrix/README.md upstream oracle gap #18; each re-mint re-probes and activates the row when two-oracle cross-validation succeeds",
 };
 
 const BASE_DEF_DERIVES = ["Clone", "Debug", "PartialEq", "Eq", "PartialOrd", "Ord", "Hash"];

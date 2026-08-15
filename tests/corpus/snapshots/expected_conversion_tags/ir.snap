@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "url",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -68,6 +69,7 @@ expression: ir
                     },
                     RustField {
                         name: "legacy",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -108,6 +110,7 @@ expression: ir
                     },
                     RustField {
                         name: "hex",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -147,6 +150,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

@@ -72,7 +72,7 @@
 use crate::cli::Cli;
 use crate::emit_tests::{
     self, MintValue, arg_can_fail, bound_cases, map_key_expr, map_key_literal, measure_kind,
-    mint_struct, record_ctor_arg_types, record_ctor_can_fail, valid_value, variant_arg_fields,
+    mint_struct, record_ctor_arg_types, record_wasm_ctor_can_fail, valid_value, variant_arg_fields,
 };
 use crate::generation::rust_crate_struct_from_wasm;
 use crate::intermediate::{
@@ -436,19 +436,22 @@ fn wasm_named(
             let MintValue::Record { args, .. } = mv else {
                 return None;
             };
-            let ctor_arg_types = record_ctor_arg_types(record);
-            if ctor_arg_types.len() != args.len() {
+            let Some(ctor_args) = record_wasm_ctor_args(record, args) else {
                 crate::warn!(
                     "cddl-codegen --emit-tests: no wasm build for {name} (minted constructor arguments drift from the record API)"
                 );
                 return None;
-            }
+            };
             let mut wasm_args = Vec::new();
-            for (ty, amv) in ctor_arg_types.iter().zip(args) {
-                wasm_args.push(wasm_arg(types, amv, ty, scoped, cli)?);
+            for (ty, amv) in ctor_args {
+                wasm_args.push(wasm_arg(types, amv, &ty, scoped, cli)?);
             }
             let call = format!("{name}::new({})", wasm_args.join(", "));
-            Some(finish_fallible(call, record_ctor_can_fail(record), &name))
+            Some(finish_fallible(
+                call,
+                record_wasm_ctor_can_fail(record),
+                &name,
+            ))
         }
         RustStructType::TypeChoice { variants } => {
             wasm_choice_value(types, &name, variants, false, mv, scoped, cli)
@@ -490,6 +493,64 @@ fn wasm_named(
             None
         }
     }
+}
+
+/// Project a native-record mint onto the public WASM constructor ABI.  The native constructor
+/// accepts every checked dynamic map carrier. An open table's bounded typed row crosses WASM as its
+/// loose staging builder, then the wasm constructor re-enters the native checked carrier. Keep the
+/// projection beside `wasm_named`, rather than pretending the native argument list is a WASM
+/// signature, so the emitted differential follows the same constructor callers receive.
+fn record_wasm_ctor_args<'a>(
+    record: &RustRecord,
+    native_args: &'a [MintValue],
+) -> Option<Vec<(RustType, &'a MintValue)>> {
+    let native_types = record_ctor_arg_types(record);
+    if native_types.len() != native_args.len() {
+        return None;
+    }
+    let mut native = native_types.iter().zip(native_args);
+    let mut wasm = Vec::new();
+    for field in record.fields.iter().filter(|field| {
+        !field.optional
+            && !field.rust_type.is_fixed_value()
+            && field.rust_type.config.default.is_none()
+    }) {
+        let (_, value) = native.next()?;
+        wasm.push((field.rust_type.clone(), value));
+    }
+    if let Some(typed) = record
+        .typed_row()
+        .filter(|_| record.is_non_empty_open_table())
+    {
+        let (_, key) = native.next()?;
+        let (_, value) = native.next()?;
+        wasm.push((typed.domain().clone(), key));
+        wasm.push((typed.range().clone(), value));
+    }
+    for row in record.captured_dynamic_rows().filter(|row| {
+        !row.is_array_tail()
+            && row.is_restricted()
+            && !(record.is_typed_row(row) && record.is_non_empty_open_table())
+    }) {
+        let (_, value) = native.next()?;
+        let ty = if record.is_typed_row(row)
+            && row.container_type().bounded_map_u64_bounds().is_some()
+        {
+            // WASM receives the loose builder and re-enters Bounded{,Pair}Map::try_from itself.
+            row.staging_container_type()
+        } else {
+            row.container_type()
+        };
+        wasm.push((ty, value));
+    }
+    for row in record
+        .captured_dynamic_rows()
+        .filter(|row| row.is_non_empty_array_tail())
+    {
+        let (_, value) = native.next()?;
+        wasm.push((row.element().clone(), value));
+    }
+    native.next().is_none().then_some(wasm)
 }
 
 /// Build a choice variant through `new_<variant>` from a `Choice` mint value.
@@ -643,6 +704,7 @@ fn wasm_collection_build(
                 key_base,
                 val,
                 count,
+                preserve,
                 ..
             },
         ) => {
@@ -675,7 +737,7 @@ fn wasm_collection_build(
             for i in 0..*count {
                 body.push_str(&format!(
                     " m.insert({}, {val_expr});",
-                    map_key_literal(key, *key_base, i)
+                    map_key_literal(key, *key_base, if *preserve { 0 } else { i })
                 ));
             }
             Some(format!("{{ {body} m }}"))

@@ -25,3 +25,17 @@ impl cbor_event::se::Serialize for AnyCbor {
         self.serialize_ref(serializer, false)
     }
 }
+
+/// Compare an arbitrary generated map-key type to a fixed key by CBOR value rather than its replay
+/// encoding. In the canonical preserve assembly generated keys implement this crate's local
+/// two-argument `Serialize` trait, not cbor-event's trait. Passing `false` deliberately replays
+/// their stored encoding before `AnyCbor::value_eq` erases representation detail.
+pub fn cbor_value_eq_serialized<T: Serialize>(
+    value: &T,
+    expected: &AnyCbor,
+) -> Result<bool, DeserializeError> {
+    let mut serializer = cbor_event::se::Serializer::new_vec();
+    Serialize::serialize(value, &mut serializer, false)?;
+    <AnyCbor as Deserialize>::from_cbor_bytes(&serializer.finalize())
+        .map(|found| found.value_eq(expected))
+}

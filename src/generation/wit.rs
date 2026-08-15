@@ -552,9 +552,11 @@ pub(crate) enum WitMemberOp {
     WrapperGet {
         getter: String,
     },
-    /// The open-struct rest row's captured content.
+    /// The open-struct rest row's captured content. `via_accessor` is true when the native record
+    /// keeps the field private behind its invariant-preserving immutable getter.
     RestGetter {
         field: String,
+        via_accessor: bool,
     },
     ToCborBytes,
     FromCborBytes,
@@ -622,9 +624,10 @@ pub(crate) struct WitParam {
     /// derivable from `validates` alone: whether the type was DESPECIALIZED (re-enter its `TryFrom`
     /// door — see [`wit_param_despecialized`]) and whether it carries a VALUE WINDOW (emit the range
     /// check). `validates` is the union of those and of CDDL `any`, so routing on it conflates them;
-    /// bounded arrays now deliberately take the despecialization path because their rust type is
-    /// `BoundedVec`, whereas bounded maps retain their inline check. R3: the projection carries the rust fact rather
-    /// than the emitter re-deriving it.
+    /// bounded arrays and maps now deliberately take the despecialization path because their rust
+    /// types are `BoundedVec` and `Bounded{,Pair}Map`; the guest restores each through its checked
+    /// `TryFrom<Vec<_>>` door. R3: the projection carries the rust fact rather than the emitter
+    /// re-deriving it.
     ///
     /// WHERE the window is checked stays a per-SITE decision the emitter owns rather than a property
     /// of the parameter: a constructor or a `new-<variant>` static delegates to a rust constructor
@@ -1765,20 +1768,47 @@ fn project_record(
         .typed_row()
         .filter(|_| record.is_non_empty_open_table())
     {
-        for (name, rust_name, ty) in [
-            ("first-key", "first_key", typed.domain()),
-            ("first-value", "first_value", typed.range()),
-        ] {
+        let first_key =
+            record.fresh_open_table_non_empty_param_ident("first_key", std::iter::empty());
+        let first_value = record.fresh_open_table_non_empty_param_ident(
+            "first_value",
+            std::iter::once(first_key.clone()),
+        );
+        for (rust_name, ty) in [(first_key, typed.domain()), (first_value, typed.range())] {
             let validates = wit_param_validates(ty, ctx.types);
             params.push(WitParam {
-                name: name.to_owned(),
-                rust_name: rust_name.to_owned(),
+                name: convert_to_kebab_case(&rust_name),
+                rust_name,
                 ty: map_rust_type(ty, ctx)?,
                 validates,
                 rust_type: Some(ty.clone()),
             });
             ctor_fallible |= validates;
         }
+    }
+    // Every other restricted dynamic MAP row enters the native record constructor as its COMPLETE
+    // checked carrier. WIT deliberately despecializes that carrier to `list<tuple<K, V>>`; the
+    // guest conversion below re-enters `NonEmptyMap`/`BoundedMap` (or the pair-map twins) before it
+    // calls `new`. The one typed `+` case above keeps its shipped first-entry ABI instead.
+    for rest in record.captured_dynamic_rows().filter(|row| {
+        !row.is_array_tail()
+            && (row.is_restricted() || record.has_forbidden_fields())
+            && !(record.is_typed_row(row) && record.is_non_empty_open_table())
+    }) {
+        let ty = WitType::List(Box::new(WitType::Tuple(vec![
+            map_rust_type(rest.domain(), ctx)?,
+            map_rust_type(rest.range(), ctx)?,
+        ])));
+        let carrier = rest.container_type();
+        let validates = wit_param_validates(&carrier, ctx.types);
+        params.push(WitParam {
+            name: convert_to_kebab_case(&rest.field_name),
+            rust_name: rest.field_name.clone(),
+            ty,
+            validates,
+            rust_type: Some(carrier),
+        });
+        ctor_fallible |= validates || record.has_forbidden_fields();
     }
     // The one-or-more open-array tail's Rust `new` takes its first element rather than an
     // empty-capable list. WIT projects that same element door; the list getter remains a list and
@@ -1835,6 +1865,7 @@ fn project_record(
             fallible: false,
             op: WitMemberOp::RestGetter {
                 field: rest.field_name.clone(),
+                via_accessor: record.has_forbidden_fields() && !rest.is_array_tail(),
             },
         });
     }
@@ -2482,8 +2513,8 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
 /// Strictly narrower than [`wit_param_validates`], and deliberately its own function rather than a
 /// reading of that one: `validates` is the UNION of despecialization, a value window and CDDL `any`,
 /// and only the first has a `TryFrom` door at all. A bounded array (`[2*5 uint]`) is a `BoundedVec`
-/// on the rust side and must re-enter that checked door. A bounded MAP is different:
-/// `BTreeMap<K, V>` has no `TryFrom<Vec<(K, V)>>`, so it remains on the inline-check path.
+/// and a bounded map is a `BoundedMap`/`BoundedPairMap` on the rust side; both re-enter their
+/// checked `TryFrom<Vec<_>>` door after WIT despecializes to a list.
 pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) -> bool {
     if ty.is_type_enforced_non_empty()
         || ty.is_type_enforced_bounded_array()

@@ -158,4 +158,29 @@ mod tests {
         assert_eq!(kept.tagged_point.x, 1);
         assert_eq!(kept.to_cbor_bytes(), non_minimal);
     }
+
+    // The same member-slot @name door mints a heterogeneous MAP record. This integration fixture
+    // is compiled under preserve encodings and included in the wasm parity corpus, so the hand-made
+    // vectors exercise generated Rust codecs, the preserve sidecar, and the emitted wasm surface.
+    #[test]
+    fn tagged_anon_map_member_name() {
+        let holder = TaggedAnonMapHolder::new(TaggedMapPoint::new(1), String::from("hi"));
+        assert_eq!(holder.tagged_map_point.x, 1);
+        assert_eq!(holder.label, "hi");
+        // array(2), tag(42), map(1) { "x": 1 }, text(2) "hi"
+        let bytes = vec![0x82, 0xd8, 0x2a, 0xa1, 0x61, 0x78, 0x01, 0x62, 0x68, 0x69];
+        assert_eq!(holder.to_cbor_bytes(), bytes);
+        deser_test(&holder);
+        let decoded = TaggedAnonMapHolder::from_cbor_bytes(&bytes).unwrap();
+        assert_eq!(decoded.tagged_map_point.x, 1);
+        assert_eq!(decoded.label, "hi");
+        assert_eq!(decoded.to_cbor_bytes(), bytes);
+        // preserve-encodings: a non-minimal uint in the named anonymous map survives unchanged.
+        let non_minimal = vec![
+            0x82, 0xd8, 0x2a, 0xa1, 0x61, 0x78, 0x19, 0x00, 0x01, 0x62, 0x68, 0x69,
+        ];
+        let kept = TaggedAnonMapHolder::from_cbor_bytes(&non_minimal).unwrap();
+        assert_eq!(kept.tagged_map_point.x, 1);
+        assert_eq!(kept.to_cbor_bytes(), non_minimal);
+    }
 }

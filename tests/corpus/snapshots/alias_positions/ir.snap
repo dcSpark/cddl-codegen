@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "idx",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -66,6 +67,7 @@ expression: ir
                     },
                     RustField {
                         name: "hash",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -110,6 +112,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -140,6 +143,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "pid",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -185,6 +189,7 @@ expression: ir
                     },
                     RustField {
                         name: "dc",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -232,6 +237,7 @@ expression: ir
                     },
                     RustField {
                         name: "sc",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -279,6 +285,7 @@ expression: ir
                     },
                     RustField {
                         name: "m",
+                        source_index: 3,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -362,6 +369,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -413,6 +421,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "key_1",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Map(
                                 RustType {
@@ -493,6 +502,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -586,6 +596,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "arr",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -643,6 +654,7 @@ expression: ir
                     },
                     RustField {
                         name: "opt",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Optional(
                                 RustType {
@@ -700,6 +712,7 @@ expression: ir
                     },
                     RustField {
                         name: "deep",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Map(
                                 RustType {
@@ -808,6 +821,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -838,6 +852,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "key_1",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -879,6 +894,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: Some(
                     RestRow {
                         kind: MapEntries {
@@ -959,7 +975,7 @@ expression: ir
                         semantics: Capture,
                         field_name: "rest",
                         dispatch_major: None,
-                        non_empty: false,
+                        occurrence: None,
                     },
                 ),
                 typed_row: None,
@@ -991,6 +1007,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "index_0",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -1028,6 +1045,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: Some(
                     RestRow {
                         kind: ArrayTail {
@@ -1087,7 +1105,7 @@ expression: ir
                         semantics: Capture,
                         field_name: "rest",
                         dispatch_major: None,
-                        non_empty: false,
+                        occurrence: None,
                     },
                 ),
                 typed_row: None,

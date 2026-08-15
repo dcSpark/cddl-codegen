@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "s",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -68,6 +69,7 @@ expression: ir
                     },
                     RustField {
                         name: "ns",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -108,6 +110,7 @@ expression: ir
                     },
                     RustField {
                         name: "g",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -148,6 +151,7 @@ expression: ir
                     },
                     RustField {
                         name: "p",
+                        source_index: 3,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -207,6 +211,7 @@ expression: ir
                     },
                     RustField {
                         name: "t",
+                        source_index: 4,
                         rust_type: RustType {
                             conceptual_type: Rust(
                                 RustIdent(
@@ -246,6 +251,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

@@ -34,11 +34,12 @@
 //!   V_r }` mints a struct whose wasm class carries the typed row's map surface DIRECTLY
 //!   (`insert`/`get`/`len`/`keys`) — the set nominal's call, because a wasm class has no `Deref` —
 //!   so the typed row's `pub` rust field has no same-named getter and never will. Rule 3 recognises
-//!   it by the field's provenance marker (`generation::OPEN_TABLE_TYPED_ROW_DOC`), not by shape: a
-//!   shape test would also swallow the CATCH-ALL row, which does owe its `rest()` getter. Being a
-//!   design decision rather than a shape accident, it belongs in the rules and not in `PARITY_EXEMPT`
-//!   — a ledger entry per fixture × profile would grow with the fixture set and say the same thing
-//!   each time.
+//!   it by the field's provenance markers (`generation::OPEN_TABLE_TYPED_ROW_DOC`,
+//!   `generation::OPEN_TABLE_NON_EMPTY_TYPED_ROW_DOC`, and
+//!   `generation::OPEN_TABLE_BOUNDED_TYPED_ROW_DOC`), not by shape: a shape test would also
+//!   swallow the CATCH-ALL row, which does owe its `rest()` getter. Being a design decision rather
+//!   than a shape accident, it belongs in the rules and not in `PARITY_EXEMPT` — a ledger entry per
+//!   fixture × profile would grow with the fixture set and say the same thing each time.
 //! - *Return types unchecked (rule 4).* Boundary conversions differ by construction
 //!   (`Result<Self, DeserializeError>` vs `Result<T, JsError>`, by-ref args, `.into()`), so a
 //!   same-name/same-arity wasm fn satisfies the obligation; only ABSENCE is a finding.
@@ -173,6 +174,59 @@ const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
         "DeepAny",
         "top-level `any` alias chained onto another -> `pub type DeepAny = AnyCbor` (no wasm type-alias export); use the `AnyCbor` class",
     ),
+    // Exact-zero open records keep their native rest map private and therefore add a checked
+    // record-level `insert_rest` door. The wasm face still has the shipped snapshot-only rest
+    // posture documented in `wasm_differences.mdx`; its missing parent-mutation door is owned by
+    // `testing.wasm-open-rest-owned-clone-is-not-a-mutation-door`. Keep each live differential row
+    // explicit until that repair lands; the resurfaced check retires these entries with it.
+    (
+        "default",
+        "tests/component-bounds",
+        "ExactZeroOpen::insert_rest",
+        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
+    ),
+    (
+        "json",
+        "tests/zero-permitting-map",
+        "ZeroExactAnyOpen::insert_rest",
+        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
+    ),
+    (
+        "json",
+        "tests/zero-permitting-map",
+        "ZeroExactBoundedOpen::insert_rest",
+        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
+    ),
+    (
+        "json",
+        "tests/zero-permitting-map",
+        "ZeroExactLoosePairOpen::insert_rest",
+        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
+    ),
+    (
+        "json",
+        "tests/zero-permitting-map",
+        "ZeroExactNonEmptyOpen::insert_rest",
+        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
+    ),
+    (
+        "json",
+        "tests/zero-permitting-map",
+        "ZeroExactOpen::insert_rest",
+        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
+    ),
+    (
+        "json",
+        "tests/zero-permitting-map",
+        "ZeroExactPairOpen::insert_rest",
+        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
+    ),
+    (
+        "json",
+        "tests/zero-permitting-map",
+        "ZeroExactTypedOpen::insert_rest",
+        "native exact-zero invariant door; wasm rest is a detached snapshot pending testing.wasm-open-rest-owned-clone-is-not-a-mutation-door",
+    ),
 ];
 
 /// `(profile, input label, reason)` pairs whose generation deliberately aborts. Four-state verdict
@@ -303,6 +357,15 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
             &["--json-serde-derives=true", "--json-schema-export=true"],
         )],
     ),
+    (
+        // The fixture's integration gate enables both JSON outputs; parity therefore exercises the
+        // identical generated wasm surface rather than an uncommitted default-profile variant.
+        "zero-permitting-map",
+        &[(
+            "json",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        )],
+    ),
     ("nullable-wasm", &[("default", &[])]),
     (
         "package-json",
@@ -399,6 +462,17 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
                 &["--json-serde-derives=true", "--json-schema-export=true"],
             ),
         ],
+    ),
+    // The e2e fixture is the only committed corpus input that places loose, NonEmpty and bounded
+    // dynamic MAP rows on one wasm-visible owner.  Keep its preserve/canonical profile (the same
+    // semantic face its execution vectors use) but turn wasm ON for this differential: the typed
+    // row's flattened no-getter provenance and each catch-all/rest getter are distinct seams.
+    (
+        "open-table-e2e",
+        &[(
+            "preserve_canonical",
+            &["--preserve-encodings=true", "--canonical-form=true"],
+        )],
     ),
     // NOMINAL references to a collection typedef (a rule cycle entered at the collection rule). Its
     // two integration gates pass `--wasm=false` — they assert wire vectors, not a wasm build — so
@@ -509,14 +583,6 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          --preserve-encodings --canonical-form --wasm=false (CBOR fidelity, not the wasm boundary); \
          the wasm rest surface is validated by the `open-struct-map` snapshot fixture's parity rows \
          above",
-    ),
-    (
-        "open-table-e2e",
-        "open table (one typed table row plus one trailing typed catch-all rest row) CBOR fidelity \
-         e2e fixture: its integration gate generates --preserve-encodings --canonical-form \
-         --wasm=false (wire-major dispatch, the tagged two-sequence order encoding and the canonical \
-         key merge, not the wasm boundary); the wasm surface of the two rows is two container-class \
-         getters, minted by the same path the `open-struct-map` snapshot fixture's parity rows cover",
     ),
     (
         "custom-serialize-canonical-e2e",
@@ -652,12 +718,14 @@ struct RustSurface {
     /// (`docs/docs/wasm_differences.mdx`), and provenance — not a source-shape heuristic — is what
     /// tells them apart from a real rule alias (see the const's doc in `generation/mod.rs`).
     synthesized_instance_aliases: BTreeSet<String>,
-    /// `(type, field)` pairs whose rustdoc carries `OPEN_TABLE_TYPED_ROW_DOC` — an open table's
-    /// TYPED row. Rule 3 skips these: the wasm class FLATTENS this row's map surface onto itself
-    /// (`insert`/`get`/`len`/`keys`) instead of emitting a whole-map getter, so the missing getter is
-    /// the design rather than an omission. Structural like the encoding-capture carve-out beside it,
-    /// and provenance-driven like the synthesized-alias one above — a shape heuristic ("a `pub` map
-    /// field on a fieldless struct") would also cover the CATCH-ALL row, which DOES owe its getter.
+    /// `(type, field)` pairs whose rustdoc carries either open-table TYPED-row marker — loose
+    /// `OPEN_TABLE_TYPED_ROW_DOC`, min-one `OPEN_TABLE_NON_EMPTY_TYPED_ROW_DOC`, or bounded
+    /// `OPEN_TABLE_BOUNDED_TYPED_ROW_DOC`. Rule 3 skips
+    /// these: the wasm class FLATTENS this row's map surface onto itself (`insert`/`get`/`len`/`keys`)
+    /// instead of emitting a whole-map getter, so the missing getter is the design rather than an
+    /// omission. Structural like the encoding-capture carve-out beside it, and provenance-driven
+    /// like the synthesized-alias one above — a shape heuristic ("a `pub` map field on a fieldless
+    /// struct") would also cover the CATCH-ALL row, which DOES owe its getter.
     flattened_typed_rows: BTreeSet<(String, String)>,
 }
 
@@ -772,7 +840,16 @@ fn parse_rust_surface(src: &str) -> RustSurface {
                             && let Some(id) = &f.ident
                         {
                             entry.insert(id.to_string(), type_inner_ident(&f.ty));
-                            if doc_contains(&f.attrs, crate::generation::OPEN_TABLE_TYPED_ROW_DOC) {
+                            if doc_contains(&f.attrs, crate::generation::OPEN_TABLE_TYPED_ROW_DOC)
+                                || doc_contains(
+                                    &f.attrs,
+                                    crate::generation::OPEN_TABLE_NON_EMPTY_TYPED_ROW_DOC,
+                                )
+                                || doc_contains(
+                                    &f.attrs,
+                                    crate::generation::OPEN_TABLE_BOUNDED_TYPED_ROW_DOC,
+                                )
+                            {
                                 flattened.push((name.clone(), id.to_string()));
                             }
                         }
@@ -938,7 +1015,7 @@ fn diff_surfaces(
         // encoding-capture fields (`pub encodings: Option<XEncoding>` under preserve), which are
         // rust-only round-trip metadata defined in `cbor_encodings.rs` — no wasm boundary member —
         // and an open table's TYPED row, whose map surface the wasm class FLATTENS onto itself
-        // (recognised by the field's provenance marker, `OPEN_TABLE_TYPED_ROW_DOC`).
+        // (recognised by either field provenance marker, loose or NonEmpty typed row).
         if let Some(fields) = rust.fields.get(t) {
             for (f, inner) in fields {
                 if let Some(inner_ident) = inner

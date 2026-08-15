@@ -34,6 +34,41 @@ named = {
 }
 
 ; The NonEmpty twin (`{+ …}`): the min-1 counts TYPED entries only, so a map of purely CAPTURED
-; entries is not a non-empty table. The bound is unbreakable by construction (`new` takes the first
-; typed entry) and re-checked once after the deserialize loop.
+; entries is not a non-empty table. The typed field is a restricted carrier: `new` takes the first
+; entry directly and CBOR stages into the loose map before its checked conversion.
 non_empty = { + pid => uint, * md => md }
+
+; The duplicate-preserving NonEmpty twin: the typed row retains its entry order and duplicates
+; while the public carrier still prevents dropping its final entry.
+non_empty_preserve = {
+  + pid => uint ; @duplicates preserve
+  ,
+  * md => md ; @duplicates preserve
+}
+
+; Every dynamic-map-row window is now a checked carrier. These four rules give the e2e vectors an
+; open struct rest, the two open-table positions, and the duplicate-preserving counting twin.
+bounded_rest = { 1: uint, 2*3 uint => text }
+bounded_typed = { 2*3 pid => uint, * md => md }
+; A zero-minimum typed window crosses wasm `new()` through its loose builder, then re-enters the
+; native checked carrier. `pid` is deliberately a generated record rather than a primitive, so the
+; compile floor catches a wasm/native type spelling mix-up at that boundary.
+optional_bounded_typed = { 0*3 pid => uint, * md => md }
+bounded_catch_all = { * pid => uint, 2*3 md => md }
+bounded_preserve = {
+  2*3 pid => uint ; @duplicates preserve
+  ,
+  * md => md
+}
+
+; Primitive-key companions for the generated `--emit-tests` module. The general-purpose minter
+; deliberately does not manufacture multiple distinct `pid`/`md` keys, while these rules exercise
+; the same bounded native-carrier and wasm staging-builder constructors end-to-end.
+emitted_bounded_typed = { 2*3 uint => uint, * text => text }
+emitted_optional_bounded_typed = { 0*3 uint => uint, * text => text }
+emitted_bounded_catch_all = { * bytes => uint, 2*3 text => text }
+emitted_bounded_preserve = {
+  2*3 uint => uint ; @duplicates preserve
+  ,
+  * text => text
+}

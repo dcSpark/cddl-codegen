@@ -8998,6 +8998,152 @@ fn nullable_wasm() {
     run_test("nullable-wasm", &[], None, &[], &[], false, &[]);
 }
 
+/// Unique fixed map keys make every positive-upper zero-permitting occurrence (`*`, `0*n`, `*n`)
+/// semantically occurrence-optional. The same fixture owns exact-zero (`0*0`) map-key constraints:
+/// absent and forbidden CBOR/JSON vectors, checked native rest construction and insertion, private
+/// rest storage, schema omission, and wasm's read-only validated-rest view. It retains the optional
+/// CBOR/JSON/wasm getter controls, including the fixed-value presence-bool path.
+#[test]
+fn zero_permitting_keyed_map_fields() {
+    run_test(
+        "zero-permitting-map",
+        &["--json-schema-export=true", "--json-serde-derives=true"],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+    let wasm =
+        std::fs::read_to_string("tests/zero-permitting-map/export/wasm/src/generated/mod.rs")
+            .expect("zero-permitting-map wasm source");
+    assert!(
+        wasm.contains("pub fn rest(&self)")
+            && wasm.contains(
+                "pub fn new(required: u64, rest: &MapTextToU64) -> Result<ZeroExactOpen, JsError>"
+            )
+            && wasm.contains("cddl_lib::ZeroExactOpen::new(required, rest.clone().into())")
+            && !wasm.contains("pub fn forbidden(")
+            && !wasm.contains("pub fn no_uint(")
+            && !wasm.contains("pub fn no_text("),
+        "exact-zero wasm new must take the complete wrapper through the fallible native door, emit no forbidden accessor, and retain only the validated rest getter:\n{wasm}"
+    );
+}
+
+/// The typed/union forbidden-key comparator has a mode-specific serialization trait: preserve uses
+/// cbor-event's one-argument trait, while preserve+canonical uses the generated two-argument trait.
+/// Execute the same non-minimal text key through decode, complete construction, and insertion in
+/// both assemblies so a compile-only static-fragment probe cannot leave either comparator vacuous.
+#[test]
+fn exact_zero_typed_key_comparison_executes_in_both_preserve_modes() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_exact_zero_preserve_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    const SPEC: &str = "rest_key = uint / tstr\n\
+                        holder = { required: uint, 0*0 forbidden: uint, * rest_key => uint }\n";
+    const TEST: &str = r#"
+use cddl_lib::serialization::Deserialize;
+use cddl_lib::error::DeserializeFailure;
+use cddl_lib::*;
+
+const NONMINIMAL_FORBIDDEN_TEXT: &[u8] = &[
+    0x78, 0x09, b'f', b'o', b'r', b'b', b'i', b'd', b'd', b'e', b'n',
+];
+const HOLDER_WITH_NONMINIMAL_FORBIDDEN_KEY: &[u8] = &[
+    0xa2, 0x68, b'r', b'e', b'q', b'u', b'i', b'r', b'e', b'd', 0x07,
+    0x78, 0x09, b'f', b'o', b'r', b'b', b'i', b'd', b'd', b'e', b'n', 0x01,
+];
+
+#[test]
+fn nonminimal_typed_key_is_value_equal_at_every_checked_door() {
+    let wire_error = Holder::from_cbor_bytes(HOLDER_WITH_NONMINIMAL_FORBIDDEN_KEY)
+        .expect_err("decode must reject before rest capture");
+    assert!(matches!(wire_error.failure(), DeserializeFailure::ForbiddenKey(_)));
+
+    let forbidden_key = RestKey::from_cbor_bytes(NONMINIMAL_FORBIDDEN_TEXT).unwrap();
+    assert_eq!(forbidden_key.to_cbor_bytes(), NONMINIMAL_FORBIDDEN_TEXT);
+    let forbidden_rest = [(forbidden_key.clone(), 1)].into_iter().collect();
+    let ctor_error = Holder::new(7, forbidden_rest)
+        .expect_err("complete-rest construction compares the key by value");
+    assert!(matches!(ctor_error.failure(), DeserializeFailure::ForbiddenKey(_)));
+
+    let mut holder = Holder::new(
+        7,
+        [(RestKey::new_text("other".to_owned()), 1)]
+            .into_iter()
+            .collect(),
+    )
+    .unwrap();
+    let insert_error = holder
+        .insert_rest(forbidden_key, 1)
+        .expect_err("checked insertion compares the key by value");
+    assert!(matches!(insert_error.failure(), DeserializeFailure::ForbiddenKey(_)));
+}
+"#;
+
+    for (label, flags, serialize_trait) in [
+        (
+            "preserve",
+            &["--preserve-encodings=true"][..],
+            "use cddl_lib::serialization::ToCBORBytes;",
+        ),
+        (
+            "preserve_canonical",
+            &["--preserve-encodings=true", "--canonical-form=true"][..],
+            "use cddl_lib::serialization::Serialize;",
+        ),
+    ] {
+        let case_root = scratch.join(label);
+        std::fs::create_dir_all(&case_root).unwrap();
+        let input = case_root.join("input.cddl");
+        std::fs::write(&input, SPEC).unwrap();
+        let out = case_root.join("out");
+        let generated = codegen_cmd()
+            .arg(format!("--input={}", input.display()))
+            .arg(format!("--output={}", out.display()))
+            .arg(format!(
+                "--static-dir={}",
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("static")
+                    .display()
+            ))
+            .args(flags)
+            .arg("--wasm=false")
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{label}: exact-zero preserve generation failed\n{}\n{}",
+            String::from_utf8_lossy(&generated.stdout),
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        std::fs::create_dir_all(out.join("rust/tests")).unwrap();
+        std::fs::write(
+            out.join("rust/tests/exact_zero.rs"),
+            format!("{serialize_trait}\n{TEST}"),
+        )
+        .unwrap();
+        let tested = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", case_root.join("target"))
+            .output()
+            .unwrap();
+        assert!(
+            tested.status.success(),
+            "{label}: generated exact-zero comparator behavior failed\n{}\n{}",
+            String::from_utf8_lossy(&tested.stdout),
+            String::from_utf8_lossy(&tested.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// A member that is BOTH optional and nullable (`? field0: (uint / null)`) carries THREE states —
 /// absent, present-null, present-value — and both decode surfaces must carry all three.
 ///
@@ -11533,6 +11679,52 @@ fn open_table_e2e() {
         &[],
         false,
         &[],
+    );
+}
+
+/// B5-403's bounded dynamic-map rows share the CBOR vectors in `open-table-e2e`, but their wasm
+/// constructors and flattened typed-row APIs need their own generated-crate execution floor. The
+/// fixture covers a bounded open-struct rest, bounded typed and catch-all open-table rows, and the
+/// duplicate-preserving typed carrier; the wasm fixture hook makes `run_test` execute the emitted
+/// rust and wasm `--emit-tests` modules without regenerating a user checkout.
+#[test]
+fn bounded_dynamic_map_rows_wasm_compile() {
+    run_test(
+        "open-table-e2e",
+        &[
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+            "--emit-tests=true",
+        ],
+        Some("bounded_dynamic_wasm"),
+        &[],
+        &[],
+        false,
+        &[],
+    );
+    let wasm = std::fs::read_to_string(
+        "tests/open-table-e2e/export_bounded_dynamic_wasm/wasm/src/generated/mod.rs",
+    )
+    .expect("bounded dynamic row wasm generated module");
+    for test in [
+        "fn wasm_roundtrip_bounded_rest()",
+        "fn wasm_roundtrip_emitted_bounded_typed()",
+        "fn wasm_roundtrip_emitted_optional_bounded_typed()",
+        "fn wasm_roundtrip_emitted_bounded_catch_all()",
+        "fn wasm_roundtrip_emitted_bounded_preserve()",
+    ] {
+        assert!(
+            wasm.contains(test),
+            "the bounded dynamic-row wasm emit-tests module must retain `{test}`:\n{wasm}"
+        );
+    }
+    assert!(
+        wasm.contains(
+            "pub fn new(entries_builder: &MapPidToU64) -> Result<OptionalBoundedTyped, JsError>"
+        ) && wasm.contains("<BoundedMap<cddl_lib::Pid, u64, 0, 3>>::try_from(")
+            && wasm.contains("entries_builder.clone()"),
+        "the zero-minimum typed row keyed by generated `Pid` must cross wasm `new` through the loose \
+         builder and re-enter the native checked carrier:\n{wasm}"
     );
 }
 
@@ -21015,18 +21207,19 @@ fn workspace_key_requests_flavored_contract() {
 /// pair proves: the demand actually reaches the dep, the dep's derives satisfy the containers the
 /// consumer instantiates, and the deferred wrapper classes resolve to ONE definition across the pair.
 ///
-/// Fixtures: `consumer_inputs_rest` (a DEFAULT rest row keyed on `idx_plain`, a `@duplicates
-/// preserve` rest row keyed on `idx_ord`, and the Ord-refusing `idx_key` at a PLAIN field carrying
-/// only its `@used_as_key hash` tag) over `dep_inputs_rest` (owns all three; `idx_key = [h: opaque]`
-/// puts a hand-written Hash+Eq-but-not-Ord extern inside it, so the Ord question is compile-observable).
+/// Fixtures: `consumer_inputs_rest` (loose and bounded DEFAULT rest rows keyed on `idx_plain`,
+/// loose and bounded `@duplicates preserve` rows keyed on `idx_ord`, and the Ord-refusing `idx_key`
+/// at a PLAIN field carrying only its `@used_as_key hash` tag) over `dep_inputs_rest` (owns all
+/// three; `idx_key = [h: opaque]` puts a hand-written Hash+Eq-but-not-Ord extern inside it, so the
+/// Ord question is compile-observable).
 ///
 /// Legs: (a) the consumer emits one row per rest row with the flavor its CONTAINER needs — `bare` for
 /// the `BTreeMap`-backed default row, the `ord` relaxation for the `PairMap`-backed preserve row —
-/// while the hash-only borrow beside them stays Ord-free; (b) the consumer defers all four rest-row
-/// wrapper classes (both maps and both keys-lists) and mints none locally; (c) the dep picks the
-/// demand up through `--key-requests` and derives exactly the named family per row; (d) the dep hosts
-/// the four deferred wrappers through `--wrapper-requests`; (e) both rust crates compile against each
-/// other; (f) both WASM crates link for wasm32 — the honest proof that one `#[wasm_bindgen]`
+/// while the hash-only borrow beside them stays Ord-free; (b) the consumer defers every loose and
+/// checked rest-row wrapper (plus the loose key-list closure) and mints none locally; (c) the dep
+/// picks the demand up through `--key-requests` and derives exactly the named family per row; (d) the
+/// dep hosts all deferred wrappers through `--wrapper-requests`; (e) both rust crates compile against
+/// each other; (f) both WASM crates link for wasm32 — the honest proof that one `#[wasm_bindgen]`
 /// definition of each class exists across the pair (two would be a duplicate `__wbg_*_free` symbol).
 ///
 /// The `bare`-widening RED that proves the flavor column is load-bearing is already pinned by
@@ -21054,7 +21247,7 @@ fn workspace_key_requests_rest_row_contract() {
         std::fs::read_to_string(root.join(rel)).unwrap()
     };
 
-    // ===== Leg (a): CONSUMER EMIT — one demand row per rest row, in its container's flavor. =====
+    // ===== Leg (a): CONSUMER EMIT — one demand row per rest-carrier flavor. =====
     let c = codegen_cmd()
         .arg("--input=tests/workspace-requests/consumer_inputs_rest")
         .arg("--output=tests/workspace-requests/export_rest_consumer")
@@ -21074,12 +21267,11 @@ fn workspace_key_requests_rest_row_contract() {
     let sidecar = read(&consumer_out, sidecar_rel);
     assert!(
         sidecar.contains("(\"wr_dep\", \"idx_plain\", \"bare\"),"),
-        "the DEFAULT rest row's key must demand the full bare bundle its BTreeMap needs:\n{sidecar}"
+        "the loose and bounded DEFAULT rest rows' key must demand the full bare bundle their BTreeMap/BoundedMap carriers need:\n{sidecar}"
     );
     assert!(
         sidecar.contains("(\"wr_dep\", \"idx_ord\", \"ord\"),"),
-        "the `@duplicates preserve` rest row's key must demand the `ord` relaxation its PairMap \
-         needs, not `bare`:\n{sidecar}"
+        "the loose and bounded `@duplicates preserve` rows must demand the `ord` relaxation their PairMap/BoundedPairMap carriers need, not `bare`:\n{sidecar}"
     );
     assert!(
         sidecar.contains("(\"wr_dep\", \"idx_key\", \"hash\"),"),
@@ -21096,9 +21288,34 @@ fn workspace_key_requests_rest_row_contract() {
         "the `ord` carrier must bound the Eq-containing bundle without Hash:\n{sidecar}"
     );
 
-    // ===== Leg (b): the rest rows' wrapper classes are DEFERRED, never minted locally. =====
-    // A rest row names four classes: the container the getter returns and that container's
-    // keys-list. All four are all-one-dep, so all four are recorded as borrows.
+    // Loose rows retain their default-empty native construction ABI; B5-403's bounded siblings take
+    // the complete checked carriers.  Pin both sides before the wasm wrapper requests below ask the
+    // dependency to host the corresponding nominal shapes.
+    let consumer_rust = read(&consumer_out, "rust/src/generated/mod.rs");
+    for (record, carrier, empty_ctor) in [
+        ("Loose", "BTreeMap<IdxPlain, u64>", "rest: BTreeMap::new()"),
+        ("Preserve", "PairMap<IdxOrd, u64>", "rest: PairMap::new()"),
+    ] {
+        assert!(
+            consumer_rust.contains(&format!("pub struct {record}"))
+                && consumer_rust.contains(&format!("pub rest: {carrier}"))
+                && consumer_rust.contains(empty_ctor),
+            "the loose {record} row must retain its default-empty `{carrier}` constructor behavior:\n{consumer_rust}"
+        );
+    }
+    for signature in [
+        "pub fn new(key_3: u64, rest: BoundedMap<IdxPlain, u64, 2, 3>) -> Self",
+        "pub fn new(key_4: u64, rest: BoundedPairMap<IdxOrd, u64, 2, 3>) -> Self",
+    ] {
+        assert!(
+            consumer_rust.contains(signature),
+            "the bounded rest row must cross its native construction boundary as `{signature}`:\n{consumer_rust}"
+        );
+    }
+
+    // ===== Leg (b): loose AND bounded rest wrappers are DEFERRED, never minted locally. =====
+    // The loose carriers retain their map + keys-list wrapper closure; their checked siblings add
+    // bounded map classes. Every class is all-one-dep and must be recorded as a borrow.
     let borrowed = read(&consumer_out, "wasm/src/generated/borrowed_collections.rs");
     for (name, shape) in [
         ("MapIdxPlainToU64", "{* idx_plain => uint}"),
@@ -21108,6 +21325,11 @@ fn workspace_key_requests_rest_row_contract() {
             "{* idx_ord => uint} @duplicates preserve",
         ),
         ("IdxOrdList", "[* idx_ord]"),
+        ("MapIdxPlainToU64Min2Max3", "{2*3 idx_plain => uint}"),
+        (
+            "PairMapIdxOrdToU64Min2Max3",
+            "{2*3 idx_ord => uint} @duplicates preserve",
+        ),
     ] {
         assert!(
             borrowed.contains(&format!("use wr_dep_wasm::collections::{name};")),
@@ -21124,6 +21346,8 @@ fn workspace_key_requests_rest_row_contract() {
         "IdxPlainList",
         "PairMapIdxOrdToU64",
         "IdxOrdList",
+        "MapIdxPlainToU64Min2Max3",
+        "PairMapIdxOrdToU64Min2Max3",
     ] {
         assert!(
             !consumer_wasm.contains(&format!("pub struct {name}(")),
@@ -21131,11 +21355,11 @@ fn workspace_key_requests_rest_row_contract() {
         );
     }
     assert!(
-        consumer_wasm
-            .contains("use wr_dep_wasm::collections::{MapIdxPlainToU64, PairMapIdxOrdToU64};")
-            && consumer_wasm.contains("pub fn rest(&self) -> MapIdxPlainToU64 {")
-            && consumer_wasm.contains("pub fn rest(&self) -> PairMapIdxOrdToU64 {"),
-        "each rest accessor must return the DEP's class, imported from the dep's index:\n{consumer_wasm}"
+        consumer_wasm.contains("pub fn rest(&self) -> MapIdxPlainToU64 {")
+            && consumer_wasm.contains("pub fn rest(&self) -> PairMapIdxOrdToU64 {")
+            && consumer_wasm.contains("pub fn rest(&self) -> MapIdxPlainToU64Min2Max3 {")
+            && consumer_wasm.contains("pub fn rest(&self) -> PairMapIdxOrdToU64Min2Max3 {"),
+        "every loose and bounded rest accessor must return the DEP's class, imported from the dep's index:\n{consumer_wasm}"
     );
 
     // ===== Legs (c) + (d): the dep picks up both channels. =====
@@ -21163,8 +21387,9 @@ fn workspace_key_requests_rest_row_contract() {
         String::from_utf8_lossy(&d.stderr)
     );
     let dep_mod = read(&dep_out, "rust/src/generated/mod.rs");
-    // The default row's key gets the full bundle; the preserve row's key gets the same Eq/Ord family
-    // (the `ord` relaxation drops only `Hash`, which the default profile does not derive anyway).
+    // Both loose/bounded default rows' key gets the full bundle; both preserve rows' key gets the
+    // same Eq/Ord family (the `ord` relaxation drops only `Hash`, which the default profile does not
+    // derive anyway).
     for ty in ["IdxPlain", "IdxOrd"] {
         assert!(
             dep_mod.contains(&format!(
@@ -21184,12 +21409,12 @@ fn workspace_key_requests_rest_row_contract() {
         "IdxPlainList",
         "PairMapIdxOrdToU64",
         "IdxOrdList",
+        "MapIdxPlainToU64Min2Max3",
+        "PairMapIdxOrdToU64Min2Max3",
     ] {
         assert!(
-            requested.contains(&format!(
-                "/// Generated at the request of: rest_consumer.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct {name}("
-            )),
-            "the dep must host {name} for the rest row that requested it:\n{requested}"
+            requested.contains(&format!("pub struct {name}(")),
+            "the dep must host {name} for the loose/bounded rest-row wrapper closure:\n{requested}"
         );
         assert!(
             dep_index.contains(&format!(
@@ -21198,7 +21423,6 @@ fn workspace_key_requests_rest_row_contract() {
             "{name} must be re-exported from the dep's index so the consumer's borrow resolves"
         );
     }
-
     // ===== Leg (e): both rust crates compile against each other. =====
     // The hand-written Ord-refusing extern (Hash+Eq, deliberately NOT Ord) plus the codec impls the
     // generated dep code calls, appended to the dep's seed-once lib.rs.

@@ -6,10 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
-    EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
-    ModuleScope, PlainGroupInfo, Primitive, Representation, RestKind, RestRow, RestSemantics,
-    RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
-    reserved_pin_rejection,
+    EnumVariantData, FixedValue, FloatWindow, ForbiddenField, GenericDef, GenericInstance,
+    IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive, Representation, RestKind, RestRow,
+    RestSemantics, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
+    VariantIdent, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -670,6 +670,60 @@ fn custom_codec_directives(metadata: &RuleMetadata) -> Vec<&'static str> {
         found.push("@custom_deserialize");
     }
     found
+}
+
+/// An exact-zero keyed member (`0*0` / `*0`) deliberately mints no value field: it is record
+/// constraint metadata only, used to reject that one CBOR/JSON key and to guard open-map
+/// construction.  Most member-scoped directives already take their normal placement refusal
+/// before this seam.  These four are ordinarily CONSUMED by an emitted value field, however, so
+/// letting them reach the exact-zero early-return would silently drop their only effect.
+///
+/// `@name` remains meaningful: it names the forbidden JSON property, and hence is retained in
+/// `ForbiddenField`.  The rule's own `@doc` remains the place to document the constraint.
+fn reject_exact_zero_field_only_metadata(
+    types: &mut IntermediateTypes,
+    field_name: &str,
+    record_name: &RustIdent,
+    metadata: &RuleMetadata,
+    field_type: &RustType,
+) {
+    let source_name = source_rule_name_of(types, record_name);
+    if metadata.comment.is_some() {
+        types.record_rejection(format!(
+            "@doc on exact-zero field `{field_name}` of rule `{source_name}`: `0*0` / `*0` \
+             declares a forbidden key and emits no value field for this doc comment to document. \
+             Put the explanation on the enclosing rule (`{source_name} = {{ … }} ; @doc <text>`), \
+             or remove the member doc."
+        ));
+    }
+    let mut codec_directives = custom_codec_directives(metadata);
+    if metadata.custom_encodings.is_some() {
+        codec_directives.push("@custom_encodings");
+    }
+    if metadata.custom_wire_major.is_some() {
+        codec_directives.push("@custom_wire_major");
+    }
+    if !codec_directives.is_empty() {
+        let written = codec_directives
+            .iter()
+            .map(|directive| format!("`{directive}`"))
+            .collect::<Vec<_>>()
+            .join(" / ");
+        types.record_rejection(format!(
+            "{written} on exact-zero field `{field_name}` of rule `{source_name}`: `0*0` / `*0` \
+             forbids the member completely and emits no value codec or encoding sidecar for these \
+             directives to replace. Remove the codec declaration; a custom codec cannot make a \
+             forbidden member constructible."
+        ));
+    }
+    if field_type.config.default.is_some() {
+        types.record_rejection(format!(
+            "`.default` on exact-zero field `{field_name}` of rule `{source_name}` has no absent \
+             VALUE to substitute: `0*0` / `*0` forbids this key rather than making a value optional. \
+             Remove `.default`, or use `? {field_name}: …` when an absent value should receive a \
+             default."
+        ));
+    }
 }
 
 /// The RULE-SCOPED directives, refused at a MEMBER position — the one list of "which directives
@@ -1512,9 +1566,10 @@ fn reject_occurrence_on_single_entry_arm(
 ///   read, so the entry slot is refused with that slot as the remedy rather than given a second,
 ///   colliding meaning.
 ///
-/// `@name` splits, because this slot HAS a reader for exactly one member shape: the
-/// anonymous-inline-array minting path takes the member's struct name from it, so
-/// `[ a: uint // f: [x: uint] ; @name Inner ]` mints `pub struct Inner`. That naming door is what
+/// `@name` splits, because this slot HAS a reader for exactly one member shape family: the
+/// anonymous-inline-composite minting paths take the member's struct name from it, so
+/// `[ a: uint // f: [x: uint] ; @name Inner ]` and `{ a: uint // f: {x: uint} ; @name Inner }`
+/// mint `pub struct Inner`. That naming door is what
 /// the "Anonymous groups not allowed" error advertises and `comment_dsl.mdx` documents, so it is
 /// kept; everywhere else the name was read by nothing (`// f: bytes ; @name renamed` still emitted
 /// variant `F`), and that is refused with the arm's OWN naming slot as the remedy. Naming the
@@ -1609,7 +1664,8 @@ fn reject_field_directives_on_single_entry_arm(
              the arm (`// ; @doc <text>`), before the entry."
         ));
     }
-    // The `@name` fork: honored where the anon-array reader consumed it, refused where it did not.
+    // The `@name` fork: honored where the anonymous-composite reader consumed it, refused where it
+    // did not.
     // The condition is the reader's own effect, read off the parsed member type rather than
     // re-derived from the AST — see this function's doc comment.
     if let Some(written) = metadata.name.as_ref() {
@@ -1620,8 +1676,9 @@ fn reject_field_directives_on_single_entry_arm(
         if !consumed {
             types.record_rejection(format!(
                 "@name `{written}` on {site}: this slot names a member-position anonymous inline \
-                 array (`// f: [x: uint] ; @name Inner` mints `pub struct Inner` and holds it in \
-                 the variant), and this member's type is not one — so the name is read by nothing \
+                 array or heterogeneous map (`// f: [x: uint] ; @name Inner` / `// f: {{x: uint}} ; \
+                 @name Inner` mints `pub struct Inner` and holds it in the variant), and this \
+                 member's type is not one — so the name is read by nothing \
                  here. The arm's naming slot is the one that follows the `//` opening it: write \
                  `// ; @name {written}` on that line to name the enum variant the arm becomes."
             ));
@@ -4850,6 +4907,43 @@ fn reject_out_of_range_occurrence_bounds(
     }
 }
 
+/// Normalize one DYNAMIC MAP row's occurrence to the same inclusive carrier window a homogeneous
+/// table uses.  `None` is RFC 8610's exact-once `1..=1`; `*` / `0*` are loose; `+` / `1*` retain
+/// the established `1..` NonEmpty carrier; every other spelling retains both endpoints for a
+/// `BoundedMap` / `BoundedPairMap`.  Dynamic rows store the already-normalized `u64` window in the
+/// IR because that is the public carrier's const-generic domain — no emitter may reinterpret an
+/// occurrence marker or silently widen it later.
+fn normalized_dynamic_map_row_window(
+    types: &mut IntermediateTypes,
+    occur: Option<&Occur>,
+) -> Option<(u64, u64)> {
+    let source_bounds = match occur {
+        // Omitted occurrences are exactly once, never an implicit loose row.
+        None => (Some(1), Some(1)),
+        Some(Occur::ZeroOrMore { .. }) => (None, None),
+        Some(Occur::OneOrMore { .. }) => (Some(1), None),
+        Some(Occur::Optional { .. }) => (None, Some(1)),
+        Some(Occur::Exact { lower, upper, .. }) => (
+            lower.filter(|lower| *lower != 0).map(|lower| lower as i128),
+            upper.map(|upper| upper as i128),
+        ),
+    };
+    reject_out_of_range_occurrence_bounds(types, Some(source_bounds));
+    let min = source_bounds
+        .0
+        .unwrap_or(0)
+        .try_into()
+        // `reject_out_of_range_occurrence_bounds` recorded the real diagnostic.  Keep parsing on a
+        // harmless carrier so finalize can return that graceful aggregate error rather than letting
+        // a narrowing conversion turn malformed CDDL into a generator abort.
+        .unwrap_or(0);
+    let max = source_bounds
+        .1
+        .map(|upper| upper.try_into().unwrap_or(u64::MAX))
+        .unwrap_or(u64::MAX);
+    ((min, max) != (0, u64::MAX)).then_some((min, max))
+}
+
 /// Whether a single-choice inline group carrying this occurrence marker may be spliced into the
 /// parent entry list (pure grouping) rather than kept unflattened for downstream rejection.
 ///
@@ -5141,7 +5235,7 @@ fn record_plain_group_rest_row_domain_rejection(
          only be spliced in with its members written flat. That contradicts the map's own entry \
          count and emits bytes no other CBOR implementation reads back as the spec says. Wrap the \
          group in an array, which gives the slot the one item it needs and has real nested-array \
-         semantics: `* {remedy_entry}` in place of this row. (A tag on the slot belongs OUTSIDE \
+         semantics: `{remedy_entry}` in place of this row. (A tag on the slot belongs OUTSIDE \
          the framing, on the framed reference — `#6.10([{group_name}])`, not \
          `[#6.10({group_name})]`.)"
     ));
@@ -5806,7 +5900,8 @@ fn group_entry_rule_metadata(entry: &GroupEntry, optional_comma: &OptionalComma)
     metadata_from_comments(&combined_comments.unwrap_or_default())
 }
 
-/// The `@name` that names a MEMBER-position anonymous inline array, read from the one comment slot
+/// The `@name` that names a MEMBER-position anonymous heterogeneous inline composite (array or
+/// map), read from the one comment slot
 /// that spelling puts it in: the enclosing group entry's trailing comments (plus the trailing-comma
 /// slot), exactly the pair `group_entry_rule_metadata` reads for the field rename.
 ///
@@ -5814,29 +5909,30 @@ fn group_entry_rule_metadata(entry: &GroupEntry, optional_comma: &OptionalComma)
 /// type does not inherit the comment of a parent it merely happens to end, and a general
 /// `Type -> GroupEntry` ascent would leak every field-level directive into every type2 read. So the
 /// naming site asks for the slot by itself, under the narrowest scope that keeps the name
-/// unambiguous: the anonymous array must be the member's WHOLE type, UP TO tag wrappers. The
+/// unambiguous: the anonymous composite must be the member's WHOLE type, UP TO tag wrappers. The
 /// ascent is therefore required to be
 /// `Type2 -> (Type1 -> TypeChoice -> Type -> Type2::TaggedData)* -> Type1 -> TypeChoice -> Type ->
 /// ValueMemberKeyEntry -> GroupEntry`, with EVERY rung over an operator-free `Type1` and a
 /// single-choice `Type`. Every other spelling — a `.cbor` payload (whose `Type2`'s parent is the
-/// `Operator`), a choice arm, a parenthesized type, an array nested inside another anonymous array
-/// — keeps the anonymous-group rejection rather than guessing which construct the name was meant
-/// for.
+/// `Operator`), a choice arm, a parenthesized type, or a composite nested inside another anonymous
+/// composite — keeps the anonymous-group rejection rather than guessing which construct the name
+/// was meant for.
 ///
-/// Tag layers are walked (any number of them, `#6.42([x: uint])` and `#6.1(#6.42([x: uint]))`
-/// alike) because a tag mints NO type of its own: it wraps whatever its payload parses to, so the
-/// anonymous array remains the sole nameable referent and the name can only mean the struct. The
-/// name mints the struct and the tag wraps it, which is byte-for-byte the named-rule remedy
-/// (`inner = [x: uint]` / `f: #6.42(inner)`) with a different identifier. Without this the
+/// Tag layers are walked (any number of them, `#6.42([x: uint])`, `#6.42({x: uint})`, and nested
+/// forms alike) because a tag mints NO type of its own: it wraps whatever its payload parses to, so
+/// the anonymous composite remains the sole nameable referent and the name can only mean the
+/// struct. The name mints the struct and the tag wraps it, which is byte-for-byte the named-rule
+/// remedy (`inner = [x: uint]` / `f: #6.42(inner)`, and likewise for a map) with a different
+/// identifier. Without this the
 /// rejection would advertise an `@name` door that the tagged spelling cannot open. The per-rung
 /// operator-free and single-choice requirements are what keep it unambiguous: an operator makes the
-/// array the operator's target rather than the tag's whole payload, and a multi-choice `Type` at
+/// composite the operator's target rather than the tag's whole payload, and a multi-choice `Type` at
 /// any rung reintroduces the arm-vs-member ambiguity the untagged spelling already refuses.
 ///
 /// Only `.name` is consumed. The same comment is ALSO the field-rename slot, so one `@name` here
 /// names both the field and the struct that field holds; every other directive on it keeps the
 /// field-level meaning it already had.
-fn anon_array_member_name<'a>(
+fn anon_composite_member_name<'a>(
     parent_visitor: &'a ParentVisitor<'a, 'a>,
     type2: &'a Type2<'a>,
 ) -> Option<String> {
@@ -6128,7 +6224,8 @@ fn rust_type_from_type2(
                             // At MEMBER position the naming comment lands one level further out than
                             // `get_comment_after(type2)` reaches, so ask for that slot explicitly.
                             if rule_metadata.name.is_none() {
-                                rule_metadata.name = anon_array_member_name(parent_visitor, type2);
+                                rule_metadata.name =
+                                    anon_composite_member_name(parent_visitor, type2);
                             }
                             // A heterogeneous inline array in a type position becomes a struct, and a
                             // struct needs a name. The `@name` comment on the type2 is the naming
@@ -6245,37 +6342,54 @@ fn rust_type_from_type2(
                             // live slot is never also a silent-drop slot.
                             apply_inline_table_row_metadata(types, group_choice, map_type)
                         }
-                        // Every non-table inline map — `{ a: int, b: uint }`, `{ g }`, `{ * uint }`,
-                        // `{}`. For `Representation::Map` `parse_group_type` returns only
-                        // `HomogenousMap` (handled above) or `Heterogenous`, so this arm IS the
-                        // whole non-table remainder; the `WrappedBasicGroup` / `HomogenousArray`
-                        // returns live in its `Representation::Array` half.
-                        //
-                        // The `Type2::Array` sibling above turns `Heterogenous` into a struct by
-                        // reading a `@name` off the type2's trailing comment. There is no such
-                        // naming door on the map side, so an anonymous nested map has no
-                        // representation here: reject gracefully and point at the named form,
-                        // exactly like the multi-group-choice sibling below.
-                        //
-                        // The remedy is probed to generate under BOTH the default and the
-                        // `--preserve-encodings` profile for every keyed shape that reaches this
-                        // arm (array element, map value, `.cbor` payload, `/` choice alternative,
-                        // generic argument, occurrence target, group-choice arm). A KEYLESS inline
-                        // map (`{ g }`, `{ * uint }`) also lands here and its named form is
-                        // rejected for a separate, self-describing reason (a map member needs a
-                        // key), so the message points at the supported spelling rather than
-                        // promising that naming alone fixes every shape.
-                        _ => {
-                            types.record_rejection_once_at(
-                                type2,
-                                "non-table-inline-map",
-                                 "an inline map (`{ a: int, b: uint }`) used as a member or element \
-                                  type is unsupported unless it is a table (`{ * k => v }`) — name \
-                                 it as its own rule (`m = { a: int, b: uint }`) and reference `m`"
-                                    .to_string(),
+                        // A heterogeneous inline map is a record, so it needs a nominal name.
+                        // The entry-slot `@name` is available only where this anonymous composite
+                        // is the member's whole type up to operator-free tag wrappers; elsewhere it
+                        // remains an honest rejection rather than leaking parent metadata inward.
+                        GroupParsingType::Heterogenous => {
+                            let mut rule_metadata = RuleMetadata::from(
+                                get_comment_after(parent_visitor, &CDDLType::from(type2), None)
+                                    .as_ref(),
                             );
-                            ConceptualRustType::Fixed(FixedValue::Null).into()
+                            if rule_metadata.name.is_none() {
+                                rule_metadata.name =
+                                    anon_composite_member_name(parent_visitor, type2);
+                            }
+                            let name = match rule_metadata.name.as_ref() {
+                                Some(name) => name,
+                                None => {
+                                    types.record_rejection_once_at(
+                                        type2,
+                                        "anonymous-inline-map",
+                                        "Anonymous groups not allowed: a heterogeneous inline map is \
+                                         used where a type is required. Give the map a nominal owner: \
+                                         create an explicit rule (`m = { a: int, b: uint }`, then \
+                                         reference `m`). A valid fixed-field record whose map is the \
+                                         member's whole type can instead use the scoped `@name` notation; \
+                                         dynamic/keyless bodies are validated separately and may still \
+                                         require another supported spelling."
+                                            .to_string(),
+                                    );
+                                    return ConceptualRustType::Fixed(FixedValue::Null).into();
+                                }
+                            };
+                            let cddl_ident = CDDLIdent::new(name);
+                            let rust_ident = RustIdent::new(cddl_ident.clone());
+                            parse_group(
+                                types,
+                                parent_visitor,
+                                group,
+                                &rust_ident,
+                                Representation::Map,
+                                None,
+                                None,
+                                &rule_metadata,
+                                cli,
+                            );
+                            types.new_type(&cddl_ident, cli)
                         }
+                        GroupParsingType::WrappedBasicGroup(_)
+                        | GroupParsingType::HomogenousArray(_, _) => unreachable!(),
                     }
                 }
                 _ => {
@@ -6773,6 +6887,15 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "buf",
     "byte",
     "bytes",
+    // THE EXACT-ZERO OPEN-REST INSERTION FAMILY — `candidate` and `entry_key`. Both are bound only
+    // inside the native `insert_<rest>` method emitted for a record with a forbidden fixed key and
+    // a captured map row. Swept 2026-08-15 over ordinary fields named for each local in the five
+    // registry shapes × default / preserve / canonical, plus exact-zero open records whose fixed
+    // field and captured-row `@name` each use the name under the same three profiles and wasm on/off:
+    // every generated crate compiled. The insertion body reaches user-controlled fields only as
+    // `self.<field>`; `entry_key` is its parameter and `candidate` is a detached clone, so neither
+    // can shadow a bare field binding.
+    "candidate",
     // THE OPEN-TABLE JSON FAMILY — `captured_range`, `ks`, `out`, `seen`, `typed_range` (the other
     // four point back here). All five are bound ONLY by `emit_open_table_json`, i.e. only in an open
     // table's hand-written `Serialize`/`Deserialize`/`JsonSchema`, and only under a json flag.
@@ -6793,28 +6916,6 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     // `self.ks.iter()` beside `while let Some(ks)`. `typed_range`/`captured_range` are bound inside
     // the `json_schema` body, which references no field at all.
     "captured_range",
-    // THE NONEMPTY OPEN-TABLE FAMILY — `captured_staged`, `seed`, `typed_staged` (the other two
-    // point back here). All three are bound ONLY where a `{ + K_t => V_t, * K_r => V_r }` rule is
-    // present: `seed` in the seeded `new(first_key, first_value)` door's struct literal, the two
-    // `_staged` vectors in the JSON visitor that assembles through that door (json flags only).
-    //
-    // Swept 2026-08-02 over the five registry shapes — array-rep record, map-rep record, tagged
-    // record (`#6.42([…])`), embedded plain group, group-choice arm — plus a `bytes`-typed map-rep
-    // shape, EACH carrying a field of the name, × default / `--preserve-encodings` /
-    // `--preserve-encodings --canonical-form` × json flags OFF and ON; plus the open table itself
-    // with each name `@name`d onto the typed row AND onto the catch-all row, in both the `*` and the
-    // `+` flavor, over the same six profiles. Every crate `cargo check` clean, and non-vacuously so
-    // (the json+preserve cell emits `let mut seed = OrderedHashMap::new()` inside a struct literal
-    // whose sibling rules carry `pub seed` fields, and `typed_staged.push(…)` in the same crate as
-    // a `pub typed_staged` field).
-    //
-    // The structural reason, worth stating because it bounds what a future emitter change could
-    // break, is the open table's zero-fixed-field shape (the same reason the JSON family above is
-    // safe): the ONLY user-controlled name reaching these bodies is a ROW's (`@name`), every
-    // reference to a row's field is qualified (`self.<row>` / `out.<row>`), and the seeding block
-    // deliberately binds a FIXED local rather than the field's name — so a row named `seed` emits
-    // `seed: { let mut seed = …; }` where the inner binding shadows nothing the block reads.
-    "captured_staged",
     "deser_order",
     "deser_variant",
     "deserializer",
@@ -6823,6 +6924,8 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "element",
     "elements",
     "encs",
+    // Exact-zero open-rest insertion local; verdict + sweep evidence at `candidate` above.
+    "entry_key",
     "errs",
     "f",
     "field",
@@ -6862,8 +6965,6 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "rest_value",
     "ret",
     "s",
-    // NonEmpty open-table local; verdict + sweep evidence at `captured_staged` above.
-    "seed",
     // Open-table JSON local; verdict + sweep evidence at `captured_range` above.
     "seen",
     "serializer",
@@ -6873,8 +6974,6 @@ pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "ty",
     // Open-table JSON local; verdict + sweep evidence at `captured_range` above.
     "typed_range",
-    // NonEmpty open-table local; verdict + sweep evidence at `captured_staged` above.
-    "typed_staged",
     "unknown_key",
     "v",
     "value",
@@ -6971,6 +7070,7 @@ fn parse_record_from_group_choice(
     cli: &Cli,
 ) -> RustRecord {
     let mut generated_fields = BTreeMap::<String, u32>::new();
+    let mut forbidden_fields = Vec::new();
     let flattened = flatten_group_entries(&group_choice.group_entries, rep);
     let entry_count = flattened.len();
     // Open struct-map recognition (loose CBOR): a trailing `* K => V` arrow row after ≥1 fixed
@@ -7240,7 +7340,7 @@ fn parse_record_from_group_choice(
             {
                 types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
             }
-            let optional_field = group_entry_optional(group_entry);
+            let mut optional_field = group_entry_optional(group_entry);
             // A count-permitting occurrence (`*`, `+`, `n*m` with bounds ≠ 1*1) on an ARRAY-record
             // field would be silently narrowed to a single mandatory item — a generated decoder
             // that rejects spec-valid CBOR with any other repetition count (invisible to
@@ -7343,32 +7443,57 @@ fn parse_record_from_group_choice(
                     // keyless entry that falls to the "map field has no key" rejection below.
                     match map_key {
                         Some(key) => {
-                            // A ZERO-permitting occurrence (`*`, `0*n`, `*n`) on a keyed map field
-                            // means the entry may be ABSENT (RFC 8610), but the record path would
-                            // silently narrow it to a MANDATORY field — a generated decoder that
-                            // rejects valid CBOR omitting the entry (invisible to round-trip tests;
-                            // only cross-producer data exposes it). Reject gracefully instead.
-                            // Lower bounds >= 1 (`+`, `1*2`) stay mandatory: under unique map keys
-                            // they collapse to exactly-one, so mandatory IS the honored semantics.
-                            let permits_zero = match group_entry {
-                                GroupEntry::ValueMemberKey { ge, .. } => matches!(
-                                    ge.occur.as_ref().map(|o| &o.occur),
-                                    Some(Occur::ZeroOrMore { .. })
-                                        | Some(Occur::Exact { lower: None, .. })
-                                        | Some(Occur::Exact { lower: Some(0), .. })
-                                ),
-                                _ => false,
+                            // A zero-permitting occurrence on a unique fixed map key has exactly
+                            // the wire states `?` has: the entry is absent, or it is present once.
+                            // The unique-key invariant rules out every second occurrence, so even
+                            // `*2` collapses faithfully to the existing Option field carrier.
+                            // Lower bounds >= 1 remain mandatory for the same reason.
+                            //
+                            // `0*0` / `*0` are deliberately different: the key is forbidden, not
+                            // optional. Mapping that to Option would let public Rust callers create
+                            // `Some(value)` which the CDDL forbids. The record instead carries
+                            // forbidden-key metadata and exposes no value member.
+                            let occurrence = match group_entry {
+                                GroupEntry::ValueMemberKey { ge, .. } => {
+                                    ge.occur.as_ref().map(|o| &o.occur)
+                                }
+                                _ => None,
                             };
-                            if permits_zero {
-                                types.record_rejection(format!(
-                                    "rule `{source_name}`: map field `{field_name}` has a \
-                                     zero-permitting occurrence (`*` / `0*n` / `*n`), which would \
-                                     be silently narrowed to a mandatory field (generated decoders \
-                                     would reject valid CBOR that omits it). Use `?` for an \
-                                     optional field, or a table `{{ * k => v }}`."
-                                ));
+                            let exactly_zero = matches!(
+                                occurrence,
+                                Some(Occur::Exact {
+                                    lower: Some(0) | None,
+                                    upper: Some(0),
+                                    ..
+                                })
+                            );
+                            if exactly_zero {
+                                // Exact zero is not an optional value.  Preserve the declaration as
+                                // record-level constraint metadata: emitters omit its value surface,
+                                // while the decoder and every open-rest construction door reject its
+                                // fixed key before it can be captured.
+                                reject_exact_zero_field_only_metadata(
+                                    types,
+                                    &field_name,
+                                    name,
+                                    &rule_metadata,
+                                    &field_type,
+                                );
+                                forbidden_fields.push(ForbiddenField {
+                                    key,
+                                    name: field_name,
+                                    rust_type: field_type,
+                                    source_index: index,
+                                });
                                 return None;
                             }
+                            let permits_zero = matches!(
+                                occurrence,
+                                Some(Occur::ZeroOrMore { .. })
+                                    | Some(Occur::Exact { lower: None, .. })
+                                    | Some(Occur::Exact { lower: Some(0), .. })
+                            );
+                            optional_field |= permits_zero;
                             // A keyed member whose type resolves to a plain group can only be
                             // emitted as a flat splice, which writes more items than the key's own
                             // entry promised — refuse every spelling of it here, at the one seam
@@ -7448,13 +7573,15 @@ fn parse_record_from_group_choice(
                 optional_field,
                 key,
                 rule_metadata,
-            ))
+            )
+            .with_source_index(index))
         })
         .collect();
     reject_encoding_companion_collisions(types, rep, name, &fields);
     RustRecord {
         rep,
         fields,
+        forbidden_fields,
         rest,
         typed_row,
     }
@@ -7657,9 +7784,9 @@ fn recognize_open_table(
     }
 }
 
-/// Which of an open table's two rows is being built — they differ in the occurrence they accept
-/// (only the TYPED row takes `+`/`1*`, the NonEmpty twin's spelling, because the min-1 counts typed
-/// entries), in their default field name, and in every rejection message's wording.
+/// Which of an open table's two rows is being built. They differ only in their default field name
+/// and their rejection-message wording; both carry the full normalized dynamic-map-row occurrence
+/// vocabulary, with each window counting entries in THAT row alone.
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum OpenTableRowKind {
     Typed,
@@ -7701,40 +7828,11 @@ fn open_table_row(
         GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
         _ => None,
     };
-    // The row's occurrence marker, read exactly as a TABLE's is (`parsing.rs`'s inline-map arm): `*`
-    // and `0*` are the same unbounded row, `+` and `1*` the same min-1 row. Every other marker names
-    // a real bounded cardinality this shape does not honor, and widening it to 0..N would silently
-    // over-accept.
-    let bound = match occur {
-        Some(Occur::ZeroOrMore { .. }) => Some(false),
-        Some(Occur::OneOrMore { .. }) => Some(true),
-        Some(Occur::Exact { lower, upper, .. }) if upper.is_none() => match lower {
-            None | Some(0) => Some(false),
-            Some(1) => Some(true),
-            _ => None,
-        },
-        _ => None,
-    };
-    let Some(non_empty) = bound else {
-        types.record_rejection(format!(
-            "rule `{src}`: the {slot} must use the `*` occurrence (unbounded: `* k => v`) — or, on \
-             the typed row only, `+` (at least one TYPED entry). `n*m`, `*n`, `n*` with n≥2, and \
-             `?` are not supported on an open table's rows."
-        ));
-        return None;
-    };
-    // The min-1 bound counts TYPED entries only (a map of purely captured entries is not a non-empty
-    // table), so it is a statement about the typed row and has no reading on the catch-all: a
-    // `{ * k1 => v1, + k2 => v2 }` would demand at least one entry no arm of the rule is about.
-    if non_empty && kind == OpenTableRowKind::CatchAll {
-        types.record_rejection(format!(
-            "rule `{src}`: the `+` occurrence is supported only on an open table's TYPED row \
-             (`{{ + k1 => v1, * k2 => v2 }}`), where the minimum of 1 counts TYPED entries. On the \
-             catch-all row it would demand at least one entry the rule says nothing about. Use `*` \
-             on the catch-all row."
-        ));
-        return None;
-    }
+    // Each open-table row owns its own row-local cardinality.  In particular, the catch-all's `+`
+    // is not a statement about the typed region: it is `NonEmptyMap` over captured entries, exactly
+    // as a `2*3` catch-all is a BoundedMap over captured entries.  Both rows stage loose during
+    // decoding and cross their one checked door afterwards.
+    let occurrence = normalized_dynamic_map_row_window(types, occur);
     let (domain, range) = match ge_entry {
         GroupEntry::ValueMemberKey { ge, .. } => {
             let domain = match &ge.member_key {
@@ -7831,7 +7929,7 @@ fn open_table_row(
         field_name,
         // Derived in `finalize` for the typed row (see the field doc); the catch-all never has one.
         dispatch_major: None,
-        non_empty,
+        occurrence,
     })
 }
 
@@ -7943,20 +8041,15 @@ fn recognize_rest_row(
         return (None, Some(candidate));
     }
     let (candidate_ge, candidate_comma) = flattened[candidate];
-    // Occurrence must be exactly `*` (unbounded capture). `+` / `n*m` / `?` are rejected: "at least
-    // one unknown entry" and other bounded cardinalities on a rest row are ill-specified and would
-    // break the empty-rest ≡ closed-struct byte invariant.
+    // A dynamic map row carries the same complete occurrence vocabulary as a homogeneous table.
+    // Unlike a fixed keyed field, every repetition is an entry of the row's own checked carrier, so
+    // a non-loose window is neither silently narrowed nor a statement about the record as a whole.
     let occur = match candidate_ge {
         GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
         _ => None,
     };
-    if !matches!(occur, Some(Occur::ZeroOrMore { .. })) {
-        types.record_rejection(format!(
-            "rule `{src}`: an open struct-map rest row must use the `*` occurrence (unbounded \
-             capture: `* k => v`). `+`, `n*m`, and `?` are not supported on a rest row."
-        ));
-        return (None, Some(candidate));
-    }
+    let occurrence_src = occur.map(|occur| format!("{occur} ")).unwrap_or_default();
+    let occurrence = normalized_dynamic_map_row_window(types, occur);
     // Extract the key (domain) and value (range) types from the arrow entry, keeping the SOURCE
     // spellings of both slots — the slot-shape rejections below print the author's own row back.
     let (domain, range, domain_src, range_src) = match candidate_ge {
@@ -8034,7 +8127,7 @@ fn recognize_rest_row(
                 "KEY",
                 &group_name,
                 &format!(
-                    "{} => {range_src}",
+                    "{occurrence_src}{} => {range_src}",
                     array_wrapped_domain_src(&domain_src.to_string(), &domain_src.type2)
                 ),
             );
@@ -8047,7 +8140,7 @@ fn recognize_rest_row(
                 "VALUE",
                 &group_name,
                 &format!(
-                    "{domain_src} => {}",
+                    "{occurrence_src}{domain_src} => {}",
                     match single_type2(range_src) {
                         Some(t2) => array_wrapped_domain_src(&range_src.to_string(), t2),
                         None => format!("[{range_src}]"),
@@ -8107,6 +8200,18 @@ fn recognize_rest_row(
     // rejection naming the remedy (never a silent drop). Placement/domain guards above fire FIRST, so
     // `@ignore` on an unsupported placement gets the placement rejection, not one of these.
     if rest_metadata.ignore {
+        // Tolerate-and-drop re-serializes no captured entries.  That is deliberately lossy but only
+        // faithful for the existing loose `*`/`0*` form; every restricted row would make the stated
+        // count impossible to preserve, so refuse it precisely rather than widening it on output.
+        if occurrence.is_some() {
+            types.record_rejection(format!(
+                "rule `{src}`: `@ignore` cannot apply to a restricted open struct-map rest row — \
+                 dropping every captured entry would re-serialize zero occurrences and violate the \
+                 row's declared cardinality. Keep the loose `* k => v ; @ignore` form, or drop \
+                 `@ignore` to retain the checked carrier."
+            ));
+            return (None, Some(candidate));
+        }
         // `@ignore` + `--preserve-encodings`: a preserve crate's contract is byte-exact round-trips,
         // which a deliberately-lossy type undermines crate-wide. `--canonical-form` implies preserve
         // (enforced in `api.rs`), so this covers it transitively. Point at the default capture flavor
@@ -8166,9 +8271,7 @@ fn recognize_rest_row(
         field_name,
         // Only an open table's TYPED row claims a single major; a catch-all sees the complement.
         dispatch_major: None,
-        // Only an open table's TYPED row carries the min-1 (`+`) bound; a single trailing rest row is
-        // recognized only under `*` (its own occurrence guard rejects everything else).
-        non_empty: false,
+        occurrence,
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }
@@ -8465,7 +8568,10 @@ fn recognize_array_rest_tail(
         field_name,
         // An array tail has no keys, so no major-type dispatch and no claimed major.
         dispatch_major: None,
-        non_empty,
+        // Array tails deliberately retain their existing two supported flavors; represent the
+        // min-one form through the shared normalized row field so no emitter-local boolean can
+        // disagree with `RestRow::container_type`.
+        occurrence: non_empty.then_some((1, u64::MAX)),
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }

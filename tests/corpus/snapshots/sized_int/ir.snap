@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "u_8",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U8,
@@ -66,6 +67,7 @@ expression: ir
                     },
                     RustField {
                         name: "u_16",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U16,
@@ -104,6 +106,7 @@ expression: ir
                     },
                     RustField {
                         name: "u_32",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U32,
@@ -142,6 +145,7 @@ expression: ir
                     },
                     RustField {
                         name: "i_8",
+                        source_index: 3,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 I8,
@@ -179,6 +183,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

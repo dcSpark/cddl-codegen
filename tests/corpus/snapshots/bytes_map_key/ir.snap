@@ -77,6 +77,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "named",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -147,6 +148,7 @@ expression: ir
                     },
                     RustField {
                         name: "inline",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Map(
                                 RustType {
@@ -209,6 +211,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

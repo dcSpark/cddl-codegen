@@ -52,8 +52,8 @@
 
 use crate::cli::Cli;
 use crate::intermediate::{
-    ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, Primitive, RustField,
-    RustIdent, RustRecord, RustStruct, RustStructType, RustType,
+    ConceptualRustType, EnumVariant, EnumVariantData, FixedValue, IntermediateTypes, Primitive,
+    RestRow, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
 };
 use crate::utils::convert_to_snake_case;
 
@@ -327,9 +327,12 @@ pub(crate) fn map_key_expr(key: &MapKey, key_base: i128) -> String {
         // then narrow to the key's own primitive (the acceptance check in `map_key_base` has
         // already proven every key in the run fits that primitive's range).
         MapKey::Int(p) => format!("({key_base} + __i as i128) as {p}"),
-        MapKey::Str => "__i.to_string()".to_owned(),
-        MapKey::Bytes => "vec![__i as u8]".to_owned(),
-        MapKey::Bool => "__i == 1".to_owned(),
+        MapKey::Str if key_base == 0 => "__i.to_string()".to_owned(),
+        MapKey::Str => format!("({key_base} + __i as i128).to_string()"),
+        MapKey::Bytes if key_base == 0 => "vec![__i as u8]".to_owned(),
+        MapKey::Bytes => format!("vec![({key_base} + __i as i128) as u8]"),
+        MapKey::Bool if key_base == 0 => "__i == 1".to_owned(),
+        MapKey::Bool => format!("(__i + {key_base}u64) % 2 == 1"),
     }
 }
 
@@ -342,7 +345,7 @@ pub(crate) fn map_key_literal(key: &MapKey, key_base: i128, i: i128) -> String {
         MapKey::Int(p) => format!("{i} as {p}"),
         MapKey::Str => format!("{i}.to_string()"),
         MapKey::Bytes => format!("vec![{i} as u8]"),
-        MapKey::Bool => format!("{i} == 1"),
+        MapKey::Bool => format!("{i} % 2 == 1"),
     }
 }
 
@@ -926,34 +929,194 @@ pub(crate) fn record_ctor_can_fail(record: &RustRecord) -> bool {
         || record
             .captured_dynamic_rows()
             .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds())
+        || (record.has_forbidden_fields() && record.captured_rest().is_some())
+}
+
+/// The wasm record constructor is normally as fallible as the native one.  One open-table shape
+/// adds a wasm-only checked door: a bounded typed row remains flattened on the owner class, so wasm
+/// receives a loose builder and turns it into the native checked carrier.
+/// Keep this beside `record_ctor_can_fail`, which `generation::records::codegen_struct` explicitly
+/// mirrors for the native constructor.
+pub(crate) fn record_wasm_ctor_can_fail(record: &RustRecord) -> bool {
+    record_ctor_can_fail(record)
+        || record.typed_row().is_some_and(|row| {
+            !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
+        })
 }
 
 /// The generated record constructor's argument types, in its exact field-then-dynamic-row order.
 /// This is shared with the wasm emitted-test renderer so an added valid-by-construction dynamic row
 /// cannot make that face silently drop the record's round-trip test.
-pub(crate) fn record_ctor_arg_types(record: &RustRecord) -> Vec<&RustType> {
-    let mut args: Vec<&RustType> = record
+pub(crate) fn record_ctor_arg_types(record: &RustRecord) -> Vec<RustType> {
+    let mut args: Vec<RustType> = record
         .fields
         .iter()
         .filter(|f| {
             !f.optional && !f.rust_type.is_fixed_value() && f.rust_type.config.default.is_none()
         })
-        .map(|f| &f.rust_type)
+        .map(|f| f.rust_type.clone())
         .collect();
     if let Some(typed) = record
         .typed_row()
         .filter(|_| record.is_non_empty_open_table())
     {
-        args.push(typed.domain());
-        args.push(typed.range());
+        args.push(typed.domain().clone());
+        args.push(typed.range().clone());
     }
+    // All remaining restricted map rows reach `new` as their complete checked carrier. The typed
+    // min-one row above deliberately keeps its first-key/first-value compatibility ABI instead.
+    args.extend(
+        record
+            .captured_dynamic_rows()
+            .filter(|row| {
+                !row.is_array_tail()
+                    && (row.is_restricted() || record.has_forbidden_fields())
+                    && !(record.is_typed_row(row) && record.is_non_empty_open_table())
+            })
+            .map(|row| row.container_type()),
+    );
     args.extend(
         record
             .captured_dynamic_rows()
             .filter(|row| row.is_non_empty_array_tail())
-            .map(|row| row.element()),
+            .map(|row| row.element().clone()),
     );
     args
+}
+
+/// A map rest row in an open struct shares its key space with declared fixed members.  The generic
+/// map minter starts at the first in-window key, which can make a valid checked carrier collide with
+/// a declared key only after it reaches record serialization (`{ 1: uint, 2*3 uint => text }` was
+/// the concrete failure). Shift the complete run to the first cheap collision-free window instead;
+/// a row with no such window is skipped loudly, never minted as an invalid record.
+fn mint_dynamic_map_row(
+    types: &IntermediateTypes,
+    record: &RustRecord,
+    row: &RestRow,
+    depth: u8,
+) -> Option<MintValue> {
+    let carrier = row.container_type();
+    let mut value = valid_value_at(types, &carrier, depth)?;
+    let MintValue::Map {
+        key,
+        key_base,
+        count,
+        ..
+    } = &mut value
+    else {
+        return Some(value);
+    };
+    let fixed_keys: Vec<&FixedValue> = record
+        .fields
+        .iter()
+        .filter_map(|field| field.key.as_ref())
+        .chain(record.forbidden_fields.iter().map(|field| &field.key))
+        .collect();
+    if fixed_keys.is_empty() || *count == 0 {
+        return Some(value);
+    }
+    let max_offset = match key {
+        // One fixed key can rule out up to `count` consecutive candidate starts (a two-entry run
+        // at bases 0 and 1 both contains fixed key 1).  Searching `fixed_keys * count`, plus the
+        // initial candidate, therefore reaches the first inexpensive free run without claiming
+        // that a finite key domain has room.
+        MapKey::Int(_) | MapKey::Str => (fixed_keys.len() as i128).checked_mul(*count)?,
+        // Bytes have 256 one-byte distinct candidates; a larger map was already rejected by the
+        // generic minter before it reached this helper.
+        MapKey::Bytes => 256i128.checked_sub(*count)?,
+        // A boolean map can have exactly two distinct key runs (false/true or true/false).
+        MapKey::Bool => 1,
+    };
+    let initial = *key_base;
+    for offset in 0..=max_offset {
+        let Some(candidate) = initial.checked_add(offset) else {
+            break;
+        };
+        if !map_key_run_is_accepted(key, row.domain(), *count, candidate)
+            || (0..*count).any(|index| {
+                fixed_keys
+                    .iter()
+                    .any(|fixed| map_minted_key_equals_fixed(key, candidate, index, fixed))
+            })
+        {
+            continue;
+        }
+        *key_base = candidate;
+        return Some(value);
+    }
+    crate::warn!(
+        "cddl-codegen --emit-tests: dynamic map row {} has no cheaply minted key run that avoids this record's fixed keys — its row wire path is unexercised",
+        row.field_name
+    );
+    None
+}
+
+/// Whether one entry from a `MintValue::Map` run has the same CDDL value as a declared map key.
+/// All key mints are primitive, so matching is exact and does not need to re-encode CBOR.
+fn map_minted_key_equals_fixed(key: &MapKey, base: i128, index: i128, fixed: &FixedValue) -> bool {
+    let value = base + index;
+    match (key, fixed) {
+        (MapKey::Int(Primitive::N64), FixedValue::Nint(fixed)) if *fixed < 0 => {
+            value == -(*fixed + 1)
+        }
+        // `N64` stores the magnitude of a *negative* CDDL integer: magnitude 0 is `-1`, not
+        // unsigned integer 0. It can only collide with a negative fixed key through the arm
+        // above; treating its magnitude as a uint value makes the key-run search skip a valid
+        // first candidate whenever this record also has a fixed uint key.
+        (
+            MapKey::Int(
+                Primitive::U8
+                | Primitive::U16
+                | Primitive::U32
+                | Primitive::U64
+                | Primitive::I8
+                | Primitive::I16
+                | Primitive::I32
+                | Primitive::I64,
+            ),
+            FixedValue::Uint(fixed),
+        ) => value >= 0 && value == *fixed as i128,
+        (
+            MapKey::Int(Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64),
+            FixedValue::Nint(fixed),
+        ) => value == *fixed,
+        (MapKey::Str, FixedValue::Text(fixed)) => value.to_string() == *fixed,
+        (MapKey::Bytes, FixedValue::Bytes(fixed)) => fixed.as_slice() == [value as u8],
+        (MapKey::Bool, FixedValue::Bool(fixed)) => ((value % 2) == 1) == *fixed,
+        _ => false,
+    }
+}
+
+/// The shifted numeric run must continue to obey the domain bounds and primitive carrier.  This is
+/// map-key-base's acceptance check factored for the open-struct collision search above.
+fn map_key_run_is_accepted(key: &MapKey, key_ty: &RustType, count: i128, base: i128) -> bool {
+    if count <= 0 {
+        return true;
+    }
+    let MapKey::Int(p) = key else {
+        return true;
+    };
+    let Some(last) = base.checked_add(count - 1) else {
+        return false;
+    };
+    let is_nint = matches!(p, Primitive::N64);
+    let (prim_min, prim_max) = if is_nint {
+        (0, u64::MAX as i128)
+    } else {
+        prim_range(p)
+    };
+    if base < prim_min || last > prim_max {
+        return false;
+    }
+    let Some(bounds) = key_ty.config.bounds else {
+        return true;
+    };
+    let bounds = if is_nint {
+        crate::generation::nint_bounds_to_u64(&bounds)
+    } else {
+        bounds
+    };
+    (0..count).all(|offset| !crate::generation::bounds_reject_value(&bounds, base + offset))
 }
 
 /// Record round-trip: a valid baseline, plus one case per optional field with that field present.
@@ -1016,6 +1179,25 @@ fn record_roundtrip(
             _ => {
                 crate::warn!(
                     "cddl-codegen --emit-tests: no round-trip for {name} (NonEmpty typed row not cheaply mintable)"
+                );
+                return None;
+            }
+        }
+    }
+    // Every other restricted dynamic map row is a complete checked constructor argument.  Its
+    // `MintValue::Map` crosses Bounded*/NonEmpty*'s one TryFrom door, so the baseline is valid by
+    // construction and actually exercises the row rather than emitting an arity-invalid `new()`.
+    for rest in record.captured_dynamic_rows().filter(|row| {
+        !row.is_array_tail()
+            && (row.is_restricted() || record.has_forbidden_fields())
+            && !(record.is_typed_row(row) && record.is_non_empty_open_table())
+    }) {
+        match mint_dynamic_map_row(types, record, rest, 0) {
+            Some(value) => valid_args.push(value),
+            None => {
+                crate::warn!(
+                    "cddl-codegen --emit-tests: no round-trip for {name} (checked dynamic map row {} not cheaply mintable)",
+                    rest.field_name
                 );
                 return None;
             }
@@ -1135,12 +1317,24 @@ fn record_roundtrip(
                 }
                 match (valid_value(types, domain), valid_value(types, range)) {
                     (Some(k), Some(v)) => {
-                        let mint = format!(
-                            "v.{}.insert({}, {});",
-                            rest.field_name,
-                            render_rust(&k),
-                            render_rust(&v)
-                        );
+                        let mint = if record.has_forbidden_fields() && !rest.is_array_tail() {
+                            // Exact-zero metadata makes the captured carrier private. Re-enter the
+                            // record's checked insertion door, which composes its forbidden-key
+                            // validation with the carrier's own cardinality/duplicate semantics.
+                            format!(
+                                "v.insert_{}({}, {}).unwrap();",
+                                rest.field_name,
+                                render_rust(&k),
+                                render_rust(&v)
+                            )
+                        } else {
+                            format!(
+                                "v.{}.insert({}, {});",
+                                rest.field_name,
+                                render_rust(&k),
+                                render_rust(&v)
+                            )
+                        };
                         cases.push((
                             format!("{{ let mut v = {base}; {mint} v }}"),
                             if typed {
@@ -1429,10 +1623,11 @@ fn record_deser_reject(
     value_eq: bool,
 ) -> Option<String> {
     let ctor_arg_types = record_ctor_arg_types(record);
+    let ctor_arg_type_refs: Vec<&RustType> = ctor_arg_types.iter().collect();
     let mut bounded_array_probes = type_enforced_bounded_array_ctor_probes(
         types,
         &format!("{name}::new"),
-        &ctor_arg_types,
+        &ctor_arg_type_refs,
         record_ctor_can_fail(record),
     );
 
@@ -1477,15 +1672,15 @@ fn record_deser_reject(
         return (!bounded_array_probes.is_empty()).then(|| bounded_array_probes.join("\n"));
     }
 
-    // valid baseline arg for every constructor field; bail the whole type if any isn't mintable
+    // Valid baseline args for every constructor input (fixed fields plus any checked dynamic map
+    // row); bail the whole type if any isn't mintable.
     let mut valid_args: Vec<String> = Vec::new();
-    for f in &ctor_fields {
-        match valid_value(types, &f.rust_type) {
+    for ty in &ctor_arg_types {
+        match valid_value(types, ty) {
             Some(v) => valid_args.push(render_rust(&v)),
             None => {
                 crate::warn!(
-                    "cddl-codegen --emit-tests: skipped {name} (field {} not cheaply mintable)",
-                    f.name
+                    "cddl-codegen --emit-tests: skipped {name} (constructor argument not cheaply mintable)"
                 );
                 return (!bounded_array_probes.is_empty()).then(|| bounded_array_probes.join("\n"));
             }
@@ -2205,6 +2400,16 @@ pub(crate) fn mint_struct(
                 args.push(valid_value_at(types, typed.domain(), depth + 1)?);
                 args.push(valid_value_at(types, typed.range(), depth + 1)?);
             }
+            // The other restricted map rows are full checked-carrier constructor arguments, just
+            // as at the top-level round-trip mint. This is needed for nested records too: leaving
+            // one out produces an arity-invalid `new()` only after the enclosing test is emitted.
+            for rest in record.captured_dynamic_rows().filter(|row| {
+                !row.is_array_tail()
+                    && (row.is_restricted() || record.has_forbidden_fields())
+                    && !(record.is_typed_row(row) && record.is_non_empty_open_table())
+            }) {
+                args.push(mint_dynamic_map_row(types, record, rest, depth + 1)?);
+            }
             // The one-or-more array tail's first element is a real constructor argument, just as it
             // is at the top-level `record_roundtrip` call. Without it nested record mints call
             // `new` with a missing argument and fail to compile.
@@ -2693,4 +2898,34 @@ fn ty_as_record<'a>(types: &'a IntermediateTypes, ty: &RustType) -> Option<&'a R
         return Some(record);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nint_minted_magnitudes_do_not_collide_with_fixed_uints() {
+        // CBOR nint's stored magnitude `0` represents CDDL `-1`. The search may therefore use
+        // that first candidate alongside a fixed unsigned key `0`; a collision here falsely moves
+        // the generated test vector off its canonical baseline.
+        assert!(!map_minted_key_equals_fixed(
+            &MapKey::Int(Primitive::N64),
+            0,
+            0,
+            &FixedValue::Uint(0),
+        ));
+        assert!(map_minted_key_equals_fixed(
+            &MapKey::Int(Primitive::N64),
+            0,
+            0,
+            &FixedValue::Nint(-1),
+        ));
+        assert!(map_minted_key_equals_fixed(
+            &MapKey::Int(Primitive::U64),
+            0,
+            0,
+            &FixedValue::Uint(0),
+        ));
+    }
 }

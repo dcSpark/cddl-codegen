@@ -211,9 +211,10 @@ function renderBlock(): string {
     "These constructs work as their own rule but are unsupported in the listed nesting role — one " +
     "row per (construct, role). A role annotated with a shape count is reached by that many " +
     "distinct unsupported spellings; the Example column shows one of them. For the inline " +
-    "anonymous composites the remedy is to name the composite: `type2.map` takes a rule of its " +
-    "own, while `type2.array` also accepts a `; @name` on the group entry it is the whole type " +
-    "of; for the key and occurrence rows the remedy depends on the spelling.",
+    "anonymous composites the remedy is to name the composite: a fixed-field heterogeneous " +
+    "`type2.map` or `type2.array` accepts a scoped `; @name` when it is the group entry's whole " +
+    "member type (up to tag wrappers), while every other listed position needs an explicit rule; " +
+    "for the key and occurrence rows the remedy depends on the spelling.",
   );
   L.push("");
   L.push("| Construct | Unsupported role | Example |");

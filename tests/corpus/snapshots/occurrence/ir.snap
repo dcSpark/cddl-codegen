@@ -344,6 +344,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "o",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -408,6 +409,7 @@ expression: ir
                     },
                     RustField {
                         name: "b",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -474,6 +476,7 @@ expression: ir
                     },
                     RustField {
                         name: "upper",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -538,6 +541,7 @@ expression: ir
                     },
                     RustField {
                         name: "lower",
+                        source_index: 3,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -602,6 +606,7 @@ expression: ir
                     },
                     RustField {
                         name: "maybe",
+                        source_index: 4,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -666,6 +671,7 @@ expression: ir
                     },
                     RustField {
                         name: "exact",
+                        source_index: 5,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -732,6 +738,7 @@ expression: ir
                     },
                     RustField {
                         name: "nested",
+                        source_index: 6,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -808,6 +815,7 @@ expression: ir
                     },
                     RustField {
                         name: "nested_bounded",
+                        source_index: 7,
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
@@ -893,6 +901,7 @@ expression: ir
                     },
                     RustField {
                         name: "inline_bounded",
+                        source_index: 8,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -952,6 +961,7 @@ expression: ir
                     },
                     RustField {
                         name: "inline_upper",
+                        source_index: 9,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -1009,6 +1019,7 @@ expression: ir
                     },
                     RustField {
                         name: "inline_lower",
+                        source_index: 10,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -1066,6 +1077,7 @@ expression: ir
                     },
                     RustField {
                         name: "inline_maybe",
+                        source_index: 11,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -1123,6 +1135,7 @@ expression: ir
                     },
                     RustField {
                         name: "inline_exact",
+                        source_index: 12,
                         rust_type: RustType {
                             conceptual_type: Array(
                                 RustType {
@@ -1181,6 +1194,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

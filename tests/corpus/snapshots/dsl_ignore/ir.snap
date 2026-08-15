@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "key_1",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -69,6 +70,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: Some(
                     RestRow {
                         kind: MapEntries {
@@ -103,7 +105,7 @@ expression: ir
                         semantics: Ignore,
                         field_name: "rest",
                         dispatch_major: None,
-                        non_empty: false,
+                        occurrence: None,
                     },
                 ),
                 typed_row: None,
@@ -135,6 +137,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "index_0",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -172,6 +175,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: Some(
                     RestRow {
                         kind: ArrayTail {
@@ -192,7 +196,7 @@ expression: ir
                         semantics: Ignore,
                         field_name: "rest",
                         dispatch_major: None,
-                        non_empty: false,
+                        occurrence: None,
                     },
                 ),
                 typed_row: None,

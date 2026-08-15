@@ -17,8 +17,8 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > **Entry points (in order):** *this README* (the model + current state, incl. the gotchas and
 > upstream-oracle-gap state) → [`roadmap.toml`](roadmap.toml)
 > (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->123 features and 144 containment cells<!-- /gen:sh:readme-counts -->
-> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->301 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->123 features and 149 containment cells<!-- /gen:sh:readme-counts -->
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->306 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`) wherever the
@@ -186,7 +186,7 @@ excluded-endpoint number, NaN against a float window — each a valid instance o
 certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
 REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
 replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is
-<!-- gen:sh:readme-enforce-green -->93 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+<!-- gen:sh:readme-enforce-green -->96 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
 the guard that replaced the silent truncation this row's vector exposed; pinned by the
@@ -560,6 +560,24 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     Repro and exact commands:
     `cddl-matrix/upstream-reports/rust-cddl-fixed-bytes-validator.md` (local note).
 
+18. **exact-zero fixed map members are read as exactly-one by rust and ignored by ruby** (OPEN at
+    pinned `ac1b98e` / Ruby cddl 0.12.14): for `exact = { 0*0 t: uint }`, the spec-valid empty map
+    `a0` passes Ruby but rust rejects it as `object missing key: "t"`; the spec-invalid map containing
+    the forbidden key (`a1617400`, `{ "t": 0 }`) passes BOTH validators. RFC 8610 §3.2 defines
+    `n*m` as a cardinality range, so `0*0` permits exactly zero occurrences. Consequently
+    `contain.occurrence-target.memberkey.bareword.zero_exact_map` stays a vectorless pinned
+    decode-foreign row: neither the absent accept direction nor the forbidden-present reject
+    direction can satisfy the ordinary two-oracle certification rule. This does not weaken its
+    supported verdict: direct generated-runtime tests execute absent CBOR/JSON round trips and
+    structured forbidden-key rejection across closed/open, typed/`any`, `@ignore`, bounded,
+    non-empty, duplicate-preserving, preserve, canonical, wasm, and component surfaces. The missing
+    accept-side exemption mechanism is already owned by
+    `testing.armed-idle-harness-arms-empty-head-ledgers-zero`; the reject-side framework is
+    `DECODE_REJECT_ORACLE_GAP_EXEMPT`. The Cycle-5 ruling deliberately adds neither a row-wide
+    exemption nor a one-off framework change. Re-mint after either validator is fixed; the row's
+    durable `pinned_reason` names both current failures and automatically disappears once one
+    candidate passes both oracles.
+
 ## Gotchas (read before touching the support seam or probe examples)
 
 The recurring rule: **a panic/compile-failure on minimal *valid* CDDL is a finding to surface
@@ -577,21 +595,22 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   ➖ note in the corpus overlay, never relabelled to green the drift-check.
 - **Anonymous-group limitation (pervasive contextual fact, surfaced by per-cell support).** An INLINE
   anonymous map/array/group nested in a choice / array-element / cbor-payload / generic-arg / map-value
-  position is **rejected gracefully** (`parsing.rs`, "Anonymous groups not allowed" for the array
-  bracket, "an inline map … unsupported unless it is a table" for the map one) — it must be
-  **named**. A named RULE
-  works in every position; the `@name` naming route the array message advertises works wherever the
-  anonymous ARRAY is the whole type of the group entry the comment sits on — the choice-member
-  position and the member ones (array-element, map-value, occurrence-target), pinned by
-  `dsl_position_tests` cells. TAG wrappers are transparent to it: `#6.42([ … ]) ; @name Foo` mints
-  the struct and wraps it in the tag, for any number of nested tags, because a tag mints no type of
-  its own and the array behind it is therefore the only referent the name can have — emitting
-  exactly what the named-rule spelling emits — an equality pinned by
-  `tagged_anon_array_member_name_emits_the_named_rule_remedy` across three profiles. It stays out of
-  reach where the array belongs to some other construct the comment cannot be attributed to (a
-  `bytes .cbor [ … ]` payload, a generic argument, a map key, a choice arm), pinned by
-  `tagged_anon_array_member_name_walks_only_operator_free_single_choice_tag_layers`; and the MAP
-  bracket has no naming door at all, tagged or not — its message advertises only the named form.
+  position is **rejected gracefully** unless it has a representable nominal. A named RULE works in
+  every position; the `@name` naming route works where a heterogeneous anonymous ARRAY or
+  fixed-field **MAP** record is
+  the whole type of the group entry the comment sits on — the choice-member position and the member
+  ones (array-element, map-value, occurrence-target), pinned by `dsl_position_tests` cells. TAG
+  wrappers are transparent to it: `#6.42([ … ]) ; @name Foo` and `#6.42({ … }) ; @name Foo` mint the
+  struct and wrap it in the tag, for any number of nested tags, because a tag mints no type of its
+  own and the composite behind it is therefore the only referent the name can have — emitting exactly
+  what the named-rule spelling emits. Source equality across rust/preserve/json/wasm/component is
+  pinned by `anonymous_map_member_name_emits_the_named_rule_remedy_across_faces`; the compiled
+  preserve and wasm fixture is `tests/comment-dsl`. It stays out of reach where the composite belongs
+  to some other construct the comment cannot be attributed to (a `bytes .cbor [ … ]` payload, a
+  generic argument, a map key, a choice arm), pinned by
+  `tagged_anon_array_member_name_walks_only_operator_free_single_choice_tag_layers`; homogeneous
+  inline tables remain structural maps rather than records, and two-row open tables remain
+  named-rule-only because their container owner and keys list derive from that rule.
   Where the door does not reach, the `@name` written for it is now REFUSED rather than dropped: on a
   SINGLE-ENTRY group-choice arm the entry-trailing slot is honored exactly where the door consumes
   it and is a hard error otherwise, naming the arm's own slot (the one after the `//`), so an author
@@ -929,14 +948,14 @@ empirically for the `dsl.duplicates.{reject,preserve}` registration.
 
 ## Registering a CONTAINMENT cell
 
-Same discipline, different obligation chain — walked empirically for the three
-`contain.occurrence-target.memberkey.type1.open_table*` cells, where discovering it gate-by-gate
-cost six fail-fast tier iterations. In order:
+Same discipline, different obligation chain — walked empirically for the dynamic-row occurrence
+family (`open_struct*`, `open_table*`), whose three `2*3` cells prove that row-local bounds do not
+turn into enclosing-map bounds. In order:
 
 1. Add the `[[contain]]` rows in `containment/<axis>.toml`, then `bun run build_matrix.ts`.
-2. Full `bun run verify.ts` — mints each cell's `[[support]]` verdict (an `unsupported` verdict for
-   a deliberately-rejected composition is CORRECT and is what keeps a supported sibling from
-   over-claiming — the `open_table_catchall_plus` cell exists for exactly that).
+2. Full `bun run verify.ts` — mints each cell's `[[support]]` verdict. A supported dynamic row must
+   execute its complete carrier path; generation alone cannot prove the count survives a cross-face
+   boundary.
 3. `bun run project_robustness.ts` — supported cells mint `tests/matrix_supported/<id>.cddl`,
    rejected cells mint `tests/matrix_reject/<id>.cddl`.
 4. A rejected cell's row must ALSO land in the committed reject catalog:

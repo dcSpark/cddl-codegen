@@ -9,6 +9,12 @@ We have a comment DSL to help annotate the output code beyond what is possible j
 
 ## @name
 
+On an exactly-zero fixed map member (`0*0 key: value` or `*0 key: value`), `@name` names the
+otherwise-absent member's JSON property for the forbidden-key diagnostic; it does not create a Rust,
+wasm, WIT, or schema field. `@doc`, custom codec/encoding directives, and `.default` are rejected in
+that slot because no value field exists to carry their effect; put documentation on the containing rule
+instead.
+
 For example in an array-encoded group you can give explicit names just by the keys e.g.:
 ```cddl
 foo = [
@@ -136,14 +142,14 @@ the remedy; and the rule-scoped tags (`@copy`, `@raw_bytes_flavor`, `@used_as_el
 `@extern_companions`, `@duplicates`, `@ignore`) and the type-scoped ones (`@rust_name`, `@newtype`,
 `@no_alias`, `@used_as_key`, `@custom_json`, `@no_json_schema_export`) get the same rejections they
 get at an ordinary field. The one thing the entry slot **does** carry on such an arm is `@name`
-naming an **anonymous inline array** member type (immediately below) — that naming door is what the
+naming an **anonymous heterogeneous inline array or fixed-field map** member type (immediately below) — that naming door is what the
 "Anonymous groups not allowed" error advertises, so it stays. It is scoped to exactly the member
-types that door covers (an anonymous inline array, bare or tag-wrapped): written on a member whose
-type is anything else — a homogeneous `[* uint]`, a primitive, a named rule, an inline map — the
+types that door covers (an anonymous heterogeneous inline array or fixed-field map, bare or tag-wrapped): written on a member whose
+type is anything else — a homogeneous `[* uint]`, a primitive, a named rule, or an inline table — the
 name is read by nothing, and it is a hard error naming the arm's own slot (`// ; @name <n>`) as the
 remedy. The arm's own name always comes from the arm slot; the entry slot never names the variant.
 
-Note: `@name` also names an **anonymous inline array used as a member's type**, which is the remedy
+Note: `@name` also names an **anonymous heterogeneous inline array or fixed-field map record used as a member's type**, which is the remedy
 the "Anonymous groups not allowed" error advertises:
 ```cddl
 t = [0, [1, bytes] ; @name inner
@@ -153,8 +159,20 @@ mints `struct Inner` and holds it in a field named `inner` — the trailing comm
 own slot, so the single directive names *both* the struct and the field, which is what makes the
 struct referenceable at all.
 
+The same door applies to a heterogeneous fixed-field map record:
+```cddl
+t = { point: { x: uint, y: uint } ; @name point
+    , label: text }
+```
+This mints `struct Point` and is equivalent to the named-rule spelling `point = { x: uint, y: uint }`
+followed by `point: point`. A homogeneous inline table (`{ * uint => uint }`) remains a structural
+map carrier, not a record, so there is no nominal struct for this slot to name.
+An open table (`{ * K1 => V1, * K2 => V2 }`) is also outside this door: its two-container owner,
+keys list, and cross-face surface are named from a top-level rule, so hoist it and reference that
+rule.
+
 **Tags are transparent to this door.** A tag mints no type of its own — it wraps whatever its
-payload is — so the array behind it is still the only thing the name can mean:
+payload is — so the anonymous array or map behind it is still the only thing the name can mean:
 ```cddl
 t = [ point: #6.42([x: uint]) ; @name tagged_point
     , label: text ]
@@ -164,13 +182,13 @@ Any number of nested tags (`#6.1(#6.42([x: uint]))`) works the same way. This em
 the named-rule spelling emits (`p = [x: uint]`, then `#6.42(p)`), so the two are interchangeable —
 pick whichever reads better.
 
-The naming door is scoped to the case where the anonymous array is the member's **whole** type up
+The naming door is scoped to the case where the anonymous array or map is the member's **whole** type up
 to those tag wrappers. Behind a control operator (`bytes .cbor [1, bytes] ; @name inner`) the array
 belongs to the operator rather than the member, and the anonymous-group error stands; the same
 holds when the member's type is a choice (`a / [x: uint]`), tagged or not, since the name would be
-ambiguous between the arm and the member. An inline **map** in the same position has no naming door
-at all, tag or no tag — its own error points at the named form (`m = { a: int, b: uint }`, then
-reference `m`) and does not advertise `@name`.
+ambiguous between the arm and the member. An inline composite outside that position still has no
+naming door: a `.cbor` payload, generic argument, map key, or multi-choice member must use an
+explicit named rule. Homogeneous inline tables remain structural maps rather than named records.
 
 ## @rust_name
 
@@ -622,9 +640,9 @@ Use it for view types that must accept forward-compatible data without retaining
 - **Placement.** `@ignore` is bare (no argument) and reads from the trailing entry's **own comment
   slot**, exactly like `@name`/`@duplicates`
   ([above](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)). It is valid **only** on a
-  recognized rest row of a map-rep record or a rest tail of an array-rep record; anywhere else (a
-  rule, a field, a non-final or bounded occurrence) is a loud graceful rejection, never silently
-  dropped. The same **marker-slot trap** applies: a directive glued to the `*` occurrence marker's
+  recognized **loose** rest row of a map-rep record or a loose rest tail of an array-rep record;
+  anywhere else (a rule, a field, a non-final occurrence, or a restricted row/tail) is a loud
+  graceful rejection, never silently dropped. The same **marker-slot trap** applies: a directive glued to the `*` occurrence marker's
   comment slot is silently not honored, so keep it after the whole entry (`* K => V ; @ignore`,
   `* t ; @ignore`).
 - **The end-of-line trap.** A CDDL comment runs to the end of the line, so a directive on the same
@@ -635,6 +653,11 @@ Use it for view types that must accept forward-compatible data without retaining
   trailing elements — they are dropped, and re-serialization emits the declared members / prefix only.
   The generated type and its `serialize` fn carry a rustdoc breadcrumb saying so.
 - **Rejected combinations**, each a graceful generation error naming the remedy:
+  - **A restricted map rest row** (`+`, `1*`, or another bounded window): dropping its captured
+    entries would always re-serialize zero occurrences and violate the declared row cardinality.
+    Use capture so the checked `NonEmptyMap`/`BoundedMap` carrier retains the entries. (Restricted
+    heterogeneous array tails remain outside the supported array-rest shape except for `+`/`1*`,
+    which reject `@ignore` for the same reason.)
   - **`--preserve-encodings`** (and `--canonical-form`, which implies it): a preserve crate's contract
     is byte-exact round-trips, which a silently-lossy type would undermine crate-wide. Use capture
     (drop the directive), or `@custom_serialize`/`@custom_deserialize` for a genuine view type.
@@ -1210,7 +1233,7 @@ t = { * K_t => V_t, * K_r => V_r }
 
 One typed table row plus one trailing typed catch-all rest row. Entries are routed by **wire major type**, peeked before any deserializer runs: the typed row claims exactly its key's single statically-known major, and the catch-all sees only the complement. Once the major routes an entry, that row's `K`/`V` decide — a key or value its row refuses is a **hard parse error**, never a fall-through to the other row. (That is what makes the shape compose with a backtracking type choice: the error fails the enclosing arm, which rewinds.)
 
-It lowers to a struct with **two containers** — `entries` (the typed row) and `rest` (the catch-all), each `@name`-renameable, each carrying its own `@duplicates` policy and its own encoding sidecars. Neither is a `new()` argument; both default empty.
+It lowers to a struct with **two containers** — `entries` (the typed row) and `rest` (the catch-all), each `@name`-renameable, each carrying its own `@duplicates` policy and its own encoding sidecars. The loose `*` / `0*` rows are not `new()` arguments and default empty. A restricted row is instead a checked carrier input, except that the shipped typed-`+` constructor keeps its `new(first_key, first_value)` ABI.
 
 Spelling the typed row `+` (or `1*`) makes it a **NonEmpty open table**:
 
@@ -1218,7 +1241,7 @@ Spelling the typed row `+` (or `1*`) makes it a **NonEmpty open table**:
 t = { + K_t => V_t, * K_r => V_r }
 ```
 
-The minimum of 1 counts **typed** entries — a map of purely captured entries is not a non-empty table — and it is enforced at exactly the doors that can break it: `new(first_key, first_value)` takes the first typed entry (so no constructed value violates the bound), and the CBOR and JSON readers each re-check after their loop, raising the same refusal `NonEmptyMap`'s door raises. The catch-all keeps `*` in both flavors: `+` there would demand an entry the rule says nothing about, and is a graceful rejection saying so. `*` and `0*` are the same unbounded row; every other marker (`?`, `n*m`, `*n`, `n*` with n≥2) is a real bounded cardinality this shape does not honor and is refused rather than widened.
+The minimum of 1 counts **typed** entries — a map of purely captured entries is not a non-empty table — and its public typed field is the corresponding `NonEmptyMap` / `NonEmptyPairMap` carrier. `new(first_key, first_value)` enters that carrier directly; CBOR stages into the loose row container then uses its `TryFrom` door, while JSON stages then calls `new`, so every entrance shares the same refusal and the public row cannot be cleared or have its final default-map entry removed. The catch-all has its **own** equivalent `+`/`1*` NonEmpty carrier and does not borrow the typed count. `*` and `0*` remain loose; every other marker (`?`, `n*m`, `*n`, `n*`, and omitted exact-once) is a checked `BoundedMap`/`BoundedPairMap` window for that particular row. A bounded typed row stays flattened on the owner class, while a bounded catch-all crosses as a checked wrapper; WIT/component despecialize either to a fallible list of pairs then restore the carrier. JSON Schema intentionally has no object-wide property bound because it cannot count one row independently.
 
 `K_t`'s major must be statically knowable, by one of two routes:
 
@@ -1229,7 +1252,7 @@ A catch-all whose admissible majors the typed row already exhausts is refused to
 
 Its JSON face is [one flattened object holding both rows](output_format#open-tables-a-typed-row-plus-a-catch-all), read back typed-first — worth reading before choosing a `K_t`, because a key type admitting every member name leaves the catch-all unreachable through JSON. Where that is decidable the tool refuses rather than ships it: a `K_t` transparently resolving to `String` (bare `text`, or an alias of it) is a graceful rejection under `--json-serde-derives`/`--json-schema-export`, and a supported shape without them.
 
-Not supported (each a graceful rejection naming the remedy): more than two rows, or two rows mixed with fixed keys; an inline anonymous spelling (`f: { * k1 => v1, * k2 => v2 }` — give it its own named rule); `any` on the *typed* row (it would claim all eight majors, leaving the catch-all nothing — `any` belongs on the catch-all); a null-admitting key on either row; `@ignore` on either row; and `+` on the catch-all row (the min-1 counts typed entries).
+Not supported (each a graceful rejection naming the remedy): more than two rows, or two rows mixed with fixed keys; an inline anonymous spelling (`f: { * k1 => v1, * k2 => v2 }` — give it its own named rule); `any` on the *typed* row (it would claim all eight majors, leaving the catch-all nothing — `any` belongs on the catch-all); a null-admitting key on either row; and `@ignore` on either row.
 
 ### Overriding the wire of a type this crate does not define
 
@@ -1311,7 +1334,7 @@ table type nor a table field.
 The pair parses in the positions below but cannot be honored there, so each one is a graceful generation error naming the spelling that works. The common cause is that the pair is a **type-level** override: it replaces the codec of the rust type the rule resolves to. Some positions delete the node the override is keyed on or mint a type whose codec it cannot replace; explicit and tagged wrappers are also refused because this delivery audits only the implicit homogeneous-table owner, not their broader wrapper contracts.
 
 * **On a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule.** Either marker names a type this crate does not define, so that type owns its own (de)serialization impls and there is nothing here for the pair to displace. Two spellings work instead, and which one you want depends on whether the Rust type is to change: give the rule a real CDDL body and put the pair there (that also keeps the wire type stated in the spec), or keep this rule as the marker and put the pair on an **alias** of it (`policy_id_v1 = policy_id ; @custom_serialize …`), which keeps the marker's Rust type and overrides only how it is written — see [Overriding the wire of a type this crate does not define](#overriding-the-wire-of-a-type-this-crate-does-not-define).
-* **On a table row, an open-map rest row, or an open-array rest tail entry** — a trailing comment on the `* k => v` / `* t` row itself. What a row slot carries is row-scoped (an open-map rest row takes `@name`, `@duplicates` and `@ignore`; an anonymous inline table's row takes `@duplicates`; a NAMED table's row takes nothing — its policy lives at the rule slot), and the pair names a type the row does not declare. Put it on the row's key, value, or element rule instead.
+* **On a table row, an open-map rest row, or an open-array rest tail entry** — a trailing comment on the occurrence entry itself. What a row slot carries is row-scoped (an open-map rest row takes `@name` and `@duplicates`, plus `@ignore` only when loose; an anonymous inline table's row takes `@duplicates`; a NAMED table's row takes nothing — its policy lives at the rule slot), and the pair names a type the row does not declare. Put it on the row's key, value, or element rule instead.
 * **Together with explicit `@newtype`.** The supported/audited wrapper owner is only the implicit, untagged homogeneous-table map made by a complete pair. This delivery does not define custom-codec behavior for an explicit wrapper — including tags, ranges, set policy, preserve encodings, or Rust/WASM/JSON/WIT faces — so it is refused rather than extended by analogy. Use the plain alias spelling, or declare the type `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write it in full.
 * **On a rule that mints a TAGGED wrapper without the directive** — a tag-head rule (`foo = #6.42(uint)`) and the tag-258 set idiom (`foo = #6.258([* uint]) / [* uint]`, which nominalizes into a set wrapper). The supported implicit homogeneous-table owner does not define this tag framing or its set, encoding-preservation, and cross-face contracts, so either half is refused. Put the pair on the **alias the tag rule wraps** (`inner = uint ; @custom_serialize …` beside `foo = #6.42(inner)`), which keeps the tag framing generated and overrides only the payload — see [Reaching an annotated alias through another rule](#reaching-an-annotated-alias-through-another-rule) below. Or, to own the whole wire yourself, declare the rule `_CDDL_CODEGEN_EXTERN_TYPE_` and hand-write the type, or give it a body that resolves to a transparent alias and write the wire framing (the tag included) in your own codec.
 * **On a rule that binds a generic instantiation** — `foo = base<uint>`, and the named-binding-to-a-set-nominal form of the same shape. The type is built during generic resolution from the **definition's** config, so a pair written on the binding never reaches generation and both directions keep the definition's generated codec. For a generic definition that mints a record, put a complete pair on that definition: each concrete record then gets thin delegation. Other generic-definition kinds have no concrete record codec slot; give the rule a CDDL body of its own, or declare it `_CDDL_CODEGEN_EXTERN_TYPE_`.

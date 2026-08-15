@@ -28,6 +28,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "pair",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -69,6 +70,7 @@ expression: ir
                     },
                     RustField {
                         name: "triple",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -111,6 +113,7 @@ expression: ir
                     },
                     RustField {
                         name: "tagged",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -155,6 +158,7 @@ expression: ir
                     },
                     RustField {
                         name: "fixed",
+                        source_index: 3,
                         rust_type: RustType {
                             conceptual_type: Fixed(
                                 Uint(
@@ -198,6 +202,7 @@ expression: ir
                     },
                     RustField {
                         name: "tail",
+                        source_index: 4,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 Str,
@@ -235,6 +240,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },

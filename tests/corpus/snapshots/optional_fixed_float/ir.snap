@@ -49,6 +49,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "x",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -87,6 +88,7 @@ expression: ir
                     },
                     RustField {
                         name: "f",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Fixed(
                                 Float(
@@ -127,6 +129,7 @@ expression: ir
                     },
                     RustField {
                         name: "label",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 Str,
@@ -164,6 +167,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
@@ -194,6 +198,7 @@ expression: ir
                 fields: [
                     RustField {
                         name: "x",
+                        source_index: 0,
                         rust_type: RustType {
                             conceptual_type: Primitive(
                                 U64,
@@ -236,6 +241,7 @@ expression: ir
                     },
                     RustField {
                         name: "amount",
+                        source_index: 1,
                         rust_type: RustType {
                             conceptual_type: Fixed(
                                 Float(
@@ -280,6 +286,7 @@ expression: ir
                     },
                     RustField {
                         name: "rate",
+                        source_index: 2,
                         rust_type: RustType {
                             conceptual_type: Fixed(
                                 Float(
@@ -323,6 +330,7 @@ expression: ir
                         },
                     },
                 ],
+                forbidden_fields: [],
                 rest: None,
                 typed_row: None,
             },
