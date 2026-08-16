@@ -374,20 +374,22 @@ new name family: the getter returns the same structural class named after `K`'s 
 what a *table* on the same key type returns — a bare `Vec` when `K` is wasm-native, the minted
 `<K>List` class (`MdList`, `BytesList`) otherwise.
 
-An [open array](output_format#open-arrays-rest-tails) (`[uint, tstr, * t]` or
-`[uint, tstr, + t]`) captures its trailing elements into a `rest` field the same way. On the wasm
-boundary that field is a **read-only getter named after the field** (`rest()` by default) returning
-the minted **list** wrapper for the tail's element type (`AnyList` for an `* any` tail, `BytesList`
-for `* bytes`, or a bare `Vec` for a wasm-native element) — the same list-wrapper surface as any
-homogeneous array. A loose `*` tail has no constructor argument and defaults empty. A non-empty
-`+` / `1*` tail instead adds a first-element constructor argument and returns the corresponding
-restricted non-empty list wrapper (`NonEmptyBytesList`, for example), so the wasm API cannot create
-an empty tail. Neither flavor has a setter.
+An [open array](output_format#open-arrays-rest-tails) (`[uint, tstr, * t]`,
+`[uint, tstr, + t]`, or a safe middle form `[uint, * bytes, tstr]`) captures its repeated elements
+into a `rest` field the same way. On the wasm boundary that field is a **read-only getter named
+after the field** (`rest()` by default) returning the minted **list** wrapper for the segment's
+element type (`AnyList` for an `* any` segment, `BytesList` for `* bytes`, or a bare `Vec` for a
+wasm-native element) — the same list-wrapper surface as any homogeneous array. A loose `*` segment
+has no constructor argument and defaults empty. A non-empty `+` / `1*` segment instead adds a
+first-element constructor argument and returns the corresponding restricted non-empty list wrapper
+(`NonEmptyBytesList`, for example), so the wasm API cannot create an empty segment. A bounded
+segment uses its matching checked list wrapper. The carrier/getter surface is the same for final
+tails and the major-disjoint middle placement; neither flavor has a setter.
 
-An [`@ignore`](comment_dsl#ignore) rest row **or rest tail** stores nothing, so its wasm class has
+An [`@ignore`](comment_dsl#ignore) rest row **or occurrence segment** stores nothing, so its wasm class has
 **no `rest()` getter** — it is a plain closed struct's wasm surface. The read-tolerance (unknown
-entries / trailing elements decode and are dropped) comes for free through the rust deserializer, so
-the wasm boundary adds nothing new.
+entries / final or safe-middle elements decode and are dropped) comes for free through the rust
+deserializer, so the wasm boundary adds nothing new.
 
 ## Open tables
 

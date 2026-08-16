@@ -8318,14 +8318,14 @@ fn recognize_rest_row(
     (Some(Box::new(rest_row)), Some(candidate))
 }
 
-/// The array-rep analog of `recognize_rest_row`: recognize a final-position occurrence-bearing
-/// tail (`[a, b, * t]`, `[a, b, + t]`, or `[a, b, 2*3 t]`)
-/// after ≥1 fixed member as an open-array rest tail (the positional sibling of the map rest row), or
-/// reject an unsupported placement/shape gracefully. Returns the built `RestRow` (if recognized) and
-/// the flattened index of the tail CANDIDATE (so the caller's field loop skips it — whether recognized
-/// or rejected). Arrays have no keys, so there is no key dispatch / duplicate policy / domain typing:
-/// the genuinely new content is one tail loop in the array deserializer. `(None, None)` when no
-/// count-permitting entry exists (an ordinary closed array).
+/// The array-rep analog of `recognize_rest_row`: recognize one occurrence-bearing array segment
+/// (`[a, b, * t]`, `[a, * t, b]`, `[a, b, + t]`, or `[a, b, 2*3 t]`) as the positional sibling of
+/// the map rest row, or reject an unsupported placement/shape gracefully. Final segments retain the
+/// shipped tail behavior; a non-final candidate is validated after fields and aliases finalize, where
+/// its immediate suffix's exact wire facts are available. Returns the built `RestRow` (if recognized)
+/// and the flattened index of the candidate (so the caller's field loop skips it — whether recognized
+/// or rejected). Arrays have no keys, so there is no key dispatch / duplicate policy / domain typing.
+/// `(None, None)` when no count-permitting entry exists (an ordinary closed array).
 #[allow(clippy::too_many_arguments)]
 fn recognize_array_rest_tail(
     types: &mut IntermediateTypes,
@@ -8401,7 +8401,7 @@ fn recognize_array_rest_tail(
         ));
         return (None, Some(candidate));
     }
-    // Multiple count-permitting entries: only a single trailing rest tail is supported. (The
+    // Multiple count-permitting entries: only one array occurrence segment is supported. (The
     // field-loop narrowing guard additionally rejects each earlier one by design — never silent.)
     if candidate_indices.len() > 1 {
         types.record_rejection(format!(
@@ -8412,20 +8412,10 @@ fn recognize_array_rest_tail(
         ));
         return (None, Some(candidate));
     }
-    // Non-final placement: the rest tail must be the LAST entry (the fixed prefix is read first, then
-    // the tail captures the remainder). A leading/mid `*` keeps rejecting (position-dependent now).
-    if candidate != entry_count - 1 {
-        types.record_rejection(format!(
-            "rule `{src}`: an open-array rest tail (`* t`) must be the LAST member of the array (the \
-             fixed prefix is read first, then the tail captures the remaining elements). Move it to \
-             the end."
-        ));
-        return (None, Some(candidate));
-    }
-    // An open array needs ≥1 fixed member before the rest tail (a `* t` with nothing before it is a
-    // homogeneous array `[* t]`, recognized by `parse_group_type` before this runs and never reaching
-    // the record path). A lone count-permitting entry here is therefore a degenerate shape.
-    if candidate == 0 {
+    // A lone count-permitting entry is a homogeneous array (`[* t]`), recognized by
+    // `parse_group_type` before this runs and never reaching the record path. Keep a graceful
+    // fallback for a degenerate path, but a leading segment with a fixed suffix is valid.
+    if candidate == 0 && entry_count == 1 {
         types.record_rejection(format!(
             "rule `{src}`: an open-array rest tail (`* t`) must follow at least one fixed member \
              (`[ a, * t ]`). An array whose only member is `* t` is a homogeneous array — write it \
@@ -8487,6 +8477,18 @@ fn recognize_array_rest_tail(
         && let ConceptualRustType::Rust(group_ident) =
             element_type.conceptual_type.resolve_alias_shallow()
     {
+        // A plain group cannot be one repeated array item, so the new safe-middle discriminator
+        // never applies to it. Preserve the established placement refusal for a non-final spelling:
+        // it is the first semantic boundary this shape violates, and the plain-group remedy below
+        // remains the final-tail diagnostic where an open tail could otherwise be recognized.
+        if candidate != entry_count - 1 {
+            types.record_rejection(format!(
+                "rule `{src}`: an open-array rest tail (`* t`) must be the LAST member of the array (the \
+                 fixed prefix is read first, then the tail captures the remaining elements). Move it to \
+                 the end."
+            ));
+            return (None, Some(candidate));
+        }
         let group_name = types
             .source_rule_name(group_ident)
             .map(str::to_owned)
@@ -8595,6 +8597,7 @@ fn recognize_array_rest_tail(
     let rest_row = RestRow {
         kind: RestKind::ArrayTail {
             element: element_type,
+            source_index: candidate,
         },
         semantics,
         field_name,

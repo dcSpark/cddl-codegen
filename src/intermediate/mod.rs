@@ -1021,7 +1021,7 @@ impl<'a> IntermediateTypes<'a> {
                                 walk(domain, f);
                                 walk(range, f);
                             }
-                            RestKind::ArrayTail { element } => walk(element, f),
+                            RestKind::ArrayTail { element, .. } => walk(element, f),
                         }
                     }
                 }
@@ -3794,6 +3794,218 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
+    /// Whether `ty` can write a head the middle-segment discriminator cannot prove. Mandatory
+    /// tags and `.cbor` own a stable outer head; optionally-tagged values may still expose their
+    /// inner head. The visited set makes recursive type-choice/wrapper graphs conservative rather
+    /// than recursive forever: a custom/unproven owner is found on its first visit.
+    fn middle_segment_type_has_unproven_wire_head(&self, ty: &RustType) -> bool {
+        self.middle_segment_type_has_unproven_wire_head_inner(ty, &mut BTreeSet::new())
+    }
+
+    fn middle_segment_type_has_unproven_wire_head_inner(
+        &self,
+        ty: &RustType,
+        seen: &mut BTreeSet<RustIdent>,
+    ) -> bool {
+        match ty.encodings.last() {
+            Some(CBOREncodingOperation::Tagged(_) | CBOREncodingOperation::CBORBytes) => {
+                return false;
+            }
+            Some(CBOREncodingOperation::OptionallyTagged(_)) => {
+                let mut inner = ty.clone();
+                inner.encodings.pop();
+                return self.middle_segment_type_has_unproven_wire_head_inner(&inner, seen);
+            }
+            None => {}
+        }
+        match &ty.conceptual_type {
+            ConceptualRustType::Alias(alias_ident, inner) => {
+                let codec_owned = self
+                    .type_aliases()
+                    .get(alias_ident)
+                    .and_then(|info| info.rule_metadata.as_ref())
+                    .is_some_and(|metadata| {
+                        metadata.custom_serialize.is_some() || metadata.custom_deserialize.is_some()
+                    });
+                codec_owned
+                    || self.middle_segment_type_has_unproven_wire_head_inner(
+                        &RustType::new((**inner).clone()),
+                        seen,
+                    )
+            }
+            ConceptualRustType::Optional(inner) => {
+                self.middle_segment_type_has_unproven_wire_head_inner(inner, seen)
+            }
+            ConceptualRustType::Rust(ident) => {
+                if !seen.insert(ident.clone()) {
+                    return false;
+                }
+                let rust_struct = self.rust_struct(ident).unwrap();
+                let config = rust_struct.config();
+                if config.custom_serialize.is_some() || config.custom_deserialize.is_some() {
+                    return true;
+                }
+                if rust_struct.tag.is_some() && !rust_struct.tag_optional() {
+                    return false;
+                }
+                match rust_struct.variant() {
+                    RustStructType::Wrapper { wrapped, .. } => {
+                        self.middle_segment_type_has_unproven_wire_head_inner(wrapped, seen)
+                    }
+                    RustStructType::TypeChoice { variants }
+                    | RustStructType::CStyleEnum { variants } => variants.iter().any(|variant| {
+                        matches!(
+                            &variant.data,
+                            EnumVariantData::RustType(variant_ty)
+                                if self.middle_segment_type_has_unproven_wire_head_inner(
+                                    variant_ty, seen,
+                                )
+                        )
+                    }),
+                    RustStructType::Extern if ident.to_string() != "Int" => true,
+                    // These variants emit a stable outer CBOR head; their nested codecs cannot
+                    // affect membership at this array position.
+                    RustStructType::Record(_)
+                    | RustStructType::Table { .. }
+                    | RustStructType::Array { .. }
+                    | RustStructType::GroupChoice { .. }
+                    | RustStructType::Extern
+                    | RustStructType::RawBytesType => false,
+                }
+            }
+            // Fixed, primitive, any, array, and map concepts own a built-in outer head.
+            ConceptualRustType::Fixed(_)
+            | ConceptualRustType::Primitive(_)
+            | ConceptualRustType::Any
+            | ConceptualRustType::Array(_)
+            | ConceptualRustType::Map(_, _) => false,
+        }
+    }
+
+    /// Validate every non-final array occurrence segment after aliases and generic products have
+    /// settled.  The wire is greedy (RFC 8610): a repeated element may stop before a fixed suffix
+    /// only when the next CBOR head proves that it belongs to the suffix, so a same-major boundary
+    /// cannot be guessed or recovered with backtracking.
+    ///
+    /// Parse records the segment's flattened source position; finalized fields retain theirs.  This
+    /// pass is deliberately before every code-generation walk: `cbor_types()` and
+    /// `expanded_field_count()` may inspect referenced structs, so the parser cannot soundly make
+    /// this decision while forward references and generic instances are unresolved.
+    fn validate_array_middle_occurrence_segments(&mut self) {
+        let mut rejections = Vec::new();
+        for (rule_ident, rust_struct) in &self.rust_structs {
+            let RustStructType::Record(record) = rust_struct.variant() else {
+                continue;
+            };
+            let Some(segment) = record.rest.as_deref() else {
+                continue;
+            };
+            let Some(segment_index) = segment.array_source_index() else {
+                continue;
+            };
+
+            // The long-established final-tail form needs no discriminator: it consumes the owner
+            // array through its boundary exactly as before.  Exact-zero metadata is included here
+            // so an occurrence followed only by a forbidden member is not mistaken for final.
+            let has_later_member = record
+                .fields
+                .iter()
+                .any(|field| field.source_index > segment_index)
+                || record
+                    .forbidden_fields
+                    .iter()
+                    .any(|field| field.source_index > segment_index);
+            if !has_later_member {
+                continue;
+            }
+
+            let source_rule = self
+                .source_rule_name(rule_ident)
+                .unwrap_or(rule_ident.as_ref());
+            let Some(suffix) = record
+                .fields
+                .iter()
+                .find(|field| field.source_index == segment_index + 1)
+            else {
+                rejections.push(format!(
+                    "rule `{source_rule}`: the occurrence-bearing array member at position {} must \
+                     be followed immediately by one mandatory, single-item fixed suffix so greedy \
+                     decoding can stop without guessing. Frame the repeated part as its own array, \
+                     move it final, or use a major-disjoint fixed suffix.",
+                    segment_index + 1
+                ));
+                continue;
+            };
+            if suffix.optional {
+                rejections.push(format!(
+                    "rule `{source_rule}`: the immediate suffix `{}` after an occurrence-bearing \
+                     array member must be mandatory — an optional suffix gives greedy decoding no \
+                     certain boundary. Frame the repeated part as its own array, move it final, or \
+                     make the suffix mandatory and major-disjoint.",
+                    suffix.name
+                ));
+                continue;
+            }
+            if suffix.rust_type.expanded_field_count(self) != Some(1) {
+                rejections.push(format!(
+                    "rule `{source_rule}`: the immediate suffix `{}` after an occurrence-bearing \
+                     array member must expand to exactly one CBOR item, but this suffix can splice \
+                     multiple items. Frame the repeated part as its own array, move it final, or use \
+                     a single-item major-disjoint suffix.",
+                    suffix.name
+                ));
+                continue;
+            }
+            let repeated_has_unproven_wire_head =
+                self.middle_segment_type_has_unproven_wire_head(segment.element());
+            let suffix_has_unproven_wire_head = suffix.rule_metadata.custom_serialize.is_some()
+                || suffix.rule_metadata.custom_deserialize.is_some()
+                || self.middle_segment_type_has_unproven_wire_head(&suffix.rust_type);
+            if repeated_has_unproven_wire_head || suffix_has_unproven_wire_head {
+                let positions = match (
+                    repeated_has_unproven_wire_head,
+                    suffix_has_unproven_wire_head,
+                ) {
+                    (true, true) => "the repeated element and immediate suffix",
+                    (true, false) => "the repeated element",
+                    (false, true) => "the immediate suffix",
+                    (false, false) => unreachable!(),
+                };
+                rejections.push(format!(
+                    "rule `{source_rule}`: {positions} around the occurrence-bearing array member \
+                     have a custom- or extern-owned, otherwise-unproven wire head — greedy decoding \
+                     must know both possible CBOR majors before it can prove the boundary. Frame the \
+                     repeated part as its own array, move it final, or use a major-disjoint boundary \
+                     with generator-proven wire heads."
+                ));
+                continue;
+            }
+
+            let repeated_majors = segment.element().cbor_types(self);
+            let suffix_majors = suffix.rust_type.cbor_types(self);
+            let overlap = repeated_majors
+                .iter()
+                .filter(|major| suffix_majors.contains(major))
+                .map(|major| format!("{major:?}"))
+                .collect::<Vec<_>>();
+            if !overlap.is_empty() {
+                rejections.push(format!(
+                    "rule `{source_rule}`: the occurrence-bearing array member at position {} and \
+                     its immediate suffix `{}` share CBOR major type(s) {}. RFC 8610 repetition is \
+                     greedy and does not backtrack, so the generator will not guess where the \
+                     repeated part ends. Frame the repeated part as its own array, move it final, or \
+                     choose a major-disjoint suffix.",
+                    segment_index + 1,
+                    suffix.name,
+                    overlap.join(", ")
+                ));
+            }
+        }
+        for rejection in rejections {
+            self.record_rejection(rejection);
+        }
+    }
+
     pub fn finalize(
         &mut self,
         parent_visitor: &ParentVisitor,
@@ -3906,6 +4118,12 @@ impl<'a> IntermediateTypes<'a> {
         // directly-exposable subset onto the bare inline collection. Wasm-only; non-wasm untouched.
         self.converge_anonymous_collection_instance_wasm(cli);
         self.resolve_late_alias_product_leaves();
+        // Array middle-occurrence safety depends on finalized aliases/generics and must reject
+        // before any later IR walk or code emitter can build a non-round-tripping decoder.
+        self.validate_array_middle_occurrence_segments();
+        if self.has_rejections() {
+            return Err(self.rejections_error());
+        }
         // Mint the wasm keys-list wrappers whose owning table had a GENERIC-COLLECTION-instance
         // domain — deferred from `register_rust_struct` until now, so they name from the resolved
         // domain (see the deferral comment there). Idempotent by the not-yet-registered guard: a

@@ -14,6 +14,14 @@ bounded = [uint, 2*3 byte_alias]   ; complete BoundedVec constructor carrier
 bounded_min = [uint, 2* uint]      ; min-only BoundedVec
 bounded_zero = [uint, *0 uint]     ; exact-zero BoundedVec
 opt = [uint, ? tstr, * uint]        ; optional member + type-distinct tail (uint vs tstr)
+; Major-disjoint middle segments greedily stop before the mandatory text suffix.  Every occurrence
+; window reuses the tail carriers; `middle_max` pins leaving the suffix after the maximum.
+lead = [* bytes, tstr]
+middle = [uint, * bytes, tstr]
+middle_required = [uint, + bytes, tstr]
+middle_bounded = [uint, 2*3 bytes, tstr]
+middle_max = [uint, *2 bytes, tstr]
+middle_zero = [uint, *0 bytes, tstr]
 ign = [
   uint,
   * any ; @ignore                   ; tolerate-and-drop tail (drops trailing elements)
@@ -31,3 +39,5 @@ inner_ign = [
   uint,
   * any ; @ignore
 ]
+outer_middle = [inner_middle, uint]
+inner_middle = [uint, * bytes, tstr]

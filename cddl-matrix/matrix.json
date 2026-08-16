@@ -4800,10 +4800,10 @@
       "spec": "allowed"
     },
     {
-      "example": "a = [uint, * bytes]",
+      "example": "a = [uint, * bytes, tstr]",
       "feature": "grpent.member",
       "id": "contain.occurrence-target.grpent.member.zero_array",
-      "note": "A FINAL-position zero-or-more occurrence on a bare-type entry in a HETEROGENEOUS array is an open-array rest tail: the fixed prefix is read positionally, then the `* t` tail captures the remaining elements into a `Vec<T>` (the array analogue of the open struct-map rest row). Other final windows are separately supported through `NonEmptyVec` or `BoundedVec`; only non-final/multiple occurrence-bearing members, fixed-value tails, and group/group-choice tails stay rejected gracefully. Single-entry forms (`[* bytes]`) take the homogeneous Vec path. Under --preserve-encodings each captured tail element re-serializes byte-exactly via a positional per-element encoding sidecar (a self-carried `any` element needs none), and --canonical-form normalizes non-minimal widths in position order (no sort — arrays are positional); the captured `Vec<T>` renders as an ordinary JSON array field (skip-if-empty on write, default-on-read) and exposes a read-only wasm `rest()` list-wrapper getter. RFC8610 §3.2, §3.4.",
+      "note": "A zero-or-more occurrence on a bare-type entry in a HETEROGENEOUS array is an open-array segment. A final `* t` tail is supported, as is the one safe non-final shape: a leading/middle segment whose immediate fixed suffix is mandatory, exactly one CBOR item, field-codec-free, and CBOR-major-disjoint from `t`, with no custom- or extern-owned, otherwise-unproven head on either boundary item (`[uint, * bytes, tstr]`). The decoder obeys RFC 8610 greedy non-backtracking matching: it consumes repeated element majors without rewind and stops at that disjoint suffix. Same-major/value-discriminator boundaries, multiple occurrences, and group/group-choice/plain-group forms stay rejected gracefully. `*` captures `Vec<T>`; `+` and bounded siblings use `NonEmptyVec`/`BoundedVec`. Under --preserve-encodings each captured segment element re-serializes byte-exactly via a positional per-element sidecar (a self-carried `any` element needs none), and --canonical-form normalizes each element in source position; the captured `Vec<T>` renders as an ordinary JSON array field (skip-if-empty on write, default-on-read) and exposes a read-only wasm `rest()` list-wrapper getter. RFC8610 §3.2, §3.4.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -4811,7 +4811,7 @@
       "example": "a = [uint, + bytes]",
       "feature": "grpent.member",
       "id": "contain.occurrence-target.grpent.member.plus_array",
-      "note": "A FINAL-position one-or-more occurrence on a bare-type entry in a HETEROGENEOUS array is a restricted open-array rest tail: the fixed prefix is read positionally, then the `+ t` / `1* t` tail captures the remaining elements in `NonEmptyVec<T>`. Its `new` door takes the first tail element, and CBOR/JSON staged reads enter the same TryFrom door so zero elements reject with the min-one RangeCheck. Preserve/canonical retain the positional encoding contract; JSON is a required minItems-one array; wasm and component project the first-element constructor input plus a restricted-list getter. Other final bounded windows are separately supported; non-final, multiple, and fixed/plain-group tail forms remain graceful rejections. RFC8610 §3.2, §3.4.",
+      "note": "A one-or-more occurrence on a bare-type entry in a HETEROGENEOUS array is a restricted open-array segment: it may be final, or a safe middle segment before an immediate mandatory, one-item, field-codec-free, CBOR-major-disjoint suffix with no custom- or extern-owned, otherwise-unproven head on either boundary item. The `+ t` / `1* t` segment captures repeated elements in `NonEmptyVec<T>`. Its `new` door takes the first segment element, and CBOR/JSON staged reads enter the same TryFrom door so zero elements reject with the min-one RangeCheck. Preserve/canonical retain positional encoding; JSON is a required minItems-one array; wasm and component project the first-element constructor input plus a restricted-list getter. Other bounded windows are separately supported; multiple, same-major/value-discriminator, and fixed/plain-group forms remain graceful rejections. RFC8610 §3.2, §3.4.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -4819,7 +4819,7 @@
       "example": "a = [uint, 2*3 bytes]",
       "feature": "grpent.member",
       "id": "contain.occurrence-target.grpent.member.bounded_array",
-      "note": "A FINAL-position bounded occurrence on a bare-type entry in a HETEROGENEOUS array is an open-array rest tail with its own inclusive `BoundedVec<T, MIN, MAX>` carrier. Native construction takes the complete checked carrier; CBOR and JSON stage loose elements then enter one `TryFrom` door; wasm takes the matching bounded list wrapper; and component takes a fallible `list<T>` conversion. JSON makes the field required and publishes both bounds; preserve/canonical retain positional element encodings. `*0` / `0*0` is the checked exact-zero carrier, while bare `*` / `0*` and `+` / `1*` retain their established Vec and NonEmptyVec APIs. Non-final/multiple occurrence-bearing members and group/group-choice tails remain graceful rejections. RFC8610 §3.2, §3.4.",
+      "note": "A bounded occurrence on a bare-type entry in a HETEROGENEOUS array is an open-array segment with its own inclusive `BoundedVec<T, MIN, MAX>` carrier. It may be final, or a safe middle segment before an immediate mandatory, one-item, field-codec-free, CBOR-major-disjoint suffix with no custom- or extern-owned, otherwise-unproven head on either boundary item. Native construction takes the complete checked carrier; CBOR and JSON stage loose elements then enter one `TryFrom` door; wasm takes the matching bounded list wrapper; and component takes a fallible `list<T>` conversion. JSON makes the field required and publishes both bounds; preserve/canonical retain positional element encodings. `*0` / `0*0` is the checked exact-zero carrier, while bare `*` / `0*` and `+` / `1*` retain their established Vec and NonEmptyVec APIs. Multiple, same-major/value-discriminator, and group/group-choice/plain-group forms remain graceful rejections. RFC8610 §3.2, §3.4.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -5846,13 +5846,13 @@
     },
     {
       "alt": "@ignore",
-      "desc": "The tolerate-and-drop flavor of an open struct-map rest row (`* k => v` after fixed keys) or an open-array rest tail (`* t` after fixed members). Unknown map entries / trailing array elements are typed-deserialized (for maps, key AND value, so the stream advances past nested containers) and then DROPPED: no `rest` field is emitted, serialize re-emits only the declared members, and JSON/schemars/wasm are a closed struct's. This is the documented-lossy counterpart to the default capture flavor (byte round-trips do not hold for wire data carrying unknown entries / extra trailing elements). Valid ONLY on a recognized `* k => v` rest row or `* t` rest tail — every other placement (rule/alias/union/table/whole-array/field) is a graceful rejection — and rejected together with --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type), with @duplicates (no captured container / no keys for a policy to govern), and with @name (no field to name). The directive is bare and argument-less.",
+      "desc": "The tolerate-and-drop flavor of an open struct-map rest row (`* k => v` after fixed keys) or an open-array occurrence segment (`* t` final, or a safe middle `* t` before one mandatory major-disjoint suffix). Unknown map entries / repeated array elements are typed-deserialized (for maps, key AND value, so the stream advances past nested containers) and then DROPPED: no `rest` field is emitted, serialize re-emits only the declared members, and JSON/schemars/wasm are a closed struct's. This is the documented-lossy counterpart to the default capture flavor (byte round-trips do not hold for wire data carrying unknown entries / ignored array elements). Valid ONLY on a recognized loose `* k => v` rest row or loose final/safe-middle `* t` segment — every other placement (rule/alias/union/table/whole-array/field, unsafe non-final placement, or restricted window) is a graceful rejection — and rejected together with --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type), with @duplicates (no captured container / no keys for a policy to govern), and with @name (no field to name). The directive is bare and argument-less.",
       "example": "\nlabel_map = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}",
       "id": "dsl.ignore",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@ignore; src/comment_ast.rs",
-      "title": "@ignore — tolerate-and-drop open struct-map rest row"
+      "title": "@ignore — tolerate-and-drop open struct-map row / array segment"
     },
     {
       "alt": "@no_alias",

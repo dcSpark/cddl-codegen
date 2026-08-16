@@ -74,7 +74,7 @@ The positions this covers:
 - a **wrapper rule's inner value** — the type a tag-head rule (`tagged_sc = #6.9(stake_credential)`, including its collection and `T / null` bodies), a `bytes .cbor` rule body (`sc_bytes = bytes .cbor stake_credential`) or a `@newtype` rule wraps — and the `new` / getter / `From` signatures built from it;
 - a **`.cbor` payload's own type** where the operator is written into a member's or type-choice arm's expression (`f: bytes .cbor stake_credential`, `bytes .cbor stake_credential / tstr`): the field is typed `StakeCredential` and the arm is `StakeCredential`, since the framing belongs to the expression and the alias still names the value inside the byte string (see the ownership rule below);
 - **encoding-struct fields** under `--preserve-encodings`, including the sidecar **index key** of a map-typed member (that one *must* match the data field's key type: serialize looks the sidecar up with a key borrowed straight out of the data map, so the two are one type expressed twice);
-- the same sidecars for an [open struct-map rest row](#open-struct-maps-rest-rows) or [open array rest tail](#open-arrays-rest-tails);
+- the same sidecars for an [open struct-map rest row](#open-struct-maps-rest-rows) or [open array occurrence segment](#open-arrays-rest-tails);
 - a **named collection rule's own alias target** (`nemap = {* epoch => text}` emits `pub type Nemap = OrderedHashMap<Epoch, String>`);
 - **member-level deserialize call targets** — `T::deserialize`, `T::from_raw_bytes`, `T::deserialize_as_embedded_group`. `dc: DeltaCoin` is filled by `DeltaCoin::deserialize`, and a member of a raw-bytes rule aliased as `script_hash` by `ScriptHash::from_raw_bytes`. This is the one covered position whose spelling is an expression rather than a declaration, and the only one where a member declared through a named rule and one declared anonymously appear side by side: in `other = [rs: req_signers, more: nonempty_set<uint>]` the two spell differently (`ReqSigners::deserialize`, `NonemptySetU64::deserialize`) because they are declared differently.
 
@@ -821,80 +821,94 @@ the duplicate-member detection, the rebinding carve-out, the three-attempt read 
 
 ## Open arrays (rest tails)
 
-A CDDL array that mixes **fixed members with a trailing occurrence-bearing element** — `[uint, tstr, * uint]`, `[uint, + uint]`, or `[uint, 2*3 bytes]` — is
-an *open array*: the fixed members deserialize positionally as declared, and every **trailing**
-element is captured into a generated `rest` field instead of ending the decode (a plain closed struct
-would stop at the declared arity). This is the array analog of the [open struct-map](#open-struct-maps-rest-rows)
-rest row — structurally simpler because arrays are positional: there are no keys, so no duplicate
-policy, no key dispatch, and no ordering machinery. The rest tail must be the array's **last**
-element and follow ≥1 fixed member. Bare `*` / `0*` is loose; `+` / `1*` is the compatibility
-min-one form; every other final window (`2*3`, `*3`, `2*`, `*0`, `0*0`, …) is bounded. Non-final
-or multiple tails, a rest tail inside a group-choice arm or inside a plain group's body, a fixed-value
-element type like `* 5`, or a **plain-group element type** are graceful rejections
-naming the supported form. The plain-group element type
-(`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses
-because a rest tail collects one value per remaining array element and a plain group is not one —
-it has no type of its own, splicing its members flat instead — and the guard reads the *resolved*
-element type, so the bare, alias (`* kv_alias`) and tagged (`* #6.10(kv)`) spellings refuse alike.
-The remedy the message names is the group's array framing: `w = [kv]`, then `t = [ c: uint, * w ]`;
-a tag belongs on that framed reference (`* #6.10(w)`) rather than on the group. A single
-**mandatory** splice (`t = [ c: uint, kv ]`) and the sole-element homogeneous array (`[* kv]`) stay
-supported; the full splice-position matrix is
-[Plain group placement](current_capacities#plain-group-placement).
+A CDDL array that mixes **fixed members with one occurrence-bearing element** — a final tail such as
+`[uint, tstr, * uint]`, or a safe leading/middle segment such as `[* bytes, tstr]` or
+`[uint, * bytes, tstr]` — is an *open array*: fixed members deserialize positionally as declared and
+the repeated elements are captured in a generated `rest` field. This is the array analog of the
+[open struct-map](#open-struct-maps-rest-rows) rest row — structurally simpler because arrays are
+positional: there are no keys, duplicate policy, key dispatch, or ordering machinery. The occurrence
+may be final, or it may be the sole leading/middle segment only when its **immediate fixed suffix** is
+mandatory, expands to exactly one CBOR item, has no field-local custom codec, and has no CBOR major
+type in common with the repeated element. Neither boundary item may have a custom- or extern-owned,
+otherwise-unproven wire head. Bare `*` / `0*` is loose; `+` / `1*` is the compatibility
+min-one form; every other window (`2*3`, `*3`, `2*`, `*0`, `0*0`, …) is bounded.
 
-**The `rest` field.** A loose `*` / `0*` tail is `pub Vec<T>`, excluded from `new()` and defaulting
-empty. A `+` / `1*` tail is `pub NonEmptyVec<T>`: `new()` takes its first tail element, preserving
-that public ABI. Every other final window is `pub BoundedVec<T, MIN, MAX>`: `new()` takes the
+The restriction is RFC 8610's greedy, non-backtracking matching rule, not an implementation
+convenience. A decoder for `[uint, * uint, uint]` cannot know whether a uint is the repeated value
+or the suffix; accepting it would let a constructed value serialize to bytes that do not deserialize
+back to that value. The safe middle loop greedily consumes only the repeated element's majors and
+stops at the major-disjoint suffix; it never seeks, rewinds, or speculatively parses the suffix.
+Same-major/value-discriminator designs, multiple occurrences, inline-group occurrences,
+group-choice-arm occurrences, a segment inside a plain group's body, a fixed-value element type like
+`* 5`, and a **plain-group element type** remain graceful rejections naming a supported remedy. The
+plain-group element type (`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses because an
+occurrence segment collects one value per repeated array element and a plain group is not one — it has
+no type of its own, splicing its members flat instead — and the guard reads the *resolved* element
+type, so the bare, alias (`* kv_alias`) and tagged (`* #6.10(kv)`) spellings refuse alike. The remedy
+the message names is the group's array framing: `w = [kv]`, then `t = [ c: uint, * w ]`; a tag belongs
+on that framed reference (`* #6.10(w)`) rather than on the group. A single **mandatory** splice
+(`t = [ c: uint, kv ]`) and the sole-element homogeneous array (`[* kv]`) stay supported; the full
+splice-position matrix is [Plain group placement](current_capacities#plain-group-placement).
+
+**The `rest` field.** A loose `*` / `0*` segment is `pub Vec<T>`, excluded from `new()` and defaulting
+empty. A `+` / `1*` segment is `pub NonEmptyVec<T>`: `new()` takes its first repeated element,
+preserving that public ABI. Every other window is `pub BoundedVec<T, MIN, MAX>`: `new()` takes the
 **complete checked carrier**, including zero-minimum and exact-zero windows, so callers can construct
-every admitted value without a bypassable `Vec` door. Decode stages one loose `Vec<T>` tail then
-enters exactly one `TryFrom` door for either restricted carrier; definite and indefinite values below
-or above the inclusive window reject with its `RangeCheck`.
+every admitted value without a bypassable `Vec` door. Decode stages one loose `Vec<T>` then enters
+exactly one `TryFrom` door for either restricted carrier; definite and indefinite values below or
+above the inclusive window reject with its `RangeCheck` for a final tail. A middle segment stops
+greedily at its maximum: a further repeated-major item remains for the mandatory suffix to read and
+is rejected there, while a below-minimum middle segment still rejects through the carrier's
+`RangeCheck`.
 
-**Serialize / round-trip.** The array header counts the declared members **plus** every tail element
-(`N + rest.len()`); declared members serialize first, then the captured elements in `Vec` order.
-Typing is enforced: `[uint, tstr, * uint]` errors on a non-uint trailing element (full looseness is
-spelled `* any`, which captures nested-container elements too).
+**Serialize / round-trip.** The array header counts the declared members **plus** every repeated
+element (`N + rest.len()`). A final tail serializes after the fixed members; a safe middle segment
+serializes immediately before its mandatory suffix. The captured elements themselves serialize in
+`Vec` order. Typing is enforced: `[uint, * bytes, tstr]` errors on a non-bytes element in the
+repeated segment (full looseness is spelled `* any`, which captures nested-container elements too).
 
 **Preserve / canonical.** Under `--preserve-encodings` each captured element re-serializes byte-exact
 via a **positional per-element encoding sidecar** (`{field}_elem_encodings: Vec<..>` in the owner's
 encoding struct — self-healing on user mutation: a length mismatch degrades to default encodings, it
-never panics); an `any` element is self-carried and contributes no sidecar. Wire order = `Vec` order =
-re-emit order by construction, so there is **no** interleave record or comparator. Under
-`--canonical-form` each element re-serializes recursively-canonically **in position order** (no sort —
-a tail is positional, not keyed).
+never panics); an `any` element is self-carried and contributes no sidecar. The segment's local wire
+order = `Vec` order = re-emit order by construction, so there is **no** interleave record or
+comparator. Under `--canonical-form` each element re-serializes recursively-canonically **in position
+order** (no sort — the segment is positional, not keyed).
 
-**JSON (`--json-serde-derives`).** The captured tail renders as an **ordinary field** — a JSON array
-under the field's name (`"rest": [ … ]`), **not** flattened. Array positions are already erased in
-JSON and serde `flatten` has no array analog, so nesting under the field name is the honest symmetric
-rendering. Only the loose tail *writes* by **skipping the field when empty** and *reads* by
-**defaulting it to empty when absent** — so empty loose tail ≡ closed-struct JSON. Restricted tails
-are required: `+` / `1*` publishes `minItems: 1`; bounded tails publish their applicable `minItems`
-and `maxItems`, including zero; all enter their same checked door on JSON read. An `any`-element tail
-renders **natural-fallible** (the same
+**JSON (`--json-serde-derives`).** The captured segment renders as an **ordinary field** — a JSON
+array under the field's name (`"rest": [ … ]`), **not** flattened. Array positions are already erased
+in JSON and serde `flatten` has no array analog, so nesting under the field name is the honest
+symmetric rendering. Only the loose segment *writes* by **skipping the field when empty** and *reads*
+by **defaulting it to empty when absent** — so an empty loose segment ≡ closed-struct JSON. Restricted
+segments are required: `+` / `1*` publishes `minItems: 1`; bounded segments publish their applicable
+`minItems` and `maxItems`, including zero; all enter their same checked door on JSON read. An
+`any`-element segment renders **natural-fallible** (the same
 [injective-subset rules](#natural-rendering-rfc-8949-61-injective-subset-strict-fail-elsewhere) as any
 `[* any]`: a non-injective node like a byte string makes `to_json` error rather than silently
 substitute). The JSON Schema is the ordinary array shape with the carrier's bounds.
 
 **wasm.** The rest field is exposed as a **read-only getter named after the field** (`rest()` by
-default) returning the minted list wrapper. The loose form has no constructor argument; the
-min-one form retains its first-tail-element constructor; each bounded form takes its matching checked
-bounded list wrapper. WIT despecializes that wrapper to `list<T>` and component glue fallsibly
-converts it back to `BoundedVec` before native construction; see
-[wasm differences](wasm_differences#open-struct-map-rest-rows).
+default) returning the minted list wrapper. The loose form has no constructor argument; the min-one
+form retains its first-element constructor; each bounded form takes its matching checked bounded list
+wrapper. WIT despecializes that wrapper to `list<T>` and component glue fallsibly converts it back to
+`BoundedVec` before native construction; its public carrier does not depend on whether the segment is
+final or safe-middle; see [wasm differences](wasm_differences#open-struct-map-rest-rows).
 
 ### The `@ignore` (tolerate-and-drop) flavor
 
-Marking the tail entry [`@ignore`](comment_dsl#ignore) switches from capture to *tolerate-and-drop*:
-trailing elements are still typed-deserialized (so the stream advances past nested containers) but
-then **discarded**. The generated type is a **plain closed struct** — no `rest` field, no `new()`
-change, and `serialize` emits only the declared prefix. This is deliberately lossy: byte round-trips
-do **not** hold for wire data that carried trailing elements (the type and its `serialize` fn carry a
-rustdoc breadcrumb saying so, worded for trailing array elements), which is why it is **rejected under
+Marking the occurrence entry [`@ignore`](comment_dsl#ignore) switches from capture to
+*tolerate-and-drop*: the repeated elements are still typed-deserialized (so the stream advances past
+nested containers) but then **discarded**. The generated type is a **plain closed struct** — no
+`rest` field, no `new()` change, and `serialize` emits only the declared fixed members. This is
+deliberately lossy: byte round-trips do **not** hold for wire data that carried ignored elements (the
+type and its `serialize` fn carry a position-accurate rustdoc breadcrumb), which is why it is **rejected under
 `--preserve-encodings`** (a preserve crate's byte-exact contract cannot hold for it) along with
 `@duplicates`/`@name` on the same entry. Its **JSON, schemars, and wasm** surfaces are an ordinary
-closed struct's — trailing elements are tolerated on read and dropped, and there is no `rest()` getter.
+closed struct's — safe-middle or trailing elements are tolerated on read and dropped, and there is
+no `rest()` getter.
 
-`@ignore` is deliberately limited to loose `*` / `0*` tails. Dropping a restricted tail would
+`@ignore` is deliberately limited to loose `*` / `0*` final or safe-middle segments. Dropping a
+restricted segment would
 re-serialize zero elements: that violates a positive minimum, while a zero-minimum restricted window
 would lose the bounded or exact state its checked carrier retains.
 

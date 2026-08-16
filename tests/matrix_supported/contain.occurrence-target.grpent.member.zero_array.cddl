@@ -1,1 +1,1 @@
-a = [uint, * bytes]
+a = [uint, * bytes, tstr]

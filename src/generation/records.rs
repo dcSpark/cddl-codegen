@@ -16,11 +16,28 @@ const IGNORE_LOSSINESS_DOC_ARRAY: &str = "Open array with an ignored rest tail: 
      DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data \
      that carried extra trailing elements.";
 
-/// The `@ignore` lossiness breadcrumb text for a rest row/tail, array-worded for an array tail and
-/// map-worded for a map row.
-fn ignore_lossiness_doc(rest: &RestRow) -> &'static str {
+/// The array `@ignore` breadcrumb for a safe non-final occurrence segment. Its position matters:
+/// unlike a tail, the dropped values occur before one mandatory fixed suffix.
+const IGNORE_LOSSINESS_DOC_ARRAY_MIDDLE: &str = "Open array with an ignored major-disjoint occurrence segment: tolerates matching elements before its mandatory fixed suffix on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried dropped occurrence-segment elements.";
+
+/// True for a final array occurrence segment (and vacuously for map rows). Middle support is only
+/// admitted with an immediate fixed suffix, so every non-final array segment has a field after it.
+fn array_segment_is_final(record: &RustRecord, rest: &RestRow) -> bool {
+    match rest.array_source_index() {
+        Some(index) => record.fields.iter().all(|field| field.source_index < index),
+        None => true,
+    }
+}
+
+/// The `@ignore` lossiness breadcrumb text for a rest row/segment, array-worded for an array
+/// segment and map-worded for a map row.
+fn ignore_lossiness_doc(record: &RustRecord, rest: &RestRow) -> &'static str {
     if rest.is_array_tail() {
-        IGNORE_LOSSINESS_DOC_ARRAY
+        if array_segment_is_final(record, rest) {
+            IGNORE_LOSSINESS_DOC_ARRAY
+        } else {
+            IGNORE_LOSSINESS_DOC_ARRAY_MIDDLE
+        }
     } else {
         IGNORE_LOSSINESS_DOC
     }
@@ -28,15 +45,69 @@ fn ignore_lossiness_doc(rest: &RestRow) -> &'static str {
 
 /// Combine a type's optional CDDL-derived doc with the `@ignore` lossiness breadcrumb (a blank line
 /// between them when both are present), yielding the doc string to attach to the type / its serialize
-/// fn. `ignored_rest` is the `@ignore` rest row/tail (`None` for capture / closed structs), so the
-/// breadcrumb wording matches the rep (map entries vs trailing array elements).
-fn ignore_aware_doc(base: Option<&str>, ignored_rest: Option<&RestRow>) -> Option<String> {
+/// fn. `ignored_rest` is the `@ignore` rest row/segment (`None` for capture / closed structs), so
+/// the breadcrumb wording matches its representation and position.
+fn ignore_aware_doc(
+    base: Option<&str>,
+    record: &RustRecord,
+    ignored_rest: Option<&RestRow>,
+) -> Option<String> {
     match (base, ignored_rest) {
-        (Some(d), Some(rest)) => Some(format!("{d}\n\n{}", ignore_lossiness_doc(rest))),
+        (Some(d), Some(rest)) => Some(format!("{d}\n\n{}", ignore_lossiness_doc(record, rest))),
         (Some(d), None) => Some(d.to_owned()),
-        (None, Some(rest)) => Some(ignore_lossiness_doc(rest).to_owned()),
+        (None, Some(rest)) => Some(ignore_lossiness_doc(record, rest).to_owned()),
         (None, None) => None,
     }
+}
+
+/// Serialize one captured array occurrence segment at its authored source position.  Final tails
+/// and major-disjoint middle segments share this one positional encoding path: preserve mode looks
+/// up the repeated element's sidecar by its segment-local index, and canonical mode normalizes that
+/// same element before the following fixed suffix is emitted.
+fn generate_array_segment_serialization(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    rest: &RestRow,
+    vars_in_self: bool,
+    ser_func: &mut dyn CodeBlock,
+    cli: &Cli,
+) {
+    let opt_self = if vars_in_self { "self." } else { "" };
+    let elem_encs = rest_array_elem_encoding_fields(types, rest, cli);
+    let elem_var_name = format!("{}_elem", rest.field_name);
+    // Outer config carries the sidecar namespace + the container's var name (`{field}`), so the
+    // encoding lookup names `{field}_elem_encodings`.
+    let mut outer = SerializeConfig::new("element", &rest.field_name);
+    if vars_in_self {
+        outer = outer.encoding_var_in_option_struct("self.encodings");
+    }
+    let mut segment_loop = if !elem_encs.is_empty() {
+        let mut block = Block::new(format!(
+            "for (i, element) in {opt_self}{}.iter().enumerate()",
+            rest.field_name
+        ));
+        block.line(outer.container_encoding_lookup("elem", &elem_encs, "i"));
+        block
+    } else {
+        Block::new(format!(
+            "for element in {opt_self}{}.iter()",
+            rest.field_name
+        ))
+    };
+    let elem_config = SerializeConfig::new("element", &elem_var_name)
+        .expr_is_ref(true)
+        .is_end(false)
+        .encoding_var_no_option_struct()
+        .encoding_var_is_ref(false)
+        .tag_depth(0);
+    gen_scope.generate_serialize(
+        types,
+        rest.element().into(),
+        &mut segment_loop,
+        elem_config,
+        cli,
+    );
+    ser_func.push_block(segment_loop);
 }
 
 // generates serialization code for an array-encoded record into ser_func EXCEPT FOR array length
@@ -50,7 +121,22 @@ pub(super) fn generate_array_struct_serialization(
 ) {
     assert_eq!(record.rep, Representation::Array);
     let opt_self = if vars_in_self { "self." } else { "" };
+    let array_segment = record.captured_rest().filter(|rest| rest.is_array_tail());
     for field in record.fields.iter() {
+        if let Some(segment) = array_segment
+            && segment
+                .array_source_index()
+                .is_some_and(|index| index + 1 == field.source_index)
+        {
+            generate_array_segment_serialization(
+                gen_scope,
+                types,
+                segment,
+                vars_in_self,
+                ser_func,
+                cli,
+            );
+        }
         let field_expr = format!("{}{}", opt_self, field.name);
         if field.optional {
             if field.rust_type.is_fixed_value() {
@@ -145,52 +231,21 @@ pub(super) fn generate_array_struct_serialization(
             gen_scope.generate_serialize(types, (&field.rust_type).into(), ser_func, config, cli);
         }
     }
-    // Open-array rest tail, CAPTURE: after the declared members, write each captured trailing element
-    // into the owner's array (the array header already counts them via `definite_info`'s
-    // `+ self.rest.len()` fold). `Vec` order = wire order = re-emit order by construction (no keys, no
-    // canonical merge — the elements are positional). Under --preserve-encodings each element's
-    // encoding is looked up POSITIONALLY from the `{field}_elem_encodings` sidecar by index (`.get(i)`,
-    // exactly the array-FIELD element scheme) so non-canonical widths re-emit byte-exactly; a
-    // self-carried `any` element carries its own encoding (no sidecar). Under --canonical-form the
-    // per-element serialize normalizes each element recursively-canonically in position order (no sort,
-    // no comparator — arrays are positional). IGNORE re-serializes ONLY the declared members (the whole
-    // point of the tolerate-and-drop flavor) and has no field to iterate.
-    if let Some(rest) = record.captured_rest().filter(|r| r.is_array_tail()) {
-        let elem_encs = rest_array_elem_encoding_fields(types, rest, cli);
-        let elem_var_name = format!("{}_elem", rest.field_name);
-        // Outer config carries the sidecar namespace + the container's var name (`{field}`), so the
-        // encoding lookup names `{field}_elem_encodings`.
-        let mut outer = SerializeConfig::new("element", &rest.field_name);
-        if vars_in_self {
-            outer = outer.encoding_var_in_option_struct("self.encodings");
-        }
-        let mut tail_loop = if !elem_encs.is_empty() {
-            let mut block = Block::new(format!(
-                "for (i, element) in {opt_self}{}.iter().enumerate()",
-                rest.field_name
-            ));
-            block.line(outer.container_encoding_lookup("elem", &elem_encs, "i"));
-            block
-        } else {
-            Block::new(format!(
-                "for element in {opt_self}{}.iter()",
-                rest.field_name
-            ))
-        };
-        let elem_config = SerializeConfig::new("element", &elem_var_name)
-            .expr_is_ref(true)
-            .is_end(false)
-            .encoding_var_no_option_struct()
-            .encoding_var_is_ref(false)
-            .tag_depth(0);
-        gen_scope.generate_serialize(
+    // A final segment remains byte-identical to the historic tail: it is emitted after every
+    // fixed field.  A middle segment was interleaved above at its source index.
+    if let Some(segment) = array_segment
+        && segment
+            .array_source_index()
+            .is_some_and(|index| record.fields.iter().all(|field| field.source_index < index))
+    {
+        generate_array_segment_serialization(
+            gen_scope,
             types,
-            rest.element().into(),
-            &mut tail_loop,
-            elem_config,
+            segment,
+            vars_in_self,
+            ser_func,
             cli,
         );
-        ser_func.push_block(tail_loop);
     }
 }
 
@@ -201,6 +256,158 @@ pub(super) struct ArrayStructDeserializeCode {
     pub(super) deser_ctor_fields: Vec<(String, String)>,
     // (var, expr)
     pub(super) encoding_struct_ctor_fields: Vec<(String, String)>,
+}
+
+/// Deserialize one array occurrence segment at its source position.  Final segments retain the
+/// historical owner-boundary loop; a middle segment is greedily delimited by its already-validated
+/// major-disjoint immediate suffix, never by a rewind or a speculative suffix parse.
+#[allow(clippy::too_many_arguments)]
+fn generate_array_segment_deserialization(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    rest: &RestRow,
+    is_middle: bool,
+    vars_in_self: bool,
+    cli: &Cli,
+    deser_code: &mut DeserializationCode,
+    deser_ctor_fields: &mut Vec<(String, String)>,
+    encoding_struct_ctor_fields: &mut Vec<(String, String)>,
+) {
+    let element = rest.element();
+    deser_code.read_len_used = true;
+    deser_code.len_used = true;
+    deser_code.throws = true;
+    // Per-element encoding sidecar (preserve + capture + concrete element): mirrors the array-FIELD
+    // `_elem_encodings` scheme. Empty otherwise (non-preserve, ignore, or self-carried `any`).
+    let elem_encs = if rest.semantics == RestSemantics::Capture {
+        rest_array_elem_encoding_fields(types, rest, cli)
+    } else {
+        vec![]
+    };
+    let elem_var_name = format!("{}_elem", rest.field_name);
+    if rest.semantics == RestSemantics::Capture {
+        deser_code
+            .content
+            .line(&format!("let mut {} = Vec::new();", rest.field_name));
+        if !elem_encs.is_empty() {
+            deser_code.content.line(&format!(
+                "let mut {}_elem_encodings = Vec::new();",
+                rest.field_name
+            ));
+        }
+    }
+    let owner_has_more = format!(
+        "match len {{ {} => read_len.read() < n, {} => raw.as_slice().first() != Some(&0xff), }}",
+        cbor_event_len_n("n", cli),
+        cbor_event_len_indef(cli)
+    );
+    let loop_condition = if is_middle {
+        let element_majors = element.cbor_types(types);
+        let element_matches = if element_majors.len() == 1 {
+            format!(
+                "raw.cbor_type()? == {}",
+                cbor_type_code_str(element_majors[0])
+            )
+        } else {
+            let majors = element_majors
+                .iter()
+                .map(|major| cbor_type_code_str(*major))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("[{majors}].contains(&raw.cbor_type()?)")
+        };
+        let maximum_clause = rest
+            .occurrence
+            .and_then(|(_, max)| (max != u64::MAX).then_some(max))
+            .map(|max| format!(" && ({}.len() as u64) < {max}", rest.field_name))
+            .unwrap_or_default();
+        // `owner_has_more` is intentionally first: for an indefinite owner it observes 0xff
+        // without consuming it, so `any`/`special` never asks `cbor_type()` to classify a break.
+        format!("({owner_has_more}){maximum_clause} && {element_matches}")
+    } else {
+        owner_has_more
+    };
+    // An exact-zero middle window has no decoder loop at all: its next item is the mandatory
+    // suffix, and the shared checked-carrier conversion below validates the staged empty Vec.
+    // Omitting the statically-false loop also avoids emitting an always-false comparison in every
+    // generated crate.
+    let exact_zero_middle = is_middle && rest.occurrence.is_some_and(|(_, max)| max == 0);
+    if !exact_zero_middle {
+        let mut segment_loop = Block::new(format!("while {loop_condition}"));
+        segment_loop.line("read_len.read_elems(1)?;");
+        match rest.semantics {
+            RestSemantics::Capture => {
+                if !elem_encs.is_empty() {
+                    // Bind `(value, <enc vars>)` and push each into its parallel `Vec`.
+                    let elem_var_names_str =
+                        encoding_var_names_str(types, &elem_var_name, element, cli);
+                    gen_scope
+                        .generate_deserialize(
+                            types,
+                            element.into(),
+                            DeserializeBeforeAfter::new(
+                                &format!("let {elem_var_names_str} = "),
+                                ";",
+                                false,
+                            ),
+                            DeserializeConfig::new(&elem_var_name),
+                            cli,
+                        )
+                        .add_to(&mut segment_loop);
+                    segment_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
+                    segment_loop.line(format!(
+                        "{}_elem_encodings.push({});",
+                        rest.field_name,
+                        tuple_str(elem_encs.iter().map(|e| e.field_name.clone()).collect())
+                    ));
+                } else {
+                    gen_scope
+                        .generate_deserialize(
+                            types,
+                            element.into(),
+                            DeserializeBeforeAfter::new(
+                                &format!("let {elem_var_name} = "),
+                                ";",
+                                false,
+                            ),
+                            DeserializeConfig::new(&elem_var_name),
+                            cli,
+                        )
+                        .add_to(&mut segment_loop);
+                    segment_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
+                }
+            }
+            RestSemantics::Ignore => {
+                gen_scope
+                    .generate_deserialize(
+                        types,
+                        element.into(),
+                        DeserializeBeforeAfter::new("let _rest_elem = ", ";", false),
+                        DeserializeConfig::new("_rest_elem"),
+                        cli,
+                    )
+                    .add_to(&mut segment_loop);
+            }
+        }
+        deser_code.content.push_block(segment_loop);
+    }
+    if rest.semantics == RestSemantics::Capture {
+        let rest_expr = if rest.is_restricted() {
+            let carrier = rest_member_type(rest).for_rust_member(types, false, cli);
+            format!("<{carrier}>::try_from({})?", rest.field_name)
+        } else {
+            rest.field_name.clone()
+        };
+        deser_ctor_fields.push((rest.field_name.clone(), rest_expr));
+        if !elem_encs.is_empty() {
+            let sidecar = format!("{}_elem_encodings", rest.field_name);
+            if vars_in_self {
+                encoding_struct_ctor_fields.push((sidecar.clone(), sidecar));
+            } else {
+                deser_ctor_fields.push((sidecar.clone(), sidecar));
+            }
+        }
+    }
 }
 
 // generates deserialization code for an array-encoded record into deser_code EXCEPT FOR:
@@ -239,13 +446,22 @@ pub(super) fn array_record_deser_refusals(
             continue;
         }
         let field_cbor_types = field.rust_type.cbor_types(types);
-        // Whether this optional field is adjacent to the open rest tail (no mandatory declared
-        // field sits between it and the tail). The tail joins the ambiguity analysis as a virtual
-        // "field after every field": if the tail is reachable right after this optional and their
-        // CBOR types overlap (`* any` overlaps EVERYTHING), a peek cannot tell "this optional field"
-        // from "the first tail element", so the same refusal fires.
-        let mut reaches_tail = true;
+        // Compare the optional to following FIXED fields in declaration order. The occurrence
+        // segment is absent from `record.fields`, so an optional before a NON-EMPTY middle segment
+        // must stop before fixed fields authored after that segment: its mandatory suffix is later
+        // in this Vec but sits AFTER a required repeated item on the wire. A zero-minimum segment
+        // may be empty, so its suffix remains reachable and must be compared. The separate overlap
+        // check below still considers the optional against the segment itself.
         for i in (field_index + 1)..record.fields.len() {
+            if record.rest.as_deref().is_some_and(|segment| {
+                segment.occurrence.is_some_and(|(min, _)| min > 0)
+                    && segment.array_source_index().is_some_and(|segment_index| {
+                        field.source_index < segment_index
+                            && record.fields[i].source_index > segment_index
+                    })
+            }) {
+                break;
+            }
             if record.fields[i]
                 .rust_type
                 .cbor_types(types)
@@ -258,12 +474,28 @@ pub(super) fn array_record_deser_refusals(
                 ));
             }
             if !record.fields[i].optional {
-                reaches_tail = false;
                 break;
             }
         }
-        if reaches_tail
-            && let Some(rest) = &record.rest
+        // Whether this optional is adjacent to an array occurrence segment (no mandatory declared
+        // field lies between their AUTHORED source indices). For a final tail this is equivalent to
+        // the historic "only optional fields follow" rule. For a middle segment it deliberately
+        // ignores the mandatory suffix, which is after the segment and therefore cannot delimit
+        // this optional. If their CBOR types overlap (`* any` overlaps EVERYTHING), a peek cannot
+        // tell "this optional field" from "the first segment element", so the deserialize refusal
+        // must fire rather than emit a non-round-tripping decoder.
+        if let Some(rest) = &record.rest
+            && rest.array_source_index().is_some_and(|segment_index| {
+                field.source_index < segment_index
+                    && record
+                        .fields
+                        .iter()
+                        .filter(|between| {
+                            field.source_index < between.source_index
+                                && between.source_index < segment_index
+                        })
+                        .all(|between| between.optional)
+            })
             && rest
                 .element()
                 .cbor_types(types)
@@ -271,10 +503,10 @@ pub(super) fn array_record_deser_refusals(
                 .any(|ct| field_cbor_types.contains(ct))
         {
             reasons.push(format!(
-                "Array struct optional field {} is ambiguous with the open rest tail element \
+                "Array struct optional field {} is ambiguous with the open array occurrence segment \
                  (overlapping CBOR types): a peek cannot distinguish the optional field from \
-                 the first tail element. Make their types distinct, drop the optional, or drop \
-                 the tail.",
+                 the first repeated element. Make their types distinct, drop the optional, or drop \
+                 the occurrence segment.",
                 field.name,
             ));
         }
@@ -333,7 +565,25 @@ pub(super) fn generate_array_struct_deserialization(
     let mut deser_code = DeserializationCode::default();
     let mut deser_ctor_fields = vec![];
     let mut encoding_struct_ctor_fields = vec![];
+    let array_segment = record.rest.as_deref().filter(|rest| rest.is_array_tail());
     for (field_index, field) in record.fields.iter().enumerate() {
+        if let Some(segment) = array_segment
+            && segment
+                .array_source_index()
+                .is_some_and(|index| index + 1 == field.source_index)
+        {
+            generate_array_segment_deserialization(
+                gen_scope,
+                types,
+                segment,
+                true,
+                vars_in_self,
+                cli,
+                &mut deser_code,
+                &mut deser_ctor_fields,
+                &mut encoding_struct_ctor_fields,
+            );
+        }
         // Under preserve-encodings a fixed value with no encoding variation (bool / null) still has
         // NO binding target — `encoding_var_names_str` is empty — so a `let {} = ` LHS would be
         // invalid Rust (`let  = ...`). Gate the preserve branch on a non-empty binding and let those
@@ -760,120 +1010,24 @@ pub(super) fn generate_array_struct_deserialization(
             deser_ctor_fields.push((field.name.clone(), field.name.clone()));
         }
     }
-    // Open-array rest tail: after the straight-line fixed prefix, read the trailing elements. CAPTURE
-    // stages each typed element in a `Vec`; every restricted tail enters its NonEmptyVec/BoundedVec
-    // `TryFrom` door exactly once at final assembly, while a loose tail moves that Vec directly. IGNORE typed-deserializes and
-    // DROPS it (both advance the stream past nested containers — the stream-position regression class).
-    // The loop reads until the definite length is exhausted (`read_len.read() < n`, where `read_len`
-    // already accounts the prefix) or, for an indefinite array, the `0xff` break byte is reached — a
-    // NON-consuming peek (`raw.as_slice().first()`), so the break stays on the wire for
-    // `add_deserialize_final_len_check` to consume (it reads the break itself for indefinite arrays).
-    // Under --preserve-encodings the CAPTURE flavor additionally records each element's encoding into a
-    // POSITIONAL `{field}_elem_encodings: Vec<..>` sidecar (byte-exact re-emit; a self-carried `any`
-    // element needs none). IGNORE is rejected under --preserve-encodings, so it never captures
-    // encodings.
-    if let Some(rest) = &record.rest {
-        let element = rest.element();
-        deser_code.read_len_used = true;
-        deser_code.len_used = true;
-        deser_code.throws = true;
-        // Per-element encoding sidecar (preserve + capture + concrete element): mirrors the array-FIELD
-        // `_elem_encodings` scheme. Empty otherwise (non-preserve, ignore, or self-carried `any`).
-        let elem_encs = if rest.semantics == RestSemantics::Capture {
-            rest_array_elem_encoding_fields(types, rest, cli)
-        } else {
-            vec![]
-        };
-        let elem_var_name = format!("{}_elem", rest.field_name);
-        if rest.semantics == RestSemantics::Capture {
-            deser_code
-                .content
-                .line(&format!("let mut {} = Vec::new();", rest.field_name));
-            if !elem_encs.is_empty() {
-                deser_code.content.line(&format!(
-                    "let mut {}_elem_encodings = Vec::new();",
-                    rest.field_name
-                ));
-            }
-        }
-        let mut tail_loop = Block::new(format!(
-            "while match len {{ {} => read_len.read() < n, {} => raw.as_slice().first() != Some(&0xff), }}",
-            cbor_event_len_n("n", cli),
-            cbor_event_len_indef(cli)
-        ));
-        tail_loop.line("read_len.read_elems(1)?;");
-        match rest.semantics {
-            RestSemantics::Capture => {
-                if !elem_encs.is_empty() {
-                    // Bind `(value, <enc vars>)` and push each into its parallel `Vec`.
-                    let elem_var_names_str =
-                        encoding_var_names_str(types, &elem_var_name, element, cli);
-                    gen_scope
-                        .generate_deserialize(
-                            types,
-                            element.into(),
-                            DeserializeBeforeAfter::new(
-                                &format!("let {elem_var_names_str} = "),
-                                ";",
-                                false,
-                            ),
-                            DeserializeConfig::new(&elem_var_name),
-                            cli,
-                        )
-                        .add_to(&mut tail_loop);
-                    tail_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
-                    tail_loop.line(format!(
-                        "{}_elem_encodings.push({});",
-                        rest.field_name,
-                        tuple_str(elem_encs.iter().map(|e| e.field_name.clone()).collect())
-                    ));
-                } else {
-                    gen_scope
-                        .generate_deserialize(
-                            types,
-                            element.into(),
-                            DeserializeBeforeAfter::new(
-                                &format!("let {elem_var_name} = "),
-                                ";",
-                                false,
-                            ),
-                            DeserializeConfig::new(&elem_var_name),
-                            cli,
-                        )
-                        .add_to(&mut tail_loop);
-                    tail_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
-                }
-            }
-            RestSemantics::Ignore => {
-                gen_scope
-                    .generate_deserialize(
-                        types,
-                        element.into(),
-                        DeserializeBeforeAfter::new("let _rest_elem = ", ";", false),
-                        DeserializeConfig::new("_rest_elem"),
-                        cli,
-                    )
-                    .add_to(&mut tail_loop);
-            }
-        }
-        deser_code.content.push_block(tail_loop);
-        if rest.semantics == RestSemantics::Capture {
-            let rest_expr = if rest.is_restricted() {
-                let carrier = rest_member_type(rest).for_rust_member(types, false, cli);
-                format!("<{carrier}>::try_from({})?", rest.field_name)
-            } else {
-                rest.field_name.clone()
-            };
-            deser_ctor_fields.push((rest.field_name.clone(), rest_expr));
-            if !elem_encs.is_empty() {
-                let sidecar = format!("{}_elem_encodings", rest.field_name);
-                if vars_in_self {
-                    encoding_struct_ctor_fields.push((sidecar.clone(), sidecar));
-                } else {
-                    deser_ctor_fields.push((sidecar.clone(), sidecar));
-                }
-            }
-        }
+    // Final tails retain their historic owner-boundary loop.  Middle segments were emitted above
+    // exactly before their suffix field, using their source index.
+    if let Some(segment) = array_segment
+        && segment
+            .array_source_index()
+            .is_some_and(|index| record.fields.iter().all(|field| field.source_index < index))
+    {
+        generate_array_segment_deserialization(
+            gen_scope,
+            types,
+            segment,
+            false,
+            vars_in_self,
+            cli,
+            &mut deser_code,
+            &mut deser_ctor_fields,
+            &mut encoding_struct_ctor_fields,
+        );
     }
     if cli.preserve_encodings {
         let encoding_vars_output = if vars_in_self {
@@ -3177,9 +3331,15 @@ pub(super) fn codegen_struct(
                     .from_wasm_boundary_clone(types, &first_arg, false)
                     .into_iter(),
             ));
-            wasm_new_comments.push(format!(
-                "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
-            ));
+            wasm_new_comments.push(if !array_segment_is_final(record, rest) {
+                format!(
+                    "* `{first_arg}` - the first major-disjoint occurrence-segment element before its mandatory fixed suffix (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                )
+            } else {
+                format!(
+                    "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
+                )
+            });
         }
         // Every bounded array tail is supplied as its complete checked list wrapper. Unlike the
         // min-one compatibility ABI above it must not be rebuilt from a first element, and unlike a
@@ -3194,11 +3354,18 @@ pub(super) fn codegen_struct(
                     .from_wasm_boundary_clone(types, &rest.field_name, false)
                     .into_iter(),
             ));
-            wasm_new_comments.push(format!(
-                "* `{}` - the complete checked trailing-array wrapper (its CDDL occurrence window \
-                 is enforced before construction)",
-                rest.field_name
-            ));
+            wasm_new_comments.push(if !array_segment_is_final(record, rest) {
+                format!(
+                    "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its mandatory fixed suffix (its CDDL occurrence window is enforced before construction)",
+                    rest.field_name
+                )
+            } else {
+                format!(
+                    "* `{}` - the complete checked trailing-array wrapper (its CDDL occurrence window \
+                     is enforced before construction)",
+                    rest.field_name
+                )
+            });
         }
         // A restricted open-struct rest or open-table catch-all has a read-only wasm getter, so it
         // cannot default to an empty carrier without making admitted non-empty values impossible to
@@ -3243,7 +3410,19 @@ pub(super) fn codegen_struct(
                 .arg_ref_self()
                 .ret(rest_ty.for_wasm_return(types))
                 .vis("pub")
-                .doc(if rest.is_non_empty_array_tail() {
+                .doc(if rest.is_array_tail() && !array_segment_is_final(record, rest) {
+                    if rest.is_non_empty_array_tail() {
+                        "The captured one-or-more major-disjoint occurrence segment before its \
+                         mandatory fixed suffix (CDDL `+ t` / `1* t`), as the restricted wasm list \
+                         wrapper."
+                    } else if rest.is_restricted() {
+                        "The captured bounded major-disjoint occurrence segment before its mandatory \
+                         fixed suffix, as its checked wasm list wrapper."
+                    } else {
+                        "The captured major-disjoint occurrence segment before its mandatory fixed \
+                         suffix (CDDL `* t`), as the wasm list wrapper."
+                    }
+                } else if rest.is_non_empty_array_tail() {
                     "The captured one-or-more trailing array elements beyond the declared members \
                      (CDDL `+ t` / `1* t` rest tail), as the restricted wasm list wrapper."
                 } else if rest.is_array_tail() && rest.is_restricted() {
@@ -3369,7 +3548,7 @@ pub(super) fn codegen_struct(
         if !wasm_new_comments.is_empty() {
             wasm_new.doc(wasm_new_comments.join("\n"));
         }
-        if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest()) {
+        if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record, record.ignored_rest()) {
             wrapper.s.doc(&doc);
         }
         wrapper.s_impl.push_fn(wasm_new);
@@ -3393,7 +3572,7 @@ pub(super) fn codegen_struct(
     let (mut native_struct, mut native_impl) =
         create_base_rust_struct(types, name, manual_json, None, cli);
     native_struct.vis("pub");
-    if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest()) {
+    if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record, record.ignored_rest()) {
         native_struct.doc(&doc);
     }
     let mut native_new = codegen::Function::new("new");
@@ -3596,7 +3775,20 @@ pub(super) fn codegen_struct(
             },
             rest_member_type(rest).for_rust_member(types, false, cli),
         );
-        rest_field.doc(if rest.is_non_empty_array_tail() {
+        rest_field.doc(if rest.is_array_tail() && !array_segment_is_final(record, rest) {
+            if rest.is_non_empty_array_tail() {
+                "Captured one-or-more major-disjoint occurrence-segment elements before the mandatory \
+                 fixed suffix (CDDL `+ t` / `1* t`). Serialized at its authored source position; never \
+                 empty."
+            } else if rest.is_restricted() {
+                "Captured major-disjoint occurrence-segment elements before the mandatory fixed suffix, \
+                 whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized \
+                 at its authored source position; supplied complete to `new()`."
+            } else {
+                "Captured major-disjoint occurrence-segment elements before the mandatory fixed suffix \
+                 (CDDL `* t`). Serialized at its authored source position; defaults empty."
+            }
+        } else if rest.is_non_empty_array_tail() {
             "Captured one-or-more trailing array elements beyond the declared members (CDDL `+ t` / \
              `1* t` rest tail). Serialized after the declared members; never empty."
         } else if rest.is_array_tail() && rest.is_restricted() {
@@ -3747,9 +3939,15 @@ pub(super) fn codegen_struct(
             }
             native_new.arg(&first_arg, rest.element().for_rust_move(types, cli));
             new_arg_count += 1;
-            native_new_comments.push(format!(
-                "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
-            ));
+            native_new_comments.push(if !array_segment_is_final(record, rest) {
+                format!(
+                    "* `{first_arg}` - the first major-disjoint occurrence-segment element before its mandatory fixed suffix (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                )
+            } else {
+                format!(
+                    "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
+                )
+            });
             native_new_block.line(format!(
                 "{}: NonEmptyVec::new({first_arg}),",
                 rest.field_name
@@ -3761,10 +3959,17 @@ pub(super) fn codegen_struct(
             let rest_ty = rest_member_type(rest).for_rust_move(types, cli);
             native_new.arg(&rest.field_name, &rest_ty);
             new_arg_count += 1;
-            native_new_comments.push(format!(
-                "* `{}` - the complete checked trailing-array carrier (its CDDL occurrence window is enforced by this carrier)",
-                rest.field_name
-            ));
+            native_new_comments.push(if !array_segment_is_final(record, rest) {
+                format!(
+                    "* `{}` - the complete checked major-disjoint occurrence-segment carrier before its mandatory fixed suffix (its CDDL occurrence window is enforced by this carrier)",
+                    rest.field_name
+                )
+            } else {
+                format!(
+                    "* `{}` - the complete checked trailing-array carrier (its CDDL occurrence window is enforced by this carrier)",
+                    rest.field_name
+                )
+            });
             native_new_block.line(format!("{},", rest.field_name));
         } else {
             native_new_block.line(format!(
@@ -4117,7 +4322,7 @@ pub(super) fn codegen_struct(
         // group, so this is the real `serialize` — never `serialize_as_embedded_group`). Array-worded
         // for an array tail.
         if let Some(rest) = record.ignored_rest() {
-            ser_func.doc(ignore_lossiness_doc(rest));
+            ser_func.doc(ignore_lossiness_doc(record, rest));
         }
         let mut deser_code = DeserializationCode::default();
         let in_embedded = types.is_plain_group(name);

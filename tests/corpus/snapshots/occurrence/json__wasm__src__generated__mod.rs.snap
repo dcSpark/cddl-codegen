@@ -60,6 +60,47 @@ impl AsRef<BoundedVec<u64, 2, 5>> for Bounded {
     }
 }
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesList(pub(crate) Vec<Vec<u8>>);
+
+#[wasm_bindgen]
+impl BytesList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u8> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u8>) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<Vec<u8>>> for BytesList {
+    fn from(native: Vec<Vec<u8>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesList> for Vec<Vec<u8>> {
+    fn from(wasm: BytesList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<Vec<u8>>> for BytesList {
+    fn as_ref(&self) -> &Vec<Vec<u8>> {
+        &self.0
+    }
+}
+
 /// `[2*2 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -192,6 +233,73 @@ impl From<Maybe> for BoundedVec<u64, 0, 1> {
 
 impl AsRef<BoundedVec<u64, 0, 1>> for Maybe {
     fn as_ref(&self) -> &BoundedVec<u64, 0, 1> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MiddleOccurrence(pub(crate) cddl_lib::MiddleOccurrence);
+
+#[wasm_bindgen]
+impl MiddleOccurrence {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MiddleOccurrence, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<MiddleOccurrence, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn prefix(&self) -> u64 {
+        self.0.prefix
+    }
+
+    pub fn suffix(&self) -> String {
+        self.0.suffix.clone()
+    }
+
+    /// The captured major-disjoint occurrence segment before its mandatory fixed suffix (CDDL `* t`), as the wasm list wrapper.
+    pub fn rest(&self) -> BytesList {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(prefix: u64, suffix: String) -> Self {
+        Self(cddl_lib::MiddleOccurrence::new(prefix, suffix))
+    }
+}
+
+impl From<cddl_lib::MiddleOccurrence> for MiddleOccurrence {
+    fn from(native: cddl_lib::MiddleOccurrence) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MiddleOccurrence> for cddl_lib::MiddleOccurrence {
+    fn from(wasm: MiddleOccurrence) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MiddleOccurrence> for MiddleOccurrence {
+    fn as_ref(&self) -> &cddl_lib::MiddleOccurrence {
         &self.0
     }
 }

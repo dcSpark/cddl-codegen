@@ -100,6 +100,22 @@ mod open_array_preserve {
         );
     }
 
+    #[test]
+    fn middle_segment_preserves_and_canonicalizes_before_its_suffix() {
+        // [7, 2(as 0x1802), "x"] — the middle sidecar belongs to the repeated uint only;
+        // byte-exact replay and canonical normalization must not move the text suffix.
+        let wire = bytes("83 07 1802 6178");
+        let middle = Middle::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(middle.rest, vec![2]);
+        assert_eq!(middle.index_2, "x");
+        assert_eq!(middle.to_cbor_bytes(), wire, "middle preserve stays byte-exact");
+        assert_eq!(
+            middle.to_canonical_cbor_bytes(),
+            bytes("83 07 02 6178"),
+            "canonical normalizes the repeated element without displacing the suffix"
+        );
+    }
+
     // --- `any` tail (`cap_any = [uint, * any]`): self-carried encodings (no sidecar) ---
 
     #[test]

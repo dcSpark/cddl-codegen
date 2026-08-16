@@ -1,10 +1,12 @@
-// Open-array rest-tail value-level end-to-end vectors. A final occurrence after the fixed members
-// captures trailing elements in its loose, min-one, or bounded carrier; loose `@ignore` drops them.
+// Open-array occurrence-segment value-level end-to-end vectors. A final occurrence or a
+// major-disjoint middle occurrence captures elements in its loose, min-one, or bounded carrier;
+// loose `@ignore` drops final trailing elements.
 // These pin the plain-mode (non-preserve) semantics:
 //   * empty tail ≡ closed-struct bytes (adding a rest tail is backward compatible on the wire);
 //   * definite AND indefinite arrays with extra elements (incl. a nested-container element);
 //   * typing enforced on a typed tail (a wrong-type trailing element errors);
 //   * an optional member + a type-distinct tail (present/absent × empty/non-empty);
+//   * leading/middle major-disjoint segments, including bounded greedy stop-before-suffix;
 //   * `@ignore` re-serializes the declared prefix only;
 //   * stream position: an open array as a member of an outer array — the tail loop stops at the open
 //     array's end and leaves the sibling for the outer decoder (the cip36 skip-arm bug class).
@@ -205,6 +207,85 @@ mod open_array {
         assert_eq!(o.to_cbor_bytes(), wire);
     }
 
+    // --- major-disjoint leading/middle segments ---
+
+    #[test]
+    fn leading_and_middle_loose_segments_leave_the_text_suffix_in_place() {
+        let leading_empty = Lead::from_cbor_bytes(&bytes("81 6178")).unwrap();
+        assert!(leading_empty.rest.is_empty());
+        assert_eq!(leading_empty.index_1, "x");
+        assert_eq!(leading_empty.to_cbor_bytes(), bytes("81 6178"));
+
+        for (wire, expected_rest) in [
+            (bytes("82 07 6178"), vec![]),
+            (bytes("84 07 41aa 41bb 6178"), vec![vec![0xaa], vec![0xbb]]),
+            (
+                bytes("9f 07 41aa 41bb 6178 ff"),
+                vec![vec![0xaa], vec![0xbb]],
+            ),
+        ] {
+            let middle = Middle::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(middle.index_0, 7);
+            assert_eq!(middle.index_2, "x");
+            assert_eq!(middle.rest, expected_rest);
+            let reparsed = Middle::from_cbor_bytes(&middle.to_cbor_bytes()).unwrap();
+            assert_eq!(reparsed.rest, middle.rest);
+            assert_eq!(reparsed.index_2, "x");
+        }
+    }
+
+    #[test]
+    fn middle_restricted_segments_use_the_shared_checked_carrier_door() {
+        let required = MiddleRequired::from_cbor_bytes(&bytes("83 07 41aa 6178")).unwrap();
+        assert_eq!(required.rest.as_slice(), &[vec![0xaa]]);
+        assert_eq!(required.index_2, "x");
+        assert_decode_reject_reason::<MiddleRequired>(&bytes("82 07 6178"), "0 not at least 1");
+
+        let bounded = MiddleBounded::from_cbor_bytes(&bytes("84 07 41aa 41bb 6178")).unwrap();
+        assert_eq!(bounded.rest.as_slice(), &[vec![0xaa], vec![0xbb]]);
+        assert_eq!(bounded.index_2, "x");
+        for wire in [bytes("83 07 41aa 6178"), bytes("9f 07 41aa 6178 ff")] {
+            assert_decode_reject_reason::<MiddleBounded>(&wire, "1 not in range 2 - 3");
+        }
+        for wire in [
+            bytes("86 07 41aa 41bb 41cc 41dd 6178"),
+            bytes("9f 07 41aa 41bb 41cc 41dd 6178 ff"),
+        ] {
+            assert_decode_reject_reason::<MiddleBounded>(
+                &wire,
+                "expected `Text' byte received `Bytes'",
+            );
+        }
+
+        let zero = MiddleZero::from_cbor_bytes(&bytes("82 07 6178")).unwrap();
+        assert!(zero.rest.as_slice().is_empty());
+        assert_eq!(zero.index_2, "x");
+    }
+
+    #[test]
+    fn middle_maximum_stops_before_its_major_disjoint_suffix() {
+        // The maximum is two; after the second bytes item the loop MUST stop and leave the text
+        // for the suffix rather than reading/rejecting it as another occurrence.
+        let max = MiddleMax::from_cbor_bytes(&bytes("84 07 41aa 41bb 6178")).unwrap();
+        assert_eq!(max.rest.as_slice(), &[vec![0xaa], vec![0xbb]]);
+        assert_eq!(max.index_2, "x");
+        assert_eq!(max.to_cbor_bytes(), bytes("84 07 41aa 41bb 6178"));
+    }
+
+    #[test]
+    fn middle_segment_rejects_wrong_item_and_trailing_extra() {
+        // A uint neither belongs to the bytes segment nor satisfies the text suffix.  An extra
+        // post-suffix item remains visible to the owner's final length check.
+        assert_decode_reject_reason::<Middle>(
+            &bytes("83 07 02 6178"),
+            "expected `Text' byte received `UnsignedInteger'",
+        );
+        assert_decode_reject_reason::<Middle>(
+            &bytes("84 07 41aa 6178 00"),
+            "Definite length mismatch: found 4, expected: 3",
+        );
+    }
+
     // --- `@ignore` tail (`ign = [uint, * any] ; @ignore`) ---
 
     #[test]
@@ -257,10 +338,14 @@ mod open_array {
     }
 
     #[test]
-    fn required_tail_stream_position_leaves_the_outer_sibling_after_definite_and_indefinite_inner() {
+    fn required_tail_stream_position_leaves_the_outer_sibling_after_definite_and_indefinite_inner()
+    {
         // [[1, 2, 3], 99] — `inner_required` owns 2 and 3 as its non-empty tail; 99 remains for
         // the enclosing record after BOTH the definite and indefinite inner-array boundaries.
-        for wire in [bytes("82 83 01 02 03 1863"), bytes("82 9f 01 02 03 ff 1863")] {
+        for wire in [
+            bytes("82 83 01 02 03 1863"),
+            bytes("82 9f 01 02 03 ff 1863"),
+        ] {
             let outer = OuterRequired::from_cbor_bytes(&wire).unwrap();
             assert_eq!(outer.inner_required.index_0, 1);
             assert_eq!(outer.inner_required.rest.as_slice(), &[2, 3]);
@@ -273,7 +358,10 @@ mod open_array {
         // outer_bounded = [inner_bounded, uint], inner_bounded = [uint, 2*3 uint]. The inner
         // tail consumes exactly 2 and 3; the enclosing sibling 99 must remain unread for both
         // definite and indefinite inner arrays.
-        for wire in [bytes("82 83 01 02 03 1863"), bytes("82 9f 01 02 03 ff 1863")] {
+        for wire in [
+            bytes("82 83 01 02 03 1863"),
+            bytes("82 9f 01 02 03 ff 1863"),
+        ] {
             let outer = OuterBounded::from_cbor_bytes(&wire).unwrap();
             assert_eq!(outer.inner_bounded.rest.as_slice(), &[2, 3]);
             assert_eq!(outer.index_1, 99);
@@ -290,5 +378,20 @@ mod open_array {
         assert_eq!(o.index_1, 99);
         // Re-serialize drops inner_ign's tail: [[1], 99].
         assert_eq!(o.to_cbor_bytes(), bytes("82 81 01 1863"));
+    }
+
+    #[test]
+    fn middle_segment_stream_position_leaves_the_outer_sibling() {
+        // [[1, h'aa', "x"], 99] — the inner middle segment stops at its text suffix, then its
+        // own array boundary; the outer sibling must still deserialize as 99.
+        for wire in [
+            bytes("82 83 01 41aa 6178 1863"),
+            bytes("82 9f 01 41aa 6178 ff 1863"),
+        ] {
+            let outer = OuterMiddle::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(outer.inner_middle.rest, vec![vec![0xaa]]);
+            assert_eq!(outer.inner_middle.index_2, "x");
+            assert_eq!(outer.index_1, 99);
+        }
     }
 }

@@ -1395,7 +1395,7 @@ fn record_roundtrip(
             // Array rest tail: a loose `* t` starts empty, while a `+ t` baseline already holds its
             // first element through `new`; both gain one more element here through the non-shrinking
             // `.push` API so serialization/deserialization executes the tail loop.
-            crate::intermediate::RestKind::ArrayTail { element } => {
+            crate::intermediate::RestKind::ArrayTail { element, .. } => {
                 match valid_value(types, element) {
                     Some(e) => cases.push((
                         format!(

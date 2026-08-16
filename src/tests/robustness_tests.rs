@@ -5419,10 +5419,12 @@ fn zero_permitting_occurrence_on_keyed_map_field_uses_optional_carrier() {
 /// silently narrowed to a mandatory exactly-once field, generating a decoder that rejects
 /// spec-valid CBOR with any other repetition count (invisible to round-trip tests; surfaced by
 /// spec-derived decode vectors). Unlike the keyed-map case above, `+` does NOT collapse in an
-/// array (repetitions are real items), so a final tail must either own the remainder or reject.
+/// array (repetitions are real items), so a final tail owns the remainder and a middle segment must
+/// stop at a statically disjoint suffix rather than guess.
 /// This pins the supported bounded-tail polarity and the boundaries the guard must preserve:
-///   - final `*` / `+` / `2*3` → Ok (a loose, NonEmptyVec, or BoundedVec rest carrier); non-final
-///     occurrences still reject because the tail cannot greedily leave a later fixed member;
+///   - final `*` / `+` / `2*3` → Ok (a loose, NonEmptyVec, or BoundedVec rest carrier); a sole
+///     non-final occurrence is also accepted when its immediate mandatory one-item suffix has a
+///     disjoint CBOR major, so greedy decoding can stop without guessing;
 ///   - `1*1` → Ok (exactly-once IS the semantics — same boundary the inline-group guard pins);
 ///   - `?` → Ok (the supported optional-field path);
 ///   - `[* bytes]` alone → Ok (single-entry groups take the homogeneous Vec path, not the record
@@ -5472,15 +5474,150 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
             .any(|source| source.contains("pub rest: BoundedVec<Vec<u8>, 2, 3>")),
         "a finite final rest tail must store its complete BoundedVec carrier: {bounded:#?}"
     );
-    // A leading/non-final repetition keeps rejecting (the rest tail must be the LAST member).
-    let leading = run("m = [* bytes, uint]\n", "leading")
-        .expect_err("a non-final `*` narrows identically — must reject (rest tail must be last)");
+    // A leading or middle repetition with a major-disjoint mandatory suffix is a greedily
+    // decodable array segment, not an ambiguous non-final tail.  The restricted carrier remains
+    // exactly the shared NonEmptyVec/BoundedVec one.
+    let leading = run("m = [* bytes, tstr]\n", "leading")
+        .expect("a leading `* bytes` before a text suffix is major-disjoint and must generate");
     assert!(
-        leading.contains("rule `m`"),
-        "the non-final `*` rejection should name the rule, got: {leading}"
+        leading
+            .values()
+            .any(|source| source.contains("pub rest: Vec<Vec<u8>>")),
+        "a leading middle-segment capture keeps the loose Vec carrier: {leading:#?}"
     );
-    run("m = [uint, + bytes, text]\n", "middle_plus")
-        .expect_err("a non-final `+` must reject (the rest tail must be last)");
+    let middle_plus = run("m = [uint, + bytes, text]\n", "middle_plus")
+        .expect("a middle `+ bytes` before text is major-disjoint and must generate");
+    assert!(
+        middle_plus
+            .values()
+            .any(|source| source.contains("pub rest: NonEmptyVec<Vec<u8>>")),
+        "a middle `+` must retain the shared NonEmptyVec carrier: {middle_plus:#?}"
+    );
+    let multi_major_middle = run("m = [uint, * int, tstr]\n", "multi_major_middle")
+        .expect("a multi-major repeated element before a disjoint suffix must generate");
+    assert!(
+        multi_major_middle.values().any(|source| source
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>()
+            .contains(
+                "[cbor_event::Type::UnsignedInteger,cbor_event::Type::NegativeInteger,].contains"
+            )),
+        "multi-major middle dispatch must use an allocation-free array membership check: \
+         {multi_major_middle:#?}"
+    );
+    let optional_before_middle = run("m = [? bytes, * bytes, tstr]\n", "optional_before_middle")
+        .expect("the source-valid shape still generates a serialize-only type instead of guessing");
+    assert!(
+        optional_before_middle
+            .values()
+            .all(|source| !source.contains("impl Deserialize for M")),
+        "an optional field immediately before an overlapping middle segment is ambiguous even though \
+         the mandatory suffix follows that segment; no Deserialize impl may be emitted: \
+         {optional_before_middle:#?}"
+    );
+    let optional_before_zero_min_middle = run(
+        "m = [? uint, * bytes, uint]\n",
+        "optional_before_zero_min_middle",
+    )
+    .expect("the source-valid zero-minimum shape must remain serialize-only rather than guess");
+    assert!(
+        optional_before_zero_min_middle
+            .values()
+            .all(|source| !source.contains("impl Deserialize for M")),
+        "a loose middle segment may be empty, leaving the optional prefix ambiguous with the \
+         same-major mandatory suffix; no Deserialize impl may be emitted: \
+         {optional_before_zero_min_middle:#?}"
+    );
+    let optional_before_nonempty_middle = run(
+        "m = [? uint, + bytes, uint]\n",
+        "optional_before_nonempty_middle",
+    )
+    .expect("a non-empty disjoint middle segment must retain Deserialize");
+    assert!(
+        optional_before_nonempty_middle
+            .values()
+            .any(|source| source.contains("impl Deserialize for M")),
+        "a required bytes segment separates the optional uint from its same-major suffix, so this \
+         shape must emit Deserialize: {optional_before_nonempty_middle:#?}"
+    );
+
+    // Greedy decoding may not guess a same-major boundary or bypass a suffix that is absent,
+    // multi-item, or custom-codec-owned at either boundary item. Each remains a graceful
+    // parse/finalize refusal with a
+    // remedy rather than an emitted decoder that fails to round-trip its own values.
+    for (spec, tag, needle) in [
+        ("m = [uint, * bytes, bytes]\n", "overlap", "major-disjoint"),
+        (
+            "m = [uint, * bytes, ? tstr]\n",
+            "optional_suffix",
+            "mandatory",
+        ),
+        (
+            "pair = (a: tstr, b: uint)\nm = [uint, * bytes, pair]\n",
+            "plain_group_suffix",
+            "exactly one CBOR item",
+        ),
+        (
+            "m = [\n  uint,\n  * bytes,\n  tstr ; @custom_serialize write_text @custom_deserialize read_text\n]\n",
+            "field_codec_suffix",
+            "unproven wire head",
+        ),
+        (
+            "elem = bytes ; @custom_serialize write_elem @custom_deserialize read_elem\n\
+             m = [uint, * elem, tstr]\n",
+            "custom_repeated_alias",
+            "unproven wire head",
+        ),
+        (
+            "suffix = bytes ; @custom_serialize write_suffix @custom_deserialize read_suffix\n\
+             m = [uint, * bytes, suffix]\n",
+            "custom_suffix_alias",
+            "unproven wire head",
+        ),
+        (
+            "elem = bytes ; @custom_serialize write_elem @custom_deserialize read_elem\n\
+             nullable = elem / null\n\
+             m = [uint, * nullable, tstr]\n",
+            "custom_nullable_repeated",
+            "unproven wire head",
+        ),
+        (
+            "elem = bytes ; @custom_serialize write_elem @custom_deserialize read_elem\n\
+             optionally_tagged = #6.42(elem) / elem\n\
+             m = [uint, * optionally_tagged, tstr]\n",
+            "custom_optionally_tagged_repeated",
+            "unproven wire head",
+        ),
+        (
+            "ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+             m = [uint, * ext, tstr]\n",
+            "extern_repeated",
+            "unproven wire head",
+        ),
+    ] {
+        let err = run(spec, tag).expect_err(&format!("{tag} must retain a graceful refusal"));
+        assert!(
+            err.contains(needle),
+            "{tag} should explain the safe-middle boundary with `{needle}`, got: {err}"
+        );
+    }
+
+    // A custom/extern INNER codec is admissible when a mandatory outer framing construct supplies
+    // the discriminator's wire head. These are generation-only controls: the deliberately
+    // user-owned custom/extern implementations are not available to compile in this fixture.
+    run(
+        "elem = bytes ; @custom_serialize write_elem @custom_deserialize read_elem\n\
+         m = [uint, * #6.10(elem), tstr]\n",
+        "mandatory_tagged_custom_repeated",
+    )
+    .expect("a mandatory tag supplies the repeated custom element's stable outer wire head");
+    run(
+        "suffix = bytes ; @custom_serialize write_suffix @custom_deserialize read_suffix\n\
+         m = [uint, * uint, bytes .cbor suffix]\n",
+        "cbor_framed_custom_suffix",
+    )
+    .expect("a .cbor frame supplies the custom suffix's stable outer bytes wire head");
 
     run("m = [uint, 1*1 bytes]\n", "exactly_once")
         .expect("`1*1` is exactly-once — mandatory IS the honored semantics");
@@ -5491,9 +5628,9 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
     );
 }
 
-/// Open-array rest tail (`[a, * t]`) front-end: every recognition guard, the directive-slot
-/// direction/trap fixtures, and the `@ignore`/`@duplicates`/preserve combination rejections. The
-/// value-level happy path lives in the compiled e2e `open_array_e2e`; this pins the parse-time
+/// Open-array occurrence segment (`[a, * t]`, final or safely middle) front-end: every recognition
+/// guard, the directive-slot direction/trap fixtures, and the `@ignore`/`@duplicates`/preserve
+/// combination rejections. The value-level happy path lives in the compiled e2e `open_array_e2e`; this pins the parse-time
 /// boundary in plain mode (`--wasm=false`).
 #[test]
 fn open_array_front_end() {
@@ -5586,6 +5723,13 @@ fn open_array_front_end() {
         !src(&ign).contains("pub rest") && src(&ign).contains("struct A"),
         "an @ignore tail emits no field (closed struct)"
     );
+    let middle_ign = run("a = [\n  uint,\n  * bytes ; @ignore\n  tstr\n]\n")
+        .expect("@ignore on a loose major-disjoint middle segment is honored");
+    assert!(
+        !src(&middle_ign).contains("pub rest")
+            && src(&middle_ign).contains("ignored major-disjoint occurrence segment"),
+        "an ignored safe-middle segment emits no field and reports its source position accurately"
+    );
 
     // --- slot direction: a RULE-level @ignore on an open-array rule is NOT stolen onto the tail —
     // it is a loud rule-position rejection (the tail's own entry slot is disjoint from the rule slot).
@@ -5608,9 +5752,17 @@ fn open_array_front_end() {
     }
 
     // --- guards, each a graceful rejection ---
-    // non-final `*` / `+`
-    run("a = [* uint, tstr]\n").expect_err("a non-final `*` must reject (tail must be last)");
-    run("a = [uint, + uint, tstr]\n").expect_err("a non-final `+` must reject (tail must be last)");
+    // Same-major, optional, multi-item, and local-codec suffixes remain unsafe.  The normal
+    // leading/middle major-disjoint case is exercised above and in the compiled fixture.
+    for spec in [
+        "a = [* uint, uint]\n",
+        "a = [uint, + uint, uint]\n",
+        "a = [uint, * uint, ? tstr]\n",
+        "pair = (tstr, uint)\na = [uint, * bytes, pair]\n",
+        "a = [\n  uint,\n  * bytes,\n  tstr ; @custom_serialize write_text @custom_deserialize read_text\n]\n",
+    ] {
+        run(spec).expect_err("an unsafe middle occurrence must reject");
+    }
     // multiple count-permitting members
     run("a = [uint, * uint, * tstr]\n").expect_err("multiple `*` members must reject");
     run("a = [uint, + uint, * tstr]\n").expect_err("multiple count-permitting members must reject");
@@ -6900,9 +7052,9 @@ fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
 /// array framing (`w = [kv]`, then `* w`) and the tag moved onto that framed reference
 /// (`* #6.10(w)`). Pins the message across every spelling the one seam covers — bare, ALIAS and
 /// TAGGED — on every profile, and pins the sibling guards this one must neither shadow nor
-/// double-report: the guards that run BEFORE the element type is even computed (choice-arm
-/// placement, plain-group owner, multiplicity, position, unsupported bounded occurrence kind,
-/// member key) keep their own messages, the fixed-value guard beside it keeps its own, and the
+/// double-report: the guards for choice-arm placement, plain-group owner, multiplicity, and the
+/// non-final position of this non-item element keep their own messages; the fixed-value guard beside
+/// it keeps its own, and the
 /// row-entry DIRECTIVE guards after it are deliberately shadowed — a directive cannot be judged on
 /// a tail that has no representable element, and one problem gets one message.
 #[test]
@@ -7069,8 +7221,9 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
         );
     }
 
-    // Guard ORDER. Everything that runs before the element type is computed keeps its own message:
-    // one problem, one message, and never two.
+    // Guard ORDER. Each earlier semantic boundary keeps its own message: one problem, one message,
+    // and never two. In particular, a non-final plain-group occurrence is not a safe middle
+    // segment (a group is not one item), so it retains the historic position refusal.
     for (spec, tag, needle) in [
         (
             format!("{GROUP}t = [ x: uint // c: uint, * kv ]\n"),

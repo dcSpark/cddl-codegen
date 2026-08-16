@@ -201,6 +201,137 @@ expression: ir
         },
     },
     RustIdent(
+        "MiddleOccurrence",
+    ): RustStruct {
+        ident: RustIdent(
+            "MiddleOccurrence",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "prefix",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "suffix",
+                        source_index: 2,
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: Some(
+                    RestRow {
+                        kind: ArrayTail {
+                            element: RustType {
+                                conceptual_type: Primitive(
+                                    Bytes,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            source_index: 1,
+                        },
+                        semantics: Capture,
+                        field_name: "rest",
+                        dispatch_major: None,
+                        occurrence: None,
+                    },
+                ),
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
         "NestedBounded",
     ): RustStruct {
         ident: RustIdent(

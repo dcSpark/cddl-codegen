@@ -39,6 +39,8 @@ use crate::generated::OneOrMore as _;
 use crate::generated::Upper as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
+    _assert_serialize::<crate::generated::MiddleOccurrence>();
+    _assert_deserialize::<crate::generated::MiddleOccurrence>();
     _assert_serialize::<crate::generated::OccurrenceHolder>();
     _assert_deserialize::<crate::generated::OccurrenceHolder>();
 }

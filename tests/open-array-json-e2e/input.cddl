@@ -10,3 +10,4 @@ required = [uint, + uint]           ; required NonEmptyVec JSON array
 required_any = [uint, + any]        ; required natural-fallible AnyCbor JSON array
 bounded = [uint, 2*3 uint]          ; required finite BoundedVec JSON array
 bounded_any = [uint, 1*2 any]       ; bounded natural-fallible AnyCbor JSON array
+middle_bounded = [uint, 2*3 uint, tstr] ; shared BoundedVec JSON/schema surface before suffix

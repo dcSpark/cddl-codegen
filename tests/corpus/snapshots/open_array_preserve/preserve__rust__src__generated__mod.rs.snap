@@ -27,7 +27,8 @@ pub mod serialization;
 use crate::generated::bounded::BoundedVec;
 use crate::generated::non_empty::NonEmptyVec;
 use cbor_encodings::{
-    BoundedEncoding, CapAnyEncoding, CapEncoding, InnerEncoding, OuterEncoding, RequiredEncoding,
+    BoundedEncoding, CapAnyEncoding, CapEncoding, InnerEncoding, MiddleEncoding, OuterEncoding,
+    RequiredEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -99,6 +100,26 @@ impl Inner {
     pub fn new(index_0: u64) -> Self {
         Self {
             index_0,
+            rest: Vec::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Middle {
+    pub index_0: u64,
+    pub index_2: String,
+    /// Captured major-disjoint occurrence-segment elements before the mandatory fixed suffix (CDDL `* t`). Serialized at its authored source position; defaults empty.
+    pub rest: Vec<u64>,
+    pub encodings: Option<MiddleEncoding>,
+}
+
+impl Middle {
+    pub fn new(index_0: u64, index_2: String) -> Self {
+        Self {
+            index_0,
+            index_2,
             rest: Vec::new(),
             encodings: None,
         }

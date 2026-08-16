@@ -254,7 +254,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.duplicates.preserve` | ✅ | @duplicates preserve — duplicate-preserving pair-map tables | `table_preserve.cddl` |
 | `dsl.duplicates.reject` | ✅ | @duplicates reject — duplicate-free set/array collections | `tag_set_reject.cddl` |
 | `dsl.extern_companions` | ➕ | @extern_companions — reference a sibling crate's wasm companion classes | supported; the directive defers the wasm companion classes to a SIBLING WASM CRATE, so the generated `use <path>::<Class>;` needs that crate to exist and a local definition would defeat the deferral it declares; integration-tested in src/tests/extern_companions_tests.rs and the two-crate wasm32 link gate extern_companions_defers_to_sibling_wasm_crate |
-| `dsl.ignore` | ✅ | @ignore — tolerate-and-drop open struct-map rest row | `dsl_ignore.cddl` |
+| `dsl.ignore` | ✅ | @ignore — tolerate-and-drop open struct-map row / array segment | `dsl_ignore.cddl` |
 | `dsl.name` | ✅ | @name — explicit field/variant name | `dsl_name.cddl` |
 | `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
 | `dsl.no_alias` | ✅ | @no_alias — inline the type, emit no alias | `dsl_no_alias.cddl` |

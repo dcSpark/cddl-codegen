@@ -13,6 +13,110 @@ use alloc::vec::Vec;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
+impl cbor_event::se::Serialize for MiddleOccurrence {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2 + self.rest.len() as u64),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.prefix,
+            fit_sz(
+                self.prefix,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.prefix_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        for (i, element) in self.rest.iter().enumerate() {
+            let rest_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.rest_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_bytes_sz(
+                element,
+                rest_elem_encoding.to_str_len_sz(element.len() as u64),
+            )?;
+        }
+        serializer.write_text_sz(
+            &self.suffix,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.suffix_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.suffix.len() as u64),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for MiddleOccurrence {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            let (prefix, prefix_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("prefix"))?;
+            let mut rest = Vec::new();
+            let mut rest_elem_encodings = Vec::new();
+            while (match len {
+                cbor_event::LenSz::Len(n, _) => read_len.read() < n,
+                cbor_event::LenSz::Indefinite => raw.as_slice().first() != Some(&0xff),
+            }) && raw.cbor_type()? == cbor_event::Type::Bytes
+            {
+                read_len.read_elems(1)?;
+                let (rest_elem, rest_elem_encoding) = raw
+                    .bytes_sz()
+                    .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+                rest.push(rest_elem);
+                rest_elem_encodings.push(rest_elem_encoding);
+            }
+            let (suffix, suffix_encoding) = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("suffix"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(MiddleOccurrence {
+                prefix,
+                rest,
+                suffix,
+                encodings: Some(MiddleOccurrenceEncoding {
+                    rest_elem_encodings,
+                    len_encoding,
+                    prefix_encoding,
+                    suffix_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("MiddleOccurrence"))
+    }
+}
+
 impl cbor_event::se::Serialize for OccurrenceHolder {
     fn serialize<'se>(
         &self,

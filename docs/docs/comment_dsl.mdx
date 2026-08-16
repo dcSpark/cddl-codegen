@@ -602,16 +602,17 @@ comment slot everywhere, so the rest-row reads only the entry-trailing slot.
 A rule-position directive (on the same line as the closing `}`) is read at **rule** level, not as the
 rest row's — the two slots are disjoint, so neither steals from the other.
 
-The same entry-trailing slot serves an **open-array rest tail** (`[uint, tstr, * bytes]` — see
-[Open arrays](output_format#open-arrays-rest-tails)), with one asymmetry:
+The same entry-trailing slot serves an **open-array occurrence segment** — a final tail
+(`[uint, tstr, * bytes]`) or a safe middle segment (`[uint, * bytes, tstr]`; see
+[Open arrays](output_format#open-arrays-rest-tails)) — with one asymmetry:
 
-- **`@name`** renames the captured tail field (default `rest`) exactly as it renames the map
+- **`@name`** renames the captured segment field (default `rest`) exactly as it renames the map
   capture field — `* bytes ; @name extras` yields `pub extras: Vec<Vec<u8>>`; the non-empty
   spelling `+ bytes ; @name extras` yields `pub extras: NonEmptyVec<Vec<u8>>` and its generated
   constructor's `first_extras_element` argument; a bounded spelling such as
   `2*3 bytes ; @name extras` yields `pub extras: BoundedVec<Vec<u8>, 2, 3>` and takes that complete
   checked carrier in its generated constructor.
-- **`@duplicates`** does **not** apply to a rest tail and is rejected gracefully: an array tail is
+- **`@duplicates`** does **not** apply to an occurrence segment and is rejected gracefully: an array segment is
   a positional sequence carrier in every supported occurrence flavor, so there are no keys for a
   duplicate policy to govern.
 
@@ -620,9 +621,9 @@ The marker-slot trap above applies identically — the directive must trail the 
 
 ## @ignore
 
-`@ignore` on an **open struct-map rest row** or an **open-array rest tail** selects the
+`@ignore` on an **open struct-map rest row** or an **open-array occurrence segment** selects the
 *tolerate-and-drop* flavor: unknown trailing data is still typed-deserialized (for a map, key **and**
-value; for an array, each element — so the stream advances past nested containers) but then
+value; for an array, each repeated element — so the stream advances past nested containers) but then
 **discarded** — no capture field is generated, and serialize re-emits only the declared members.
 
 ```cddl
@@ -642,12 +643,16 @@ Use it for view types that must accept forward-compatible data without retaining
 [array rest tails](output_format#open-arrays-rest-tails)), which keeps the generated
 `Serialize`/`Deserialize` honest (nothing dropped, byte round-trips hold).
 
-- **Placement.** `@ignore` is bare (no argument) and reads from the trailing entry's **own comment
+- **Placement.** `@ignore` is bare (no argument) and reads from the occurrence entry's **own comment
   slot**, exactly like `@name`/`@duplicates`
   ([above](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)). It is valid **only** on a
-  recognized **loose** rest row of a map-rep record or a loose rest tail of an array-rep record;
-  anywhere else (a rule, a field, a non-final occurrence, or a restricted row/tail) is a loud
-  graceful rejection, never silently dropped. The same **marker-slot trap** applies: a directive glued to the `*` occurrence marker's
+  recognized **loose** rest row of a map-rep record or a loose final/safe-middle segment of an
+  array-rep record. A safe middle segment needs its immediate fixed suffix to be mandatory,
+  single-item, field-codec-free, and CBOR-major-disjoint from the repeated element, with no
+  custom- or extern-owned, otherwise-unproven boundary wire head; this is what
+  permits greedy RFC 8610 decoding without a rewind. Anywhere else (a rule, a field, a same-major
+  or otherwise unsafe non-final occurrence, or a restricted row/segment) is a loud graceful
+  rejection, never silently dropped. The same **marker-slot trap** applies: a directive glued to the `*` occurrence marker's
   comment slot is silently not honored, so keep it after the whole entry (`* K => V ; @ignore`,
   `* t ; @ignore`).
 - **The end-of-line trap.** A CDDL comment runs to the end of the line, so a directive on the same
@@ -655,10 +660,11 @@ Use it for view types that must accept forward-compatible data without retaining
   brace and `; @ignore ]` eats the array's closing bracket. Put the directive on its own line
   **before** the closer, as in both examples above — never `[ uint, * any ; @ignore ]` on one line.
 - **Deliberate lossiness.** Byte round-trips do **not** hold for wire data carrying unknown entries or
-  trailing elements — they are dropped, and re-serialization emits the declared members / prefix only.
+  ignored final/safe-middle elements — they are dropped, and re-serialization emits the declared
+  members only.
   The generated type and its `serialize` fn carry a rustdoc breadcrumb saying so.
 - **Rejected combinations**, each a graceful generation error naming the remedy:
-  - **A restricted map rest row or open-array tail** (`+`, `1*`, or another bounded window):
+  - **A restricted map rest row or open-array segment** (`+`, `1*`, or another bounded window):
     dropping its captured content re-serializes zero occurrences. That violates a positive minimum;
     a zero-minimum restricted window instead loses the bounded or exact state its checked carrier
     retains. Use capture so the matching `NonEmpty`/`Bounded` carrier retains the entries or
@@ -667,16 +673,16 @@ Use it for view types that must accept forward-compatible data without retaining
     is byte-exact round-trips, which a silently-lossy type would undermine crate-wide. Use capture
     (drop the directive), or `@custom_serialize`/`@custom_deserialize` for a genuine view type.
   - **`@duplicates`** on the same entry: a duplicates policy governs a capture container, which
-    `@ignore` does not create. (On an **array** rest tail `@duplicates` is rejected for *both* flavors
-    — a positional sequence tail has no keys for a duplicate policy to govern.)
+    `@ignore` does not create. (On an **array** occurrence segment `@duplicates` is rejected for
+    *both* flavors — a positional sequence has no keys for a duplicate policy to govern.)
   - **`@name`** on the same entry: there is no capture field to rename.
 - **Typing is still enforced.** `* uint => any ; @ignore` still errors on a text key (the spec said
-  uint labels), and an ignored `* text` tail still errors on a non-text trailing element; full
+  uint labels), and an ignored `* text` segment still errors on a non-text repeated element; full
   looseness is spelled `* any => any` / `* any`. For a map, a declared key wins over the rest row, so
   a fixed key whose wire value mismatches its type errors rather than falling through to the drop arm.
 
 The **JSON** and **wasm** surfaces of an `@ignore` type are a plain **closed struct's** (unknown JSON
-keys / trailing array elements are tolerated on read and dropped; there is no `rest()` wasm getter,
+keys / final or safe-middle array elements are tolerated on read and dropped; there is no `rest()` wasm getter,
 since nothing is stored).
 
 ## @custom_json

@@ -1193,37 +1193,45 @@ priority_rationale_md = '''The invariant currently has multiple enforcement site
 
 [[record]]
 id = "matrix.heterogeneous-array.occurrence-bounds"
-title = "Honor remaining middle/non-final count-permitting occurrences on heterogeneous ARRAY-record fields."
+title = "Honor the remaining ambiguous/multiple count-permitting occurrences on heterogeneous ARRAY-record fields."
 
 [record.payload]
 kind = "work"
-body_md = '''### Honor remaining middle/non-final count-permitting occurrences on heterogeneous ARRAY-record fields.
+body_md = '''### Honor the remaining ambiguous/multiple count-permitting occurrences on heterogeneous ARRAY-record fields.
 
-A **final-position** occurrence after ≥1 fixed member is supported: bare `*` / `0*` uses the loose
-  open-array `Vec` rest tail, `+` / `1*` uses its `NonEmptyVec` twin with the shipped first-element
-  construction door, and every other bounded window uses a complete checked `BoundedVec` carrier
-  (including finite, max-only, min-only, and exact-zero windows), as covered by
-  `contain.occurrence-target.grpent.member.{zero_array,plus_array,bounded_array}`. Still rejected
-  gracefully: any **non-final / middle** occurrence-bearing member (`[uint, * bytes, tstr]`),
-  multiple occurrence-bearing members, inline-group occurrences, group-choice-arm tails, and plain
-  group tails; those boundaries are pinned by `occurrence_on_array_record_field_rejects_gracefully`.
-  The rejection avoids silent exactly-once narrowing that makes a generated decoder reject
-  spec-valid repetition counts — invisible to round-trip tests, surfaced only by spec-derived decode
-  vectors. Real support for middle-position repetition needs an occurrence-decoding design that
-  honors RFC 8610's greedy, non-backtracking semantics; repeated occurrences additionally need a
-  representation and residue policy of their own. Any honored carrier must prevent invalid
-  construction and cover serialization, deserialization, every generated projection, matrix
-  classification, and spec-derived boundary vectors.
+A final occurrence after fixed members is supported: bare `*` / `0*` uses the loose open-array
+`Vec` rest tail, `+` / `1*` uses its `NonEmptyVec` twin with the shipped first-element construction
+door, and every other bounded window uses a complete checked `BoundedVec` carrier (including finite,
+max-only, min-only, and exact-zero windows). The first safe middle child is delivered too: one
+leading/middle bare-type occurrence may precede an immediate fixed suffix when that suffix is
+mandatory, exactly one CBOR item, free of a field-local custom codec, and CBOR-major-disjoint from
+the repeated element (`[uint, * bytes, tstr]`). Neither the repeated element nor the suffix may have
+a custom- or extern-owned, otherwise-unproven wire head. The decoder therefore obeys RFC 8610 greedy,
+non-backtracking matching without guessing or rewinding; final and safe-middle forms share the
+carrier/projection paths covered by `contain.occurrence-target.grpent.member.{zero_array,plus_array,bounded_array}`.
+
+Still rejected gracefully: multiple occurrence-bearing members; inline-group, group-choice-arm, and
+plain-group occurrences; and a middle occurrence with an optional, multi-item, or otherwise-unproven
+custom-/extern-owned wire head on its repeated element or suffix, or a same-major suffix (`[uint, *
+bytes, bytes]`). A mandatory outer tag or `.cbor` frame supplies a proven wire head and is therefore
+admissible even when its inner codec is custom- or extern-owned. Those boundaries are
+pinned by `occurrence_on_array_record_field_rejects_gracefully`. Remaining work is the design that can express
+multiple occurrences and ambiguous same-major boundaries — value-level discrimination, residue, and
+exact-count/suffix-aware carriers — and, if needed, explicitly consume a declared wire major for a
+custom- or extern-owned boundary item, without permitting a constructed value to serialize to bytes
+that do not deserialize back to it. Any expansion must retain the one-source checked-carrier
+construction door and cover serialization, deserialization, every generated projection, matrix
+classification, and spec-derived boundary vectors.
 
 '''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = '''Define invariant-preserving carriers and construction doors for middle or non-final heterogeneous repetition; honor RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
+acceptance_md = '''Design invariant-preserving representations and construction doors for multiple or ambiguous same-major heterogeneous repetition (including value-level discrimination/residue or exact-count suffix-aware forms), while retaining RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
 '''
 priority_band = "high"
-priority_rationale_md = '''Spec-valid middle repetitions and other non-final heterogeneous occurrence placements remain valid rejections, so this selected capability closes a real supported-language boundary without reopening the delivered final-tail carrier family.
+priority_rationale_md = '''The safe major-disjoint middle class is delivered, but spec-valid multiple and same-major/value-discriminated repetition still reject. They need an explicit representation rather than a decoder that guesses, so this remains a high-priority language boundary without reopening the delivered shared carrier family.
 '''
 
 [[record]]
@@ -1835,7 +1843,10 @@ Type-disjoint non-final optionals already decode by peeking at the next value's 
 optional whose value domain overlaps its follower or an open tail/row has no sound discriminator,
 so that decode surface remains explicitly refused rather than guessed. RFC 8610 matching is greedy
 and non-backtracking: `[? uint, uint]` does not accept `[uint]`, because the optional consumes the
-item and leaves the mandatory field absent. This work may honor a newly demonstrated,
+item and leaves the mandatory field absent. A non-empty, major-disjoint middle segment is now a
+proven separator: `[? uint, + bytes, uint]` decodes because the required bytes item separates the
+optional from its same-major suffix. Its zero-minimum sibling `[? uint, * bytes, uint]` remains a
+refusal because the segment can be empty. This work may honor a newly demonstrated,
 spec-valid adjacency only when its carrier and lookahead/residue policy preserve those semantics;
 intrinsically overlapping spellings remain intentional refusals, not decoder-heuristic work. Any
 newly honored shape must prove that boundary through serialization/deserialization and the applicable
@@ -1846,12 +1857,12 @@ work_state = "blocked"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "invalid_acceptance"
-blocker_md = '''No reviewed discriminator and residue proof yet separates all sound optional-adjacency classes under greedy non-backtracking matching; overlapping [? uint, uint] remains intentionally refused.
+blocker_md = '''The non-empty major-disjoint segment is now a reviewed separator, but no discriminator and residue proof exists for any remaining overlapping optional-adjacency class under greedy non-backtracking matching; overlapping [? uint, uint] remains intentionally refused.
 '''
 
 [record.payload.unblock_predicate]
 owner_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the-n4"
-event_md = '''A reviewed discriminator and residue proof exists for a specific optional adjacency.
+event_md = '''A reviewed discriminator and residue proof exists for another currently refused optional adjacency.
 '''
 check_procedure_md = '''Verify that proof against RFC greedy non-backtracking examples, including the overlapping [? uint, uint] refusal control.
 '''

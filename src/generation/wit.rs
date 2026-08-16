@@ -1872,7 +1872,7 @@ fn project_record(
                     map_rust_type(range, ctx)?,
                 ])))
             }
-            RestKind::ArrayTail { element } => {
+            RestKind::ArrayTail { element, .. } => {
                 WitType::List(Box::new(map_rust_type(element, ctx)?))
             }
         };
@@ -3130,7 +3130,7 @@ fn struct_rule_refs(
                         walk(domain);
                         walk(range);
                     }
-                    RestKind::ArrayTail { element } => walk(element),
+                    RestKind::ArrayTail { element, .. } => walk(element),
                 }
             }
         }

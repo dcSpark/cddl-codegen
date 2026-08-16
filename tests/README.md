@@ -2085,56 +2085,50 @@ survive:
 
 ### Open arrays (rest tails) — test map
 
-The trailing-occurrence-after-fixed-members feature (the array analog of the open struct-map rest
-row) has three supported capture forms: loose `* t` / `0* t`, stored as `Vec<T>` and defaulted
-empty; one-or-more `+ t` / `1* t`, stored as `NonEmptyVec<T>` and supplied with its first element at
-construction; and every other final window, stored as a complete checked `BoundedVec<T, MIN, MAX>`
-constructor argument. User docs: `docs/docs/output_format.mdx` § "Open arrays",
+An open array (the array analog of the open struct-map rest row) has one occurrence-bearing segment:
+it may be final, or leading/middle only before an immediate mandatory, single-item, field-codec-free,
+CBOR-major-disjoint fixed suffix whose repeated element and suffix have no custom- or extern-owned,
+otherwise-unproven wire head. Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
+`+ t` / `1* t` uses `NonEmptyVec<T>` and its first-element construction ABI; every other window uses
+a complete checked `BoundedVec<T, MIN, MAX>` constructor argument. The middle boundary deliberately
+honors RFC 8610 greedy non-backtracking decoding: same-major/value-discriminator suffixes need a
+future design rather than a guessed decoder. User docs: `docs/docs/output_format.mdx` § "Open arrays",
 `docs/docs/comment_dsl.mdx` § "@ignore". It is verified across the layers:
 
-- **Front end + guards** — `robustness_tests::open_array_front_end`: recognition of final-position
-  loose, min-one, finite, max-only, min-only, and exact-zero tails; every graceful-rejection boundary
-  (non-final / multiple / group-choice-arm / plain-group tails, fixed-value tail elements), the entry-vs-rule slot-direction
-  fixtures (entry-level `@ignore`/`@name` honored, rule-position `@ignore` on an open-array rule
-  rejected), and the marker-slot trap. The supported-vs-rejected polarity flips (final loose,
-  non-empty, and bounded tails flip to Ok; leading/non-final repetition stays Err) live in
-  `robustness_tests::occurrence_on_array_record_field_rejects_gracefully`.
+- **Front end + guards** — `robustness_tests::open_array_front_end` recognizes final loose,
+  min-one, finite, max-only, min-only, and exact-zero forms. The polarity and carrier assertions in
+  `robustness_tests::occurrence_on_array_record_field_rejects_gracefully` cover leading/middle
+  loose and min-one success; the zero-minimum versus non-empty optional-prefix separator; and
+  overlap, optional-suffix, multi-item/plain-group-suffix, field-local-codec, recursively
+  custom-codec-owned, and opaque-extern wire-head refusals. They also retain the
+  multiple/group/group-choice/fixed-value boundaries and the entry-vs-rule directive
+  slot/marker-slot cases.
 - **Value-level e2e** — `tests/open-array-e2e` (`integration_tests::open_array_e2e`, compiled,
-  non-preserve): definite and indefinite arrays below/within/above a bounded window (incl. a
-  nested-container element), checked-carrier construction, min-only/exact-zero coverage, capture
-  byte/value round-trip, min-one zero-tail RangeCheck rejection, typed-tail wrong-type errors, an
-  optional member + a type-distinct tail, `@ignore` re-serializing the declared prefix only, and stream position (an open
-  array nested in an outer array — the tail loop stops at its end and leaves the sibling).
+  non-preserve) drives leading and middle loose, min-one, finite/max-only, and exact-zero segments
+  through definite and indefinite bytes: zero/in-window/below/above windows, max-bound stop before
+  the suffix, wrong repeated type, suffix preservation, trailing-extra rejection, and nested stream
+  position. It also keeps the shared constructor and carrier door tests.
 - **Preserve/canonical e2e** — `tests/open-array-preserve-e2e`
-  (`integration_tests::open_array_preserve_e2e`, compiled): byte-exact bounded-tail elements at
-  non-canonical widths via the positional `{field}_elem_encodings` sidecar, the self-carried `any`
-  tail, the non-empty tail's indefinite/non-canonical fidelity, empty loose-tail ≡ closed bytes, canonical
-  per-element normalization in position order, and the nested-stream-position vector.
-- **JSON e2e** — `tests/open-array-json-e2e` (`integration_tests::open_array_json_e2e`, compiled):
-  a loose tail as an ordinary optional array-typed field (skip-if-empty write, default-on-read,
-  empty-tail ≡ closed JSON), required min-one and finite typed tails (including missing/below/above
-  rejection and min/max schema), and bounded/loose `any` tails rendering natural-fallible (a
-  non-injective node errors).
-- **Snapshots** — `open_array_default` / `open_array_json` / `open_array_wasm` profiles over
-  `tests/open-array` (loose, min-one, and bounded typed/any/`@ignore`/`@name`d tails + the degenerate shape
-  combos), plus
-  `open_array_preserve` over `tests/open-array-preserve-e2e` (the capture-only preserve input). The
-  new `tests/*/input.cddl` dirs are registered on the wasm-parity sweep (the getter surface is
-  validated by the `open-array` snapshot rows).
-- **Wire KATs** — the `open_list` (capture) and `ignore_list` (`@ignore`, plain `#[test]`s) rules in
-  `tests/golden_hex` (default flags), and `open_list` in `tests/golden_hex_preserve` (a non-minimal
-  tail element re-emitting verbatim through the positional sidecar).
-- **emit-tests** — the `emit_tests_open_array_execute` gate (see the emit-tests section above): loose
-  typed/`any` tails, min-one and bounded required tails (including a complete checked-carrier mint),
-  and an `@ignore` tail each get an ordinary `roundtrip_<type>`; `cargo test` runs them green.
-- **Corpus** — `tests/corpus/dsl_ignore.cddl` isolates the `@ignore` directive in both container
-  reps: the map rest row (`ignored`) and the array rest tail (`ignored_list`), under the `dsl.ignore`
-  `[[cover]]` (default/json profiles; preserve is generation-skipped via `EXPECTED_GENERATION_FAIL` /
-  `PROFILE_GENERATION_SKIP`). The `dsl_ignore.ignored_list` decode-conformance catalog row carries
-  hand-derived accept vectors (a dropped-tail and an empty-tail holder instance) replayed by
-  `corpus_decode_replay`, with the by-design preserve rejection ledgered in that gate's
-  `PRESERVE_SKIP`. Capture's decode conformance rides the foreign
-  `contain.occurrence-target.grpent.member.{zero_array,bounded_array}` catalog rows.
+  (`integration_tests::open_array_preserve_e2e`, compiled) proves a non-canonical middle repeated
+  element re-emits byte-exactly and normalizes canonically without moving its suffix, beside the
+  final-tail positional-sidecar, self-carried `any`, and nested-stream vectors.
+- **JSON e2e** — `tests/open-array-json-e2e` (`integration_tests::open_array_json_e2e`, compiled)
+  checks a bounded middle carrier's JSON/schema bounds and constructor door, beside the loose,
+  required, and natural-fallible `any` tail surfaces.
+- **Snapshots / cross-face** — `open_array_default` / `open_array_json` / `open_array_wasm` profile
+  rows retain final-tail byte/API compatibility; `open_array_preserve` snapshots the middle capture
+  input. The shared component build fixture and the extern-interface self-check assertion keep the
+  position-independent wrapper/projection seams exercised.
+- **Wire KATs and emit-tests** — the final-tail `open_list` / `ignore_list` rules remain in
+  `tests/golden_hex` and `tests/golden_hex_preserve`; `emit_tests_open_array_execute` keeps loose,
+  restricted, and ignored capture construction ordinary. Middle `@ignore` remains loose-only and
+  re-serializes the fixed members without a getter.
+- **Corpus / matrix** — `tests/corpus/occurrence.cddl` contains the canonical
+  `middle_occurrence = [prefix: uint, * bytes, suffix: tstr]`; the matrix cell
+  `contain.occurrence-target.grpent.member.zero_array` and its foreign decode catalog exercise that
+  same safe boundary. The overlap refusal is executable in
+  `occurrence_on_array_record_field_rejects_gracefully`. `tests/corpus/dsl_ignore.cddl` retains the
+  final-tail `@ignore` catalog/projection coverage (including its preserve rejection ledger).
 
 ### Custom (de)serializer pairs (`@custom_serialize`/`@custom_deserialize`) — test map
 

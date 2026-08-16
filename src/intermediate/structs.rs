@@ -913,7 +913,7 @@ impl RustStruct {
                                 .conceptual_type
                                 .visit_types_excluding(types, f, already_visited);
                         }
-                        RestKind::ArrayTail { element } => {
+                        RestKind::ArrayTail { element, .. } => {
                             element.conceptual_type.visit_types_excluding(
                                 types,
                                 f,
@@ -1024,17 +1024,22 @@ pub enum RestKind {
         /// container.
         duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
     },
-    /// `* T` final-position rest tail of an open array (a positional analog of the map rest row: no
-    /// keys, so no key dispatch, no duplicate policy, no canonical key merge — extras sit strictly
-    /// after the declared prefix by construction).
+    /// `* T` occurrence-bearing segment of an open array (a positional analog of the map rest row:
+    /// no keys, so no key dispatch, no duplicate policy, no canonical key merge).  Most shipped
+    /// shapes are final tails; a major-disjoint middle segment retains its flattened source position
+    /// so the wire emitters can interleave it with fixed fields.
     ArrayTail {
-        /// The tail element type (`T`). Any supported type, including `any`. Fixed-value elements
-        /// (`* 5`) are rejected at recognition (a `Vec<FixedValue>` has no Rust representation).
+        /// The repeated element type (`T`). Any supported type, including `any`. Fixed-value
+        /// elements (`* 5`) are rejected at recognition (a `Vec<FixedValue>` has no Rust
+        /// representation).
         element: RustType,
+        /// Flattened authored position of this occurrence-bearing array member.  Map rest rows do
+        /// not carry a source position because their key dispatch is order-independent.
+        source_index: usize,
     },
 }
 
-/// The trailing open ("rest") part of an open struct-map (`* K => V`) or an open array (`* T` tail).
+/// The dynamic ("rest") part of an open struct-map (`* K => V`) or an open array (`* T` segment).
 /// Under the CAPTURE flavor the content lands in a `pub` field (`rest` by default, `@name`-overridable)
 /// — a map container (`BTreeMap`/`OrderedHashMap`) for a loose map rest, a `Vec<T>` for a loose
 /// array tail, or its checked `NonEmpty*` / `Bounded*` twin for a restricted window; under the
@@ -1165,7 +1170,7 @@ impl RestRow {
     pub fn domain(&self) -> &RustType {
         match &self.kind {
             RestKind::MapEntries { domain, .. } => domain,
-            RestKind::ArrayTail { .. } => unreachable!("domain() on an array rest tail"),
+            RestKind::ArrayTail { .. } => unreachable!("domain() on an array occurrence segment"),
         }
     }
 
@@ -1173,7 +1178,7 @@ impl RestRow {
     pub fn range(&self) -> &RustType {
         match &self.kind {
             RestKind::MapEntries { range, .. } => range,
-            RestKind::ArrayTail { .. } => unreachable!("range() on an array rest tail"),
+            RestKind::ArrayTail { .. } => unreachable!("range() on an array occurrence segment"),
         }
     }
 
@@ -1186,15 +1191,24 @@ impl RestRow {
         }
     }
 
-    /// The element type (`T`) of an array rest tail. Only reached on an `Array`-rep record's tail.
+    /// The element type (`T`) of an array occurrence segment. Only reached on an `Array`-rep record.
     pub fn element(&self) -> &RustType {
         match &self.kind {
-            RestKind::ArrayTail { element } => element,
+            RestKind::ArrayTail { element, .. } => element,
             RestKind::MapEntries { .. } => unreachable!("element() on a map rest row"),
         }
     }
 
-    /// Whether this rest is an occurrence-bearing array tail (vs a dynamic map `* K => V` row).
+    /// The flattened authored position of an array occurrence segment. `None` for map rows, whose
+    /// on-wire order is driven by keys rather than source position.
+    pub fn array_source_index(&self) -> Option<usize> {
+        match &self.kind {
+            RestKind::ArrayTail { source_index, .. } => Some(*source_index),
+            RestKind::MapEntries { .. } => None,
+        }
+    }
+
+    /// Whether this rest is an occurrence-bearing array segment (vs a dynamic map `* K => V` row).
     pub fn is_array_tail(&self) -> bool {
         matches!(self.kind, RestKind::ArrayTail { .. })
     }
@@ -1280,7 +1294,7 @@ impl RestRow {
 
     pub fn container_type(&self) -> RustType {
         match &self.kind {
-            RestKind::ArrayTail { element } => {
+            RestKind::ArrayTail { element, .. } => {
                 let ty: RustType = ConceptualRustType::Array(Box::new(element.clone())).into();
                 self.rust_bounds()
                     .map_or(ty.clone(), |bounds| ty.with_bounds(bounds))
@@ -1307,7 +1321,7 @@ impl RestRow {
     /// row's public surface flattened on the owner class.
     pub fn staging_container_type(&self) -> RustType {
         match &self.kind {
-            RestKind::ArrayTail { element } => {
+            RestKind::ArrayTail { element, .. } => {
                 ConceptualRustType::Array(Box::new(element.clone())).into()
             }
             RestKind::MapEntries {

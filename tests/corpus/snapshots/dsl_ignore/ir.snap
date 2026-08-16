@@ -192,6 +192,7 @@ expression: ir
                                     basic_override: false,
                                 },
                             },
+                            source_index: 1,
                         },
                         semantics: Ignore,
                         field_name: "rest",

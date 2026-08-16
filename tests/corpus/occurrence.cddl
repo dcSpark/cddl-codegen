@@ -29,3 +29,12 @@ occurrence_holder = [
   inline_maybe: [0*1 uint],
   inline_exact: [2*2 uint],
 ]
+
+middle_occurrence = [
+  ; Canonical safe middle occurrence: the bytes segment ends at its mandatory Text-class suffix.
+  ; The major-disjoint boundary is what lets the decoder honor RFC 8610 greedy matching without a
+  ; rewind or a value-level discriminator.
+  prefix: uint,
+  * bytes,
+  suffix: tstr,
+]

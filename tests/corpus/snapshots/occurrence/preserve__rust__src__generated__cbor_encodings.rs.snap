@@ -10,6 +10,14 @@ use crate::generated::serialization::{LenEncoding, StringEncoding};
 use alloc::vec::Vec;
 
 #[derive(Clone, Debug, Default)]
+pub struct MiddleOccurrenceEncoding {
+    pub len_encoding: LenEncoding,
+    pub prefix_encoding: Option<cbor_event::Sz>,
+    pub suffix_encoding: StringEncoding,
+    pub rest_elem_encodings: Vec<StringEncoding>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct OccurrenceHolderEncoding {
     pub len_encoding: LenEncoding,
     pub o_encoding: LenEncoding,

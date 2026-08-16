@@ -412,9 +412,9 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         "tests/open-struct-map/input.cddl",
         ("wasm", &[]),
     ),
-    // open ARRAYS (a final-position occurrence-bearing rest tail after ≥1 fixed member → a loose
+    // open ARRAYS (a final occurrence tail, or a safe major-disjoint middle segment, → a loose
     // `Vec<T>`, compatibility `NonEmptyVec<T>`, or bounded `BoundedVec<T, MIN, MAX>` capture, or a
-    // dropped loose `@ignore` tail). Snapshotted under `default`/`json`/`wasm`; the
+    // dropped loose `@ignore` segment). Snapshotted under `default`/`json`/`wasm`; the
     // `default`/`json` rows pass `--wasm=false` to isolate the rust/json surfaces, and the `wasm` row
     // pins the emitted `rest()` list-wrapper getter + minted `TList`/`AnyList` wrappers. Covers a typed
     // tail, a bounded tail, an `any` tail, a `@name`d tail, an `@ignore` tail, and the degenerate shape combos
@@ -445,10 +445,10 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         "tests/open-array/input.cddl",
         ("wasm", &[]),
     ),
-    // PRESERVE tail fidelity on a capture-only input (the shared `open-array/input.cddl` mixes
-    // `@ignore` rules, which reject under --preserve-encodings). Pins the positional
-    // `{field}_elem_encodings` sidecar (typed tail), the self-carried `any` tail (no sidecar), and the
-    // canonical per-element normalization.
+    // PRESERVE final-tail and safe-middle fidelity on a capture-only input (the shared
+    // `open-array/input.cddl` mixes `@ignore` rules, which reject under --preserve-encodings). Pins
+    // the positional `{field}_elem_encodings` sidecar (typed tail and middle segment), the
+    // self-carried `any` tail (no sidecar), and canonical per-element normalization.
     (
         "open_array_preserve",
         "tests/open-array-preserve-e2e/input.cddl",
@@ -2608,6 +2608,11 @@ fn extern_interface_check_weakens_deserialize_bound() {
         c.contains("_assert_serialize::<crate::generated::Rec>()")
             && c.contains("_assert_deserialize::<crate::generated::Rec>()"),
         "a normal record keeps BOTH bounds:\n{c}"
+    );
+    assert!(
+        c.contains("_assert_serialize::<crate::generated::MiddleSegment>()")
+            && c.contains("_assert_deserialize::<crate::generated::MiddleSegment>()"),
+        "a major-disjoint middle segment remains an opaque Serialize + Deserialize export:\n{c}"
     );
     assert!(
         !c.contains("RawIndex"),

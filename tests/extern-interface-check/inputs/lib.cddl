@@ -18,6 +18,10 @@ ambig = [? uint, * uint]
 ; opaque while this dep-side self-check proves the BoundedVec runtime + Serialize/Deserialize bounds.
 bounded_tail = [prefix: uint, 2*3 bytes]
 
+; A major-disjoint middle occurrence is still an opaque record export: the position fact is wire
+; internal, while this self-check proves the projected class remains Serialize + Deserialize.
+middle_segment = [prefix: uint, * bytes, suffix: text]
+
 ; transparent rows -> a `use crate::generated::<Name> as _;` existence check
 ce = 0 / 1 / 2
 coin = uint

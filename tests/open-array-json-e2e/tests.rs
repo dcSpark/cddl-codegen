@@ -98,6 +98,28 @@ mod open_array_json {
     }
 
     #[test]
+    fn middle_bounded_segment_reuses_json_schema_and_checked_constructor() {
+        let value = MiddleBounded::new(
+            7,
+            "x".to_owned(),
+            BoundedVec::try_from(vec![2, 3]).unwrap(),
+        );
+        let json = serde_json::to_string(&value).unwrap();
+        assert!(json.contains("\"rest\":[2,3]"), "middle carrier remains JSON-visible: {json}");
+        assert!(json.contains("\"index_2\":\"x\""), "suffix remains an ordinary field: {json}");
+        let back: MiddleBounded = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.rest.as_slice(), &[2, 3]);
+        assert_eq!(back.index_2, "x");
+        let schema = serde_json::to_value(schemars::schema_for!(MiddleBounded)).unwrap();
+        assert_eq!(schema["properties"]["rest"]["minItems"], 2);
+        assert_eq!(schema["properties"]["rest"]["maxItems"], 3);
+        assert!(serde_json::from_str::<MiddleBounded>(
+            r#"{"index_0":7,"rest":[2],"index_2":"x"}"#
+        )
+        .is_err());
+    }
+
+    #[test]
     fn bounded_any_tail_stays_natural_and_non_injective_values_fail_loudly() {
         let bounded = BoundedAny::new(
             7,

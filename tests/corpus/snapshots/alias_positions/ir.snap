@@ -1101,6 +1101,7 @@ expression: ir
                                     basic_override: false,
                                 },
                             },
+                            source_index: 1,
                         },
                         semantics: Capture,
                         field_name: "rest",

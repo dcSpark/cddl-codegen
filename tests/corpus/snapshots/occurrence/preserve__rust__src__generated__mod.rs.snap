@@ -25,7 +25,7 @@ pub mod serialization;
 
 use crate::generated::bounded::BoundedVec;
 use crate::generated::non_empty::NonEmptyVec;
-use cbor_encodings::OccurrenceHolderEncoding;
+use cbor_encodings::{MiddleOccurrenceEncoding, OccurrenceHolderEncoding};
 
 /// `[2*5 uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 pub type Bounded = BoundedVec<u64, 2, 5>;
@@ -38,6 +38,26 @@ pub type Lower = BoundedVec<u64, 2, { u64::MAX }>;
 
 /// `[? uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 pub type Maybe = BoundedVec<u64, 0, 1>;
+
+#[derive(Clone, Debug)]
+pub struct MiddleOccurrence {
+    pub prefix: u64,
+    pub suffix: String,
+    /// Captured major-disjoint occurrence-segment elements before the mandatory fixed suffix (CDDL `* t`). Serialized at its authored source position; defaults empty.
+    pub rest: Vec<Vec<u8>>,
+    pub encodings: Option<MiddleOccurrenceEncoding>,
+}
+
+impl MiddleOccurrence {
+    pub fn new(prefix: u64, suffix: String) -> Self {
+        Self {
+            prefix,
+            suffix,
+            rest: Vec::new(),
+            encodings: None,
+        }
+    }
+}
 
 /// `[2*3 [*2 uint]]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 pub type NestedBounded = BoundedVec<BoundedVec<u64, 0, 2>, 2, 3>;
