@@ -470,6 +470,7 @@ fn batchmate_pairs<'a>(batches: &[Vec<&'a Composition>]) -> BTreeSet<(&'a str, &
 fn assert_layer2_batch_plan_integrity(
     plans: &[Layer2BatchPlan<'_>; 2],
     executable: &[&Composition],
+    rule_budget: usize,
 ) {
     let expected: BTreeSet<&str> = executable.iter().map(|c| c.id.as_str()).collect();
     for plan in plans {
@@ -486,10 +487,11 @@ fn assert_layer2_batch_plan_integrity(
             plan.label
         );
         assert!(
-            plan.batches
-                .iter()
-                .all(|batch| batch.iter().map(|c| c.rules).sum::<usize>() <= LAYER2_RULES_PER_BATCH),
-            "{} layer-2 plan crossed the rule budget",
+            plan.batches.iter().all(|batch| {
+                let batch_rules = batch.iter().map(|c| c.rules).sum::<usize>();
+                batch_rules <= rule_budget || (batch.len() == 1 && batch[0].rules > rule_budget)
+            }),
+            "{} layer-2 plan crossed the rule budget without an intrinsically oversized singleton",
             plan.label
         );
     }
@@ -507,6 +509,89 @@ fn assert_layer2_batch_plan_integrity(
         split_pairs * 2 > natural_pairs.len(),
         "layer-2 transpose split only {split_pairs}/{} natural batchmate pairs; expected a majority so the decorrelation detector remains material",
         natural_pairs.len()
+    );
+}
+
+#[test]
+fn layer2_batch_plans_preserve_intrinsically_oversized_singletons() {
+    let synthetic: Vec<Composition> = [
+        ("a", 2usize),
+        ("b", 2),
+        ("oversized", 5),
+        ("c", 2),
+        ("d", 2),
+    ]
+    .into_iter()
+    .map(|(id, rules)| Composition {
+        id: id.to_owned(),
+        desc: id.to_owned(),
+        spec: String::new(),
+        rules,
+    })
+    .collect();
+    let refs: Vec<&Composition> = synthetic.iter().collect();
+    let first = layer2_batch_plans(&refs, 4);
+    let second = layer2_batch_plans(&refs, 4);
+
+    assert_layer2_batch_plan_integrity(&first, &refs, 4);
+    assert_eq!(
+        first
+            .iter()
+            .map(|plan| {
+                plan.batches
+                    .iter()
+                    .map(|batch| batch.iter().map(|c| c.id.as_str()).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+        second
+            .iter()
+            .map(|plan| {
+                plan.batches
+                    .iter()
+                    .map(|batch| batch.iter().map(|c| c.id.as_str()).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+        "oversized-item plans must be deterministic"
+    );
+    assert_eq!(
+        first
+            .iter()
+            .map(|plan| {
+                plan.batches
+                    .iter()
+                    .map(|batch| batch.iter().map(|c| c.id.as_str()).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            vec![vec!["a", "b"], vec!["oversized"], vec!["c", "d"]],
+            vec![vec!["a"], vec!["oversized"], vec!["c", "b"], vec!["d"]],
+        ],
+        "the oversized composition must remain a singleton in both plans"
+    );
+
+    let multi_item_over_budget = [
+        Layer2BatchPlan {
+            label: "natural",
+            batches: vec![
+                vec![refs[0], refs[2]],
+                vec![refs[1], refs[3]],
+                vec![refs[4]],
+            ],
+        },
+        Layer2BatchPlan {
+            label: "transposed",
+            batches: first[1].batches.clone(),
+        },
+    ];
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_layer2_batch_plan_integrity(&multi_item_over_budget, &refs, 4);
+        }))
+        .is_err(),
+        "integrity must reject an over-budget batch that is not an oversized singleton"
     );
 }
 
@@ -588,7 +673,7 @@ fn layer2_actual_default_executable_corpus_has_two_decorrelated_plans() {
         })
         .collect();
     let plans = layer2_batch_plans(&executable, LAYER2_RULES_PER_BATCH);
-    assert_layer2_batch_plan_integrity(&plans, &executable);
+    assert_layer2_batch_plan_integrity(&plans, &executable, LAYER2_RULES_PER_BATCH);
 }
 
 /// Field-name chooser: benign `f{idx}` names, with every `HAZARD_EVERY`-th draw swapped for a
@@ -2011,7 +2096,7 @@ fn run_layer2_profile(p: &Layer2Profile) {
     // Every executable composition runs under BOTH plans. The transpose starts from natural
     // batches, so it deliberately separates their batchmates without any hash/random ordering.
     let plans = layer2_batch_plans(&executable, LAYER2_RULES_PER_BATCH);
-    assert_layer2_batch_plan_integrity(&plans, &executable);
+    assert_layer2_batch_plan_integrity(&plans, &executable, LAYER2_RULES_PER_BATCH);
 
     // Per-profile scratch root, with plan-labelled target dirs below it: keeps profiles and their
     // two plans from clobbering each other and (for the serde/schemars-pulling json profile) stops

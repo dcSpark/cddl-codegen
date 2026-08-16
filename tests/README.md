@@ -5228,8 +5228,10 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   deterministic — the same property that lets the floors be read off the executed artifact.
 - `recombination_crates_execute` (`#[ignore]`, check.ts full tier — the `recombination_crates_execute`
   gate): executes the sweep's `ok` compositions under TWO deterministic, decorrelated greedy plans
-  (~40 rules/batch; per-composition `rc<num>_` rule prefixes make names collision-free by
-  construction). The natural plan preserves composition order; the transposed plan walks each item
+  (~40 rules/batch; the budget is a ceiling except that an intrinsically oversized composition is
+  preserved exactly once as a singleton; per-composition `rc<num>_` rule prefixes make names
+  collision-free by construction). The natural plan preserves composition order; the transposed plan
+  walks each item
   position across natural batches, then greedily re-batches that fixed order. Thus most natural
   batchmates are separated without random/hash ordering, breaking most opportunities for a missing
   CRATE-GLOBAL definition to be supplied by a batchmate. Every plan has separate labelled scratch/cache
