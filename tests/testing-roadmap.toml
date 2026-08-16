@@ -256,7 +256,6 @@ entries = [
   "testing.gate-s-own-stdout-print-column-result-pass",
   "testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag",
   "testing.failing-snapshot-test-surfaces-mismatch-per-test-run",
-  "testing.config-run-s-convergence-warning-name-crate-already",
   "testing.extern-interface-export-public-interchange-format",
   "testing.exclusion-reasons-informational-interchange",
   "testing.nested-cargo-scratch-retention-tmp-cddl-leaks-until",
@@ -502,12 +501,12 @@ boundary_md = '''This control owns current containment only. It does not claim t
 
 [[record]]
 id = "testing.armed-idle-harness-arms-empty-head-ledgers-zero"
-title = "Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind gate branches) have untested first-use paths — seven review-caught instances recorded, no machinery yet."
+title = "Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind gate branches) have untested first-use paths — six review-caught instances recorded, no machinery yet."
 
 [record.payload]
 kind = "work"
 body_md = '''- **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind
-  gate branches) have untested first-use paths — seven review-caught instances recorded, no
+  gate branches) have untested first-use paths — six review-caught instances recorded, no
   machinery yet.** The decode-conformance family deliberately keeps machinery armed for residents
   that don't exist at HEAD (the over-acceptance flow, the exempt ledgers, the stale guards), so a
   scoping or preservation bug in such an arm is invisible to every gate until the first real
@@ -549,16 +548,7 @@ body_md = '''- **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count 
   entry consumed with zero reproduction attempt", and the layer as sketched above is
   DRIFT-gate-scoped — the replay gates' rust-side skip ledgers need a sibling arm (a synthetic
   always-passing resident driven through the leg driver, asserting exactly the stale-pin failure
-  fires and no other). A SEVENTH first-use preservation gap surfaced in the B3-024C corpus mint:
-  the known rust-cddl `undefined`/`f7` oracle defect made the mint drop the spec-valid
-  `fixed_singletons.undefined_value/8200f7` accept vector while still returning PASS; review of the
-  dropped-vector report restored it manually. A future scoped re-mint can repeat that loss because
-  there is no accept-side oracle-gap ledger. Add a per-catalog `(row, hex, expected failing
-  oracle(s), reason)` exemption that retains only a vector the non-exempt oracle still accepts,
-  fails stale when the cited oracle starts accepting or changes its failure signature, and is
-  covered by the synthetic mint-bucket resident above; then migrate `8200f7` onto it. Do not weaken
-  the ordinary two-oracle accept rule or create a row-wide exemption. Count: seven review-caught
-  instances, zero escapes; the build trigger stays
+  fires and no other). Count: six review-caught instances, zero escapes; the build trigger stays
   the first instance that survives review, with the layer owing BOTH homes when built. Related,
   smaller catch from the same review with its own
   trivial layer: a machine-written catalog `pinned_reason` cited a run artifact ("see mint
@@ -575,8 +565,8 @@ control_ids = ["testing.guard.armed-idle-harness-arms-empty-head-ledgers-zero"]
 
 [record.payload.promotion_trigger]
 observer = "fresh-evidence submitter for testing.armed-idle-harness-arms-empty-head-ledgers-zero"
-dimension = "Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind gate branches) have untested first-use paths — seven review-caught instances recorded, no machinery yet."
-observable = "- **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind gate branches) have untested first-use paths — seven review-caught instances recorded, no machinery yet.** The decode-conformance family deliberately keeps machinery armed for residents that don't exist at HEAD (the over-acceptance flow, the exempt ledgers, the stale guards), so a scoping or preservation bug in such an arm is invisible to every gate until the first real resident arrives — and then fires as a false red or a silent data loss. The first three instances, all in the corpus-decode-leg delivery, were caught by in-session diff review and none by a gate, all since fixed: (1) the matrix arm-floor stale-exempt guard iterated a SHARED exempt ledger against only the MATRIX uncovered set, so the first corpus-keyed entry — which the corpus error messages direct users to add — would have falsely failed the matrix gate (fixed: per-catalog ledgers, `CORPUS_DECODE_FLOOR_ARM_EXEMPT`, each stale-guarded against its own set); (2) both mints' zero-candidates pin guard ignored over-acceptance pins (zero committed at HEAD), so the first ruby-generation gap on a row carrying one would have silently discarded a pin that must survive re-mints VERBATIM (fixed in both mints, with the don't-lean-on-`source=\"hand\"` comment); (3) the corpus drift half skipped the example-reconstruction staleness check for PINNED rows, leaving a fixture edit that invalidates a pin's justification green until the next re-mint (fixed: pinned rows check the example half). The shipped exemplar of the fix pattern is the drift gate's § 8 synthetic all-fields sample — but it covers only the writer/reader schema, not ledgers, mint buckets, or per-row-kind gate branches. The general mechanical layer when the build trigger below fires: extend the drift gate's self-check section with synthetic residents and synthetic perturbations — a fake entry per empty-at-HEAD ledger asserting exactly its own guard (and no sibling's) reacts; a pure preservation check of the mint bucket logic over a synthetic prior row carrying every vector class; and a perturbation sweep asserting each committed field's drift flips the gate red for each row KIND (active and pinned). Meanwhile the working rule: an armed-but-idle arm lands with its first-use self-check in the same change, or the review explicitly walks the empty arm. A FOURTH instance is on record from the json/wasm decode-surface-leg delivery, in a distinct CLAIMED-GUARD flavor and a new HOME: `JSON_SURFACE_SKIP` (a replay-gate rust-side skip ledger, not a drift-gate arm) shipped with its code comment and doc claiming the reproduction guard (\"a listed row that now round-trips fails the gate\") while the leg driver consumed entries WITHOUT running the leg — the guard was asserted, never wired; the `WASM_SURFACE_SKIP` sibling in the same change had the real guard. Caught by in-session diff review (the review walked the arm — the working rule holding), fixed in the same series. The first `policy-rejected` residents exposed two further review catches: (5) the matrix report counted policy vectors but the corpus report printed only its total vector count, obscuring its policy evidence; fixed with separate corpus policy/reason counts and the matrix+corpus total; (6) `PolicyFailureKind::DoubledLocation` advertised `DOUBLED_LOCATION_SKIP` but unconditionally failed instead of consuming the stale-guarded ledger, in both matrix and corpus replay loops; fixed by sharing the constraint branch's lookup and still-failing insertion. Two consequences for the mechanical layer: the flavor to detect is \"ledger entry consumed with zero reproduction attempt\", and the layer as sketched above is DRIFT-gate-scoped — the replay gates' rust-side skip ledgers need a sibling arm (a synthetic always-passing resident driven through the leg driver, asserting exactly the stale-pin failure fires and no other). A SEVENTH first-use preservation gap surfaced in the B3-024C corpus mint: the known rust-cddl `undefined`/`f7` oracle defect made the mint drop the spec-valid `fixed_singletons.undefined_value/8200f7` accept vector while still returning PASS; review of the dropped-vector report restored it manually. A future scoped re-mint can repeat that loss because there is no accept-side oracle-gap ledger. Add a per-catalog `(row, hex, expected failing oracle(s), reason)` exemption that retains only a vector the non-exempt oracle still accepts, fails stale when the cited oracle starts accepting or changes its failure signature, and is covered by the synthetic mint-bucket resident above; then migrate `8200f7` onto it. Do not weaken the ordinary two-oracle accept rule or create a row-wide exemption. Count: seven review-caught instances, zero escapes; the build trigger stays the first instance that survives review, with the layer owing BOTH homes when built. Related, smaller catch from the same review with its own trivial layer: a machine-written catalog `pinned_reason` cited a run artifact (\"see mint log\") — catalog prose is outside `lint_doc_citations`' scan surface, so non-durable citations there rot silently; fixed by wording review (the mint now emits self-contained tallies + a durable ledger pointer), and extending that lint's scan to catalog reason strings is the mechanical layer if it recurs."
+dimension = "Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind gate branches) have untested first-use paths — six review-caught instances recorded, no machinery yet."
+observable = "- **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind gate branches) have untested first-use paths — six review-caught instances recorded, no machinery yet.** The first three corpus-decode-leg catches were the matrix guard reading a shared ledger against only matrix rows, the two mints losing a zero-count over-acceptance pin, and the corpus drift half skipping pinned-row example reconstruction; all are fixed with per-catalog ledgers, explicit pin preservation, and pinned reconstruction. A fourth JSON/WASM decode-surface skip ledger was claimed but not driven; the first policy-rejected residents then exposed a corpus policy-count omission and `DOUBLED_LOCATION_SKIP` entries that the replay loops did not consume. The future mechanical layer remains: synthetic residents and perturbations for every empty-at-HEAD ledger and every active/pinned row-kind guard, plus a replay-ledger sibling arm that drives an always-passing resident through the leg driver and asserts the stale-pin failure. The trigger remains a fresh instance that survives review; an arm's first use must still land with its own self-check or an explicit review walk."
 action_on_fire_md = '''Set testing.armed-idle-harness-arms-empty-head-ledgers-zero to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
@@ -938,50 +928,6 @@ action_on_fire_md = '''Set testing.composing-registration-rows-across-generation
 [record.payload.reopening_signal.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.composing-registration-rows-across-generation-passes-share-output's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.config-run-s-convergence-warning-name-crate-already"
-title = "The config run's convergence warning can name a crate that already converged."
-
-[record.payload]
-kind = "work"
-body_md = '''- **The config run's convergence warning can name a crate that already converged.** `Convergence`
-  snapshots each consumed sidecar's bytes at the START of the run and compares them after, so any
-  sidecar that CHANGED during the run marks its reader stale. That is right for the edge the check
-  exists for (a dependency reads its consumer's committed sidecar, and the consumer generates
-  later), and wrong for a hand-written `[crates.<n>.wrapper-requests]` / `.key-requests` entry
-  pointing at a crate that sorts EARLIER: the owner rewrote the sidecar before the reader read it,
-  so the reader saw fresh bytes and is not a run behind, but the before/after comparison cannot
-  tell the two apart. Reasoned from the code, not reproduced; strictly diagnostic (stderr text,
-  exit status and generated bytes unaffected), and self-clearing — the redundant re-run it asks for
-  converges and the second run is silent. The fix, if it is ever worth one, is to snapshot each
-  sidecar when its READER reaches it rather than at run start, which needs the capture to
-  interleave with the generation loop instead of bracketing it. Reopening signal: the warning names
-  the same crate on two consecutive runs of an unchanged config — a false positive that does not
-  clear is a different defect from this one, and the person seeing it can measure it without
-  reading any of this. The blast radius stays confined to the warning: the committed-state verdict
-  that shares the run's exit path (`Config::committed_verdict`) reads the tree rather than
-  bracketing the run, so it has no before/after comparison for this to reach, and a spurious warning
-  cannot become a spurious build failure.
-
-'''
-work_state = "deferred"
-work_intent = "repair"
-work_kind = "defect"
-risk = "misleading_docs"
-regression_gap_ids = ["testing.proof-gap.config-run-s-convergence-warning-name-crate-already"]
-
-[record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.config-run-s-convergence-warning-name-crate-already"
-dimension = "The config run's convergence warning can name a crate that already converged."
-observable = "The convergence warning names the same crate on two consecutive runs of an unchanged config."
-action_on_fire_md = '''Set testing.config-run-s-convergence-warning-name-crate-already to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.config-run-s-convergence-warning-name-crate-already's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]
@@ -5676,21 +5622,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.proof-gap.config-run-s-convergence-warning-name-crate-already"
-title = "Regression gap for testing.config-run-s-convergence-warning-name-crate-already."
-
-[record.payload]
-kind = "work"
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "misleading_docs"
-acceptance_md = '''Add a red-first regression that runs the unchanged config twice and pins whether the convergence warning names the same crate on both runs.
-'''
-priority_rationale_md = '''The parent defect owns repair; this record owns the still-unexecuted regression gap without masquerading as defect evidence.
-'''
-
-[[record]]
 id = "testing.proof.generated-json-schema.partition-cardinality-position-semantics"
 title = "Cycle 4 incident evidence for testing.generated-json-schema.partition-cardinality-position-semantics."
 
@@ -7926,11 +7857,6 @@ target = "testing.guard.comment-residue-false-matches-text-scans-over-emitted"
 source = "testing.complete-cargo-mutants-sweep-will-never-run"
 kind = "parent_of"
 target = "testing.guard.complete-cargo-mutants-sweep-will-never-run"
-
-[[relation]]
-source = "testing.config-run-s-convergence-warning-name-crate-already"
-kind = "parent_of"
-target = "testing.proof-gap.config-run-s-convergence-warning-name-crate-already"
 
 [[relation]]
 source = "testing.containment-note-s-stated-reason-go-false-any"

@@ -536,7 +536,10 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     explicit undefined only after both fully decode the bytes, pinned by its f7 self-check.
     `ir_conformance_corpus` directly pins this rejection and exact signature during its
     oracle preflight, so an acceptance or signature change fails rather than silently preserving the
-    one-rule ledger. This is an oracle limitation, not a generated-code behavior: the fixture's own
+    one-rule ledger. The corpus decode catalog's exact-vector
+    `CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT` entry retains only its `undefined_value`/`f7` accept
+    while ruby accepts and rust keeps that exact failure; the mint stale-guards the exit/signature and
+    the catalog gate stale-guards the resident vector. This is an oracle limitation, not a generated-code behavior: the fixture's own
     codec writes and verifies `f7` and rejects null/other special values.
 
 17. **fixed byte-string values panic in the CBOR validator** (OPEN at `ac1b98e`): the pinned
@@ -570,11 +573,11 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     direction can satisfy the ordinary two-oracle certification rule. This does not weaken its
     supported verdict: direct generated-runtime tests execute absent CBOR/JSON round trips and
     structured forbidden-key rejection across closed/open, typed/`any`, `@ignore`, bounded,
-    non-empty, duplicate-preserving, preserve, canonical, wasm, and component surfaces. The missing
-    accept-side exemption mechanism is already owned by
-    `testing.armed-idle-harness-arms-empty-head-ledgers-zero`; the reject-side framework is
-    `DECODE_REJECT_ORACLE_GAP_EXEMPT`. The Cycle-5 ruling deliberately adds neither a row-wide
-    exemption nor a one-off framework change. Re-mint after either validator is fixed; the row's
+    non-empty, duplicate-preserving, preserve, canonical, wasm, and component surfaces. The exact-
+    vector accept-side framework is `DECODE_ACCEPT_ORACLE_GAP_EXEMPT` (separate matrix/corpus maps);
+    it retains a vector only while every non-exempt oracle accepts and a named failing oracle still
+    matches its exit/signature. The reject-side framework is `DECODE_REJECT_ORACLE_GAP_EXEMPT`.
+    Neither is a row-wide exemption. Re-mint after either validator is fixed; the row's
     durable `pinned_reason` names both current failures and automatically disappears once one
     candidate passes both oracles.
 

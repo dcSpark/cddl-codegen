@@ -2417,7 +2417,14 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   `diag2cbor.rb`) and committed only after validating against BOTH oracles — ruby `cddl validate`
   AND the rust CLI as `cddl --ci validate` (without `--ci` the rust CLI prints the error but exits
   0; a mint-time negative control feeds both oracles a known-bad instance so that trap can't
-  silently vacate the cross-check). Contested vectors are dropped, never committed. A rule with no
+  silently vacate the cross-check). Contested vectors are dropped, never committed, except an exact
+  `<row>/<hex>` resident in the separate matrix or corpus accept-oracle-gap ledger in
+  `cddl-matrix/lib.ts`: it remains certifiable only while every non-exempt oracle accepts and each
+  named failing oracle still has its recorded nonzero exit and diagnostic signature. The mint owns
+  that live-oracle stale guard; an oracle that starts accepting or drifts in exit/signature retains
+  the vector in reviewed output but makes the mint exit 1. `project_decode_conformance.ts` owns the
+  catalog-side twin: each map's key must still name an ordinary spec-valid accept in that map's own
+  catalog (never its sibling's). A rule with no
   standalone decode surface (transparent alias / named table / c-enum — no nominal
   `impl Deserialize`) is minted in **holder mode**: vectors wrap the rule in
   `__probe_holder = [0, <rule>]` (prepended FIRST — both oracles root validation at a spec's first

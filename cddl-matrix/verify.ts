@@ -45,13 +45,14 @@ import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readF
 import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
-  ALT_PRODUCTIONS, CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, CatalogRow,
-  CatalogVector, CorpusRule, DECODE_FLOOR_ARM_EXEMPT, DECODE_REJECT_ORACLE_GAP_EXEMPT, GATE_CACHE_SCHEMA, GateCacheEntry, PRELUDE_NAMES, ROOT,
+  ALT_PRODUCTIONS, CORPUS_CATALOG_INTRO, CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, CatalogRow,
+  CatalogVector, CorpusRule, DECODE_ACCEPT_ORACLE_GAP_EXEMPT, DECODE_FLOOR_ARM_EXEMPT, DECODE_REJECT_ORACLE_GAP_EXEMPT, GATE_CACHE_SCHEMA, GateCacheEntry, PRELUDE_NAMES, ROOT,
   annotationsHeaderLines, composeCatalog, corpusArmExample, corpusClosureBody, corpusProbeSpec, enumerateCorpusRules,
   gateCacheEnabled, gateCacheKey, grammarAltCoverage, hashTree, loadMatrixInputs, parseCatalog,
   readGateCacheEntry, resolveChoiceArmClasses, rubyGenerateIsBernoulli, stableJson, vectorShapeClass,
   writeGateCacheEntry,
 } from "./lib";
+import type { AcceptOracleGapExemption, DecodeOracleName } from "./lib";
 
 // This starts before any verifier-owned startup work, including CLI/toolchain validation and the
 // cheap process-boundary self-tests. The exit report is an accounting of the whole invocation, not
@@ -878,6 +879,7 @@ interface RustGenerationOps {
 // must remain class-less red triage. This must share `--selftest`, not wait for a random mint draw.
 policyMintClassifierSelfTest();
 if (SELFTEST) console.log("policy mint classifier self-test OK (delimiter + matched/unmatched reason)");
+acceptAdmissionSelfTest();
 // The committed catalog the mint writes, the D4 corroborating oracle reads, and the component
 // execution leg draws its per-row spec + vectors from. Declared HERE, above the startup self-tests,
 // because the component leg's selection-validity check reads it before any probe work runs.
@@ -2889,15 +2891,140 @@ function diagToHex(diag: string): string | null {
   const buf = Buffer.from(r.stdout ?? new Uint8Array());
   return buf.length ? buf.toString("hex") : null;
 }
-// Both oracles must accept a candidate against `spec` (rust needs --ci to exit nonzero on invalid — the
-// startup negative control guards that flag). Returns the two exit codes; accept iff BOTH are 0.
-function validateBoth(spec: string, hex: string): { ruby: number; rust: number } {
+interface OracleOutcome { exit: number; output: string }
+type OracleOutcomes = Record<DecodeOracleName, OracleOutcome>;
+interface AcceptAdmission {
+  admitted: boolean;
+  /** A ledger resident became stale, but the exact vector remains certified for reviewed output. */
+  stale?: string;
+  /** A malformed/unsafe ledger or a non-exempt failure cannot silently drop a prior accept. */
+  error?: string;
+}
+
+interface AcceptCandidate { hex: string; source: string }
+
+// Build the ordinary accept bucket before any oracle call. A ledgered exact accept is itself a
+// committed certification input, so it MUST survive a subset/full re-mint even when ruby's fresh
+// randomized draw does not repeat it; put it before fresh candidates to preserve its source. Plain
+// hand supplements retain the historic lower-precedence path below.
+function prepareAcceptCandidates(id: string, fresh: string[], prev: CatalogRow | undefined,
+                                 ledger: Record<string, AcceptOracleGapExemption>, excludedHex: (hex: string) => boolean): Map<string, AcceptCandidate> {
+  const priorLedgered = (prev?.vectors ?? []).filter(v =>
+    v.expect === "accept" && v.class !== "over-acceptance" && Object.hasOwn(ledger, `${id}/${v.hex}`) && !excludedHex(v.hex),
+  ).map(v => ({ hex: v.hex, source: v.source }));
+  const handSupplements = (prev?.vectors ?? []).filter(v =>
+    v.source === "hand" && v.expect === "accept" && v.class !== "over-acceptance" && !excludedHex(v.hex),
+  ).map(v => ({ hex: v.hex, source: v.source }));
+  const out = new Map<string, AcceptCandidate>();
+  for (const candidate of [
+    ...priorLedgered,
+    ...fresh.filter(hex => !excludedHex(hex)).map(hex => ({ hex, source: "ruby-generate" })),
+    ...handSupplements,
+  ]) if (!out.has(candidate.hex)) out.set(candidate.hex, candidate);
+  return out;
+}
+
+// The one accept-side admission classifier for both catalogs and both arm-floor resample paths. The
+// unledgered case is intentionally the historic strict two-oracle rule; a ledger only narrows one
+// exact key and must leave one ordinary accepting oracle behind.
+function classifyAcceptAdmission(outcomes: OracleOutcomes, exemption?: AcceptOracleGapExemption): AcceptAdmission {
+  const ordinary = (Object.keys(outcomes) as DecodeOracleName[]).every(name => outcomes[name].exit === 0);
+  if (!exemption) return ordinary ? { admitted: true } : { admitted: false };
+  if (!Array.isArray(exemption.failing_oracles) || exemption.failing_oracles.length === 0 ||
+      typeof exemption.reason !== "string" || exemption.reason.trim().length === 0)
+    return { admitted: false, error: "malformed accept-oracle-gap entry (requires a nonempty reason and at least one failing oracle)" };
+  const exempt = new Set<DecodeOracleName>();
+  for (const expected of exemption.failing_oracles) {
+    if (!expected || (expected.oracle !== "ruby" && expected.oracle !== "rust") ||
+        !Number.isInteger(expected.exit) || expected.exit === 0 ||
+        typeof expected.signature !== "string" || expected.signature.trim().length === 0)
+      return { admitted: false, error: "malformed accept-oracle-gap entry (each failure needs a known oracle, nonzero integer exit, and signature)" };
+    if (exempt.has(expected.oracle))
+      return { admitted: false, error: `malformed accept-oracle-gap entry (duplicate ${expected.oracle} failure)` };
+    exempt.add(expected.oracle);
+  }
+  const nonExempt = (Object.keys(outcomes) as DecodeOracleName[]).filter(name => !exempt.has(name));
+  if (nonExempt.length === 0)
+    return { admitted: false, error: "malformed accept-oracle-gap entry (all oracles are exempt; at least one ordinary oracle must certify the vector)" };
+  for (const name of nonExempt)
+    if (outcomes[name].exit !== 0)
+      return { admitted: false, error: `non-exempt ${name} rejected (exit ${outcomes[name].exit})` };
+
+  const stale: string[] = [];
+  for (const expected of exemption.failing_oracles) {
+    const actual = outcomes[expected.oracle];
+    if (actual.exit === 0) {
+      stale.push(`${expected.oracle} now accepts (the ordinary two-oracle rule now certifies this vector)`);
+    } else if (actual.exit !== expected.exit) {
+      stale.push(`${expected.oracle} exit drifted (expected ${expected.exit}, got ${actual.exit})`);
+    } else if (!actual.output.includes(expected.signature)) {
+      stale.push(`${expected.oracle} diagnostic signature drifted (missing ${JSON.stringify(expected.signature)})`);
+    }
+  }
+  // An accepting formerly-exempt oracle is harmless only because every oracle now accepts. An exit or
+  // signature drift leaves the non-exempt proof intact, so retain it for review but force exit 1.
+  return { admitted: true, ...(stale.length ? { stale: stale.join("; ") } : {}) };
+}
+
+function oracleOutcome(cmd: string[]): OracleOutcome {
+  const r = Bun.spawnSync(cmd, {
+    env: VERIFY_SUBPROCESS_ENV, stdout: "pipe", stderr: "pipe", timeout: PROBE_TIMEOUT * 1000,
+  });
+  const output = (r.stdout?.toString() ?? "") + (r.stderr?.toString() ?? "");
+  if (r.exitedDueToTimeout) return { exit: -1, output };
+  if (r.exitCode !== null) return { exit: r.exitCode, output };
+  const sig = r.signalCode ? (constants.signals as Record<string, number>)[r.signalCode] : undefined;
+  return { exit: sig != null ? -sig : -1, output };
+}
+
+// Both oracles validate a candidate against `spec` (rust needs --ci to exit nonzero on invalid — the
+// startup negative control guards that flag). Exit codes preserve the old callers; outputs let the
+// exact accept-gap ledger stale-guard its expected diagnostic signature.
+function validateBoth(spec: string, hex: string): { ruby: number; rust: number; outcomes: OracleOutcomes } {
   writeFileSync(probeFile, spec.replace(/\n*$/, "\n"));
   const cbor = join(probeDir, "foreign_cand.cbor");
   writeFileSync(cbor, Buffer.from(hex, "hex"));
-  const ruby = runExit([RUBY_CDDL!, probeFile, "validate", cbor]);
-  const rust = runExit([RUST_CDDL, "--ci", "validate", "--cddl", probeFile, "--cbor", cbor]);
-  return { ruby, rust };
+  const outcomes: OracleOutcomes = {
+    ruby: oracleOutcome([RUBY_CDDL!, probeFile, "validate", cbor]),
+    rust: oracleOutcome([RUST_CDDL, "--ci", "validate", "--cddl", probeFile, "--cbor", cbor]),
+  };
+  return { ruby: outcomes.ruby.exit, rust: outcomes.rust.exit, outcomes };
+}
+
+function acceptAdmissionSelfTest(): void {
+  const ok: OracleOutcomes = { ruby: { exit: 0, output: "" }, rust: { exit: 0, output: "" } };
+  const rustFails: OracleOutcomes = { ruby: { exit: 0, output: "" }, rust: { exit: 1, output: "expected undefined" } };
+  const exempt: AcceptOracleGapExemption = { failing_oracles: [{ oracle: "rust", exit: 1, signature: "expected undefined" }], reason: "synthetic" };
+  const cases: [string, OracleOutcomes, AcceptOracleGapExemption | undefined, boolean, boolean, boolean][] = [
+    ["ordinary both-accept", ok, undefined, true, false, false],
+    ["unledgered one-fail / exact-key miss", rustFails, undefined, false, false, false],
+    ["matching rust exemption", rustFails, exempt, true, false, false],
+    ["exempt oracle now accepts", ok, exempt, true, true, false],
+    ["exit drift", { ruby: ok.ruby, rust: { exit: 2, output: "expected undefined" } }, exempt, true, true, false],
+    ["signature drift", { ruby: ok.ruby, rust: { exit: 1, output: "different diagnostic" } }, exempt, true, true, false],
+    ["non-exempt failure", { ruby: { exit: 1, output: "no" }, rust: rustFails.rust }, exempt, false, false, true],
+    ["all exempt", rustFails, { failing_oracles: [{ oracle: "ruby", exit: 1, signature: "x" }, ...exempt.failing_oracles], reason: "synthetic" }, false, false, true],
+    ["zero exempt", rustFails, { failing_oracles: [], reason: "synthetic" }, false, false, true],
+  ];
+  const failures = cases.flatMap(([name, outcomes, entry, admitted, stale, error]) => {
+    const got = classifyAcceptAdmission(outcomes, entry);
+    return got.admitted === admitted && Boolean(got.stale) === stale && Boolean(got.error) === error ? [] :
+      [`${name}: got ${JSON.stringify(got)}`];
+  });
+  const preserved = prepareAcceptCandidates(
+    "synthetic.row", [],
+    { id: "synthetic.row", axis: "synthetic", example: "x = uint", vectors: [{ hex: "00", source: "ruby-generate", expect: "accept" }] },
+    { "synthetic.row/00": exempt }, () => false,
+  ).get("00");
+  if (preserved?.source !== "ruby-generate")
+    failures.push(`prior ledgered ruby-generate accept was not retained before fresh draws (${JSON.stringify(preserved)})`);
+  const blankSignature = classifyAcceptAdmission(rustFails, { failing_oracles: [{ oracle: "rust", exit: 1, signature: "  " }], reason: "synthetic" });
+  if (!blankSignature.error) failures.push(`whitespace-only signature was accepted (${JSON.stringify(blankSignature)})`);
+  if (failures.length) {
+    console.error(`HARNESS FAILURE: accept-oracle-gap admission self-test failed — ${failures.join("; ")}; refusing to run.`);
+    process.exit(2);
+  }
+  if (SELFTEST) console.log(`accept-oracle-gap admission self-test OK (${cases.length} fixtures)`);
 }
 
 // --- Change A: deterministic ruby verdict for the annotation `ruby=` clause -------------------------
@@ -2991,7 +3118,8 @@ function decodeForeignEvidence(fo?: ForeignOutcome): string {
 // row.
 function mintRow(id: string, axis: string, example: string, prev: CatalogRow | undefined,
                  triage: string[], pinBreak: string[], dropped: string[],
-                 staleRejectGapExemptions: string[]): CatalogRow {
+                 staleRejectGapExemptions: string[], staleAcceptGapExemptions: string[],
+                 acceptAdmissionFailures: string[]): CatalogRow {
   const pin = (reason: string): CatalogRow => ({ id, axis, example, pinned_reason: reason, vectors: [] });
   // COMPILE_GATE_EXEMPT rows reference user-supplied code, so their crate GENERATES (exit 0) but can
   // never compile standalone — the replay `cargo test` would fail as a compile error, not a decode
@@ -3032,10 +3160,13 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   // reject, the class="constraint" inverse gate) and committed VERBATIM, never routed through the
   // accept two-oracle gate (which would drop them as "spec-invalid") nor pruned mechanically.
   const overAcceptPins = (prev?.vectors ?? []).filter(v => v.expect === "accept" && v.class === "over-acceptance");
+  const priorLedgeredAccept = (prev?.vectors ?? []).some(v =>
+    v.expect === "accept" && v.class !== "over-acceptance" && Object.hasOwn(DECODE_ACCEPT_ORACLE_GAP_EXEMPT, `${id}/${v.hex}`),
+  );
   // overAcceptPins is checked EXPLICITLY (not via handVecs): over-acceptance pins are source="hand" by
   // convention, but the guard must not lean on that unenforced invariant — pinning a row that still
   // holds an over-acceptance pin would silently discard a pin that must survive re-mints VERBATIM.
-  if (candidates.length === 0 && handVecs.length === 0 && rejectPins.length === 0 && overAcceptPins.length === 0)
+  if (candidates.length === 0 && handVecs.length === 0 && !priorLedgeredAccept && rejectPins.length === 0 && overAcceptPins.length === 0)
     return pin(`ruby generator cannot mint this construct (last exit ${lastRubyExit})`);
 
   // Two-oracle validate. Reject-intended and over-acceptance pins take precedence over accept-intended
@@ -3043,19 +3174,16 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   const rejectHexes = new Set(rejectPins.map(v => v.hex));
   const overAcceptHexes = new Set(overAcceptPins.map(v => v.hex));
   const excludedHex = (h: string) => rejectHexes.has(h) || overAcceptHexes.has(h);
-  const acDedup = new Map<string, { hex: string; source: string }>();
-  for (const c of [
-    ...candidates.filter(h => !excludedHex(h)).map(h => ({ hex: h, source: "ruby-generate" })),
-    ...handVecs.filter(v => v.expect === "accept" && v.class !== "over-acceptance" && !excludedHex(v.hex)).map(v => ({ hex: v.hex, source: "hand" })),
-  ]) {
-    if (!acDedup.has(c.hex)) acDedup.set(c.hex, c);
-  }
+  const acDedup = prepareAcceptCandidates(id, candidates, prev, DECODE_ACCEPT_ORACLE_GAP_EXEMPT, excludedHex);
 
   const validatedAccept: { hex: string; source: string }[] = [];
   for (const c of acDedup.values()) {
-    const { ruby, rust } = validateBoth(spec, c.hex);
-    if (ruby === 0 && rust === 0) validatedAccept.push(c);
+    const { ruby, rust, outcomes } = validateBoth(spec, c.hex);
+    const admission = classifyAcceptAdmission(outcomes, DECODE_ACCEPT_ORACLE_GAP_EXEMPT[`${id}/${c.hex}`]);
+    if (admission.admitted) validatedAccept.push(c);
     else dropped.push(`${id}/${c.hex} (accept-intended; ruby ${ruby} rust ${rust})`);
+    if (admission.stale) staleAcceptGapExemptions.push(`${id}/${c.hex}: ${admission.stale}`);
+    if (admission.error) acceptAdmissionFailures.push(`${id}/${c.hex}: ${admission.error} (ruby ${ruby} rust ${rust})`);
   }
 
   // --- Accept-vector ARM-COVERAGE floor (resample-until-covered) --------------------------------
@@ -3084,9 +3212,12 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
       seen.add(hex);
       const cls = vectorShapeClass(hex, mode === "holder");
       if (!missing().includes(cls)) continue;  // an already-covered (or exempt) class — don't bloat the row
-      const { ruby, rust } = validateBoth(spec, hex);
-      if (ruby === 0 && rust === 0) validatedAccept.push({ hex, source: "ruby-generate" });
+      const { ruby, rust, outcomes } = validateBoth(spec, hex);
+      const admission = classifyAcceptAdmission(outcomes, DECODE_ACCEPT_ORACLE_GAP_EXEMPT[`${id}/${hex}`]);
+      if (admission.admitted) validatedAccept.push({ hex, source: "ruby-generate" });
       else dropped.push(`${id}/${hex} (arm-coverage resample for class ${cls}; ruby ${ruby} rust ${rust})`);
+      if (admission.stale) staleAcceptGapExemptions.push(`${id}/${hex}: ${admission.stale}`);
+      if (admission.error) acceptAdmissionFailures.push(`${id}/${hex}: ${admission.error} (ruby ${ruby} rust ${rust})`);
     }
     const stillMissing = missing();  // exempt classes already excluded from `required`
     if (stillMissing.length) {
@@ -3245,11 +3376,13 @@ function runMintDecodeForeign(): never {
   const pinBreak: string[] = []; // committed reject pins that now decode -> exit 1
   const dropped: string[] = [];  // contested / oracle-artifact vectors dropped (logged, not committed)
   const staleRejectGapExemptions: string[] = [];  // DECODE_REJECT_ORACLE_GAP_EXEMPT entries whose gap closed -> exit 1
+  const staleAcceptGapExemptions: string[] = [];  // exact accept entries whose oracle behavior drifted -> exit 1
+  const acceptAdmissionFailures: string[] = [];   // malformed entry / non-exempt rejection -> loud reviewed failure
   const pinnedRows: string[] = [];
   for (const id of toMint) {
     const meta = exampleOf.get(id);
     if (!meta) { console.error(`HARNESS FAILURE: supported row '${id}' has no example in matrix.json — cannot mint.`); process.exit(2); }
-    const row = mintRow(id, meta.axis, meta.example, existing.get(id), triage, pinBreak, dropped, staleRejectGapExemptions);
+    const row = mintRow(id, meta.axis, meta.example, existing.get(id), triage, pinBreak, dropped, staleRejectGapExemptions, staleAcceptGapExemptions, acceptAdmissionFailures);
     if (row.pinned_reason !== undefined) pinnedRows.push(`${id}: ${row.pinned_reason}`);
     outRows.set(id, row);
     const tag = row.pinned_reason !== undefined ? `PINNED (${row.pinned_reason})` : `${row.mode}, ${row.vectors.length} vector(s) [${row.type_name}]`;
@@ -3288,7 +3421,15 @@ function runMintDecodeForeign(): never {
     console.log("\nSTALE ORACLE-GAP EXEMPTIONS (a ledgered oracle now rejects the bytes — the gap closed):");
     for (const s of staleRejectGapExemptions) console.log(`  - ${s}`);
   }
-  if (triage.length || pinBreak.length || staleRejectGapExemptions.length) { console.log("\nRESULT: MINT wrote the catalog but exits 1 (triage pending — see above)."); process.exit(1); }
+  if (staleAcceptGapExemptions.length) {
+    console.log("\nSTALE ACCEPT ORACLE-GAP EXEMPTIONS (the exact vector remains in reviewed output, but its ledger must be updated):");
+    for (const s of staleAcceptGapExemptions) console.log(`  - ${s}`);
+  }
+  if (acceptAdmissionFailures.length) {
+    console.log("\nACCEPT ORACLE-GAP ADMISSION FAILURES (no unsafe vector was certified):");
+    for (const f of acceptAdmissionFailures) console.log(`  - ${f}`);
+  }
+  if (triage.length || pinBreak.length || staleRejectGapExemptions.length || staleAcceptGapExemptions.length || acceptAdmissionFailures.length) { console.log("\nRESULT: MINT wrote the catalog but exits 1 (review required — see above)."); process.exit(1); }
   console.log("\nRESULT: MINT PASS");
   process.exit(0);
 }
@@ -3308,7 +3449,8 @@ function corpusRowId(fixture: string, rule: string): string { return `${fixture}
 // code (custom ser/deser) are pinned (can't be minted standalone). `allRules` is the fixture's full
 // enumeration (for the dependency closure). Accumulates triage/pin-break/dropped notes like mintRow.
 function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[], prev: CatalogRow | undefined,
-                       triage: string[], pinBreak: string[], dropped: string[]): CatalogRow {
+                       triage: string[], pinBreak: string[], dropped: string[],
+                       staleAcceptGapExemptions: string[], acceptAdmissionFailures: string[]): CatalogRow {
   const id = corpusRowId(fixture, rule.name);
   const axis = "corpus";
   const example = corpusClosureBody(rule.name, allRules);   // fixture-order closure body (the committed `example`)
@@ -3345,10 +3487,13 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   const handVecs = (prev?.vectors ?? []).filter(v => v.source === "hand");
   const rejectPins = (prev?.vectors ?? []).filter(v => v.expect === "reject");
   const overAcceptPins = (prev?.vectors ?? []).filter(v => v.expect === "accept" && v.class === "over-acceptance");
+  const priorLedgeredAccept = (prev?.vectors ?? []).some(v =>
+    v.expect === "accept" && v.class !== "over-acceptance" && Object.hasOwn(CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT, `${id}/${v.hex}`),
+  );
   // overAcceptPins is checked EXPLICITLY (not via handVecs): over-acceptance pins are source="hand" by
   // convention, but the guard must not lean on that unenforced invariant — pinning a row that still
   // holds an over-acceptance pin would silently discard a pin that must survive re-mints VERBATIM.
-  if (candidates.length === 0 && handVecs.length === 0 && rejectPins.length === 0 && overAcceptPins.length === 0) {
+  if (candidates.length === 0 && handVecs.length === 0 && !priorLedgeredAccept && rejectPins.length === 0 && overAcceptPins.length === 0) {
     // The dominant pin cause here is the ruby 0.12.14 inline-composite `.cbor`-controller parse gap
     // (exit 65 — cddl-matrix/upstream-reports/ruby-cddl-inline-composite-control-arg.md; the ir_conformance_corpus
     // RUBY_EXPECTED_FAIL prune condition in cddl-matrix/roadmap.toml re-mints these when the gem fix ships).
@@ -3361,25 +3506,22 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   const rejectHexes = new Set(rejectPins.map(v => v.hex));
   const overAcceptHexes = new Set(overAcceptPins.map(v => v.hex));
   const excludedHex = (h: string) => rejectHexes.has(h) || overAcceptHexes.has(h);
-  const acDedup = new Map<string, { hex: string; source: string }>();
-  for (const c of [
-    ...candidates.filter(h => !excludedHex(h)).map(h => ({ hex: h, source: "ruby-generate" })),
-    ...handVecs.filter(v => v.expect === "accept" && v.class !== "over-acceptance" && !excludedHex(v.hex)).map(v => ({ hex: v.hex, source: "hand" })),
-  ]) {
-    if (!acDedup.has(c.hex)) acDedup.set(c.hex, c);
-  }
+  const acDedup = prepareAcceptCandidates(id, candidates, prev, CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT, excludedHex);
 
   const validatedAccept: { hex: string; source: string }[] = [];
   // Per-oracle accept tallies over the primary candidate set, kept for the oracle-disagreement pin
   // wording below (a durable, direction-agnostic record of HOW the two oracles split).
   let tallyRubyOk = 0, tallyRustOk = 0, tallyTotal = 0;
   for (const c of acDedup.values()) {
-    const { ruby, rust } = validateBoth(spec, c.hex);
+    const { ruby, rust, outcomes } = validateBoth(spec, c.hex);
     tallyTotal++;
     if (ruby === 0) tallyRubyOk++;
     if (rust === 0) tallyRustOk++;
-    if (ruby === 0 && rust === 0) validatedAccept.push(c);
+    const admission = classifyAcceptAdmission(outcomes, CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT[`${id}/${c.hex}`]);
+    if (admission.admitted) validatedAccept.push(c);
     else dropped.push(`${id}/${c.hex} (accept-intended; ruby ${ruby} rust ${rust})`);
+    if (admission.stale) staleAcceptGapExemptions.push(`${id}/${c.hex}: ${admission.stale}`);
+    if (admission.error) acceptAdmissionFailures.push(`${id}/${c.hex}: ${admission.error} (ruby ${ruby} rust ${rust})`);
   }
 
   // Accept-vector ARM-COVERAGE floor (resample-until-covered) — reuse the SAME resolver the drift gate's
@@ -3403,9 +3545,12 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
       seen.add(hex);
       const cls = vectorShapeClass(hex, true);
       if (!missing().includes(cls)) continue;
-      const { ruby, rust } = validateBoth(spec, hex);
-      if (ruby === 0 && rust === 0) validatedAccept.push({ hex, source: "ruby-generate" });
+      const { ruby, rust, outcomes } = validateBoth(spec, hex);
+      const admission = classifyAcceptAdmission(outcomes, CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT[`${id}/${hex}`]);
+      if (admission.admitted) validatedAccept.push({ hex, source: "ruby-generate" });
       else dropped.push(`${id}/${hex} (arm-coverage resample for class ${cls}; ruby ${ruby} rust ${rust})`);
+      if (admission.stale) staleAcceptGapExemptions.push(`${id}/${hex}: ${admission.stale}`);
+      if (admission.error) acceptAdmissionFailures.push(`${id}/${hex}: ${admission.error} (ruby ${ruby} rust ${rust})`);
     }
     const stillMissing = missing();
     if (stillMissing.length) {
@@ -3573,9 +3718,11 @@ function runMintDecodeCorpus(): never {
   const triage: string[] = [];
   const pinBreak: string[] = [];
   const dropped: string[] = [];
+  const staleAcceptGapExemptions: string[] = [];
+  const acceptAdmissionFailures: string[] = [];
   const pinnedRows: string[] = [];
   for (const o of toMint) {
-    const row = mintCorpusRow(o.fixture, o.rule, o.allRules, existing.get(o.id), triage, pinBreak, dropped);
+    const row = mintCorpusRow(o.fixture, o.rule, o.allRules, existing.get(o.id), triage, pinBreak, dropped, staleAcceptGapExemptions, acceptAdmissionFailures);
     if (row.pinned_reason !== undefined) pinnedRows.push(`${o.id}: ${row.pinned_reason}`);
     outRows.set(o.id, row);
     const tag = row.pinned_reason !== undefined ? `PINNED (${row.pinned_reason})` : `${row.mode}, ${row.vectors.length} vector(s) [${row.type_name}]`;
@@ -3610,7 +3757,15 @@ function runMintDecodeCorpus(): never {
     console.log("\nPIN RE-CHECK FAILURES (committed reject pins that now decode — re-triage/unpin):");
     for (const p of pinBreak) console.log(`  - ${p}`);
   }
-  if (triage.length || pinBreak.length) { console.log("\nRESULT: CORPUS MINT wrote the catalog but exits 1 (triage pending — see above)."); process.exit(1); }
+  if (staleAcceptGapExemptions.length) {
+    console.log("\nSTALE ACCEPT ORACLE-GAP EXEMPTIONS (the exact vector remains in reviewed output, but its ledger must be updated):");
+    for (const s of staleAcceptGapExemptions) console.log(`  - ${s}`);
+  }
+  if (acceptAdmissionFailures.length) {
+    console.log("\nACCEPT ORACLE-GAP ADMISSION FAILURES (no unsafe vector was certified):");
+    for (const f of acceptAdmissionFailures) console.log(`  - ${f}`);
+  }
+  if (triage.length || pinBreak.length || staleAcceptGapExemptions.length || acceptAdmissionFailures.length) { console.log("\nRESULT: CORPUS MINT wrote the catalog but exits 1 (review required — see above)."); process.exit(1); }
   console.log("\nRESULT: CORPUS MINT PASS");
   process.exit(0);
 }

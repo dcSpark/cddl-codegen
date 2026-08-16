@@ -2608,32 +2608,35 @@ body_md = '''- When the pinned rust `cddl` validator accepts `validate_cbor_from
   &[0xf7], None)` (README gap #16): the exact-signature stale probe in
   `ir_conformance_corpus` will fail first. Confirm the fixed behavior is the intended RFC 8949
   undefined value, remove the sole `(fixed_singletons, undefined_value)`
-  `RUST_ORACLE_RULE_SKIP` triple so all eight emitted rust calls run again, and replace the
-  stale-rejection preflight with an acceptance probe for the new pinned behavior. Then run
-  `bun run check.ts full --only ir_conformance_corpus`, update the current-state coverage/cost
-  wording in `tests/README.md` and README gap #16, and delete this close-out entry. A changed
-  rejection signature is not a fix: investigate it and retain or revise the ledger only with a
-  new exact probe; never promote this one-rule gap to fixture-level `RUST_ORACLE_SKIP`.
+  `RUST_ORACLE_RULE_SKIP` triple so all eight emitted rust calls run again, remove the exact
+  `CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT` entry for
+  `fixed_singletons.undefined_value/8200f7`, and replace the stale-rejection preflight with an
+  acceptance probe for the new pinned behavior. Re-mint that corpus row, run the decode-catalog
+  drift gate and `bun run check.ts full --only ir_conformance_corpus`, update the current-state
+  coverage/cost wording in `tests/README.md` and README gap #16, and delete this close-out entry. A
+  changed rejection signature is not a fix: investigate it and retain or revise both exact
+  signature pins only with a new exact probe; never promote this one-rule gap to fixture-level
+  `RUST_ORACLE_SKIP`.
 '''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-accepts-validate"
 current_upstream_state_md = '''The pinned validator rejects f7 as Null; no fresh published-release check has been performed.
 '''
-verification_md = '''Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
+verification_md = '''Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP and fixed_singletons.undefined_value/8200f7 from CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT, replace the stale-rejection preflight with acceptance, re-mint that corpus row, run project_decode_conformance.ts, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
 '''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-accepts-validate"
 external_predicate_md = '''A published release accepts validate_cbor_from_slice("x = undefined", &[0xf7], None) with RFC 8949 undefined semantics.
 '''
-verification_md = '''Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP, replace the stale-rejection preflight with acceptance, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
+verification_md = '''Require exact f7 acceptance, remove only fixed_singletons/undefined_value from RUST_ORACLE_RULE_SKIP and fixed_singletons.undefined_value/8200f7 from CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT, replace the stale-rejection preflight with acceptance, re-mint that corpus row, run project_decode_conformance.ts, and run check.ts full --only ir_conformance_corpus; a changed rejection signature is not closure.
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
 
 [[record.payload.action]]
 action_id = "signature-only-change"
-action_md = '''Retain the closeout and update only the stale-signature evidence; do not remove the skip.
+action_md = '''Retain the closeout and update only the exact stale-signature evidence in the corpus accept-gap ledger and rust-oracle preflight; do not remove either accommodation.
 '''
 
 [[record.payload.branch]]

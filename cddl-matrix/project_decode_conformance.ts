@@ -118,12 +118,42 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { CatalogRow, CorpusRule } from "./lib";
-import { CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, DECODE_FLOOR_ARM_EXEMPT, DECODE_REJECT_ORACLE_GAP_EXEMPT, PRELUDE_NAMES, composeCatalog, corpusClosureBody, corpusProbeSpec, corpusArmExample, dependencyClosure, enumerateCorpusRules, parseCatalogContent, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
+import type { AcceptOracleGapExemption, CatalogRow, CorpusRule } from "./lib";
+import { CORPUS_CATALOG_INTRO, CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, DECODE_ACCEPT_ORACLE_GAP_EXEMPT, DECODE_FLOOR_ARM_EXEMPT, DECODE_REJECT_ORACLE_GAP_EXEMPT, PRELUDE_NAMES, composeCatalog, corpusClosureBody, corpusProbeSpec, corpusArmExample, dependencyClosure, enumerateCorpusRules, parseCatalogContent, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
 
 const HERE = import.meta.dir;
 const CATALOG_REL = "tests/decode_conformance/catalog.toml";
 const HOLDER_PREFIX = "__probe_holder = [0, ";
+
+function acceptGapLedgerProblems(rows: any[], ledger: Record<string, AcceptOracleGapExemption>, label: string): string[] {
+  const problems: string[] = [];
+  const ordinaryAccepts = new Set<string>();
+  for (const row of rows)
+    for (const vector of row.vector ?? [])
+      if (vector.expect === "accept" && vector.class === undefined && typeof row.id === "string" && typeof vector.hex === "string")
+        ordinaryAccepts.add(`${row.id}/${vector.hex}`);
+  for (const key of Object.keys(ledger).sort()) {
+    const entry = ledger[key]!;
+    if (!ordinaryAccepts.has(key))
+      problems.push(`${label} names \`${key}\`, which is not a live ordinary spec-valid accept vector in this catalog — stale or cross-catalog ledger entry, remove it`);
+    if (typeof entry.reason !== "string" || entry.reason.trim().length === 0)
+      problems.push(`${label} \`${key}\` has no durable nonempty reason`);
+    if (!Array.isArray(entry.failing_oracles) || entry.failing_oracles.length === 0)
+      problems.push(`${label} \`${key}\` exempts zero failing oracle(s) — remove the entry`);
+    const seen = new Set<string>();
+    for (const failure of entry.failing_oracles ?? []) {
+      if (!failure || (failure.oracle !== "ruby" && failure.oracle !== "rust") || !Number.isInteger(failure.exit) || failure.exit === 0 ||
+          typeof failure.signature !== "string" || failure.signature.trim().length === 0)
+        problems.push(`${label} \`${key}\` has malformed failing-oracle metadata (oracle, nonzero exit, and signature are all required)`);
+      else if (seen.has(failure.oracle))
+        problems.push(`${label} \`${key}\` duplicates failing oracle \`${failure.oracle}\``);
+      else seen.add(failure.oracle);
+    }
+    if (seen.size >= 2)
+      problems.push(`${label} \`${key}\` exempts every oracle — at least one non-exempt oracle must certify the vector`);
+  }
+  return problems;
+}
 
 // The absent-instance regression anchors (design D6 §4): each is a REAL minted holder/standalone
 // instance whose acceptance proves the decoder still admits the "nothing there" shape an over-strict
@@ -497,6 +527,10 @@ for (const key of Object.keys(DECODE_FLOOR_ARM_EXEMPT).sort())
       problems.push(`DECODE_REJECT_ORACLE_GAP_EXEMPT \`${key}\` cites writeup \`${e.writeup}\`, which does not exist — an exemption's spec argument must be readable by the party it accuses`);
   }
 }
+
+// Accept-side counterpart: the mint holds live oracle exits/signatures, while this catalog-side half
+// proves each exact ledger key still names an ordinary spec-valid accept in its OWN row-id universe.
+problems.push(...acceptGapLedgerProblems(rows, DECODE_ACCEPT_ORACLE_GAP_EXEMPT, "DECODE_ACCEPT_ORACLE_GAP_EXEMPT"));
 
 // Completeness §1: every supported matrix row must have a catalog row.
 for (const id of [...supported].sort())
@@ -1015,6 +1049,35 @@ for (const r of corpusRows) {
   for (const key of Object.keys(CORPUS_DECODE_FLOOR_ARM_EXEMPT).sort())
     if (!corpusUncoveredInScope.has(key))
       corpusProblems.push(`CORPUS_DECODE_FLOOR_ARM_EXEMPT names \`${key}\` which is no longer a genuinely-uncovered in-scope arm class (covered now, or the row left the floor's scope) — stale ledger entry, remove it`);
+}
+
+corpusProblems.push(...acceptGapLedgerProblems(corpusRows, CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT, "CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT"));
+
+// Exercise the two first-use shapes independently of HEAD's data: the matrix ledger is intentionally
+// empty, while the corpus ledger has a resident. The negative sibling fixture proves a future
+// refactor cannot accidentally make an empty map vacuous or satisfy a corpus key from the sibling
+// catalog.
+{
+  const emptyMatrix = acceptGapLedgerProblems([], {}, "synthetic matrix accept ledger");
+  const residentCorpus = acceptGapLedgerProblems(
+    [{ id: "synthetic.fixture.rule", vector: [{ hex: "8200f7", expect: "accept" }] }],
+    { "synthetic.fixture.rule/8200f7": { failing_oracles: [{ oracle: "rust", exit: 1, signature: "undefined" }], reason: "synthetic resident" } },
+    "synthetic corpus accept ledger",
+  );
+  const crossCatalog = acceptGapLedgerProblems(
+    [],
+    { "synthetic.fixture.rule/8200f7": { failing_oracles: [{ oracle: "rust", exit: 1, signature: "undefined" }], reason: "synthetic sibling miss" } },
+    "synthetic matrix accept ledger",
+  );
+  const blankSignature = acceptGapLedgerProblems(
+    [{ id: "synthetic.fixture.rule", vector: [{ hex: "8200f7", expect: "accept" }] }],
+    { "synthetic.fixture.rule/8200f7": { failing_oracles: [{ oracle: "rust", exit: 1, signature: "  " }], reason: "synthetic blank signature" } },
+    "synthetic blank signature ledger",
+  );
+  if (emptyMatrix.length || residentCorpus.length ||
+      !crossCatalog.some(p => p.includes("stale or cross-catalog")) ||
+      !blankSignature.some(p => p.includes("malformed failing-oracle metadata")))
+    corpusProblems.push(`accept-oracle-gap ledger synthetic branches failed (empty matrix=${JSON.stringify(emptyMatrix)}, resident corpus=${JSON.stringify(residentCorpus)}, cross catalog=${JSON.stringify(crossCatalog)}, blank signature=${JSON.stringify(blankSignature)})`);
 }
 
 // §1 completeness: every enumerated (fixture, rule) has a catalog row. The repair command scopes

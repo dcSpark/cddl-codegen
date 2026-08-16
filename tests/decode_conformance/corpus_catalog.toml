@@ -3,7 +3,10 @@
 #   bun run verify.ts --mint-decode-corpus --only=ID   # re-mint one row (or a bare fixture stem), preserve the rest
 # One row per (tests/corpus/*.cddl fixture, top-level rule) enumerated by the shared rule enumerator:
 # spec-derived CBOR instances (ruby `cddl … generate`, cross-validated by BOTH the ruby reference AND
-# rust `cddl --ci validate`) that the generated decoder must accept. Every active row is holder mode
+# rust `cddl --ci validate`) that the generated decoder must accept. An exact
+# CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT entry (lib.ts) may retain one spec-valid vector only while
+# every non-exempt oracle accepts and each exempt oracle still matches its recorded failure; stale
+# oracle behavior writes reviewed output then exits 1. Every active row is holder mode
 # (spec = `__probe_holder = [0, <rule>]` + the rule's dependency closure). Hand-edit ONLY for triage
 # class/reason on reject pins and source="hand" supplement vectors (both re-validated at the next mint).
 #

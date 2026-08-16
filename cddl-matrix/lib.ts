@@ -651,6 +651,32 @@ export const CORPUS_DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {
   "fixed_singletons.mixed_text_bytes_choice/2": "pinned rust-cddl ac1b98e validator panic at src/validator/cbor.rs:4840 on spec-valid fixed-byte CBOR; Ruby accepts; remove when upstream validator repair permits a two-oracle vector",
 };
 
+// Exact-vector exception for a spec-VALID accept which one reference oracle still cannot validate.
+// This is deliberately NOT a catalog field or a row-wide policy: a key is `"<row id>/<hex>"`, and
+// the mint admits it only while every unlisted oracle accepts and every listed oracle still fails
+// with the recorded exit/signature. The matrix and corpus maps are separate because their row-id
+// universes and catalog-side stale guards are separate.
+export type DecodeOracleName = "ruby" | "rust";
+export interface AcceptOracleGapFailure {
+  oracle: DecodeOracleName;
+  /** Expected nonzero oracle exit for this exact spec-valid vector. */
+  exit: number;
+  /** Stable substring of the combined stdout/stderr diagnostic. */
+  signature: string;
+}
+export interface AcceptOracleGapExemption {
+  failing_oracles: AcceptOracleGapFailure[];
+  /** Durable spec-validity argument and named upstream/oracle gap. */
+  reason: string;
+}
+export const DECODE_ACCEPT_ORACLE_GAP_EXEMPT: Record<string, AcceptOracleGapExemption> = {};
+export const CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT: Record<string, AcceptOracleGapExemption> = {
+  "fixed_singletons.undefined_value/8200f7": {
+    failing_oracles: [{ oracle: "rust", exit: 1, signature: "expected type undefined, got Null" }],
+    reason: "RFC 8949 assigns simple value 23 (0xf7) to undefined, and the holder requires `undefined`; ruby accepts it. The pinned rust-cddl validator instead reports it as Null (README.md § \"Upstream oracle gaps\" #16), so this exact spec-valid corpus vector remains certified by ruby until that upstream gap closes.",
+  },
+};
+
 // Exemption ledger for a `class="constraint"` reject vector whose spec-invalidity an ORACLE does not
 // see, keyed `"<row id>/<hex>"`. It exists because the two-oracle certification a constraint vector
 // normally passes (BOTH oracles reject the bytes, verify.ts `mintForeignRow`) certifies "spec-invalid
@@ -1054,7 +1080,10 @@ export const DEFAULT_CATALOG_INTRO: string[] = [
   "#   bun run verify.ts --mint-decode-foreign --only=ID  # re-mint one row, preserve the rest",
   "# Each row projects a matrix `supported` row: spec-derived CBOR instances (ruby `cddl … generate`,",
   "# cross-validated by BOTH the ruby reference AND rust `cddl --ci validate`) that the generated",
-  '# decoder must accept. Hand-edit ONLY for triage class/reason on reject pins and source="hand"',
+  "# decoder must accept. An exact DECODE_ACCEPT_ORACLE_GAP_EXEMPT entry (lib.ts) may retain one",
+  "# spec-valid vector only while every non-exempt oracle accepts and each exempt oracle still matches",
+  "# its recorded nonzero exit/signature; stale oracle behavior writes reviewed output then exits 1.",
+  '# Hand-edit ONLY for triage class/reason on reject pins and source="hand"',
   "# supplement vectors (both re-validated mechanically at the next mint).",
 ];
 export const CORPUS_CATALOG_INTRO: string[] = [
@@ -1063,7 +1092,10 @@ export const CORPUS_CATALOG_INTRO: string[] = [
   "#   bun run verify.ts --mint-decode-corpus --only=ID   # re-mint one row (or a bare fixture stem), preserve the rest",
   "# One row per (tests/corpus/*.cddl fixture, top-level rule) enumerated by the shared rule enumerator:",
   "# spec-derived CBOR instances (ruby `cddl … generate`, cross-validated by BOTH the ruby reference AND",
-  "# rust `cddl --ci validate`) that the generated decoder must accept. Every active row is holder mode",
+  "# rust `cddl --ci validate`) that the generated decoder must accept. An exact",
+  "# CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT entry (lib.ts) may retain one spec-valid vector only while",
+  "# every non-exempt oracle accepts and each exempt oracle still matches its recorded failure; stale",
+  "# oracle behavior writes reviewed output then exits 1. Every active row is holder mode",
   '# (spec = `__probe_holder = [0, <rule>]` + the rule\'s dependency closure). Hand-edit ONLY for triage',
   '# class/reason on reject pins and source="hand" supplement vectors (both re-validated at the next mint).',
 ];

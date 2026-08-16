@@ -3,7 +3,10 @@
 #   bun run verify.ts --mint-decode-foreign --only=ID  # re-mint one row, preserve the rest
 # Each row projects a matrix `supported` row: spec-derived CBOR instances (ruby `cddl … generate`,
 # cross-validated by BOTH the ruby reference AND rust `cddl --ci validate`) that the generated
-# decoder must accept. Hand-edit ONLY for triage class/reason on reject pins and source="hand"
+# decoder must accept. An exact DECODE_ACCEPT_ORACLE_GAP_EXEMPT entry (lib.ts) may retain one
+# spec-valid vector only while every non-exempt oracle accepts and each exempt oracle still matches
+# its recorded nonzero exit/signature; stale oracle behavior writes reviewed output then exits 1.
+# Hand-edit ONLY for triage class/reason on reject pins and source="hand"
 # supplement vectors (both re-validated mechanically at the next mint).
 #
 # mode: standalone = a nominal `impl Deserialize for <type_name>` decodes the vector directly;
