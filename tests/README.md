@@ -5198,6 +5198,14 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   crate-global-definition class). Consequence: a known-bad class proven by a STANDALONE repro is
   ledgered even when current batch boundaries compile it green; the mechanical detector (a second
   deterministic batch permutation / singleton mode) is a `tests/testing-roadmap.toml` item.
+  The shared runner used by this and every non-default layer-2 profile first generates each batch
+  as a discovery pass and reads the authoritative `rust/src/generated/mod.rs`. Each transparent
+  public root alias spelled exactly `Rc<digits>` gets one collision-free holder rule (`rcN_embed =
+  [e: rcN]`); renamed auxiliary aliases are excluded. If any holders are needed, the runner removes
+  only that batch's explicit scratch output and regenerates the augmented spec from clean state
+  before the single cargo oracle runs. The reported alias-root count has a positive floor per
+  profile, while the composition/execution counts remain about original compositions: holders are
+  oracle scaffolding, not new corpus cases.
 - `recombination_preserve_crates_execute` (`#[ignore]`, check.ts full tier): the PRESERVE escalation
   of layer 2, driven by the SAME shared runner (`run_layer2_profile`) parameterized with a different
   `Layer2Profile`. Its profile flags are sourced from `src/tests/mod.rs`'s `ALL_PROFILES` by name

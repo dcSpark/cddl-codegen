@@ -1474,10 +1474,141 @@ struct Layer2Profile<'a> {
     ok_floor: usize,
     /// Executed-count floor, ~10% under the observed baseline for this profile.
     executed_floor: usize,
+    /// Alias-only roots that the discovery pass found and embedded before cargo ran. This is kept
+    /// separate from `executed_floor`: holder rules are oracle scaffolding, not compositions.
+    embedded_alias_roots_floor: usize,
 }
 
-/// Generate `spec` with the profile's generation flags, then run the profile's cargo verb on the
-/// profile's generated crate. `Err(reason)` on any stage.
+/// Return every authored CDDL rule name in `spec`. Recombination compositions use one rule per
+/// line, and accepting generic LHS spellings here keeps holder-name collision avoidance scoped to
+/// the complete authored/renamed-rule namespace rather than just roots.
+fn authored_rule_names(spec: &str) -> BTreeSet<String> {
+    spec.lines()
+        .filter_map(|line| {
+            let line = line.trim_start();
+            let name_len = line
+                .bytes()
+                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'-')
+                .count();
+            if name_len == 0 {
+                return None;
+            }
+            let name = &line[..name_len];
+            let rest = line[name_len..].trim_start();
+            if rest.starts_with('=') || rest.starts_with("/=") || rest.starts_with('<') {
+                Some(name.to_owned())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Discover transparent composition-root aliases from rustfmt-stable generated `mod.rs`, then
+/// append one deterministic embed holder per root. A generated alias is useful only when its
+/// exact `rc<digits>` CDDL root is present in this batch's authored rules; auxiliary aliases have
+/// non-digit suffixes and are deliberately excluded.
+fn augment_alias_root_embed_sites(spec: &str, generated_mod: &str) -> (String, usize) {
+    let authored = authored_rule_names(spec);
+    let roots: BTreeSet<String> = generated_mod
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim_start().strip_prefix("pub type ")?;
+            let (name, _) = rest.split_once('=')?;
+            let name = name.trim_end();
+            let digits = name.strip_prefix("Rc")?;
+            (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+                .then(|| format!("rc{digits}"))
+        })
+        .filter(|root| authored.contains(root))
+        .collect();
+    if roots.is_empty() {
+        return (spec.to_owned(), 0);
+    }
+
+    let mut used_names = authored;
+    let mut augmented = spec.to_owned();
+    if !augmented.ends_with('\n') {
+        augmented.push('\n');
+    }
+    for root in &roots {
+        let base = format!("{root}_embed");
+        let mut holder = base.clone();
+        let mut suffix = 2usize;
+        while used_names.contains(&holder) {
+            holder = format!("{base}_{suffix}");
+            suffix += 1;
+        }
+        used_names.insert(holder.clone());
+        augmented.push_str(&format!("{holder} = [e: {root}]\n"));
+    }
+    (augmented, roots.len())
+}
+
+#[test]
+fn alias_root_embed_augmentation_selects_exact_public_root_aliases_in_order() {
+    let spec = "rc2 = uint\nrc10 = tstr\nrc3_aux = bool\n";
+    let generated_mod = "\
+pub type Rc2 = u64;
+pub type Rc10 = String;
+pub type Rc3Aux = bool;
+type Rc4 = u64;
+pub struct Rc5;
+pub type Rc6<T> = Vec<T>;
+pub type Rc7 = u64;
+";
+
+    let (augmented, embedded) = augment_alias_root_embed_sites(spec, generated_mod);
+
+    assert_eq!(embedded, 2);
+    assert!(augmented.ends_with("rc10_embed = [e: rc10]\nrc2_embed = [e: rc2]\n"));
+    assert!(!augmented.contains("rc3_aux_embed"));
+    assert!(!augmented.contains("rc4_embed"));
+    assert!(!augmented.contains("rc5_embed"));
+    assert!(!augmented.contains("rc6_embed"));
+    assert!(!augmented.contains("rc7_embed"));
+}
+
+#[test]
+fn alias_root_embed_augmentation_avoids_authored_and_renamed_rule_collisions() {
+    let spec = "\
+rc2 = uint
+rc2_embed = bool
+rc2_embed_2 = null
+rc2_aux = tstr
+rc10<item> = [item]
+";
+    let (augmented, embedded) = augment_alias_root_embed_sites(spec, "pub type Rc2 = u64;\n");
+
+    assert_eq!(embedded, 1);
+    assert!(augmented.ends_with("rc2_embed_3 = [e: rc2]\n"));
+}
+
+#[test]
+fn alias_root_embed_augmentation_is_a_noop_without_root_aliases() {
+    let spec = "rc2 = uint\n";
+    let generated_mod = "pub struct Rc2 { value: u64 }\npub type Rc2Aux = u64;\n";
+
+    assert_eq!(
+        augment_alias_root_embed_sites(spec, generated_mod),
+        (spec.to_owned(), 0)
+    );
+}
+
+#[test]
+fn alias_root_embed_augmentation_recognizes_a_rustfmt_wrapped_alias_rhs() {
+    let spec = "rc11 = uint\n";
+    let generated_mod = "pub type Rc11 =\n    VeryLongGeneratedAliasThatRustfmtWrapped;\n";
+
+    assert_eq!(
+        augment_alias_root_embed_sites(spec, generated_mod),
+        ("rc11 = uint\nrc11_embed = [e: rc11]\n".to_owned(), 1)
+    );
+}
+
+/// Generate `spec` with the profile's generation flags, discover and embed transparent alias
+/// roots from that first output when present, then run the profile's cargo verb on the final tree.
+/// Returns the number of embedded alias roots; `Err(reason)` on any stage.
 fn gen_and_exec(
     spec: &str,
     out: &std::path::Path,
@@ -1485,24 +1616,55 @@ fn gen_and_exec(
     p: &Layer2Profile,
     cache_run: &mut usize,
     cache_hit: &mut usize,
-) -> Result<(), String> {
+) -> Result<usize, String> {
     let (profile_args, exec_args, crate_subdir, cargo_subcmd) =
         (p.profile_args, p.exec_args, p.crate_subdir, p.cargo_subcmd);
     let spec_path = out.with_extension("cddl");
     std::fs::create_dir_all(out.parent().unwrap()).ok();
     std::fs::write(&spec_path, spec).map_err(|e| e.to_string())?;
-    let gen_out = codegen_cmd()
+    let discovery_out = codegen_cmd()
         .arg(format!("--input={}", spec_path.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .args(profile_args)
         .args(exec_args)
         .output()
         .unwrap();
-    if !gen_out.status.success() {
+    if !discovery_out.status.success() {
         return Err(format!(
-            "generation failed\n{}",
-            String::from_utf8_lossy(&gen_out.stderr)
+            "discovery generation failed\n{}",
+            String::from_utf8_lossy(&discovery_out.stderr)
         ));
+    }
+    let generated_mod = out.join("rust/src/generated/mod.rs");
+    let generated_mod = std::fs::read_to_string(&generated_mod).map_err(|e| {
+        format!(
+            "discovery generation produced no readable rust/src/generated/mod.rs at {}: {e}",
+            generated_mod.display()
+        )
+    })?;
+    let (augmented_spec, embedded_alias_roots) =
+        augment_alias_root_embed_sites(spec, &generated_mod);
+    if embedded_alias_roots > 0 {
+        std::fs::remove_dir_all(out).map_err(|e| {
+            format!(
+                "remove discovery output {} before final alias-root generation: {e}",
+                out.display()
+            )
+        })?;
+        std::fs::write(&spec_path, augmented_spec).map_err(|e| e.to_string())?;
+        let final_out = codegen_cmd()
+            .arg(format!("--input={}", spec_path.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .args(profile_args)
+            .args(exec_args)
+            .output()
+            .unwrap();
+        if !final_out.status.success() {
+            return Err(format!(
+                "final alias-root generation failed\n{}",
+                String::from_utf8_lossy(&final_out.stderr)
+            ));
+        }
     }
     let crate_dir = out.join(crate_subdir);
     if !crate_dir.exists() {
@@ -1536,7 +1698,7 @@ fn gen_and_exec(
     *cache_run += outcome.ran();
     *cache_hit += outcome.cached();
     if outcome.success() {
-        Ok(())
+        Ok(embedded_alias_roots)
     } else {
         let run = run_output.unwrap();
         Err(format!(
@@ -1668,6 +1830,7 @@ fn run_layer2_profile(p: &Layer2Profile) {
 
     let mut findings: Vec<String> = Vec::new();
     let mut executed = 0usize;
+    let mut embedded_alias_roots = 0usize;
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
     let mut run_batch = |spec: &str, out: &std::path::Path| {
@@ -1677,23 +1840,30 @@ fn run_layer2_profile(p: &Layer2Profile) {
         let spec: String = batch.iter().map(|c| c.spec.as_str()).collect();
         let out = root.join(format!("batch{bi:03}"));
         match run_batch(&spec, &out) {
-            Ok(()) => executed += batch.len(),
+            Ok(embedded) => {
+                executed += batch.len();
+                embedded_alias_roots += embedded;
+            }
             Err(batch_reason) => {
                 // Attribute: rerun each member individually.
                 let mut attributed = false;
                 for c in batch {
                     let mout = root.join(format!("batch{bi:03}_{}", c.id));
-                    if let Err(reason) = run_batch(&c.spec, &mout) {
-                        attributed = true;
-                        findings.push(format!(
-                            "NEW layer-2 finding under {} profile — composition {} ({}):\n--- spec ---\n{}--- failure ---\n{reason}\n\
-                             Promotion: minimize by hand; pin it (matrix row / tests/robustness/ / \
-                             tests/corpus/); ledger it in cddl-matrix/roadmap.toml § findings; add a \
-                             profile known-bad entry citing the pin.",
-                            p.name, c.id, c.desc, c.spec
-                        ));
-                    } else {
-                        executed += 1;
+                    match run_batch(&c.spec, &mout) {
+                        Err(reason) => {
+                            attributed = true;
+                            findings.push(format!(
+                                "NEW layer-2 finding under {} profile — composition {} ({}):\n--- spec ---\n{}--- failure ---\n{reason}\n\
+                                 Promotion: minimize by hand; pin it (matrix row / tests/robustness/ / \
+                                 tests/corpus/); ledger it in cddl-matrix/roadmap.toml § findings; add a \
+                                 profile known-bad entry citing the pin.",
+                                p.name, c.id, c.desc, c.spec
+                            ));
+                        }
+                        Ok(embedded) => {
+                            executed += 1;
+                            embedded_alias_roots += embedded;
+                        }
                     }
                 }
                 if !attributed {
@@ -1714,7 +1884,7 @@ fn run_layer2_profile(p: &Layer2Profile) {
     }
 
     println!(
-        "recombination {} layer 2: classified ok={} graceful={} panic={}; {} batches / {} compositions executed ({} known-bad excluded) in {:?}",
+        "recombination {} layer 2: classified ok={} graceful={} panic={}; {} batches / {} compositions executed ({} known-bad excluded, {} alias roots embedded) in {:?}",
         p.name,
         ok_comps.len(),
         graceful,
@@ -1722,6 +1892,7 @@ fn run_layer2_profile(p: &Layer2Profile) {
         batches.len(),
         executed,
         ok_comps.len() - executable.len(),
+        embedded_alias_roots,
         t0.elapsed()
     );
     assert!(
@@ -1736,6 +1907,12 @@ fn run_layer2_profile(p: &Layer2Profile) {
         "only {executed} compositions executed in {} layer 2 (floor {}) — batching rotted",
         p.name,
         p.executed_floor
+    );
+    assert!(
+        embedded_alias_roots >= p.embedded_alias_roots_floor,
+        "only {embedded_alias_roots} alias roots embedded in {} layer 2 (floor {}) — alias-root discovery rotted",
+        p.name,
+        p.embedded_alias_roots_floor
     );
 }
 
@@ -1761,6 +1938,7 @@ fn recombination_crates_execute() {
         guard_shared: true,
         ok_floor: 750,
         executed_floor: 700,
+        embedded_alias_roots_floor: 1,
     });
 }
 
@@ -1838,6 +2016,7 @@ fn recombination_preserve_crates_execute() {
         // Observed baseline: 856 preserve-ok / 827 executed (29 known-bad excluded); floors ~10% under.
         ok_floor: 770,
         executed_floor: 735,
+        embedded_alias_roots_floor: 1,
     });
 }
 
@@ -1896,6 +2075,7 @@ fn recombination_json_crates_execute() {
         // Observed baseline: 927 json-ok / 897 executed (30 known-bad excluded); floors ~10% under.
         ok_floor: 835,
         executed_floor: 808,
+        embedded_alias_roots_floor: 1,
     });
 }
 
@@ -1950,6 +2130,7 @@ fn recombination_wasm_crates_check() {
         // Observed baseline: 926 wasm-ok / 897 checked (29 known-bad excluded); floors ~10% under.
         ok_floor: 830,
         executed_floor: 803,
+        embedded_alias_roots_floor: 1,
     });
 }
 

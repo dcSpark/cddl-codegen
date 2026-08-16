@@ -74,7 +74,6 @@ body_md = '''## Next work items, in priority order
 '''
 entries = [
   "testing.grammar-fuzzer-escalations",
-  "testing.grammar-fuzzer.embed-site-alias-roots",
   "testing.grammar-fuzzer.arbitrary-supported-ast",
   "testing.grammar-fuzzer.batch-masking-detector",
   "testing.grammar-fuzzer.real-world-corpus-differential",
@@ -394,18 +393,6 @@ admission_kind = "silent_corruption"
 claim_md = '''The preserved owner detail records a reproducible generation-green/emitted-crate-red class that the proposed system would detect.
 '''
 evidence_ids = ["testing.proof.generated-local-collision.scope-wide-probe"]
-
-[[record]]
-id = "testing.admission-path.grammar-fuzzer-embed-site-alias-roots"
-title = "Admission for testing.grammar-fuzzer.embed-site-alias-roots."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "independent_recurrence"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-evidence_ids = ["testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof", "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"]
-incident_ids = ["testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one", "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two"]
 
 [[record]]
 id = "testing.admission-path.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
@@ -3176,61 +3163,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.grammar-fuzzer.embed-site-alias-roots"
-title = "Embed-site leg for alias-classifying roots — two proven escapes."
-
-[record.payload]
-kind = "work"
-body_md = '''   - **Embed-site leg for alias-classifying roots — two proven escapes.** A composition whose ROOT
-     rule classifies as a plain alias (`rcN = bytes .cbor {…}`, `bytes .cbor (int .ne N)`) emits its
-     wrapper (de)serialize code only at an embed/USE site — a bare alias rule emits none — so the
-     layer-2 sweeps never compile that emission surface for alias roots (embedding exists only when
-     such a template lands INNER under another outer, e.g. the
-     `arr_mid inner=cbor_payload` case). Both escapes were preserve-only compile bugs found by
-     review/fixture-TDD in the session that fixed their ledgered `tag_content` siblings (tag rules
-     AUTO-WRAP into a struct, so those failed standalone and were ledgered; alias roots stayed
-     green), each verified standalone-green/embedded-red against its pre-fix tree: the
-     `.cbor`-payload constrained-int E0308 (dropped `final_exprs`) and the `.cbor` inline-table
-     owned-serializer `.end()` E0308 — both since fixed and pinned by the embedding holder members
-     of the `tagged_constrained_int` / `cbor_bignint_table` corpus fixtures. Mechanical shape, worth
-     building on the THIRD instance: mint each alias-classifying root also as an embedded variant
-     (`rcN_embed = [e: rcN]` — the matrix probe's embed-holder pattern), scoped to alias roots to
-     bound the layer-2 wall-clock cost. Note the POPULATION shrank on 2026-08-04 without the trigger
-     moving: both recorded instances were `.cbor` roots, and a `.cbor` rule body now force-wraps into
-     a struct that emits its (de)serialize code standalone, so the sweeps compile that surface
-     directly. What still classifies as a plain alias root is the named collection (tagged or not),
-     the scalar re-alias and the `T / null` collapse — that is the class a third instance would have
-     to come from, and it stands at two.
-     The class's SEMANTIC flavor is DELIVERED (2026-08-04) and is not a matrix leg. It was: a bare
-     `.cbor` alias root's STANDALONE (de)serialization was the target type's own
-     (`y = bytes .cbor int` → `pub type Y = Int`), so the root's `to_cbor_bytes` wrote the bare
-     inner form and its `from_cbor_bytes` accepted that form while rejecting the spec's actual
-     byte-string one — silently, in a crate that compiled everywhere, while embed sites wrapped
-     correctly. A `.cbor` rule body now force-wraps into the wrapper struct the `@newtype` spelling
-     produces, so the class is closed at the source rather than detected: the broader invariant it
-     was an instance of — no wire-affecting property of a `RustType` may survive on a root that
-     emits a transparent alias — is a hard refusal in
-     `IntermediateTypes::assert_no_wire_facts_survive_a_transparent_alias`, which fires for any
-     FUTURE encoding operation at the one registration seam that could carry one (unconditionally
-     over every non-`Fixed` base: a `Fixed` one is the already-refused bare-literal rule, whose
-     alias entry never reaches a wire). The emitted-code half — the part no generator assert can speak for — is executed by
-     `integration_tests::cbor_rule_body_standalone_codec_agrees_with_its_embed_site` (`local` tier),
-     which runs the wrapped-form/bare-form/embed-agreement table on a scalar and a record payload
-     under the plain and preserve profiles. The embed-site COMPILE leg above keeps its own
-     third-instance trigger unchanged: it is a different instrument on a different failure class,
-     and it still stands at two instances.
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "abort_or_panic"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.grammar-fuzzer.embed-site-alias-roots's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-admission_ids = ["testing.admission-path.grammar-fuzzer-embed-site-alias-roots"]
-
-[[record]]
 id = "testing.grammar-fuzzer.real-world-corpus-differential"
 title = "Real-world corpus differential"
 
@@ -4452,7 +4384,7 @@ evidence_kind = "incident"
 claim_md = '''The constrained-int cbor-payload alias was standalone-green and embedded-red.
 '''
 freshness = "as_of"
-reference_ids = ["testing-grammar-fuzzer-embed-site-alias-roots", "testing-roadmap-next-work-n28"]
+reference_ids = ["testing-roadmap-next-work-n28"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -4486,7 +4418,7 @@ evidence_kind = "incident"
 claim_md = '''The inline-table cbor alias owned serializer was standalone-green and embedded-red.
 '''
 freshness = "as_of"
-reference_ids = ["testing-grammar-fuzzer-embed-site-alias-roots-n2", "testing-roadmap-next-work-n30"]
+reference_ids = ["testing-roadmap-next-work-n30"]
 at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
 observed_at = "2026-08-12"
 unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
@@ -8312,42 +8244,12 @@ target = "testing.grammar-fuzzer.batch-masking-detector"
 [[relation]]
 source = "testing.grammar-fuzzer-escalations"
 kind = "parent_of"
-target = "testing.grammar-fuzzer.embed-site-alias-roots"
-
-[[relation]]
-source = "testing.grammar-fuzzer-escalations"
-kind = "parent_of"
 target = "testing.grammar-fuzzer.real-world-corpus-differential"
 
 [[relation]]
 source = "testing.grammar-fuzzer.batch-masking-detector"
 kind = "parent_of"
 target = "testing.guard.grammar-fuzzer-batch-masking-detector"
-
-[[relation]]
-source = "testing.grammar-fuzzer.embed-site-alias-roots"
-kind = "parent_of"
-target = "testing.admission-path.grammar-fuzzer-embed-site-alias-roots"
-
-[[relation]]
-source = "testing.grammar-fuzzer.embed-site-alias-roots"
-kind = "parent_of"
-target = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one"
-
-[[relation]]
-source = "testing.grammar-fuzzer.embed-site-alias-roots"
-kind = "parent_of"
-target = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof"
-
-[[relation]]
-source = "testing.grammar-fuzzer.embed-site-alias-roots"
-kind = "parent_of"
-target = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two"
-
-[[relation]]
-source = "testing.grammar-fuzzer.embed-site-alias-roots"
-kind = "parent_of"
-target = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"
 
 [[relation]]
 source = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
@@ -9190,12 +9092,6 @@ path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
-id = "testing-grammar-fuzzer-embed-site-alias-roots"
-source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one-proof"
-kind = "roadmap"
-target_id = "testing.grammar-fuzzer.embed-site-alias-roots"
-
-[[reference]]
 id = "testing-roadmap-next-work-n29"
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two"
 kind = "file_heading"
@@ -9208,12 +9104,6 @@ source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two
 kind = "file_heading"
 path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
-
-[[reference]]
-id = "testing-grammar-fuzzer-embed-site-alias-roots-n2"
-source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"
-kind = "roadmap"
-target_id = "testing.grammar-fuzzer.embed-site-alias-roots"
 
 [[reference]]
 id = "testing-roadmap-next-work-n31"
