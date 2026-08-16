@@ -31,14 +31,14 @@
 //!      shared `run_layer2_profile` runner — `recombination_crates_execute` (default),
 //!      `recombination_preserve_crates_execute`, `recombination_json_crates_execute` (both
 //!      `cargo test` the emitted-tests rust crate under their `ALL_PROFILES` flags), and
-//!      `recombination_wasm_crates_check` (`--wasm=true`, `cargo check` the wasm crate) — batch the
-//!      profile's `ok` compositions (~`LAYER2_RULES_PER_BATCH` rules/batch; authored root/aux-rule
-//!      names are collision-free by construction, while generated names remain a product invariant;
-//!      per-profile scratch + `CARGO_TARGET_DIR`). Any batch failure is
-//!      re-attributed by rerunning members individually; a failing member whose desc matches neither
-//!      the shared `LAYER2_KNOWN_BAD` nor the profile's own ledger is a NEW finding, and a
-//!      classification panic outside `KNOWN_PANIC_CLASSES` ∪ the profile's panic ledger likewise.
-//!      Target < 10 min per gate.
+//!      `recombination_wasm_crates_check` (`--wasm=true`, `cargo check` the wasm crate) — execute the
+//!      profile's `ok` compositions under TWO deterministic, decorrelated greedy batch plans
+//!      (~`LAYER2_RULES_PER_BATCH` rules/batch; authored root/aux-rule names are collision-free by
+//!      construction, while generated names remain a product invariant; per-profile-and-plan scratch
+//!      + `CARGO_TARGET_DIR`). Any batch failure is re-attributed by rerunning members individually;
+//!        a failing member whose desc matches neither the shared `LAYER2_KNOWN_BAD` nor the profile's
+//!        own ledger is a NEW finding, and a classification panic outside `KNOWN_PANIC_CLASSES` ∪ the
+//!        profile's panic ledger likewise. Target < 10 min per gate.
 //!
 //! Determinism: a fixed seed + splitmix64; enumeration is a systematic cross-product where cheap
 //! and seeded sampling where the product explodes (budget constants below). The sweep asserts two
@@ -65,17 +65,11 @@ const NEST_FILLER_SAMPLES: usize = 2;
 /// the hazard sweep already covers name×position systematically; here it's realistic noise).
 const HAZARD_EVERY: u64 = 16;
 /// Layer 2 batching: ~this many RULES per generated crate (a composition is 1 root + its aux rules).
-///
-/// BATCH-MASKING CAVEAT: batching compiles many compositions into ONE crate, so a failure class
-/// whose symptom is a missing CRATE-GLOBAL definition can be masked by a batch-mate that happens to
-/// define the global — the per-member attribution rerun only fires when the BATCH fails, so a green
-/// batch is not a per-composition guarantee for such a class. Consequence: a known-bad class proven
-/// by a STANDALONE repro belongs in the ledger even if the current batch boundaries happen to compile
-/// it. The precedent was the undefined-`Int` class (`Int` was emitted iff any rule registered a
-/// reference): `outer=cbor_payload filler=type2.map` was masked in the default gate and surfaced only
-/// by the wasm leg's different batch boundaries. That class is now fixed — the reference walk covers
-/// emitted type aliases (pinned by tests/corpus/int_alias.cddl) — so it no longer rides the ledger,
-/// but the caveat stands for the next crate-global-definition class.
+/// Every profile runs both the natural greedy grouping and a deterministic transpose/re-batch of it.
+/// The second plan separates most natural batchmates, breaking most opportunities for a missing
+/// crate-global definition to be supplied by a batchmate. The fixed undefined-`Int` predecessor is
+/// pinned by `tests/corpus/int_alias.cddl`. Two plans are deliberately not the singleton oracle: a
+/// standalone-proven class remains ledger-worthy if its providers share both batches.
 const LAYER2_RULES_PER_BATCH: usize = 40;
 
 // ---- deterministic rng ----------------------------------------------------------------------------
@@ -384,6 +378,217 @@ struct Composition {
     spec: String,
     /// Rule count (root + aux), for layer-2 batching.
     rules: usize,
+}
+
+/// A deterministic greedy partition of `items`: preserve their supplied order and start the next
+/// batch only when adding an item would cross `rule_budget`. An oversized item is intentionally a
+/// one-item batch; the corpus controls item size and this helper must still preserve membership.
+fn greedy_rule_batches<'a, T>(
+    items: &[&'a T],
+    rule_budget: usize,
+    rules: impl Fn(&T) -> usize,
+) -> Vec<Vec<&'a T>> {
+    assert!(rule_budget > 0, "layer-2 rule budget must be nonzero");
+    let mut batches = Vec::new();
+    let mut current = Vec::new();
+    let mut current_rules = 0usize;
+    for &item in items {
+        let item_rules = rules(item);
+        if current_rules + item_rules > rule_budget && !current.is_empty() {
+            batches.push(std::mem::take(&mut current));
+            current_rules = 0;
+        }
+        current.push(item);
+        current_rules += item_rules;
+    }
+    if !current.is_empty() {
+        batches.push(current);
+    }
+    batches
+}
+
+/// One labelled layer-2 batch plan over the exact executable composition references.
+struct Layer2BatchPlan<'a> {
+    label: &'static str,
+    batches: Vec<Vec<&'a Composition>>,
+}
+
+/// Build the two deterministic layer-2 plans. The transpose is deliberately derived from the
+/// NATURAL batches, rather than a random permutation: it walks position zero of every natural
+/// batch, then position one, and so on, before greedily re-batching that fixed order.
+fn layer2_batch_plans<'a>(
+    executable: &[&'a Composition],
+    rule_budget: usize,
+) -> [Layer2BatchPlan<'a>; 2] {
+    let natural = greedy_rule_batches(executable, rule_budget, |c| c.rules);
+    let max_len = natural.iter().map(Vec::len).max().unwrap_or(0);
+    let transposed_order: Vec<&Composition> = (0..max_len)
+        .flat_map(|position| {
+            natural
+                .iter()
+                .filter_map(move |batch| batch.get(position).copied())
+        })
+        .collect();
+    let transposed = greedy_rule_batches(&transposed_order, rule_budget, |c| c.rules);
+    [
+        Layer2BatchPlan {
+            label: "natural",
+            batches: natural,
+        },
+        Layer2BatchPlan {
+            label: "transposed",
+            batches: transposed,
+        },
+    ]
+}
+
+fn batch_membership<'a>(batches: &[Vec<&'a Composition>]) -> BTreeSet<&'a str> {
+    batches
+        .iter()
+        .flatten()
+        .map(|composition| composition.id.as_str())
+        .collect()
+}
+
+fn batchmate_pairs<'a>(batches: &[Vec<&'a Composition>]) -> BTreeSet<(&'a str, &'a str)> {
+    batches
+        .iter()
+        .flat_map(|batch| {
+            batch.iter().enumerate().flat_map(move |(left, a)| {
+                batch
+                    .iter()
+                    .skip(left + 1)
+                    .map(move |b| (a.id.as_str(), b.id.as_str()))
+            })
+        })
+        .collect()
+}
+
+/// Ensure both plans are real executable-corpus partitions, rather than a second pass that has
+/// accidentally converged on the natural grouping. This deliberately asserts relationships, not
+/// an incidental batch count: adding/reweighting compositions may change that count legitimately.
+fn assert_layer2_batch_plan_integrity(
+    plans: &[Layer2BatchPlan<'_>; 2],
+    executable: &[&Composition],
+) {
+    let expected: BTreeSet<&str> = executable.iter().map(|c| c.id.as_str()).collect();
+    for plan in plans {
+        assert_eq!(
+            batch_membership(&plan.batches),
+            expected,
+            "{} layer-2 plan changed executable membership",
+            plan.label
+        );
+        assert_eq!(
+            plan.batches.iter().flatten().count(),
+            expected.len(),
+            "{} layer-2 plan duplicated an executable composition",
+            plan.label
+        );
+        assert!(
+            plan.batches
+                .iter()
+                .all(|batch| batch.iter().map(|c| c.rules).sum::<usize>() <= LAYER2_RULES_PER_BATCH),
+            "{} layer-2 plan crossed the rule budget",
+            plan.label
+        );
+    }
+    assert!(
+        plans[0].batches.len() > 1,
+        "layer-2 executable corpus collapsed to one natural batch; the decorrelation detector is vacuous"
+    );
+    let natural_pairs = batchmate_pairs(&plans[0].batches);
+    let transposed_pairs = batchmate_pairs(&plans[1].batches);
+    let split_pairs = natural_pairs
+        .iter()
+        .filter(|pair| !transposed_pairs.contains(pair))
+        .count();
+    assert!(
+        split_pairs * 2 > natural_pairs.len(),
+        "layer-2 transpose split only {split_pairs}/{} natural batchmate pairs; expected a majority so the decorrelation detector remains material",
+        natural_pairs.len()
+    );
+}
+
+#[test]
+fn layer2_batch_plans_are_deterministic_budgeted_and_decorrelated() {
+    let synthetic: Vec<Composition> = [("a", 2usize), ("b", 2), ("c", 2), ("d", 2), ("e", 2)]
+        .into_iter()
+        .map(|(id, rules)| Composition {
+            id: id.to_owned(),
+            desc: id.to_owned(),
+            spec: String::new(),
+            rules,
+        })
+        .collect();
+    let refs: Vec<&Composition> = synthetic.iter().collect();
+    let first = layer2_batch_plans(&refs, 4);
+    let second = layer2_batch_plans(&refs, 4);
+
+    assert_eq!(first[0].label, "natural");
+    assert_eq!(first[1].label, "transposed");
+    assert_eq!(
+        first
+            .iter()
+            .map(|plan| {
+                plan.batches
+                    .iter()
+                    .map(|batch| batch.iter().map(|c| c.id.as_str()).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+        second
+            .iter()
+            .map(|plan| {
+                plan.batches
+                    .iter()
+                    .map(|batch| batch.iter().map(|c| c.id.as_str()).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+        "plans must be deterministic"
+    );
+    let expected: BTreeSet<&str> = ["a", "b", "c", "d", "e"].into_iter().collect();
+    for plan in &first {
+        assert_eq!(batch_membership(&plan.batches), expected);
+        assert_eq!(
+            plan.batches.iter().flatten().count(),
+            expected.len(),
+            "{} plan must contain every composition exactly once",
+            plan.label
+        );
+        assert!(
+            plan.batches
+                .iter()
+                .all(|batch| batch.iter().map(|c| c.rules).sum::<usize>() <= 4)
+        );
+    }
+    let natural_pairs = batchmate_pairs(&first[0].batches);
+    let transposed_pairs = batchmate_pairs(&first[1].batches);
+    assert!(natural_pairs.contains(&("a", "b")));
+    assert!(
+        !transposed_pairs.contains(&("a", "b")),
+        "a known natural batchmate pair must be split by the transpose"
+    );
+}
+
+#[test]
+fn layer2_actual_default_executable_corpus_has_two_decorrelated_plans() {
+    let corpus = compositions();
+    let outcomes = classify_all(&corpus, &["--wasm=false"]);
+    let executable: Vec<&Composition> = corpus
+        .iter()
+        .zip(outcomes.iter())
+        .filter_map(|(composition, outcome)| {
+            (matches!(outcome, Outcome::Ok)
+                && !LAYER2_KNOWN_BAD
+                    .iter()
+                    .any(|(key, _)| composition.desc.contains(key)))
+            .then_some(composition)
+        })
+        .collect();
+    let plans = layer2_batch_plans(&executable, LAYER2_RULES_PER_BATCH);
+    assert_layer2_batch_plan_integrity(&plans, &executable);
 }
 
 /// Field-name chooser: benign `f{idx}` names, with every `HAZARD_EVERY`-th draw swapped for a
@@ -1375,8 +1580,8 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // reference walk covers emitted type aliases, so an alias-only `int` reference registers `Int`
     // (pinned by tests/corpus/int_alias.cddl), and those compositions compile + execute — no entry
     // needed. This retired the two undefined-`Int` entries that formerly rode here, one masked in the
-    // default gate and surfaced only by the wasm leg's different batch boundaries (see the batch-masking
-    // caveat on `LAYER2_RULES_PER_BATCH`).
+    // default gate and surfaced only by the wasm leg's different batch boundaries; every profile now
+    // also executes the deterministic transpose plan that separates natural batchmates.
     // (retired with the fixed-value group-choice arm's default-profile support) The tagged fixed
     // value in a map-rep arm (`t = { ga: #6.11(42) // fb: tstr }`) was the COMPILE-side twin of that
     // same defect, not a separate bug: the tag wrapper routed its deserialize down a branch that
@@ -1441,13 +1646,15 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
 
 // ---- generalized layer-2 runner (shared by every emission profile) --------------------------------
 /// A layer-2 execution profile. One runner (`run_layer2_profile`) drives the whole shape:
-/// classify under the profile in-process, batch the ok compositions, generate each batch with the
-/// profile's flags, run the profile's cargo verb on the profile's generated crate, re-attribute
-/// batch failures per member. Items 2/3 (json / wasm) plug in by building a different `Layer2Profile`
-/// — no runner change — which is why the exec step is data-driven (`exec_args`/`crate_subdir`/
-/// `cargo_subcmd`) rather than a hard-coded rust-`test` path.
+/// classify under the profile in-process, execute the ok compositions under natural and transposed
+/// deterministic batch plans, generate each batch with the profile's flags, run the profile's cargo
+/// verb on the profile's generated crate, and re-attribute batch failures per member. Items 2/3
+/// (json / wasm) plug in by building a different `Layer2Profile` — no runner change — which is why
+/// the exec step is data-driven (`exec_args`/`crate_subdir`/`cargo_subcmd`) rather than a hard-coded
+/// rust-`test` path.
 struct Layer2Profile<'a> {
-    /// Human profile name — labels the scratch root, the target dir, and the summary line.
+    /// Human profile name — labels the scratch root and summary; each batch plan extends it for its
+    /// own target and output cells.
     name: &'a str,
     /// Profile flags applied to BOTH in-process classification (`classify_all`) and out-of-process
     /// generation. This includes the explicit wasm mode, so the generation path being classified is
@@ -1801,79 +2008,88 @@ fn run_layer2_profile(p: &Layer2Profile) {
         );
     }
 
-    // Batch: greedy fill up to LAYER2_RULES_PER_BATCH rules per batch, deterministic order.
-    let mut batches: Vec<Vec<&Composition>> = Vec::new();
-    let mut cur: Vec<&Composition> = Vec::new();
-    let mut cur_rules = 0usize;
-    for c in &executable {
-        if cur_rules + c.rules > LAYER2_RULES_PER_BATCH && !cur.is_empty() {
-            batches.push(std::mem::take(&mut cur));
-            cur_rules = 0;
-        }
-        cur.push(c);
-        cur_rules += c.rules;
-    }
-    if !cur.is_empty() {
-        batches.push(cur);
-    }
+    // Every executable composition runs under BOTH plans. The transpose starts from natural
+    // batches, so it deliberately separates their batchmates without any hash/random ordering.
+    let plans = layer2_batch_plans(&executable, LAYER2_RULES_PER_BATCH);
+    assert_layer2_batch_plan_integrity(&plans, &executable);
 
-    // Per-profile scratch root + target dir: keeps profiles from clobbering each other and (for the
-    // serde/schemars-pulling json profile) stops feature-resolution thrash invalidating the default
-    // cache.
+    // Per-profile scratch root, with plan-labelled target dirs below it: keeps profiles and their
+    // two plans from clobbering each other and (for the serde/schemars-pulling json profile) stops
+    // feature-resolution thrash invalidating the default cache.
     let root = std::env::temp_dir().join(format!(
         "cddl_codegen_recomb_{}_{:016x}",
         p.name,
         checkout_hash()
     ));
     let _ = std::fs::remove_dir_all(&root);
-    let target_dir = root.join("target");
-
-    let mut findings: Vec<String> = Vec::new();
-    let mut executed = 0usize;
-    let mut embedded_alias_roots = 0usize;
+    let mut findings: BTreeMap<String, String> = BTreeMap::new();
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
-    let mut run_batch = |spec: &str, out: &std::path::Path| {
-        gen_and_exec(spec, out, &target_dir, p, &mut cache_run, &mut cache_hit)
-    };
-    for (bi, batch) in batches.iter().enumerate() {
-        let spec: String = batch.iter().map(|c| c.spec.as_str()).collect();
-        let out = root.join(format!("batch{bi:03}"));
-        match run_batch(&spec, &out) {
-            Ok(embedded) => {
-                executed += batch.len();
-                embedded_alias_roots += embedded;
-            }
-            Err(batch_reason) => {
-                // Attribute: rerun each member individually.
-                let mut attributed = false;
-                for c in batch {
-                    let mout = root.join(format!("batch{bi:03}_{}", c.id));
-                    match run_batch(&c.spec, &mout) {
-                        Err(reason) => {
-                            attributed = true;
-                            findings.push(format!(
-                                "NEW layer-2 finding under {} profile — composition {} ({}):\n--- spec ---\n{}--- failure ---\n{reason}\n\
-                                 Promotion: minimize by hand; pin it (matrix row / tests/robustness/ / \
-                                 tests/corpus/); ledger it in cddl-matrix/roadmap.toml § findings; add a \
-                                 profile known-bad entry citing the pin.",
-                                p.name, c.id, c.desc, c.spec
-                            ));
-                        }
-                        Ok(embedded) => {
-                            executed += 1;
-                            embedded_alias_roots += embedded;
+    let mut per_plan: Vec<(&str, usize, usize, usize)> = Vec::new();
+    let mut total_oracle_runs = 0usize;
+    for plan in &plans {
+        // Plan-labelled scratch names and targets prevent an output/cache cell from one grouping
+        // being reused by the other merely because their batch index is the same.
+        let target_dir = root.join(format!("{}_target", plan.label));
+        let mut executed = 0usize;
+        let mut embedded_alias_roots = 0usize;
+        let mut oracle_runs = 0usize;
+        for (bi, batch) in plan.batches.iter().enumerate() {
+            let mut run_batch = |spec: &str, out: &std::path::Path| {
+                oracle_runs += 1;
+                gen_and_exec(spec, out, &target_dir, p, &mut cache_run, &mut cache_hit)
+            };
+            let spec: String = batch.iter().map(|c| c.spec.as_str()).collect();
+            let out = root.join(format!("{}_batch{bi:03}", plan.label));
+            match run_batch(&spec, &out) {
+                Ok(embedded) => {
+                    executed += batch.len();
+                    embedded_alias_roots += embedded;
+                }
+                Err(batch_reason) => {
+                    // Attribute: rerun each member individually under the same labelled plan.
+                    let mut attributed = false;
+                    for c in batch {
+                        let mout = root.join(format!("{}_batch{bi:03}_{}", plan.label, c.id));
+                        match run_batch(&c.spec, &mout) {
+                            Err(reason) => {
+                                attributed = true;
+                                // A composition can fail under both plans. Keep one complete,
+                                // plan-labelled finding rather than duplicating promotion work.
+                                findings.entry(c.id.clone()).or_insert_with(|| format!(
+                                    "NEW layer-2 finding under {} profile / {} plan — composition {} ({}):\n--- spec ---\n{}--- failure ---\n{reason}\n\
+                                     Promotion: minimize by hand; pin it (matrix row / tests/robustness/ / \
+                                     tests/corpus/); ledger it in cddl-matrix/roadmap.toml § findings; add a \
+                                     profile known-bad entry citing the pin.",
+                                    p.name, plan.label, c.id, c.desc, c.spec
+                                ));
+                            }
+                            Ok(embedded) => {
+                                executed += 1;
+                                embedded_alias_roots += embedded;
+                            }
                         }
                     }
-                }
-                if !attributed {
-                    findings.push(format!(
-                        "batch {bi} failed but every member passed individually — a CROSS-COMPOSITION \
-                         interaction (this is itself a finding; bisect the batch):\n{batch_reason}"
-                    ));
+                    if !attributed {
+                        findings.insert(
+                            format!("{}-batch-{bi:03}", plan.label),
+                            format!(
+                                "{} profile / {} plan batch {bi} failed but every member passed individually — \
+                                 a CROSS-COMPOSITION interaction (this is itself a finding; bisect the batch):\n{batch_reason}",
+                                p.name, plan.label
+                            ),
+                        );
+                    }
                 }
             }
         }
+        total_oracle_runs += oracle_runs;
+        per_plan.push((
+            plan.label,
+            plan.batches.len(),
+            executed,
+            embedded_alias_roots,
+        ));
     }
     let _ = std::fs::remove_dir_all(&root);
     if gate_cache::enabled() {
@@ -1884,15 +2100,25 @@ fn run_layer2_profile(p: &Layer2Profile) {
     }
 
     println!(
-        "recombination {} layer 2: classified ok={} graceful={} panic={}; {} batches / {} compositions executed ({} known-bad excluded, {} alias roots embedded) in {:?}",
+        "recombination {} layer 2: TWO deterministic plans; classified ok={} graceful={} panic={}; {} batch specs / {} oracle runs; {} unique compositions ({} known-bad excluded); {} in {:?}",
         p.name,
         ok_comps.len(),
         graceful,
         panics,
-        batches.len(),
-        executed,
+        per_plan
+            .iter()
+            .map(|(_, batches, _, _)| *batches)
+            .sum::<usize>(),
+        total_oracle_runs,
+        executable.len(),
         ok_comps.len() - executable.len(),
-        embedded_alias_roots,
+        per_plan
+            .iter()
+            .map(|(label, batches, executed, embedded)| {
+                format!("{label}: {batches} batches / {executed} executed / {embedded} alias roots")
+            })
+            .collect::<Vec<_>>()
+            .join("; "),
         t0.elapsed()
     );
     assert!(
@@ -1900,24 +2126,27 @@ fn run_layer2_profile(p: &Layer2Profile) {
         "recombination {} layer 2 surfaced {} finding(s):\n\n{}",
         p.name,
         findings.len(),
-        findings.join("\n\n")
+        findings.values().cloned().collect::<Vec<_>>().join("\n\n")
     );
-    assert!(
-        executed >= p.executed_floor,
-        "only {executed} compositions executed in {} layer 2 (floor {}) — batching rotted",
-        p.name,
-        p.executed_floor
-    );
-    assert!(
-        embedded_alias_roots >= p.embedded_alias_roots_floor,
-        "only {embedded_alias_roots} alias roots embedded in {} layer 2 (floor {}) — alias-root discovery rotted",
-        p.name,
-        p.embedded_alias_roots_floor
-    );
+    for (label, _, executed, embedded_alias_roots) in &per_plan {
+        assert!(
+            *executed >= p.executed_floor,
+            "only {executed} compositions executed in {} layer 2 {label} plan (floor {}) — batching rotted",
+            p.name,
+            p.executed_floor
+        );
+        assert!(
+            *embedded_alias_roots >= p.embedded_alias_roots_floor,
+            "only {embedded_alias_roots} alias roots embedded in {} layer 2 {label} plan (floor {}) — alias-root discovery rotted",
+            p.name,
+            p.embedded_alias_roots_floor
+        );
+    }
 }
 
 /// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): batch layer 1's ok compositions into
-/// ~`LAYER2_RULES_PER_BATCH`-rule specs, generate each with `--emit-tests=true --wasm=false`
+/// two deterministic sets of ~`LAYER2_RULES_PER_BATCH`-rule specs, generate each with
+/// `--emit-tests=true --wasm=false`
 /// (default profile), and `cargo test` the generated rust crate (shared `CARGO_TARGET_DIR`, the
 /// `feature_corpus_compiles` pattern). A batch failure is re-attributed by rerunning its members
 /// individually; a failing member not matching `LAYER2_KNOWN_BAD` is a NEW finding. This is the
@@ -1974,9 +2203,10 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
 const LAYER2_PRESERVE_KNOWN_BAD: &[(&str, &str)] = &[];
 
 /// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the PRESERVE escalation of layer 2.
-/// Classifies every composition under `--preserve-encodings=true`, batches the preserve-ok ones,
-/// generates `--preserve-encodings=true --emit-tests=true --wasm=false`, and `cargo test`s the rust
-/// crate — the leg that would have caught the preserve-only E0308 on tag-wrapped fixed-value members
+/// Classifies every composition under `--preserve-encodings=true`, executes each preserve-ok
+/// composition in both deterministic batch plans, generates
+/// `--preserve-encodings=true --emit-tests=true --wasm=false`, and `cargo test`s the rust crate —
+/// the leg that would have caught the preserve-only E0308 on tag-wrapped fixed-value members
 /// (`[v: #6.1(null)]`) that passed every default-profile gate and was found only by review.
 ///
 /// Preserve panics for classes that are ok/graceful under default go in
@@ -2036,8 +2266,9 @@ const LAYER2_JSON_KNOWN_BAD: &[(&str, &str)] = &[];
 
 /// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the JSON escalation of layer 2.
 /// Classifies every composition under the `json` profile from `crate::tests::ALL_PROFILES`
-/// (`--json-serde-derives=true --json-schema-export=true`), batches the json-ok ones, generates
-/// `--json-serde-derives=true --json-schema-export=true --emit-tests=true --wasm=false`, and
+/// (`--json-serde-derives=true --json-schema-export=true`), executes each json-ok composition in
+/// both deterministic batch plans, generates `--json-serde-derives=true
+/// --json-schema-export=true --emit-tests=true --wasm=false`, and
 /// `cargo test`s the generated rust crate. This catches rust-crate failures that only appear once
 /// serde derives / schemars schema derives are emitted, while also executing the emitted CBOR tests.
 ///
@@ -2102,17 +2333,16 @@ const WASM_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[];
 // wasm structural-wrapper mint loop now also walks each wasm-emitted plain-alias base type, so a Map
 // reachable ONLY through an alias (never a rust struct) gets its wrapper minted. Pinned by the
 // `cbor_bignint_table` corpus fixture (wasm crate compiles via `feature_corpus_compiles`). The freed
-// compositions batch back into the wasm gate; a new wasm-only compile class would be caught there as a
-// NEW finding. (The undefined-`Int` `.cbor`-payload-table class is unrelated and profile-independent —
-// it lives in the shared LAYER2_KNOWN_BAD with the batch-masking note.)
+// compositions return to both wasm batch plans; a new wasm-only compile class would be caught there
+// as a NEW finding.
 const LAYER2_WASM_KNOWN_BAD: &[(&str, &str)] = &[];
 
 /// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the WASM escalation of layer 2.
-/// Classifies every composition under `--wasm=true`, batches the wasm-ok ones, generates
-/// `--wasm=true` without emitted tests, and `cargo check`s the generated `wasm/` crate. The wasm
-/// crate depends on the generated rust crate by path, so rust-side compile failures surface through
-/// the single check. This is a fuzz-recombination cross-check of the wasm emission path; the
-/// wasm-ABI matrix remains the systematic per-shape wasm surface owner.
+/// Classifies every composition under `--wasm=true`, executes each wasm-ok composition in both
+/// deterministic batch plans, generates `--wasm=true` without emitted tests, and `cargo check`s the
+/// generated `wasm/` crate. The wasm crate depends on the generated rust crate by path, so rust-side
+/// compile failures surface through the single check. This is a fuzz-recombination cross-check of the
+/// wasm emission path; the wasm-ABI matrix remains the systematic per-shape wasm surface owner.
 ///
 /// Run: `cargo test --bin cddl-codegen recombination_wasm_crates_check -- --exact --ignored --nocapture`.
 #[test]

@@ -5227,21 +5227,21 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   prints what it measured. The datum is trustworthy because the sweep asserts its own enumeration is
   deterministic — the same property that lets the floors be read off the executed artifact.
 - `recombination_crates_execute` (`#[ignore]`, check.ts full tier — the `recombination_crates_execute`
-  gate): batches the sweep's `ok` compositions (~40 rules/batch; per-composition `rc<num>_` rule
-  prefixes make names collision-free by construction), generates each batch with
+  gate): executes the sweep's `ok` compositions under TWO deterministic, decorrelated greedy plans
+  (~40 rules/batch; per-composition `rc<num>_` rule prefixes make names collision-free by
+  construction). The natural plan preserves composition order; the transposed plan walks each item
+  position across natural batches, then greedily re-batches that fixed order. Thus most natural
+  batchmates are separated without random/hash ordering, breaking most opportunities for a missing
+  CRATE-GLOBAL definition to be supplied by a batchmate. Every plan has separate labelled scratch/cache
+  cells and its own executed-composition and alias-root floors. Each batch generates with
   `--emit-tests=true --wasm=false` (default profile) via the `tool_cmd`/shared-`CARGO_TARGET_DIR`
-  pattern of `feature_corpus_compiles`, and `cargo test`s the generated rust crate — executing the
+  pattern of `feature_corpus_compiles`, then `cargo test`s the generated rust crate — executing the
   emitted round-trip/reject tests, not just compiling. A failing batch is re-attributed by rerunning
   members individually; a failing member outside the cited `LAYER2_KNOWN_BAD` ledger (desc-substring
-  keyed, vacuity-guarded like the layer-1 ledger) is a NEW finding with the same promotion flow.
-  BATCH-MASKING CAVEAT (applies to every layer-2 leg): a green batch is not a per-composition
-  guarantee for failure classes whose symptom is a missing CRATE-GLOBAL definition — a batch-mate
-  can define the global (the note on `LAYER2_RULES_PER_BATCH`; the proven instance was the
-  undefined-`Int` `.cbor`-payload-table cell, since fixed — the reference walk covers emitted type
-  aliases, pinned by tests/corpus/int_alias.cddl — but the caveat stands for the next
-  crate-global-definition class). Consequence: a known-bad class proven by a STANDALONE repro is
-  ledgered even when current batch boundaries compile it green; the mechanical detector (a second
-  deterministic batch permutation / singleton mode) is a `tests/testing-roadmap.toml` item.
+  keyed, vacuity-guarded like the layer-1 ledger) is a NEW finding with the same promotion flow. The
+  fixed undefined-`Int` `.cbor`-payload-table predecessor remains pinned by
+  `tests/corpus/int_alias.cddl`. Two plans are not the exhaustive singleton oracle: a standalone-
+  proven class still belongs in the known-bad ledger when its provider remains a batchmate in both.
   The shared runner used by this and every non-default layer-2 profile first generates each batch
   as a discovery pass and reads the authoritative `rust/src/generated/mod.rs`. Each transparent
   public root alias spelled exactly `Rc<digits>` gets one collision-free holder rule (`rcN_embed =
@@ -5251,7 +5251,7 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   profile, while the composition/execution counts remain about original compositions: holders are
   oracle scaffolding, not new corpus cases.
 - `recombination_preserve_crates_execute` (`#[ignore]`, check.ts full tier): the PRESERVE escalation
-  of layer 2, driven by the SAME shared runner (`run_layer2_profile`) parameterized with a different
+  of layer 2, driven by the SAME shared dual-plan runner (`run_layer2_profile`) parameterized with a different
   `Layer2Profile`. Its profile flags are sourced from `src/tests/mod.rs`'s `ALL_PROFILES` by name
   (asserted found, never re-hard-coded), so `classify_all` runs the composition set under
   `--preserve-encodings=true`; the batches then generate `--preserve-encodings=true
@@ -5273,7 +5273,7 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   pinned by the `tagged_constrained_int` / `composite_map_key` corpus fixtures — so a preserve-only
   compile failure surfaces as a NEW finding. The authoritative classification totals live only in
   `tests/recombination-counts.json` and are held exactly by `recombination_generation_sweep`; every
-  `ok` composition is executed, and the shared `LAYER2_KNOWN_BAD` contributes 0 exclusions. NAMING
+  `ok` composition is executed in both plans, and the shared `LAYER2_KNOWN_BAD` contributes 0 exclusions. NAMING
   GOTCHA: the name deliberately does NOT contain the
   `recombination_crates_execute` needle, and both check.ts gate cmds pass `--exact` on the full test
   path so cargo's substring selection can't cross-select.
@@ -5287,7 +5287,7 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   json-only ledgers (`JSON_ONLY_PANIC_CLASSES`, `LAYER2_JSON_KNOWN_BAD`) are empty at HEAD — json
   derives do not rewire the panic surface, so classification matches the default profile exactly.
   The authoritative totals live in `tests/recombination-counts.json`; every `ok` composition is
-  executed, with 0 shared known-bad exclusions.
+  executed in both plans, with 0 shared known-bad exclusions.
 - `recombination_wasm_crates_check` (`#[ignore]`, check.ts full tier): the WASM escalation of
   layer 2, using explicit `--wasm=true` for both in-process classification and out-of-process batch
   generation. It does not pass `--emit-tests`: the oracle is `cargo check` on the generated `wasm/`
@@ -5296,7 +5296,7 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   `LAYER2_WASM_KNOWN_BAD`) are empty at HEAD — tagged tables and alias-only-reachable table wrappers
   generate and check (pinned by the `tagged_table` / `cbor_bignint_table` corpus fixtures) — so a
   wasm-only panic or compile class surfaces as a NEW finding. The authoritative totals live in
-  `tests/recombination-counts.json`; every `ok` composition is checked, with 0 known-bad exclusions.
+  `tests/recombination-counts.json`; every `ok` composition is checked in both plans, with 0 known-bad exclusions.
   This is a fuzz-recombination cross-check for wasm generation paths; the wasm-ABI matrix remains
   the systematic per-shape wasm surface owner.
 

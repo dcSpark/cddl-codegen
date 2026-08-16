@@ -75,7 +75,6 @@ body_md = '''## Next work items, in priority order
 entries = [
   "testing.grammar-fuzzer-escalations",
   "testing.grammar-fuzzer.arbitrary-supported-ast",
-  "testing.grammar-fuzzer.batch-masking-detector",
   "testing.grammar-fuzzer.real-world-corpus-differential",
   "testing.duplicates-policy-residuals",
   "part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516",
@@ -2965,48 +2964,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.grammar-fuzzer.batch-masking-detector"
-title = "Batch-masking detector for the layer-2 sweeps."
-
-[record.payload]
-kind = "work"
-body_md = '''   - **Batch-masking detector for the layer-2 sweeps.** The ~40-rule batching means a green batch
-     is not a per-composition guarantee for failure classes whose symptom is a missing CRATE-GLOBAL
-     definition: `Int` is a crate-global extern emitted iff any rule registers a reference, so a
-     batch-mate that registers it compiles the whole batch green. Proven instance:
-     `bytes .cbor { * tstr => int }` fails standalone under default yet rode green default batches
-     until the wasm leg's different batch boundaries isolated it — caught by review, not by any
-     gate (the filing rule + caveat now live on `LAYER2_RULES_PER_BATCH`). The mechanical layer,
-     worth building on the SECOND masked instance: run each layer-2 sweep under a second
-     DETERMINISTIC batch permutation (a different fixed grouping — determinism preserved, most
-     pair-masks broken, wall-clock ×2 on full-tier gates), or an occasional singleton mode
-     (batch size 1 — the exhaustive oracle, but hours of wall-clock). Both costs are FIRST-run
-     prices now: layer-2 batches are gate-cached per generated tree, so a permutation's or
-     singleton's re-runs skip every batch whose composition didn't change — the detector got
-     materially cheaper to adopt. Either also owns the
-     misfiled-ledger-contradiction class (an entry claiming profile-specificity while masked in its
-     home profile — how this instance actually surfaced). (The observed-baseline comments beside
-     these gates' floors have their own rot class — see the standing residual below.)
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-control_ids = ["testing.guard.grammar-fuzzer-batch-masking-detector"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.grammar-fuzzer.batch-masking-detector"
-dimension = "Batch-masking detector for the layer-2 sweeps."
-observable = "- **Batch-masking detector for the layer-2 sweeps.** The ~40-rule batching means a green batch is not a per-composition guarantee for failure classes whose symptom is a missing CRATE-GLOBAL definition: `Int` is a crate-global extern emitted iff any rule registers a reference, so a batch-mate that registers it compiles the whole batch green. Proven instance: `bytes .cbor { * tstr => int }` fails standalone under default yet rode green default batches until the wasm leg's different batch boundaries isolated it — caught by review, not by any gate (the filing rule + caveat now live on `LAYER2_RULES_PER_BATCH`). The mechanical layer, worth building on the SECOND masked instance: run each layer-2 sweep under a second DETERMINISTIC batch permutation (a different fixed grouping — determinism preserved, most pair-masks broken, wall-clock ×2 on full-tier gates), or an occasional singleton mode (batch size 1 — the exhaustive oracle, but hours of wall-clock). Both costs are FIRST-run prices now: layer-2 batches are gate-cached per generated tree, so a permutation's or singleton's re-runs skip every batch whose composition didn't change — the detector got materially cheaper to adopt. Either also owns the misfiled-ledger-contradiction class (an entry claiming profile-specificity while masked in its home profile — how this instance actually surfaced). (The observed-baseline comments beside these gates' floors have their own rot class — see the standing residual below.)"
-action_on_fire_md = '''Set testing.grammar-fuzzer.batch-masking-detector to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.grammar-fuzzer.batch-masking-detector's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
 id = "testing.grammar-fuzzer.real-world-corpus-differential"
 title = "Real-world corpus differential"
 
@@ -3491,20 +3448,6 @@ control_kind = "review_rule"
 control_state = "live"
 reference_ids = ["testing-roadmap-next-work-n16"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.generic-raw-bytes-base-refused-generic-extern-base's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.grammar-fuzzer-batch-masking-detector"
-title = "Current control for testing.grammar-fuzzer.batch-masking-detector."
-
-[record.payload]
-kind = "control"
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-next-work-n18"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.grammar-fuzzer.batch-masking-detector's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -7875,17 +7818,7 @@ target = "testing.grammar-fuzzer.arbitrary-supported-ast"
 [[relation]]
 source = "testing.grammar-fuzzer-escalations"
 kind = "parent_of"
-target = "testing.grammar-fuzzer.batch-masking-detector"
-
-[[relation]]
-source = "testing.grammar-fuzzer-escalations"
-kind = "parent_of"
 target = "testing.grammar-fuzzer.real-world-corpus-differential"
-
-[[relation]]
-source = "testing.grammar-fuzzer.batch-masking-detector"
-kind = "parent_of"
-target = "testing.guard.grammar-fuzzer-batch-masking-detector"
 
 [[relation]]
 source = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
@@ -8599,13 +8532,6 @@ target_id = "testing.guard.generic-raw-bytes-base-refused-generic-extern-base"
 [[reference]]
 id = "testing-roadmap-next-work-n17"
 source = "testing.grammar-fuzzer-escalations"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n18"
-source = "testing.grammar-fuzzer.batch-masking-detector"
 kind = "file_heading"
 path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
