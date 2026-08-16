@@ -357,12 +357,15 @@ runs, cached vs `GATE_CACHE=0`, asserted byte-identical — see the gate-cache s
 > `bun run check.ts fast` before committing; this exact miss has produced a red-on-HEAD CI drift
 > gate twice.
 
-The runner's **first gate is three self-completeness meta-checks**: every `#[ignore]` test must be
-registered as a manual gate or a known-failing stub, every `cddl-matrix/*.ts` (minus `lib.ts`) must
-be wired to a tier, and `build.yml` must invoke `bun run check.ts fast` with no other run step (so
-CI can neither drift away from the fast tier nor grow work that bypasses the registry). This is the
-systematic catch for the disease the runner cures — a gate that exists but is in nobody's habit — so
-a new manual gate or IOU stub is a conscious registry edit, not a silent omission.
+The runner's **first gate runs six self-completeness meta-checks**: every `#[ignore]` test must be
+registered as a manual gate or a known-failing stub; every `cddl-matrix/*.ts` (minus `lib.ts`) must
+be wired to a tier; `build.yml` must invoke `bun run check.ts fast` with no other run step;
+concurrency declarations must be command-shaped and contiguous; every `requires:` edge must name an
+earlier runnable gate available in the same tier; and every registry gate must appear as an exact
+inline-code id in this README, with no authored cardinal count beside a named concurrency group.
+Together these are the systematic catch for the disease the runner cures — a gate that exists but
+is in nobody's habit — so a new manual gate or IOU stub is a conscious registry edit, not a silent
+omission.
 
 ### Run-start scratch sweep and retained-scratch incidents
 
