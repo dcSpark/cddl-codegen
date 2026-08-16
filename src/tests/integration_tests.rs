@@ -11600,12 +11600,15 @@ fn open_array_e2e() {
     // empty-tail ≡ closed bytes, typed-tail typing enforcement, an optional member + a type-distinct
     // tail, and the stream-position (sibling-after-open-array) regression class. Plain flavor only
     // (`--wasm=false`, non-preserve); preserve fidelity has the companion fixture below. See
-    // tests/open-array-e2e/tests.rs.
+    // tests/open-array-e2e/tests.rs. The declared-major cases add hand codecs that really write
+    // bytes/text rather than the replaced uint wire, so this harness wires their generated-scope
+    // definitions like every other user-code fixture instead of treating the fixture as uncompiled.
+    let custom_ser_path = std::path::PathBuf::from("tests").join("custom_serialization_open_array");
     run_test(
         "open-array-e2e",
         &["--wasm=false"],
         None,
-        &[],
+        &[custom_ser_path],
         &[],
         false,
         &[],
@@ -13048,6 +13051,17 @@ fn emit_tests_open_array_execute() {
         return;
     }
     let input = std::path::PathBuf::from("tests/open-array-e2e/input.cddl");
+    let custom_codecs = std::fs::read_to_string("tests/custom_serialization_open_array")
+        .expect("open-array custom codec helper");
+    let append_custom_codecs = |out: &std::path::Path| {
+        let mut generated_mod = std::fs::OpenOptions::new()
+            .append(true)
+            .open(out.join("rust/src/generated/mod.rs"))
+            .expect("generated open-array mod.rs");
+        generated_mod
+            .write_all(format!("\n\n{custom_codecs}").as_bytes())
+            .expect("append open-array custom codecs");
+    };
     let root =
         std::env::temp_dir().join(format!("cddl_codegen_open_array_{:016x}", checkout_hash()));
     let _ = std::fs::remove_dir_all(&root);
@@ -13066,6 +13080,7 @@ fn emit_tests_open_array_execute() {
         generate.status.success(),
         "generation failed (open-array rest tails must emit tests for all three flavors)"
     );
+    append_custom_codecs(&out);
 
     let src =
         std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
@@ -13142,6 +13157,7 @@ fn emit_tests_open_array_execute() {
         wasm_generate.status.success(),
         "wasm emit-tests generation failed"
     );
+    append_custom_codecs(&wasm_out);
     let wasm_src = std::fs::read_to_string(wasm_out.join("wasm/src/generated/mod.rs"))
         .expect("generated wasm mod.rs");
     for ty in [

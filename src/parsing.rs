@@ -7282,7 +7282,7 @@ fn parse_record_from_group_choice(
                     && rule_metadata.custom_deserialize.is_some()
                 {
                     types.record_rejection(format!(
-                        "@custom_wire_major on field `{field_name}` of rule `{source_name}`: nothing consumes the declared major. It is read only when a transparent alias rule keys an OPEN TABLE's typed row. Put the pair and declaration on a named key alias (`<key> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> @custom_wire_major <major>`), or remove the declaration."
+                        "@custom_wire_major on field `{field_name}` of rule `{source_name}`: nothing consumes the declared major. Only a transparent alias can carry it to an OPEN TABLE typed-row dispatch or a variable middle ARRAY boundary; a field-local codec has no such alias channel. Put the pair and declaration on a named alias (`<wire> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> @custom_wire_major <major>`) and use it at one of those boundaries, or remove the declaration."
                     ));
                 }
             }

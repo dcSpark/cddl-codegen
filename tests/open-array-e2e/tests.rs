@@ -286,6 +286,72 @@ mod open_array {
         );
     }
 
+    // --- declared custom-head middle segments ---
+
+    #[test]
+    fn declared_repeated_major_greedily_reads_custom_bytes_and_leaves_text_suffix() {
+        // `middle_elem` replaces uint but its codec writes a one-byte bytes item. The declaration
+        // makes the loop peek bytes (not uint), including through `middle_elem_alias`.
+        for (wire, expected_rest) in [
+            (bytes("82 07 6178"), vec![]),
+            (bytes("84 07 41aa 41bb 6178"), vec![0xaa, 0xbb]),
+            (bytes("9f 07 41aa 41bb 6178 ff"), vec![0xaa, 0xbb]),
+        ] {
+            let decoded = MiddleDeclared::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(decoded.index_0, 7);
+            assert_eq!(decoded.rest, expected_rest);
+            assert_eq!(decoded.index_2, "x");
+            // The generated writer's bytes must take the same declared-major read path.
+            let reparsed = MiddleDeclared::from_cbor_bytes(&decoded.to_cbor_bytes()).unwrap();
+            assert_eq!(reparsed.rest, decoded.rest);
+            assert_eq!(reparsed.index_2, "x");
+        }
+
+        let mut native = MiddleDeclared::new(7, "x".to_owned());
+        native.rest.extend([0xaa, 0xbb]);
+        assert_eq!(native.to_cbor_bytes(), bytes("84 07 41aa 41bb 6178"));
+
+        // A uint is neither a declared bytes repeat nor the text suffix; missing/wrong suffixes
+        // must remain visible to the ordinary suffix read instead of being guessed or backtracked.
+        assert_decode_reject_reason::<MiddleDeclared>(
+            &bytes("83 07 08 6178"),
+            "expected `Text' byte received `UnsignedInteger'",
+        );
+        assert_decode_reject_reason::<MiddleDeclared>(
+            &bytes("81 07"),
+            "Definite length mismatch",
+        );
+        assert_decode_reject_reason::<MiddleDeclared>(
+            &bytes("83 07 41aa 08"),
+            "expected `Text' byte received `UnsignedInteger'",
+        );
+    }
+
+    #[test]
+    fn declared_suffix_major_proves_boundary_but_its_codec_reads_the_suffix() {
+        // The repeated side is built-in bytes. `middle_suffix` replaces uint but writes text, so
+        // only the declaration proves disjointness; after the loop its normal custom reader owns
+        // the `s99` text item.
+        for wire in [bytes("82 07 63733939"), bytes("83 07 41aa 63733939")] {
+            let decoded = MiddleDeclaredSuffix::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(decoded.index_0, 7);
+            assert_eq!(decoded.middle_suffix, 99);
+            assert_eq!(decoded.to_cbor_bytes(), wire);
+        }
+    }
+
+    #[test]
+    fn declared_middle_keeps_the_outer_sibling_at_its_stream_position() {
+        // `outer_declared_middle = [middle_declared, uint]`: the inner greedy loop stops at its
+        // declared-major-disjoint text suffix AND the owner boundary, leaving the outer uint.
+        let wire = bytes("82 83 07 41aa 6178 09");
+        let outer = OuterDeclaredMiddle::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(outer.middle_declared.rest, vec![0xaa]);
+        assert_eq!(outer.middle_declared.index_2, "x");
+        assert_eq!(outer.index_1, 9);
+        assert_eq!(outer.to_cbor_bytes(), wire);
+    }
+
     // --- exact same-major middle segment (`exact_middle = [uint, 2*2 uint, uint]`) ---
 
     #[test]

@@ -1,0 +1,45 @@
+// Hand codecs for the declared-wire-major open-array vectors. Both replace `uint`, deliberately
+// writing a different outer major: the repeated codec writes a one-byte CBOR bytes item and the
+// suffix codec writes text. Their names are wired through `open_array_e2e`'s integration harness
+// into `generated/mod.rs`, the scope generated serialization resolves bare codec names from.
+
+pub fn write_middle_elem<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    value: &u64,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_bytes(&[*value as u8])
+}
+
+pub fn read_middle_elem(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<u64, DeserializeError> {
+    let bytes = raw.bytes()?;
+    match bytes.as_slice() {
+        [value] => Ok(u64::from(*value)),
+        _ => Err(DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+            "middle element must be one byte".to_owned(),
+        ))
+        .into()),
+    }
+}
+
+pub fn write_middle_suffix<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
+    value: &u64,
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+    serializer.write_text(&format!("s{value}"))
+}
+
+pub fn read_middle_suffix(
+    raw: &mut cbor_event::de::Deserializer,
+) -> Result<u64, DeserializeError> {
+    raw.text()?
+        .strip_prefix('s')
+        .ok_or_else(|| {
+            DeserializeFailure::CBOR(cbor_event::Error::CustomError(
+                "middle suffix must start with s".to_owned(),
+            ))
+        })?
+        .parse::<u64>()
+        .map_err(|err| DeserializeFailure::InvalidStructure(Box::new(err)).into())
+}

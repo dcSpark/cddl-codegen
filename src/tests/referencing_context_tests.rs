@@ -452,17 +452,16 @@ const BASES: &[BaseShape] = &[
         )],
     },
     // ---- @custom_wire_major ------------------------------------------------------------------
-    // The declared CBOR major of a custom codec's wire. Its ONE consumer is an open table's typed-row
-    // DISPATCH, which needs the major before any deserializer runs — and no context in this axis is
-    // such a dispatch (the `map-key` row is a single-row table, which needs no dispatch at all). So
-    // in every context the declaration is unconsumed, and the tool refuses LOUDLY rather than
-    // dropping it — which is this sweep's accepted verdict, not a finding.
+    // The declared CBOR major of a custom codec's wire. Its consumers are an open table's typed-row
+    // DISPATCH and a variable middle array boundary, both of which need the major before the custom
+    // deserializer runs. No generic reference context in this axis is either one (the `map-key` row
+    // is a single-row table, which needs no dispatch), so every row still rejects loudly rather than
+    // dropping the declaration — the focused controls below cover both real consumers.
     //
-    // The honored counterpart is not left to the reader: `custom_wire_major_is_honored_through_the
-    // _typed_row_reference` below reaches the same base through a two-row open table and asserts the
-    // declared major drives the dispatch arm, so this row's per-context refusals are attributable to
-    // the contexts having no consumer rather than to the declaration being unreachable through a
-    // reference.
+    // The honored counterparts are not left to the reader: `custom_wire_major_is_honored_through_the
+    // _typed_row_and_middle_references` below reaches the same base through both consumers and
+    // asserts the declared major drives their peek, so these per-context refusals are attributable
+    // to the contexts having no consumer rather than to a declaration unreachable through a reference.
     BaseShape {
         directive: "@custom_wire_major",
         covers: &["@custom_wire_major"],
@@ -823,15 +822,16 @@ fn every_base_row_is_live() {
     }
 }
 
-/// The honored counterpart to the `@custom_wire_major` row's per-context refusals: the SAME base,
-/// reached through the one reference that consumes a declared major — an open table whose typed-row
-/// dispatch must know the major before any deserializer runs.
+/// The honored counterparts to the `@custom_wire_major` row's per-context refusals: the SAME base,
+/// reached through each reference that consumes a declared major — an open table typed-row dispatch
+/// and a variable middle array occurrence boundary, both of which must know the major before any
+/// custom deserializer runs.
 ///
 /// Without this, that row's refusals would be indistinguishable from "the declaration cannot be
 /// reached through a reference at all". With it, they are attributable to the contexts having no
 /// consumer: one reference over, the same declaration crosses and drives the dispatch arm.
 #[test]
-fn custom_wire_major_is_honored_through_the_typed_row_reference() {
+fn custom_wire_major_is_honored_through_the_typed_row_and_middle_references() {
     const SPEC: &str = "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n\
                         base = rb ; @custom_serialize ser_base @custom_deserialize deser_base @custom_wire_major text\n\
                         ctx = { * base => bool, * uint => bool }\n\
@@ -852,5 +852,27 @@ fn custom_wire_major_is_honored_through_the_typed_row_reference() {
     assert!(
         !src.contains("cbor_event::Type::Bytes =>"),
         "the REPLACED type's own major must not be what the dispatch keys on:\n{src}"
+    );
+
+    const MIDDLE_SPEC: &str = "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n\
+                              base = rb ; @custom_serialize ser_base @custom_deserialize deser_base @custom_wire_major text\n\
+                              re = base\n\
+                              ctx = [uint, * re, bytes]\n";
+    let src = generate(MIDDLE_SPEC, &[], false, "refctx_wire_major_middle_control")
+        .expect("generation of the declared-major middle-boundary spec must succeed")
+        .into_values()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        src.contains("raw.cbor_type()? == cbor_event::Type::Text"),
+        "the declared major must drive the greedy repeated-element peek through a re-alias:\n{src}"
+    );
+    assert!(
+        src.contains("deser_base(raw)"),
+        "the matching repeated element must route to the referenced custom reader:\n{src}"
+    );
+    assert!(
+        !src.contains("raw.cbor_type()? == cbor_event::Type::Bytes"),
+        "the replaced marker's bytes major must not be the middle-loop discriminator:\n{src}"
     );
 }

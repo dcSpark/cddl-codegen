@@ -2087,8 +2087,9 @@ survive:
 
 An open array (the array analog of the open struct-map rest row) has one occurrence-bearing segment:
 it may be final, or leading/middle only before an immediate mandatory, single-item fixed suffix. A
-variable window needs the existing field-codec-free, generator-proven, CBOR-major-disjoint boundary;
-an exact window stops by count and may share a major or have custom-/extern-owned boundary heads. This
+variable window needs the existing field-codec-free, effective, CBOR-major-disjoint boundary: its
+heads are generator-proven or a transparent custom alias declares one with `@custom_wire_major`; an
+exact window stops by count and may share a major or have custom-/extern-owned boundary heads. This
 does not prove an optional-prefix dispatch boundary: its optional/reachable-follower heads must both
 be generator-proven and major-disjoint, so a custom codec or opaque extern on either side is
 serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction. Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
@@ -2104,16 +2105,17 @@ need a future design rather than a guessed decoder. User docs: `docs/docs/output
   loose/min-one success plus exact same-major/zero success without a suffix wire-head discriminator;
   the variable-zero-minimum/non-empty/exact-zero optional-prefix distinctions; two-sided
   unproven-head optional-dispatch refusals and mandatory-framing controls; and
-  overlap, optional-suffix, multi-item/plain-group-suffix, field-local-codec, recursively
-  custom-codec-owned, and opaque-extern wire-head refusals. They also retain the
+  declared repeated/suffix success, re-alias inheritance, emitted-major replacement, and
+  declared-overlap refusal alongside overlap, optional-suffix, multi-item/plain-group-suffix,
+  field-local-codec, undeclared custom-codec-owned, and opaque-extern wire-head refusals. They also retain the
   multiple/group/group-choice/fixed-value boundaries and the entry-vs-rule directive
   slot/marker-slot cases.
 - **Value-level e2e** — `tests/open-array-e2e` (`integration_tests::open_array_e2e`, compiled,
   non-preserve) drives leading and middle loose, min-one, finite/max-only, exact-zero, and exact
-  same-major segments
-  through definite and indefinite bytes: zero/in-window/below/above windows, max-bound stop before
-  the suffix, wrong repeated type, suffix preservation, trailing-extra rejection, and nested stream
-  position. It also keeps the shared constructor and carrier door tests.
+  same-major segments and declared custom repeated/suffix heads through definite and indefinite
+  bytes: zero/in-window/below/above windows, max-bound stop before the suffix, wrong repeated type,
+  absent/wrong suffix, suffix preservation, trailing-extra rejection, and nested stream position.
+  It also keeps the shared constructor and carrier door tests.
 - **Preserve/canonical e2e** — `tests/open-array-preserve-e2e`
   (`integration_tests::open_array_preserve_e2e`, compiled) proves a non-canonical middle repeated
   element and exact same-major segment re-emit byte-exactly and normalize canonically without moving their suffix, beside the
@@ -2123,8 +2125,9 @@ need a future design rather than a guessed decoder. User docs: `docs/docs/output
   required, and natural-fallible `any` tail surfaces.
 - **Snapshots / cross-face** — `open_array_default` / `open_array_json` / `open_array_wasm` profile
   rows retain final-tail byte/API compatibility; `open_array_preserve` snapshots the middle capture
-  input. The shared component build fixture and the extern-interface self-check assertion keep the
-  position-independent wrapper/projection seams exercised.
+  input. The shared component build fixture wires the declared-major helper fragment and, together
+  with the extern-interface self-check assertion, keeps the position-independent
+  wrapper/projection seams exercised.
 - **Wire KATs and emit-tests** — the final-tail `open_list` / `ignore_list` rules remain in
   `tests/golden_hex` and `tests/golden_hex_preserve`; `emit_tests_open_array_execute` keeps loose,
   restricted, and ignored capture construction ordinary. Middle `@ignore` remains loose-only and
@@ -2203,7 +2206,9 @@ because it compiles the guest resource glue rather than the general fixture suit
   create the declared preserve signature/sidecar (zero-demand bases make that observable) or
   reject; `@custom_wire_major` must drive open-table dispatch or reject. The matrix caught a
   field-level major declaration that generated successfully but had no
-  consumer; it is now an explicit graceful rejection.
+  consumer; it is now an explicit graceful rejection. The middle-array controls additionally pin
+  the declaration's second real consumer and that final/exact placements, optional lookahead, and
+  mandatory generated framing remain inert.
 - **Declared wire framing (`@custom_encodings`) e2e** — `tests/custom-encodings-e2e`
   (`integration_tests::custom_encodings_e2e`, compiled, rust-only, preserve + canonical; hand-fn
   fragment `tests/custom_serialization_encodings`): the declaration that lets a codec state its OWN

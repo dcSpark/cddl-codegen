@@ -359,8 +359,9 @@ pub struct RustStructConfig {
     /// `@custom_wire_major` written on the RULE. Carried for exactly one reader:
     /// `IntermediateTypes::finalize`'s refusal of a declaration on a rule that mints a STRUCT. The
     /// declared major is read only through the ALIAS channel (`AliasInfo::rule_metadata`), when the
-    /// rule keys an OPEN TABLE's typed row — a struct-minting rule has no such channel, so honoring
-    /// it is impossible and dropping it silently is the class this DSL rejects.
+    /// rule keys an OPEN TABLE's typed row or proves a variable middle ARRAY boundary — a
+    /// struct-minting rule has no such channel, so honoring it is impossible and dropping it
+    /// silently is the class this DSL rejects.
     pub custom_wire_major: Option<crate::comment_ast::WireMajor>,
     pub doc: Option<String>,
     pub newtype_getter: Option<Option<String>>,

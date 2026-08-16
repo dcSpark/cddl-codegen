@@ -2358,8 +2358,15 @@ const BUILD_SMOKE_FIXTURES: &[BuildSmokeRow] = &[
     ("tests/component-core/input.cddl", &[], None, None),
     // A final `+ bytes` rest tail: unlike a loose rest tail this record constructor takes its first
     // element and the wasm/component getter projects `NonEmptyBytesList`. This compilation reaches
-    // the guest conversion that WIT validity alone cannot type-check.
-    ("tests/open-array-e2e/input.cddl", &[], None, None),
+    // the guest conversion that WIT validity alone cannot type-check. The same fixture now carries
+    // declared-major middle boundaries whose real bytes/text codecs must live in generated scope,
+    // just as they do in its rust-only integration harness.
+    (
+        "tests/open-array-e2e/input.cddl",
+        &[],
+        None,
+        Some("tests/custom_serialization_open_array"),
+    ),
     // CHOICES: the largest new glue surface phase 2 adds, and the one no WIT gate can judge. A
     // `kind` / `as-<variant>` arm that does not match the rust enum's ARM SHAPE, or a `new-<variant>`
     // that wraps a `Result` the rust ctor already returns, is a type error in generated code that

@@ -24,6 +24,15 @@ middle_max = [uint, *2 bytes, tstr]
 middle_zero = [uint, *0 bytes, tstr]
 exact_middle = [uint, 2*2 uint, uint] ; count-delimited same-major exact segment
 exact_zero_middle = [uint, 0*0 uint, uint] ; exact-zero leaves same-major suffix in place
+; A transparent custom codec owns the bytes it writes. Its declared `bytes` head, inherited through
+; `middle_elem_alias`, is the variable middle loop's discriminator rather than the replaced uint.
+middle_elem = uint ; @custom_serialize write_middle_elem @custom_deserialize read_middle_elem @custom_wire_major bytes
+middle_elem_alias = middle_elem
+middle_declared = [uint, * middle_elem_alias, tstr]
+; The suffix twin's declared `text` head proves disjointness but remains the ordinary suffix reader.
+middle_suffix = uint ; @custom_serialize write_middle_suffix @custom_deserialize read_middle_suffix @custom_wire_major text
+middle_declared_suffix = [uint, * bytes, middle_suffix]
+outer_declared_middle = [middle_declared, uint]
 ign = [
   uint,
   * any ; @ignore                   ; tolerate-and-drop tail (drops trailing elements)

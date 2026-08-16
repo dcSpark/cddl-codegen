@@ -1213,7 +1213,9 @@ Because the declaration makes the framing-carrying spelling available, the un-de
 
 `@custom_encodings` declares what a codec's wire *records*; `@custom_wire_major` declares what it **starts with** — which of the eight CBOR major types its first data item is. It is the second member of the same wire-facts family, and it exists for the same reason: the pair owns the wire, so the generator's inference over the type the codec *replaced* answers about a wire nobody writes.
 
-One reader consumes it: an [open table](#open-tables)'s typed row, whose dispatch must know the claimed major *before* any deserializer runs.
+Two readers consume it: an [open table](#open-tables)'s typed row, whose dispatch must know the
+claimed major *before* any deserializer runs; and a variable middle [open array](output_format#open-arrays-rest-tails)
+occurrence boundary, whose greedy loop must know whether the next item is another repeat or its fixed suffix.
 
 ```cddl
 policy_id = _CDDL_CODEGEN_RAW_BYTES_TYPE_
@@ -1224,12 +1226,25 @@ labels_v1 = { * policy_id_v1 => details, * metadatum => metadatum }
 
 Without the declaration the generator would read `bytes` off the raw-bytes marker and dispatch major 2, so every `policy_id_v1` key on the wire — text, major 3 — would fall through to the catch-all. That is the silent wrong answer the directive removes, which is why its **absence at that position is a graceful rejection** rather than a guess.
 
+The same wire fact can prove a major-disjoint variable middle boundary. Here `elem` replaces `uint`
+but its codec writes CBOR bytes, so the repeated loop peeks `bytes` and stops greedily at the text
+suffix; it never calls the suffix reader speculatively:
+
+```cddl
+elem = uint ; @custom_serialize write_elem @custom_deserialize read_elem @custom_wire_major bytes
+m = [uint, * elem, tstr]
+```
+
+It also applies on the suffix side (`m = [uint, * bytes, suffix]` where `suffix` declares `text`),
+but there it proves only disjointness: after the loop stops, the normal suffix codec reads the item.
+
 The argument is exactly one of the eight major-type tokens: `uint`, `nint`, `bytes`, `text`, `array`, `map`, `tag`, `simple`. An unknown token is a loud parse failure naming the set.
 
 Rules to keep in mind:
 
 * **It requires both halves of the pair, in the same position** — the `@custom_encodings` contract verbatim, and for the same reason.
-* **It is REQUIRED where a custom codec keys an open table's typed row**, and a **graceful rejection where nothing consumes it**: a rule carrying the declaration that no typed row keys declares a fact about a wire no dispatch reads. Consumed *somewhere* is enough, so one alias may key an open table and also appear at an ordinary field.
+* **It is REQUIRED where a custom codec keys an open table's typed row or owns either boundary of a variable middle open-array occurrence**, and a **graceful rejection where nothing consumes it**. Consumed *somewhere* is enough, so one alias may key an open table, prove a middle boundary, and also appear at an ordinary field.
+* **It is not a general framing escape hatch.** Final tails and exact `N*N` middle windows do not need a major peek; mandatory generated outer tag/`.cbor` framing wins without reading an inner declaration; and optional-prefix lookahead remains generator-proven-only. An opaque/custom head there is still serialize-only unless mandatory generated outer framing proves it. A field-local declaration remains refused because only a transparent alias carries this wire fact to either reader.
 * **It is refused on a rule that mints a struct.** The declared major is read through the rule's transparent alias entry, which a struct-minting rule does not have.
 * **A tagged typed key claims ALL tags.** `@custom_wire_major tag` (like a plain tagged key type) claims major 6 in full — the dispatch is by major, not by tag number.
 * **Unlike `@custom_encodings` it is not preserve-gated.** The major is a fact about the wire under every flag set.
@@ -1365,7 +1380,7 @@ The `@custom_encodings` declaration is refused in three further places, each bec
 * **On a rule that mints a struct** — including the accepted complete pair on a record rule and the implicit wrapper owning a complete homogeneous-table pair. A struct carries its encoding metadata *inside itself* (its `encodings` member) and hands no encoding tuple across the call, so there is nothing for a declaration to describe. Put it beside a field's pair, or on a transparent alias rule's pair.
 * Everywhere the **pair** is already refused (the list above), where the pair's own rejection fires and names the spelling that works.
 
-`@custom_wire_major` is refused in the same three places, plus one of its own: **on a rule nothing consumes it from** — the declared major is read only where a rule keys an [open table](#open-tables)'s typed row, so a declaration no such row reaches states a fact about a wire no dispatch reads.
+`@custom_wire_major` is refused in the same three places, plus one of its own: **on a rule nothing consumes it from** — the declared major is read only where a transparent alias keys an [open table](#open-tables)'s typed row or proves a variable middle [open-array](output_format#open-arrays-rest-tails) boundary, so a declaration reaching neither states a fact about a wire no reader needs.
 
 ### Reaching an annotated alias through another rule
 

@@ -3643,15 +3643,18 @@ impl<'a> IntermediateTypes<'a> {
     /// is refused rather than documented. TRANSPARENT resolution only: an opaque `K_t` (an extern or
     /// a `@newtype` whose hand-written serde happens to read every string) is undecidable from here
     /// and stays the documented hazard it already is.
-    fn derive_open_table_dispatch_majors(&mut self, cli: &Cli) {
+    fn derive_open_table_dispatch_majors(
+        &mut self,
+        cli: &Cli,
+        consumed: &mut BTreeSet<AliasIdent>,
+    ) {
         // Two passes, because `cbor_types()` on a `Rust(ident)` key reads `rust_structs` — so the
         // derivation cannot hold a mutable borrow of it. Pass 1 is a pure read of the whole IR
         // producing one verdict per open table; pass 2 applies the verdicts.
         let mut derived: BTreeMap<RustIdent, CBORType> = BTreeMap::new();
         let mut rejections: Vec<String> = Vec::new();
-        // Which alias rules a typed row actually CONSUMED a `@custom_wire_major` from — the
-        // no-silent-directive ledger, checked after the walk.
-        let mut consumed: BTreeSet<AliasIdent> = BTreeSet::new();
+        // The shared no-silent-directive ledger may already contain successful variable-middle
+        // array boundaries; typed rows add their own consumers before its final check below.
         for (rule_ident, rust_struct) in self.rust_structs.iter() {
             let RustStructType::Record(record) = rust_struct.variant() else {
                 continue;
@@ -3686,11 +3689,7 @@ impl<'a> IntermediateTypes<'a> {
             let major = if has_custom_codec {
                 match declared {
                     Some(major) => {
-                        mark_wire_major_consumed(
-                            &typed_domain.conceptual_type,
-                            self,
-                            &mut consumed,
-                        );
+                        mark_wire_major_consumed(&typed_domain.conceptual_type, self, consumed);
                         wire_major_to_cbor_type(major)
                     }
                     None => {
@@ -3708,7 +3707,7 @@ impl<'a> IntermediateTypes<'a> {
                 }
             } else {
                 if declared.is_some() {
-                    mark_wire_major_consumed(&typed_domain.conceptual_type, self, &mut consumed);
+                    mark_wire_major_consumed(&typed_domain.conceptual_type, self, consumed);
                 }
                 let majors = typed_domain.cbor_types(self);
                 match majors.as_slice() {
@@ -3759,8 +3758,8 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         // no-silent-directive: a `@custom_wire_major` nobody consumed declares a fact about a wire
-        // no dispatch reads. Consumed SOMEWHERE is enough — one alias may key an open table's typed
-        // row and also appear at an ordinary field.
+        // no boundary reads. Consumed SOMEWHERE is enough — one alias may key an open table's typed
+        // row or prove a variable middle array boundary and also appear at an ordinary field.
         //
         // Only an AUTHORED declaration is checked. An entry that inherited its wire facts across a
         // registration strip (`wire_metadata_inherited_from`) carries a copy nobody wrote there, so
@@ -3782,16 +3781,58 @@ impl<'a> IntermediateTypes<'a> {
             {
                 rejections.push(format!(
                     "`@custom_wire_major` on rule `{alias_ident}`: nothing consumes the declared \
-                     major. It is read only when the rule keys an OPEN TABLE's typed row (`t = {{ * \
-                     {alias_ident} => v, * k2 => v2 }}`), where the dispatch must know the major \
-                     before any deserializer runs. Remove the directive, or key an open table's \
-                     typed row with this rule."
+                     major. It is read when this transparent alias keys an OPEN TABLE's typed row \
+                     (`t = {{ * {alias_ident} => v, * k2 => v2 }}`), or appears as either boundary \
+                     item of a variable middle ARRAY occurrence with an immediate mandatory, \
+                     major-disjoint suffix (`m = [prefix, * {alias_ident}, suffix]`). Remove the \
+                     directive, or use this rule at one of those boundaries."
                 ));
             }
         }
         for msg in rejections {
             self.record_rejection(msg);
         }
+    }
+
+    /// The statically-known CBOR majors a variable middle array occurrence may use as its greedy
+    /// boundary discriminator. Mandatory generator-owned framing wins before a custom codec can
+    /// own the inner value; otherwise a complete custom pair on a transparent alias needs its
+    /// declared major, and every other custom/opaque head remains unproven. This is deliberately
+    /// distinct from optional-field lookahead, whose established proof remains generator-owned.
+    pub(crate) fn effective_wire_majors(&self, ty: &RustType) -> Option<Vec<CBORType>> {
+        match ty.encodings.last() {
+            Some(CBOREncodingOperation::Tagged(_)) => return Some(vec![CBORType::Tag]),
+            Some(CBOREncodingOperation::CBORBytes) => return Some(vec![CBORType::Bytes]),
+            // An optional generator-owned tag can expose either the tag or its inner built-in
+            // head.  Preserve the full set so a greedy middle loop recognizes both wire forms.
+            // A custom inner value remains unproven: declared custom heads deliberately do not
+            // extend through this optional framing, whose absent arm would expose user-owned wire.
+            Some(CBOREncodingOperation::OptionallyTagged(_)) => {
+                let mut inner = ty.clone();
+                inner.encodings.pop();
+                return (!self.type_has_unproven_wire_head(&inner)).then(|| ty.cbor_types(self));
+            }
+            None => {}
+        }
+        if custom_codec_on_alias_chain(&ty.conceptual_type, self) {
+            return declared_wire_major_on_alias_chain(&ty.conceptual_type, self)
+                .map(wire_major_to_cbor_type)
+                .map(|major| vec![major]);
+        }
+        if self.type_has_unproven_wire_head(ty) {
+            None
+        } else {
+            Some(ty.cbor_types(self))
+        }
+    }
+
+    /// Whether the effective-major derivation for this bare middle-boundary item actually READS a
+    /// transparent alias's declaration. Mandatory generated outer framing wins without consulting
+    /// it, so such a declaration stays subject to the no-silent-directive check.
+    fn middle_boundary_consumes_wire_major_declaration(&self, ty: &RustType) -> bool {
+        ty.encodings.is_empty()
+            && custom_codec_on_alias_chain(&ty.conceptual_type, self)
+            && declared_wire_major_on_alias_chain(&ty.conceptual_type, self).is_some()
     }
 
     /// Whether `ty` can write a head the generator cannot prove. Mandatory tags and `.cbor` own
@@ -3889,8 +3930,12 @@ impl<'a> IntermediateTypes<'a> {
     /// pass is deliberately before every code-generation walk: `cbor_types()` and
     /// `expanded_field_count()` may inspect referenced structs, so the parser cannot soundly make
     /// this decision while forward references and generic instances are unresolved.
-    fn validate_array_middle_occurrence_segments(&mut self) {
+    fn validate_array_middle_occurrence_segments(&mut self) -> BTreeSet<AliasIdent> {
         let mut rejections = Vec::new();
+        // A declaration becomes live only after its successful variable-middle boundary actually
+        // reads the effective major. The open-table pass extends this same ledger before its one
+        // no-silent-directive rejection runs.
+        let mut consumed = BTreeSet::new();
         for (rule_ident, rust_struct) in &self.rust_structs {
             let RustStructType::Record(record) = rust_struct.variant() else {
                 continue;
@@ -3960,16 +4005,18 @@ impl<'a> IntermediateTypes<'a> {
             if segment.has_exact_occurrence_window() {
                 continue;
             }
-            let repeated_has_unproven_wire_head =
-                self.type_has_unproven_wire_head(segment.element());
-            let suffix_has_unproven_wire_head = suffix.rule_metadata.custom_serialize.is_some()
+            let repeated_majors = self.effective_wire_majors(segment.element());
+            // A field-local pair has no transparent alias metadata channel. Keep its existing
+            // graceful refusal even if the field's replaced Rust type itself has one known major.
+            let suffix_majors = if suffix.rule_metadata.custom_serialize.is_some()
                 || suffix.rule_metadata.custom_deserialize.is_some()
-                || self.type_has_unproven_wire_head(&suffix.rust_type);
-            if repeated_has_unproven_wire_head || suffix_has_unproven_wire_head {
-                let positions = match (
-                    repeated_has_unproven_wire_head,
-                    suffix_has_unproven_wire_head,
-                ) {
+            {
+                None
+            } else {
+                self.effective_wire_majors(&suffix.rust_type)
+            };
+            if repeated_majors.is_none() || suffix_majors.is_none() {
+                let positions = match (repeated_majors.is_none(), suffix_majors.is_none()) {
                     (true, true) => "the repeated element and immediate suffix",
                     (true, false) => "the repeated element",
                     (false, true) => "the immediate suffix",
@@ -3985,8 +4032,8 @@ impl<'a> IntermediateTypes<'a> {
                 continue;
             }
 
-            let repeated_majors = segment.element().cbor_types(self);
-            let suffix_majors = suffix.rust_type.cbor_types(self);
+            let repeated_majors = repeated_majors.expect("checked above");
+            let suffix_majors = suffix_majors.expect("checked above");
             let overlap = repeated_majors
                 .iter()
                 .filter(|major| suffix_majors.contains(major))
@@ -4003,11 +4050,31 @@ impl<'a> IntermediateTypes<'a> {
                     suffix.name,
                     overlap.join(", ")
                 ));
+            } else {
+                // Both boundaries reached their effective major sets and proved disjoint. Mark an
+                // alias chain only when its declaration supplied that effective set; a mandatory
+                // generated tag/`.cbor` frame wins without reading an inner declaration, which
+                // must remain inert. Marking keeps a re-alias's authored origin live too.
+                if self.middle_boundary_consumes_wire_major_declaration(segment.element()) {
+                    mark_wire_major_consumed(
+                        &segment.element().conceptual_type,
+                        self,
+                        &mut consumed,
+                    );
+                }
+                if self.middle_boundary_consumes_wire_major_declaration(&suffix.rust_type) {
+                    mark_wire_major_consumed(
+                        &suffix.rust_type.conceptual_type,
+                        self,
+                        &mut consumed,
+                    );
+                }
             }
         }
         for rejection in rejections {
             self.record_rejection(rejection);
         }
+        consumed
     }
 
     pub fn finalize(
@@ -4124,7 +4191,7 @@ impl<'a> IntermediateTypes<'a> {
         self.resolve_late_alias_product_leaves();
         // Array middle-occurrence safety depends on finalized aliases/generics and must reject
         // before any later IR walk or code emitter can build a non-round-tripping decoder.
-        self.validate_array_middle_occurrence_segments();
+        let mut wire_major_consumed = self.validate_array_middle_occurrence_segments();
         if self.has_rejections() {
             return Err(self.rejections_error());
         }
@@ -4146,7 +4213,7 @@ impl<'a> IntermediateTypes<'a> {
         // `rust_struct(ident).unwrap()` and would panic on a not-yet-registered forward reference,
         // and only a post-generic-resolution pass sees a key hidden behind a resolved generic
         // instance. Parse decides SHAPE, finalize decides STATICNESS.
-        self.derive_open_table_dispatch_majors(cli);
+        self.derive_open_table_dispatch_majors(cli, &mut wire_major_consumed);
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types. Demand is propagated as
         // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;
@@ -4853,9 +4920,10 @@ impl<'a> IntermediateTypes<'a> {
             }
             // The `@custom_wire_major` sibling of the check above, and for the same reason: the
             // declared major is read only through the ALIAS channel (`AliasInfo::rule_metadata`),
-            // when the rule keys an open table's typed row. A struct-minting rule has no such
-            // channel, so the declaration would be read into the rule's metadata and dropped. (A
-            // declaration with one half of the pair or none is the parse walk's
+            // when the rule keys an open table's typed row or proves a variable middle array
+            // boundary. A struct-minting rule has no such channel, so the declaration would be read
+            // into the rule's metadata and dropped. (A declaration with one half of the pair or
+            // none is the parse walk's
             // `reject_custom_encodings_without_pair`, so it cannot double-report here.)
             if config.custom_wire_major.is_some()
                 && config.custom_serialize.is_some()
@@ -4863,11 +4931,11 @@ impl<'a> IntermediateTypes<'a> {
             {
                 custom_codec_rejections.insert(format!(
                     "@custom_wire_major on `{ident}`: this rule mints a STRUCT, and the declared \
-                     major is read only where a rule keys an OPEN TABLE's typed row — which reaches \
-                     the declaration through the rule's transparent ALIAS entry, a struct-minting \
-                     rule has none. Put the declaration on the alias rule whose codec writes the key \
-                     (`<key> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> \
-                     @custom_wire_major <major>`)."
+                     major is read only where a transparent ALIAS keys an OPEN TABLE's typed row or \
+                     proves a variable middle ARRAY boundary; a struct-minting rule has no such \
+                     alias entry. Put the declaration on the alias rule whose codec writes that \
+                     boundary item (`<wire> = <inner> ; @custom_serialize <fn> \
+                     @custom_deserialize <fn> @custom_wire_major <major>`)."
                 ));
             }
             if matches!(rust_struct.variant(), RustStructType::Record(_)) {

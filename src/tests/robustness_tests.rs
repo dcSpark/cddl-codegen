@@ -5493,6 +5493,56 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
             .any(|source| source.contains("pub rest: NonEmptyVec<Vec<u8>>")),
         "a middle `+` must retain the shared NonEmptyVec carrier: {middle_plus:#?}"
     );
+    // A generator-owned optional tag is a two-head middle element: the loop must accept both the
+    // tag arm and its untagged array arm before the text suffix.  This is not a custom declaration
+    // escape hatch; the custom optional-tagged control below remains an unproven-head rejection.
+    let optionally_tagged_middle = run(
+        "maybe_tagged = #6.42([* uint]) / [* uint]\n\
+         m = [uint, * maybe_tagged, tstr]\n",
+        "generator_owned_optionally_tagged_middle",
+    )
+    .expect("a generator-owned optionally tagged middle must accept either stable wire head");
+    let optionally_tagged_middle_source = optionally_tagged_middle
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        optionally_tagged_middle_source.contains(
+            "[cbor_event::Type::Tag, cbor_event::Type::Array].contains(&raw.cbor_type()?)"
+        ),
+        "the middle loop must recognize both optional-tag wire heads: {optionally_tagged_middle_source}"
+    );
+    // A complete transparent custom pair owns its wire rather than the type it replaces.  Its
+    // declared major is therefore the same greedy-boundary proof and generated loop discriminator
+    // an ordinary bare type supplies.  The repeated-side declaration must replace `uint`'s major
+    // with `bytes`, including through a transparent re-alias; the suffix-side twin proves only the
+    // disjoint boundary and is read by its ordinary custom deserializer after the loop stops.
+    let declared_repeated = run(
+        "elem = uint ; @custom_serialize write_elem @custom_deserialize read_elem @custom_wire_major bytes\n\
+         elem_alias = elem\n\
+         m = [uint, * elem_alias, tstr]\n",
+        "declared_repeated",
+    )
+    .expect("a declared custom repeated head must prove a major-disjoint middle boundary");
+    let declared_repeated_source = declared_repeated
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        declared_repeated_source.contains("raw.cbor_type()? == cbor_event::Type::Bytes")
+            && !declared_repeated_source
+                .contains("raw.cbor_type()? == cbor_event::Type::UnsignedInteger"),
+        "a declared repeated custom head must drive the bytes loop discriminator through a re-alias, \
+         not the replaced uint head: {declared_repeated:#?}"
+    );
+    run(
+        "suffix = uint ; @custom_serialize write_suffix @custom_deserialize read_suffix @custom_wire_major text\n\
+         m = [uint, * bytes, suffix]\n",
+        "declared_suffix",
+    )
+    .expect("a declared custom suffix head must prove the repeated bytes/text boundary");
     // An exact window has a count boundary, so it neither needs a major discriminator nor asks the
     // reader to peek a repeated element's major.  It still uses the one BoundedVec carrier and its
     // shared loose-Vec `TryFrom` construction door.
@@ -5721,6 +5771,12 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
              m = [uint, * bytes, suffix]\n",
             "custom_suffix_alias",
             "unproven wire head",
+        ),
+        (
+            "elem = uint ; @custom_serialize write_elem @custom_deserialize read_elem @custom_wire_major bytes\n\
+             m = [uint, * elem, bytes]\n",
+            "declared_same_major_overlap",
+            "major-disjoint",
         ),
         (
             "elem = bytes ; @custom_serialize write_elem @custom_deserialize read_elem\n\
@@ -12480,7 +12536,7 @@ fn open_table_front_end() {
         "the DECLARED major drives the dispatch arm, not the replaced type's, got:\n{}",
         src(&declared)
     );
-    // no-silent-directive: a declaration no open-table typed row consumes.
+    // no-silent-directive: an ordinary field does not consume the declaration on its own.
     let unconsumed = run(
         "hex28 = bytes ; @custom_serialize write_hex @custom_deserialize read_hex @custom_wire_major text\nf = { x: hex28 }\n",
         "unconsumed",
@@ -12490,6 +12546,48 @@ fn open_table_front_end() {
         unconsumed.contains("nothing consumes the declared major"),
         "an inert declaration must reject loudly, got: {unconsumed}"
     );
+    // The same alias becomes live when a variable middle array occurrence needs its declared head
+    // to decide where the greedy repeated run stops.  This is a second real declaration consumer,
+    // not a field-local exception; the repeated loop must test text rather than the replaced bytes.
+    let middle_consumer = run(
+        "hex28 = bytes ; @custom_serialize write_hex @custom_deserialize read_hex @custom_wire_major text\n\
+         m = [uint, * hex28, bytes]\n",
+        "middleconsumer",
+    )
+    .expect("a variable middle boundary must consume its alias declaration");
+    assert!(
+        src(&middle_consumer).contains("raw.cbor_type()? == cbor_event::Type::Text"),
+        "the middle declaration consumer must emit the declared text discriminator, got:\n{}",
+        src(&middle_consumer)
+    );
+    for (spec, tag) in [
+        (
+            "hex28 = bytes ; @custom_serialize write_hex @custom_deserialize read_hex @custom_wire_major text\n\
+             m = [uint, * hex28]\n",
+            "finaldoesnotconsume",
+        ),
+        (
+            "hex28 = bytes ; @custom_serialize write_hex @custom_deserialize read_hex @custom_wire_major text\n\
+             m = [uint, 2*2 hex28, uint]\n",
+            "exactdoesnotconsume",
+        ),
+        (
+            "hex28 = bytes ; @custom_serialize write_hex @custom_deserialize read_hex @custom_wire_major text\n\
+             m = [uint, * #6.10(hex28), bytes]\n",
+            "frameddoesnotconsume",
+        ),
+        (
+            "hex28 = bytes ; @custom_serialize write_hex @custom_deserialize read_hex @custom_wire_major text\n\
+             m = [? hex28, bytes]\n",
+            "optionallookaheaddoesnotconsume",
+        ),
+    ] {
+        let err = run(spec, tag).expect_err("only a successful variable middle boundary consumes");
+        assert!(
+            err.contains("nothing consumes the declared major"),
+            "{tag} must leave an inert declaration loud, got: {err}"
+        );
+    }
 
     // --- JSON: a HAND-WRITTEN serde pair, never the derives ---
     // Two `#[serde(flatten)]` members cannot express this shape in either direction (serde hands

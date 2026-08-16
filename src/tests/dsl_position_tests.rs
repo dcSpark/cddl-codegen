@@ -1356,8 +1356,9 @@ const GRID: &[Cell] = &[
     },
     // ---- @custom_wire_major -------------------------------------------------------------------
     // The second member of the wire-facts declaration family: the CBOR major type a custom codec's
-    // wire starts with. Its one consumer is an OPEN TABLE's typed-row dispatch, which must know the
-    // major BEFORE any deserializer runs — `cbor_types()` there answers about the REPLACED type,
+    // wire starts with. Its consumers are an OPEN TABLE's typed-row dispatch and a variable middle
+    // ARRAY boundary, which must know the major BEFORE any custom deserializer runs — `cbor_types()`
+    // there answers about the REPLACED type,
     // whose wire the codec has taken over. Every cell runs under default flags: unlike
     // `@custom_encodings` the declaration's surface does not depend on `--preserve-encodings`.
     // 23x. HONORED: the declared major drives the typed row's dispatch arm — `text`, NOT the `bytes`

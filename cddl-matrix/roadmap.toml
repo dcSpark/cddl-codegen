@@ -1204,22 +1204,22 @@ A final occurrence after fixed members is supported: bare `*` / `0*` uses the lo
 door, and every other bounded window uses a complete checked `BoundedVec` carrier (including finite,
 max-only, min-only, and exact-zero windows). One leading/middle bare-type occurrence may precede an
 immediate mandatory, single-item fixed suffix. Variable windows retain the field-codec-free,
-generator-proven, CBOR-major-disjoint boundary (`[uint, * bytes, tstr]`); an exact `N*N` window stops
+effective, CBOR-major-disjoint boundary (`[uint, * bytes, tstr]`): heads are generator-proven or a
+transparent custom alias declares its actual wire major; an exact `N*N` window stops
 by count, so `[uint, 2*2 uint, uint]` needs neither a major discriminator nor proven custom-/extern-
 owned heads. The decoder therefore obeys RFC 8610 greedy, non-backtracking matching without guessing
 or rewinding; final and safe-middle forms share the
 carrier/projection paths covered by `contain.occurrence-target.grpent.member.{zero_array,plus_array,bounded_array}`.
 
 Still rejected gracefully: multiple occurrence-bearing members; inline-group, group-choice-arm, and
-plain-group occurrences; and a variable middle occurrence with an optional, multi-item, or otherwise-
-unproven custom-/extern-owned wire head on its repeated element or suffix, or a same-major suffix
+plain-group occurrences; and a variable middle occurrence with an optional, multi-item, undeclared
+custom-owned, or direct opaque-extern wire head on its repeated element or suffix, or a same-major suffix
 (`[uint, * bytes, bytes]`). A mandatory outer tag or `.cbor` frame supplies a proven wire head and is therefore
 admissible even when its inner codec is custom- or extern-owned. Those boundaries are
 pinned by `occurrence_on_array_record_field_rejects_gracefully`. Remaining work is the design that can express
 multiple occurrences and variable-cardinality ambiguous same-major boundaries — value-level
-discrimination or residue — and, if needed, explicitly consume a declared wire major for a
-custom- or extern-owned boundary item, without permitting a constructed value to serialize to bytes
-that do not deserialize back to it. Any expansion must retain the one-source checked-carrier
+discrimination or residue — without permitting a constructed value to serialize to bytes that do not
+deserialize back to it. Any expansion must retain the one-source checked-carrier
 construction door and cover serialization, deserialization, every generated projection, matrix
 classification, and spec-derived boundary vectors.
 

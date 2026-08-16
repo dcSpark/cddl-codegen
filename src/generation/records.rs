@@ -317,7 +317,12 @@ fn generate_array_segment_deserialization(
             rest.field_name
         )
     } else if is_middle {
-        let element_majors = element.cbor_types(types);
+        // Finalization admitted this variable middle segment only after deriving its effective
+        // wire majors. A transparent custom alias's declaration therefore replaces the Rust type
+        // it wraps here; do not independently rediscover `cbor_types()` in the emitter.
+        let element_majors = types
+            .effective_wire_majors(element)
+            .expect("validated variable middle array segment has effective wire majors");
         let element_matches = if element_majors.len() == 1 {
             format!(
                 "raw.cbor_type()? == {}",

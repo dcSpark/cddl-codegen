@@ -248,11 +248,12 @@ pub struct RuleMetadata {
     /// Valid ONLY beside BOTH halves of the pair, in the same position (the `@custom_encodings`
     /// both-halves contract, and for the same reason: with one half the other direction is generated
     /// code whose real major the declaration would contradict). REQUIRED when the rule keys an OPEN
-    /// TABLE's typed row — there the generator must know the claimed major before any deserializer
-    /// runs, and `cbor_types()` answers about the REPLACED type's wire, which the codec has taken
-    /// over. A rule carrying it that NO open-table typed row consumes is a graceful rejection
-    /// (no-silent-directive): consumed somewhere is enough, so one alias may key a table AND appear
-    /// at a field.
+    /// TABLE's typed row, or when a variable middle ARRAY boundary must see the codec-owned head —
+    /// there the generator must know the claimed major before any deserializer runs, and
+    /// `cbor_types()` answers about the REPLACED type's wire, which the codec has taken over. A rule
+    /// carrying it that neither consumer reaches is a graceful rejection (no-silent-directive):
+    /// consumed somewhere is enough, so one alias may prove either boundary and also appear at a
+    /// field.
     pub custom_wire_major: Option<WireMajor>,
     /// `@extern_companions <path>=<Class>[,<Class>…]`: valid ONLY on a LOCALLY-scoped, non-generic
     /// `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule. Declares that the named
