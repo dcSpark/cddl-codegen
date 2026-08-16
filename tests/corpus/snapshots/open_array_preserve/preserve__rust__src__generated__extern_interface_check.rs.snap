@@ -29,6 +29,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Cap>();
     _assert_serialize::<crate::generated::CapAny>();
     _assert_deserialize::<crate::generated::CapAny>();
+    _assert_serialize::<crate::generated::ExactMiddle>();
+    _assert_deserialize::<crate::generated::ExactMiddle>();
     _assert_serialize::<crate::generated::Inner>();
     _assert_deserialize::<crate::generated::Inner>();
     _assert_serialize::<crate::generated::Middle>();

@@ -286,6 +286,54 @@ mod open_array {
         );
     }
 
+    // --- exact same-major middle segment (`exact_middle = [uint, 2*2 uint, uint]`) ---
+
+    #[test]
+    fn exact_middle_is_count_delimited_and_uses_the_checked_carrier_door() {
+        let native = ExactMiddle::new(7, 99, BoundedVec::try_from(vec![2, 3]).unwrap());
+        assert_eq!(native.rest.as_slice(), &[2, 3]);
+        assert_eq!(native.to_cbor_bytes(), bytes("84 07 02 03 1863"));
+
+        for wire in [bytes("84 07 02 03 1863"), bytes("9f 07 02 03 1863 ff")] {
+            let exact = ExactMiddle::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(exact.rest.as_slice(), &[2, 3]);
+            assert_eq!(exact.index_2, 99, "the third uint is the suffix, not a repetition");
+        }
+
+        // An indefinite owner cannot reserve an arity slot for the suffix. With only one intended
+        // repeated value, its same-major intended suffix is consumed as the second exact value and
+        // the subsequent suffix read rejects at the break.
+        assert_decode_reject_reason::<ExactMiddle>(
+            &bytes("9f 07 02 1863 ff"),
+            "expected `UnsignedInteger' byte received `Special'",
+        );
+
+        assert_decode_reject_reason::<ExactMiddle>(&bytes("83 07 02 1863"), "1 not in range 2 - 2");
+        assert_decode_reject_reason::<ExactMiddle>(
+            &bytes("84 07 02 6178 1863"),
+            "expected `UnsignedInteger' byte received `Text'",
+        );
+        assert_decode_reject_reason::<ExactMiddle>(
+            &bytes("85 07 02 03 1863 00"),
+            "Definite length mismatch: found 5, expected: 4",
+        );
+    }
+
+    #[test]
+    fn exact_zero_middle_leaves_the_same_major_suffix_in_place_for_both_owner_forms() {
+        let native = ExactZeroMiddle::new(7, 99, BoundedVec::try_from(Vec::<u64>::new()).unwrap());
+        assert_eq!(native.to_cbor_bytes(), bytes("82 07 1863"));
+        for wire in [bytes("82 07 1863"), bytes("9f 07 1863 ff")] {
+            let exact = ExactZeroMiddle::from_cbor_bytes(&wire).unwrap();
+            assert!(exact.rest.as_slice().is_empty());
+            assert_eq!(exact.index_2, 99);
+        }
+        assert_decode_reject_reason::<ExactZeroMiddle>(
+            &bytes("83 07 01 1863"),
+            "Definite length mismatch: found 3, expected: 2",
+        );
+    }
+
     // --- `@ignore` tail (`ign = [uint, * any] ; @ignore`) ---
 
     #[test]
@@ -391,6 +439,21 @@ mod open_array {
             let outer = OuterMiddle::from_cbor_bytes(&wire).unwrap();
             assert_eq!(outer.inner_middle.rest, vec![vec![0xaa]]);
             assert_eq!(outer.inner_middle.index_2, "x");
+            assert_eq!(outer.index_1, 99);
+        }
+    }
+
+    #[test]
+    fn exact_middle_stream_position_leaves_the_outer_sibling() {
+        // [[1, 2, 3, 4], 99] — the exact count takes 2 and 3, the same-major suffix is 4,
+        // and the enclosing 99 remains unread after both definite and indefinite inner arrays.
+        for wire in [
+            bytes("82 84 01 02 03 04 1863"),
+            bytes("82 9f 01 02 03 04 ff 1863"),
+        ] {
+            let outer = OuterExactMiddle::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(outer.inner_exact_middle.rest.as_slice(), &[2, 3]);
+            assert_eq!(outer.inner_exact_middle.index_2, 4);
             assert_eq!(outer.index_1, 99);
         }
     }

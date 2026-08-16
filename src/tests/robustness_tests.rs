@@ -5493,6 +5493,34 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
             .any(|source| source.contains("pub rest: NonEmptyVec<Vec<u8>>")),
         "a middle `+` must retain the shared NonEmptyVec carrier: {middle_plus:#?}"
     );
+    // An exact window has a count boundary, so it neither needs a major discriminator nor asks the
+    // reader to peek a repeated element's major.  It still uses the one BoundedVec carrier and its
+    // shared loose-Vec `TryFrom` construction door.
+    let exact_same_major = run("m = [uint, 2*2 uint, uint]\n", "exact_same_major")
+        .expect("an exact middle window is delimited by count even when its suffix shares uint");
+    let exact_source = exact_same_major
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        exact_source.contains("pub rest: BoundedVec<u64, 2, 2>"),
+        "an exact middle segment must retain the shared BoundedVec carrier: {exact_same_major:#?}"
+    );
+    assert!(
+        exact_source.contains("while (match len")
+            && exact_source.contains("(rest.len() as u64) < 2")
+            && !exact_source.contains("&& raw.cbor_type()?"),
+        "an exact middle loop must stop by count, never a repeated-element major peek: {exact_same_major:#?}"
+    );
+    let exact_zero = run("m = [uint, 0*0 uint, uint]\n", "exact_zero_same_major")
+        .expect("an exact-zero middle window must leave its same-major suffix in place");
+    assert!(
+        exact_zero
+            .values()
+            .any(|source| source.contains("pub rest: BoundedVec<u64, 0, 0>")),
+        "an exact-zero middle segment must retain the checked zero carrier: {exact_zero:#?}"
+    );
     let multi_major_middle = run("m = [uint, * int, tstr]\n", "multi_major_middle")
         .expect("a multi-major repeated element before a disjoint suffix must generate");
     assert!(
@@ -5541,6 +5569,120 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
         "a required bytes segment separates the optional uint from its same-major suffix, so this \
          shape must emit Deserialize: {optional_before_nonempty_middle:#?}"
     );
+    let optional_before_exact_zero_middle = run(
+        "m = [? bytes, 0*0 bytes, tstr]\n",
+        "optional_before_exact_zero_middle",
+    )
+    .expect("an exact-zero segment contributes no optional-dispatch follower");
+    assert!(
+        optional_before_exact_zero_middle
+            .values()
+            .any(|source| source.contains("impl Deserialize for M")),
+        "the optional bytes field is disjoint from the reachable text suffix, while the exact-zero \
+         bytes segment contributes no wire item: {optional_before_exact_zero_middle:#?}"
+    );
+    let terminal_optional_before_exact_zero = run(
+        "m = [? bytes, 0*0 bytes]\n",
+        "terminal_optional_before_exact_zero",
+    )
+    .expect("an optional before a final exact-zero segment is owner-length-delimited");
+    assert!(
+        terminal_optional_before_exact_zero
+            .values()
+            .any(|source| source.contains("impl Deserialize for M")),
+        "a final exact-zero segment leaves the optional terminal on the wire: \
+         {terminal_optional_before_exact_zero:#?}"
+    );
+    let optional_before_exact_zero_same_major_suffix = run(
+        "m = [? uint, 0*0 bytes, uint]\n",
+        "optional_before_exact_zero_same_major_suffix",
+    )
+    .expect("the source-valid shape must remain serialize-only rather than guess");
+    assert!(
+        optional_before_exact_zero_same_major_suffix
+            .values()
+            .all(|source| !source.contains("impl Deserialize for M")),
+        "the exact-zero segment cannot separate the optional from its same-major fixed suffix: \
+         {optional_before_exact_zero_same_major_suffix:#?}"
+    );
+    // An optional prefix needs a proven head for the first repeated element too. Nominal
+    // `cbor_types()` expansion is not proof when the element's codec belongs to user code or an
+    // opaque extern: it may write bytes, so peeking cannot safely distinguish it from `? bytes`.
+    for (spec, tag) in [
+        (
+            "elem = uint ; @custom_serialize write_elem @custom_deserialize read_elem\n\
+             m = [? bytes, * elem]\n",
+            "optional_before_custom_final_tail",
+        ),
+        (
+            "elem = uint ; @custom_serialize write_elem @custom_deserialize read_elem\n\
+             m = [? bytes, 2*2 elem, uint]\n",
+            "optional_before_custom_exact_middle",
+        ),
+        (
+            "ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+             m = [? bytes, * ext]\n",
+            "optional_before_extern_final_tail",
+        ),
+        (
+            "opt = bytes ; @custom_serialize write_opt @custom_deserialize read_opt\n\
+             m = [? opt, * uint]\n",
+            "custom_optional_before_proven_final_tail",
+        ),
+        (
+            "next = uint ; @custom_serialize write_next @custom_deserialize read_next\n\
+             m = [? bytes, next]\n",
+            "optional_before_custom_following_fixed_field",
+        ),
+    ] {
+        let generated = run(spec, tag).expect("the shape remains serializable");
+        assert!(
+            generated
+                .values()
+                .all(|source| !source.contains("impl Deserialize for M")),
+            "{tag} has an unproven wire head at an optional dispatch boundary, so it must remain \
+             serialize-only: {generated:#?}"
+        );
+    }
+    let optional_before_framed_custom = run(
+        "elem = uint ; @custom_serialize write_elem @custom_deserialize read_elem\n\
+         m = [? bytes, * #6.10(elem)]\n",
+        "optional_before_framed_custom_final_tail",
+    )
+    .expect("a mandatory tag proves the repeated custom element's outer wire head");
+    assert!(
+        optional_before_framed_custom
+            .values()
+            .any(|source| source.contains("impl Deserialize for M")),
+        "a mandatory outer tag disjoint from bytes must preserve Deserialize: \
+         {optional_before_framed_custom:#?}"
+    );
+    let framed_custom_optional = run(
+        "opt = bytes ; @custom_serialize write_opt @custom_deserialize read_opt\n\
+         m = [? #6.10(opt), * uint]\n",
+        "framed_custom_optional_before_proven_final_tail",
+    )
+    .expect("a mandatory tag proves the optional custom field's outer wire head");
+    assert!(
+        framed_custom_optional
+            .values()
+            .any(|source| source.contains("impl Deserialize for M")),
+        "a mandatory outer tag on the optional custom field must preserve Deserialize: \
+         {framed_custom_optional:#?}"
+    );
+    let terminal_custom_optional = run(
+        "opt = bytes ; @custom_serialize write_opt @custom_deserialize read_opt\n\
+         m = [uint, ? opt]\n",
+        "terminal_custom_optional",
+    )
+    .expect("a terminal optional is delimited by the owner array length, not a head peek");
+    assert!(
+        terminal_custom_optional
+            .values()
+            .any(|source| source.contains("impl Deserialize for M")),
+        "a terminal optional with no reachable follower must retain Deserialize: \
+         {terminal_custom_optional:#?}"
+    );
 
     // Greedy decoding may not guess a same-major boundary or bypass a suffix that is absent,
     // multi-item, or custom-codec-owned at either boundary item. Each remains a graceful
@@ -5548,6 +5690,11 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
     // remedy rather than an emitted decoder that fails to round-trip its own values.
     for (spec, tag, needle) in [
         ("m = [uint, * bytes, bytes]\n", "overlap", "major-disjoint"),
+        (
+            "m = [uint, 2*3 uint, uint]\n",
+            "bounded_same_major_overlap",
+            "major-disjoint",
+        ),
         (
             "m = [uint, * bytes, ? tstr]\n",
             "optional_suffix",
@@ -5618,6 +5765,19 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
         "cbor_framed_custom_suffix",
     )
     .expect("a .cbor frame supplies the custom suffix's stable outer bytes wire head");
+    run(
+        "elem = uint ; @custom_serialize write_elem @custom_deserialize read_elem\n\
+         suffix = uint ; @custom_serialize write_suffix @custom_deserialize read_suffix\n\
+         m = [uint, 2*2 elem, suffix]\n",
+        "exact_custom_boundary",
+    )
+    .expect("an exact middle count makes custom-owned boundary heads irrelevant");
+    run(
+        "ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         m = [uint, 2*2 ext, uint]\n",
+        "exact_extern_boundary",
+    )
+    .expect("an exact middle count makes an extern-owned repeated head irrelevant");
 
     run("m = [uint, 1*1 bytes]\n", "exactly_once")
         .expect("`1*1` is exactly-once — mandatory IS the honored semantics");

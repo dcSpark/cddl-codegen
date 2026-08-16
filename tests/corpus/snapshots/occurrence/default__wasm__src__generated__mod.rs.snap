@@ -145,6 +145,63 @@ impl AsRef<BoundedVec<u64, 2, 2>> for Exact {
     }
 }
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ExactMiddleOccurrence(pub(crate) cddl_lib::ExactMiddleOccurrence);
+
+#[wasm_bindgen]
+impl ExactMiddleOccurrence {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ExactMiddleOccurrence, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn prefix(&self) -> u64 {
+        self.0.prefix
+    }
+
+    pub fn suffix(&self) -> u64 {
+        self.0.suffix
+    }
+
+    /// The captured bounded exact-count occurrence segment before its mandatory fixed suffix, as its checked wasm list wrapper.
+    pub fn rest(&self) -> Exact {
+        self.0.rest.clone().into()
+    }
+
+    /// * `rest` - the complete checked exact-count occurrence-segment wrapper before its mandatory fixed suffix (its CDDL occurrence window is enforced before construction)
+    pub fn new(prefix: u64, suffix: u64, rest: &Exact) -> Self {
+        Self(cddl_lib::ExactMiddleOccurrence::new(
+            prefix,
+            suffix,
+            rest.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::ExactMiddleOccurrence> for ExactMiddleOccurrence {
+    fn from(native: cddl_lib::ExactMiddleOccurrence) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ExactMiddleOccurrence> for cddl_lib::ExactMiddleOccurrence {
+    fn from(wasm: ExactMiddleOccurrence) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ExactMiddleOccurrence> for ExactMiddleOccurrence {
+    fn as_ref(&self) -> &cddl_lib::ExactMiddleOccurrence {
+        &self.0
+    }
+}
+
 /// `[2* uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

@@ -2086,34 +2086,40 @@ survive:
 ### Open arrays (rest tails) — test map
 
 An open array (the array analog of the open struct-map rest row) has one occurrence-bearing segment:
-it may be final, or leading/middle only before an immediate mandatory, single-item, field-codec-free,
-CBOR-major-disjoint fixed suffix whose repeated element and suffix have no custom- or extern-owned,
-otherwise-unproven wire head. Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
+it may be final, or leading/middle only before an immediate mandatory, single-item fixed suffix. A
+variable window needs the existing field-codec-free, generator-proven, CBOR-major-disjoint boundary;
+an exact window stops by count and may share a major or have custom-/extern-owned boundary heads. This
+does not prove an optional-prefix dispatch boundary: its optional/reachable-follower heads must both
+be generator-proven and major-disjoint, so a custom codec or opaque extern on either side is
+serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction. Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
 `+ t` / `1* t` uses `NonEmptyVec<T>` and its first-element construction ABI; every other window uses
 a complete checked `BoundedVec<T, MIN, MAX>` constructor argument. The middle boundary deliberately
-honors RFC 8610 greedy non-backtracking decoding: same-major/value-discriminator suffixes need a
-future design rather than a guessed decoder. User docs: `docs/docs/output_format.mdx` § "Open arrays",
+honors RFC 8610 greedy non-backtracking decoding: variable same-major/value-discriminator suffixes
+need a future design rather than a guessed decoder. User docs: `docs/docs/output_format.mdx` § "Open arrays",
 `docs/docs/comment_dsl.mdx` § "@ignore". It is verified across the layers:
 
 - **Front end + guards** — `robustness_tests::open_array_front_end` recognizes final loose,
   min-one, finite, max-only, min-only, and exact-zero forms. The polarity and carrier assertions in
   `robustness_tests::occurrence_on_array_record_field_rejects_gracefully` cover leading/middle
-  loose and min-one success; the zero-minimum versus non-empty optional-prefix separator; and
+  loose/min-one success plus exact same-major/zero success without a suffix wire-head discriminator;
+  the variable-zero-minimum/non-empty/exact-zero optional-prefix distinctions; two-sided
+  unproven-head optional-dispatch refusals and mandatory-framing controls; and
   overlap, optional-suffix, multi-item/plain-group-suffix, field-local-codec, recursively
   custom-codec-owned, and opaque-extern wire-head refusals. They also retain the
   multiple/group/group-choice/fixed-value boundaries and the entry-vs-rule directive
   slot/marker-slot cases.
 - **Value-level e2e** — `tests/open-array-e2e` (`integration_tests::open_array_e2e`, compiled,
-  non-preserve) drives leading and middle loose, min-one, finite/max-only, and exact-zero segments
+  non-preserve) drives leading and middle loose, min-one, finite/max-only, exact-zero, and exact
+  same-major segments
   through definite and indefinite bytes: zero/in-window/below/above windows, max-bound stop before
   the suffix, wrong repeated type, suffix preservation, trailing-extra rejection, and nested stream
   position. It also keeps the shared constructor and carrier door tests.
 - **Preserve/canonical e2e** — `tests/open-array-preserve-e2e`
   (`integration_tests::open_array_preserve_e2e`, compiled) proves a non-canonical middle repeated
-  element re-emits byte-exactly and normalizes canonically without moving its suffix, beside the
+  element and exact same-major segment re-emit byte-exactly and normalize canonically without moving their suffix, beside the
   final-tail positional-sidecar, self-carried `any`, and nested-stream vectors.
 - **JSON e2e** — `tests/open-array-json-e2e` (`integration_tests::open_array_json_e2e`, compiled)
-  checks a bounded middle carrier's JSON/schema bounds and constructor door, beside the loose,
+  checks bounded and exact same-major middle carriers' JSON/schema bounds and constructor doors, beside the loose,
   required, and natural-fallible `any` tail surfaces.
 - **Snapshots / cross-face** — `open_array_default` / `open_array_json` / `open_array_wasm` profile
   rows retain final-tail byte/API compatibility; `open_array_preserve` snapshots the middle capture
@@ -2124,9 +2130,9 @@ future design rather than a guessed decoder. User docs: `docs/docs/output_format
   restricted, and ignored capture construction ordinary. Middle `@ignore` remains loose-only and
   re-serializes the fixed members without a getter.
 - **Corpus / matrix** — `tests/corpus/occurrence.cddl` contains the canonical
-  `middle_occurrence = [prefix: uint, * bytes, suffix: tstr]`; the matrix cell
-  `contain.occurrence-target.grpent.member.zero_array` and its foreign decode catalog exercise that
-  same safe boundary. The overlap refusal is executable in
+  `middle_occurrence = [prefix: uint, * bytes, suffix: tstr]` and count-delimited
+  `exact_middle_occurrence = [prefix: uint, 2*2 uint, suffix: uint]`; the matrix bounded-array
+  containment note records both boundary classes. The variable-overlap refusal is executable in
   `occurrence_on_array_record_field_rejects_gracefully`. `tests/corpus/dsl_ignore.cddl` retains the
   final-tail `@ignore` catalog/projection coverage (including its preserve rejection ledger).
 

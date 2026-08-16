@@ -38,3 +38,10 @@ middle_occurrence = [
   * bytes,
   suffix: tstr,
 ]
+
+exact_middle_occurrence = [
+  ; An exact window stops by count, so same-major uint values need no discriminator or rewind.
+  prefix: uint,
+  2*2 uint,
+  suffix: uint,
+]

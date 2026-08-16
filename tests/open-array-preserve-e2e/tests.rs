@@ -116,6 +116,22 @@ mod open_array_preserve {
         );
     }
 
+    #[test]
+    fn exact_middle_same_major_preserves_and_canonicalizes_in_source_position() {
+        // [7, 2(as 0x1802), 3(as 0x1803), 4(as 0x1804)]. The first two uints are the exact
+        // segment, while the third is its same-major suffix; their sidecars must remain positional.
+        let wire = bytes("84 07 1802 1803 1804");
+        let exact = ExactMiddle::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(exact.rest.as_slice(), &[2, 3]);
+        assert_eq!(exact.index_2, 4);
+        assert_eq!(exact.to_cbor_bytes(), wire, "exact same-major preserve stays byte-exact");
+        assert_eq!(
+            exact.to_canonical_cbor_bytes(),
+            bytes("84 07 02 03 04"),
+            "canonical normalizes repeated elements and suffix in authored positions"
+        );
+    }
+
     // --- `any` tail (`cap_any = [uint, * any]`): self-carried encodings (no sidecar) ---
 
     #[test]

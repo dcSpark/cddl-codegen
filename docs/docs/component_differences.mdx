@@ -130,7 +130,8 @@ therefore keeps the nullable two-state surface.
 
 A rule that captures entries it did not declare — an
 [open struct-map](output_format#open-struct-maps-rest-rows) (`{ 1: uint, * k => v }`), an
-[open array](output_format#open-arrays-rest-tails) (`[uint, * t]` or `[uint, + t]`), or an **open table**
+[open array](output_format#open-arrays-rest-tails) (`[uint, * t]`, `[uint, + t]`, or an exact middle
+`[uint, 2*2 t, uint]`), or an **open table**
 (`t = { * k1 => v1, * k2 => v2 }`) — projects each captured row as one **read-only getter** on the
 resource, named after the row (`rest` by default, or whatever
 [`@name`](comment_dsl#name) gives it). A map row is `list<tuple<k, v>>`, an array tail is `list<t>`,

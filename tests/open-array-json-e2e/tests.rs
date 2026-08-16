@@ -120,6 +120,24 @@ mod open_array_json {
     }
 
     #[test]
+    fn exact_middle_same_major_reuses_json_schema_and_checked_constructor() {
+        let value = ExactMiddle::new(7, 9, BoundedVec::try_from(vec![2, 3]).unwrap());
+        let json = serde_json::to_string(&value).unwrap();
+        assert!(json.contains("\"rest\":[2,3]"), "exact carrier remains JSON-visible: {json}");
+        assert!(json.contains("\"index_2\":9"), "same-major suffix remains positional: {json}");
+        let back: ExactMiddle = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.rest.as_slice(), &[2, 3]);
+        assert_eq!(back.index_2, 9);
+        let schema = serde_json::to_value(schemars::schema_for!(ExactMiddle)).unwrap();
+        assert_eq!(schema["properties"]["rest"]["minItems"], 2);
+        assert_eq!(schema["properties"]["rest"]["maxItems"], 2);
+        assert!(serde_json::from_str::<ExactMiddle>(
+            r#"{"index_0":7,"rest":[2],"index_2":9}"#
+        )
+        .is_err());
+    }
+
+    #[test]
     fn bounded_any_tail_stays_natural_and_non_injective_values_fail_loudly() {
         let bounded = BoundedAny::new(
             7,

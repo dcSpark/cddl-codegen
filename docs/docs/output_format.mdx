@@ -828,17 +828,23 @@ the repeated elements are captured in a generated `rest` field. This is the arra
 [open struct-map](#open-struct-maps-rest-rows) rest row — structurally simpler because arrays are
 positional: there are no keys, duplicate policy, key dispatch, or ordering machinery. The occurrence
 may be final, or it may be the sole leading/middle segment only when its **immediate fixed suffix** is
-mandatory, expands to exactly one CBOR item, has no field-local custom codec, and has no CBOR major
-type in common with the repeated element. Neither boundary item may have a custom- or extern-owned,
-otherwise-unproven wire head. Bare `*` / `0*` is loose; `+` / `1*` is the compatibility
-min-one form; every other window (`2*3`, `*3`, `2*`, `*0`, `0*0`, …) is bounded.
+mandatory and expands to exactly one CBOR item. A variable-cardinality middle window also needs no
+field-local custom codec, a generator-proven wire head on both boundary items, and no CBOR major type
+in common with the repeated element. An exact window (`N*N`, except `1*1` which is an ordinary field)
+instead stops after `N` items: `[uint, 2*2 uint, uint]` is therefore supported even though the segment
+and suffix share a major or use custom-/extern-owned heads. Count delimits that **suffix** only: an
+optional prefix still needs generator-proven, distinct heads on both sides of its peek boundary. A
+custom-codec or opaque-extern optional/repeated member at that boundary is serialize-only unless a
+mandatory outer tag or `.cbor` frame proves the distinct outer head. Bare `*` / `0*` is loose; `+` / `1*` is the
+compatibility min-one form; every other window (`2*3`, `*3`, `2*`, `*0`, `0*0`, …) is bounded.
 
 The restriction is RFC 8610's greedy, non-backtracking matching rule, not an implementation
 convenience. A decoder for `[uint, * uint, uint]` cannot know whether a uint is the repeated value
 or the suffix; accepting it would let a constructed value serialize to bytes that do not deserialize
-back to that value. The safe middle loop greedily consumes only the repeated element's majors and
-stops at the major-disjoint suffix; it never seeks, rewinds, or speculatively parses the suffix.
-Same-major/value-discriminator designs, multiple occurrences, inline-group occurrences,
+back to that value. A variable safe-middle loop greedily consumes only the repeated element's majors
+and stops at the major-disjoint suffix; an exact loop consumes its declared count and then reads that
+same suffix. Neither seeks, rewinds, or speculatively parses the suffix. Variable same-major/value-
+discriminator designs, multiple occurrences, inline-group occurrences,
 group-choice-arm occurrences, a segment inside a plain group's body, a fixed-value element type like
 `* 5`, and a **plain-group element type** remain graceful rejections naming a supported remedy. The
 plain-group element type (`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses because an
@@ -859,7 +865,16 @@ exactly one `TryFrom` door for either restricted carrier; definite and indefinit
 above the inclusive window reject with its `RangeCheck` for a final tail. A middle segment stops
 greedily at its maximum: a further repeated-major item remains for the mandatory suffix to read and
 is rejected there, while a below-minimum middle segment still rejects through the carrier's
-`RangeCheck`.
+`RangeCheck`. An exact middle segment takes exactly its declared count before the suffix. A definite
+short owner can reserve its mandatory suffix arity and reach the checked-carrier door; an indefinite
+same-major short owner may consume its intended suffix as a repeated value and then reject at the
+suffix read. Every short form rejects without seeking, rewinding, or promising one error class, and a
+trailing extra remains for the owner length check rather than being absorbed by the segment.
+
+An optional fixed member is read by peeking at its reachable following member or occurrence segment.
+That dispatch is emitted only when both wire heads are generator-proven and CBOR-major-disjoint; a
+custom codec or opaque extern on either side is serialize-only unless mandatory outer tag/`.cbor`
+framing supplies the proof. A final optional with no following item remains owner-length-delimited.
 
 **Serialize / round-trip.** The array header counts the declared members **plus** every repeated
 element (`N + rest.len()`). A final tail serializes after the fixed members; a safe middle segment

@@ -32,6 +32,25 @@ pub type Bounded = BoundedVec<u64, 2, 5>;
 /// `[2*2 uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 pub type Exact = BoundedVec<u64, 2, 2>;
 
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct ExactMiddleOccurrence {
+    pub prefix: u64,
+    pub suffix: u64,
+    /// Captured exact-count occurrence-segment elements before the mandatory fixed suffix, whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized at its authored source position; supplied complete to `new()`.
+    pub rest: BoundedVec<u64, 2, 2>,
+}
+
+impl ExactMiddleOccurrence {
+    /// * `rest` - the complete checked exact-count occurrence-segment carrier before its mandatory fixed suffix (its CDDL occurrence window is enforced by this carrier)
+    pub fn new(prefix: u64, suffix: u64, rest: BoundedVec<u64, 2, 2>) -> Self {
+        Self {
+            prefix,
+            suffix,
+            rest,
+        }
+    }
+}
+
 /// `[2* uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 pub type Lower = BoundedVec<u64, 2, { u64::MAX }>;
 

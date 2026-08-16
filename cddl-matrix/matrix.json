@@ -174,15 +174,15 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm compiles (no minted wasm surface); component round-trips (1 accept + 2 reject vector(s) under wasmtime); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); component round-trips (1 accept + 2 reject vector(s) under wasmtime); accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.duplicates.preserve",
         "status": "supported"
       },
@@ -2614,11 +2614,11 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           }
         },
@@ -3134,11 +3134,11 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           }
         },
@@ -3324,11 +3324,11 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           }
         },
@@ -4816,10 +4816,10 @@
       "spec": "allowed"
     },
     {
-      "example": "a = [uint, 2*3 bytes]",
+      "example": "a = [uint, 2*2 uint, uint]",
       "feature": "grpent.member",
       "id": "contain.occurrence-target.grpent.member.bounded_array",
-      "note": "A bounded occurrence on a bare-type entry in a HETEROGENEOUS array is an open-array segment with its own inclusive `BoundedVec<T, MIN, MAX>` carrier. It may be final, or a safe middle segment before an immediate mandatory, one-item, field-codec-free, CBOR-major-disjoint suffix with no custom- or extern-owned, otherwise-unproven head on either boundary item. Native construction takes the complete checked carrier; CBOR and JSON stage loose elements then enter one `TryFrom` door; wasm takes the matching bounded list wrapper; and component takes a fallible `list<T>` conversion. JSON makes the field required and publishes both bounds; preserve/canonical retain positional element encodings. `*0` / `0*0` is the checked exact-zero carrier, while bare `*` / `0*` and `+` / `1*` retain their established Vec and NonEmptyVec APIs. Multiple, same-major/value-discriminator, and group/group-choice/plain-group forms remain graceful rejections. RFC8610 §3.2, §3.4.",
+      "note": "A bounded occurrence on a bare-type entry in a HETEROGENEOUS array is an open-array segment with its own inclusive `BoundedVec<T, MIN, MAX>` carrier. It may be final, or a safe middle segment before an immediate mandatory, one-item suffix. A variable middle window needs a field-codec-free, CBOR-major-disjoint suffix with generator-proven heads; an exact `N*N` window stops by count and may share the suffix's major or use custom-/extern-owned heads. Native construction takes the complete checked carrier; CBOR and JSON stage loose elements then enter one `TryFrom` door; wasm takes the matching bounded list wrapper; and component takes a fallible `list<T>` conversion. JSON makes the field required and publishes both bounds; preserve/canonical retain positional element encodings. `*0` / `0*0` is the checked exact-zero carrier, while bare `*` / `0*` and `+` / `1*` retain their established Vec and NonEmptyVec APIs. Multiple, variable same-major/value-discriminator, and group/group-choice/plain-group forms remain graceful rejections. RFC8610 §3.2, §3.4.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },

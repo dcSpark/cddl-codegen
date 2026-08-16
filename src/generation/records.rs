@@ -60,10 +60,10 @@ fn ignore_aware_doc(
     }
 }
 
-/// Serialize one captured array occurrence segment at its authored source position.  Final tails
-/// and major-disjoint middle segments share this one positional encoding path: preserve mode looks
-/// up the repeated element's sidecar by its segment-local index, and canonical mode normalizes that
-/// same element before the following fixed suffix is emitted.
+/// Serialize one captured array occurrence segment at its authored source position. Final tails and
+/// safe middle segments share this one positional encoding path: preserve mode looks up the repeated
+/// element's sidecar by its segment-local index, and canonical mode normalizes that same element
+/// before the following fixed suffix is emitted.
 fn generate_array_segment_serialization(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
@@ -259,8 +259,9 @@ pub(super) struct ArrayStructDeserializeCode {
 }
 
 /// Deserialize one array occurrence segment at its source position.  Final segments retain the
-/// historical owner-boundary loop; a middle segment is greedily delimited by its already-validated
-/// major-disjoint immediate suffix, never by a rewind or a speculative suffix parse.
+/// historical owner-boundary loop; a variable middle segment is greedily delimited by its
+/// already-validated major-disjoint immediate suffix, while an exact window is delimited by count.
+/// Neither path rewinds or speculatively parses the suffix.
 #[allow(clippy::too_many_arguments)]
 fn generate_array_segment_deserialization(
     gen_scope: &mut GenerationScope,
@@ -301,7 +302,21 @@ fn generate_array_segment_deserialization(
         cbor_event_len_n("n", cli),
         cbor_event_len_indef(cli)
     );
-    let loop_condition = if is_middle {
+    let loop_condition = if is_middle && rest.has_exact_occurrence_window() {
+        let exact = rest
+            .occurrence
+            .expect("an exact occurrence predicate requires normalized bounds")
+            .0;
+        // The count is the whole suffix-boundary proof here. `owner_has_more` preserves the
+        // definite and indefinite owner-array boundary: a definite wire that ends before the
+        // segment can fill stages fewer values and reaches the shared BoundedVec TryFrom door;
+        // an indefinite same-major short wire can instead consume the intended suffix as its last
+        // repeat and then fail while reading that suffix. Either way no short form succeeds.
+        format!(
+            "({owner_has_more}) && ({}.len() as u64) < {exact}",
+            rest.field_name
+        )
+    } else if is_middle {
         let element_majors = element.cbor_types(types);
         let element_matches = if element_majors.len() == 1 {
             format!(
@@ -445,7 +460,9 @@ pub(super) fn array_record_deser_refusals(
         if !field.optional {
             continue;
         }
-        let field_cbor_types = field.rust_type.cbor_types(types);
+        let field_has_unproven_wire_head = field.rule_metadata.custom_serialize.is_some()
+            || field.rule_metadata.custom_deserialize.is_some()
+            || types.type_has_unproven_wire_head(&field.rust_type);
         // Compare the optional to following FIXED fields in declaration order. The occurrence
         // segment is absent from `record.fields`, so an optional before a NON-EMPTY middle segment
         // must stop before fixed fields authored after that segment: its mandatory suffix is later
@@ -462,11 +479,24 @@ pub(super) fn array_record_deser_refusals(
             }) {
                 break;
             }
-            if record.fields[i]
+            let next = &record.fields[i];
+            let next_has_unproven_wire_head = next.rule_metadata.custom_serialize.is_some()
+                || next.rule_metadata.custom_deserialize.is_some()
+                || types.type_has_unproven_wire_head(&next.rust_type);
+            if field_has_unproven_wire_head || next_has_unproven_wire_head {
+                reasons.push(format!(
+                    "Array struct optional field {} is ambiguous with following field {} \
+                     (unproven wire head): a peek cannot distinguish the optional field from the \
+                     following field. Add mandatory outer framing with generator-proven distinct \
+                     heads, drop the optional, or make the following field unavailable at this \
+                     position.",
+                    field.name, next.name,
+                ));
+            } else if next
                 .rust_type
                 .cbor_types(types)
                 .iter()
-                .any(|ct| field_cbor_types.contains(ct))
+                .any(|ct| field.rust_type.cbor_types(types).contains(ct))
             {
                 reasons.push(format!(
                     "Array struct with potentially-ambiguous optional field {}: {:?}",
@@ -481,10 +511,15 @@ pub(super) fn array_record_deser_refusals(
         // field lies between their AUTHORED source indices). For a final tail this is equivalent to
         // the historic "only optional fields follow" rule. For a middle segment it deliberately
         // ignores the mandatory suffix, which is after the segment and therefore cannot delimit
-        // this optional. If their CBOR types overlap (`* any` overlaps EVERYTHING), a peek cannot
-        // tell "this optional field" from "the first segment element", so the deserialize refusal
-        // must fire rather than emit a non-round-tripping decoder.
+        // this optional. A custom-codec or opaque-extern repeated element has no generator-proven
+        // wire head, so it is just as ambiguous as an overlapping head: a peek cannot tell "this
+        // optional field" from "the first segment element". Otherwise preserve the established
+        // CBOR-type overlap test (`* any` overlaps EVERYTHING).
         if let Some(rest) = &record.rest
+            // An exact-zero segment contributes no wire item. The fixed-field walk above already
+            // compares this optional to the segment's suffix when one exists; if it is final, the
+            // optional is owner-length-delimited just like any other terminal optional.
+            && rest.occurrence.is_none_or(|(_, max)| max != 0)
             && rest.array_source_index().is_some_and(|segment_index| {
                 field.source_index < segment_index
                     && record
@@ -496,19 +531,30 @@ pub(super) fn array_record_deser_refusals(
                         })
                         .all(|between| between.optional)
             })
-            && rest
+        {
+            if field_has_unproven_wire_head || types.type_has_unproven_wire_head(rest.element()) {
+                reasons.push(format!(
+                    "Array struct optional field {} is ambiguous with the open array occurrence \
+                     segment (unproven wire head): a peek cannot distinguish the optional field \
+                     from the first repeated element. Add mandatory outer framing with \
+                     generator-proven distinct heads, drop the optional, or drop the occurrence \
+                     segment.",
+                    field.name,
+                ));
+            } else if rest
                 .element()
                 .cbor_types(types)
                 .iter()
-                .any(|ct| field_cbor_types.contains(ct))
-        {
-            reasons.push(format!(
-                "Array struct optional field {} is ambiguous with the open array occurrence segment \
-                 (overlapping CBOR types): a peek cannot distinguish the optional field from \
-                 the first repeated element. Make their types distinct, drop the optional, or drop \
-                 the occurrence segment.",
-                field.name,
-            ));
+                .any(|ct| field.rust_type.cbor_types(types).contains(ct))
+            {
+                reasons.push(format!(
+                    "Array struct optional field {} is ambiguous with the open array occurrence segment \
+                     (overlapping CBOR types): a peek cannot distinguish the optional field from \
+                     the first repeated element. Make their types distinct, drop the optional, or drop \
+                     the occurrence segment.",
+                    field.name,
+                ));
+            }
         }
     }
     reasons
@@ -3355,10 +3401,17 @@ pub(super) fn codegen_struct(
                     .into_iter(),
             ));
             wasm_new_comments.push(if !array_segment_is_final(record, rest) {
+                if rest.has_exact_occurrence_window() {
+                    format!(
+                        "* `{}` - the complete checked exact-count occurrence-segment wrapper before its mandatory fixed suffix (its CDDL occurrence window is enforced before construction)",
+                        rest.field_name
+                    )
+                } else {
                 format!(
                     "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its mandatory fixed suffix (its CDDL occurrence window is enforced before construction)",
                     rest.field_name
                 )
+                }
             } else {
                 format!(
                     "* `{}` - the complete checked trailing-array wrapper (its CDDL occurrence window \
@@ -3416,8 +3469,13 @@ pub(super) fn codegen_struct(
                          mandatory fixed suffix (CDDL `+ t` / `1* t`), as the restricted wasm list \
                          wrapper."
                     } else if rest.is_restricted() {
-                        "The captured bounded major-disjoint occurrence segment before its mandatory \
-                         fixed suffix, as its checked wasm list wrapper."
+                        if rest.has_exact_occurrence_window() {
+                            "The captured bounded exact-count occurrence segment before its mandatory \
+                             fixed suffix, as its checked wasm list wrapper."
+                        } else {
+                            "The captured bounded major-disjoint occurrence segment before its mandatory \
+                             fixed suffix, as its checked wasm list wrapper."
+                        }
                     } else {
                         "The captured major-disjoint occurrence segment before its mandatory fixed \
                          suffix (CDDL `* t`), as the wasm list wrapper."
@@ -3781,9 +3839,15 @@ pub(super) fn codegen_struct(
                  fixed suffix (CDDL `+ t` / `1* t`). Serialized at its authored source position; never \
                  empty."
             } else if rest.is_restricted() {
-                "Captured major-disjoint occurrence-segment elements before the mandatory fixed suffix, \
-                 whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized \
-                 at its authored source position; supplied complete to `new()`."
+                if rest.has_exact_occurrence_window() {
+                    "Captured exact-count occurrence-segment elements before the mandatory fixed suffix, \
+                     whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized \
+                     at its authored source position; supplied complete to `new()`."
+                } else {
+                    "Captured major-disjoint occurrence-segment elements before the mandatory fixed suffix, \
+                     whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized \
+                     at its authored source position; supplied complete to `new()`."
+                }
             } else {
                 "Captured major-disjoint occurrence-segment elements before the mandatory fixed suffix \
                  (CDDL `* t`). Serialized at its authored source position; defaults empty."
@@ -3960,10 +4024,17 @@ pub(super) fn codegen_struct(
             native_new.arg(&rest.field_name, &rest_ty);
             new_arg_count += 1;
             native_new_comments.push(if !array_segment_is_final(record, rest) {
+                if rest.has_exact_occurrence_window() {
+                    format!(
+                        "* `{}` - the complete checked exact-count occurrence-segment carrier before its mandatory fixed suffix (its CDDL occurrence window is enforced by this carrier)",
+                        rest.field_name
+                    )
+                } else {
                 format!(
                     "* `{}` - the complete checked major-disjoint occurrence-segment carrier before its mandatory fixed suffix (its CDDL occurrence window is enforced by this carrier)",
                     rest.field_name
                 )
+                }
             } else {
                 format!(
                     "* `{}` - the complete checked trailing-array carrier (its CDDL occurrence window is enforced by this carrier)",

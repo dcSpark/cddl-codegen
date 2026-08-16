@@ -11,3 +11,4 @@ required_any = [uint, + any]        ; required natural-fallible AnyCbor JSON arr
 bounded = [uint, 2*3 uint]          ; required finite BoundedVec JSON array
 bounded_any = [uint, 1*2 any]       ; bounded natural-fallible AnyCbor JSON array
 middle_bounded = [uint, 2*3 uint, tstr] ; shared BoundedVec JSON/schema surface before suffix
+exact_middle = [uint, 2*2 uint, uint] ; exact same-major middle keeps that shared surface

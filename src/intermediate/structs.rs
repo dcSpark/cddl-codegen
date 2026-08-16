@@ -1026,8 +1026,8 @@ pub enum RestKind {
     },
     /// `* T` occurrence-bearing segment of an open array (a positional analog of the map rest row:
     /// no keys, so no key dispatch, no duplicate policy, no canonical key merge).  Most shipped
-    /// shapes are final tails; a major-disjoint middle segment retains its flattened source position
-    /// so the wire emitters can interleave it with fixed fields.
+    /// shapes are final tails; a variable major-disjoint or exact count-delimited middle segment
+    /// retains its flattened source position so the wire emitters can interleave it with fixed fields.
     ArrayTail {
         /// The repeated element type (`T`). Any supported type, including `any`. Fixed-value
         /// elements (`* 5`) are rejected at recognition (a `Vec<FixedValue>` has no Rust
@@ -1223,6 +1223,14 @@ impl RestRow {
     /// Whether this row is restricted at all (rather than the loose `*` / `0*` form).
     pub fn is_restricted(&self) -> bool {
         self.occurrence.is_some()
+    }
+
+    /// Whether this dynamic sequence has a finite, exact cardinality. `1*1` deliberately never
+    /// reaches a rest row: it remains the ordinary mandatory-field path. Every other exact window
+    /// is a Bounded carrier and gives a middle array segment a count boundary independent of the
+    /// repeated element's wire head.
+    pub fn has_exact_occurrence_window(&self) -> bool {
+        self.occurrence.is_some_and(|(min, max)| min == max)
     }
 
     /// The row's established min-one window (`+` / `1*`). This remains its own predicate because

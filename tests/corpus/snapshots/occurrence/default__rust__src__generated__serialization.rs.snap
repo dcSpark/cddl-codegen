@@ -12,6 +12,58 @@ use alloc::vec::Vec;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
+impl cbor_event::se::Serialize for ExactMiddleOccurrence {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(self.prefix)?;
+        for element in self.rest.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_unsigned_integer(self.suffix)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ExactMiddleOccurrence {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            let prefix =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("prefix"))?;
+            let mut rest = Vec::new();
+            while (match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            }) && (rest.len() as u64) < 2
+            {
+                read_len.read_elems(1)?;
+                let rest_elem = raw.unsigned_integer()?;
+                rest.push(rest_elem);
+            }
+            let suffix =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("suffix"))?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ExactMiddleOccurrence {
+                prefix,
+                rest: <BoundedVec<u64, 2, 2>>::try_from(rest)?,
+                suffix,
+            })
+        })()
+        .map_err(|e| e.annotate("ExactMiddleOccurrence"))
+    }
+}
+
 impl cbor_event::se::Serialize for MiddleOccurrence {
     fn serialize<'se>(
         &self,

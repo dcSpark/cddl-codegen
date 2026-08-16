@@ -1202,22 +1202,22 @@ body_md = '''### Honor the remaining ambiguous/multiple count-permitting occurre
 A final occurrence after fixed members is supported: bare `*` / `0*` uses the loose open-array
 `Vec` rest tail, `+` / `1*` uses its `NonEmptyVec` twin with the shipped first-element construction
 door, and every other bounded window uses a complete checked `BoundedVec` carrier (including finite,
-max-only, min-only, and exact-zero windows). The first safe middle child is delivered too: one
-leading/middle bare-type occurrence may precede an immediate fixed suffix when that suffix is
-mandatory, exactly one CBOR item, free of a field-local custom codec, and CBOR-major-disjoint from
-the repeated element (`[uint, * bytes, tstr]`). Neither the repeated element nor the suffix may have
-a custom- or extern-owned, otherwise-unproven wire head. The decoder therefore obeys RFC 8610 greedy,
-non-backtracking matching without guessing or rewinding; final and safe-middle forms share the
+max-only, min-only, and exact-zero windows). One leading/middle bare-type occurrence may precede an
+immediate mandatory, single-item fixed suffix. Variable windows retain the field-codec-free,
+generator-proven, CBOR-major-disjoint boundary (`[uint, * bytes, tstr]`); an exact `N*N` window stops
+by count, so `[uint, 2*2 uint, uint]` needs neither a major discriminator nor proven custom-/extern-
+owned heads. The decoder therefore obeys RFC 8610 greedy, non-backtracking matching without guessing
+or rewinding; final and safe-middle forms share the
 carrier/projection paths covered by `contain.occurrence-target.grpent.member.{zero_array,plus_array,bounded_array}`.
 
 Still rejected gracefully: multiple occurrence-bearing members; inline-group, group-choice-arm, and
-plain-group occurrences; and a middle occurrence with an optional, multi-item, or otherwise-unproven
-custom-/extern-owned wire head on its repeated element or suffix, or a same-major suffix (`[uint, *
-bytes, bytes]`). A mandatory outer tag or `.cbor` frame supplies a proven wire head and is therefore
+plain-group occurrences; and a variable middle occurrence with an optional, multi-item, or otherwise-
+unproven custom-/extern-owned wire head on its repeated element or suffix, or a same-major suffix
+(`[uint, * bytes, bytes]`). A mandatory outer tag or `.cbor` frame supplies a proven wire head and is therefore
 admissible even when its inner codec is custom- or extern-owned. Those boundaries are
 pinned by `occurrence_on_array_record_field_rejects_gracefully`. Remaining work is the design that can express
-multiple occurrences and ambiguous same-major boundaries — value-level discrimination, residue, and
-exact-count/suffix-aware carriers — and, if needed, explicitly consume a declared wire major for a
+multiple occurrences and variable-cardinality ambiguous same-major boundaries — value-level
+discrimination or residue — and, if needed, explicitly consume a declared wire major for a
 custom- or extern-owned boundary item, without permitting a constructed value to serialize to bytes
 that do not deserialize back to it. Any expansion must retain the one-source checked-carrier
 construction door and cover serialization, deserialization, every generated projection, matrix
@@ -1228,10 +1228,10 @@ work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = '''Design invariant-preserving representations and construction doors for multiple or ambiguous same-major heterogeneous repetition (including value-level discrimination/residue or exact-count suffix-aware forms), while retaining RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
+acceptance_md = '''Design invariant-preserving representations and construction doors for multiple or variable-cardinality same-major heterogeneous repetition (including value-level discrimination or residue), while retaining RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
 '''
 priority_band = "high"
-priority_rationale_md = '''The safe major-disjoint middle class is delivered, but spec-valid multiple and same-major/value-discriminated repetition still reject. They need an explicit representation rather than a decoder that guesses, so this remains a high-priority language boundary without reopening the delivered shared carrier family.
+priority_rationale_md = '''Variable major-disjoint and exact-count middle classes are delivered, but spec-valid multiple and variable same-major/value-discriminated repetition still reject. They need an explicit representation rather than a decoder that guesses, so this remains a high-priority language boundary without reopening the delivered shared carrier family.
 '''
 
 [[record]]
@@ -1839,14 +1839,16 @@ title = "Resolve optional fields adjacent to open array tails or open-table rows
 kind = "work"
 body_md = '''### Resolve optional fields adjacent to open array tails or open-table rows
 
-Type-disjoint non-final optionals already decode by peeking at the next value's major type. An
-optional whose value domain overlaps its follower or an open tail/row has no sound discriminator,
-so that decode surface remains explicitly refused rather than guessed. RFC 8610 matching is greedy
-and non-backtracking: `[? uint, uint]` does not accept `[uint]`, because the optional consumes the
-item and leaves the mandatory field absent. A non-empty, major-disjoint middle segment is now a
-proven separator: `[? uint, + bytes, uint]` decodes because the required bytes item separates the
-optional from its same-major suffix. Its zero-minimum sibling `[? uint, * bytes, uint]` remains a
-refusal because the segment can be empty. This work may honor a newly demonstrated,
+Type-disjoint non-final optionals with generator-proven heads on both sides already decode by peeking
+at the next value's major type. A custom-codec or opaque-extern optional/follower/occurrence head is
+serialize-only unless mandatory outer framing proves a distinct head. An optional whose proven value
+domain overlaps its follower or an open tail/row has no sound discriminator, so that decode surface
+remains explicitly refused rather than guessed. RFC 8610 matching is greedy and non-backtracking:
+`[? uint, uint]` does not accept `[uint]`, because the optional consumes the item and leaves the
+mandatory field absent. A non-empty, major-disjoint middle segment is now a proven separator:
+`[? uint, + bytes, uint]` decodes because the required bytes item separates the optional from its
+same-major suffix. Its zero-minimum sibling `[? uint, * bytes, uint]` remains a refusal because the
+segment can be empty. This work may honor a newly demonstrated,
 spec-valid adjacency only when its carrier and lookahead/residue policy preserve those semantics;
 intrinsically overlapping spellings remain intentional refusals, not decoder-heuristic work. Any
 newly honored shape must prove that boundary through serialization/deserialization and the applicable

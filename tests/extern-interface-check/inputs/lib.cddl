@@ -22,6 +22,10 @@ bounded_tail = [prefix: uint, 2*3 bytes]
 ; internal, while this self-check proves the projected class remains Serialize + Deserialize.
 middle_segment = [prefix: uint, * bytes, suffix: text]
 
+; Exact count, rather than a major discriminator, owns this same-major middle boundary. The exported
+; record still needs only its normal Serialize + Deserialize projection.
+exact_middle_segment = [prefix: uint, 2*2 uint, suffix: uint]
+
 ; transparent rows -> a `use crate::generated::<Name> as _;` existence check
 ce = 0 / 1 / 2
 coin = uint

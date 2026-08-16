@@ -384,7 +384,8 @@ has no constructor argument and defaults empty. A non-empty `+` / `1*` segment i
 first-element constructor argument and returns the corresponding restricted non-empty list wrapper
 (`NonEmptyBytesList`, for example), so the wasm API cannot create an empty segment. A bounded
 segment uses its matching checked list wrapper. The carrier/getter surface is the same for final
-tails and the major-disjoint middle placement; neither flavor has a setter.
+tails, variable major-disjoint middle placement, and exact count-delimited middle placement; neither
+flavor has a setter.
 
 An [`@ignore`](comment_dsl#ignore) rest row **or occurrence segment** stores nothing, so its wasm class has
 **no `rest()` getter** — it is a plain closed struct's wasm surface. The read-tolerance (unknown

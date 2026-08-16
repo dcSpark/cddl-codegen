@@ -8,6 +8,14 @@ expression: content
 package cddl:cddl-lib@0.1.0;
 
 interface types {
+  resource exact-middle-occurrence {
+    constructor(prefix: u64, suffix: u64, rest: list<u64>) -> result<exact-middle-occurrence, string>;
+    prefix: func() -> u64;
+    suffix: func() -> u64;
+    rest: func() -> list<u64>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<exact-middle-occurrence, string>;
+  }
   resource middle-occurrence {
     constructor(prefix: u64, suffix: string);
     prefix: func() -> u64;

@@ -22,6 +22,8 @@ middle_required = [uint, + bytes, tstr]
 middle_bounded = [uint, 2*3 bytes, tstr]
 middle_max = [uint, *2 bytes, tstr]
 middle_zero = [uint, *0 bytes, tstr]
+exact_middle = [uint, 2*2 uint, uint] ; count-delimited same-major exact segment
+exact_zero_middle = [uint, 0*0 uint, uint] ; exact-zero leaves same-major suffix in place
 ign = [
   uint,
   * any ; @ignore                   ; tolerate-and-drop tail (drops trailing elements)
@@ -41,3 +43,5 @@ inner_ign = [
 ]
 outer_middle = [inner_middle, uint]
 inner_middle = [uint, * bytes, tstr]
+outer_exact_middle = [inner_exact_middle, uint]
+inner_exact_middle = [uint, 2*2 uint, uint]

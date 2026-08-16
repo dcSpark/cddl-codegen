@@ -3794,15 +3794,15 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    /// Whether `ty` can write a head the middle-segment discriminator cannot prove. Mandatory
-    /// tags and `.cbor` own a stable outer head; optionally-tagged values may still expose their
-    /// inner head. The visited set makes recursive type-choice/wrapper graphs conservative rather
-    /// than recursive forever: a custom/unproven owner is found on its first visit.
-    fn middle_segment_type_has_unproven_wire_head(&self, ty: &RustType) -> bool {
-        self.middle_segment_type_has_unproven_wire_head_inner(ty, &mut BTreeSet::new())
+    /// Whether `ty` can write a head the generator cannot prove. Mandatory tags and `.cbor` own
+    /// a stable outer head; optionally-tagged values may still expose their inner head. The visited
+    /// set makes recursive type-choice/wrapper graphs conservative rather than recursive forever:
+    /// a custom/unproven owner is found on its first visit.
+    pub(crate) fn type_has_unproven_wire_head(&self, ty: &RustType) -> bool {
+        self.type_has_unproven_wire_head_inner(ty, &mut BTreeSet::new())
     }
 
-    fn middle_segment_type_has_unproven_wire_head_inner(
+    fn type_has_unproven_wire_head_inner(
         &self,
         ty: &RustType,
         seen: &mut BTreeSet<RustIdent>,
@@ -3814,7 +3814,7 @@ impl<'a> IntermediateTypes<'a> {
             Some(CBOREncodingOperation::OptionallyTagged(_)) => {
                 let mut inner = ty.clone();
                 inner.encodings.pop();
-                return self.middle_segment_type_has_unproven_wire_head_inner(&inner, seen);
+                return self.type_has_unproven_wire_head_inner(&inner, seen);
             }
             None => {}
         }
@@ -3828,13 +3828,11 @@ impl<'a> IntermediateTypes<'a> {
                         metadata.custom_serialize.is_some() || metadata.custom_deserialize.is_some()
                     });
                 codec_owned
-                    || self.middle_segment_type_has_unproven_wire_head_inner(
-                        &RustType::new((**inner).clone()),
-                        seen,
-                    )
+                    || self
+                        .type_has_unproven_wire_head_inner(&RustType::new((**inner).clone()), seen)
             }
             ConceptualRustType::Optional(inner) => {
-                self.middle_segment_type_has_unproven_wire_head_inner(inner, seen)
+                self.type_has_unproven_wire_head_inner(inner, seen)
             }
             ConceptualRustType::Rust(ident) => {
                 if !seen.insert(ident.clone()) {
@@ -3850,14 +3848,14 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 match rust_struct.variant() {
                     RustStructType::Wrapper { wrapped, .. } => {
-                        self.middle_segment_type_has_unproven_wire_head_inner(wrapped, seen)
+                        self.type_has_unproven_wire_head_inner(wrapped, seen)
                     }
                     RustStructType::TypeChoice { variants }
                     | RustStructType::CStyleEnum { variants } => variants.iter().any(|variant| {
                         matches!(
                             &variant.data,
                             EnumVariantData::RustType(variant_ty)
-                                if self.middle_segment_type_has_unproven_wire_head_inner(
+                                if self.type_has_unproven_wire_head_inner(
                                     variant_ty, seen,
                                 )
                         )
@@ -3956,11 +3954,17 @@ impl<'a> IntermediateTypes<'a> {
                 ));
                 continue;
             }
+            // An exact window has its boundary in the occurrence count, not in the next item's
+            // major. It consequently needs neither a generator-proven wire head nor a disjoint
+            // major. All variable windows retain the established discriminator proof verbatim.
+            if segment.has_exact_occurrence_window() {
+                continue;
+            }
             let repeated_has_unproven_wire_head =
-                self.middle_segment_type_has_unproven_wire_head(segment.element());
+                self.type_has_unproven_wire_head(segment.element());
             let suffix_has_unproven_wire_head = suffix.rule_metadata.custom_serialize.is_some()
                 || suffix.rule_metadata.custom_deserialize.is_some()
-                || self.middle_segment_type_has_unproven_wire_head(&suffix.rust_type);
+                || self.type_has_unproven_wire_head(&suffix.rust_type);
             if repeated_has_unproven_wire_head || suffix_has_unproven_wire_head {
                 let positions = match (
                     repeated_has_unproven_wire_head,

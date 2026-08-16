@@ -1,1 +1,1 @@
-a = [uint, 2*3 bytes]
+a = [uint, 2*2 uint, uint]

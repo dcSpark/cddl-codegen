@@ -31,6 +31,14 @@ pub struct CapEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct ExactMiddleEncoding {
+    pub len_encoding: LenEncoding,
+    pub index_0_encoding: Option<cbor_event::Sz>,
+    pub index_2_encoding: Option<cbor_event::Sz>,
+    pub rest_elem_encodings: Vec<Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct InnerEncoding {
     pub len_encoding: LenEncoding,
     pub index_0_encoding: Option<cbor_event::Sz>,
