@@ -2820,6 +2820,141 @@ impl<'a> WasmWrapper<'a> {
     }
 }
 
+/// The wasm-bindgen-inherent members that mirror capabilities of the generated rust surface.
+///
+/// `wasm_api_parity` intentionally ignores trait impls, so this is deliberately a much narrower
+/// contract than that general differential: it contains only the runtime/serde doors that
+/// `create_base_wasm_struct` re-exports as inherent wasm methods. Keeping the member identity,
+/// capability gate, and constructor together means the emitted output and the output-side test
+/// cannot each grow an independent vocabulary.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) enum WasmDoorMember {
+    ToCborBytes,
+    FromCborBytes,
+    ToCanonicalCborBytes,
+    ToJson,
+    ToJsonValue,
+    FromJson,
+}
+
+impl WasmDoorMember {
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::ToCborBytes => "to_cbor_bytes",
+            Self::FromCborBytes => "from_cbor_bytes",
+            Self::ToCanonicalCborBytes => "to_canonical_cbor_bytes",
+            Self::ToJson => "to_json",
+            Self::ToJsonValue => "to_json_value",
+            Self::FromJson => "from_json",
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn is_cbor(self) -> bool {
+        matches!(
+            self,
+            Self::ToCborBytes | Self::FromCborBytes | Self::ToCanonicalCborBytes
+        )
+    }
+}
+
+/// The exact wasm door owed by a rust-backed wrapper in this CLI posture.
+///
+/// This is the production contract: `wasm_door_functions` constructs every returned member, and
+/// `create_base_wasm_struct` pushes that complete returned vector. Tests read this same contract
+/// only to compare it with parsed emitted source, never as a substitute for emission.
+pub(crate) fn wasm_door_members(cli: &Cli, deserialize_generated: bool) -> Vec<WasmDoorMember> {
+    let mut members = Vec::new();
+    if cli.to_from_bytes_methods {
+        members.push(WasmDoorMember::ToCborBytes);
+        if cli.preserve_encodings && cli.canonical_form {
+            members.push(WasmDoorMember::ToCanonicalCborBytes);
+        }
+        if deserialize_generated {
+            members.push(WasmDoorMember::FromCborBytes);
+        }
+    }
+    if cli.json_serde_derives {
+        members.extend([
+            WasmDoorMember::ToJson,
+            WasmDoorMember::ToJsonValue,
+            WasmDoorMember::FromJson,
+        ]);
+    }
+    members
+}
+
+fn wasm_door_functions(
+    cli: &Cli,
+    name: &str,
+    deserialize_generated: bool,
+) -> Vec<codegen::Function> {
+    wasm_door_members(cli, deserialize_generated)
+        .into_iter()
+        .map(|member| {
+            let mut function = codegen::Function::new(member.name());
+            match member {
+                WasmDoorMember::ToCborBytes => {
+                    function.ret("Vec<u8>").arg_ref_self().vis("pub");
+                    if cli.preserve_encodings && cli.canonical_form {
+                        function.line(format!(
+                            "{}::serialization::Serialize::to_cbor_bytes(&self.0)",
+                            cli.common_import_wasm()
+                        ));
+                    } else {
+                        function.line(format!(
+                            "{}::serialization::ToCBORBytes::to_cbor_bytes(&self.0)",
+                            cli.common_import_wasm()
+                        ));
+                    }
+                }
+                WasmDoorMember::FromCborBytes => {
+                    function
+                        .ret(format!("Result<{name}, JsError>"))
+                        .arg("cbor_bytes", "&[u8]")
+                        .vis("pub")
+                        .line(format!(
+                            "{}::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsError::new(&format!(\"from_bytes: {{}}\", e)))",
+                            cli.common_import_wasm()
+                        ));
+                }
+                WasmDoorMember::ToCanonicalCborBytes => {
+                    function
+                        .ret("Vec<u8>")
+                        .arg_ref_self()
+                        .vis("pub")
+                        .line(format!(
+                            "{}::serialization::Serialize::to_canonical_cbor_bytes(&self.0)",
+                            cli.common_import_wasm()
+                        ));
+                }
+                WasmDoorMember::ToJson => {
+                    function
+                        .ret("Result<String, JsError>")
+                        .arg_ref_self()
+                        .vis("pub")
+                        .line("serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!(\"to_json: {}\", e)))");
+                }
+                WasmDoorMember::ToJsonValue => {
+                    function
+                        .ret("Result<JsValue, JsError>")
+                        .arg_ref_self()
+                        .vis("pub")
+                        .line("serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible()).map_err(|e| JsError::new(&format!(\"to_json_value: {}\", e)))");
+                }
+                WasmDoorMember::FromJson => {
+                    function
+                        .ret(format!("Result<{name}, JsError>"))
+                        .arg("json", "&str")
+                        .vis("pub")
+                        .line("serde_json::from_str(json).map(Self).map_err(|e| JsError::new(&format!(\"from_json: {}\", e)))");
+                }
+            }
+            function
+        })
+        .collect()
+}
+
 fn create_base_wasm_struct<'a>(
     gen_scope: &GenerationScope,
     ident: &'a RustIdent,
@@ -2851,75 +2986,13 @@ fn create_base_wasm_struct<'a>(
                 macros.push((cbor_json_macro.clone(), vec![name.to_owned()]));
             }
             None => {
-                if cli.to_from_bytes_methods {
-                    let mut to_bytes = codegen::Function::new("to_cbor_bytes");
-                    to_bytes.ret("Vec<u8>").arg_ref_self().vis("pub");
-                    // The canonical half of the bytes door, owed only where the runtime composes the
-                    // `Serialize` trait that DECLARES it
-                    // (`static/serialization_preserve_force_canonical.rs`). Pushed after
-                    // `to_cbor_bytes` below so the two halves of the door emit in reading order.
-                    let mut to_canonical_bytes = None;
-                    if cli.preserve_encodings && cli.canonical_form {
-                        to_bytes.line(format!(
-                            "{}::serialization::Serialize::to_cbor_bytes(&self.0)",
-                            cli.common_import_wasm()
-                        ));
-                        let mut f = codegen::Function::new("to_canonical_cbor_bytes");
-                        f.ret("Vec<u8>")
-                            .arg_ref_self()
-                            .vis("pub")
-                            // Fully qualified through the same `common_import_wasm()` prefix as its
-                            // sibling above: a bare `Serialize::to_canonical_cbor_bytes` resolves
-                            // only while the trait happens to be in scope, which
-                            // `--common-import-override` (a separate runtime crate) does not
-                            // guarantee.
-                            .line(format!(
-                                "{}::serialization::Serialize::to_canonical_cbor_bytes(&self.0)",
-                                cli.common_import_wasm()
-                            ));
-                        to_canonical_bytes = Some(f);
-                    } else {
-                        to_bytes.line(format!(
-                            "{}::serialization::ToCBORBytes::to_cbor_bytes(&self.0)",
-                            cli.common_import_wasm()
-                        ));
-                    }
-                    s_impl.push_fn(to_bytes);
-                    if let Some(f) = to_canonical_bytes {
-                        s_impl.push_fn(f);
-                    }
-                    if gen_scope.deserialize_generated(ident) {
-                        s_impl
-                            .new_fn("from_cbor_bytes")
-                            .ret(format!("Result<{name}, JsError>"))
-                            .arg("cbor_bytes", "&[u8]")
-                            .vis("pub")
-                            .line(format!(
-                                "{}::serialization::Deserialize::from_cbor_bytes(cbor_bytes).map(Self).map_err(|e| JsError::new(&format!(\"from_bytes: {{}}\", e)))",
-                                cli.common_import_wasm()));
-                    }
-                }
-                if cli.json_serde_derives {
-                    let mut to_json = codegen::Function::new("to_json");
-                    to_json
-                        .ret("Result<String, JsError>")
-                        .arg_ref_self()
-                        .vis("pub")
-                        .line("serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!(\"to_json: {}\", e)))");
-                    s_impl.push_fn(to_json);
-                    let mut to_json_value = codegen::Function::new("to_json_value");
-                    to_json_value
-                        .ret("Result<JsValue, JsError>")
-                        .arg_ref_self()
-                        .vis("pub")
-                        .line("serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible()).map_err(|e| JsError::new(&format!(\"to_json_value: {}\", e)))");
-                    s_impl.push_fn(to_json_value);
-                    s_impl
-                        .new_fn("from_json")
-                        .ret(format!("Result<{name}, JsError>"))
-                        .arg("json", "&str")
-                        .vis("pub")
-                        .line("serde_json::from_str(json).map(Self).map_err(|e| JsError::new(&format!(\"from_json: {}\", e)))");
+                // The vector is deliberately complete before it reaches this loop: a new door is
+                // one contract member plus one constructor, not a separately remembered `push_fn`
+                // at each conditional branch (the historical canonical door escape).
+                for function in
+                    wasm_door_functions(cli, name, gen_scope.deserialize_generated(ident))
+                {
+                    s_impl.push_fn(function);
                 }
             }
         }

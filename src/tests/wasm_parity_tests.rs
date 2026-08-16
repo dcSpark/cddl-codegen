@@ -1565,40 +1565,36 @@ fn synthesized_instance_alias_marker_provenance() {
 // The wasm face's flag-conditional door vocabulary
 // -------------------------------------------------------------------------------------------------
 
-/// The six flag-conditional members of the wasm face's DOOR — the boundary re-export of runtime
-/// trait methods `wasm_bindgen` cannot export as traits. Every one of them is invisible to
-/// `wasm_api_parity` by the same structural exemption (that differential's rust-side walk reads
-/// INHERENT impls only, and each member's rust-side home is a TRAIT method or a derive), so absence
-/// on the wasm side produces no rust-side row and can never be reported missing there.
-const DOOR_MEMBERS: &[&str] = &[
-    "to_cbor_bytes",
-    "from_cbor_bytes",
-    "to_canonical_cbor_bytes",
-    "to_json",
-    "to_json_value",
-    "from_json",
-];
-
 /// Two rules that own the door (a record and a map-rep record — both are rust types the wasm class
 /// wraps, so `create_base_wasm_struct` sees `exists_in_rust`), plus a named collection whose wasm
 /// class is built with `exists_in_rust = false` and therefore owes no door member in ANY posture.
+/// `door_ambiguous` owns a rust wrapper but intentionally cannot derive `Deserialize`, so its
+/// output-side set pins the `from_cbor_bytes` predicate rather than merely asking the contract.
 /// The collection is the control: without it a sweep that only ever asserts presence could pass
 /// while the emitter handed the door to everything.
 const DOOR_SPEC: &str = "\
 door_record = [a: uint, b: tstr]\n\
 door_map = {c: uint}\n\
+door_ambiguous = [? b: uint, c: uint]\n\
 door_list = [* door_record]\n";
 
-/// The door members `class` carries in `wasm/src/generated/mod.rs`, as a set.
-fn door_of(wasm: &WasmSurface, class: &str) -> BTreeSet<&'static str> {
+/// Every parsed inherent public method of `class` in emitted wasm source.
+fn inherent_members_of(wasm: &WasmSurface, class: &str) -> BTreeSet<String> {
     wasm.members
         .get(class)
-        .map(|fns| {
-            fns.iter()
-                .filter_map(|(name, _)| DOOR_MEMBERS.iter().copied().find(|d| *d == name))
-                .collect()
-        })
+        .map(|members| members.iter().map(|(name, _)| name.clone()).collect())
         .unwrap_or_default()
+}
+
+/// The output-observed door is the exact set of methods a posture adds over its matched
+/// door-disabled baseline. This deliberately knows NO door names: a future method pushed directly
+/// in `create_base_wasm_struct` appears in the difference and fails unless the production contract
+/// also owns it.
+fn observed_door_of(wasm: &WasmSurface, baseline: &WasmSurface, class: &str) -> BTreeSet<String> {
+    inherent_members_of(wasm, class)
+        .difference(&inherent_members_of(baseline, class))
+        .cloned()
+        .collect()
 }
 
 /// The wasm face's door vocabulary must be exactly what the posture owes — in BOTH directions.
@@ -1611,7 +1607,11 @@ fn door_of(wasm: &WasmSurface, class: &str) -> BTreeSet<&'static str> {
 /// a missing door member contributes no rust-side row and nothing can be reported absent. That is
 /// exactly how `to_canonical_cbor_bytes` shipped missing: `create_base_wasm_struct` BUILT its
 /// `codegen::Function` under `--preserve-encodings --canonical-form` and never pushed it onto the
-/// impl, so the rust crate declared the method and the wasm boundary did not.
+/// impl, so the rust crate declared the method and the wasm boundary did not. The production door
+/// contract now constructs a complete vector and the emitter pushes that vector structurally; this
+/// test derives its expected vocabulary from that contract, then obtains the actual output door by
+/// subtracting a matched door-disabled generated baseline from the parsed emitted wasm source. That
+/// differential has no vocabulary filter, so an unregistered direct extra cannot hide.
 ///
 /// **The reverse direction is not decoration.** A member emitted in a posture whose runtime does not
 /// declare it is a compile error in the consumer's crate, not a harmless extra:
@@ -1629,39 +1629,16 @@ fn door_of(wasm: &WasmSurface, class: &str) -> BTreeSet<&'static str> {
 /// its content, which is what makes the six-member sweep above legitimately non-macro-only.
 #[test]
 fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
-    // (label, extra flags, the door the posture owes). `to_from_bytes_methods` defaults to true, so
-    // the cbor half is owed unless a case turns it off; `from_cbor_bytes` is additionally gated on a
-    // generated `Deserialize`, which both door rules get.
-    const CASES: &[(&str, &[&str], &[&str])] = &[
-        ("default", &[], &["to_cbor_bytes", "from_cbor_bytes"]),
-        // The cbor half is gated on ONE flag for all three of its members.
-        ("no_bytes_methods", &["--to-from-bytes-methods=false"], &[]),
-        (
-            "json",
-            &["--json-serde-derives=true"],
-            &[
-                "to_cbor_bytes",
-                "from_cbor_bytes",
-                "to_json",
-                "to_json_value",
-                "from_json",
-            ],
-        ),
-        // preserve WITHOUT canonical-form composes `ToCBORBytes`, which declares `to_cbor_bytes`
-        // alone — so the canonical member is owed by neither side here.
-        (
-            "preserve",
-            &["--preserve-encodings=true"],
-            &["to_cbor_bytes", "from_cbor_bytes"],
-        ),
+    // The postures exercise the cbor, canonical, JSON, and no-bytes capability gates. The owed
+    // vocabulary is deliberately NOT listed here: it is derived from the production contract below.
+    const CASES: &[(&str, &[&str])] = &[
+        ("default", &[]),
+        ("no_bytes_methods", &["--to-from-bytes-methods=false"]),
+        ("json", &["--json-serde-derives=true"]),
+        ("preserve", &["--preserve-encodings=true"]),
         (
             "preserve_canonical",
             &["--preserve-encodings=true", "--canonical-form=true"],
-            &[
-                "to_cbor_bytes",
-                "from_cbor_bytes",
-                "to_canonical_cbor_bytes",
-            ],
         ),
         (
             "preserve_canonical_json",
@@ -1670,10 +1647,7 @@ fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
                 "--canonical-form=true",
                 "--json-serde-derives=true",
             ],
-            DOOR_MEMBERS,
         ),
-        // The canonical member rides the same `to_from_bytes_methods` gate as its siblings: turning
-        // that off in the posture that otherwise owes it must take the whole cbor half away.
         (
             "canonical_no_bytes_methods",
             &[
@@ -1681,7 +1655,6 @@ fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
                 "--canonical-form=true",
                 "--to-from-bytes-methods=false",
             ],
-            &[],
         ),
     ];
     let dir = std::env::temp_dir().join(format!("cddl_codegen_wasm_door_{}", std::process::id()));
@@ -1700,9 +1673,31 @@ fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
         args.extend(extra.iter().copied());
         Cli::parse_from(args)
     };
+    // Keep every posture coordinate but normalize the two door flags before appending their false
+    // baseline values. Passing a conflicting duplicate to clap would test parser precedence, not
+    // the same generation posture with its door disabled.
+    let door_disabled_cli_for = |extra: &[&str]| {
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "wasm_door_unused",
+            "--wasm=true",
+        ];
+        args.extend(extra.iter().copied().filter(|arg| {
+            !arg.starts_with("--to-from-bytes-methods=")
+                && !arg.starts_with("--json-serde-derives=")
+        }));
+        args.extend([
+            "--to-from-bytes-methods=false",
+            "--json-serde-derives=false",
+        ]);
+        Cli::parse_from(args)
+    };
 
     let mut failures: Vec<String> = vec![];
-    for (label, extra, owed) in CASES {
+    for (label, extra) in CASES {
         let cli = cli_for(extra);
         let files = crate::api::generated_strings(&cli)
             .unwrap_or_else(|e| panic!("{label}: generating the door spec failed: {e}"));
@@ -1710,9 +1705,23 @@ fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
             .get("wasm/src/generated/mod.rs")
             .unwrap_or_else(|| panic!("{label}: no wasm/src/generated/mod.rs"));
         let wasm = parse_wasm_surface(wasm_src);
-        let owed: BTreeSet<&str> = owed.iter().copied().collect();
+        let baseline_cli = door_disabled_cli_for(extra);
+        let baseline_files = crate::api::generated_strings(&baseline_cli).unwrap_or_else(|e| {
+            panic!("{label}: generating the door-disabled baseline failed: {e}")
+        });
+        let baseline_src = baseline_files
+            .get("wasm/src/generated/mod.rs")
+            .unwrap_or_else(|| panic!("{label}: no baseline wasm/src/generated/mod.rs"));
+        let baseline = parse_wasm_surface(baseline_src);
+        // Both door-owning fixture rules generate `Deserialize`; the production contract makes that
+        // predicate explicit, retaining the distinct `from_cbor_bytes` gate without another table.
+        let owed = crate::generation::wasm_door_members(&cli, true)
+            .into_iter()
+            .map(crate::generation::WasmDoorMember::name)
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>();
         for class in ["DoorRecord", "DoorMap"] {
-            let got = door_of(&wasm, class);
+            let got = observed_door_of(&wasm, &baseline, class);
             if got != owed {
                 failures.push(format!(
                     "  [{label}] {class}: door is {got:?}, the posture owes {owed:?} \
@@ -1722,7 +1731,21 @@ fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
                 ));
             }
         }
-        let control = door_of(&wasm, "DoorList");
+        let ambiguous_owed = crate::generation::wasm_door_members(&cli, false)
+            .into_iter()
+            .map(crate::generation::WasmDoorMember::name)
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>();
+        let ambiguous = observed_door_of(&wasm, &baseline, "DoorAmbiguous");
+        if ambiguous != ambiguous_owed {
+            failures.push(format!(
+                "  [{label}] DoorAmbiguous: door is {ambiguous:?}, the no-Deserialize posture \
+                 owes {ambiguous_owed:?} (missing {:?}, unowed {:?})",
+                ambiguous_owed.difference(&ambiguous).collect::<Vec<_>>(),
+                ambiguous.difference(&ambiguous_owed).collect::<Vec<_>>(),
+            ));
+        }
+        let control = observed_door_of(&wasm, &baseline, "DoorList");
         if !control.is_empty() {
             failures.push(format!(
                 "  [{label}] DoorList: a collection wrapper is built with `exists_in_rust = false` \
@@ -1734,17 +1757,17 @@ fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
         // their runtime witness is the derive on the rust type, checked below.)
         let prelude = crate::generation::GenerationScope::serialization_prelude(false, false, &cli)
             .expect("the static runtime prelude must compose");
-        for member in [
-            "to_cbor_bytes",
-            "from_cbor_bytes",
-            "to_canonical_cbor_bytes",
-        ] {
-            let emitted = owed.contains(member);
-            let declared = prelude.contains(&format!("fn {member}("));
+        for member in crate::generation::wasm_door_members(&cli, true)
+            .into_iter()
+            .filter(|member| member.is_cbor())
+        {
+            let emitted = owed.contains(member.name());
+            let declared = prelude.contains(&format!("fn {}(", member.name()));
             if emitted && !declared {
                 failures.push(format!(
-                    "  [{label}] the door re-exports `{member}`, which this posture's composed \
-                     runtime does not declare — a compile error in the consumer's crate"
+                    "  [{label}] the door re-exports `{}`, which this posture's composed \
+                     runtime does not declare — a compile error in the consumer's crate",
+                    member.name()
                 ));
             }
         }
@@ -1752,7 +1775,11 @@ fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
             .get("rust/src/generated/mod.rs")
             .unwrap_or_else(|| panic!("{label}: no rust/src/generated/mod.rs"));
         let serde_derived = rust_src.contains("serde::Serialize");
-        if owed.contains("to_json") && !serde_derived {
+        if crate::generation::wasm_door_members(&cli, true)
+            .into_iter()
+            .any(|member| !member.is_cbor())
+            && !serde_derived
+        {
             failures.push(format!(
                 "  [{label}] the door re-exports the JSON three over a rust type carrying no serde \
                  derive"
@@ -1772,8 +1799,16 @@ fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
         crate::api::generated_strings(&macro_cli).expect("the macro posture must generate");
     let macro_src = macro_files.get("wasm/src/generated/mod.rs").unwrap();
     let macro_wasm = parse_wasm_surface(macro_src);
+    let macro_baseline_cli =
+        door_disabled_cli_for(&["--preserve-encodings=true", "--canonical-form=true"]);
+    let macro_baseline_files = crate::api::generated_strings(&macro_baseline_cli)
+        .expect("the macro door-disabled baseline must generate");
+    let macro_baseline_src = macro_baseline_files
+        .get("wasm/src/generated/mod.rs")
+        .expect("the macro baseline must have wasm/src/generated/mod.rs");
+    let macro_baseline = parse_wasm_surface(macro_baseline_src);
     for class in ["DoorRecord", "DoorMap"] {
-        let got = door_of(&macro_wasm, class);
+        let got = observed_door_of(&macro_wasm, &macro_baseline, class);
         if !got.is_empty() {
             failures.push(format!(
                 "  [macro] {class}: the macro branch emitted door fns of its own ({got:?}) — the \
@@ -1792,7 +1827,7 @@ fn wasm_door_vocabulary_matches_the_posture_that_owes_it() {
     assert!(
         failures.is_empty(),
         "the wasm face's flag-conditional door vocabulary does not match the posture that owes it \
-         (fix `create_base_wasm_struct`, or — if the runtime moved — this table):\n{}",
+         (fix the production door contract or its runtime capability witness):\n{}",
         failures.join("\n")
     );
 }

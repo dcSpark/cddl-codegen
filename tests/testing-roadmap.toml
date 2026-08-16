@@ -93,8 +93,6 @@ entries = [
   "testing.generated-local-collision.scope-wide-probe",
   "testing.synthesized-name-referenced-never-minted-e0425-flavor",
   "testing.generated-json-schema.partition-cardinality-position-semantics",
-  "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism",
-  "part-why-parity-gate-cannot-host-generalization",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
   "testing.fixture-shape-evicted-over-known-defect-stale-guard",
   "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim",
@@ -7209,47 +7207,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
-title = "The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust surface it mirrors."
-legacy_aliases = ["Next work 10"]
-
-[record.payload]
-kind = "work"
-body_md = '''10. **The wasm face's door vocabulary is hand-listed, and no mechanism derives it from the rust
-    surface it mirrors.** `wasm_door_vocabulary_matches_the_posture_that_owes_it`
-    (`src/tests/wasm_parity_tests.rs`) pins the six flag-conditional door members —
-    `to_cbor_bytes`, `from_cbor_bytes`, `to_canonical_cbor_bytes`, `to_json`, `to_json_value`,
-    `from_json` — per posture and in both directions, against a table it carries in source. A
-    SEVENTH member, added to the emitter and not to that table, is caught by nothing: the table is
-    the vocabulary, and it is written by hand.
-'''
-signal_md = '''    - **Reopening signal:** a consumer reporting a wasm member absent that the rust crate has. That
-      reaches us pre-diagnosed (the observable is an `undefined` method on a JS class whose rust
-      counterpart they can point at), and the count of silently-missing members is the dimension
-      along which a hand-listed vocabulary stops being maintainable.
-
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "wrong_public_api"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.wasm-face-s-door-vocabulary-hand-listed-mechanism's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-
-[record.payload.reopening_signal]
-observer = "consumer comparing a generated JS class with its rust counterpart"
-dimension = "rust door members silently absent from wasm"
-action_on_fire_md = '''Reopen the delivered door-vocabulary boundary and derive the reported member class without widening unrelated trait methods.
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "event"
-event_md = '''a consumer reports an undefined wasm member and identifies the rust member that exists
-'''
-
-[[record]]
 id = "testing.wasm32-link-floor-deferred-reject-twin"
 title = "A wasm32 LINK floor for the deferred reject twin."
 
@@ -7668,23 +7625,6 @@ body_md = '''    - **What one hand cell per construct does not buy, established 
       bare with no import there either. Every ingredient had a green fixture of its own — rest rows,
       cross-scope references, nested maps — and no cell crossed them, so the wasm crate did not
       compile while every gate stayed green.
-'''
-
-[[part]]
-part_id = "part-why-parity-gate-cannot-host-generalization"
-parent_record_id = "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism"
-title = "Why the parity gate cannot host the generalization."
-body_md = '''    - **Why the parity gate cannot host the generalization.** `wasm_api_parity` exists to report
-      "a rust member with no wasm counterpart", but its rust-side walk reads INHERENT impls only
-      (`syn::Item::Impl(im) if im.trait_.is_none()`) and documents the exclusion of trait impls as a
-      deliberate structural exemption. Every door member's rust-side home is outside that walk —
-      three are trait methods on the generated runtime's `ToCBORBytes`/`Serialize`/`Deserialize`,
-      three are backed by serde derives — so each contributes no rust-side row and none can be
-      reported missing there. The exemption is right for `From`/`AsRef` and wrong for exactly this
-      family, whose members exist ONLY as trait methods on the rust side and ONLY as inherent fns on
-      the wasm side. Widening the walk to trait impls would drown the differential in the
-      `From`/`AsRef` noise the exemption exists to remove; the generalization wants its own
-      mechanism, keyed on the trait set the wasm face promises to mirror.
 '''
 
 [[relation]]

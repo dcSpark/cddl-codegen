@@ -4425,6 +4425,20 @@ enumerable members), and tag-over-struct-folding classes all fall out structural
 check: *semantic* wrongness — an identity `.into()` where a transform was needed — stays
 `wasm_matrix_roundtrips`' job; this is a *presence* differential.
 
+The six flag-conditional trait/serde re-export doors sit outside that differential by construction:
+their rust homes are runtime traits or serde derives, while wasm-bindgen requires inherent methods.
+`wasm_door_vocabulary_matches_the_posture_that_owes_it` therefore uses the production
+`generation::wasm_door_members` contract — the same ordered descriptor vector that constructs and
+then structurally pushes the wasm methods — for its expected set, and parses the emitted wasm module
+with `syn` against a matched door-disabled baseline. The output door is the complete parsed inherent
+method difference, so an unregistered direct extra cannot hide behind a vocabulary filter. Its seven
+postures cover default, disabled bytes,
+JSON, preserve, preserve+canonical, preserve+canonical+JSON, and canonical with bytes disabled;
+both a record and map record owe the set, a collection wrapper is the negative control, and the
+macro branch is separately pinned as invocation-only. The test also checks the composed runtime
+declares every emitted CBOR door and that any JSON door has serde derives, so the contract cannot
+quietly drift from the surface it mirrors.
+
 Inputs are every `tests/matrix_wasm/*.cddl` cell (even `WASM_MATRIX_SKIP` ones — parity is
 parse-only, and their emitted sources parse even when they don't standalone *compile*) plus the two
 depth fixtures `tests/core/input.cddl` and `example/test.cddl` (kitchen-sink shapes the minimal cells
