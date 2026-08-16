@@ -96,7 +96,6 @@ entries = [
   "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism",
   "part-why-parity-gate-cannot-host-generalization",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
-  "testing.build-registration-class-reference-position-sweep-second-escape",
   "testing.fixture-shape-evicted-over-known-defect-stale-guard",
   "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim",
   "testing.rejection-message-s-remedy-string-executable-claim-pin",
@@ -334,18 +333,6 @@ action_on_fire_md = '''Create only the specifically demanded work without wideni
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.add-profile-wrapper-participation-grid-participation-differs-across's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.admission-path.build-registration-class-reference-position-sweep-second-escape"
-title = "Admission for testing.build-registration-class-reference-position-sweep-second-escape."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "independent_recurrence"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-evidence_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof", "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"]
-incident_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one", "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"]
 
 [[record]]
 id = "testing.admission-path.gate-demands-premise-probed-against-gate-evidence-about"
@@ -616,37 +603,6 @@ action_on_fire_md = '''Set testing.assert-hand-authored-json-schema-against-type
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.assert-hand-authored-json-schema-against-type-s's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.build-registration-class-reference-position-sweep-second-escape"
-title = "Build the registration-class × reference-position sweep — the second escape makes it due."
-legacy_aliases = ["Next work 12"]
-
-[record.payload]
-kind = "work"
-body_md = '''12. **Build the registration-class × reference-position sweep — the second escape makes it due.**
-    The shipped incident pins and their exact coverage live in `tests/README.md` § “Recursive-type
-    boundary — test map”; they are controls, not a substitute for this enumeration. Build a sibling
-    to `directive_referencing_context_sweep` whose bases distinguish at least own-ident structs,
-    parse-time transparent aliases, forward aliases, named generic-instance bindings whose
-    canonical owns the struct, externs, and recursive collection alias hops in both naming orders.
-    Cross those bases with member, element, re-alias hop, map value, tag head, and the existing
-    reference-context rows. Every legal cell must generate and its emitted crate must compile under
-    rust-only and wasm-bearing profiles; refusal cells must pin their diagnostic. The system is due
-    because two directive-less classes escaped the hand coverage: a twice-aliased set-idiom binding
-    and an alias-first recursive collection. Neither the directive sweep (wrong base axis) nor the
-    recombination roles (no rule-level alias hop) could enumerate them.
-
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.build-registration-class-reference-position-sweep-second-escape's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-admission_ids = ["testing.admission-path.build-registration-class-reference-position-sweep-second-escape"]
 
 [[record]]
 id = "testing.cargo-feature-generated-crate-s-dependency-change-what"
@@ -4103,72 +4059,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one"
-title = "Independent admitted incident one for testing.build-registration-class-reference-position-sweep-second-escape."
-
-[record.payload]
-kind = "testing_incident"
-incident_posture = "attributed"
-signature_md = '''A twice-aliased set-idiom binding escaped the hand coverage.
-'''
-evidence_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"]
-attribution_md = '''The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
-'''
-operating_rule_reference_id = "testing-roadmap-next-work-n19"
-
-[[record]]
-id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
-title = "Incident evidence for testing.build-registration-class-reference-position-sweep-second-escape."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''A twice-aliased set-idiom binding escaped the hand coverage.
-'''
-freshness = "as_of"
-reference_ids = ["testing-build-registration-class-reference-position", "testing-roadmap-next-work-n20"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
-
-[[record]]
-id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"
-title = "Independent admitted incident two for testing.build-registration-class-reference-position-sweep-second-escape."
-
-[record.payload]
-kind = "testing_incident"
-incident_posture = "attributed"
-signature_md = '''An alias-first recursive collection escaped the hand coverage.
-'''
-evidence_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"]
-attribution_md = '''The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
-'''
-operating_rule_reference_id = "testing-roadmap-next-work-n21"
-
-[[record]]
-id = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
-title = "Incident evidence for testing.build-registration-class-reference-position-sweep-second-escape."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''An alias-first recursive collection escaped the hand coverage.
-'''
-freshness = "as_of"
-reference_ids = ["testing-build-registration-class-reference-position-n2", "testing-roadmap-next-work-n22"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
-
-[[record]]
 id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
 title = "Independent admitted incident one for testing.gate-demands-premise-probed-against-gate-evidence-about."
 
@@ -6308,10 +6198,14 @@ kind = "work"
 body_md = '''  - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
     see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
     the kept-its-own-name check reads clean. Reaching it needs a way to enumerate what a row pulls in
-    transitively — a post-pass over the finished document comparing `$defs` cardinality against the
-    reachable type set, or an upstream `schemars` setting that rejects two `TypeId`s resolving to one
-    `schema_id`. The upstream lever is report-and-wait (`schemars` is a crates.io dependency, not a
-    fork we pin like the `cddl` parser), so the document post-pass is the schedulable one.
+    transitively. A finished-document `$defs` cardinality pass alone is not that enumeration: the
+    emitted crate has no independent reachable-Rust-type set to compare against, and a hand-written
+    `JsonSchema` impl can introduce types the IR cannot see. The in-repo design lead therefore needs
+    the generator to emit an independently derived inventory for the reachable generated types,
+    with the hand-written/transitive boundary stated explicitly, before runtime code compares that
+    inventory with the finished document. The alternative is an upstream `schemars` setting that
+    rejects two `TypeId`s resolving to one `schema_id`; that lever is report-and-wait (`schemars` is
+    a crates.io dependency, not a fork we pin like the `cddl` parser).
 '''
 work_state = "armed"
 work_intent = "build_system"
@@ -7809,31 +7703,6 @@ kind = "parent_of"
 target = "testing.guard.armed-idle-harness-arms-empty-head-ledgers-zero"
 
 [[relation]]
-source = "testing.build-registration-class-reference-position-sweep-second-escape"
-kind = "parent_of"
-target = "testing.admission-path.build-registration-class-reference-position-sweep-second-escape"
-
-[[relation]]
-source = "testing.build-registration-class-reference-position-sweep-second-escape"
-kind = "parent_of"
-target = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one"
-
-[[relation]]
-source = "testing.build-registration-class-reference-position-sweep-second-escape"
-kind = "parent_of"
-target = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
-
-[[relation]]
-source = "testing.build-registration-class-reference-position-sweep-second-escape"
-kind = "parent_of"
-target = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"
-
-[[relation]]
-source = "testing.build-registration-class-reference-position-sweep-second-escape"
-kind = "parent_of"
-target = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
-
-[[relation]]
 source = "testing.cargo-feature-generated-crate-s-dependency-change-what"
 kind = "parent_of"
 target = "testing.guard.cargo-feature-generated-crate-s-dependency-change-what"
@@ -8082,16 +7951,6 @@ target = "testing.guard.grammar-fuzzer-batch-masking-detector"
 source = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 kind = "parent_of"
 target = "testing.guard.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
-
-[[relation]]
-source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one"
-kind = "parent_of"
-target = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
-
-[[relation]]
-source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"
-kind = "parent_of"
-target = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
 
 [[relation]]
 source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
@@ -8816,46 +8675,6 @@ id = "gate-lint-doc-citations-n3"
 source = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 kind = "gate"
 gate_id = "lint_doc_citations"
-
-[[reference]]
-id = "testing-roadmap-next-work-n19"
-source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n20"
-source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-build-registration-class-reference-position"
-source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof"
-kind = "roadmap"
-target_id = "testing.build-registration-class-reference-position-sweep-second-escape"
-
-[[reference]]
-id = "testing-roadmap-next-work-n21"
-source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n22"
-source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-build-registration-class-reference-position-n2"
-source = "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"
-kind = "roadmap"
-target_id = "testing.build-registration-class-reference-position-sweep-second-escape"
 
 [[reference]]
 id = "testing-roadmap-next-work-n23"

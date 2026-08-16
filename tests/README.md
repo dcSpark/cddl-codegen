@@ -1145,11 +1145,22 @@ The supported/refused boundary and its remedies are documented for users in
 
 This map closes the known recursive alias-hop escape and, together with
 `generic_collection_tests::alias_of_instance_chains_generate`, the known generic-instance alias
-escape. It is not a cross-product over every kind of ident registration and reference position:
-that broader generation-and-compile sweep is the due work item
-`testing.build-registration-class-reference-position-sweep-second-escape`. Keeping the
-incident pins here and the unbuilt enumeration there makes the present verdict explicit without
-describing planned breadth as shipped coverage.
+escape. Their broader registration-class × reference-position floor is now
+`registration_reference_tests::registration_class_reference_position_sweep`: seven explicit IR
+registration classes (own-ident record, transparent and forward aliases, a tag-258 generic-set
+instance plus its second alias hop, an extern, and the distinct collection-first/alias-first
+recursive registration identities) cross eleven
+explicit positions (the directive sweep's ten semantic positions plus a direct-member control).
+Every prefixed cell receives one independent generation verdict and must emit its holder, so a
+silently omitted reference context cannot pass; the authored current boundary is all 77 `Accept`
+cells, with exact-cover, duplicate-id, stale-name, and accepted-participation guards. The same
+accepted batch then generates under rust-only and wasm-bearing profiles and
+`cargo check`s rust once plus wasm once; externally registered cells get real hand-owned root
+definitions, never generated-tree edits. There are currently no refusal cells: a future genuine
+language/product boundary must be registered as `Reject` with its stable diagnostic, rather than
+being excluded or inferred from the implementation's result. The focused incident fixtures remain
+because they provide the stronger byte/behavior assertions this registration floor intentionally
+does not duplicate.
 
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards the rust crate's
 `--rust-wasm-feature` gate from the one direction no other build can witness: every
