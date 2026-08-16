@@ -3826,6 +3826,132 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
+    /// The complete CDDL-value domain of a conservative fixed-value boundary item.  This is
+    /// intentionally narrower than `cbor_types()`: it proves every value the generated decoder can
+    /// accept, rather than merely the item's outer CBOR major.  It admits only untagged,
+    /// field-codec-free fixed literals and named all-fixed choices/singletons through transparent
+    /// aliases.  Floats stay out even when their source spellings differ, because `f64::PartialEq`
+    /// is not a CDDL-semantic proof for NaN values.
+    pub(crate) fn fixed_value_domain(&self, ty: &RustType) -> Option<Vec<FixedValue>> {
+        self.fixed_value_domain_inner(ty, &mut BTreeSet::new(), &mut BTreeSet::new())
+    }
+
+    /// Whether a variable middle boundary needs the finite-domain retry strategy rather than the
+    /// established major peek.  Keep this derivation pure and recomputable from finalized IR so it
+    /// does not become a presentation-only field in debug/snapshot IR.
+    pub(crate) fn has_disjoint_fixed_domain_middle_boundary(
+        &self,
+        repeated: &RustType,
+        suffix: &RustType,
+    ) -> bool {
+        let Some(repeated_majors) = self.effective_wire_majors(repeated) else {
+            return false;
+        };
+        let Some(suffix_majors) = self.effective_wire_majors(suffix) else {
+            return false;
+        };
+        if !repeated_majors
+            .iter()
+            .any(|major| suffix_majors.contains(major))
+        {
+            return false;
+        }
+        self.fixed_value_domain(repeated)
+            .as_ref()
+            .zip(self.fixed_value_domain(suffix).as_ref())
+            .is_some_and(|(repeated, suffix)| {
+                repeated
+                    .iter()
+                    .all(|value| !suffix.iter().any(|other| other == value))
+            })
+    }
+
+    fn fixed_value_domain_inner(
+        &self,
+        ty: &RustType,
+        seen_structs: &mut BTreeSet<RustIdent>,
+        seen_aliases: &mut BTreeSet<AliasIdent>,
+    ) -> Option<Vec<FixedValue>> {
+        // Bounds, collection policy, defaulting, or framing change the construction/wire story
+        // from the plain fixed literals this proof deliberately owns.
+        if !ty.encodings.is_empty()
+            || ty.config.default.is_some()
+            || ty.config.bounds.is_some()
+            || ty.config.float_bounds.is_some()
+            || ty.config.duplicates.is_some()
+            || ty.config.basic_override
+        {
+            return None;
+        }
+        match &ty.conceptual_type {
+            ConceptualRustType::Fixed(value) => {
+                (!matches!(value, FixedValue::Float(_))).then(|| vec![value.clone()])
+            }
+            ConceptualRustType::Alias(alias, _inner) => {
+                let info = self.type_aliases.get(alias)?;
+                if info.carries_custom_pair()
+                    || info.rule_metadata.as_ref().is_some_and(|metadata| {
+                        metadata.custom_encodings.is_some() || metadata.custom_wire_major.is_some()
+                    })
+                {
+                    return None;
+                }
+                // `AliasInfo::base_type`, not `inner`, is the transparent alias source of truth:
+                // registration can carry bounds/encodings/configuration there which the conceptual
+                // inner deliberately does not store.  A classifier that reconstructed a fresh
+                // `RustType` from `inner` could falsely prove a configured alias fixed-domain.
+                if !seen_aliases.insert(alias.clone()) {
+                    return None;
+                }
+                let result =
+                    self.fixed_value_domain_inner(&info.base_type, seen_structs, seen_aliases);
+                seen_aliases.remove(alias);
+                result
+            }
+            ConceptualRustType::Rust(ident) => {
+                if !seen_structs.insert(ident.clone()) {
+                    return None;
+                }
+                let result = (|| {
+                    let rust_struct = self.rust_struct(ident)?;
+                    if rust_struct.tag.is_some()
+                        || rust_struct.tag_optional()
+                        || rust_struct.config().custom_serialize.is_some()
+                        || rust_struct.config().custom_deserialize.is_some()
+                        || rust_struct.config().custom_encodings.is_some()
+                        || rust_struct.config().custom_wire_major.is_some()
+                    {
+                        return None;
+                    }
+                    let variants = match rust_struct.variant() {
+                        RustStructType::TypeChoice { variants }
+                        | RustStructType::CStyleEnum { variants } => variants,
+                        _ => return None,
+                    };
+                    let mut values = Vec::new();
+                    for variant in variants {
+                        if variant.serialize_as_embedded_group || variant.key.is_some() {
+                            return None;
+                        }
+                        values.extend(self.fixed_value_domain_inner(
+                            variant.rust_type(),
+                            seen_structs,
+                            seen_aliases,
+                        )?);
+                    }
+                    (!values.is_empty()).then_some(values)
+                })();
+                seen_structs.remove(ident);
+                result
+            }
+            ConceptualRustType::Primitive(_)
+            | ConceptualRustType::Any
+            | ConceptualRustType::Optional(_)
+            | ConceptualRustType::Array(_)
+            | ConceptualRustType::Map(_, _) => None,
+        }
+    }
+
     /// Whether the effective-major derivation for this bare middle-boundary item actually READS a
     /// transparent alias's declaration. Mandatory generated outer framing wins without consulting
     /// it, so such a declaration stays subject to the no-silent-directive check.
@@ -4040,16 +4166,28 @@ impl<'a> IntermediateTypes<'a> {
                 .map(|major| format!("{major:?}"))
                 .collect::<Vec<_>>();
             if !overlap.is_empty() {
-                rejections.push(format!(
-                    "rule `{source_rule}`: the occurrence-bearing array member at position {} and \
-                     its immediate suffix `{}` share CBOR major type(s) {}. RFC 8610 repetition is \
-                     greedy and does not backtrack, so the generator will not guess where the \
-                     repeated part ends. Frame the repeated part as its own array, move it final, or \
-                     choose a major-disjoint suffix.",
-                    segment_index + 1,
-                    suffix.name,
-                    overlap.join(", ")
-                ));
+                if self
+                    .has_disjoint_fixed_domain_middle_boundary(segment.element(), &suffix.rust_type)
+                {
+                    // Greedy still means no suffix speculation: the generated loop tries the
+                    // repeated decoder once on the real cursor and restores it only when that
+                    // decoder fails.  The finite domains prove a suffix byte can never be a
+                    // successful repeated value.
+                } else {
+                    rejections.push(format!(
+                        "rule `{source_rule}`: the occurrence-bearing array member at position {} and \
+                         its immediate suffix `{}` share CBOR major type(s) {}. RFC 8610 repetition is \
+                         greedy and does not backtrack, so the generator will not guess where the \
+                         repeated part ends. A same-major boundary is admitted only when BOTH sides \
+                         have generator-owned, untagged finite fixed-value domains with no shared \
+                         CDDL value; these boundaries do not prove that. Frame the repeated part as \
+                         its own array, move it final, choose a major-disjoint suffix, or make both \
+                         fixed-value domains disjoint.",
+                        segment_index + 1,
+                        suffix.name,
+                        overlap.join(", ")
+                    ));
+                }
             } else {
                 // Both boundaries reached their effective major sets and proved disjoint. Mark an
                 // alias chain only when its declaration supplied that effective set; a mandatory

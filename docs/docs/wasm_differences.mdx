@@ -385,7 +385,8 @@ first-element constructor argument and returns the corresponding restricted non-
 (`NonEmptyBytesList`, for example), so the wasm API cannot create an empty segment. A bounded
 segment uses its matching checked list wrapper. The carrier/getter surface is the same for final
 tails, variable major-disjoint middle placement (whether its effective heads are generator-proven or
-declared by a transparent custom alias), and exact count-delimited middle placement; neither
+declared by a transparent custom alias), finite disjoint fixed-domain same-major middle placement,
+and exact count-delimited middle placement; neither
 flavor has a setter.
 
 An [`@ignore`](comment_dsl#ignore) rest row **or occurrence segment** stores nothing, so its wasm class has

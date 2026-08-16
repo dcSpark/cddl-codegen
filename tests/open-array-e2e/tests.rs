@@ -286,6 +286,89 @@ mod open_array {
         );
     }
 
+    // --- fixed-domain same-major middle segments ---
+
+    #[test]
+    fn fixed_domain_middle_greedily_retries_only_the_repeat_and_leaves_suffix() {
+        // Both repeat (`0 / 1`) and suffix (`2 / 3`) are uint-major, but their complete
+        // generator-owned fixed domains are disjoint. The repeat decoder therefore gets one
+        // attempt per candidate; its failure on 2 restores the cursor for the suffix.
+        for wire in [bytes("82 6170 02"), bytes("84 6170 00 01 02")] {
+            let decoded = FixedMiddle::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(decoded.prefix, "p");
+            assert!(decoded.rest.len() <= 2);
+            assert_eq!(decoded.to_cbor_bytes(), wire);
+        }
+        // Plain mode retains value identity but emits a definite owner for an indefinite source.
+        let indefinite = FixedMiddle::from_cbor_bytes(&bytes("9f 6170 00 01 03 ff")).unwrap();
+        assert_eq!(indefinite.rest.len(), 2);
+        assert_eq!(indefinite.to_cbor_bytes(), bytes("84 6170 00 01 03"));
+
+        // The aliases on both sides carry the same proof, and native construction serializes to
+        // bytes the retry loop reads back without changing the shared loose carrier.
+        let mut native = FixedMiddle::new("p".to_owned(), Suffix::I2);
+        native.rest.extend([Repeat::I0, Repeat::I1]);
+        let wire = bytes("84 6170 00 01 02");
+        assert_eq!(native.to_cbor_bytes(), wire);
+        let reparsed = FixedMiddle::from_cbor_bytes(&native.to_cbor_bytes()).unwrap();
+        assert_eq!(reparsed.rest.len(), 2);
+
+        // The retry cursor is generated from the segment name and must not shadow a legal
+        // `@name initial_position` carrier (or the fixed member matching its preferred spelling).
+        let named_position = FixedMiddleNamedPosition::from_cbor_bytes(&bytes("83 6170 00 02"))
+            .expect("the named segment must compile and decode through the retry loop");
+        assert_eq!(named_position.initial_position, vec![Repeat::I0]);
+        let derived_name_collision = FixedMiddleCursorNameCollision::from_cbor_bytes(&bytes(
+            "83 6170 01 03",
+        ))
+        .expect("the derived cursor name must avoid fixed record members too");
+        assert_eq!(derived_name_collision.initial_position, vec![Repeat::I1]);
+
+        // The ordinary suffix read owns wrong/missing suffix failures after the retry restores
+        // the candidate cursor; no successful repeat decode is ever reconsidered.
+        assert_decode_reject_reason::<FixedMiddle>(
+            &bytes("83 6170 00 04"),
+            "No variant matched",
+        );
+        assert_decode_reject_reason::<FixedMiddle>(&bytes("82 6170 00"), "No variant matched");
+    }
+
+    #[test]
+    fn fixed_domain_middle_windows_and_simple_values_keep_their_existing_carriers() {
+        let required = FixedMiddleRequired::from_cbor_bytes(&bytes("83 6170 00 02")).unwrap();
+        assert_eq!(required.rest.as_slice(), &[Repeat::I0]);
+        assert_decode_reject_reason::<FixedMiddleRequired>(&bytes("82 6170 02"), "0 not at least 1");
+
+        let bounded = FixedMiddleBounded::from_cbor_bytes(&bytes("84 6170 00 01 02")).unwrap();
+        assert_eq!(bounded.rest.as_slice(), &[Repeat::I0, Repeat::I1]);
+        // At the maximum, a third repeated-domain value is deliberately left for the suffix, which
+        // rejects it. This proves the maximum window still guards before a retry attempt.
+        assert_decode_reject_reason::<FixedMiddleBounded>(
+            &bytes("85 6170 00 01 00 02"),
+            "No variant matched",
+        );
+
+        let literal = FixedLiteralSuffix::from_cbor_bytes(&bytes("83 00 01 02")).unwrap();
+        assert_eq!(literal.rest, vec![Repeat::I0, Repeat::I1]);
+        assert_eq!(literal.to_cbor_bytes(), bytes("83 00 01 02"));
+
+        // This exercises the non-uint fixed domain classifier: bool repeats stop before a null
+        // suffix, despite both living in CBOR major 7.
+        let simple = FixedSimpleMiddle::from_cbor_bytes(&bytes("83 f4 f5 f6")).unwrap();
+        assert_eq!(simple.rest.len(), 2);
+        assert_eq!(simple.to_cbor_bytes(), bytes("83 f4 f5 f6"));
+    }
+
+    #[test]
+    fn fixed_domain_middle_preserves_nested_stream_position() {
+        // [["p", 0, 2], 99] — after its failed attempt on the suffix, the inner record consumes
+        // only its own array and leaves the outer sibling exactly where the outer decoder expects.
+        let outer = OuterFixedMiddle::from_cbor_bytes(&bytes("82 83 6170 00 02 1863")).unwrap();
+        assert_eq!(outer.fixed_middle.rest, vec![Repeat::I0]);
+        assert_eq!(outer.index_1, 99);
+        assert_eq!(outer.to_cbor_bytes(), bytes("82 83 6170 00 02 1863"));
+    }
+
     // --- declared custom-head middle segments ---
 
     #[test]

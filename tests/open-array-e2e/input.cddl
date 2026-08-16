@@ -24,6 +24,32 @@ middle_max = [uint, *2 bytes, tstr]
 middle_zero = [uint, *0 bytes, tstr]
 exact_middle = [uint, 2*2 uint, uint] ; count-delimited same-major exact segment
 exact_zero_middle = [uint, 0*0 uint, uint] ; exact-zero leaves same-major suffix in place
+; Same-major fixed-domain middle segments retry only the repeated decoder.  Their generator-owned
+; finite literal domains are disjoint, including through transparent aliases, so a suffix cannot
+; successfully decode as another repetition.
+repeat = 0 / 1
+repeat_alias = repeat
+suffix = 2 / 3
+suffix_alias = suffix
+fixed_middle = [prefix: tstr, * repeat_alias, suffix_alias]
+fixed_middle_required = [prefix: tstr, + repeat_alias, suffix_alias]
+fixed_middle_bounded = [prefix: tstr, 1*2 repeat_alias, suffix_alias]
+fixed_middle_named_position = [
+  prefix: tstr,
+  * repeat_alias, ; @name initial_position
+  suffix_alias
+]
+; The cursor helper must also avoid a fixed member named after its preferred spelling.
+fixed_middle_cursor_name_collision = [
+  initial_position_retry_position: tstr,
+  * repeat_alias, ; @name initial_position
+  suffix_alias
+]
+fixed_literal_suffix = [* repeat_alias, 2]
+bool_repeat = false / true
+null_suffix = null
+fixed_simple_middle = [* bool_repeat, null_suffix]
+outer_fixed_middle = [fixed_middle, uint]
 ; A transparent custom codec owns the bytes it writes. Its declared `bytes` head, inherited through
 ; `middle_elem_alias`, is the variable middle loop's discriminator rather than the replaced uint.
 middle_elem = uint ; @custom_serialize write_middle_elem @custom_deserialize read_middle_elem @custom_wire_major bytes

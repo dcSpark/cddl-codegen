@@ -29,6 +29,29 @@ fn array_segment_is_final(record: &RustRecord, rest: &RestRow) -> bool {
     }
 }
 
+/// The finalized fixed-domain proof belongs to the relationship between the segment and its
+/// immediate suffix. Recompute it from the record for every emitter rather than storing an
+/// emission-only bit in the IR.
+fn array_segment_uses_fixed_domain_retry(
+    types: &IntermediateTypes,
+    record: &RustRecord,
+    rest: &RestRow,
+) -> bool {
+    !rest.has_exact_occurrence_window()
+        && rest.array_source_index().is_some_and(|index| {
+            record
+                .fields
+                .iter()
+                .find(|field| field.source_index == index + 1)
+                .is_some_and(|suffix| {
+                    types.has_disjoint_fixed_domain_middle_boundary(
+                        rest.element(),
+                        &suffix.rust_type,
+                    )
+                })
+        })
+}
+
 /// The `@ignore` lossiness breadcrumb text for a rest row/segment, array-worded for an array
 /// segment and map-worded for a map row.
 fn ignore_lossiness_doc(record: &RustRecord, rest: &RestRow) -> &'static str {
@@ -259,21 +282,24 @@ pub(super) struct ArrayStructDeserializeCode {
 }
 
 /// Deserialize one array occurrence segment at its source position.  Final segments retain the
-/// historical owner-boundary loop; a variable middle segment is greedily delimited by its
-/// already-validated major-disjoint immediate suffix, while an exact window is delimited by count.
-/// Neither path rewinds or speculatively parses the suffix.
+/// historical owner-boundary loop; a variable middle segment is greedily delimited by either its
+/// already-validated major-disjoint immediate suffix or a finite disjoint fixed-value domain, while
+/// an exact window is delimited by count.  The fixed-domain form retries only the repeated decoder
+/// and rewinds on its failure; it never speculatively parses the suffix.
 #[allow(clippy::too_many_arguments)]
 fn generate_array_segment_deserialization(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     rest: &RestRow,
     is_middle: bool,
+    fixed_domain_retry_position: Option<String>,
     vars_in_self: bool,
     cli: &Cli,
     deser_code: &mut DeserializationCode,
     deser_ctor_fields: &mut Vec<(String, String)>,
     encoding_struct_ctor_fields: &mut Vec<(String, String)>,
 ) {
+    let fixed_domain_retry = fixed_domain_retry_position.is_some();
     let element = rest.element();
     deser_code.read_len_used = true;
     deser_code.len_used = true;
@@ -316,6 +342,16 @@ fn generate_array_segment_deserialization(
             "({owner_has_more}) && ({}.len() as u64) < {exact}",
             rest.field_name
         )
+    } else if is_middle && fixed_domain_retry {
+        let maximum_clause = rest
+            .occurrence
+            .and_then(|(_, max)| (max != u64::MAX).then_some(max))
+            .map(|max| format!(" && ({}.len() as u64) < {max}", rest.field_name))
+            .unwrap_or_default();
+        // Finalization proved that every suffix value lies outside the repeated element's finite
+        // fixed-value domain.  The body attempts the repeated decoder once and restores the cursor
+        // only on its error, leaving the suffix for its ordinary generated decoder.
+        format!("({owner_has_more}){maximum_clause}")
     } else if is_middle {
         // Finalization admitted this variable middle segment only after deriving its effective
         // wire majors. A transparent custom alias's declaration therefore replaces the Rust type
@@ -354,59 +390,109 @@ fn generate_array_segment_deserialization(
     let exact_zero_middle = is_middle && rest.occurrence.is_some_and(|(_, max)| max == 0);
     if !exact_zero_middle {
         let mut segment_loop = Block::new(format!("while {loop_condition}"));
-        segment_loop.line("read_len.read_elems(1)?;");
-        match rest.semantics {
-            RestSemantics::Capture => {
+        if let Some(retry_position) = fixed_domain_retry_position {
+            // Do not advance the owner-array count until the repeated decoder succeeded.  A failed
+            // attempt can have consumed an arbitrary prefix of the candidate item, so restoring the
+            // real cursor — not replaying a buffered copy — is load-bearing for the suffix and for
+            // preserve-encoding sidecars.
+            segment_loop.line(format!("let {retry_position} = raw.position();"));
+            let mut attempt = Block::new("(|| -> Result<(), DeserializeError>");
+            attempt.after(")()");
+            let attempt_var_names = match rest.semantics {
+                RestSemantics::Capture if !elem_encs.is_empty() => {
+                    encoding_var_names_str(types, &elem_var_name, element, cli)
+                }
+                RestSemantics::Capture => elem_var_name.clone(),
+                RestSemantics::Ignore => "_rest_elem".to_owned(),
+            };
+            gen_scope
+                .generate_deserialize(
+                    types,
+                    element.into(),
+                    DeserializeBeforeAfter::new(&format!("let {attempt_var_names} = "), ";", false),
+                    DeserializeConfig::new(match rest.semantics {
+                        RestSemantics::Capture => &elem_var_name,
+                        RestSemantics::Ignore => "_rest_elem",
+                    }),
+                    cli,
+                )
+                .add_to(&mut attempt);
+            if rest.semantics == RestSemantics::Capture {
+                attempt.line(format!("{}.push({elem_var_name});", rest.field_name));
                 if !elem_encs.is_empty() {
-                    // Bind `(value, <enc vars>)` and push each into its parallel `Vec`.
-                    let elem_var_names_str =
-                        encoding_var_names_str(types, &elem_var_name, element, cli);
-                    gen_scope
-                        .generate_deserialize(
-                            types,
-                            element.into(),
-                            DeserializeBeforeAfter::new(
-                                &format!("let {elem_var_names_str} = "),
-                                ";",
-                                false,
-                            ),
-                            DeserializeConfig::new(&elem_var_name),
-                            cli,
-                        )
-                        .add_to(&mut segment_loop);
-                    segment_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
-                    segment_loop.line(format!(
+                    attempt.line(format!(
                         "{}_elem_encodings.push({});",
                         rest.field_name,
                         tuple_str(elem_encs.iter().map(|e| e.field_name.clone()).collect())
                     ));
-                } else {
+                }
+            }
+            attempt.line("Ok(())");
+            let mut attempt_source = String::new();
+            attempt
+                .fmt(&mut codegen::Formatter::new(&mut attempt_source))
+                .expect("formatting an in-memory generated retry closure must not fail");
+            let mut failed_attempt =
+                Block::new(format!("if {}.is_err()", attempt_source.trim_end()));
+            failed_attempt.line(format!("raw.set_position({retry_position}).unwrap();"));
+            failed_attempt.line("break;");
+            segment_loop.push_block(failed_attempt);
+            segment_loop.line("read_len.read_elems(1)?;");
+        } else {
+            segment_loop.line("read_len.read_elems(1)?;");
+            match rest.semantics {
+                RestSemantics::Capture => {
+                    if !elem_encs.is_empty() {
+                        // Bind `(value, <enc vars>)` and push each into its parallel `Vec`.
+                        let elem_var_names_str =
+                            encoding_var_names_str(types, &elem_var_name, element, cli);
+                        gen_scope
+                            .generate_deserialize(
+                                types,
+                                element.into(),
+                                DeserializeBeforeAfter::new(
+                                    &format!("let {elem_var_names_str} = "),
+                                    ";",
+                                    false,
+                                ),
+                                DeserializeConfig::new(&elem_var_name),
+                                cli,
+                            )
+                            .add_to(&mut segment_loop);
+                        segment_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
+                        segment_loop.line(format!(
+                            "{}_elem_encodings.push({});",
+                            rest.field_name,
+                            tuple_str(elem_encs.iter().map(|e| e.field_name.clone()).collect())
+                        ));
+                    } else {
+                        gen_scope
+                            .generate_deserialize(
+                                types,
+                                element.into(),
+                                DeserializeBeforeAfter::new(
+                                    &format!("let {elem_var_name} = "),
+                                    ";",
+                                    false,
+                                ),
+                                DeserializeConfig::new(&elem_var_name),
+                                cli,
+                            )
+                            .add_to(&mut segment_loop);
+                        segment_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
+                    }
+                }
+                RestSemantics::Ignore => {
                     gen_scope
                         .generate_deserialize(
                             types,
                             element.into(),
-                            DeserializeBeforeAfter::new(
-                                &format!("let {elem_var_name} = "),
-                                ";",
-                                false,
-                            ),
-                            DeserializeConfig::new(&elem_var_name),
+                            DeserializeBeforeAfter::new("let _rest_elem = ", ";", false),
+                            DeserializeConfig::new("_rest_elem"),
                             cli,
                         )
                         .add_to(&mut segment_loop);
-                    segment_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
                 }
-            }
-            RestSemantics::Ignore => {
-                gen_scope
-                    .generate_deserialize(
-                        types,
-                        element.into(),
-                        DeserializeBeforeAfter::new("let _rest_elem = ", ";", false),
-                        DeserializeConfig::new("_rest_elem"),
-                        cli,
-                    )
-                    .add_to(&mut segment_loop);
             }
         }
         deser_code.content.push_block(segment_loop);
@@ -623,11 +709,19 @@ pub(super) fn generate_array_struct_deserialization(
                 .array_source_index()
                 .is_some_and(|index| index + 1 == field.source_index)
         {
+            let fixed_domain_retry_position =
+                array_segment_uses_fixed_domain_retry(types, record, segment).then(|| {
+                    record.fresh_generated_member_ident(&format!(
+                        "{}_retry_position",
+                        segment.field_name
+                    ))
+                });
             generate_array_segment_deserialization(
                 gen_scope,
                 types,
                 segment,
                 true,
+                fixed_domain_retry_position,
                 vars_in_self,
                 cli,
                 &mut deser_code,
@@ -1073,6 +1167,7 @@ pub(super) fn generate_array_struct_deserialization(
             types,
             segment,
             false,
+            None,
             vars_in_self,
             cli,
             &mut deser_code,
@@ -3839,7 +3934,20 @@ pub(super) fn codegen_struct(
             rest_member_type(rest).for_rust_member(types, false, cli),
         );
         rest_field.doc(if rest.is_array_tail() && !array_segment_is_final(record, rest) {
-            if rest.is_non_empty_array_tail() {
+            if array_segment_uses_fixed_domain_retry(types, record, rest) {
+                if rest.is_restricted() {
+                    "Captured bounded finite fixed-domain occurrence-segment elements before the \
+                     mandatory fixed suffix; the decoder retries the repeated element and restores \
+                     the cursor for the disjoint fixed-domain suffix. Its inclusive CDDL occurrence \
+                     window is enforced by this checked carrier. Serialized at its authored source \
+                     position; supplied complete to `new()`."
+                } else {
+                    "Captured finite fixed-domain occurrence-segment elements before the mandatory \
+                     fixed suffix (CDDL `* t`); the decoder retries the repeated element and restores \
+                     the cursor for the disjoint fixed-domain suffix. Serialized at its authored source \
+                     position; defaults empty."
+                }
+            } else if rest.is_non_empty_array_tail() {
                 "Captured one-or-more major-disjoint occurrence-segment elements before the mandatory \
                  fixed suffix (CDDL `+ t` / `1* t`). Serialized at its authored source position; never \
                  empty."
@@ -4032,6 +4140,11 @@ pub(super) fn codegen_struct(
                 if rest.has_exact_occurrence_window() {
                     format!(
                         "* `{}` - the complete checked exact-count occurrence-segment carrier before its mandatory fixed suffix (its CDDL occurrence window is enforced by this carrier)",
+                        rest.field_name
+                    )
+                } else if array_segment_uses_fixed_domain_retry(types, record, rest) {
+                    format!(
+                        "* `{}` - the complete checked finite fixed-domain occurrence-segment carrier before its mandatory fixed suffix (the retry decoder preserves the suffix cursor; its CDDL occurrence window is enforced by this carrier)",
                         rest.field_name
                     )
                 } else {

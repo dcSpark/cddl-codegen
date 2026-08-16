@@ -2862,6 +2862,13 @@ body_md = '''    - **Residual: the scope is only as wide as the probe.** Members
       shadowed constructor bindings across native Rust, wasm, WIT, and JSON. `first_key` and
       `first_value` are both in `GENERATED_LOCAL_PROBED_SAFE`; focused collision regressions now
       protect this instance, but the scope-wide product remains absent.
+
+      **B5-401 resident (2026-08-16).** A finite fixed-domain middle-array retry initially placed
+      its cursor `initial_position` inside the captured segment's loop. A legal `@name
+      initial_position` then shadowed its `Vec` carrier (`usize.push(...)`), despite that spelling's
+      earlier `GENERATED_LOCAL_PROBED_SAFE` verdict. The cursor now derives from the segment through
+      `fresh_generated_member_ident`; a compiled open-array fixture permanently covers both the
+      direct name and a fixed member occupying the preferred derived spelling.
 '''
 signal_md = '''      **Reopening signal:** a generated crate fails `cargo check` with a shadowed-binding error
       (E0599/E0308/E0124) on a field whose name is in `GENERATED_LOCAL_PROBED_SAFE`, or on a
@@ -2873,7 +2880,7 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-acceptance_md = '''Build the scope-wide compile probe promised by this record: enumerate every `GENERATED_LOCAL_PROBED_SAFE` and scoped-reserved spelling over named/newtype, `.cbor` payload, bounded-member, JSON-schema, and component positions; compile every legal cell and pin each intentional refusal. Derive the spelling set from the source registry so a newly added generated local cannot silently miss the product. Include the B5-403 dynamic-row constructor/staging cells as permanent residents.
+acceptance_md = '''Build the scope-wide compile probe promised by this record: enumerate every `GENERATED_LOCAL_PROBED_SAFE` and scoped-reserved spelling over named/newtype, `.cbor` payload, bounded-member, JSON-schema, and component positions; compile every legal cell and pin each intentional refusal. Derive the spelling set from the source registry so a newly added generated local cannot silently miss the product. Include the B5-403 dynamic-row constructor/staging cells and the B5-401 occurrence-segment `@name` × retry/cursor cells as permanent residents.
 '''
 priority_rationale_md = '''The exact promotion trigger fired in an explicitly unprobed bounded/component position; the focused fix does not close the remaining product.
 '''

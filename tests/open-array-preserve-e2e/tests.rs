@@ -132,6 +132,28 @@ mod open_array_preserve {
         );
     }
 
+    #[test]
+    fn fixed_domain_same_major_middle_commits_only_successful_repeat_sidecars() {
+        // [7, 0(as 0x1800), 1(as 0x1801), 2(as 0x1802)]. The first two values are successful
+        // fixed-choice repetitions; the failed retry on 2 rewinds before suffix decoding, so its
+        // encoding belongs to the suffix rather than an extra repeat sidecar.
+        let wire = bytes("84 07 1800 1801 1802");
+        let fixed = FixedMiddle::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(fixed.rest.len(), 2);
+        assert_eq!(fixed.to_cbor_bytes(), wire, "retry keeps each successful width positional");
+        assert_eq!(
+            fixed.to_canonical_cbor_bytes(),
+            bytes("84 07 00 01 02"),
+            "canonical normalizes successful repeats and the suffix in authored positions"
+        );
+
+        let indefinite = bytes("9f 07 1800 1802 ff");
+        let fixed = FixedMiddle::from_cbor_bytes(&indefinite).unwrap();
+        assert_eq!(fixed.rest.len(), 1);
+        assert_eq!(fixed.to_cbor_bytes(), indefinite);
+        assert_eq!(fixed.to_canonical_cbor_bytes(), bytes("83 07 00 02"));
+    }
+
     // --- `any` tail (`cap_any = [uint, * any]`): self-carried encodings (no sidecar) ---
 
     #[test]

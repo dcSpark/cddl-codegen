@@ -2096,16 +2096,18 @@ survive:
 
 An open array (the array analog of the open struct-map rest row) has one occurrence-bearing segment:
 it may be final, or leading/middle only before an immediate mandatory, single-item fixed suffix. A
-variable window needs the existing field-codec-free, effective, CBOR-major-disjoint boundary: its
-heads are generator-proven or a transparent custom alias declares one with `@custom_wire_major`; an
-exact window stops by count and may share a major or have custom-/extern-owned boundary heads. This
+variable window needs either the existing field-codec-free, effective, CBOR-major-disjoint boundary
+(its heads are generator-proven or a transparent custom alias declares one with `@custom_wire_major`)
+or generator-owned untagged finite fixed-value domains with no CDDL value in common; the latter
+retries only the repeated decoder and restores the cursor when it fails. An exact window stops by
+count and may share a major or have custom-/extern-owned boundary heads. This
 does not prove an optional-prefix dispatch boundary: its optional/reachable-follower heads must both
 be generator-proven and major-disjoint, so a custom codec or opaque extern on either side is
 serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction. Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
 `+ t` / `1* t` uses `NonEmptyVec<T>` and its first-element construction ABI; every other window uses
 a complete checked `BoundedVec<T, MIN, MAX>` constructor argument. The middle boundary deliberately
-honors RFC 8610 greedy non-backtracking decoding: variable same-major/value-discriminator suffixes
-need a future design rather than a guessed decoder. User docs: `docs/docs/output_format.mdx` § "Open arrays",
+honors RFC 8610 greedy non-backtracking decoding: general same-major/value-discriminator suffixes
+beyond finite fixed domains need a future design rather than a guessed decoder. User docs: `docs/docs/output_format.mdx` § "Open arrays",
 `docs/docs/comment_dsl.mdx` § "@ignore". It is verified across the layers:
 
 - **Front end + guards** — `robustness_tests::open_array_front_end` recognizes final loose,
@@ -2121,13 +2123,13 @@ need a future design rather than a guessed decoder. User docs: `docs/docs/output
   slot/marker-slot cases.
 - **Value-level e2e** — `tests/open-array-e2e` (`integration_tests::open_array_e2e`, compiled,
   non-preserve) drives leading and middle loose, min-one, finite/max-only, exact-zero, and exact
-  same-major segments and declared custom repeated/suffix heads through definite and indefinite
+  same-major segments, finite fixed-domain retries (including bool/null), and declared custom repeated/suffix heads through definite and indefinite
   bytes: zero/in-window/below/above windows, max-bound stop before the suffix, wrong repeated type,
   absent/wrong suffix, suffix preservation, trailing-extra rejection, and nested stream position.
   It also keeps the shared constructor and carrier door tests.
 - **Preserve/canonical e2e** — `tests/open-array-preserve-e2e`
   (`integration_tests::open_array_preserve_e2e`, compiled) proves a non-canonical middle repeated
-  element and exact same-major segment re-emit byte-exactly and normalize canonically without moving their suffix, beside the
+  element, exact same-major segment, and finite fixed-domain retry re-emit byte-exactly and normalize canonically without moving their suffix, beside the
   final-tail positional-sidecar, self-carried `any`, and nested-stream vectors.
 - **JSON e2e** — `tests/open-array-json-e2e` (`integration_tests::open_array_json_e2e`, compiled)
   checks bounded and exact same-major middle carriers' JSON/schema bounds and constructor doors, beside the loose,

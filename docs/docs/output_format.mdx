@@ -829,8 +829,9 @@ the repeated elements are captured in a generated `rest` field. This is the arra
 positional: there are no keys, duplicate policy, key dispatch, or ordering machinery. The occurrence
 may be final, or it may be the sole leading/middle segment only when its **immediate fixed suffix** is
 mandatory and expands to exactly one CBOR item. A variable-cardinality middle window also requires
-the absence of a field-local custom codec, an effective wire head on both boundary items, and no CBOR
-major type in common with the repeated element. A generator-proven head qualifies; a transparent
+either the absence of a field-local custom codec, an effective wire head on both boundary items, and
+no CBOR major type in common with the repeated element; or untagged generator-owned finite fixed-value
+domains on both sides with no CDDL value in common. A generator-proven head qualifies; a transparent
 custom-codec alias may instead declare the head with
 [`@custom_wire_major`](comment_dsl#declaring-the-wires-major-type-custom_wire_major).
 An exact window (`N*N`, except `1*1` which is an ordinary field)
@@ -844,14 +845,16 @@ compatibility min-one form; every other window (`2*3`, `*3`, `2*`, `*0`, `0*0`, 
 The restriction is RFC 8610's greedy, non-backtracking matching rule, not an implementation
 convenience. A decoder for `[uint, * uint, uint]` cannot know whether a uint is the repeated value
 or the suffix; accepting it would let a constructed value serialize to bytes that do not deserialize
-back to that value. A variable safe-middle loop greedily consumes only the repeated element's majors
-and stops at the major-disjoint suffix; an exact loop consumes its declared count and then reads that
-same suffix. Neither seeks, rewinds, or speculatively parses the suffix. Variable same-major/value-
+back to that value. A normal variable safe-middle loop greedily consumes only the repeated element's
+majors and stops at the major-disjoint suffix; a fixed-domain loop instead tries the repeated decoder
+once and rewinds only when it fails, which is safe because the statically enumerated domains are
+disjoint. An exact loop consumes its declared count and then reads that same suffix. None speculates
+by parsing the suffix to choose between successful interpretations. General same-major/value-
 discriminator designs, multiple occurrences, inline-group occurrences,
 group-choice-arm occurrences, a segment inside a plain group's body, a fixed-value element type like
 `* 5`, and a **plain-group element type** remain graceful rejections naming a supported remedy. A
-declared custom head still has to be disjoint from the other effective boundary set; same-major
-value discrimination is not inferred. The declaration is not consumed by a final tail, an exact
+declared custom head still has to be disjoint from the other effective boundary set; custom-, tagged-,
+float-, primitive-, and extern-owned same-major value discrimination is not inferred. The declaration is not consumed by a final tail, an exact
 count-delimited window, optional-prefix lookahead, or a mandatory generated outer frame that already
 supplies the head. The
 plain-group element type (`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses because an

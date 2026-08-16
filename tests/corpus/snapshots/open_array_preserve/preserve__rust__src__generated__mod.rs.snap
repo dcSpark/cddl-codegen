@@ -27,8 +27,8 @@ pub mod serialization;
 use crate::generated::bounded::BoundedVec;
 use crate::generated::non_empty::NonEmptyVec;
 use cbor_encodings::{
-    BoundedEncoding, CapAnyEncoding, CapEncoding, ExactMiddleEncoding, InnerEncoding,
-    MiddleEncoding, OuterEncoding, RequiredEncoding,
+    BoundedEncoding, CapAnyEncoding, CapEncoding, ExactMiddleEncoding, FixedMiddleEncoding,
+    InnerEncoding, MiddleEncoding, OuterEncoding, RequiredEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -110,6 +110,26 @@ impl ExactMiddle {
 }
 
 #[derive(Clone, Debug)]
+pub struct FixedMiddle {
+    pub index_0: u64,
+    pub suffix: Suffix,
+    /// Captured finite fixed-domain occurrence-segment elements before the mandatory fixed suffix (CDDL `* t`); the decoder retries the repeated element and restores the cursor for the disjoint fixed-domain suffix. Serialized at its authored source position; defaults empty.
+    pub rest: Vec<Repeat>,
+    pub encodings: Option<FixedMiddleEncoding>,
+}
+
+impl FixedMiddle {
+    pub fn new(index_0: u64, suffix: Suffix) -> Self {
+        Self {
+            index_0,
+            suffix,
+            rest: Vec::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Inner {
     pub index_0: u64,
     /// Captured trailing array elements beyond the declared members (CDDL `* t` rest tail). Serialized after the declared members; defaults empty.
@@ -164,6 +184,12 @@ impl Outer {
     }
 }
 
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+pub enum Repeat {
+    I0,
+    I1,
+}
+
 #[derive(Clone, Debug)]
 pub struct Required {
     pub index_0: u64,
@@ -181,4 +207,10 @@ impl Required {
             encodings: None,
         }
     }
+}
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+pub enum Suffix {
+    I2,
+    I3,
 }

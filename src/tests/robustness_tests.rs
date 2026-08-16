@@ -5968,8 +5968,77 @@ fn open_array_front_end() {
     }
 
     // --- guards, each a graceful rejection ---
-    // Same-major, optional, multi-item, and local-codec suffixes remain unsafe.  The normal
+    // A variable same-major middle is also safe when both sides are generator-owned finite fixed
+    // domains and those domains are disjoint.  The aliases are part of the proof: aliases must not
+    // erase the authored choice's finite value domain or change the shared tail carrier.
+    let fixed_domain_middle = run("repeat = 0 / 1\n\
+         repeat_alias = repeat\n\
+         suffix = 2 / 3\n\
+         suffix_alias = suffix\n\
+         a = [uint, 1*2 repeat_alias, suffix_alias]\n")
+    .expect("a disjoint same-major fixed-domain middle segment must generate");
+    assert!(
+        src(&fixed_domain_middle).contains("pub rest: BoundedVec<RepeatAlias, 1, 2>")
+            && src(&fixed_domain_middle).contains("raw.set_position(rest_retry_position).unwrap()"),
+        "the fixed-domain middle must retain the shared checked carrier and rewind a failed \
+         repeated-element attempt before the suffix: {}",
+        src(&fixed_domain_middle)
+    );
+    let retry_local_name = run("repeat = 0 / 1\n\
+         suffix = 2 / 3\n\
+         a = [\n\
+           * repeat ; @name fixed_domain_attempt\n\
+           suffix\n\
+         ]\n")
+    .expect("the retry uses no generated local, so this ordinary segment name remains available");
+    assert!(
+        src(&retry_local_name).contains("pub fixed_domain_attempt: Vec<Repeat>"),
+        "the fixed-domain retry must not reserve a user-visible segment field name: {}",
+        src(&retry_local_name)
+    );
+
+    // Same-major overlap, optional, multi-item, and local-codec suffixes remain unsafe.  The normal
     // leading/middle major-disjoint case is exercised above and in the compiled fixture.
+    let overlapping_fixed = run("repeat = 0 / 1\nsuffix = 1 / 2\na = [* repeat, suffix]\n")
+        .expect_err("a shared fixed value gives greedy repetition no safe stop");
+    assert!(
+        overlapping_fixed.contains("fixed-value domains")
+            && overlapping_fixed.contains("major-disjoint")
+            && !overlapping_fixed.contains("choose a major-disjoint suffix."),
+        "the same-major overlap diagnostic must explain the value-domain option rather than claim \
+         major disjointness is the only remedy: {overlapping_fixed}"
+    );
+    // These same-major candidates deliberately fall outside the finite-domain classifier.  Keep
+    // them executable so broadening the retry loop cannot accidentally treat a primitive/range,
+    // float (NaN equality), tag, custom codec, or opaque extern as a value-domain proof.
+    for (tag, spec) in [
+        ("primitive", "a = [* uint, 2]\n"),
+        ("float", "repeat = 0.0 / 1.0\na = [* repeat, 2.0]\n"),
+        (
+            "tagged",
+            "repeat = #6.42(0) / #6.42(1)\na = [* repeat, #6.42(2)]\n",
+        ),
+        (
+            "custom",
+            "repeat = uint ; @custom_serialize write_repeat @custom_deserialize read_repeat\na = [* repeat, 2]\n",
+        ),
+        (
+            "extern",
+            "repeat = _CDDL_CODEGEN_EXTERN_TYPE_\na = [* repeat, 2]\n",
+        ),
+    ] {
+        let err = match run(spec) {
+            Ok(out) => panic!(
+                "{tag} same-major boundary must remain outside fixed-domain retry: {}",
+                src(&out)
+            ),
+            Err(err) => err,
+        };
+        assert!(
+            err.contains("occurrence-bearing array member") || err.contains("unproven wire head"),
+            "{tag} must reject at the middle-boundary proof, got: {err}"
+        );
+    }
     for spec in [
         "a = [* uint, uint]\n",
         "a = [uint, + uint, uint]\n",

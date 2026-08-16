@@ -9,6 +9,11 @@ required = [uint, + uint]           ; one-or-more tail — per-element encoding 
 bounded = [uint, 2*3 uint]          ; finite checked tail — same positional sidecar
 middle = [uint, * uint, tstr]        ; major-disjoint middle segment — same sidecar before suffix
 exact_middle = [uint, 2*2 uint, uint] ; count-delimited same-major segment — positional sidecar
+; A finite, disjoint same-major fixed-choice middle retries its element decoder.  Preserve sidecars
+; are committed only on successful attempts, so the final suffix width stays in its own position.
+repeat = 0 / 1
+suffix = 2 / 3
+fixed_middle = [uint, * repeat, suffix]
 ; Stream position (the cip36 skip-arm bug class): an open array is a member of an outer array; the
 ; tail loop must stop at the open array's end and leave the sibling for the outer decoder.
 outer = [inner, uint]
