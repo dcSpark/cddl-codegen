@@ -1067,40 +1067,52 @@ fn mint_dynamic_map_row(
     None
 }
 
+/// The canonical CDDL value denoted by one storage-space coordinate of a minted map key.
+///
+/// `MintValue::Map::{key_base,count}` remain storage coordinates because both renderers emit their
+/// carriers directly (notably N64's u64 magnitude). Every semantic question about a coordinate
+/// comes through this view instead: bounds see its numeric CDDL value and fixed-key collision sees
+/// `FixedValue` equality. `None` means the coordinate cannot be rendered without a narrowing or
+/// wrapping conversion, so callers reject it rather than silently changing the minted key.
+fn map_minted_key_fixed_value(key: &MapKey, coordinate: i128) -> Option<FixedValue> {
+    match key {
+        MapKey::Int(Primitive::N64) => {
+            let magnitude = u64::try_from(coordinate).ok()?;
+            Some(FixedValue::Nint(-1 - magnitude as i128))
+        }
+        MapKey::Int(p @ (Primitive::U8 | Primitive::U16 | Primitive::U32 | Primitive::U64)) => {
+            let (min, max) = prim_range(p);
+            (min..=max)
+                .contains(&coordinate)
+                .then_some(FixedValue::Uint(coordinate as u64))
+        }
+        MapKey::Int(p @ (Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64)) => {
+            let (min, max) = prim_range(p);
+            if !(min..=max).contains(&coordinate) {
+                None
+            } else if coordinate >= 0 {
+                Some(FixedValue::Uint(coordinate as u64))
+            } else {
+                Some(FixedValue::Nint(coordinate))
+            }
+        }
+        MapKey::Int(_) => None,
+        MapKey::Str => Some(FixedValue::Text(coordinate.to_string())),
+        MapKey::Bytes => u8::try_from(coordinate)
+            .ok()
+            .map(|byte| FixedValue::Bytes(vec![byte])),
+        MapKey::Bool => u64::try_from(coordinate)
+            .ok()
+            .map(|value| FixedValue::Bool(value % 2 == 1)),
+    }
+}
+
 /// Whether one entry from a `MintValue::Map` run has the same CDDL value as a declared map key.
 /// All key mints are primitive, so matching is exact and does not need to re-encode CBOR.
 fn map_minted_key_equals_fixed(key: &MapKey, base: i128, index: i128, fixed: &FixedValue) -> bool {
-    let value = base + index;
-    match (key, fixed) {
-        (MapKey::Int(Primitive::N64), FixedValue::Nint(fixed)) if *fixed < 0 => {
-            value == -(*fixed + 1)
-        }
-        // `N64` stores the magnitude of a *negative* CDDL integer: magnitude 0 is `-1`, not
-        // unsigned integer 0. It can only collide with a negative fixed key through the arm
-        // above; treating its magnitude as a uint value makes the key-run search skip a valid
-        // first candidate whenever this record also has a fixed uint key.
-        (
-            MapKey::Int(
-                Primitive::U8
-                | Primitive::U16
-                | Primitive::U32
-                | Primitive::U64
-                | Primitive::I8
-                | Primitive::I16
-                | Primitive::I32
-                | Primitive::I64,
-            ),
-            FixedValue::Uint(fixed),
-        ) => value >= 0 && value == *fixed as i128,
-        (
-            MapKey::Int(Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64),
-            FixedValue::Nint(fixed),
-        ) => value == *fixed,
-        (MapKey::Str, FixedValue::Text(fixed)) => value.to_string() == *fixed,
-        (MapKey::Bytes, FixedValue::Bytes(fixed)) => fixed.as_slice() == [value as u8],
-        (MapKey::Bool, FixedValue::Bool(fixed)) => ((value % 2) == 1) == *fixed,
-        _ => false,
-    }
+    base.checked_add(index)
+        .and_then(|coordinate| map_minted_key_fixed_value(key, coordinate))
+        .is_some_and(|minted| minted == *fixed)
 }
 
 /// The shifted numeric run must continue to obey the domain bounds and primitive carrier.  This is
@@ -1109,30 +1121,26 @@ fn map_key_run_is_accepted(key: &MapKey, key_ty: &RustType, count: i128, base: i
     if count <= 0 {
         return true;
     }
-    let MapKey::Int(p) = key else {
+    let MapKey::Int(_) = key else {
         return true;
     };
-    let Some(last) = base.checked_add(count - 1) else {
-        return false;
-    };
-    let is_nint = matches!(p, Primitive::N64);
-    let (prim_min, prim_max) = if is_nint {
-        (0, u64::MAX as i128)
-    } else {
-        prim_range(p)
-    };
-    if base < prim_min || last > prim_max {
-        return false;
-    }
-    let Some(bounds) = key_ty.config.bounds else {
-        return true;
-    };
-    let bounds = if is_nint {
-        crate::generation::nint_bounds_to_u64(&bounds)
-    } else {
-        bounds
-    };
-    (0..count).all(|offset| !crate::generation::bounds_reject_value(&bounds, base + offset))
+    (0..count).all(|offset| {
+        let Some(coordinate) = base.checked_add(offset) else {
+            return false;
+        };
+        let Some(value) = map_minted_key_fixed_value(key, coordinate) else {
+            return false;
+        };
+        let numeric_value = match value {
+            FixedValue::Uint(value) => value as i128,
+            FixedValue::Nint(value) => value,
+            _ => return false,
+        };
+        key_ty
+            .config
+            .bounds
+            .is_none_or(|bounds| !crate::generation::bounds_reject_value(&bounds, numeric_value))
+    })
 }
 
 /// Record round-trip: a valid baseline, plus one case per optional field with that field present.
@@ -1340,6 +1348,13 @@ fn record_roundtrip(
         match &rest.kind {
             // Map `* k => v` rest row: mint one entry via the row's map `insert` API.
             crate::intermediate::RestKind::MapEntries { domain, range, .. } => {
+                // An exact occurrence row already enters the baseline as its complete checked
+                // carrier. Adding one more member through the generic per-row mutation is
+                // necessarily invalid (and can reintroduce a fixed-key collision); the baseline
+                // is the present-row execution case for this shape.
+                if rest.has_exact_occurrence_window() {
+                    continue;
+                }
                 if typed
                     && type_uses_custom_ser(types, domain, &mut std::collections::BTreeSet::new())
                 {
@@ -2808,20 +2823,18 @@ fn materialize_at(
 /// inverted-range encoding in particular is easy to re-derive backwards).
 ///
 /// The base is chosen in the KEY'S OWN storage space, which for `nint` is not value space: an
-/// `N64` key is stored as the u64 magnitude `m = |v + 1|`, so its value window has to go through
-/// `nint_bounds_to_u64` (which swaps the endpoints, magnitude being decreasing in the value)
-/// before either the choice or the verification means anything. Both the constructor check
-/// (`value_bounds_check_line`) and the value minter (`valid_value_at`'s `N64` arm) delegate to
-/// that same helper, and the reason to delegate rather than re-derive is written on it: a
-/// hand-rolled copy that drops the swap inverts the window while the deserializer — which checks
-/// the signed value directly — stays correct, so the two silently disagree.
+/// `N64` key is stored as the u64 magnitude `m = |v + 1|`. `nint_bounds_to_u64` (which swaps
+/// endpoints because magnitude decreases as the value increases) supplies cheap candidate starts,
+/// while every candidate is separately projected back to its CDDL value before the original bounds
+/// decide acceptance. This keeps a transformed search heuristic from becoming a second semantic
+/// oracle alongside the generated decoder.
 ///
 /// `None` means "skip this map loudly" — this module never silently weakens a vector.
 fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
-    let Some(bounds) = key_ty.config.bounds else {
-        return Some(0);
-    };
     let MapKey::Int(p) = key else {
+        let Some(bounds) = key_ty.config.bounds else {
+            return Some(0);
+        };
         // A `.size`-bounded tstr/bytes key (or a bounded bool): the window constrains the key's
         // LENGTH (or nothing at all), which the `__i.to_string()` / `vec![__i as u8]` /
         // `__i == 1` spellings have no way to steer. Minting anyway emits a vector the generated
@@ -2834,49 +2847,33 @@ fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
     if count <= 0 {
         return Some(0);
     }
-    // `N64` is the one key primitive whose stored value is not the CDDL value: transform the window
-    // into magnitude space FIRST, so the candidates, the representability guard and the acceptance
-    // check all speak the same language as the emitted key literal.
-    let is_nint = matches!(p, Primitive::N64);
-    let bounds = if is_nint {
-        crate::generation::nint_bounds_to_u64(&bounds)
-    } else {
-        bounds
-    };
-    // The domain the minted literal must fit. `prim_range` answers `(i128::MIN, i128::MAX)` for
-    // `N64` — deliberately, since its callers ask about the CDDL value — which would make this
-    // guard vacuous for exactly the primitive that most needs it (a negative magnitude renders as
-    // `-5 as u64`, i.e. 18446744073709551611). Use the u64 magnitude domain here instead of
-    // widening `prim_range`, whose other caller (`materialize`) depends on the current answer.
-    let (prim_min, prim_max) = if is_nint {
-        (0, u64::MAX as i128)
-    } else {
-        prim_range(p)
-    };
+    // `N64` is the one key primitive whose stored coordinate is not the CDDL value. Transform
+    // bounds only to choose cheap magnitude candidates; `map_key_run_is_accepted` independently
+    // validates each rendered coordinate through its canonical value-space `FixedValue`.
+    let selection_bounds = key_ty.config.bounds.map(|bounds| {
+        if matches!(p, Primitive::N64) {
+            crate::generation::nint_bounds_to_u64(&bounds)
+        } else {
+            bounds
+        }
+    });
     // Candidate bases in preference order: the window's lower endpoint (which for the INVERTED
     // `.ne N` encoding is `N + 1` — the first value above the exclusion), `0` (a window open on
     // the low side), and the highest run that still fits under the upper endpoint. Each is only a
     // heuristic; the acceptance loop below is what makes it safe.
     let candidates = [
-        bounds.0,
+        selection_bounds.and_then(|bounds| bounds.0),
         Some(0),
-        bounds.1.and_then(|max| max.checked_sub(count - 1)),
+        selection_bounds.and_then(|bounds| bounds.1.and_then(|max| max.checked_sub(count - 1))),
     ];
     for base in candidates.into_iter().flatten() {
-        let Some(last) = base.checked_add(count - 1) else {
-            continue;
-        };
-        if base < prim_min || last > prim_max {
-            continue;
-        }
-        if (0..count).all(|d| !crate::generation::bounds_reject_value(&bounds, base + d)) {
+        if map_key_run_is_accepted(key, key_ty, count, base) {
             return Some(base);
         }
     }
-    // `bounds` here is the STORAGE-space window (magnitude, for `N64`) the search actually ran in —
-    // reporting the value-space one would name a window the reader cannot line up with the failure.
     crate::warn!(
-        "cddl-codegen --emit-tests: map key window {bounds:?} has no run of {count} consecutive accepted {p:?} values — the map's key wire path is unexercised"
+        "cddl-codegen --emit-tests: map key window {:?} has no run of {count} consecutive accepted {p:?} values — the map's key wire path is unexercised",
+        key_ty.config.bounds
     );
     None
 }
@@ -2945,10 +2942,112 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nint_minted_magnitudes_do_not_collide_with_fixed_uints() {
-        // CBOR nint's stored magnitude `0` represents CDDL `-1`. The search may therefore use
-        // that first candidate alongside a fixed unsigned key `0`; a collision here falsely moves
-        // the generated test vector off its canonical baseline.
+    fn minted_map_key_fixed_value_covers_storage_domains() {
+        let cases = [
+            (Primitive::U8, 0, FixedValue::Uint(0)),
+            (
+                Primitive::U8,
+                u8::MAX as i128,
+                FixedValue::Uint(u8::MAX as u64),
+            ),
+            (
+                Primitive::U16,
+                u16::MAX as i128,
+                FixedValue::Uint(u16::MAX as u64),
+            ),
+            (
+                Primitive::U32,
+                u32::MAX as i128,
+                FixedValue::Uint(u32::MAX as u64),
+            ),
+            (Primitive::U64, u64::MAX as i128, FixedValue::Uint(u64::MAX)),
+            (
+                Primitive::I8,
+                i8::MIN as i128,
+                FixedValue::Nint(i8::MIN as i128),
+            ),
+            (
+                Primitive::I8,
+                i8::MAX as i128,
+                FixedValue::Uint(i8::MAX as u64),
+            ),
+            (
+                Primitive::I16,
+                i16::MIN as i128,
+                FixedValue::Nint(i16::MIN as i128),
+            ),
+            (
+                Primitive::I16,
+                i16::MAX as i128,
+                FixedValue::Uint(i16::MAX as u64),
+            ),
+            (
+                Primitive::I32,
+                i32::MIN as i128,
+                FixedValue::Nint(i32::MIN as i128),
+            ),
+            (
+                Primitive::I32,
+                i32::MAX as i128,
+                FixedValue::Uint(i32::MAX as u64),
+            ),
+            (
+                Primitive::I64,
+                i64::MIN as i128,
+                FixedValue::Nint(i64::MIN as i128),
+            ),
+            (
+                Primitive::I64,
+                i64::MAX as i128,
+                FixedValue::Uint(i64::MAX as u64),
+            ),
+            (Primitive::N64, 0, FixedValue::Nint(-1)),
+            (
+                Primitive::N64,
+                u64::MAX as i128,
+                FixedValue::Nint(-1 - u64::MAX as i128),
+            ),
+        ];
+        for (primitive, coordinate, expected) in cases {
+            assert_eq!(
+                map_minted_key_fixed_value(&MapKey::Int(primitive), coordinate),
+                Some(expected),
+                "{primitive:?} coordinate {coordinate}",
+            );
+        }
+        assert_eq!(
+            map_minted_key_fixed_value(&MapKey::Str, -7),
+            Some(FixedValue::Text("-7".to_owned()))
+        );
+        assert_eq!(
+            map_minted_key_fixed_value(&MapKey::Bytes, u8::MAX as i128),
+            Some(FixedValue::Bytes(vec![u8::MAX]))
+        );
+        assert_eq!(
+            map_minted_key_fixed_value(&MapKey::Bool, 1),
+            Some(FixedValue::Bool(true))
+        );
+    }
+
+    #[test]
+    fn minted_map_key_fixed_value_rejects_unrepresentable_coordinates() {
+        for (key, coordinate) in [
+            (MapKey::Int(Primitive::U8), -1),
+            (MapKey::Int(Primitive::U8), u8::MAX as i128 + 1),
+            (MapKey::Int(Primitive::I8), i8::MIN as i128 - 1),
+            (MapKey::Int(Primitive::I8), i8::MAX as i128 + 1),
+            (MapKey::Int(Primitive::N64), -1),
+            (MapKey::Int(Primitive::N64), u64::MAX as i128 + 1),
+            (MapKey::Bytes, -1),
+            (MapKey::Bytes, u8::MAX as i128 + 1),
+            (MapKey::Bool, -1),
+        ] {
+            assert_eq!(map_minted_key_fixed_value(&key, coordinate), None);
+        }
+    }
+
+    #[test]
+    fn nint_minted_magnitudes_have_canonical_fixed_value_equality() {
         assert!(!map_minted_key_equals_fixed(
             &MapKey::Int(Primitive::N64),
             0,

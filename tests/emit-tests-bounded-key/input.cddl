@@ -27,6 +27,15 @@ holder_ge = [m: {* uint .ge 5 => tstr}]
 holder_nint_ge = [m: {* nint .ge -5 => uint}]
 holder_nint_le = [m: {* nint .le -5 => uint}]
 
+; These exact-one restricted dynamic open-struct rows exercise constructor-map minting and its
+; shared collision search. (Loose `*` rows mint through `insert_rest`, so they cannot observe a
+; `key_base`.) N64 magnitude 0 is value -1, so it differs from fixed uint 0 and retains base 0;
+; ordinary uint 0 collides and moves to base 1. A fixed nint -1 control is unavailable: record
+; fixed nint keys are deliberately unsupported before generation, so the unit `FixedValue` equality
+; control directly owns it.
+holder_dynamic_nint_uint_zero = { 0: uint, 1*1 nint => uint }
+holder_dynamic_uint_uint_zero = { 0: uint, 1*1 uint => uint }
+
 ; A NON-integer key whose window is a LENGTH (`.size 3`), which the `__i.to_string()` key spelling
 ; has no way to steer. The minter must SKIP it loudly (the map mints empty and says why), never
 ; mint a violating key and let the emitted vector go red against a correct decoder.

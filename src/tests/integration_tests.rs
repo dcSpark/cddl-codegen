@@ -13290,6 +13290,8 @@ fn emit_tests_bounded_map_key_execute() {
         "roundtrip_holder_ge",
         "roundtrip_holder_nint_ge",
         "roundtrip_holder_nint_le",
+        "roundtrip_holder_dynamic_nint_uint_zero",
+        "roundtrip_holder_dynamic_uint_uint_zero",
         "roundtrip_holder_str_size",
     ] {
         assert!(
@@ -13307,10 +13309,10 @@ fn emit_tests_bounded_map_key_execute() {
         "a `.size`-bounded text key must mint the map EMPTY (loud skip), never a key whose length \
          violates the window\n{src}"
     );
-    // The two `nint` rows pin that the window is transformed into MAGNITUDE space before the base
-    // is chosen AND before it is verified. Compared with whitespace stripped so the pins survive
-    // rustfmt's line breaking; each names the whole minted expression, because both the base and
-    // the spelling around it are the thing under test.
+    // The two `nint` rows pin that magnitude space supplies the candidate base. Candidate
+    // acceptance itself is checked through the canonical CDDL-value view. Compared with whitespace
+    // stripped so the pins survive rustfmt's line breaking; each names the whole minted expression,
+    // because both the base and the spelling around it are the thing under test.
     let flat: String = src.chars().filter(|c| !c.is_whitespace()).collect();
     // `.ge -5` -> magnitude window `m <= 4`: base 0 is already inside it, so the key renders as the
     // pre-base `__i as u64`. This is also the byte-identity floor for a base of 0.
@@ -13325,6 +13327,17 @@ fn emit_tests_bounded_map_key_execute() {
         flat.contains("HolderNintLe::new((0u64..1).map(|__i|((4+__iasi128)asu64,0))"),
         "a `nint .le` key must mint magnitude 4 (value -5) — magnitude 0 is value -1, outside the \
          window, and a value-space base is outside it by ~1.8e19 in the other direction\n{src}"
+    );
+    // The dynamic-row collision control uses the same storage literal, but its fixed key compares
+    // against the CDDL value. Magnitude 0 means nint -1 rather than uint 0, so this run retains
+    // the base-zero spelling.
+    assert!(
+        flat.contains("HolderDynamicNintUintZero::new(0,BoundedMap::<_,_,1,1>::try_from((0u64..1).map(|__i|(__iasu64,0)).collect::<Vec<_>>(),)"),
+        "a dynamic N64 row beside fixed uint 0 must retain magnitude base 0\n{src}"
+    );
+    assert!(
+        flat.contains("HolderDynamicUintUintZero::new(0,BoundedMap::<_,_,1,1>::try_from((0u64..1).map(|__i|((1+__iasi128)asu64,0)).collect::<Vec<_>>(),)"),
+        "a dynamic uint row beside fixed uint 0 must shift from base 0 to 1\n{src}"
     );
     // Vacuity guard: the `.ne 0` table's keys must actually START above the excluded value. Without
     // this the gate could pass by minting the map EMPTY (or by the table vanishing from the

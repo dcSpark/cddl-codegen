@@ -2052,9 +2052,7 @@ survive:
   (`testing.generated-local-collision.scope-wide-probe`), synthesized-wrapper reference-set closure
   (`testing.synthesized-name-referenced-never-minted-e0425-flavor`), a registry-derived generated
   JSON-Schema position oracle
-  (`testing.generated-json-schema.partition-cardinality-position-semantics`), and one canonical
-  value-space view plus source-spelling intent assertion for emitted key mints
-  (`testing.emit-tests-gate-asserts-round-trip-green-cannot`).
+  (`testing.generated-json-schema.partition-cardinality-position-semantics`).
 - **Acceptance** — `tests/open-table-cip25-acceptance`
   (`integration_tests::open_table_cip25_acceptance`, compiled, preserve + canonical; extern
   definitions `tests/external_rust_raw_bytes_cip25`, hand codecs
@@ -3488,7 +3486,9 @@ classes — `widen_float` included, via the `any`-range composite — exercise c
 `.rest` map),
 `emit_tests_bounded_map_key_execute` (local — generates `tests/emit-tests-bounded-key` under
 `--emit-tests` non-preserve and runs the crate, proving a table key whose DOMAIN carries a value
-window is minted inside that window), and
+window is minted inside that window through one canonical `FixedValue` CDDL-value projection; N64
+candidate selection still uses cheap magnitude endpoints, while acceptance independently applies the
+original value-space bounds), and
 `feature_corpus_roundtrips_nondefault_profiles` (full tier, corpus × preserve breadth); the canonical
 differential runs once at whole-program scale via the `canonical` fixture's `--emit-tests`.
 
@@ -3506,6 +3506,13 @@ land inside the window, so a fixture over a bounded domain owes two things beyon
 2. **A pin on the minted SPELLING, not just the round-trip verdict** — compared
    whitespace-stripped, so rustfmt line-breaking cannot quietly weaken it. This is what makes a
    wrong-but-passing mint fail.
+
+Every primitive map-key coordinate is first projected to the canonical `FixedValue` it denotes.
+The projection supplies fixed-key equality and independently checks each candidate against the
+original value-space bounds; transformed N64 magnitude bounds choose inexpensive candidates only.
+The bounded-key fixture pins N64 magnitude 0 beside fixed uint 0 and an ordinary uint collision
+shift. Fixed nint record keys are deliberately rejected before generation, so the direct
+magnitude-0-equals-nint--1 assertion is a focused unit control rather than a fixture row.
 
 `--emit-tests-conformance` does not substitute for either: it validates minted bytes against the
 source rule, and a degenerate-but-in-window value is genuinely spec-VALID.

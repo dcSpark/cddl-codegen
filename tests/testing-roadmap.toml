@@ -93,7 +93,6 @@ entries = [
   "testing.generated-local-collision.scope-wide-probe",
   "testing.synthesized-name-referenced-never-minted-e0425-flavor",
   "testing.generated-json-schema.partition-cardinality-position-semantics",
-  "testing.emit-tests-gate-asserts-round-trip-green-cannot",
   "testing.wasm-face-s-door-vocabulary-hand-listed-mechanism",
   "part-why-parity-gate-cannot-host-generalization",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
@@ -348,17 +347,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one-proof", "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two-proof"]
 incident_ids = ["testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.one", "testing.incident-observation.build-registration-class-reference-position-sweep-second-escape.two"]
-
-[[record]]
-id = "testing.admission-path.emit-tests-gate-asserts-round-trip-green-cannot"
-title = "Admission for testing.emit-tests-gate-asserts-round-trip-green-cannot."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "silent_corruption"
-claim_md = '''The preserved owner detail records a reproducible wrong-but-green mint-selection class that the proposed system would detect.
-'''
-evidence_ids = ["testing.proof.emit-tests-gate-asserts-round-trip-green-cannot"]
 
 [[record]]
 id = "testing.admission-path.gate-demands-premise-probed-against-gate-evidence-about"
@@ -1842,50 +1830,6 @@ action_on_fire_md = '''Set testing.emission-branch-generated-output-fixture-exer
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.emission-branch-generated-output-fixture-exercises-invisible-gate's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
-title = "An `--emit-tests` gate that asserts only \"the round-trip is green\" cannot tell an INTENDED minted value from a wrong one that happens to land in-window."
-
-[record.payload]
-kind = "work"
-body_md = '''- **An `--emit-tests` gate that asserts only "the round-trip is green" cannot tell an INTENDED
-  minted value from a wrong one that happens to land in-window.** Proven by the bounded-map-key
-  minter: choosing a `nint` key base in VALUE space emitted that base as a u64 MAGNITUDE, so
-  `{* nint .le -5 => uint}` minted magnitude 18446744073709551611 — wire value about -1.8e19, which
-  SATISFIES `<= -5`, so the emitted round-trip passed. A false green, and the harder half to
-  notice: the sign-mirror `{* nint .ge -5 => uint}` failed loudly on the identical wrong base, so a
-  fixture carrying only ONE sign of the window would have certified the defect in whichever
-  direction it was pointed. The conformance oracle (`--emit-tests-conformance`) cannot see this
-  class either — the minted value is genuinely spec-VALID, merely degenerate — which is why it
-  needs a layer of its own rather than a wider oracle. The standing rule that covers this today is
-  IN FORCE and lives in `tests/README.md` § "Authoring standard for a bounded-domain emit-tests
-  fixture" (both signs/endpoints of the window; the gate pins the minted SPELLING, compared
-  whitespace-stripped, not just the round-trip verdict), with
-  `tests/emit-tests-bounded-key/` as that fixture. What remains future here is only the mechanical
-  layer: a mint-intent assertion — derive each bounded mint's expected
-  literal from the same `MintValue` the renderer consumes and diff the two — so that no bounded
-  mint can be wrong-but-passing. Trigger, on the axis the cost grows along: the COUNT of
-  minted-value sites whose STORAGE space differs from the CDDL value space, measurable by whoever
-  next adds a bounded mint.
-
-  **Trigger fired during B5-403 (2026-08-15).** `N64` magnitude acquired a second value-space
-  consumer: the dynamic-row minter's fixed-key collision search. It initially treated magnitude 0
-  (`-1` on the CDDL wire) as equal to a fixed unsigned key 0 and silently shifted the minted key run
-  away from its intended baseline. The focused unit regression now distinguishes N64 magnitude 0
-  from uint 0 while retaining its equality with nint -1, but bounds selection and fixed-key
-  collision remain two separately hand-carried conversions of the same storage/value boundary.
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "silent_wrong_bytes"
-acceptance_md = '''Give minted primitive keys one canonical CDDL-value view and route bounds selection, fixed-key collision checks, and emitted-literal intent assertions through it. Sweep signed, unsigned, and N64 storage representations at both endpoints, including N64 magnitude 0 beside fixed uint 0 and fixed nint -1, and assert the emitted source spelling as well as round-trip success. Remove the duplicated hand conversions only after the differential is red-first against both recorded failures.
-'''
-priority_rationale_md = '''The record's recurrence threshold fired: a second helper independently translated N64 magnitude storage into CDDL value space and review caught a wrong-but-green mint selection.
-'''
-control_ids = ["testing.guard.emit-tests-gate-asserts-round-trip-green-cannot"]
-admission_ids = ["testing.admission-path.emit-tests-gate-asserts-round-trip-green-cannot"]
 
 [[record]]
 id = "testing.emitted-shape-lint-classes-outside-clippy-all-beyond"
@@ -3451,20 +3395,6 @@ control_kind = "review_rule"
 control_state = "live"
 reference_ids = ["testing-roadmap-next-work-n8"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.emission-branch-generated-output-fixture-exercises-invisible-gate's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.emit-tests-gate-asserts-round-trip-green-cannot"
-title = "Current control for testing.emit-tests-gate-asserts-round-trip-green-cannot."
-
-[record.payload]
-kind = "control"
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-next-work-n9"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.emit-tests-gate-asserts-round-trip-green-cannot's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -5759,25 +5689,6 @@ acceptance_md = '''Add a red-first regression that runs the unchanged config twi
 '''
 priority_rationale_md = '''The parent defect owns repair; this record owns the still-unexecuted regression gap without masquerading as defect evidence.
 '''
-
-[[record]]
-id = "testing.proof.emit-tests-gate-asserts-round-trip-green-cannot"
-title = "Cycle 4 incident evidence for testing.emit-tests-gate-asserts-round-trip-green-cannot."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "regression_pin"
-claim_md = '''B5-403's dynamic-row key minter reproduced a wrong-but-green N64 value-space conversion that a round-trip-only assertion did not distinguish.
-'''
-freshness = "live"
-reference_ids = ["test-cycle4-emit-tests-bounded-map-key-execute"]
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent mint-value conversions.
-'''
-refresh_reference_id = "test-cycle4-emit-tests-bounded-map-key-execute"
-
-[record.payload.scope]
-surfaces = ["dynamic-row key minting", "owner-recorded-failure-class"]
-faces = ["rust"]
 
 [[record]]
 id = "testing.proof.generated-json-schema.partition-cardinality-position-semantics"
@@ -8092,16 +8003,6 @@ kind = "parent_of"
 target = "testing.guard.emission-branch-generated-output-fixture-exercises-invisible-gate"
 
 [[relation]]
-source = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
-kind = "parent_of"
-target = "testing.admission-path.emit-tests-gate-asserts-round-trip-green-cannot"
-
-[[relation]]
-source = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
-kind = "parent_of"
-target = "testing.guard.emit-tests-gate-asserts-round-trip-green-cannot"
-
-[[relation]]
 source = "testing.emitted-shape-lint-classes-outside-clippy-all-beyond"
 kind = "parent_of"
 target = "testing.guard.emitted-shape-lint-classes-outside-clippy-all-beyond"
@@ -8800,13 +8701,6 @@ path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
-id = "testing-roadmap-next-work-n9"
-source = "testing.emit-tests-gate-asserts-round-trip-green-cannot"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
 id = "test-generated-code-clippy-clean-n2"
 source = "testing.emitted-shape-lint-classes-outside-clippy-all-beyond"
 kind = "test_symbol"
@@ -9344,13 +9238,6 @@ id = "gate-no-std-check"
 source = "testing.profile-driven-compile-gate-covers-compositions-profiles-specs"
 kind = "gate"
 gate_id = "no_std_check"
-
-[[reference]]
-id = "test-cycle4-emit-tests-bounded-map-key-execute"
-source = "testing.proof.emit-tests-gate-asserts-round-trip-green-cannot"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::emit_tests_bounded_map_key_execute"
-symbol = "tests::integration_tests::emit_tests_bounded_map_key_execute"
 
 [[reference]]
 id = "test-cycle4-open-table-json-e2e"
