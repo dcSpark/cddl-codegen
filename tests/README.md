@@ -92,7 +92,7 @@ not interchangeable: a nominal reference to a collection typedef needed an `enco
 fix that exists ONLY under `--preserve-encodings`, and every other profile was green while it was
 missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
 `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 20 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_out_of_scope_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `ir_conformance_multifile` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `wrapper_participation_mode_floors` / `wrapper_participation_requested_host_floor` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, the `corpus_detect` gate, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the 20 `#[ignore]`d gates `regen_over_prior_output_corpus` / `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `generated_local_scope_wide_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `ir_conformance_multifile` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles` / `component_corpus_compiles` / `wrapper_participation_mode_floors` / `wrapper_participation_requested_host_floor` / `regen_over_prior_output_corpus_compiles`<!-- /gen:sh:tests-ignored-gates --> — that roll-call is every `#[ignore]`d gate the registry classifies, so it includes the one that is `local` rather than `full` (`regen_over_prior_output_corpus`, `#[ignore]`d for its 40 s wall, not for fragility) — plus `cddl-matrix/verify.ts`, the `corpus_detect` gate, and
 the two byte-fuzzer gates (`fuzz_compile_rot`, the compile-rot check, and `fuzz_bounded_run`, a time-boxed live libFuzzer walk of both targets — `fuzz/README.md`), `pin_cold_fetch` (every git `rev` mentioned in a pin-carrying surface must resolve against its remote from a scratch `CARGO_HOME` — the tier's one deliberately-online gate, because a warm local cargo DB answers "does this rev exist?" wrongly and confidently, which is how a never-pushed rev once passed three cycles of green gates), plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` / `NOT RUN (--only)` + per-gate durations), so a gate that
 didn't run is always
@@ -4216,10 +4216,16 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > field, but a name is reserved only where the emitter binds the local — which is what keeps the
 > `tag: 0` group-choice discriminant generating. Both halves of every scope are asserted:
 > `generated_local_hazard_robustness_catalog` snapshots refused-inside / still-generating-outside per
-> field position, and `generated_local_out_of_scope_crates_compile` (`#[ignore]`, check.ts full tier)
-> *compiles* every out-of-scope cell per profile — the only way a scope that is too NARROW can fail
-> loudly, since a generation-only sweep reads it as a clean `ok`. Its `hazards()` sibling is left
-> untouched by design: that list feeds the recombination fuzzer's deterministic composition set.
+> field position. `generated_local_scope_wide_crates_compile` (`#[ignore]`, check.ts full tier)
+> derives the full reserved + probed-safe denominator, requires every scoped reserved cell to remain
+> a graceful error with the normal `reserved name` / resolved-field / `@name <other>` diagnostic,
+> stale-guards any deliberately position-specific refusal behind an exact cell, diagnostic substring,
+> and reason, and *compiles* every legal original/named/newtype/`.cbor`/bounded-member cell (with
+> both `uint` and `bytes` payload variants where their carrier can alter the generated path)
+> across native profiles, JSON/WASM/json-gen, and component output. This is the only way a scope that
+> is too NARROW or a safe local that collides only on another face can fail loudly; a generation-only
+> sweep reads either as a clean `ok`. Its `hazards()` sibling is left untouched by design: that list
+> feeds the recombination fuzzer's deterministic composition set.
 
 > Second sibling, same argument on a **DOCS-CONTRACT** axis: `src/tests/dsl_position_tests.rs`
 > hard-asserts the comment-DSL directive × attachment-position grid against

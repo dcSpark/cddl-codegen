@@ -6798,7 +6798,9 @@ pub(crate) const RUST_KEYWORDS: &[&str] = &[
 ///
 /// LOCKSTEP with `identifier_hazard_tests::generated_local_registry_covers_emitter_locals`, which
 /// re-derives the emitter-local vocabulary from the emitter sources and fails until a new local is
-/// verdicted into this list or into `GENERATED_LOCAL_PROBED_SAFE`.
+/// verdicted into this list or into `GENERATED_LOCAL_PROBED_SAFE`. The scope-wide compile probe
+/// derives its complete spelling denominator from those two halves, so that verdict automatically
+/// enters every legal named/newtype/`.cbor`/bounded-member and output-face cell.
 pub(crate) const GENERATED_LOCAL_RESERVED: &[(&str, ReservedScope, &str)] = &[
     (
         "len",

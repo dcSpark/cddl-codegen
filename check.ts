@@ -1842,10 +1842,10 @@ export const REGISTRY: Gate[] = [
   { id: "identifier_hazard_crates_compile", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "identifier_hazard_crates_compile", "--", "--ignored"],
     ignoredTest: "identifier_hazard_crates_compile", desc: "identifier-hazard sweep standalone compile gate (manual, #[ignore]d)" },
-  { id: "generated_local_out_of_scope_crates_compile", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
-    cmd: ["cargo", "test", "--bin", "cddl-codegen", "generated_local_out_of_scope_crates_compile", "--", "--ignored"],
-    ignoredTest: "generated_local_out_of_scope_crates_compile",
-    desc: "generated-local reserved-name scope gate — every out-of-scope cell must still COMPILE, per profile (manual, #[ignore]d)" },
+  { id: "generated_local_scope_wide_crates_compile", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
+    cmd: ["cargo", "test", "--bin", "cddl-codegen", "generated_local_scope_wide_crates_compile", "--", "--ignored"],
+    ignoredTest: "generated_local_scope_wide_crates_compile",
+    desc: "generated-local scope-wide collision gate — registry-derived legal cells compile across native, JSON/WASM, and component faces (manual, #[ignore]d)" },
   { id: "recombination_crates_execute", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     // Full module path + `--exact`: the sibling `recombination_preserve_crates_execute` gate must not
     // cross-select under cargo's default substring matching (and vice versa).

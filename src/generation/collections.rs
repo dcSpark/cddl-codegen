@@ -1217,6 +1217,7 @@ impl GenerationScope {
             self,
             &mut wrapper,
             types,
+            wrapper_ident,
             &key_type,
             &value_type,
             "self.0",
@@ -1449,6 +1450,7 @@ impl GenerationScope {
             self,
             &mut wrapper,
             types,
+            wrapper_ident,
             &key_type,
             &value_type,
             "self.0",
@@ -1707,6 +1709,7 @@ pub(super) fn push_table_accessors(
     gen_scope: &mut GenerationScope,
     wrapper: &mut WasmWrapper,
     types: &IntermediateTypes,
+    owner: &RustIdent,
     key_type: &RustType,
     value_type: &RustType,
     receiver: &str,
@@ -1945,6 +1948,20 @@ pub(super) fn push_table_accessors(
             "{receiver}{key_clone}{key_loosen}.collect::<Vec<_>>().into()"
         ));
     } else {
+        // The ordinary traversal mints this companion for whole-map shapes, but an open table's
+        // flattened `keys()` has no whole-map visit to claim it. Its generated-name reference
+        // therefore owns the local mint. A table declared in a non-exported extern-dependency
+        // scope is not emitted by this crate, though: minting its companion would fabricate a
+        // consumer-owned wrapper over an extern type. Its dependency owns that class.
+        if types.scope(owner).export() {
+            gen_scope.generate_array_type(
+                types,
+                keys_element_type.clone(),
+                &RustIdent::new(CDDLIdent::new(keys_element_type.name_as_wasm_array(types))),
+                false,
+                cli,
+            );
+        }
         keys.line(format!(
             "{}({receiver}{key_clone}{key_loosen}.collect::<Vec<_>>())",
             keys_type.for_wasm_return(types)
@@ -2356,6 +2373,7 @@ pub(super) fn codegen_table_type(
         gen_scope,
         &mut wrapper,
         types,
+        name,
         &key_type,
         &value_type,
         "self.0",

@@ -3442,6 +3442,7 @@ pub(super) fn codegen_struct(
                 gen_scope,
                 &mut wrapper,
                 types,
+                name,
                 typed.domain(),
                 typed.range(),
                 &format!("self.0.{}", typed.field_name),

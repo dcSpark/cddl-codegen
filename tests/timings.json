@@ -420,23 +420,15 @@
       ]
     },
     {
-      "gate": "generated_local_out_of_scope_crates_compile",
-      "warm_ms": 11000,
-      "n": 12,
-      "measured": "2026-08-06",
+      "gate": "generated_local_scope_wide_crates_compile",
+      "warm_ms": 194000,
+      "n": 1,
+      "measured": "2026-08-17",
       "machine": "86216c55",
       "history": [
         {
-          "date": "2026-08-01",
-          "warm_ms": 7000
-        },
-        {
-          "date": "2026-08-05",
-          "warm_ms": 9000
-        },
-        {
-          "date": "2026-08-06",
-          "warm_ms": 11000
+          "date": "2026-08-17",
+          "warm_ms": 194000
         }
       ]
     },

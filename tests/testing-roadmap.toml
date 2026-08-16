@@ -89,7 +89,6 @@ entries = [
   "part-cheap-system-matrix-shape-pairs-compiled-wasm-side",
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
-  "testing.generated-local-collision.scope-wide-probe",
   "testing.synthesized-name-referenced-never-minted-e0425-flavor",
   "testing.generated-json-schema.partition-cardinality-position-semantics",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
@@ -353,17 +352,6 @@ admission_kind = "silent_corruption"
 claim_md = '''The preserved owner detail records a reproducible generated-schema false-contract class that the proposed system would detect.
 '''
 evidence_ids = ["testing.proof.generated-json-schema.partition-cardinality-position-semantics"]
-
-[[record]]
-id = "testing.admission-path.generated-local-collision.scope-wide-probe"
-title = "Admission for testing.generated-local-collision.scope-wide-probe."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "silent_corruption"
-claim_md = '''The preserved owner detail records a reproducible generation-green/emitted-crate-red class that the proposed system would detect.
-'''
-evidence_ids = ["testing.proof.generated-local-collision.scope-wide-probe"]
 
 [[record]]
 id = "testing.admission-path.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
@@ -2802,8 +2790,9 @@ body_md = '''8. **The generated-local collision class is refused, not mangled �
     <other>` as the remedy and the CBOR wire key untouched. The emitter-local vocabulary is held
     LOCKSTEP by `identifier_hazard_tests::generated_local_registry_covers_emitter_locals` (a new
     emitter local fails until verdicted into the reserved set or into
-    `GENERATED_LOCAL_PROBED_SAFE`), and `generated_local_out_of_scope_crates_compile` (`#[ignore]`,
-    full tier) compiles every out-of-scope cell per profile so a too-narrow scope cannot hide.
+    `GENERATED_LOCAL_PROBED_SAFE`), and `generated_local_scope_wide_crates_compile` (`#[ignore]`,
+    full tier) derives both registry halves, requires scoped-reserved cells to reject gracefully,
+    and compiles every legal position/profile/output-face cell so a too-narrow scope cannot hide.
 '''
 control_kind = "review_rule"
 control_state = "live"
@@ -2843,49 +2832,6 @@ action_on_fire_md = '''Set testing.generated-local-collision.general-mangling-re
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.generated-local-collision.general-mangling-remedy's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.generated-local-collision.scope-wide-probe"
-title = "Residual: the scope is only as wide as the probe."
-
-[record.payload]
-kind = "work"
-body_md = '''    - **Residual: the scope is only as wide as the probe.** Membership and per-name
-      `ReservedScope` were measured over five shapes (array-rep / map-rep / tagged record /
-      embedded plain group / group-choice arm) × three profiles × two field types, plus a
-      `--wasm=true` pass. NOT probed: a field whose type is a named rule or newtype, `.cbor`-payload
-      and bounded-type member positions, and the `--json-schema-export` / `--component` faces.
-
-      **Trigger fired during B5-403 (2026-08-15).** Restricted dynamic rows introduced generated
-      constructor/staging bindings in exactly the unprobed bounded/component positions. Legal row
-      names `first_key`, `first_value`, and `<typed>_builder` initially produced duplicate or
-      shadowed constructor bindings across native Rust, wasm, WIT, and JSON. `first_key` and
-      `first_value` are both in `GENERATED_LOCAL_PROBED_SAFE`; focused collision regressions now
-      protect this instance, but the scope-wide product remains absent.
-
-      **B5-401 resident (2026-08-16).** A finite fixed-domain middle-array retry initially placed
-      its cursor `initial_position` inside the captured segment's loop. A legal `@name
-      initial_position` then shadowed its `Vec` carrier (`usize.push(...)`), despite that spelling's
-      earlier `GENERATED_LOCAL_PROBED_SAFE` verdict. The cursor now derives from the segment through
-      `fresh_generated_member_ident`; a compiled open-array fixture permanently covers both the
-      direct name and a fixed member occupying the preferred derived spelling.
-'''
-signal_md = '''      **Reopening signal:** a generated crate fails `cargo check` with a shadowed-binding error
-      (E0599/E0308/E0124) on a field whose name is in `GENERATED_LOCAL_PROBED_SAFE`, or on a
-      reserved name used in a shape outside its declared scope — the compile error names the
-      binding, so the report arrives pre-diagnosed and says exactly which row to widen.
-
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "compile_failure"
-acceptance_md = '''Build the scope-wide compile probe promised by this record: enumerate every `GENERATED_LOCAL_PROBED_SAFE` and scoped-reserved spelling over named/newtype, `.cbor` payload, bounded-member, JSON-schema, and component positions; compile every legal cell and pin each intentional refusal. Derive the spelling set from the source registry so a newly added generated local cannot silently miss the product. Include the B5-403 dynamic-row constructor/staging cells and the B5-401 occurrence-segment `@name` × retry/cursor cells as permanent residents.
-'''
-priority_rationale_md = '''The exact promotion trigger fired in an explicitly unprobed bounded/component position; the focused fix does not close the remaining product.
-'''
-control_ids = ["testing.guard.generated-local-collision-scope-wide-probe"]
-admission_ids = ["testing.admission-path.generated-local-collision.scope-wide-probe"]
 
 [[record]]
 id = "testing.generic-raw-bytes-base-refused-generic-extern-base"
@@ -3427,20 +3373,6 @@ control_kind = "gate"
 control_state = "live"
 reference_ids = ["gate-fuzz-compile-rot"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.gate-script-health-cache-staleness-key-fresh-worktree's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.generated-local-collision-scope-wide-probe"
-title = "Current control for testing.generated-local-collision.scope-wide-probe."
-
-[record.payload]
-kind = "control"
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-next-work-n15"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.generated-local-collision.scope-wide-probe's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -5480,41 +5412,22 @@ faces = ["json"]
 profiles = ["json", "preserve"]
 
 [[record]]
-id = "testing.proof.generated-local-collision.scope-wide-probe"
-title = "Cycle 4 incident evidence for testing.generated-local-collision.scope-wide-probe."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "regression_pin"
-claim_md = '''B5-403 reproduced legal dynamic-row names colliding with constructor and staging bindings across previously unprobed bounded and component positions.
-'''
-freshness = "live"
-reference_ids = ["test-cycle4-open-table-generated-constructor-collisions"]
-unprobed_remainder_md = '''The evidence proves the admitted dynamic-row positions only; it does not establish a closed denominator over generated locals and legal source positions.
-'''
-refresh_reference_id = "test-cycle4-open-table-generated-constructor-collisions"
-
-[record.payload.scope]
-surfaces = ["generated constructor and staging bindings", "owner-recorded-failure-class"]
-faces = ["component", "json", "rust", "wasm"]
-
-[[record]]
 id = "testing.proof.synthesized-name-referenced-never-minted-e0425-flavor"
-title = "Cycle 4 incident evidence for testing.synthesized-name-referenced-never-minted-e0425-flavor."
+title = "Cycle 4 and Cycle 21 evidence for the referenced-but-never-minted (E0425) flavor."
 
 [record.payload]
 kind = "evidence"
 evidence_kind = "regression_pin"
-claim_md = '''B5-403 reproduced a requested bounded-map wrapper whose emitted keys method referenced a companion list wrapper absent from that scope's mint path.
+claim_md = '''B5-403 reproduced a requested bounded-map wrapper whose emitted keys method referenced a companion list wrapper absent from that scope's mint path. Cycle 21 independently reproduced the same reference-before-mint class in an own-spec restricted open-table: its wasm `keys()` accessor referenced `MdList` although no local path had minted it.
 '''
 freshness = "live"
-reference_ids = ["test-cycle4-workspace-key-requests-rest-row-contract"]
-unprobed_remainder_md = '''The evidence proves the admitted requested bounded-map companion class only; it does not establish the reference-set subset invariant for every wrapper family.
+reference_ids = ["test-cycle21-shared-open-table-key-list-reference", "test-cycle4-workspace-key-requests-rest-row-contract"]
+unprobed_remainder_md = '''The two residents prove requested-wrapper and own-spec restricted-open-table key-list companions only; they do not establish the reference-set-subset invariant for every emitter, wrapper family, deferred import, or output face.
 '''
 refresh_reference_id = "test-cycle4-workspace-key-requests-rest-row-contract"
 
 [record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "requested wrapper companion minting"]
+surfaces = ["owner-recorded-failure-class", "requested and own-spec wrapper companion minting"]
 faces = ["cross-crate", "wasm"]
 
 [[record]]
@@ -6477,11 +6390,14 @@ body_md = '''- **Synthesized-name residual: the referenced-but-never-minted (E04
   interaction sweep + duplicate-ident backstop"). The remaining flavor is E0425: an emitter that
   REFERENCES a synthesized wrapper name no mint path emits.
 
-  **Trigger fired during B5-403 (2026-08-15).** A dependency-side requested bounded map wrapper
+  **Triggers fired during B5-403 and B5-323 (2026-08-15/17).** A dependency-side requested bounded map wrapper
   emitted its `keys()` method referencing `<Key>List`, while the requested-wrapper path minted only
   the map class; the own-spec walk that normally mints the companion list had no IR owner in that
-  scope. The focused repair explicitly closes requested map wrappers over their key-list companion,
-  but the promised reference-set ⊆ minted-set invariant remains absent. Build that scoped
+  scope. Separately, an own-spec restricted open-table accessor referenced `MdList` before its
+  companion mint path ran. The focused repairs explicitly close requested and exported-own-spec
+  map wrappers over their key-list companion; non-exported extern-dependency stubs remain
+  dependency-owned and must not mint a consumer-side companion. The promised reference-set ⊆
+  minted-set invariant remains absent. Build that scoped
   generation-time invariant — "every synthesized wrapper name an emitter references must be in the
   minted set" — as the reference-side complement of the emission-side duplicate-ident backstop.
   (A fourth, CROSS-CRATE flavor — duplicate symbols at link under
@@ -6493,9 +6409,9 @@ work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "compile_failure"
-acceptance_md = '''At the finalized wasm generated-file seam, derive the synthesized-name reference set and minted-definition set from the same wrapper registry, fail generation with the missing name plus referencing owner/door whenever references are not a subset, and cover own-spec, requested-host, deferred cross-crate, loose, NonEmpty, Bounded, and pair-map flavors. The B5-403 requested bounded-map `keys()` companion is the red-first resident.
+acceptance_md = '''At the finalized wasm generated-file seam, derive the synthesized-name reference set and minted-definition set from the same wrapper registry, fail generation with the missing name plus referencing owner/door whenever references are not a subset, and cover own-spec, requested-host, deferred cross-crate, loose, NonEmpty, Bounded, and pair-map flavors. The B5-403 requested bounded-map `keys()` companion and Cycle 21's own-spec restricted open-table `MdList` companion are red-first residents; ownership must preserve the boundary that an emitted/exported owner mints its local companion while a non-exported extern-dependency stub remains dependency-owned.
 '''
-priority_rationale_md = '''The record's E0425 recurrence occurred in the requested-wrapper scope outside the prior shape catalogs; a compile gate caught only the focused fixture after the new path existed.
+priority_rationale_md = '''Two independent scopes (requested cross-crate and own-spec restricted open-table) produced E0425 after otherwise successful generation, and a broad compile matrix caught the latter only after an overbroad repair also broke an extern-dependency ownership boundary. A reference/mint invariant is the durable way to make both absence and wrong-owner mints reviewable before rustc.
 '''
 control_ids = ["testing.guard.synthesized-name-referenced-never-minted-e0425-flavor"]
 admission_ids = ["testing.admission-path.synthesized-name-referenced-never-minted-e0425-flavor"]
@@ -7798,21 +7714,6 @@ kind = "parent_of"
 target = "testing.generated-local-collision.general-mangling-remedy"
 
 [[relation]]
-source = "testing.generated-local-collision-class-refused-mangled-refusal-s"
-kind = "parent_of"
-target = "testing.generated-local-collision.scope-wide-probe"
-
-[[relation]]
-source = "testing.generated-local-collision.scope-wide-probe"
-kind = "parent_of"
-target = "testing.admission-path.generated-local-collision.scope-wide-probe"
-
-[[relation]]
-source = "testing.generated-local-collision.scope-wide-probe"
-kind = "parent_of"
-target = "testing.guard.generated-local-collision-scope-wide-probe"
-
-[[relation]]
 source = "testing.generic-raw-bytes-base-refused-generic-extern-base"
 kind = "parent_of"
 target = "testing.guard.generic-raw-bytes-base-refused-generic-extern-base"
@@ -8517,13 +8418,6 @@ path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
-id = "testing-roadmap-next-work-n15"
-source = "testing.generated-local-collision.scope-wide-probe"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
 id = "testing-roadmap-next-work-n16"
 source = "testing.generic-raw-bytes-base-refused-generic-extern-base"
 kind = "file_heading"
@@ -8865,11 +8759,11 @@ test_id = "rust-test:cddl-codegen#tests::integration_tests::open_table_json_e2e"
 symbol = "tests::integration_tests::open_table_json_e2e"
 
 [[reference]]
-id = "test-cycle4-open-table-generated-constructor-collisions"
-source = "testing.proof.generated-local-collision.scope-wide-probe"
+id = "test-cycle21-shared-open-table-key-list-reference"
+source = "testing.proof.synthesized-name-referenced-never-minted-e0425-flavor"
 kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::open_table_generated_constructor_params_avoid_actual_collisions"
-symbol = "tests::robustness_tests::open_table_generated_constructor_params_avoid_actual_collisions"
+test_id = "rust-test:cddl-codegen#tests::identifier_hazard_tests::shared_open_table_key_list_reference_mints_its_wasm_companion"
+symbol = "tests::identifier_hazard_tests::shared_open_table_key_list_reference_mints_its_wasm_companion"
 
 [[reference]]
 id = "test-cycle4-workspace-key-requests-rest-row-contract"
