@@ -10,3 +10,8 @@ bkeys = { * bool => uint }
 ; (it fired in `new_type` on the resolved reference); the inline form exercises the same key wire
 ; path through a field-local map, whose emit-tests mint puts a real bool key on the wire.
 bkey_holder = [named: bkeys, inline: { * bool => uint }]
+
+; A named exact table stays a transparent alias to its checked BoundedMap carrier. The holder makes
+; emitted tests mint that alias at an embed site, exercising the checked TryFrom construction door.
+bkeys_exact = { bool => uint }
+bkey_exact_holder = [bounded: bkeys_exact]

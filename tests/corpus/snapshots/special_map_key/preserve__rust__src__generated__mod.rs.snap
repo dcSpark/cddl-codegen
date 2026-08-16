@@ -13,6 +13,7 @@ expression: content
 
 extern crate alloc;
 use alloc::vec::Vec;
+pub mod bounded_map;
 pub mod error;
 pub mod ordered_hash_map;
 extern crate derivative;
@@ -20,8 +21,24 @@ pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
+use crate::generated::bounded_map::BoundedMap;
 use crate::generated::ordered_hash_map::OrderedHashMap;
-use cbor_encodings::BkeyHolderEncoding;
+use cbor_encodings::{BkeyExactHolderEncoding, BkeyHolderEncoding};
+
+#[derive(Clone, Debug)]
+pub struct BkeyExactHolder {
+    pub bounded: BkeysExact,
+    pub encodings: Option<BkeyExactHolderEncoding>,
+}
+
+impl BkeyExactHolder {
+    pub fn new(bounded: BkeysExact) -> Self {
+        Self {
+            bounded,
+            encodings: None,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct BkeyHolder {
@@ -41,5 +58,7 @@ impl BkeyHolder {
 }
 
 pub type Bkeys = OrderedHashMap<bool, u64>;
+
+pub type BkeysExact = BoundedMap<bool, u64, 1, 1>;
 
 pub type BoolList = Vec<bool>;

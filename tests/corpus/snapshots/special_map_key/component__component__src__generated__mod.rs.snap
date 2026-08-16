@@ -17,6 +17,7 @@ use exports::cddl::cddl_lib::types as wit_types;
 struct Component;
 
 impl wit_types::Guest for Component {
+    type BkeyExactHolder = WitBkeyExactHolder;
     type BkeyHolder = WitBkeyHolder;
 }
 
@@ -26,6 +27,35 @@ export!(Component);
 /// so a WIT `result<_, string>` carries the same text a native caller would see.
 fn err<E: core::fmt::Display>(e: E) -> String {
     e.to_string()
+}
+
+pub struct WitBkeyExactHolder(pub RefCell<cddl_lib::BkeyExactHolder>);
+
+impl wit_types::GuestBkeyExactHolder for WitBkeyExactHolder {
+    fn new(bounded: Vec<(bool, u64)>) -> Result<Self, String> {
+        let bounded = (bounded.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(err)?;
+        let inner = cddl_lib::BkeyExactHolder::new(bounded);
+        Ok(WitBkeyExactHolder(RefCell::new(inner)))
+    }
+
+    fn bounded(&self) -> Vec<(bool, u64)> {
+        let me = self.0.borrow();
+        me.bounded.iter().map(|(x0, x1)| (*x0, *x1)).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::BkeyExactHolder as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::BkeyExactHolder, String> {
+        <cddl_lib::BkeyExactHolder as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::BkeyExactHolder::new(WitBkeyExactHolder(RefCell::new(v))))
+            .map_err(err)
+    }
 }
 
 pub struct WitBkeyHolder(pub RefCell<cddl_lib::BkeyHolder>);

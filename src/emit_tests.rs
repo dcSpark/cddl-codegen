@@ -2788,7 +2788,7 @@ fn materialize_at(
                 val: Box::new(val),
                 count: measure,
                 non_empty: ty.is_type_enforced_non_empty(),
-                bounded: ty.bounded_map_u64_bounds(),
+                bounded: ty.type_enforced_bounded_map_u64_bounds(),
                 preserve: ty.config.duplicates
                     == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
             })

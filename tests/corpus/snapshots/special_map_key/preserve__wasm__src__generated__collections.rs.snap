@@ -12,4 +12,6 @@ expression: content
 // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to
 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).
 pub use crate::generated::Bkeys;
+pub use crate::generated::BkeysExact;
 pub use crate::generated::BoolList;
+pub use crate::generated::MapBoolToU64;

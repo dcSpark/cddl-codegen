@@ -8,6 +8,12 @@ expression: content
 package cddl:cddl-lib@0.1.0;
 
 interface types {
+  resource bkey-exact-holder {
+    constructor(bounded: list<tuple<bool, u64>>) -> result<bkey-exact-holder, string>;
+    bounded: func() -> list<tuple<bool, u64>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bkey-exact-holder, string>;
+  }
   resource bkey-holder {
     constructor(named: list<tuple<bool, u64>>, inline: list<tuple<bool, u64>>);
     named: func() -> list<tuple<bool, u64>>;

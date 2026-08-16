@@ -14,11 +14,25 @@ expression: content
 extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
+pub mod bounded_map;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod serialization;
+
+use crate::generated::bounded_map::BoundedMap;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct BkeyExactHolder {
+    pub bounded: BkeysExact,
+}
+
+impl BkeyExactHolder {
+    pub fn new(bounded: BkeysExact) -> Self {
+        Self { bounded }
+    }
+}
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct BkeyHolder {
@@ -33,5 +47,7 @@ impl BkeyHolder {
 }
 
 pub type Bkeys = BTreeMap<bool, u64>;
+
+pub type BkeysExact = BoundedMap<bool, u64, 1, 1>;
 
 pub type BoolList = Vec<bool>;

@@ -10,6 +10,13 @@ use crate::generated::serialization::LenEncoding;
 use alloc::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
+pub struct BkeyExactHolderEncoding {
+    pub len_encoding: LenEncoding,
+    pub bounded_encoding: LenEncoding,
+    pub bounded_value_encodings: BTreeMap<bool, Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct BkeyHolderEncoding {
     pub len_encoding: LenEncoding,
     pub named_encoding: LenEncoding,

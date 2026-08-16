@@ -12,8 +12,52 @@ expression: content
 )]
 pub mod collections;
 
+use cddl_lib::bounded_map::BoundedMap;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BkeyExactHolder(pub(crate) cddl_lib::BkeyExactHolder);
+
+#[wasm_bindgen]
+impl BkeyExactHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BkeyExactHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn bounded(&self) -> BkeysExact {
+        self.0.bounded.clone().into()
+    }
+
+    pub fn new(bounded: &BkeysExact) -> Self {
+        Self(cddl_lib::BkeyExactHolder::new(bounded.clone().into()))
+    }
+}
+
+impl From<cddl_lib::BkeyExactHolder> for BkeyExactHolder {
+    fn from(native: cddl_lib::BkeyExactHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BkeyExactHolder> for cddl_lib::BkeyExactHolder {
+    fn from(wasm: BkeyExactHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BkeyExactHolder> for BkeyExactHolder {
+    fn as_ref(&self) -> &cddl_lib::BkeyExactHolder {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -110,6 +154,57 @@ impl AsRef<cddl_lib::Bkeys> for Bkeys {
     }
 }
 
+/// `{1*1 bool => uint}`: inclusive entry window enforced by core `BoundedMap`; use `try_from` on the loose `MapBoolToU64` builder. `insert` returns an error before an entry could exceed the maximum.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BkeysExact(pub(crate) BoundedMap<bool, u64, 1, 1>);
+
+#[wasm_bindgen]
+impl BkeysExact {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: bool, value: u64) -> Result<Option<u64>, JsError> {
+        self.0
+            .insert(key, value)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn get(&self, key: bool) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> BoolList {
+        BoolList(self.0.keys().copied().collect::<Vec<_>>())
+    }
+
+    pub fn try_from(map: &MapBoolToU64) -> Result<BkeysExact, JsError> {
+        let inner: BTreeMap<bool, u64> = map.clone().into();
+        BoundedMap::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<BoundedMap<bool, u64, 1, 1>> for BkeysExact {
+    fn from(native: BoundedMap<bool, u64, 1, 1>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BkeysExact> for BoundedMap<bool, u64, 1, 1> {
+    fn from(wasm: BkeysExact) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BoundedMap<bool, u64, 1, 1>> for BkeysExact {
+    fn as_ref(&self) -> &BoundedMap<bool, u64, 1, 1> {
+        &self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct BoolList(pub(crate) Vec<bool>);
@@ -151,4 +246,47 @@ impl AsRef<Vec<bool>> for BoolList {
     }
 }
 
-pub type MapBoolToU64 = Bkeys;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapBoolToU64(pub(crate) BTreeMap<bool, u64>);
+
+#[wasm_bindgen]
+impl MapBoolToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: bool, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: bool) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> BoolList {
+        BoolList(self.0.keys().copied().collect::<Vec<_>>())
+    }
+}
+
+impl From<BTreeMap<bool, u64>> for MapBoolToU64 {
+    fn from(native: BTreeMap<bool, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapBoolToU64> for BTreeMap<bool, u64> {
+    fn from(wasm: MapBoolToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<bool, u64>> for MapBoolToU64 {
+    fn as_ref(&self) -> &BTreeMap<bool, u64> {
+        &self.0
+    }
+}

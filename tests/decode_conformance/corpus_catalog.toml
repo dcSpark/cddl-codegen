@@ -9524,62 +9524,122 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
-id = "special_map_key.bkey_holder"
+id = "special_map_key.bkey_exact_holder"
 axis = "corpus"
-example = "bkeys = { * bool => uint }\n; referencing the named special-key table as a record field is the shape that hit the assert\n; (it fired in `new_type` on the resolved reference); the inline form exercises the same key wire\n; path through a field-local map, whose emit-tests mint puts a real bool key on the wire.\nbkey_holder = [named: bkeys, inline: { * bool => uint }]"
+example = "bkeys_exact = { bool => uint }\nbkey_exact_holder = [bounded: bkeys_exact]"
 fixture = "special_map_key"
-rule = "bkey_holder"
-spec = "__probe_holder = [0, bkey_holder]\nbkeys = { * bool => uint }\n; referencing the named special-key table as a record field is the shape that hit the assert\n; (it fired in `new_type` on the resolved reference); the inline form exercises the same key wire\n; path through a field-local map, whose emit-tests mint puts a real bool key on the wire.\nbkey_holder = [named: bkeys, inline: { * bool => uint }]"
+rule = "bkey_exact_holder"
+spec = "__probe_holder = [0, bkey_exact_holder]\nbkeys_exact = { bool => uint }\nbkey_exact_holder = [bounded: bkeys_exact]"
 mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820082a0a1f4190772"
+hex = "820081a1f419056e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082a0a1f4190b77"
+hex = "820081a1f4190623"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082a1f5181aa2f4190511f5190ddb"
+hex = "820081a1f419065e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082a1f5190270a1f51905d1"
+hex = "820081a1f419073e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082a1f5190650a2f4190dddf5190e77"
+hex = "820081a1f519063f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082a2f41902dbf51881a0"
+hex = "820081a1f5190656"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082a2f4190e5df5190ce6a2f41902cff5190f1f"
+hex = "820081a1f5190b7b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082a2f51905aff41904c0a2f41911d4f5190512"
+hex = "820081a1f5190d60"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082a2f5190bb1f4190fbda1f5190430"
+hex = "820081a1f5190d75"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820082a2f5190db3f4190d07a1f4190a92"
+hex = "820081a1f5190ebc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "special_map_key.bkey_holder"
+axis = "corpus"
+example = "bkeys = { * bool => uint }\n; referencing the named special-key table as a record field is the shape that hit the assert\n; (it fired in `new_type` on the resolved reference); the inline form exercises the same key wire\n; path through a field-local map, whose emit-tests mint puts a real bool key on the wire.\nbkey_holder = [named: bkeys, inline: { * bool => uint }]\n\n; A named exact table stays a transparent alias to its checked BoundedMap carrier. The holder makes\n; emitted tests mint that alias at an embed site, exercising the checked TryFrom construction door."
+fixture = "special_map_key"
+rule = "bkey_holder"
+spec = "__probe_holder = [0, bkey_holder]\nbkeys = { * bool => uint }\n; referencing the named special-key table as a record field is the shape that hit the assert\n; (it fired in `new_type` on the resolved reference); the inline form exercises the same key wire\n; path through a field-local map, whose emit-tests mint puts a real bool key on the wire.\nbkey_holder = [named: bkeys, inline: { * bool => uint }]\n\n; A named exact table stays a transparent alias to its checked BoundedMap carrier. The holder makes\n; emitted tests mint that alias at an embed site, exercising the checked TryFrom construction door."
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820082a0a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a0a1f4190bfc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a0a2f41901fdf5190bd6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a0a2f519045bf419097d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a0a2f5190967f4190ea7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a1f4191202a1f519051e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a2f4190652f519049aa1f4191115"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a2f51903d9f4190bdfa1f51907ce"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a2f5190c81f4190656a1f4190188"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082a2f5191057f4190350a2f41902a2f5190fae"
 source = "ruby-generate"
 expect = "accept"
 
@@ -9599,47 +9659,102 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a1f419080e"
+hex = "8200a1f41902f6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a1f519015a"
+hex = "8200a1f4190365"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a2f4190131f5190945"
+hex = "8200a1f5190979"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a2f4190458f51903fc"
+hex = "8200a1f5190a2f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a2f419058df51906c8"
+hex = "8200a2f4190412f519056e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a2f4190d3ff51901e3"
+hex = "8200a2f4190bdff5190ee7"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a2f419104ef5190c36"
+hex = "8200a2f5190550f41901ea"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a2f51901abf41901bb"
+hex = "8200a2f5190badf4190d2c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "special_map_key.bkeys_exact"
+axis = "corpus"
+example = "bkeys_exact = { bool => uint }"
+fixture = "special_map_key"
+rule = "bkeys_exact"
+spec = "__probe_holder = [0, bkeys_exact]\nbkeys_exact = { bool => uint }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a1f41902ff"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200a2f5190b9af4190169"
+hex = "8200a1f419048b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1f41908d8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1f419094c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1f4190d40"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1f4190fc6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1f51903f1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1f5190970"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1f51909c4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1f519105f"
 source = "ruby-generate"
 expect = "accept"
 
