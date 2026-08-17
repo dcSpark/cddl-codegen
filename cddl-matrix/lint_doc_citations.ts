@@ -29,6 +29,9 @@
  *   7. Retired-projection reference ban: the deleted `ROADMAP.md` / `TESTING_ROADMAP.md`
  *      spellings survive only in the explicit pre-cutover compatibility implementation and its
  *      fixtures. Durable prose cites the authoritative TOML source or a stable record ID.
+ *   8. Backticked roadmap-ID integrity: a `testing.*` / `matrix.*` token in durable markdown must
+ *      still name a section-placed roadmap record. This catches a hand doc whose "remaining work"
+ *      prose survives the record's retirement even when it does not use a `tracked by` citation verb.
  *
  * Run from cddl-matrix/:
  *   bun run lint_doc_citations.ts
@@ -384,6 +387,69 @@ function roadmapFragmentSelfTestProblems(): string[] {
   return failures;
 }
 
+// A hand doc often names a roadmap record directly rather than introducing it with one of the
+// `pinned by` / `tracked by` / `gated by` verbs above. Those exact IDs are still durable references:
+// after the work is delivered and its record retired, leaving the backticked token behind is both a
+// dangling identifier and usually stale "remaining work" prose. `matrix.json` is the one filename
+// in durable markdown that shares the roadmap namespace spelling without being a record ID.
+const BACKTICKED_ROADMAP_ID_RE = /`((?:matrix|testing)\.[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*(?:\.[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*)*)`/g;
+const BACKTICKED_ROADMAP_ID_NON_IDS = new Set(["matrix.json"]);
+
+function backtickedRoadmapIdProblems(files: readonly TrackedFile[]): string[] {
+  const problems: string[] = [];
+  const placed = placedRoadmapRecordIds(files, problems);
+  for (const file of files.filter((candidate) =>
+    !candidate.rel.startsWith("draft/") &&
+    (candidate.rel.endsWith(".md") || candidate.rel.endsWith(".mdx")))) {
+    for (const match of file.text.matchAll(BACKTICKED_ROADMAP_ID_RE)) {
+      const id = match[1]!;
+      if (BACKTICKED_ROADMAP_ID_NON_IDS.has(id)) continue;
+      if (!placed.has(id)) {
+        problems.push(
+          `${file.rel}:${lineOf(file.text, match.index ?? 0)}: backticked roadmap id '${id}' does not resolve to a section-placed record; remove stale prose or cite the live replacement`,
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+function backtickedRoadmapIdSelfTestProblems(): string[] {
+  const source: TrackedFile = {
+    rel: "cddl-matrix/roadmap.toml",
+    text: [
+      '[[section]]',
+      'section_id = "fixture"',
+      'entries = ["matrix.canary"]',
+      '',
+      '[[record]]',
+      'id = "matrix.canary"',
+      '',
+      '[[record]]',
+      'id = "matrix.unplaced"',
+      '',
+    ].join("\n"),
+  };
+  const durable = (token: string): TrackedFile => ({
+    rel: "tests/backticked-roadmap-id-canary.md",
+    text: `\`${token}\``,
+  });
+  const resolved = backtickedRoadmapIdProblems([source, durable("matrix.canary")]);
+  const missing = backtickedRoadmapIdProblems([source, durable("matrix.absent")]);
+  const unplaced = backtickedRoadmapIdProblems([source, durable("matrix.unplaced")]);
+  const filename = backtickedRoadmapIdProblems([source, durable("matrix.json")]);
+  const failures: string[] = [];
+  if (resolved.length !== 0)
+    failures.push("backticked-roadmap-id self-check: resolved canary failed");
+  if (!missing.some((problem) => problem.includes("does not resolve")))
+    failures.push("backticked-roadmap-id self-check: missing canary escaped");
+  if (!unplaced.some((problem) => problem.includes("does not resolve")))
+    failures.push("backticked-roadmap-id self-check: unplaced canary escaped");
+  if (filename.length !== 0)
+    failures.push("backticked-roadmap-id self-check: matrix.json filename was treated as a record ID");
+  return failures;
+}
+
 // Directive-swallows-closer ban (user docs): a CDDL comment runs to the end of the line, so an
 // illustration that puts a `; @<directive>` comment on the same line/span as the container's
 // closing `}`/`]` models a spelling that silently swallows the closer — a reader who copies it
@@ -586,6 +652,8 @@ for (const f of allFiles) problems.push(...ephemeralReferenceProblems(f));
 for (const f of allFiles) problems.push(...directiveSwallowedCloserProblems(f));
 problems.push(...roadmapFragmentProblems(allFiles));
 problems.push(...roadmapFragmentSelfTestProblems());
+problems.push(...backtickedRoadmapIdProblems(allFiles));
+problems.push(...backtickedRoadmapIdSelfTestProblems());
 
 // Self-check: each ephemeral pattern must still match its canary (guards against a regex silently
 // going vacuous — e.g. an errant edit that never fires and lets dangling references back in).
@@ -617,5 +685,5 @@ if (problems.length) {
 console.log(
   `doc-citation lint OK — ${identifierCitationCount} citation token(s) across ${handDocFiles.length} hand doc(s) ` +
     `(${handDocs.map(rel => `${rel}=${perDocCitationCounts.get(rel) ?? 0}`).join(", ")}) · ` +
-    `positional + ephemeral-reference + retired-projection bans scanned ${allFiles.filter(f => !f.rel.startsWith("draft/")).length} tracked text file(s) · directive-swallow ban over docs/docs/*.mdx · MD022 headings clean`,
+    `positional + ephemeral-reference + retired-projection + roadmap-ID bans scanned ${allFiles.filter(f => !f.rel.startsWith("draft/")).length} tracked text file(s) · directive-swallow ban over docs/docs/*.mdx · MD022 headings clean`,
 );

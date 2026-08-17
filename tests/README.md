@@ -69,7 +69,10 @@ spawns `cargo build` plus generator runs) and `timings_digest_check` live here, 
 doc-citation gate
 checks that gap prose's cited pins still exist, reports each path that is still tracked by git but
 absent from the working tree with restore-or-stage-deletion remedies, and rejects positional
-roadmap/list citations. An always-run pure canary models a successful initial scan followed by a
+roadmap/list citations. Every backticked `testing.*` / `matrix.*` token in durable markdown must
+likewise resolve to a section-placed roadmap record (`matrix.json` is the explicit filename
+exception), so retiring a record cannot leave a hand doc calling it remaining work. An always-run
+pure canary models a successful initial scan followed by a
 missing hand-doc reread, then repeats that read to pin one deduplicated path-bearing verdict. The
 gate also bans ephemeral plan-internal references (delivery-phase probe/ruling id spellings,
 spec-file names, the plan scratchpad path — matched phase-generically so a new delivery phase's
@@ -2058,14 +2061,14 @@ survive:
   `open_table_json_e2e` execute each row's below/in/above window, duplicate-preserving pair count,
   and a single registry-derived JSON-schema position oracle: standalone bounded maps retain root
   property counts while flattened open-struct/open-table partitions remain silent, serialize their
-  four-property local-window values through `schema_for!(T)`, and reject below/above values at
-  runtime under both default and preserve JSON profiles; `component_glue_reenters_bounded_dynamic_map_row_doors` and
+  four-property local-window values and validate them against `schema_for!(T)`, and reject
+  below/above JSON directly at `serde_json::from_str` under both default and preserve JSON profiles;
+  `component_glue_reenters_bounded_dynamic_map_row_doors` and
   `workspace_key_requests_rest_row_contract` pin component and cross-crate wrapper hosting.
-  These are focused residents, not four generalized negative claims. The wasm collection-wrapper
-  registry now closes every rendered reference over a locally minted class/alias, declared provider,
-  or dependency-owned extern source before a source map escapes. The remaining system is tracked
-  explicitly in `tests/testing-roadmap.toml`: the scope-wide generated-local product
-  (`testing.generated-local-collision.scope-wide-probe`).
+  These are focused residents, not four generalized negative claims. The sibling scope-wide
+  generated-local collision system is registry-derived, and the wasm collection-wrapper registry
+  closes every rendered reference over a locally minted class/alias, declared provider, or
+  dependency-owned extern source before a source map escapes.
 - **Acceptance** — `tests/open-table-cip25-acceptance`
   (`integration_tests::open_table_cip25_acceptance`, compiled, preserve + canonical; extern
   definitions `tests/external_rust_raw_bytes_cip25`, hand codecs
