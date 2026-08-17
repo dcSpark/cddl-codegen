@@ -1,16 +1,12 @@
-; A plain group referenced through a TRANSPARENT ALIAS as a homogeneous-array ELEMENT is SUPPORTED
-; at both the rule-level spelling (`a = [* kv_alias]`) and the member-position one
-; (`t = [ x: [* kv_alias] ]`), and generates exactly what the direct `kv` reference generates.
-; This fixture records `ok`, and its class is the worse half of the alias gap: the rule-level
-; spelling used to exit 0 having emitted `pub type A = Vec<KvAlias>;` and `pub type KvAlias = Kv;`
-; with NO `Kv` anywhere — a crate that fails `cargo check` with E0425, so nothing in the tool's own
-; exit status revealed it. Both element sites now resolve aliases before stamping the Array rep, so
-; the group is materialized and the emitted `serialization.rs` is byte-identical to the direct
-; spelling's (only the alias typedef and the alias-derived field name differ).
-; The neighbouring already-supported shape, an anonymous array WRAPPING the aliased group
-; (`t = [ x: [kv_alias] ]`), is the `WrappedBasicGroup` arm that carried this resolution first.
+; A plain group referenced through a TRANSPARENT ALIAS as a homogeneous-array ELEMENT is refused at
+; both the rule-level spelling (`a = [* kv_alias]`) and the member-position one
+; (`t = [ x: [* kv_alias] ]`). RFC 8610 repeats the resolved group's members FLAT; the available
+; homogeneous carrier would instead serialize every value as a nested array. Resolving the alias is
+; therefore necessary for the refusal too — it must not revive the older exit-0 emission of
+; `pub type A = Vec<KvAlias>;` / `pub type KvAlias = Kv;` with no emitted `Kv` definition.
+; The supported spelling gives the group a one-item TYPE first (`item = [kv_alias]`), then repeats
+; that wrapper (`[* item]`). Exact-one array-record splices remain supported separately.
 kv = (a: uint, b: uint)
 kv_alias = kv
 a = [* kv_alias]
 t = [ x: [* kv_alias] ]
-u = [ y: [kv_alias] ]

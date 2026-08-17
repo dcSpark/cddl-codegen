@@ -5542,9 +5542,9 @@ impl cbor_event::se::Serialize for NonOverlapBasicNotBasic {
                 group_arr.serialize(serializer)
             }
             NonOverlapBasicNotBasic::GroupTagged(group_tagged) => {
-                serializer.write_array(cbor_event::Len::Len(2))?;
+                serializer.write_array(cbor_event::Len::Len(1))?;
                 serializer.write_tag(11u64)?;
-                group_tagged.serialize_as_embedded_group(serializer)
+                group_tagged.serialize(serializer)
             }
             NonOverlapBasicNotBasic::GroupBytes(group_bytes) => {
                 serializer.write_array(cbor_event::Len::Len(2))?;
@@ -5592,10 +5592,10 @@ impl Deserialize for NonOverlapBasicNotBasic {
                 }
                 cbor_event::Type::Tag => {
                     let mut read_len = CBORReadLen::from(len);
-                    read_len.read_elems(2)?;
+                    read_len.read_elems(1)?;
                     read_len.finish()?;
                     let group_tagged = match raw.tag()? {
-                        11 => Basic::deserialize_as_embedded_group(raw, &mut read_len, len)?,
+                        11 => BasicArr::deserialize(raw)?,
                         tag => {
                             return Err(DeserializeFailure::TagMismatch {
                                 found: tag,
@@ -7016,9 +7016,9 @@ impl cbor_event::se::Serialize for PlainArrays {
         serializer.write_array(cbor_event::Len::Len(4))?;
         self.embedded.serialize_as_embedded_group(serializer)?;
         self.single.serialize(serializer)?;
-        serializer.write_array(cbor_event::Len::Len(2 * self.multi.len() as u64))?;
+        serializer.write_array(cbor_event::Len::Len(1 * self.multi.len() as u64))?;
         for element in self.multi.iter() {
-            element.serialize_as_embedded_group(serializer)?;
+            element.serialize(serializer)?;
         }
         Ok(serializer)
     }
@@ -7038,9 +7038,8 @@ impl Deserialize for PlainArrays {
             let multi = (|| -> Result<_, DeserializeError> {
                 let mut multi_arr = Vec::new();
                 let len = raw.array()?;
-                let mut multi_read_len = CBORReadLen::from(len);
                 while match len {
-                    cbor_event::Len::Len(n) => multi_read_len.read() < n,
+                    cbor_event::Len::Len(n) => (multi_arr.len() as u64) < n,
                     cbor_event::Len::Indefinite => true,
                 } {
                     if matches!(len, cbor_event::Len::Indefinite)
@@ -7049,12 +7048,7 @@ impl Deserialize for PlainArrays {
                     {
                         break;
                     }
-                    multi_read_len.read_elems(2)?;
-                    multi_arr.push(Plain::deserialize_as_embedded_group(
-                        raw,
-                        &mut multi_read_len,
-                        len,
-                    )?);
+                    multi_arr.push(Plain::deserialize(raw)?);
                 }
                 Ok(multi_arr)
             })()

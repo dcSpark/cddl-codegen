@@ -284,7 +284,7 @@ id = "contain.occurrence-target.grpent.groupname"
 role = "role.occurrence-target"
 feature = "grpent.groupname"
 spec = "allowed"
-note = "A zero-or-more occurrence can target a named group reference; naming the group is the supported workaround for repeated tuple groups and pins the sole-use plain-group registration path. RFC8610 §2.2.1, §3.2."
+note = "A zero-or-more occurrence can target a named group reference. RFC 8610 repeats the group's member sequence by flat concatenation; a generator must not substitute a homogeneous collection whose elements each write their own array header. RFC8610 §2.2.1, §3.2."
 example = "a = [* pair]\npair = (int, tstr)"
 
 [[contain]]

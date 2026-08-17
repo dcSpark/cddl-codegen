@@ -22,8 +22,8 @@ pub mod serialization;
 
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use cbor_encodings::{
-    CoordsEncoding, SplicedGroupArrayEncoding, WrappedGroupArrayEncoding,
-    WrappedGroupMapKeyEncoding, WrappedGroupMapValueEncoding,
+    CoordsEncoding, WrappedGroupArrayEncoding, WrappedGroupMapKeyEncoding,
+    WrappedGroupMapValueEncoding,
 };
 
 #[derive(Clone, Debug, derivative::Derivative)]
@@ -45,21 +45,6 @@ impl Coords {
         Self {
             index_0,
             index_1,
-            encodings: None,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct SplicedGroupArray {
-    pub inner: Vec<Coords>,
-    pub encodings: Option<SplicedGroupArrayEncoding>,
-}
-
-impl SplicedGroupArray {
-    pub fn new(inner: Vec<Coords>) -> Self {
-        Self {
-            inner,
             encodings: None,
         }
     }

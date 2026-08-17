@@ -15,12 +15,6 @@ interface types {
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<coords, string>;
   }
-  resource spliced-group-array {
-    constructor(inner: list<borrow<coords>>);
-    inner: func() -> list<coords>;
-    to-cbor-bytes: func() -> list<u8>;
-    from-cbor-bytes: static func(bytes: list<u8>) -> result<spliced-group-array, string>;
-  }
   resource wrapped-group-array {
     constructor(inner: list<borrow<coords>>);
     inner: func() -> list<coords>;

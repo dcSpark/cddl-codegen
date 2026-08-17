@@ -4400,9 +4400,9 @@ impl NonOverlapBasicNotBasic {
         ))
     }
 
-    pub fn new_group_tagged(index_0: u64, index_1: String) -> Self {
+    pub fn new_group_tagged(basic: &Basic) -> Self {
         Self(cddl_lib::NonOverlapBasicNotBasic::new_group_tagged(
-            index_0, index_1,
+            basic.clone().into(),
         ))
     }
 
@@ -4441,7 +4441,7 @@ impl NonOverlapBasicNotBasic {
         }
     }
 
-    pub fn as_group_tagged(&self) -> Option<Basic> {
+    pub fn as_group_tagged(&self) -> Option<BasicArr> {
         match &self.0 {
             cddl_lib::NonOverlapBasicNotBasic::GroupTagged(group_tagged) => {
                 Some(group_tagged.clone().into())

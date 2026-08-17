@@ -22,7 +22,7 @@ outer = [a: uint, b: plain, c: "some text"] ; @used_as_key
 plain_arrays = [
     embedded: plain,
     single: [plain],
-    multi: [*plain],
+    multi: [* [plain]],
 ]
 
 table = { * uint => text }
@@ -96,7 +96,7 @@ non_overlap_basic_not_basic = [
   ; @name group_arr
   basic_arr //
   ; @name group_tagged
-  #6.11(basic) //
+  #6.11(basic_arr) //
   ; @name group_bytes
   bytes .cbor basic
 ]

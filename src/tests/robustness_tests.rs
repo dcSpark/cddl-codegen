@@ -716,6 +716,173 @@ fn expect_graceful_rejection(tag: &str, spec: &str, extra: &[&str]) -> String {
         .to_string()
 }
 
+/// A count-permitting occurrence of a multi-item plain group repeats the group's sequence FLAT.
+/// It cannot use the ordinary `Vec<Pg>` carrier: `Pg::serialize` writes its own array header, so
+/// that carrier silently changes `[a, b, a, b]` into `[[a, b], [a, b]]`. Until a dedicated flat
+/// occurrence carrier exists, every positive-count spelling refuses and the nested-array spelling
+/// is an executable remedy. Exact once remains the ordinary conformant splice, while exact zero is
+/// representable without ever serializing a `Pg` value.
+#[test]
+fn homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite() {
+    const GROUP: &str = "pg = (a: uint, b: tstr)\n";
+    const ALIAS: &str = "pg = (a: uint, b: tstr)\npg_alias = pg\n";
+
+    for (tag, spec) in [
+        ("bare", format!("{GROUP}holder = [* pg]\n")),
+        ("keyed", format!("{GROUP}holder = [* item: pg]\n")),
+        ("optional", format!("{GROUP}holder = [? pg]\n")),
+        ("one_or_more", format!("{GROUP}holder = [+ pg]\n")),
+        ("bounded", format!("{GROUP}holder = [2*3 pg]\n")),
+        ("alias", format!("{ALIAS}holder = [* pg_alias]\n")),
+        ("member_inline", format!("{GROUP}outer = [items: [* pg]]\n")),
+        (
+            "reversed",
+            "holder = [* pg]\npg = (a: uint, b: tstr)\n".to_owned(),
+        ),
+    ] {
+        let msg = expect_graceful_rejection(&format!("plain_group_repeat_{tag}"), &spec, &[]);
+        assert!(
+            msg.contains("a homogeneous array occurrence cannot repeat the plain group `pg`"),
+            "{tag}: rejection must name the exact semantic boundary, got: {msg}"
+        );
+        assert!(
+            msg.contains("concatenate the group's member sequence flat")
+                && msg.contains("nested array"),
+            "{tag}: rejection must explain the wrong-wire consequence, got: {msg}"
+        );
+        assert!(
+            msg.contains("wrapped = [pg]") && msg.contains("[* wrapped]"),
+            "{tag}: rejection must give the explicit nested-array remedy, got: {msg}"
+        );
+    }
+
+    for (profile, extra) in [
+        ("preserve", &["--preserve-encodings=true"][..]),
+        ("wasm", &["--wasm=true"][..]),
+        ("json", &["--json-serde-derives=true"][..]),
+    ] {
+        let msg = expect_graceful_rejection(
+            &format!("plain_group_repeat_{profile}"),
+            &format!("{GROUP}holder = [* pg]\n"),
+            extra,
+        );
+        assert!(
+            msg.contains("a homogeneous array occurrence cannot repeat the plain group `pg`"),
+            "{profile}: the parse-time refusal must be profile-independent, got: {msg}"
+        );
+    }
+
+    for (tag, spec) in [
+        (
+            "nested_remedy",
+            format!("{GROUP}wrapped = [pg]\nholder = [* wrapped]\n"),
+        ),
+        ("exact_once", format!("{GROUP}holder = [pg]\n")),
+        ("record_splice", format!("{GROUP}holder = [x: uint, pg]\n")),
+        ("scalar_repeat", "holder = [* uint]\n".to_owned()),
+        ("exact_zero", format!("{GROUP}holder = [0*0 pg]\n")),
+        (
+            "generic_parameter",
+            "set<a> = #6.258([* a]) / [* a] ; @duplicates reject\n\
+             set_u64 = set<uint>\n\
+             holder = [value: set_u64]\n"
+                .to_owned(),
+        ),
+    ] {
+        expect_generates(&format!("plain_group_repeat_{tag}"), &spec, &[]);
+    }
+}
+
+/// A tag's payload is a TYPE denoting one data item. A plain group is not a type and therefore
+/// cannot be made into one by writing `#6.n(pg)`: the group must first be framed as an array or map.
+/// This is checked at the shared resolved-type seam so aliases, rule order, and every placement
+/// reject identically instead of either dropping the tag or choosing a placement-specific failure.
+#[test]
+fn tagged_plain_group_payloads_reject_gracefully_at_every_placement() {
+    const GROUP: &str = "pg = (a: uint, b: tstr)\n";
+    const ALIAS: &str = "pg = (a: uint, b: tstr)\npg_alias = pg\n";
+
+    for (tag, spec) in [
+        ("rule", format!("{GROUP}tagged = #6.1(pg)\n")),
+        ("homogeneous", format!("{GROUP}holder = [* #6.1(pg)]\n")),
+        (
+            "array_field",
+            format!("{GROUP}holder = [x: uint, #6.1(pg)]\n"),
+        ),
+        ("map_member", format!("{GROUP}holder = {{c: #6.1(pg)}}\n")),
+        (
+            "table_key",
+            format!("{GROUP}holder = {{* #6.1(pg) => uint}}\n"),
+        ),
+        (
+            "table_value",
+            format!("{GROUP}holder = {{* uint => #6.1(pg)}}\n"),
+        ),
+        (
+            "array_arm",
+            format!("{GROUP}holder = [x: uint // #6.1(pg)]\n"),
+        ),
+        (
+            "map_arm",
+            format!("{GROUP}holder = {{x: uint // #6.1(pg)}}\n"),
+        ),
+        ("type_arm", format!("{GROUP}holder = #6.1(pg) / uint\n")),
+        (
+            "alias",
+            format!("{ALIAS}holder = [x: uint, #6.1(pg_alias)]\n"),
+        ),
+        (
+            "reversed",
+            "holder = [x: uint, #6.1(pg)]\npg = (a: uint, b: tstr)\n".to_owned(),
+        ),
+    ] {
+        let msg = expect_graceful_rejection(&format!("tagged_plain_group_{tag}"), &spec, &[]);
+        assert!(
+            msg.contains("a CBOR tag payload cannot be the plain group `pg`"),
+            "{tag}: rejection must name the invalid tag payload, got: {msg}"
+        );
+        assert!(
+            msg.contains("exactly one data item") && msg.contains("has no type of its own"),
+            "{tag}: rejection must explain the type/group boundary, got: {msg}"
+        );
+        assert!(
+            msg.contains("wrapped = [pg]") && msg.contains("#6.1(wrapped)"),
+            "{tag}: rejection must give the array-framed tag remedy, got: {msg}"
+        );
+    }
+
+    for (profile, extra) in [
+        ("preserve", &["--preserve-encodings=true"][..]),
+        ("wasm", &["--wasm=true"][..]),
+        ("json", &["--json-serde-derives=true"][..]),
+    ] {
+        let msg = expect_graceful_rejection(
+            &format!("tagged_plain_group_{profile}"),
+            &format!("{GROUP}holder = [x: uint, #6.1(pg)]\n"),
+            extra,
+        );
+        assert!(
+            msg.contains("a CBOR tag payload cannot be the plain group `pg`"),
+            "{profile}: the semantic refusal must be profile-independent, got: {msg}"
+        );
+    }
+
+    for (tag, spec) in [
+        (
+            "named_remedy",
+            format!("{GROUP}wrapped = [pg]\nholder = [x: #6.1(wrapped)]\n"),
+        ),
+        ("inline_remedy", format!("{GROUP}holder = #6.1([pg])\n")),
+        ("ordinary_tag", "holder = [x: #6.1(uint)]\n".to_owned()),
+        (
+            "untagged_splice",
+            format!("{GROUP}holder = [x: uint, pg]\n"),
+        ),
+    ] {
+        expect_generates(&format!("tagged_plain_group_{tag}"), &spec, &[]);
+    }
+}
+
 /// A wasm record-level open-map mutation door is deliberately named `insert_<row>` (rather than
 /// being silently suffixed). A field getter with that spelling would be a duplicate inherent wasm
 /// method, so the wasm profile must reject with a stable `@name` remedy while the rust-only profile
@@ -6438,16 +6605,21 @@ fn occurrence_marker_on_inline_group_rejects_gracefully() {
     run("a = { * (int => tstr) }\n", "map_table")
         .expect("`{ * (int => tstr) }` is a parenthesized table and must still generate");
 
-    // The recommended workaround must generate under DEFAULT (wasm) flags. `generated_strings` runs
-    // with wasm on, and a plain group used SOLELY as a `*` array element must register + emit its
-    // struct (the array/table element paths call `set_rep_if_plain_group`, mirroring the record
-    // path) — otherwise `is_enum`/`for_rust_member` trip a `generic_instances` assert at generation.
-    run("pair = (int, tstr)\na = [* pair]\n", "named_workaround")
-        .expect("naming the group (`pair`) is the recommended workaround and must generate");
-    // Sibling that hits the same plain-group-registration gap and must also generate: a
-    // single-element group as a `*` array element.
-    run("pair = (int)\na = [* pair]\n", "named_single_element")
-        .expect("a single-element plain group as a `*` array element must generate");
+    // The recommended workaround must generate under DEFAULT (wasm) flags. Naming the group alone
+    // is insufficient: RFC 8610 still gives `[* pair]` flat group-concatenation semantics, which the
+    // homogeneous carrier cannot represent. The extra array rule makes each repetition one item.
+    run(
+        "pair = (int, tstr)\npair_item = [pair]\na = [* pair_item]\n",
+        "named_workaround",
+    )
+    .expect("array-framing the named group before repeating it must generate");
+    // A one-member group needs the same explicit framing. Its arity does not turn a GROUP into a
+    // one-item TYPE, even though the resulting bytes happen to have one member per repetition.
+    run(
+        "pair = (int)\npair_item = [pair]\na = [* pair_item]\n",
+        "named_single_element",
+    )
+    .expect("an array-framed single-element plain group must generate when repeated");
     // A plain group as a table VALUE is the one neighbour that does NOT generate: an array element
     // can absorb a spliced group because the emitted length scales with the group's arity, but a
     // CBOR map entry holds exactly one item per slot and cannot. It is refused at both spellings —
@@ -6552,31 +6724,6 @@ fn plain_group_table_domain_rejects_gracefully_at_both_spellings() {
         "the inline rejection should share the named one's body, got: {inline_value}"
     );
 
-    // A TAGGED domain: the remedy has to wrap the GROUP REFERENCE, leaving the tag outside
-    // (`#6.5([coords])`), because the array is the group's single-item carrier and the tag wraps
-    // that carrier — `[#6.5(coords)]` also generates but tags the wrong thing. Pinned on both
-    // roles, since each builds its remedy from a different AST node.
-    let tagged_value = run(
-        &format!("{GROUP}t = {{ * uint => #6.5(coords) }}\n"),
-        "tagged_value",
-        &[],
-    )
-    .expect_err("a tagged bare plain group as a table VALUE domain must reject gracefully");
-    assert!(
-        tagged_value.contains("`{ * uint => #6.5([coords]) }`"),
-        "the tagged-VALUE remedy must wrap the group, not the tag, got: {tagged_value}"
-    );
-    let tagged_key = run(
-        &format!("{GROUP}t = {{ * #6.5(coords) => uint }}\n"),
-        "tagged_key",
-        &[],
-    )
-    .expect_err("a tagged bare plain group as a table KEY domain must reject gracefully");
-    assert!(
-        tagged_key.contains("`{ * #6.5([coords]) => uint }`"),
-        "the tagged-KEY remedy must wrap the group, not the tag, got: {tagged_key}"
-    );
-
     // Remaining spellings of the same shape: inline key role, both roles at once (which names both
     // sides), the parenthesized table, an alias to the group, and the `+` cardinality.
     for (spec, tag, needle) in [
@@ -6662,13 +6809,13 @@ fn plain_group_table_domain_rejects_gracefully_at_both_spellings() {
         );
     }
 
-    // Neighbours the guard must NOT widen into: a plain table, the array-element workaround (an
-    // array's emitted length scales with the group's arity, so a splice there IS conformant), a
-    // single-element parenthesized rule (a transparent alias, not a group at all), and a group
-    // reference whose target is a real array/map RULE rather than a plain group.
+    // Neighbours the guard must NOT widen into: a plain table, a single-element parenthesized rule
+    // (a transparent alias, not a group at all), and a group reference whose target is a real
+    // array/map RULE rather than a plain group. A count-permitting homogeneous array of a
+    // multi-item group is no longer a positive neighbour: its Vec carrier nested each occurrence,
+    // and its dedicated semantic refusal is pinned separately.
     for (spec, tag) in [
         ("t = { * uint => tstr }\n".to_owned(), "plain_table"),
-        ("pair = (int, tstr)\na = [* pair]\n".to_owned(), "arr_elem"),
         (
             "one = (uint)\nt = { * uint => one }\n".to_owned(),
             "alias_one",
@@ -6704,8 +6851,8 @@ fn plain_group_table_domain_rejects_gracefully_at_both_spellings() {
 /// never materialized, and a single-entry group-choice arm emitted a serializer and a deserializer
 /// that disagreed with each other.
 ///
-/// Pins the message (rule, member, group source name, named-array remedy) across every keyed
-/// spelling and every profile, that the two loud spellings no longer panic, and — the part that
+/// Pins the message (rule, member, group source name, named-array remedy) across every valid keyed
+/// group-reference spelling and every profile, that the two loud spellings no longer panic, and — the part that
 /// keeps the refusal honest — that the remedy the message names actually generates, alongside the
 /// three neighbours the guard must not widen into.
 #[test]
@@ -6755,15 +6902,10 @@ fn plain_group_keyed_map_member_rejects_gracefully_at_every_spelling() {
         "rejection should rule the inline array OUT as the remedy, got: {named}"
     );
 
-    // Every other keyed spelling reaches the same seam and carries the same body. The two marked
-    // PANICKED are the reason this is a refusal and not a warning.
+    // Every other valid keyed group-reference spelling reaches the same seam and carries the same
+    // body. The two marked PANICKED are the reason this is a refusal and not a warning. A tag takes
+    // a TYPE payload, so `#6.1(kv)` is owned by the dedicated semantic refusal instead.
     for (spec, tag, needle) in [
-        // a TAG around the member: an encoding operation, so the member type is still the group.
-        (
-            format!("{GROUP}t = {{ c: #6.1(kv) }}\n"),
-            "tagged",
-            "map field `c` uses the plain group `kv`",
-        ),
         // PANICKED on `assertion failed: !config.optional_field`.
         (
             format!("{GROUP}t = {{ ? c: kv }}\n"),
@@ -6899,8 +7041,8 @@ fn collapse_blank_runs(body: &str) -> String {
 }
 
 /// The ARRAY-representation counterpart of the map twin above, and its opposite verdict: a plain
-/// group referenced through a TRANSPARENT ALIAS in an array position is SUPPORTED, and behaves
-/// exactly like the direct reference.
+/// group referenced through a TRANSPARENT ALIAS in an exact-one array splice or group-choice arm
+/// is SUPPORTED, and behaves exactly like the direct reference.
 ///
 /// An array's emitted length scales with the group's arity, so the flat splice the map rep cannot
 /// afford is the conformant emission here — and an alias carries one wire form, so `kv_alias`
@@ -6910,12 +7052,14 @@ fn collapse_blank_runs(body: &str) -> String {
 /// resulting failures had no single signature to pin — the record-field spelling aborted at a
 /// different site per profile (`rust struct Kv not found …` on default, an `Option::unwrap()`
 /// under `--preserve-encodings`, a generic-instance assert under `--wasm=true`), and the
-/// homogeneous-ELEMENT spelling was worse than a panic: exit 0 emitting `pub type KvAlias = Kv;`
-/// with no `Kv` at all, a crate that fails `cargo check` with E0425 while the tool reported
-/// success.
+/// formerly-homogeneous-ELEMENT spelling was worse than a panic: exit 0 emitting
+/// `pub type KvAlias = Kv;` with no `Kv` at all, a crate that fails `cargo check` with E0425 while
+/// the tool reported success. That occurrence is now refused for the deeper wire reason pinned by
+/// `homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite`; it is not a supported
+/// array-position spelling.
 ///
-/// Pins every array-position spelling on every profile, at alias depth 2 and under a reversed rule
-/// order, and — the part that makes "supported" mean something — that the alias spelling's emitted
+/// Pins every supported array-position spelling on every profile, at alias depth 2 and under a
+/// reversed rule order, and — the part that makes "supported" mean something — that the alias spelling's emitted
 /// code is the direct spelling's modulo the alias name, so the two write the same bytes. The map
 /// twin's refusal and the table-domain refusal must NOT move: they are the shapes where a splice
 /// really is unrepresentable.
@@ -6944,18 +7088,6 @@ fn alias_to_plain_group_in_array_positions_matches_the_direct_reference() {
             "reversed",
             "t = [ c: uint, kv_alias ]\nkv_alias = kv\nkv = (a: uint, b: uint)\n".to_owned(),
             format!("{GROUP}t = [ c: uint, kv ]\n"),
-        ),
-        // the rule-level homogeneous ELEMENT: the exit-0 non-compiling class.
-        (
-            "element_rule",
-            format!("{ALIAS}a = [* kv_alias]\n"),
-            format!("{GROUP}a = [* kv]\n"),
-        ),
-        // the member-position homogeneous element, a second stamp site.
-        (
-            "element_member",
-            format!("{ALIAS}t = [ x: [* kv_alias] ]\n"),
-            format!("{GROUP}t = [ x: [* kv] ]\n"),
         ),
         // a single-entry group-choice ARM, a third: the arm's embedded classification is read off
         // the same ident, so leaving it bare left the arm neither registered nor embedded.
@@ -7134,11 +7266,10 @@ fn alias_to_plain_group_in_array_positions_matches_the_direct_reference() {
 /// It is a refusal that can be made honest, which is the whole reason to prefer it over the
 /// `assertion failed: !config.optional_field` abort it replaces: the array-framed remedy the
 /// message names is asserted here to generate. Pins the message (rule, field, group source name,
-/// remedy) across every spelling the one seam covers — bare, ALIAS, and TAGGED, the last of which
-/// used to exit 0 with a codec whose own decoder rejected its own bytes — on every profile, plus
-/// the neighbours the guard must not widen into: the mandatory splice, the remedy, the pedantic
-/// `1*1`, an optional NON-group field, the inline array-wrapped member, and the map twin's own
-/// message.
+/// remedy) across the bare and ALIAS spellings this seam covers on every profile. The formerly
+/// silent TAGGED shape now reaches the earlier tag-payload semantic refusal. The neighbours the
+/// guard must not widen into remain the mandatory splice, the remedy, the pedantic `1*1`, an
+/// optional NON-group field, the inline array-wrapped member, and the map twin's own message.
 #[test]
 fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
     fn run(spec: &str, tag: &str, extra: &[&str]) -> Result<(), String> {
@@ -7188,8 +7319,10 @@ fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
         "rejection should point at the supported mandatory splice, got: {bare}"
     );
 
-    // Every other spelling reaches the same seam and carries the same body, because the guard reads
-    // the RESOLVED member type rather than its surface shape.
+    // Every other valid group-reference spelling reaches the same seam and carries the same body,
+    // because the guard reads the RESOLVED member type rather than its surface shape. A tag's
+    // payload is a type rather than a group-reference spelling and is covered by the dedicated
+    // tagged-plain-group refusal.
     for (spec, tag, needle) in [
         // reachable only since the alias-in-array support landed; before that the alias gap fired
         // first, at its own (per-profile) site.
@@ -7197,13 +7330,6 @@ fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
             format!("{ALIAS}t = [ c: uint, ? kv_alias ]\n"),
             "alias",
             "array field `kv_alias` is an OPTIONAL (`?`) reference to the plain group `kv`",
-        ),
-        // a TAG around the member is an encoding operation, so the member type is still the group.
-        // This one used to exit 0 emitting a codec that fails its own round-trip.
-        (
-            format!("{GROUP}t = [ c: uint, ? #6.1(kv) ]\n"),
-            "tagged",
-            "is an OPTIONAL (`?`) reference to the plain group `kv`",
         ),
         // POSITION is irrelevant — the seam is the field, not the tail.
         (
@@ -7335,8 +7461,8 @@ fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
 ///
 /// What makes the refusal honest is that both remedies it names are asserted here to generate: the
 /// array framing (`w = [kv]`, then `* w`) and the tag moved onto that framed reference
-/// (`* #6.10(w)`). Pins the message across every spelling the one seam covers — bare, ALIAS and
-/// TAGGED — on every profile, and pins the sibling guards this one must neither shadow nor
+/// (`* #6.10(w)`). Pins the message across every valid group-reference spelling the one seam
+/// covers — bare and ALIAS — on every profile, and pins the sibling guards this one must neither shadow nor
 /// double-report: the guards for choice-arm placement, plain-group owner, multiplicity, and the
 /// non-final position of this non-item element keep their own messages; the fixed-value guard beside
 /// it keeps its own, and the
@@ -7393,12 +7519,11 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
         "rejection should point at the supported mandatory splice, got: {bare}"
     );
 
-    // Every other spelling reaches the same seam and carries the same body, because the guard reads
-    // the RESOLVED element type rather than its surface shape.
+    // Every other valid group-reference spelling reaches the same seam and carries the same body,
+    // because the guard reads the RESOLVED element type rather than its surface shape. A tag takes
+    // a TYPE payload, so `#6.10(kv)` is rejected by the dedicated semantic boundary instead.
     for (spec, tag) in [
         (format!("{ALIAS}t = [ c: uint, * kv_alias ]\n"), "alias"),
-        // a TAG around the element is an encoding operation, so the element type is still the group.
-        (format!("{GROUP}t = [ c: uint, * #6.10(kv) ]\n"), "tagged"),
         // a group whose own members are ALL optional is reachable and deliberately still refused:
         // the remedy serves it identically.
         (
@@ -7441,7 +7566,6 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
         for (spec, spelling) in [
             (format!("{GROUP}t = [ c: uint, * kv ]\n"), "bare"),
             (format!("{ALIAS}t = [ c: uint, * kv_alias ]\n"), "alias"),
-            (format!("{GROUP}t = [ c: uint, * #6.10(kv) ]\n"), "tagged"),
         ] {
             let msg = run(&spec, &format!("{tag}_{spelling}"), &extra)
                 .expect_err("the refusal must fire on every profile");
@@ -7476,22 +7600,16 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
     }
 
     // Neighbours the guard must NOT widen into. The mandatory splice is the array placement's
-    // supported core (an array's length scales with the group's arity), the TAGGED mandatory member
-    // is that same splice with an encoding operation on it, the lone `* kv` is a homogeneous array
-    // recognized by `parse_group_type` before the tail seam ever runs, the inline `* [kv]` element
+    // supported core (an array's length scales with the group's arity), the inline `* [kv]` element
     // carries `basic_override` (so it is not a plain group here), and a scalar tail is the tail
-    // feature's own happy path.
+    // feature's own happy path. Tagged plain-group payloads and the lone homogeneous `* kv` are
+    // now deliberate refusals with their own focused tests, not positive neighbours.
     for (spec, tag) in [
         (format!("{GROUP}t = [ c: uint, kv ]\n"), "mandatory_splice"),
         (
             format!("{ALIAS}t = [ c: uint, kv_alias ]\n"),
             "mandatory_splice_alias",
         ),
-        (
-            format!("{GROUP}t = [ c: uint, x: #6.10(kv) ]\n"),
-            "tagged_mandatory_member",
-        ),
-        (format!("{GROUP}t = [ * kv ]\n"), "homogeneous_array"),
         (
             format!("{GROUP}t = [ c: uint, * [kv] ]\n"),
             "inline_wrapped",
@@ -7600,10 +7718,11 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
 ///
 /// A CBOR map entry holds exactly one item in each of its two slots and a keyless group has no
 /// single-item form, so the shape has no wire — the same reason the pure-table twin beside it is
-/// refused. Both slots are checked at ONE seam, on the RESOLVED type, so the bare, ALIAS and TAGGED
+/// refused. Both slots are checked at ONE seam, on the RESOLVED type, so the bare and ALIAS
 /// spellings land on one message on every profile; and the message is made honest by remedies
-/// asserted here to generate (the array framing on either slot, plus the tag moved onto that
-/// framing).
+/// asserted here to generate (the array framing on either slot, including a tag on that framed
+/// type). A bare group inside a tag is not a slot spelling at all — tag payloads are types — and is
+/// covered by the dedicated semantic refusal.
 ///
 /// Pins what the refusal must NOT swallow: the pure-table twin keeps its own message (a table entry
 /// is not a rest row), the mandatory-splice member keeps the keyless-map-field message, and every
@@ -7683,9 +7802,8 @@ fn plain_group_map_rest_row_rejects_gracefully_at_every_spelling() {
         "rejection should name the array-framed remedy for the value slot, got: {value}"
     );
 
-    // Every other spelling reaches the same seam, because the guard reads the RESOLVED slot type
-    // rather than its surface shape. A TAG is an encoding operation, so the slot type is still the
-    // group — and the printed remedy keeps the tag OUTSIDE the framing it introduces.
+    // Every other valid group-reference spelling reaches the same seam, because the guard reads
+    // the RESOLVED slot type rather than its surface shape.
     for (spec, tag, needle) in [
         (
             format!("{ALIAS}t = {{ c: uint, * kv_alias => uint }}\n"),
@@ -7696,16 +7814,6 @@ fn plain_group_map_rest_row_rejects_gracefully_at_every_spelling() {
             format!("{ALIAS}t = {{ c: uint, * uint => kv_alias }}\n"),
             "alias_value",
             "`* uint => [kv_alias]` in place of this row",
-        ),
-        (
-            format!("{GROUP}t = {{ c: uint, * #6.10(kv) => uint }}\n"),
-            "tagged_key",
-            "`* #6.10([kv]) => uint` in place of this row",
-        ),
-        (
-            format!("{GROUP}t = {{ c: uint, * uint => #6.10(kv) }}\n"),
-            "tagged_value",
-            "`* uint => #6.10([kv])` in place of this row",
         ),
         // a group whose own members are ALL optional is reachable and deliberately still refused:
         // the remedy serves it identically.
@@ -7767,10 +7875,6 @@ fn plain_group_map_rest_row_rejects_gracefully_at_every_spelling() {
             (
                 format!("{ALIAS}t = {{ c: uint, * kv_alias => uint }}\n"),
                 "alias",
-            ),
-            (
-                format!("{GROUP}t = {{ c: uint, * uint => #6.10(kv) }}\n"),
-                "tagged",
             ),
         ] {
             let msg = run(&spec, &format!("{tag}_{spelling}"), &extra)
@@ -7992,7 +8096,7 @@ fn plain_group_type_choice_arm_rejects_gracefully_at_every_spelling() {
         "rejection should point back at the supported splice placements, got: {bare}"
     );
 
-    // Every spelling the ONE guard covers. The site prefix separates the two positions (a rule name
+    // Every valid group-reference spelling the ONE guard covers. The site prefix separates the two positions (a rule name
     // where one exists, the position class where none does — the pre-existing convention at each of
     // these seams), and the body is identical because the predicate reads the RESOLVED arm type
     // rather than its surface shape.
@@ -8016,11 +8120,6 @@ fn plain_group_type_choice_arm_rejects_gracefully_at_every_spelling() {
         (
             format!("{ALIAS}t = [ c: uint, x: kv_alias / null ]\n"),
             "alias_arm",
-            "a two-arm `T / null` choice used as a member or element type",
-        ),
-        (
-            format!("{GROUP}t = [ c: uint, x: #6.10(kv) / null ]\n"),
-            "tagged_arm",
             "a two-arm `T / null` choice used as a member or element type",
         ),
         (
@@ -8051,17 +8150,12 @@ fn plain_group_type_choice_arm_rejects_gracefully_at_every_spelling() {
             "nested_anonymous",
             "an inline type choice",
         ),
-        // the map-rep NON-collapsing member, and the tagged/alias NON-collapsing arms: the collapse
-        // fork is not what makes the guard reach them.
+        // the map-rep NON-collapsing member and the alias NON-collapsing arm: the collapse fork is
+        // not what makes the guard reach them.
         (
             format!("{GROUP}t = {{ c: uint, x: kv / tstr }}\n"),
             "map_rep_non_collapsing",
             "an inline type choice",
-        ),
-        (
-            format!("{GROUP}u = #6.10(kv) / tstr\n"),
-            "tagged_non_collapsing",
-            "rule `u`",
         ),
         (
             format!("{ALIAS}u = kv_alias / tstr\n"),
@@ -8124,10 +8218,6 @@ fn plain_group_type_choice_arm_rejects_gracefully_at_every_spelling() {
                 format!("{ALIAS}t = [ c: uint, x: kv_alias / null ]\n"),
                 "alias",
             ),
-            (
-                format!("{GROUP}t = [ c: uint, x: #6.10(kv) / null ]\n"),
-                "tagged",
-            ),
         ] {
             let msg = run(&spec, &format!("{profile}_{spelling}"), &extra)
                 .expect_err("the refusal must fire on every profile");
@@ -8173,16 +8263,17 @@ fn plain_group_type_choice_arm_rejects_gracefully_at_every_spelling() {
     // Neighbours the guard must NOT widen into. The boundary that matters most is the BARE ALIAS at
     // rule position (`u = kv`, no choice around it): it is a supported alias spelling and reaches
     // neither the collapse fork nor the arm seam, so the guard must fire on CHOICE arms only. The
-    // rest are the splice placements the message itself points back at, plus the array-WRAPPED forms
-    // — `w = [kv]` is a Record and an inline `[kv]` arm carries `basic_override`, so neither is
-    // `is_basic` — and a non-group choice, which has no plain group in it at all.
+    // rest are the splice placements the message itself points back at, plus array-WRAPPED forms
+    // (including tagged and repeated uses) — `w = [kv]` is a Record and an inline `[kv]` arm carries
+    // `basic_override`, so neither is `is_basic` — and a non-group choice, which has no plain group
+    // in it at all.
     for (spec, tag) in [
         (format!("{GROUP}u = kv\n"), "bare_alias_rule_position"),
         (format!("{ALIAS}u = kv_alias\n"), "bare_alias_chain"),
         (format!("{GROUP}t = [ c: uint, kv ]\n"), "mandatory_splice"),
         (
-            format!("{GROUP}t = [ c: uint, x: #6.10(kv) ]\n"),
-            "tagged_mandatory_member",
+            format!("{GROUP}w = [kv]\nt = [ c: uint, x: #6.10(w) ]\n"),
+            "tagged_wrapped_member",
         ),
         (
             format!("{GROUP}t = [ x: uint // kv ]\n"),
@@ -8202,7 +8293,10 @@ fn plain_group_type_choice_arm_rejects_gracefully_at_every_spelling() {
             format!("{GROUP}t = [ c: uint, x: uint / tstr ]\n"),
             "non_group_choice",
         ),
-        (format!("{GROUP}t = [ * kv ]\n"), "homogeneous_array"),
+        (
+            format!("{GROUP}w = [kv]\nt = [ * w ]\n"),
+            "homogeneous_wrapped_array",
+        ),
     ] {
         assert!(
             run(&spec, tag, &[]).is_ok(),
@@ -8794,7 +8888,7 @@ fn occurrence_on_single_entry_group_choice_arm_rejects_gracefully() {
             "remedy_array_optional",
         ),
         (
-            format!("{GROUP}xarr = [x: uint]\nkvs = [* kv]\nt = xarr / kvs\n"),
+            format!("{GROUP}xarr = [x: uint]\nkvitem = [kv]\nkvs = [* kvitem]\nt = xarr / kvs\n"),
             "remedy_array_repeating",
         ),
         (
@@ -8831,9 +8925,6 @@ fn occurrence_on_single_entry_group_choice_arm_rejects_gracefully() {
             "t = [ x: uint // ? c: uint, d: uint ]\n".to_owned(),
             "multi_entry_optional_scalar",
         ),
-        // a count-permitting occurrence in a SINGLE-choice group is the record path's rest tail,
-        // a different seam entirely.
-        (format!("{GROUP}t = [ * kv ]\n"), "single_choice_rest_tail"),
     ] {
         assert!(
             run(&spec, tag, &[]).is_ok(),
@@ -8843,7 +8934,20 @@ fn occurrence_on_single_entry_group_choice_arm_rejects_gracefully() {
         );
     }
 
-    // One message per problem: the three neighbouring refusals keep their own text and this guard
+    // A sole count-permitting plain-group entry is a homogeneous occurrence, not an array-record
+    // rest tail. It reaches the flat-concatenation refusal owned by the dedicated occurrence test.
+    let sole_repeat = run(
+        &format!("{GROUP}t = [ * kv ]\n"),
+        "single_choice_plain_group_repeat",
+        &[],
+    )
+    .expect_err("a sole repeated plain group must reject at the homogeneous occurrence seam");
+    assert!(
+        sole_repeat.contains("a homogeneous array occurrence cannot repeat the plain group `kv`"),
+        "the sole repeated-group neighbour should keep its semantic refusal, got: {sole_repeat}"
+    );
+
+    // One message per problem: the neighbouring refusals keep their own text and this guard
     // never joins in, because each of their inputs is a shape it does not see (a multi-entry arm,
     // or an inline group).
     for (spec, tag, needle) in [

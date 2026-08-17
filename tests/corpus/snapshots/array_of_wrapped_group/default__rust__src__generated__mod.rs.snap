@@ -31,17 +31,6 @@ impl Coords {
 }
 
 #[derive(Clone, Debug)]
-pub struct SplicedGroupArray {
-    pub inner: Vec<Coords>,
-}
-
-impl SplicedGroupArray {
-    pub fn new(inner: Vec<Coords>) -> Self {
-        Self { inner }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct WrappedGroupArray {
     pub inner: Vec<Coords>,
 }

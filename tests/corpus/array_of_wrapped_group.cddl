@@ -1,29 +1,23 @@
 ; A homogeneous array whose ELEMENT is a plain group WRAPPED in an anonymous array
-; (`[* [coords]]`), beside the same array over the BARE plain group (`[* coords]`) as its control.
-; The two look one bracket apart and are opposite wire shapes, which is the whole reason both are
-; spelled here:
-;   `[* coords]`   — the group SPLICES. Each element contributes `coords`'s own field count to the
-;                    outer array's length (`2 * n`), and is read through `deserialize_as_embedded_group`.
-;   `[* [coords]]` — the wrapper promotes the group to a standalone struct that writes its OWN array
-;                    header. Each element is exactly ONE outer item (`1 * n`) and is read through
-;                    the standalone `deserialize`.
+; (`[* [coords]]`). The wrapper promotes the group to a standalone struct that writes its OWN array
+; header. Each element is exactly ONE outer item (`1 * n`) and is read through the standalone
+; `deserialize`.
 ;
-; Both sides of the wire have to agree on which of those two an element is, and the READ-LENGTH
-; accounting was the half that did not: the element-read face and the serialize length both consult
-; `RustType::is_basic` (plain-group AND not promoted), while the deserialize loop's branch asked only
-; `is_plain_group`. So the wrapped element was read standalone — correctly, one outer item — while
-; the outer array's budget was charged the group's 2 fields, and the crate emitted bytes its own
-; decoder rejected with `DefiniteLenMismatch`. Exit 0, compiles, round-trip red.
+; The element-read face and the serialize length both consult `RustType::is_basic` (plain-group AND
+; not promoted), while the deserialize loop's branch formerly asked only `is_plain_group`. So the
+; wrapped element was read standalone — correctly, one outer item — while the outer array's budget
+; was charged the group's 2 fields, and the crate emitted bytes its own decoder rejected with
+; `DefiniteLenMismatch`. Exit 0, compiles, round-trip red.
 ;
 ; Profile-independent: the defect and its fix are the same site under `--preserve-encodings`, which
 ; reads the length through `array_sz()` but keeps the same per-element accounting.
 ;
-; The MAP positions are deliberately spelled too, as controls that were already green and must stay
-; so: a table's length counts ENTRIES, not items, so a wrapped group in either the key or the value
-; role costs one slot no matter what it expands to — the array arm is the only one where an
-; element's expansion can be charged to its container.
+; The formerly adjacent bare `[* coords]` control is now a graceful rejection: RFC 8610 repeats its
+; group members flat, while the available homogeneous carrier would write nested arrays. That
+; semantic boundary lives in `homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite`.
+; The MAP positions stay as controls: a table's length counts ENTRIES, not items, so a wrapped group
+; in either the key or the value role costs one slot no matter what it expands to.
 coords = (uint, uint)
-spliced_group_array = [inner: [* coords]]
 wrapped_group_array = [inner: [* [coords]]]
 wrapped_group_map_value = [inner: { * uint => [coords] }]
 wrapped_group_map_key = [inner: { * [coords] => uint }]

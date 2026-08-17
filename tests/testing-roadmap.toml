@@ -90,7 +90,6 @@ entries = [
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
-  "testing.fixture-shape-evicted-over-known-defect-stale-guard",
   "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim",
   "testing.rejection-message-s-remedy-string-executable-claim-pin",
   "part-remedy-string-executable-wherever-lives-emitted-message-gets",
@@ -164,6 +163,7 @@ entries = [
   "testing.process-boundary.rustc-after-panic-fix",
   "testing.process-boundary.rustfmt-pre-rustc",
   "testing.process-boundary.another-profile-escape",
+  "testing.fixture-shape-evicted-over-known-defect-stale-guard",
   "testing.parallel-constructor-fixture-diversity-parser-over-external-input",
   "testing.multifile-reference-position-coverage-two-position-keyed-escapes",
   "testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near",
@@ -221,7 +221,6 @@ entries = [
   "testing.wasm32-link-floor-deferred-reject-twin",
   "testing.extern-interface-export-dialect-v2-candidates",
   "testing.cddl-module-directives-draft-ietf-cbor-cddl-modules",
-  "testing.std-generated-crates",
   "testing.dependency-version-range-resolution-untested-generated-crates-float",
   "testing.transparent-tag-set-idiom-recognized-shape-boundary-request",
   "testing.tag-set.non-idiom-generic-boundary",
@@ -1153,15 +1152,14 @@ work_kind = "missing_system"
 risk = "false_pass_or_red"
 
 [record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.dependency-version-range-resolution-untested-generated-crates-float"
-dimension = "Dependency version-RANGE resolution is untested: generated crates float on semver `cbor_event = \"3.3.0\"`, and nothing gates what that range actually resolves to over time."
-observable = "- **Dependency version-RANGE resolution is untested: generated crates float on semver `cbor_event = \"3.3.0\"`, and nothing gates what that range actually resolves to over time.** In check.ts runs the nested-cargo cells now resolve OFFLINE from the cargo cache (the registry-transient watch below), so the float enters one step removed — through the warm-up fetch, which pulls the newest semver-compatible releases into the cache — but the exposure is the same: a new upstream release changes what every nested-cargo cell — and every downstream consumer — builds against, with no gate noticing until something breaks. The 3.2.0 upgrade itself arrived as exactly such a version event (the 2.4.0-era prediction this entry re-captures), absorbed deliberately with flip vectors; an UNPLANNED 3.x release would be absorbed silently. The mechanical layer when a release actually bites: a pinned-latest or `--minimal-versions`-style resolve check over one generated crate, red when the resolved `cbor_event` version drifts from the one the vectors were blessed against."
+observer = "generated-crate consumer or dependency release steward"
+dimension = "unreviewed semver-compatible cbor_event resolution changes"
 action_on_fire_md = '''Set testing.dependency-version-range-resolution-untested-generated-crates-float to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
 [record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.dependency-version-range-resolution-untested-generated-crates-float's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
+predicate_kind = "event"
+event_md = '''A semver-compatible cbor_event release makes an unchanged generated crate compile or behave differently before that release is intentionally adopted by cddl-codegen.
 '''
 
 [[record]]
@@ -1883,15 +1881,14 @@ risk = "compile_failure"
 control_ids = ["testing.guard.extern-deps-wasm-boundary-surface-packaging-json-gen"]
 
 [record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.extern-deps-wasm-boundary-surface-packaging-json-gen"
-dimension = "Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor."
-observable = "A consumer or breadth fixture exposes the named wasm-bindgen CLI, extern json-gen, or packaging boundary outside the current compile controls."
+observer = "affected extern-dependency consumer"
+dimension = "extern wasm packaging and json-gen runtime failures outside cargo compile checks"
 action_on_fire_md = '''Set testing.extern-deps-wasm-boundary-surface-packaging-json-gen to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
 [record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.extern-deps-wasm-boundary-surface-packaging-json-gen's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
+predicate_kind = "event"
+event_md = '''An extern-dependency consumer observes either a wasm-bindgen exported-class packaging collision or an export_schemas runtime failure/omission that the existing cargo compile controls did not detect.
 '''
 
 [[record]]
@@ -5193,10 +5190,7 @@ body_md = '''  - ***rustfmt, so the code never reaches rustc at all.*** Not a du
     group-choice arm emitted Rust that rustfmt rejects (`expected pattern, found '='`) under
     `--preserve-encodings`. It reproduced against the parent of the fixed-value-arm support commit,
     so it predated that change; making the default profile generate the uint spelling is what put a
-    reader in front of it. The class is not empty: the brute-force-dispatch sibling
-    (`t = true / null / tstr`) still fails at the same seam and is ledgered in
-    `cddl-matrix/roadmap.toml` § findings — a robustness row for it would record an error today, but
-    an `ok`-flip after a fix would again certify only generation. '''
+    reader in front of it. '''
 signal_md = '''Reopening signal, on the
     magnitude axis the deferred cost grows along: **the count of `ok`-recording robustness rows
     whose emitted crate fails at export** — measurable by a consumer whose generation aborts at
@@ -5213,7 +5207,7 @@ control_ids = ["testing.guard.process-boundary-rustfmt-pre-rustc"]
 [record.payload.promotion_trigger]
 observer = "fresh-evidence submitter for testing.process-boundary.rustfmt-pre-rustc"
 dimension = "*rustfmt, so the code never reaches rustc at all."
-observable = "- ***rustfmt, so the code never reaches rustc at all.*** Not a duplicate of the class above: there the emitted crate reached rustc and was rejected, so any compile leg would catch it; here generation itself fails at the rustfmt merge step, so no compile leg can even receive a crate. One premise correction this entry now carries, probed rather than reasoned (an earlier version asserted the opposite on the strength of a dangling doc reference): the rustfmt pass runs IN-PROCESS too — `generated_strings` is post-rustfmt — so any vehicle that generates the shape under the failing profile witnesses this class as a generation error; the residual blindness is the same two-part bound as the siblings' (a vehicle must exist under the failing profile at all, and an `ok`-flip after a fix certifies only generation). Proven instance (since fixed on the type-match dispatch sites and given exactly this entry's remedy — promoted into `tests/corpus/group_choice_fixed_special.cddl`, whose cells shell the real CLI so the rustfmt seam is witnessed for the shape): a bool or null fixed value in a map-representation group-choice arm emitted Rust that rustfmt rejects (`expected pattern, found '='`) under `--preserve-encodings`. It reproduced against the parent of the fixed-value-arm support commit, so it predated that change; making the default profile generate the uint spelling is what put a reader in front of it. The class is not empty: the brute-force-dispatch sibling (`t = true / null / tstr`) still fails at the same seam and is ledgered in `cddl-matrix/roadmap.toml` § findings — a robustness row for it would record an error today, but an `ok`-flip after a fix would again certify only generation. Reopening signal, on the magnitude axis the deferred cost grows along: **the count of `ok`-recording robustness rows whose emitted crate fails at export** — measurable by a consumer whose generation aborts at rustfmt while our catalog records the shape as `ok`, a party that already has the problem and needs nothing from us to notice it. That count is zero today, so the signal is unmet rather than pre-satisfied."
+observable = "A robustness row recorded as ok later aborts at the rustfmt export seam, proving an in-process generation verdict was insufficient for that shape."
 action_on_fire_md = '''Set testing.process-boundary.rustfmt-pre-rustc to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
@@ -6226,34 +6220,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.std-generated-crates"
-title = "no_std generated crates."
-
-[record.payload]
-kind = "work"
-body_md = '''- **no_std generated crates.** cbor_event supports no_std since 3.0.0, so a CLI flag (`cli.rs` +
-  docs) emitting no_std-compatible crates is possible; the static runtime and generated code would
-  need their own std-usage sweep (collections, error impls). The mechanical layer when a consumer
-  asks: a no_std cross-compile gate over one generated crate.
-'''
-work_state = "deferred"
-work_intent = "build_capability"
-work_kind = "feature"
-risk = "compile_failure"
-
-[record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.std-generated-crates"
-dimension = "no_std generated crates."
-observable = "- **no_std generated crates.** cbor_event supports no_std since 3.0.0, so a CLI flag (`cli.rs` + docs) emitting no_std-compatible crates is possible; the static runtime and generated code would need their own std-usage sweep (collections, error impls). The mechanical layer when a consumer asks: a no_std cross-compile gate over one generated crate."
-action_on_fire_md = '''Set testing.std-generated-crates to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.std-generated-crates's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
 id = "testing.tag-set.inline-anonymous-choice-boundary"
 title = "Inline/anonymous two-arm choices are not recognized."
 
@@ -6266,7 +6232,7 @@ body_md = '''  - *Inline/anonymous two-arm choices are not recognized.* Recognit
 work_state = "deferred"
 work_intent = "build_capability"
 work_kind = "feature"
-risk = "valid_rejection"
+risk = "wrong_public_api"
 
 [record.payload.reopening_signal]
 observer = "fresh-evidence submitter for testing.tag-set.inline-anonymous-choice-boundary"

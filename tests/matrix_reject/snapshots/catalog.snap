@@ -41,6 +41,7 @@ contain.map-key.type2.array        error (graceful) rejection-lines=2
 contain.map-value.type2.array      error (graceful) rejection-lines=1
 contain.map-value.type2.map        error (graceful) rejection-lines=1
 contain.map-value.type2.unwrap     error (graceful) rejection-lines=1
+contain.occurrence-target.grpent.groupname error (graceful) rejection-lines=1
 contain.occurrence-target.grpent.groupname.table_map error (graceful) rejection-lines=1
 contain.occurrence-target.grpent.inline_group.bounded_array error (graceful) rejection-lines=1
 contain.occurrence-target.grpent.inline_group error (graceful) rejection-lines=1

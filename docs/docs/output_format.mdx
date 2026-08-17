@@ -504,11 +504,12 @@ A third shape is rejected on **either** slot, because it is a property of the ma
 key dispatch: a **plain group** (`kv = (a: uint, b: uint)`, `t = { c: uint, * kv => uint }` or
 `t = { c: uint, * uint => kv }`). A CBOR map entry holds exactly one item in each of its two slots and
 a keyless group has no single-item form — it splices its members flat, contradicting the map's own
-entry count — so the row has no wire. The guard reads the *resolved* slot type, so the bare, alias and
-tagged (`* uint => #6.10(kv)`) spellings refuse alike, and both slots are reported when both offend.
-The remedy the message names is the group's array framing, which gives the slot the one item it needs:
-`t = { c: uint, * [kv] => uint }` / `t = { c: uint, * uint => [kv] }`; a tag belongs *outside* that
-framing, on the framed reference (`#6.10([kv])`, not `[#6.10(kv)]`). The prefix-less spelling
+entry count — so the row has no wire. The guard reads the *resolved* slot type, so the bare and alias
+spellings refuse alike, and both slots are reported when both offend. A tagged group instead reaches the
+separate tag-payload boundary: `#6.10(kv)` is invalid because a tag wraps one TYPE, so frame the group
+first. The remedy the message names is the group's array framing, which gives the slot the one item it
+needs: `t = { c: uint, * [kv] => uint }` / `t = { c: uint, * uint => [kv] }`; a tag belongs *outside*
+that framing, on the framed reference (`#6.10([kv])`, not `[#6.10(kv)]`). The prefix-less spelling
 (`t = { * kv => uint }`) is the pure table shape and keeps its own message for the same reason.
 
 Which path a domain takes is not a preference but a **fidelity rule**: the fast path can only rebuild
@@ -860,10 +861,12 @@ supplies the head. The
 plain-group element type (`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses because an
 occurrence segment collects one value per repeated array element and a plain group is not one — it has
 no type of its own, splicing its members flat instead — and the guard reads the *resolved* element
-type, so the bare, alias (`* kv_alias`) and tagged (`* #6.10(kv)`) spellings refuse alike. The remedy
-the message names is the group's array framing: `w = [kv]`, then `t = [ c: uint, * w ]`; a tag belongs
-on that framed reference (`* #6.10(w)`) rather than on the group. A single **mandatory** splice
-(`t = [ c: uint, kv ]`) and the sole-element homogeneous array (`[* kv]`) stay supported; the full
+type, so the bare and alias (`* kv_alias`) spellings refuse alike. A tag payload is a type, so
+`* #6.10(kv)` reaches the separate plain-group tag-payload refusal; frame first, then tag (`* #6.10(w)`
+where `w = [kv]`). The remedy the message names is the group's array framing: `w = [kv]`, then
+`t = [ c: uint, * w ]`. A single **mandatory** splice (`t = [ c: uint, kv ]`) stays supported, but
+the sole-element homogeneous array (`[* kv]`) also refuses: repeating a group concatenates its members,
+whereas a homogeneous collection element is one item. Use `w = [kv]`, then `[* w]`; the full
 splice-position matrix is [Plain group placement](current_capacities#plain-group-placement).
 
 **The `rest` field.** A loose `*` / `0*` segment is `pub Vec<T>`, excluded from `new()` and defaulting

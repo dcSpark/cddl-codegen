@@ -370,7 +370,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `genericparm.type` | · |  |  |  |  |  |  |  |  |  |
 | `group.choice` | · |  |  |  |  |  |  |  |  |  |
 | `grpchoice.sequence` |  |  |  |  |  |  | ✅ |  |  |  |
-| `grpent.groupname` |  | ✅ |  |  |  |  | ✅ | ◐ |  |  |
+| `grpent.groupname` |  | ✅ |  |  |  |  | ✅ | ➖ |  |  |
 | `grpent.inline_group` | · | ✅ |  |  |  |  | ➖ | ◐ |  |  |
 | `grpent.member` |  |  |  |  |  |  | ✅ | ✅ |  |  |
 | `memberkey.bareword` |  |  |  | · |  |  | ✅ | ✅ |  |  |

@@ -825,10 +825,11 @@ mod tests {
                     vec![BREAK],
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
                 let irregular_bytes_group_tagged = vec![
-                    arr_sz(2, *def_enc),
+                    arr_sz(1, *def_enc),
                         cbor_tag_sz(11, *def_enc),
-                            cbor_int(3, *def_enc),
-                            cbor_str_sz(" test", str_enc.clone()),
+                            arr_sz(2, *def_enc),
+                                cbor_int(3, *def_enc),
+                                cbor_str_sz(" test", str_enc.clone()),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
                 let irregular_bytes_group_bytes = vec![
                     arr_sz(1, *def_enc),
@@ -1588,15 +1589,17 @@ mod tests {
                             cbor_tag_sz(9, *def_enc),
                             cbor_str_sz("wiorurri34h", str_enc.clone()),
                         // multiple
-                        arr_def(4),
-                            cbor_tag_sz(13, *def_enc),
-                                cbor_int(10, *def_enc),
-                            cbor_tag_sz(9, *def_enc),
-                                cbor_str_sz("wiorurri34h", str_enc.clone()),
-                            cbor_tag_sz(13, *def_enc),
-                                cbor_int(10, *def_enc),
-                            cbor_tag_sz(9, *def_enc),
-                                cbor_str_sz("wiorurri34h", str_enc.clone()),
+                        arr_def(2),
+                            arr_sz(2, *def_enc),
+                                cbor_tag_sz(13, *def_enc),
+                                    cbor_int(10, *def_enc),
+                                cbor_tag_sz(9, *def_enc),
+                                    cbor_str_sz("wiorurri34h", str_enc.clone()),
+                            arr_sz(2, *def_enc),
+                                cbor_tag_sz(13, *def_enc),
+                                    cbor_int(10, *def_enc),
+                                cbor_tag_sz(9, *def_enc),
+                                    cbor_str_sz("wiorurri34h", str_enc.clone()),
                 ].into_iter().flatten().clone().collect::<Vec<u8>>();
                 let from_bytes = PlainArrays::from_cbor_bytes(&irregular_bytes).unwrap();
                 assert_eq!(from_bytes.to_cbor_bytes(), irregular_bytes);

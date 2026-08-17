@@ -210,64 +210,6 @@ impl AsRef<BTreeMap<u64, cddl_lib::Coords>> for MapU64ToCoords {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct SplicedGroupArray(pub(crate) cddl_lib::SplicedGroupArray);
-
-#[wasm_bindgen]
-impl SplicedGroupArray {
-    pub fn to_cbor_bytes(&self) -> Vec<u8> {
-        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
-    }
-
-    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SplicedGroupArray, JsError> {
-        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
-            .map(Self)
-            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
-    }
-
-    pub fn to_json(&self) -> Result<String, JsError> {
-        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
-    }
-
-    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
-        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
-    }
-
-    pub fn from_json(json: &str) -> Result<SplicedGroupArray, JsError> {
-        serde_json::from_str(json)
-            .map(Self)
-            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
-    }
-
-    pub fn inner(&self) -> CoordsList {
-        self.0.inner.clone().into()
-    }
-
-    pub fn new(inner: &CoordsList) -> Self {
-        Self(cddl_lib::SplicedGroupArray::new(inner.clone().into()))
-    }
-}
-
-impl From<cddl_lib::SplicedGroupArray> for SplicedGroupArray {
-    fn from(native: cddl_lib::SplicedGroupArray) -> Self {
-        Self(native)
-    }
-}
-
-impl From<SplicedGroupArray> for cddl_lib::SplicedGroupArray {
-    fn from(wasm: SplicedGroupArray) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<cddl_lib::SplicedGroupArray> for SplicedGroupArray {
-    fn as_ref(&self) -> &cddl_lib::SplicedGroupArray {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
 pub struct WrappedGroupArray(pub(crate) cddl_lib::WrappedGroupArray);
 
 #[wasm_bindgen]

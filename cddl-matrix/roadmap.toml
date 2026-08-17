@@ -90,8 +90,8 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
 
 '''
 entries = [
-  "matrix.named-group-reference-grid",
   "matrix.grammar-derived-legality",
+  "matrix.resolved-type-group-name-legality",
   "matrix.per-value-encoding-reachability",
   "matrix.emission-narrowing-fixture-floor",
   "matrix.tag-registry-boundary",
@@ -1213,8 +1213,11 @@ owned heads. The decoder therefore obeys RFC 8610 greedy, non-backtracking match
 speculation; final and safe-middle forms share the
 carrier/projection paths covered by `contain.occurrence-target.grpent.member.{zero_array,plus_array,bounded_array}`.
 
-Still rejected gracefully: multiple occurrence-bearing members; inline-group, group-choice-arm, and
-plain-group occurrences; and a variable middle occurrence with an optional, multi-item, undeclared
+Still rejected gracefully: multiple occurrence-bearing members; inline-group and group-choice-arm
+occurrences; and plain-group occurrences, including a sole homogeneous `[* pg]` — RFC 8610 repeats
+that group by concatenating its member sequence flat, while the ordinary collection carrier would
+serialize each group value as a nested array. Supporting it needs a dedicated flat, arity-aware
+occurrence carrier rather than `Vec<Pg>`. A variable middle occurrence with an optional, multi-item, undeclared
 custom-owned, or direct opaque-extern wire head on its repeated element or suffix, or a same-major suffix
 outside the delivered finite fixed-domain class (`[uint, * bytes, bytes]`). A mandatory outer tag or `.cbor` frame supplies a proven wire head and is therefore
 admissible even when its inner codec is custom- or extern-owned. Those boundaries are
@@ -1573,113 +1576,6 @@ action_on_fire_md = '''enumerate demanded shapes
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
 event_md = '''a cross-module extern build breaks outside facade composition
-'''
-
-[[record]]
-id = "matrix.named-group-reference-grid"
-title = "Enumerate the named-group REFERENCE kind (`grpent.groupname`) across its container PLACEMENTS and member MODIFIERS — two explicit axes, not a \"remaining roles\" sweep."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Enumerate the named-group REFERENCE kind (`grpent.groupname`) across its container PLACEMENTS
-  and member MODIFIERS — two explicit axes, not a "remaining roles" sweep.** Buildable now, and the
-  payoff is measured: every defect yet found in this kind's cells was caught by per-delivery ad-hoc
-  probing rather than any projection, because each sat on an axis the grid does not model. The two
-  TABLE roles (`{ * coords => uint }` / `{ * uint => coords }`) — one aborted on a raw unwrap, the
-  other emitted non-conformant CBOR at exit 0 — are refused
-  (`plain_group_table_domain_rejects_gracefully_at_both_spellings`). The MODIFIER axis is live
-  too, each flavor breaking DIFFERENTLY: the KEYED struct-map
-  member and its TAGGED flavor emitted silent non-conformant wire at exit 0, its OPTIONAL flavor
-  panicked, and a single-entry map group-choice arm emitted a serializer and a deserializer that
-  disagreed with each other — all refused
-  (`plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`). The ALIAS-INDIRECTED
-  modifier proves the axis in the other direction: in ARRAY placements it is
-  SUPPORTED and byte-equal to the direct reference
-  (`alias_to_plain_group_in_array_positions_matches_the_direct_reference`), and reaching that
-  verdict took four rep-stamp sites plus two emission sites — one of which had been emitting an
-  array header counting elements against a body written in items, at exit 0 in a crate that
-  compiles. The `?`-OPTIONAL modifier is refused, because
-  a splice writes no marker of its own and so leaves the array's LENGTH as the only evidence of
-  presence, which an embedded decoder that length-checks just its own members cannot read
-  (`optional_plain_group_array_field_rejects_gracefully_at_every_spelling`; real support is the
-  occurrence/bounds design owned by the finding "Honor remaining middle/non-final count-permitting
-  occurrences on heterogeneous ARRAY-record fields" — cited below as "the occurrence/bounds
-  family" — and its guard covered a TAGGED
-  spelling that had been shipping a codec whose own decoder rejected its own bytes). So enumerate
-  the product: placement (array
-  element, array-rep field, struct-map member, table key, table value, map/array group-choice arm,
-  TYPE-choice arm) × modifier (bare, keyed, `?`-optional, count-permitting rest tail — `*` in
-  final position, distinct from the sole-element homogeneous cell
-  `contain.occurrence-target.grpent.groupname` — tagged, alias-indirected), with truthful
-  verdicts — accept rows where the splice is conformant (array placements, including every
-  alias-indirected one) or a wrapping restores it (the named-array remedies), and reject rows
-  carrying the refusal evidence. The TYPE-choice-arm placement and the rest-tail modifier joined
-  the product late: each carried a live defect (the
-  final-position `* kv` rest-tail panic and the plain group in a TYPE-choice arm — both refused,
-  see below) while sitting on an axis VALUE the product as first stated did not list — this
-  entry's own opening lesson (a defect on an axis the grid does not model) applied to the grid's
-  own draft, and the reason the axis values above are enumerated exhaustively rather than by
-  example. The group-choice arm's silently dropped `?` sat
-  INSIDE the stated product (group-choice arm × `?`-optional), which is exactly the cell class the
-  enumeration exists to mint, and is refused
-  (`occurrence_on_single_entry_group_choice_arm_rejects_gracefully`): honoring it needs a zero-case
-  variant the sibling arms' length checks can tell apart on the wire, which is the
-  occurrence/bounds family's scope. The same defect also marks where this grid STOPS being the
-  instrument. Probing widened it twice past the cell: to every occurrence marker an ARRAY arm can carry
-  (`*`, `+`, `n*m`, all byte-identical to the unmarked arm at exit 0, not just `?`), and off the
-  named-group reference kind entirely — an ordinary keyed member arm (`[ x: uint // ? a: tstr ]`)
-  dropped its marker byte-identically too. So the guard reads the ENTRY's occurrence rather than its
-  type, and the grid would have minted one cell of a defect whose real denominator is arm × marker
-  over every entry kind. It also narrowed in one direction: in a MAP
-  arm the byte identity is CORRECT for every lower-bound-≥1 marker, since unique keys mean a second
-  repetition of a fixed-key alternative would duplicate its keys, so `+` / `2*3` / `2*` admit count
-  1 and nothing else. Those keep generating — the f18d764 collapse boundary, asked of the one shared
-  predicate (`inline_group_occurrence_flattens`) rather than restated, so the arm seam and the
-  inline-group splice cannot come to disagree — and only the zero-permitting markers refuse there.
-  A grid row must therefore carry the REP, not just the marker. The rest-tail modifier is settled
-  the same way — refused, because a rest tail collects one
-  value per remaining array element and a plain group is not one, having no type of its own to
-  collect (`plain_group_array_rest_tail_rejects_gracefully_at_every_spelling`; the splicing tail
-  that would consume the group's arity per repetition is the occurrence/bounds family's scope). Its
-  cell is a rep-carrying row too, and the row's own probing shows why: the ARRAY tail refuses,
-  the SOLE-element homogeneous cell (`[* kv]`) generates, the pure TABLE form (`{ * kv => uint }`)
-  refuses on its own delivered message — and the MAP REST ROW, the array tail's exact twin, refuses
-  on a THIRD delivered message, one per offending slot
-  (`plain_group_map_rest_row_rejects_gracefully_at_every_spelling`), because a map entry holds
-  exactly one item in each of its two slots. That is the same argument the pure table form's message
-  carries, so the rest row's cell separates from the table's on the fixed prefix alone, not on the
-  reason. One marker, four verdicts, separating on container and on whether a fixed
-  prefix precedes it: no cell of this product is predictable from its neighbours, which is the
-  argument for minting all of them rather than the ones a probe happened to reach. The TYPE-choice-arm
-  PLACEMENT is the row where the grid's own verdict vocabulary is settled ahead
-  of the cells: every cell of it is a reject row, and permanently, because a type choice denotes
-  exactly ONE data item — telling the arms apart on the wire is the whole of what a choice decoder
-  does — while a plain group can only be spliced and a splice has no one-item form
-  (`plain_group_type_choice_arm_rejects_gracefully_at_every_spelling`). That closes the branch
-  "stamp the group's Array rep on the choice walk's arms the way the array
-  PLACEMENTS do": the array placements splice into a container whose length already scales with the
-  group's arity and absorbs the extra items, and an arm has no such container, so there is nothing to
-  stamp a rep ONTO. The array framing the refusal names is therefore the semantics rather than a
-  workaround, which makes this row cheap to mint (one verdict, one evidence class) and the row worth
-  minting anyway: it was three DIFFERENT failures from that one root — the `rust_struct` expect/unwrap
-  in `src/intermediate/rust_type.rs`, the plain-group registry assert in `src/intermediate/mod.rs`
-  reached earlier under `--wasm`, and at RULE position under the `/ null` collapse an exit-0
-  emission of `pub type U = Option<Kv>;` over a `Kv` defined nowhere, a non-compiling crate reported
-  as success. A grid whose cells carry only "panics" would have flattened the third, which is the one
-  that matters most. NB this defect class is also one synthetic instance shy of the
-  "Grammar-derived legality denominator" item's reopening signal (a generation defect in a
-  grid-BLANK cell): a
-  consumer-reported spec breaking in such a cell fires that signal outright; this entry is the cheap
-  targeted slice that does not wait for it.
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "infrastructure"
-risk = "false_pass_or_red"
-acceptance_md = '''Enumerate every reviewed placement × modifier × representation/entry-kind coordinate named in the source; mint a matrix row for each; attach support evidence where the splice is conformant and exact graceful-refusal evidence where it is not; keep the axes explicitly observed-only rather than claiming grammar closure.
-'''
-priority_band = "high"
-priority_rationale_md = '''The source marks this buildable now and records silent non-conformant output, aborts, panics, and compile failures that escaped because their coordinates were not modeled.
 '''
 
 [[record]]
@@ -2221,6 +2117,50 @@ period_or_event_md = '''Run in every change that adds or changes a graceful-refu
 checklist_md = '''Review trigger ordering, placement, aliases, and alternate spellings against the guard's reachable syntax space.
 '''
 missed_action_md = '''Block the change when an equivalent spelling bypasses or contradicts the guard.
+'''
+
+[[record]]
+id = "matrix.resolved-type-group-name-legality"
+title = "Resolved type-name versus group-name legality denominator"
+
+[record.payload]
+kind = "work"
+body_md = '''- **Resolved type-name versus group-name legality denominator.** RFC 8610 assigns some identifier
+  positions to TYPEs and others to GROUPs, but the parser intentionally represents several
+  syntactically ambiguous references as the same typename-shaped node. Resolution therefore has to
+  enforce the namespace boundary. Cycle 25 found `#6.1(pg)` (where
+  `pg = (a: uint, b: tstr)`) reaching code generation and silently dropping the tag even though a
+  tag payload is a one-item TYPE; the named-group grid and
+  `tagged_plain_group_payloads_reject_gracefully_at_every_placement` now own that exact family.
+  Plain groups in TYPE-choice arms already have their own focused refusal too.
+
+  The broader denominator remains unmodeled: enumerate each identifier-bearing production after
+  name resolution as type-only, group-only, or either, then probe the wrong resolved kind directly,
+  through aliases, and under reversed rule order. A wrong-kind input must produce one semantic
+  diagnostic before placement-specific generation rather than panic, disappear, or inherit a wire
+  operation that cannot apply. This is distinct from `matrix.grammar-derived-legality`, whose
+  denominator and reopening signal deliberately cover valid CDDL cells; wrong-kind references are
+  syntactically admitted by the parser but semantically invalid CDDL.
+'''
+signal_md = '''  **Reopening signal:** a further generator defect outside the delivered tag-payload and
+  TYPE-choice seams is traced to a name resolving to a group in a type-only position, or to a type
+  in a group-only position. The reporter holds the exact input and failure, so the event is directly
+  measurable.
+'''
+work_state = "deferred"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "silent_wrong_bytes"
+
+[record.payload.reopening_signal]
+observer = "consumer reporter"
+dimension = "wrong resolved symbol kind outside delivered tag/type-choice seams"
+action_on_fire_md = '''build the resolved symbol-kind legality denominator
+'''
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = '''a generator defect outside the delivered tag-payload and TYPE-choice seams is attributed to a resolved TYPE/GROUP namespace mismatch
 '''
 
 [[record]]

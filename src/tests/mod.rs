@@ -31,6 +31,7 @@ pub(crate) mod generic_collection_tests;
 pub(crate) mod identifier_hazard_tests;
 pub(crate) mod integration_tests;
 pub(crate) mod json_schema_gen_tests;
+pub(crate) mod named_group_reference_tests;
 pub(crate) mod optional_tag_set_tests;
 pub(crate) mod ordered_set_runtime_tests;
 pub(crate) mod preserve_fixture_tests;

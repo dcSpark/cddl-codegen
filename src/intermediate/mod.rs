@@ -6781,6 +6781,17 @@ impl<'a> IntermediateTypes<'a> {
         self.plain_groups.contains_key(name)
     }
 
+    /// Whether `name` is a plain group declared by an authored CDDL rule, rather than an internal
+    /// group-choice arm registered with `PlainGroupInfo::group == None`. The distinction matters at
+    /// resolved source-reference legality seams: synthesized arm names can temporarily coincide
+    /// with a generic parameter (`A`) while a generic type-choice body is being built, but that
+    /// parameter still denotes a TYPE and must not inherit plain-group-only restrictions.
+    pub fn is_directly_defined_plain_group(&self, name: &RustIdent) -> bool {
+        self.plain_groups
+            .get(name)
+            .is_some_and(|info| info.group.is_some())
+    }
+
     /// The idents of every plain group registered from a `.cddl` rule (directly-defined groups whose
     /// `PlainGroupInfo` carries a source `Group`), in deterministic (`BTreeMap`) order. The
     /// extern-interface projection walks these to leave a `; unexported:` record for a plain group

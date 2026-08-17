@@ -3824,64 +3824,6 @@ reason = "the text \"y\" is not the fixed value \"x\" — violates the fixed-val
 expect_err = "Expected fixed value \"x\" found \"y\""
 
 [[row]]
-id = "contain.occurrence-target.grpent.groupname"
-axis = "containment"
-example = "a = [* pair]\npair = (int, tstr)"
-spec = "__probe_holder = [0, a]\na = [* pair]\npair = (int, tstr)"
-mode = "holder"
-type_name = "ProbeHolder"
-
-[[row.vector]]
-hex = "820082190d546774726f70696373"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "82008238d06b6c6974686f737068657265"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200823901636a706f70756c6174696f6e"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "82008239031b66566972676965"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200841910736b6879706f63726974652773190567697374726167676c6564"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200861903b667696d707572657218a36a73656d6966696e616c73390147685475657364617973"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200861911c16d62656c6c69636f73697479277338e6687472616d706c656439021a69726561727761726473"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200863901416d756e696669636174696f6e277339027c66737761792773190f766844616d69656e2773"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200883902856d436861747461686f6f636865651901086d707265646f6d696e6174696e6739024a6773757070696e673901e369656d6f6c6c69656e74"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200883902d1686672656577617973190260687365646174696f6e190273686265746964696e6739016b6c72656c696e71756973686564"
-source = "ruby-generate"
-expect = "accept"
-
-[[row]]
 id = "contain.occurrence-target.grpent.inline_group.exactly_once_array"
 axis = "containment"
 example = "a = [1*1 (int, tstr)]"

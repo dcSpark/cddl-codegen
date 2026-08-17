@@ -1376,7 +1376,7 @@ impl NonOverlapBasicEmbedMultiFields {
 pub enum NonOverlapBasicNotBasic {
     Group(Basic),
     GroupArr(BasicArr),
-    GroupTagged(Basic),
+    GroupTagged(BasicArr),
     GroupBytes(Basic),
 }
 
@@ -1389,8 +1389,8 @@ impl NonOverlapBasicNotBasic {
         Self::GroupArr(BasicArr::new(basic))
     }
 
-    pub fn new_group_tagged(index_0: u64, index_1: String) -> Self {
-        Self::GroupTagged(Basic::new(index_0, index_1))
+    pub fn new_group_tagged(basic: Basic) -> Self {
+        Self::GroupTagged(BasicArr::new(basic))
     }
 
     pub fn new_group_bytes(index_0: u64, index_1: String) -> Self {

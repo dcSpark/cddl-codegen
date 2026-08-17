@@ -2175,9 +2175,10 @@ impl GenerationScope {
                     // the group's field count against an outer slot the element did not occupy, so
                     // the crate emitted bytes its own decoder rejected with `DefiniteLenMismatch` —
                     // exit 0, compiles, round-trip red. Pinned by
-                    // tests/corpus/array_of_wrapped_group.cddl, which spells both forms plus the
-                    // map key/value controls (a table counts ENTRIES, so no expansion can be
-                    // charged to it and the array arm is the only site with this hazard).
+                    // tests/corpus/array_of_wrapped_group.cddl, which spells this array form plus
+                    // the map key/value controls (a table counts ENTRIES, so no expansion can be
+                    // charged to it). Bare repeated plain groups are rejected earlier because RFC
+                    // 8610 gives them flat concatenation semantics this carrier cannot represent.
                     // The scrutinee resolves aliases for the same reason the guard already does: an
                     // alias is transparent, so an element spelled `kv_alias` splices exactly like
                     // `kv`. Matching the bare type left the alias spelling on the non-embedded

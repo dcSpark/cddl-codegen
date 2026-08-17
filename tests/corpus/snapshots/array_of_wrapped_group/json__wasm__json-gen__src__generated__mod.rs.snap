@@ -8,7 +8,6 @@ use cddl_lib::json_schema_gen::check_schema_ref_closure;
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
     reg.add::<cddl_lib::Coords>();
-    reg.add::<cddl_lib::SplicedGroupArray>();
     reg.add::<cddl_lib::WrappedGroupArray>();
     reg.add::<cddl_lib::WrappedGroupMapKey>();
     reg.add::<cddl_lib::WrappedGroupMapValue>();

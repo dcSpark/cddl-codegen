@@ -78,64 +78,6 @@ impl DeserializeEmbeddedGroup for Coords {
     }
 }
 
-impl cbor_event::se::Serialize for SplicedGroupArray {
-    fn serialize<'se>(
-        &self,
-        serializer: &'se mut Serializer,
-    ) -> cbor_event::Result<&'se mut Serializer> {
-        serializer.write_array(cbor_event::Len::Len(1))?;
-        serializer.write_array(cbor_event::Len::Len(2 * self.inner.len() as u64))?;
-        for element in self.inner.iter() {
-            element.serialize_as_embedded_group(serializer)?;
-        }
-        Ok(serializer)
-    }
-}
-
-impl Deserialize for SplicedGroupArray {
-    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
-        (|| -> Result<_, DeserializeError> {
-            let len = raw.array()?;
-            let mut read_len = CBORReadLen::from(len);
-            read_len.read_elems(1)?;
-            read_len.finish()?;
-            let inner = (|| -> Result<_, DeserializeError> {
-                let mut inner_arr = Vec::new();
-                let len = raw.array()?;
-                let mut inner_read_len = CBORReadLen::from(len);
-                while match len {
-                    cbor_event::Len::Len(n) => inner_read_len.read() < n,
-                    cbor_event::Len::Indefinite => true,
-                } {
-                    if matches!(len, cbor_event::Len::Indefinite)
-                        && raw.cbor_type()? == cbor_event::Type::Special
-                        && raw.special_break()?
-                    {
-                        break;
-                    }
-                    inner_read_len.read_elems(2)?;
-                    inner_arr.push(Coords::deserialize_as_embedded_group(
-                        raw,
-                        &mut inner_read_len,
-                        len,
-                    )?);
-                }
-                Ok(inner_arr)
-            })()
-            .map_err(|e| e.annotate("inner"))?;
-            match len {
-                cbor_event::Len::Len(_) => (),
-                cbor_event::Len::Indefinite => match raw.special()? {
-                    cbor_event::Special::Break => (),
-                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                },
-            }
-            Ok(SplicedGroupArray { inner })
-        })()
-        .map_err(|e| e.annotate("SplicedGroupArray"))
-    }
-}
-
 impl cbor_event::se::Serialize for WrappedGroupArray {
     fn serialize<'se>(
         &self,

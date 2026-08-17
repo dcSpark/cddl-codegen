@@ -2952,19 +2952,9 @@
         "status": "supported"
       },
       {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.groupname",
-        "status": "supported"
+        "status": "unsupported"
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
@@ -4827,7 +4817,7 @@
       "example": "a = [* pair]\npair = (int, tstr)",
       "feature": "grpent.groupname",
       "id": "contain.occurrence-target.grpent.groupname",
-      "note": "A zero-or-more occurrence can target a named group reference; naming the group is the supported workaround for repeated tuple groups and pins the sole-use plain-group registration path. RFC8610 §2.2.1, §3.2.",
+      "note": "A zero-or-more occurrence can target a named group reference. RFC 8610 repeats the group's member sequence by flat concatenation; a generator must not substitute a homogeneous collection whose elements each write their own array header. RFC8610 §2.2.1, §3.2.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },

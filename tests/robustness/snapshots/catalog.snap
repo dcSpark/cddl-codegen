@@ -8,7 +8,7 @@ expression: catalog
 # committed PANIC entry is a tracked-known rejection (see the fixture's comments); flipping it to `error
 # (graceful)` is a fix. The parent requires a child sentinel before accepting any ordinary exit status.
 
-alias_plain_group_array_element ok
+alias_plain_group_array_element error (graceful)
 alias_plain_group_array_field ok
 any_control_op             error (graceful)
 any_member                 ok

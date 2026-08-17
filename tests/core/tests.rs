@@ -660,15 +660,17 @@ mod tests {
                     cbor_tag_sz(42, cbor_event::Sz::One),
                         cbor_string("wiorurri34h"),
                 // multiple
-                arr_def(4),
-                    cbor_tag(23),
-                        cbor_int(7576, cbor_event::Sz::Two),
-                    cbor_tag_sz(42, cbor_event::Sz::One),
-                        cbor_string("wiorurri34h"),
-                    cbor_tag(23),
-                        cbor_int(7576, cbor_event::Sz::Two),
-                    cbor_tag_sz(42, cbor_event::Sz::One),
-                        cbor_string("wiorurri34h"),
+                arr_def(2),
+                    arr_def(2),
+                        cbor_tag(23),
+                            cbor_int(7576, cbor_event::Sz::Two),
+                        cbor_tag_sz(42, cbor_event::Sz::One),
+                            cbor_string("wiorurri34h"),
+                    arr_def(2),
+                        cbor_tag(23),
+                            cbor_int(7576, cbor_event::Sz::Two),
+                        cbor_tag_sz(42, cbor_event::Sz::One),
+                            cbor_string("wiorurri34h"),
         ].into_iter().flatten().clone().collect::<Vec<u8>>();
         let from_bytes = PlainArrays::from_cbor_bytes(&bytes).unwrap();
         assert_eq!(from_bytes.to_cbor_bytes(), bytes);
@@ -1201,7 +1203,7 @@ mod tests {
     fn non_overlap_basic_not_basic() {
         deser_test(&NonOverlapBasicNotBasic::new_group(4, "basic".to_owned()));
         deser_test(&NonOverlapBasicNotBasic::new_group_arr(Basic::new(4, "".to_owned())));
-        deser_test(&NonOverlapBasicNotBasic::new_group_tagged(0, " T A G G E D ".to_owned()));
+        deser_test(&NonOverlapBasicNotBasic::new_group_tagged(Basic::new(0, " T A G G E D ".to_owned())));
         deser_test(&NonOverlapBasicNotBasic::new_group_bytes(u64::MAX, "bytes .cbor basic".to_owned()));
     }
 

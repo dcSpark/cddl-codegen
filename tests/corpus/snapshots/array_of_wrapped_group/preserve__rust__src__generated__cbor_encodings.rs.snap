@@ -18,12 +18,6 @@ pub struct CoordsEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct SplicedGroupArrayEncoding {
-    pub len_encoding: LenEncoding,
-    pub inner_encoding: LenEncoding,
-}
-
-#[derive(Clone, Debug, Default)]
 pub struct WrappedGroupArrayEncoding {
     pub len_encoding: LenEncoding,
     pub inner_encoding: LenEncoding,

@@ -1312,7 +1312,7 @@ pub enum NonOverlapBasicNotBasic {
         len_encoding: LenEncoding,
     },
     GroupTagged {
-        group_tagged: Basic,
+        group_tagged: BasicArr,
         group_tagged_tag_encoding: Option<cbor_event::Sz>,
         len_encoding: LenEncoding,
     },
@@ -1335,9 +1335,9 @@ impl NonOverlapBasicNotBasic {
         }
     }
 
-    pub fn new_group_tagged(index_0: u64, index_1: String) -> Self {
+    pub fn new_group_tagged(basic: Basic) -> Self {
         Self::GroupTagged {
-            group_tagged: Basic::new(index_0, index_1),
+            group_tagged: BasicArr::new(basic),
             group_tagged_tag_encoding: None,
             len_encoding: LenEncoding::default(),
         }

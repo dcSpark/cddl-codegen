@@ -34,8 +34,6 @@ fn _extern_interface_self_check() {
     _assert_serialize_embedded_group::<crate::generated::Coords>();
     _assert_deserialize::<crate::generated::Coords>();
     _assert_deserialize_embedded_group::<crate::generated::Coords>();
-    _assert_serialize::<crate::generated::SplicedGroupArray>();
-    _assert_deserialize::<crate::generated::SplicedGroupArray>();
     _assert_serialize::<crate::generated::WrappedGroupArray>();
     _assert_deserialize::<crate::generated::WrappedGroupArray>();
     _assert_serialize::<crate::generated::WrappedGroupMapKey>();

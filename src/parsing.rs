@@ -4153,7 +4153,21 @@ fn parse_type(
                         }
                     }
                     None => {
-                        let concrete_type = types.new_type(&cddl_ident, cli);
+                        let mut concrete_type = types.new_type(&cddl_ident, cli);
+                        // A tag payload is a TYPE and therefore denotes exactly one data item. A
+                        // plain group has no type of its own: its only meaning is to splice a
+                        // sequence of members into an enclosing array or map. The cddl parser's
+                        // intentionally-ambiguous identifier node lets `#6.n(pg)` reach this arm
+                        // even when `pg` resolves to a group, so enforce the semantic boundary
+                        // after resolution. Keep an inert primitive in the registration path after
+                        // recording the rejection; sibling rules may still reference this rule
+                        // before `finalize` drains the error, and a missing registration would turn
+                        // the graceful refusal back into an order-dependent panic.
+                        if let Some(tag) = outer_tag
+                            && reject_tagged_plain_group_payload(types, &concrete_type, tag)
+                        {
+                            concrete_type = ConceptualRustType::Primitive(Primitive::U64).into();
+                        }
                         if matches!(
                             concrete_type.conceptual_type.resolve_alias_shallow(),
                             ConceptualRustType::Fixed(_)
@@ -5053,11 +5067,12 @@ fn rejection_site(
 /// `intermediate/mod.rs`) — except at RULE position under the `/ null` collapse, which exited 0
 /// emitting `pub type U = Option<Kv>;` with `Kv` defined nowhere in the crate.
 ///
-/// Guarded on `is_basic` over the RESOLVED arm type — the same predicate and the same
-/// resolved-type placement as the record-field and rest-tail twins — so the bare, the ALIAS
-/// (`kv_alias / null`) and the TAGGED (`#6.10(kv) / null`) spellings land on ONE message. The
-/// array-WRAPPED forms keep their own (supported) verdicts: `w = [kv]` is a Record, not a plain
-/// group, and an inline `[kv]` arm carries `basic_override`, so neither is `is_basic`.
+/// Guarded on `is_basic` over the RESOLVED arm type — the same predicate and the same resolved-type
+/// placement as the record-field and rest-tail twins — so the bare and ALIAS (`kv_alias / null`)
+/// spellings land on ONE message. A TAGGED spelling (`#6.10(kv) / null`) reaches the earlier
+/// tag-payload semantic refusal instead: the tag requires a one-item TYPE. The array-WRAPPED forms
+/// keep their own (supported) verdicts: `w = [kv]` is a Record, not a plain group, and an inline
+/// `[kv]` arm carries `basic_override`, so neither is `is_basic`.
 fn reject_plain_group_type_choice_arm(
     types: &mut IntermediateTypes,
     arm_type: &RustType,
@@ -5112,21 +5127,48 @@ fn record_fixed_table_value_rejection(
     ));
 }
 
-/// The source name of the bare plain group a table KEY/VALUE domain resolves to, if it is one.
+/// The source name of the bare plain group a resolved type denotes, if it is one.
 ///
 /// Keyed on `RustType::is_basic` — the SAME predicate `generate_serialize` uses to pick the
-/// `serialize_as_embedded_group` (member-splicing) emission over a real `serialize`, so this
-/// refuses exactly the domains that would splice and nothing else. In particular an array-WRAPPED
-/// group (`[coords]`, inline or as a named rule) carries `basic_override`, serializes as one
-/// nested array item, and is therefore the remedy rather than another instance of the defect.
-/// Aliases resolve through, so `c2 = coords` is caught alongside a direct reference.
-fn plain_group_table_domain(types: &IntermediateTypes, ty: &RustType) -> Option<String> {
+/// `serialize_as_embedded_group` (member-splicing) emission over a real `serialize` — plus the
+/// authored-group bit. The latter excludes internal group-choice-arm registrations whose generated
+/// name can temporarily coincide with a generic parameter (`A`): that parameter is still a TYPE,
+/// not an authored group reference. In particular an array-WRAPPED group (`[coords]`, inline or as
+/// a named rule) carries `basic_override`, serializes as one nested array item, and is therefore not
+/// a bare group here. Aliases resolve through, so `c2 = coords` is caught alongside a direct
+/// reference.
+fn resolved_plain_group_source_name(types: &IntermediateTypes, ty: &RustType) -> Option<String> {
     match ty.conceptual_type.resolve_alias_shallow() {
-        ConceptualRustType::Rust(ident) if ty.is_basic(types) => {
+        ConceptualRustType::Rust(ident)
+            if ty.is_basic(types) && types.is_directly_defined_plain_group(ident) =>
+        {
             Some(source_rule_name_of(types, ident))
         }
         _ => None,
     }
+}
+
+/// Reject a plain group used as the payload of a CBOR tag. Syntactically the ambiguous typename
+/// node is admitted by the parser; semantically RFC 8610's tag production takes a TYPE, and groups
+/// need array/map framing before they become one. Keeping this one resolved-type seam prevents the
+/// same invalid spelling from being silently dropped in a homogeneous array, half-honored in an
+/// array record, or reported as an unrelated map/table/choice placement error.
+fn reject_tagged_plain_group_payload(
+    types: &mut IntermediateTypes,
+    ty: &RustType,
+    tag: usize,
+) -> bool {
+    let Some(group_name) = resolved_plain_group_source_name(types, ty) else {
+        return false;
+    };
+    types.record_rejection(format!(
+        "a CBOR tag payload cannot be the plain group `{group_name}` — a tag wraps a TYPE that \
+         denotes exactly one data item, while a plain group has no type of its own and only \
+         splices its members into an enclosing array or map. Give the group array framing first \
+         (`wrapped = [{group_name}]`), then tag that type (`#6.{tag}(wrapped)` or \
+         `#6.{tag}([{group_name}])`)."
+    ));
+    true
 }
 
 /// The innermost TYPENAME a table domain's source spelling references, if it has one — the token
@@ -5217,9 +5259,10 @@ fn record_plain_group_table_domain_rejection(
 ///
 /// The remedy is the same array framing the table twin names — the array is the group's single-item
 /// carrier — and it is verified to generate and build on the default, `--preserve-encodings` and
-/// `--wasm` profiles for both slots and for the tagged spelling of each. A tag stays OUTSIDE the
-/// framing (`#6.10([kv])`, not `[#6.10(kv)]`): the array is the item the map slot holds, and the
-/// tag wraps that item, so only that placement keeps the tag on what the spec tagged.
+/// `--wasm` profiles for both slots, including a tag on the array-framed remedy. A tag stays
+/// OUTSIDE the framing (`#6.10([kv])`, not `[#6.10(kv)]`): the array is the item the map slot holds,
+/// and the tag wraps that item, so only that placement keeps the tag on what the spec tagged. A tag
+/// directly over the group reaches the earlier tag-payload semantic refusal.
 fn record_plain_group_rest_row_domain_rejection(
     types: &mut IntermediateTypes,
     src: &str,
@@ -5375,6 +5418,32 @@ fn parse_group_type<'a>(
                          it is a different spec, not an equivalent one."
                     ));
                 }
+                // RFC 8610 occurrence semantics repeat a GROUP by concatenating its member
+                // sequence. The ordinary homogeneous collection lowering cannot represent that:
+                // `Vec<Pg>` calls `Pg::serialize` for every element, and that standalone impl
+                // writes an array header, silently changing `[a, b, a, b]` into
+                // `[[a, b], [a, b]]`. Refuse every window that permits a positive repetition
+                // until a dedicated flat-group carrier exists. Exact once is the already-supported
+                // embedded splice below; exact zero is also sound because no `Pg` value can ever
+                // be serialized through the carrier.
+                let permits_positive_count = !matches!(
+                    bounds,
+                    None | Some((Some(1), Some(1))) | Some((None, Some(0)))
+                );
+                if permits_positive_count
+                    && let Some(group_name) = resolved_plain_group_source_name(types, &elem_type)
+                {
+                    let site = rejection_site(types, rule_name, "inline array");
+                    types.record_rejection(format!(
+                        "{site}: a homogeneous array occurrence cannot repeat the plain group \
+                         `{group_name}` — RFC 8610 occurrence semantics concatenate the group's \
+                         member sequence flat, but the available collection carrier would \
+                         serialize each group value as its own nested array, silently changing \
+                         the wire. To request nested arrays explicitly, write \
+                         `wrapped = [{group_name}]`, then repeat that type (`[* wrapped]`). Flat \
+                         repeated-group support requires a dedicated occurrence carrier."
+                    ));
+                }
                 match bounds {
                     // no bounds
                     Some((None, None)) => {
@@ -5500,7 +5569,7 @@ fn parse_group_type<'a>(
                                     // checked here, so the named-rule and inline consumers of this
                                     // one seam refuse identically.
                                     if let Some(group_name) =
-                                        plain_group_table_domain(types, &key_type)
+                                        resolved_plain_group_source_name(types, &key_type)
                                     {
                                         record_plain_group_table_domain_rejection(
                                             types,
@@ -5518,7 +5587,7 @@ fn parse_group_type<'a>(
                                         );
                                     }
                                     if let Some(group_name) =
-                                        plain_group_table_domain(types, &value_type)
+                                        resolved_plain_group_source_name(types, &value_type)
                                     {
                                         record_plain_group_table_domain_rejection(
                                             types,
@@ -5612,8 +5681,10 @@ fn parse_group_type<'a>(
                                     // same bare-plain-group domain guard as the single-entry table
                                     // arm, for both roles: `{ * (uint => coords) }` puts a keyless
                                     // group in a map slot that holds exactly one item.
-                                    let key_group = plain_group_table_domain(types, &key_type);
-                                    let value_group = plain_group_table_domain(types, &value_type);
+                                    let key_group =
+                                        resolved_plain_group_source_name(types, &key_type);
+                                    let value_group =
+                                        resolved_plain_group_source_name(types, &value_type);
                                     if key_group.is_some() || value_group.is_some() {
                                         let site = rejection_site(types, rule_name, "inline map");
                                         let value = &ge.entry_type;
@@ -6420,7 +6491,14 @@ fn rust_type_from_type2(
             // cannot arise (this is why the old `SUPPRESS_INLINE_TAG_DEFAULT` thread-local is gone). The
             // seam recognizes an inline occurrence structurally: a `ConceptualRustType::Array` carrying a
             // mandatory `Tagged(258)` in its `encodings`.
-            rust_type(types, parent_visitor, t, cli).tag(tag_unwrap)
+            let inner = rust_type(types, parent_visitor, t, cli);
+            if reject_tagged_plain_group_payload(types, &inner, tag_unwrap) {
+                // An inert, storable placeholder keeps later parsing order-independent. The
+                // recorded rejection prevents generation, so no bytes can be emitted from it.
+                ConceptualRustType::Primitive(Primitive::U64).into()
+            } else {
+                inner.tag(tag_unwrap)
+            }
         }
         Type2::ParenthesizedType { pt, .. } => rust_type(types, parent_visitor, pt, cli),
         x => {
@@ -7394,15 +7472,15 @@ fn parse_record_from_group_choice(
                 // what makes a refusal honest here.
                 //
                 // Guarded on `is_basic` over the RESOLVED member type, the same predicate and the
-                // same one-seam placement as the map twin below: that is what makes the bare, the
-                // ALIAS (`? kv_alias`) and the TAGGED (`? #6.1(kv)`) spellings hit ONE message. The
-                // tagged one is not a widening — it exited 0 emitting a codec whose own decoder
-                // rejects its own bytes with a definite-length mismatch. Deliberately blanket over
-                // the group's own shape: a group whose members are ALL optional is reachable and
-                // still refused, because the remedy serves it identically and a narrower guard would
-                // buy a special case nothing has asked for. The array-WRAPPED forms keep their own
-                // verdicts — `w = [kv]` is a Record, not a plain group, and an inline `[kv]` member
-                // carries `basic_override` — so both fall outside `is_basic` untouched.
+                // same one-seam placement as the map twin below: that is what makes the bare and
+                // ALIAS (`? kv_alias`) spellings hit ONE message. The formerly silent TAGGED shape
+                // (`? #6.1(kv)`) now reaches the earlier tag-payload semantic refusal instead.
+                // Deliberately blanket over the group's own shape: a group whose members are ALL
+                // optional is reachable and still refused, because the remedy serves it identically
+                // and a narrower guard would buy a special case nothing has asked for. The
+                // array-WRAPPED forms keep their own verdicts — `w = [kv]` is a Record, not a plain
+                // group, and an inline `[kv]` member carries `basic_override` — so both fall outside
+                // `is_basic` untouched.
                 if optional_field
                     && field_type.is_basic(types)
                     && let ConceptualRustType::Rust(group_ident) =
@@ -8151,15 +8229,17 @@ fn recognize_rest_row(
         return (None, Some(candidate));
     }
     // A plain group in EITHER slot — see `record_plain_group_rest_row_domain_rejection`. The
-    // fixed-prefix sibling of the table twin's guard, sharing its `plain_group_table_domain`
-    // predicate (`is_basic` over the RESOLVED type), so the bare (`* kv => uint`), the ALIAS and the
-    // TAGGED (`* uint => #6.10(kv)`) spellings land on ONE message on every profile, and the
-    // array-WRAPPED forms keep their supported verdicts (an inline `[kv]` carries `basic_override`,
-    // so it is not `is_basic`). Both roles are reported when both offend — a silent slot would be
-    // the worse failure — and the guard sits BEFORE the row's directive reads, because a directive
-    // cannot be judged on a row that has no representable slot.
-    let key_group = plain_group_table_domain(types, &domain);
-    let value_group = plain_group_table_domain(types, &range);
+    // fixed-prefix sibling of the table twin's guard, sharing its
+    // `resolved_plain_group_source_name`
+    // predicate (`is_basic` over the RESOLVED type), so the bare (`* kv => uint`) and ALIAS
+    // spellings land on ONE message on every profile. A TAGGED spelling
+    // (`* uint => #6.10(kv)`) reaches the earlier tag-payload semantic refusal; array-WRAPPED forms
+    // keep their supported verdicts (an inline `[kv]` carries `basic_override`, so it is not
+    // `is_basic`). Both roles are reported when both offend — a silent slot would be the worse
+    // failure — and the guard sits BEFORE the row's directive reads, because a directive cannot be
+    // judged on a row that has no representable slot.
+    let key_group = resolved_plain_group_source_name(types, &domain);
+    let value_group = resolved_plain_group_source_name(types, &range);
     if key_group.is_some() || value_group.is_some() {
         let entry_src = format!("{domain_src} => {range_src}");
         if let Some(group_name) = key_group {
@@ -8471,10 +8551,11 @@ fn recognize_array_rest_tail(
     // not a guard's — so this is a refusal, and one made honest by a remedy verified to generate.
     //
     // Guarded on `is_basic` over the RESOLVED element type — the same predicate and the same
-    // one-seam placement as the record-field twin — so the bare, the ALIAS (`* kv_alias`) and the
-    // TAGGED (`* #6.10(kv)`) spellings land on ONE message on every profile. The array-WRAPPED
-    // forms keep their own (supported) verdicts: `w = [kv]` is a Record, not a plain group, and an
-    // inline `* [kv]` element carries `basic_override`, so neither is `is_basic`.
+    // one-seam placement as the record-field twin — so the bare and ALIAS (`* kv_alias`) spellings
+    // land on ONE message on every profile. A TAGGED spelling (`* #6.10(kv)`) reaches the earlier
+    // tag-payload semantic refusal instead. The array-WRAPPED forms keep their own (supported)
+    // verdicts: `w = [kv]` is a Record, not a plain group, and an inline `* [kv]` element carries
+    // `basic_override`, so neither is `is_basic`.
     if element_type.is_basic(types)
         && let ConceptualRustType::Rust(group_ident) =
             element_type.conceptual_type.resolve_alias_shallow()

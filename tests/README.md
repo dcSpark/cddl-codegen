@@ -1179,6 +1179,25 @@ being excluded or inferred from the implementation's result. The focused inciden
 because they provide the stronger byte/behavior assertions this registration floor intentionally
 does not duplicate.
 
+`named_group_reference_tests::named_group_reference_live_cells_match_authored_verdicts` is the
+parallel denominator for a reference to one single-choice plain group. Its eight placement ids
+(homogeneous-array element, array-record splice, struct-map member, table key/value, array/map
+group-choice arm, and type-choice arm) cross the six modifier ids (direct, keyed, optional, final
+rest, tagged, and transparent alias) in one authored 48-coordinate table. Forty cells are
+live and retain their representation plus actual parser/entry kind, a stable collision-free prefix,
+focused-test/probe evidence, and either `Accept` with a cell-local emitted-root predicate or
+`Reject` with a stable diagnostic fragment. All eight tagged cells are live `Type2::TaggedData`
+rejections: a tag payload is one type item, while a plain group only splices members. The other eight
+are explicit `NotApplicable` rows: they name parser-invalid spellings, a modifier that became a
+sibling node, or a duplicate table occurrence rather than silently shrinking the denominator.
+Every live cell runs independently through `api::generated_strings` with `--wasm=false`, catches a
+panic as a failure, and cannot accept after silently dropping its holder/root. The eight accepted
+cells then batch into collision-free native-only and wasm-bearing scratch crates; the floor uses the
+scratch lock, explicit static directory, separate per-profile targets, and checks rust once plus
+wasm once. It deliberately does not multiply preserve/JSON/component profiles: the focused
+plain-group occurrence, tag-payload, table/member, and group-choice-arm tests retain their
+profile-sensitive wire, remedy, and guard-order assertions.
+
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards the rust crate's
 `--rust-wasm-feature` gate from the one direction no other build can witness: every
 workspace-style build enables the feature through the wasm crate's path dep (cargo feature

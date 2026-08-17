@@ -84,7 +84,7 @@ non_overlap_basic_not_basic = [
   ; @name group_arr
   basic_arr //
   ; @name group_tagged
-  #6.11(basic) //
+  #6.11(basic_arr) //
   ; @name group_bytes
   bytes .cbor basic_arr
 ]
@@ -101,7 +101,7 @@ plain = (d: #6.13(uint), e: tagged_text)
 plain_arrays = [
     embedded: plain,
     single: [plain],
-    multi: [*plain],
+    multi: [* [plain]],
 ]
 
 group_choice = [ 3 // #6.10(2) // foo // 0, x: uint // plain ]
