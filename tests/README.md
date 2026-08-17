@@ -1198,6 +1198,14 @@ wasm once. It deliberately does not multiply preserve/JSON/component profiles: t
 plain-group occurrence, tag-payload, table/member, and group-choice-arm tests retain their
 profile-sensitive wire, remedy, and guard-order assertions.
 
+The homogeneous-occurrence focused test also carries one correct-kind control for a scoped generic
+parameter inside the tag-set idiom. It prevents the internal synthesized arm `A` from making generic
+parameter `a` inherit a plain-group refusal. That one control is deliberately not presented as a
+scope/provenance denominator: an unrelated *authored* outer group `A` still causes the same false
+rejection today. `matrix.scoped-symbol-provenance-grid` in `cddl-matrix/roadmap.toml` owns the pending
+normalization-derived product (scoped parameter × outer authored/synthesized claimant × semantic
+group guard × source order), including the current red authored-group cell.
+
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards the rust crate's
 `--rust-wasm-feature` gate from the one direction no other build can witness: every
 workspace-style build enables the feature through the wasm crate's path dep (cargo feature

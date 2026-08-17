@@ -297,10 +297,13 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    no occurrence indicator — inner entries were checked at group-local indices as if absolute array
    positions, and occurrence bounds were compared against total array item count instead of
    repetition count. Ruby accepts all the spec-valid instances. FIXED in `local-fixes` @ `773b723`;
-   the two catalog rows that sat on it honestly
-   (`contain.occurrence-target.grpent.inline_group.exactly_once_array` and
-   `contain.occurrence-target.grpent.groupname`) are re-minted with real accept vectors against that
-   build.
+   `contain.occurrence-target.grpent.inline_group.exactly_once_array` is re-minted with real accept
+   vectors against that build. The named repeated-group cell
+   (`contain.occurrence-target.grpent.groupname`) no longer has a cddl-codegen decode row: RFC 8610
+   requires flat group concatenation there, while cddl-codegen cannot yet represent that occurrence
+   without silently substituting nested arrays, so the generator now rejects the cell and the
+   supported-catalog projection excludes it. The upstream validator fix remains real; it certifies
+   the spec shape independently rather than making this generator support it.
 3. **non-uint-endpoint range blanket rejection** (released 0.10.x — a 0.10.0 regression): every
    instance validated against a range whose endpoints are not uint is rejected, valid or invalid
    (`invalid cddl range. upper and lower values must be uint types`) — float ranges (`0.5..10.5`)
@@ -626,7 +629,10 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the
   per-(feature, role) verdict genuinely differs, which is the whole point. An inline parenthesized
   group carrying an occurrence marker (`[* (int, tstr)]`) is a distinct path: it is rejected
-  gracefully (not a panic — `roadmap.toml`'s `findings-open` section), with the same "name the group" remedy.
+  gracefully (not a panic — `roadmap.toml`'s `findings-open` section). Naming the group alone does
+  not change RFC 8610's flat repetition semantics; the supported nested-array remedy first gives it
+  an array type (`pair = (int, tstr)`, `pair-item = [pair]`), then repeats that type
+  (`a = [* pair-item]`).
 - **Supported fixed values are nominal at the TOP level and inline at MEMBER position.** A named
   scalar/text/bytes/bool/null/undefined fixed rule (`x = true`, `x = undefined`, `x = 5`,
   `x = "v"`, `x = h'CAFE'`, or `x = 'raw'`) is a singleton type with a

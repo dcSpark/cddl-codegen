@@ -362,6 +362,18 @@ evidence_ids = ["testing.incident-observation.rejection-message-s-remedy-string-
 incident_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one", "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"]
 
 [[record]]
+id = "testing.admission-path.scoped-symbol-provenance-grid"
+title = "Admission for matrix.scoped-symbol-provenance-grid."
+
+[record.payload]
+kind = "testing_system_admission"
+admission_kind = "independent_recurrence"
+claim_md = '''Two distinct normalized-registry claimants — an internal synthesized arm and an unrelated authored outer group — made the same scoped generic parameter inherit plain-group semantics. The proposed provenance grid would detect both instances and systematically extend their denominator across normalization pairs, source order, claimant provenance, and semantic seams.
+'''
+evidence_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"]
+incident_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"]
+
+[[record]]
 id = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
 title = "The alloc imports of nested inline modules are hand-carried by design, and two of the eight `natural_any_cbor_*` adapters were missed — silent under `std`, six E0425s without it."
 
@@ -4119,6 +4131,87 @@ unprobed_remainder_md = '''The evidence proves this admitted class only; it does
 surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
 
 [[record]]
+id = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group"
+title = "Authored-group claimant independently reproduced the scoped-symbol provenance failure."
+
+[record.payload]
+kind = "testing_incident"
+incident_posture = "attributed"
+signature_md = '''An unrelated authored plain group `A` makes the valid scoped generic parameter `a` in `xs<a> = [* a]` fail as if it referenced that group.
+'''
+evidence_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof"]
+attribution_md = '''The homogeneous-occurrence guard substitutes membership in a Rust-ident-keyed global group registry for the resolved source binding. The authored claimant survives the synthesized-source filter that fixed the first incident, so this is an independent recurrence rather than a second observation of the same synthesized row.
+'''
+operating_rule_reference_id = "testing-current-capacities-types-scoped-provenance"
+
+[[record]]
+id = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof"
+title = "Harness-free evidence for the authored-group scoped-symbol provenance failure."
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "harness_free_repro"
+claim_md = '''At the cycle-25 implementation commit, a valid generic collection is rejected solely because unrelated source names `A` and `a` normalize to the same Rust identifier.
+'''
+freshness = "as_of"
+reference_ids = ["testing-scoped-symbol-provenance-grid-work"]
+command_md = '''Give cddl-codegen this input:
+
+```cddl
+A = (x: uint, y: tstr)
+xs<a> = [* a]
+xs-uint = xs<uint>
+holder = [value: xs-uint]
+```
+
+Then run `cargo run --quiet -- --input input.cddl --output "$SCRATCH" --wasm=false --static-dir "$CHECKOUT/static"` from the checkout, with fresh `SCRATCH` and explicit `CHECKOUT` paths.
+'''
+result_md = '''The command exits 1 and reports `rule 'xs': a homogeneous array occurrence cannot repeat the plain group 'A'`, even though the occurrence target is the scoped parameter `a`; changing the outer group name makes the same generic program generate.
+'''
+at_commit = "56de1db1bc18834eafc6d88769d2e26ce5a4529b"
+observed_at = "2026-08-17"
+unprobed_remainder_md = '''This probe proves the authored `A`/parameter `a` homogeneous-occurrence cell. It does not enumerate other normalization pairs, source orders, claimant kinds, or semantic seams; that denominator is the admitted work.
+'''
+
+[record.payload.scope]
+surfaces = ["generic-collection-registration", "homogeneous-plain-group-guard"]
+
+[[record]]
+id = "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"
+title = "Synthesized-arm claimant first exposed the scoped-symbol provenance failure."
+
+[record.payload]
+kind = "testing_incident"
+incident_posture = "historical"
+signature_md = '''Cycle 25's first plain-group semantic guard falsely rejected scoped generic parameter `a` after a generic tag-set body registered its internal choice arm as `A`.
+'''
+evidence_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"]
+attribution_md = '''The first guard consulted the provenance-blind normalized `plain_groups` registry. Cycle 25 filtered direct source authorship and added the focused generic-parameter regression control, fixing this synthesized claimant while leaving the broader binding-identity class unmodeled.
+'''
+operating_rule_reference_id = "testing-tests-readme-integration-tests-scoped-provenance"
+retirement_reference_id = "testing-scoped-symbol-provenance-synthesized-regression"
+
+[[record]]
+id = "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"
+title = "Regression evidence for the synthesized-arm scoped-symbol provenance failure."
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "regression_pin"
+claim_md = '''The cycle-25 regression pin instantiates a generic tag-set collection whose scoped parameter `a` normalizes to the internal synthesized arm `A`, and requires the parameter cell to remain accepted.
+'''
+freshness = "as_of"
+reference_ids = ["testing-homogeneous-plain-group-occurrences-reject-the-nested-wire-rewrite"]
+at_commit = "56de1db1bc18834eafc6d88769d2e26ce5a4529b"
+observed_at = "2026-08-17"
+unprobed_remainder_md = '''The pin covers only the synthesized `A` claimant at the homogeneous-occurrence seam. It does not cover authored claimants, other normalization pairs, source order, or the tag/table/TYPE-choice seams.
+'''
+
+[record.payload.scope]
+surfaces = ["generic-tag-set-registration", "homogeneous-plain-group-guard"]
+tiers = ["local"]
+
+[[record]]
 id = "testing.json2ts-artifact-doc-comments-naming-undefined"
 title = "json2ts artifact doc comments naming `undefined`."
 
@@ -7201,6 +7294,26 @@ kind = "parent_of"
 target = "testing.guard.add-profile-wrapper-participation-grid-participation-differs-across"
 
 [[relation]]
+source = "testing.admission-path.scoped-symbol-provenance-grid"
+kind = "parent_of"
+target = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group"
+
+[[relation]]
+source = "testing.admission-path.scoped-symbol-provenance-grid"
+kind = "parent_of"
+target = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof"
+
+[[relation]]
+source = "testing.admission-path.scoped-symbol-provenance-grid"
+kind = "parent_of"
+target = "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"
+
+[[relation]]
+source = "testing.admission-path.scoped-symbol-provenance-grid"
+kind = "parent_of"
+target = "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"
+
+[[relation]]
 source = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
 kind = "parent_of"
 target = "testing.guard.alloc-imports-nested-inline-modules-hand-carried-design"
@@ -8272,6 +8385,40 @@ id = "testing-rejection-message-s-remedy-string-executable-n2"
 source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
 kind = "roadmap"
 target_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
+
+[[reference]]
+id = "testing-current-capacities-types-scoped-provenance"
+source = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group"
+kind = "file_heading"
+path = "docs/docs/current_capacities.mdx"
+heading = "Types"
+
+[[reference]]
+id = "testing-scoped-symbol-provenance-grid-work"
+source = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof"
+kind = "roadmap"
+target_id = "matrix.scoped-symbol-provenance-grid"
+
+[[reference]]
+id = "testing-tests-readme-integration-tests-scoped-provenance"
+source = "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"
+kind = "file_heading"
+path = "tests/README.md"
+heading = "Integration tests (`integration_tests.rs`)"
+
+[[reference]]
+id = "testing-scoped-symbol-provenance-synthesized-regression"
+source = "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::robustness_tests::homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite"
+symbol = "tests::robustness_tests::homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite"
+
+[[reference]]
+id = "testing-homogeneous-plain-group-occurrences-reject-the-nested-wire-rewrite"
+source = "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::robustness_tests::homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite"
+symbol = "tests::robustness_tests::homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite"
 
 [[reference]]
 id = "gate-lint-doc-citations-n4"

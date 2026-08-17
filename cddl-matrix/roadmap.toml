@@ -92,6 +92,7 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
 entries = [
   "matrix.grammar-derived-legality",
   "matrix.resolved-type-group-name-legality",
+  "matrix.scoped-symbol-provenance-grid",
   "matrix.per-value-encoding-reachability",
   "matrix.emission-narrowing-fixture-floor",
   "matrix.tag-registry-boundary",
@@ -1400,20 +1401,22 @@ An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]
   in `tests/matrix_reject/`) rather than silently narrowed to an exactly-once record. Boundaries
   kept: `[1*1 (…)]` still generates (exactly-once IS the semantics, so flattening the group away is
   sound); on the MAP side `+` / `n*m` with a lower bound ≥ 1 still collapse to a mandatory field;
-  and the parenthesized table `{ * (int => tstr) }` still generates a `BTreeMap`. The rejection
-  recommends naming the group, and the named form works end to end (`pair = (int, tstr)`,
-  `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
-  candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
-  rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
+  and the parenthesized table `{ * (int => tstr) }` still generates a `BTreeMap`. Naming the group
+  alone does not make a repeated GROUP into a one-item collection element: `pair = (int, tstr)`,
+  `a = [* pair]` also requires flat concatenation and is rejected. The supported nested-array remedy
+  is `pair-item = [pair]`, then `a = [* pair-item]`. Real flat, arity-aware support for the inline
+  occurrence is a candidate feature; flipping a row to `ok` must not decay back to silent narrowing
+  (unsupported rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that
+  boundary).
 '''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = '''Add an Option- or Vec-style synthesized carrier only for zero-permitting inline parenthesized-group markers, preserve exactly-once flattening, preserve the lower-bound-at-least-one keyed-map collapse and the working named-group remedy, and add positive plus refusal vectors that prevent silent narrowing.
+acceptance_md = '''Add a flat, arity-aware carrier only for representable inline parenthesized-group markers, preserve exactly-once flattening, preserve the lower-bound-at-least-one keyed-map collapse and the working array-framed named-type remedy, and add positive plus refusal vectors that prevent silent narrowing or nested-array substitution.
 '''
 priority_band = "low"
-priority_rationale_md = '''The work is sound and unblocked, but the named-group spelling is already a complete remedy; it follows the selected occurrence carriers in priority.
+priority_rationale_md = '''The work is sound, but explicit array framing is already a complete nested-array remedy; true flat repetition needs a distinct carrier and follows the selected occurrence carriers in priority.
 '''
 
 [[record]]
@@ -2238,6 +2241,51 @@ action_md = '''Create and file a durable ruby report.
 '''
 
 [[record]]
+id = "matrix.scoped-symbol-provenance-grid"
+title = "Scoped source-symbol provenance versus normalized IR registries"
+
+[record.payload]
+kind = "work"
+body_md = '''- **Scoped source-symbol provenance versus normalized IR registries.** Cycle 25 added semantic
+  plain-group guards after name resolution. Its first implementation asked the provenance-blind
+  `plain_groups` registry whether a resolved `RustIdent` was a group. A generic tag-set body
+  temporarily registers an internal arm named `A`, so the scoped generic parameter `a` was falsely
+  rejected as a repeated plain group. The delivered `is_directly_defined_plain_group` filter and
+  the `generic_parameter` control in
+  `homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite` cover that exact synthesized
+  row.
+
+  That control is not the denominator. A closeout probe found the authored-outer-scope twin still
+  red: `A = (x: uint, y: tstr)`, `xs<a> = [* a]`, `xs-uint = xs<uint>` parses, but cddl-codegen
+  rejects the scoped parameter as the unrelated global plain group `A`, because both source names
+  normalize to the same Rust identifier and the direct-authorship bit is true. No existing
+  identifier-hazard or synthesized-wrapper sweep reaches this class: those cross user names with
+  emitted Rust names, while this failure happens before emission when a semantic guard substitutes
+  registry membership for source binding identity.
+
+  Build one table-driven scope/provenance grid. Derive colliding source-name pairs from the real
+  CDDL-to-`RustIdent` normalization (at minimum case, hyphen/underscore and camel-boundary
+  convergence), then cross: scoped generic parameter versus no outer claimant, an authored TYPE
+  rule, an authored plain GROUP rule, and an internal synthesized group-choice arm; both claimant
+  source orders; and each resolved-type semantic seam that distinguishes groups (homogeneous
+  occurrence, tag payload, table domain and TYPE-choice arm). Valid parameter references must match
+  the no-claimant control byte-for-byte after instantiation, while actual references to the group
+  claimant must retain the delivered semantic rejection. Assert the resolved source binding and
+  provenance, not only the normalized Rust identifier or final generation outcome, so a future
+  registry can neither false-reject the parameter nor silently let a real group bypass the guard.
+'''
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "valid_rejection"
+acceptance_md = '''Add the normalization-derived scope/provenance product described above; pin the current `A`/`a` authored-group collision as a known red cell until fixed; make every valid generic-parameter cell generate identically to its no-outer-claimant control; keep real group references red at all four semantic seams; and register the grid in the ordinary local test tier with a completeness assertion over every axis.
+'''
+priority_band = "high"
+priority_rationale_md = '''A valid generic program has a harness-free current failure, and the exact synthesized-row regression pin demonstrably did not cover its authored outer-scope twin.
+'''
+admission_ids = ["testing.admission-path.scoped-symbol-provenance-grid"]
+
+[[record]]
 id = "matrix.signed-int-size-upstream"
 title = "Signed int .size close-out"
 
@@ -2792,6 +2840,16 @@ target = "matrix.multi-choice-group-rule"
 source = "matrix.refusal-spelling-space"
 kind = "parent_of"
 target = "matrix.catalog-build.refusal-spelling"
+
+[[relation]]
+source = "matrix.resolved-type-group-name-legality"
+kind = "parent_of"
+target = "matrix.scoped-symbol-provenance-grid"
+
+[[relation]]
+source = "matrix.scoped-symbol-provenance-grid"
+kind = "parent_of"
+target = "testing.admission-path.scoped-symbol-provenance-grid"
 
 [[relation]]
 source = "matrix.undefined-ciborium-upstream"
