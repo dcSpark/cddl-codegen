@@ -1943,7 +1943,12 @@ impl Config {
                     self.static_dir_override.as_deref(),
                     self.verbosity_override,
                 );
-                let cli = build_cli(&name, entry, &self.base_dir, &fragments)?;
+                let mut cli = build_cli(&name, entry, &self.base_dir, &fragments)?;
+                // `[runtime]` carrier selection (including its explicitly accepted `flavor-from`
+                // path) is config's closed decision. The hand-flag runtime-flavor record has no
+                // config key and must not read a committed file to re-adjudicate that decision.
+                // This marker is internal-only: it is neither an argv fragment nor printable.
+                cli.config_runtime_decision_owned = true;
                 // The generator's own cross-flag rules, run HERE rather than where the generator
                 // reaches them. They are a pure function of the `Cli`, and every one of them is
                 // reachable from a shared key — `[defaults].json-schema-scripts = true` with one

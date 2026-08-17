@@ -1042,7 +1042,15 @@ path for `--common-import-override` runtime crates) — is pinned by
 set (non_empty\*/raw_bytes always included, prelude-only serialization.rs carrying its own import
 header), insert-block survival across a re-export in that dir, flag-off leaving a same-named dir
 untouched, the fresh-manifest seed, and the hand-manifest merge (identity/hand deps survive, a
-stale `cbor_event` pin is bumped to what the exported source requires).
+stale `cbor_event` pin is bumped to what the exported source requires). Its root-level
+`cddl-codegen-runtime-flavor.toml` is separately pinned as flag-set-pure, exact depth-limit
+metadata that re-overwrites without a source-preservation read or a `pub mod` notice.
+`common_import_flavor_checks_any_depth_limit_before_emission` owns the consuming seam: strict
+record parsing, the same-invocation export exception, and the finalized-IR `any` predicate that
+rejects only a mismatched runtime-baked guard before generated output exists; the no-`any` control
+proves it is not a bare runtime-flavor refusal. Config-mode parity remains owned by
+`a_whole_config_generates_what_the_hand_written_flags_generate`; config has no companion-record
+key because its existing `[runtime]` decision owns that contract.
 
 ## Input robustness catalog (`robustness_tests::input_robustness_catalog`)
 

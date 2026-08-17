@@ -310,14 +310,17 @@ fn manifest_deps(entries: &[String], flag: &str) -> std::collections::BTreeMap<S
 
 /// The flags below describe ONE generated crate. A project that generates several — the shape that
 /// makes the flag lists long and mostly-repeated — can instead put them in a config file:
-/// `cddl-codegen --config <file.toml> [CRATE...]`, where every flag here is a key. That mode is
-/// mutually exclusive with these flags (see `docs/docs/config_file.mdx`), which is why `--config` is
-/// not itself listed among them; this note is how it stays discoverable from `--help`.
+/// `cddl-codegen --config <file.toml> [CRATE...]`, where every config-supported flag here is a key.
+/// The hand-only `--common-import-flavor` companion is the deliberate exception: config's
+/// `[runtime]` table already owns that decision. Config mode is mutually exclusive with these flags
+/// (see `docs/docs/config_file.mdx`), which is why `--config` is not itself listed among them; this
+/// note is how it stays discoverable from `--help`.
 const CONFIG_MODE_HELP: &str = "Multi-crate projects: `cddl-codegen --config <file.toml> [CRATE...]` \
-                                takes every flag above as a key in a TOML file, with shared values \
-                                declared once. Paths in it resolve against the config file rather \
-                                than the current directory. `--config` cannot be combined with the \
-                                flags above.";
+                                takes every config-supported flag above as a key in a TOML file, \
+                                with shared values declared once; `--common-import-flavor` is the \
+                                hand-only exception because `[runtime]` owns that decision. Paths \
+                                in it resolve against the config file rather than the current \
+                                directory. `--config` cannot be combined with the flags above.";
 
 #[derive(Debug, Default, Parser)]
 #[clap(after_help = CONFIG_MODE_HELP, after_long_help = CONFIG_MODE_HELP)]
@@ -748,6 +751,12 @@ pub struct Cli {
     #[clap(long, value_parser, value_name = "COMMON_IMPORT_OVERRIDE")]
     pub common_import_override: Option<String>,
 
+    /// The committed runtime-flavor record paired with `--common-import-override`. It is a
+    /// cross-crate input, so a hand-generated `any` consumer can compare its depth guard before
+    /// emitting code against the runtime that baked the guard by value.
+    #[clap(long, value_parser, value_name = "RUNTIME_FLAVOR_TOML")]
+    pub common_import_flavor: Option<std::path::PathBuf>,
+
     /// An external macro to be called instead of manually emitting functions for
     /// conversions to/from CBOR bytes or JSON.
     /// If the macro is scoped it will be imported using the supplied path.
@@ -936,10 +945,13 @@ pub struct Cli {
     /// see the other one; a config file can, and refuses the shape. No
     /// mod.rs/lib.rs is written — the target crate owns its module declarations; static files
     /// reference siblings via `super::…`. Files pass through the same comment-preservation overlay
-    /// as in-crate output. The crate is OUTSIDE the output crate and is not part of the stale-file
-    /// bookkeeping. (This flag replaced `--export-static-dir`, which took the src dir itself and
-    /// left the manifest untouched — the rename is deliberately a loud break, since reinterpreting
-    /// the old value as a crate root would silently write `src/src/` and seed a stray Cargo.toml.)
+    /// as in-crate output. The root-level `cddl-codegen-runtime-flavor.toml` is always clobbered too;
+    /// it records the depth-limit flavor for hand `--common-import-flavor` consumers and is metadata,
+    /// not a Rust module or a preservation-overlay input. The crate is OUTSIDE the output crate and
+    /// is not part of the stale-file bookkeeping. (This flag replaced `--export-static-dir`, which
+    /// took the src dir itself and left the manifest untouched — the rename is deliberately a loud
+    /// break, since reinterpreting the old value as a crate root would silently write `src/src/` and
+    /// seed a stray Cargo.toml.)
     #[clap(
         long = "export-static-crate",
         value_parser,
@@ -954,6 +966,12 @@ pub struct Cli {
     // `-i`, `-o` and `-s`, and declares no `version`, so clap claims no `-V` either.
     #[clap(long, short = 'v', value_enum, default_value_t = Verbosity::Warn)]
     pub verbosity: Verbosity,
+
+    /// Config expansion has already made the maintainer-closed shared-runtime carrier decision.
+    /// This is deliberately not a flag or config key: it only prevents the hand-flag companion
+    /// record check from re-adjudicating config mode from a committed file.
+    #[clap(skip)]
+    pub(crate) config_runtime_decision_owned: bool,
 }
 
 /// A `--lib-name` in the form rust code spells it: dashes normalised to underscores.

@@ -448,6 +448,16 @@ fn stub_dir_declares(cli: &Cli, dep: &str) -> bool {
 }
 
 pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
+    // The companion is an explicit cross-crate input for the runtime named by the override. Without
+    // that override there is no runtime to compare against, so accepting a path would silently do
+    // nothing (and a misspelled path would evade every later diagnostic).
+    if cli.common_import_flavor.is_some() && cli.common_import_override.is_none() {
+        return Err(
+            "--common-import-flavor requires --common-import-override: the record describes the \
+             common runtime an override names, so without an override it would be a silent no-op"
+                .to_owned(),
+        );
+    }
     // The canonical toggle is emitted as an extra argument on the preserve-encodings `serialize`
     // signatures; without --preserve-encodings those signatures don't take it, so the generator
     // emits `serialize(serializer, force_canonical)` calls against 1-arg methods and references an
@@ -706,6 +716,61 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
                  `--rust-dep {package}=<path>` as well, or drop the forwarding"
             ));
         }
+    }
+    Ok(())
+}
+
+/// Enforce the hand-flag half of the shared-runtime depth-limit contract after IR finalization and
+/// before the generation closure can write a byte. Config expansion marks its `Cli` because its
+/// existing `[runtime]` carrier decision (including the explicitly accepted `flavor-from` case) is
+/// maintainer-closed and must not be re-decided from this hand-input seam.
+fn validate_common_import_runtime_flavor(
+    cli: &Cli,
+    types: &IntermediateTypes,
+) -> Result<(), String> {
+    if cli.config_runtime_decision_owned || cli.common_import_override.is_none() {
+        return Ok(());
+    }
+
+    let exported = match &cli.common_import_flavor {
+        Some(path) => {
+            let same_invocation_record = cli
+                .export_static_crate
+                .as_ref()
+                .is_some_and(|export| path == &export.join(crate::runtime_flavor::FILE_NAME));
+            if same_invocation_record {
+                crate::runtime_flavor::RuntimeFlavor::from_depth_limit(cli.deserialize_depth_limit)
+            } else {
+                crate::runtime_flavor::RuntimeFlavor::read(path)?
+            }
+        }
+        None if types.uses_any_cbor() => {
+            return Err(format!(
+                "CDDL `any` reaches the runtime-baked AnyCbor depth guard, but \
+                 --common-import-override has no companion --common-import-flavor=<path/to/{}>. \
+                 Point it at the committed record written by --export-static-crate before generating \
+                 this consumer.",
+                crate::runtime_flavor::FILE_NAME
+            ));
+        }
+        None => return Ok(()),
+    };
+
+    let consumer =
+        crate::runtime_flavor::RuntimeFlavor::from_depth_limit(cli.deserialize_depth_limit);
+    if types.uses_any_cbor() && consumer != exported {
+        let path = cli
+            .common_import_flavor
+            .as_ref()
+            .expect("an AnyCbor mismatch has a named runtime-flavor record");
+        return Err(format!(
+            "--common-import-flavor={} records --deserialize-depth-limit={} for the exported \
+             runtime, but this consumer uses --deserialize-depth-limit={}. CDDL `any` reaches the \
+             runtime-baked AnyCbor depth guard, so the values must match (including `unset`).",
+            path.display(),
+            exported.display_depth_limit(),
+            consumer.display_depth_limit(),
+        ));
     }
     Ok(())
 }
@@ -1038,7 +1103,9 @@ pub fn with_types<R>(
 
     // A spec whose finalized IR lowers CDDL `any` to the `AnyCbor` runtime type is a full-surface
     // citizen: rust ser/deser, the JSON serde/schemars impls, and the wasm wrapper class
-    // (`generate_any_cbor_wasm`). No flag combination is rejected on `any`'s account.
+    // (`generate_any_cbor_wasm`). It remains supported across every surface; the only extra
+    // contract is the explicit hand common-runtime companion record, when that override is used.
+    validate_common_import_runtime_flavor(cli, &types)?;
     Ok(f(&types, export_raw_bytes_encoding_trait))
 }
 

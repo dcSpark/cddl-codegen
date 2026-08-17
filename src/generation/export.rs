@@ -1051,6 +1051,10 @@ impl GenerationScope {
                     runtime_files,
                     serialization: rustfmt_generated_string(&prelude)?.into_owned(),
                     manifest_ops: crate::cargo_manifest::ops_for_static_runtime(cli)?,
+                    runtime_flavor_record: crate::runtime_flavor::RuntimeFlavor::from_depth_limit(
+                        cli.deserialize_depth_limit,
+                    )
+                    .render(),
                 })
             }
         };

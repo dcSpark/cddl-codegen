@@ -28658,6 +28658,13 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         !static_dir.join("json_schema_gen.rs").exists(),
         "json_schema_gen.rs must not be exported with --json-schema-export off"
     );
+    let flavor_record = runtime_crate.join(crate::runtime_flavor::FILE_NAME);
+    let expected_flavor_record = "format-version = 1\ndeserialize-depth-limit = \"unset\"\n";
+    assert_eq!(
+        std::fs::read_to_string(&flavor_record).unwrap(),
+        expected_flavor_record,
+        "the static runtime's root metadata records this flag-set's unset depth limit"
+    );
     // A fresh crate dir gets a seeded Cargo.toml carrying exactly the deps this flavor's exported
     // source references: cbor_event + hex always, hashlink (preserve-encodings), serde AND
     // serde_json (json-serde-derives — `any_cbor_json.rs`, always exported here, calls
@@ -28679,6 +28686,7 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         !manifest.contains("schemars"),
         "fresh manifest must NOT declare schemars — json-schema-export is off:\n{manifest}"
     );
+    std::fs::write(&flavor_record, "hand-tampered runtime flavor\n").unwrap();
 
     // (b) Inject a `cddl-codegen:insert` block into the exported serialization.rs (before a stable
     // prelude statement inside a fn body) and re-export: the preservation overlay must carry it.
@@ -28696,6 +28704,12 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
     std::fs::write(&ser_path, &ser).unwrap();
 
     crate::api::generate_to_disk(&cli).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&flavor_record).unwrap(),
+        expected_flavor_record,
+        "tampered root metadata is clobbered to the same flag-pure bytes without preservation reads, \
+         independently of the Rust-source preservation overlay"
+    );
     let ser_second = std::fs::read_to_string(&ser_path).unwrap();
     assert!(
         ser_second.contains("// cddl-codegen:insert-start")
@@ -28898,6 +28912,178 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         "the exported manifest must NOT declare serde with --json-serde-derives off — the OR only \
          widens serde_json, not every json-shaped dep:\n{no_serde_manifest}"
     );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// A hand-imported runtime exposes its depth limit through a strict committed record. The check is
+/// intentionally semantic: only a finalized `any` IR reaches the `AnyCbor` guard that bakes this
+/// value, so another runtime-flavor mismatch stays outside this focused contract.
+#[test]
+fn common_import_flavor_checks_any_depth_limit_before_emission() {
+    use clap::Parser;
+
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_common_import_flavor_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let any_input = scratch.join("any.cddl");
+    let plain_input = scratch.join("plain.cddl");
+    std::fs::write(&any_input, "value = any\n").unwrap();
+    std::fs::write(&plain_input, "value = uint\n").unwrap();
+
+    let runtime = scratch.join("runtime");
+    let export = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        any_input.to_str().unwrap(),
+        "--output",
+        scratch.join("export-output").to_str().unwrap(),
+        "--wasm=false",
+        "--deserialize-depth-limit=64",
+        "--export-static-crate",
+        runtime.to_str().unwrap(),
+    ]);
+    crate::api::generate_to_disk(&export).unwrap();
+    let record = runtime.join(crate::runtime_flavor::FILE_NAME);
+    assert_eq!(
+        std::fs::read_to_string(&record).unwrap(),
+        "format-version = 1\ndeserialize-depth-limit = 64\n",
+        "static export writes canonical root-level runtime metadata"
+    );
+
+    let consumer = |input: &std::path::Path,
+                    output: &str,
+                    limit: Option<u32>,
+                    flavor: Option<&std::path::Path>| {
+        let mut args = vec![
+            "cddl-codegen".to_owned(),
+            "--input".to_owned(),
+            input.display().to_string(),
+            "--output".to_owned(),
+            scratch.join(output).display().to_string(),
+            "--wasm=false".to_owned(),
+            "--common-import-override=cddl_runtime".to_owned(),
+        ];
+        if let Some(limit) = limit {
+            args.push(format!("--deserialize-depth-limit={limit}"));
+        }
+        if let Some(flavor) = flavor {
+            args.push(format!("--common-import-flavor={}", flavor.display()));
+        }
+        crate::cli::Cli::parse_from(args)
+    };
+
+    crate::api::generate_to_disk(&consumer(&any_input, "matching", Some(64), Some(&record)))
+        .expect("matching any consumer must generate");
+    for (label, limit) in [("different", Some(65)), ("unset", None)] {
+        let output = scratch.join(label);
+        let err = crate::api::generate_to_disk(&consumer(&any_input, label, limit, Some(&record)))
+            .expect_err("a mismatched AnyCbor depth guard must fail");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--common-import-flavor=")
+                && msg.contains("64")
+                && msg.contains("CDDL `any` reaches the runtime-baked AnyCbor depth guard"),
+            "mismatch must name both seam and semantic reason: {msg}"
+        );
+        assert!(
+            !output.exists(),
+            "the finalized-IR check must fail before generated output exists"
+        );
+    }
+    crate::api::generate_to_disk(&consumer(&plain_input, "plain", Some(65), Some(&record)))
+        .expect("a spec without any must not be rejected for a bare depth mismatch");
+
+    let no_record =
+        crate::api::generate_to_disk(&consumer(&any_input, "no-record", Some(64), None))
+            .expect_err("an any consumer needs the executable companion flag remedy");
+    assert!(
+        no_record
+            .to_string()
+            .contains("--common-import-flavor=<path/to/cddl-codegen-runtime-flavor.toml>"),
+        "missing companion error must carry the exact remedy: {no_record}"
+    );
+
+    let override_without_record = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        plain_input.to_str().unwrap(),
+        "--output",
+        scratch.join("no-override").to_str().unwrap(),
+        "--wasm=false",
+        "--common-import-flavor",
+        record.to_str().unwrap(),
+    ]);
+    let err = crate::api::generate_to_disk(&override_without_record)
+        .expect_err("the companion without override is a silent no-op");
+    assert!(
+        err.to_string().contains("--common-import-override"),
+        "{err}"
+    );
+
+    let unset_runtime = scratch.join("unset-runtime");
+    crate::api::generate_to_disk(&crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        any_input.to_str().unwrap(),
+        "--output",
+        scratch.join("unset-export").to_str().unwrap(),
+        "--wasm=false",
+        "--export-static-crate",
+        unset_runtime.to_str().unwrap(),
+    ]))
+    .unwrap();
+    let unset_record = unset_runtime.join(crate::runtime_flavor::FILE_NAME);
+    let err = crate::api::generate_to_disk(&consumer(
+        &any_input,
+        "set-against-unset",
+        Some(64),
+        Some(&unset_record),
+    ))
+    .expect_err("set and unset are distinct depth-limit values");
+    assert!(err.to_string().contains("exported runtime"), "{err}");
+
+    let fresh_runtime = scratch.join("fresh-runtime");
+    let fresh_record = fresh_runtime.join(crate::runtime_flavor::FILE_NAME);
+    let fresh_combined = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        any_input.to_str().unwrap(),
+        "--output",
+        scratch.join("fresh-combined").to_str().unwrap(),
+        "--wasm=false",
+        "--deserialize-depth-limit=64",
+        "--common-import-override=cddl_runtime",
+        "--common-import-flavor",
+        fresh_record.to_str().unwrap(),
+        "--export-static-crate",
+        fresh_runtime.to_str().unwrap(),
+    ]);
+    crate::api::generate_to_disk(&fresh_combined)
+        .expect("the same invocation may validate its not-yet-written export in memory");
+    assert!(
+        fresh_record.exists(),
+        "fresh combined export writes its record"
+    );
+    let elsewhere = scratch.join("not-the-export.toml");
+    let mut other_args = vec![
+        "cddl-codegen".to_owned(),
+        "--input".to_owned(),
+        any_input.display().to_string(),
+        "--output".to_owned(),
+        scratch.join("other-path").display().to_string(),
+        "--wasm=false".to_owned(),
+        "--deserialize-depth-limit=64".to_owned(),
+        "--common-import-override=cddl_runtime".to_owned(),
+        format!("--common-import-flavor={}", elsewhere.display()),
+        format!("--export-static-crate={}", fresh_runtime.display()),
+    ];
+    let err = crate::api::generate_to_disk(&crate::cli::Cli::parse_from(other_args.drain(..)))
+        .expect_err("a companion path elsewhere remains a committed input");
+    assert!(err.to_string().contains("--common-import-flavor="), "{err}");
 
     let _ = std::fs::remove_dir_all(&scratch);
 }

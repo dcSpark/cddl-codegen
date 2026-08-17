@@ -179,6 +179,8 @@ fn static_crate_plan(output: &Path, target: &Path) -> WriteTailPlan {
         ],
         serialization: "pub struct SerializationPrelude;\n".to_owned(),
         manifest_ops: vec![set_op(&["dependencies", "cbor_event"], "2.4")],
+        runtime_flavor_record: "format-version = 1\ndeserialize-depth-limit = \"unset\"\n"
+            .to_owned(),
     });
     p
 }
@@ -821,6 +823,11 @@ fn write_tail_static_crate_preserves_hand_root_merges_manifest_and_gates_notices
     assert_eq!(
         read(&target, "src/serialization.rs"),
         "pub struct SerializationPrelude;\n"
+    );
+    assert_eq!(
+        read(&target, crate::runtime_flavor::FILE_NAME),
+        "format-version = 1\ndeserialize-depth-limit = \"unset\"\n",
+        "runtime-flavor metadata is root-level data, not a Rust module"
     );
     let manifest = read(&target, "Cargo.toml");
     assert!(

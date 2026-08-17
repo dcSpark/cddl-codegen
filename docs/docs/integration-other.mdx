@@ -13,6 +13,8 @@ This guide is written in general for integrating with other libraries generated 
 
 When generating a library that has as a dependency another cddl-codegen-generated library you can share the common cddl-codegen types/traits like `Deserialize`, `RawBytesEncoding`, etc. Remember to pass in `--common-import-override` tag. For CML we pass in `--common-import-override=cml_core`. This is where all the common cddl-codegen traits are located so we can avoid having duplicate incompatible traits in other libraries.
 
+If a hand-generated consumer's finalized CDDL uses `any`, pair that override with `--common-import-flavor=<runtime>/cddl-codegen-runtime-flavor.toml`. `--export-static-crate` writes this record for the shared runtime, allowing cddl-codegen to compare the deserialize-depth limit before it emits code. Config-driven generation already owns this runtime decision and does not use the hand-imported record.
+
 ## CML macros
 
 In CML we have macros for implementing WASM conversions and JSON/bytes. We pass in `--wasm-cbor-json-api-macro=cml_core_wasm::impl_wasm_cbor_json_api` and `--wasm-conversions-macro=cml_core_wasm::impl_wasm_conversions` which are both located in `cml_core_wasm`. This drastically reduces WASM wrapper boilerplate.

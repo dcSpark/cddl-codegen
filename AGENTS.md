@@ -112,9 +112,10 @@ changing the *runtime behaviour* of generated code usually means editing `static
     a subset run, and a counterparty in another repo. Nothing reads prior *tool* output to decide
     what code to generate. (Cross-crate request sidecars — `--wrapper-requests` /
     `--key-requests` reading a CONSUMER's committed `borrowed_collections.rs` /
-    `borrowed_key_types.rs`, and `--extern-import` reading a DEPENDENCY's committed
-    `extern-interface/<dep>/**` export — are explicit INPUTS from another crate, not this run's prior
-    output; same inputs → same bytes still holds.)
+    `borrowed_key_types.rs`, `--extern-import` reading a DEPENDENCY's committed
+    `extern-interface/<dep>/**` export, and `--common-import-flavor` reading a runtime exporter's
+    committed `cddl-codegen-runtime-flavor.toml` — are explicit INPUTS from another crate, not this
+    run's prior output; same inputs → same bytes still holds.)
 - **Never regenerate a downstream CONSUMER repo (e.g. a CML checkout) to validate a change.**
   Generation clobbers the consumer's `src/generated/**`, and those working trees may hold large
   uncommitted migrations — a "just regen it to prove the fix" step nearly destroyed one. Validate

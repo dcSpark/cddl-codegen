@@ -661,18 +661,10 @@ body_md = '''- **Checking `[runtime] flavor-from`'s safety condition rather than
   reduced `{+ K => V}` and an isolated reduced `any`, pinned by
   `a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against`. Do not rebuild a
   flag→poisoned-construct map from those retired gaps; compatibility outside the pinned direction
-  remains spec-dependent and explicit through `flavor-from`. The same depth-limit divergence is
-  reachable WITHOUT config mode — hand invocations pairing
-  `--export-static-crate` with `--common-import-override` consumers — and there it has less signage
-  still: no carrier note exists, only the MATCH contract on the flag's own doc. A check on that path
-  is a structurally different build, not a scope extension of the config-mode one: no single hand
-  invocation sees both flag sets (the consumer knows only the runtime's path, used verbatim), so it
-  would need the exported runtime to carry a machine-readable flavor record that consumer generation
-  reads as an explicit cross-crate input (the `--extern-import` class — another crate's committed
-  export, not this run's prior output). That half is not behind the maintainer-CLOSED gate because it
-  never touches the carrier derivation. Reopening signal: a consumer report of the silent
-  depth-limit mis-guarding in a shared-runtime workspace, reached via `flavor-from` or via hand-flag
-  `--export-static-crate`.
+  remains spec-dependent and explicit through `flavor-from`. The hand-flag runtime-record protocol
+  is delivered separately and does not reopen this config/carrier decision; config expansion marks
+  that it already owns the question and continues to preserve its explicitly accepted
+  `flavor-from` behavior.
 
 '''
 decision_state = "decided"
@@ -6057,17 +6049,16 @@ kind = "decision"
 body_md = '''- **Where signal-shaped prose lives on arms that cannot reopen.** The prose-slot vocabulary
   declares `signal_md` exactly on the arms that carry a nested transition contract, on the rule
   that a signal slot on an arm which structurally cannot reopen would legitimize a contradiction:
-  a record typed permanent promising, in prose, that it might not be. Five records sit on the far
-  side of that rule with signal-shaped sentences left inside `body_md` — three decided-permanent
-  decisions (`testing.checking-runtime-flavor-s-safety-condition-rather-stating`,
-  `testing.complete-cargo-mutants-sweep-will-never-run`,
+  a record typed permanent promising, in prose, that it might not be. Four records sit on the far
+  side of that rule with signal-shaped sentences left inside `body_md` — two decided-permanent
+  decisions (`testing.complete-cargo-mutants-sweep-will-never-run`,
   `testing.generic-raw-bytes-base-refused-generic-extern-base`) and two controls
   (`testing.arm-position-s-classifier-compile-time-forcing-function`,
-  `testing.transparent-tag-set-idiom-recognized-shape-boundary-request`) — so for these five the
+  `testing.transparent-tag-set-idiom-recognized-shape-boundary-request`) — so for these four the
   reopenability claim a reader sees is prose no typed field backs. The two candidate resolutions
   differ in kind, not degree: give those arms an optional transition home (schema grows, and the
   permanence enum stops meaning what it says), or reword/relocate the prose when each record is
-  next touched (schema unchanged, five hand edits spread over whoever next opens them). The
+  next touched (schema unchanged, four hand edits spread over whoever next opens them). The
   corpus already argues for the second: `cargo-mutants`'s sentence *refuses* a signal ("do not
   schedule it, add it to a later burndown, or invent a reopening signal"), and the arm-position
   control's names a trigger for a narrower follow-on — adding a runtime assertion of the exclusion
@@ -6083,11 +6074,11 @@ question_md = '''May an arm that carries no transition contract declare a prose 
 
 [record.payload.unblock_predicate]
 owner_reference_id = "testing-signal-shaped-prose-lives-arms-cannot"
-event_md = '''A maintainer records whether non-reopenable arms may declare a prose signal slot, naming which of the five records the ruling rewords rather than re-homes.
+event_md = '''A maintainer records whether non-reopenable arms may declare a prose signal slot, naming which of the four records the ruling rewords rather than re-homes.
 '''
-check_procedure_md = '''Require a durable ruling that states the rule for arms added later, not only a disposition of today's five records; an edit to one record is not the ruling.
+check_procedure_md = '''Require a durable ruling that states the rule for arms added later, not only a disposition of today's four records; an edit to one record is not the ruling.
 '''
-due_action_md = '''If a slot is permitted, add it to the named arms and move the five sentences; otherwise reword the five in place and delete this record.
+due_action_md = '''If a slot is permitted, add it to the named arms and move the four sentences; otherwise reword the four in place and delete this record.
 '''
 
 [[record]]

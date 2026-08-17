@@ -42,6 +42,9 @@ pub(crate) struct StaticCrateWrite {
     pub serialization: String,
     /// The static-runtime manifest changeset.
     pub manifest_ops: Vec<(KeyPath, ManifestOp)>,
+    /// Canonical root-level runtime-flavor metadata. Unlike the Rust files this is always clobbered
+    /// without reading prior contents, has no preservation overlay, and needs no `pub mod` notice.
+    pub runtime_flavor_record: String,
 }
 
 /// Everything the write tail needs, decided by the caller. Deliberately plain data: no
@@ -387,6 +390,14 @@ impl WriteTailPlan {
                 preserve_comments,
             )?;
             warn_new_static_file(serialization_is_new, "serialization.rs");
+
+            // This committed cross-crate input is the same pure function of flags as the exported
+            // runtime itself. It is metadata rather than Rust source: never preserve it, never
+            // inspect its old contents, and never ask the hand-owned crate root to declare it.
+            std::fs::write(
+                static_crate.dir.join(crate::runtime_flavor::FILE_NAME),
+                &static_crate.runtime_flavor_record,
+            )?;
 
             // The crate's Cargo.toml gets the static-runtime changeset merged in — the exported
             // source and the manifest that has to satisfy its dependencies are one artifact, so the

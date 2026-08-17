@@ -338,9 +338,12 @@ another wrapper would not narrow its accepted CBOR domain. Control operators on 
 unsupported because the operator must constrain a known value class; name a supported typed rule
 and apply the operator there. These are permanent product boundaries, not missing coverage cells.
 
-`any` generates under **every flag combination** — the Rust surface, the
+`any` generates under every output-surface flag profile — the Rust surface, the
 [wasm `AnyCbor` wrapper](wasm_differences#the-any-type-anycbor), and the JSON/schema surfaces under
-`--json-serde-derives` / `--json-schema-export`. **JSON is the deliberately lossy side**: `any`
+`--json-serde-derives` / `--json-schema-export`. A hand invocation importing a shared runtime with
+`--common-import-override` must also name that runtime's exported flavor record; this checks that
+both sides baked the same deserialize-depth limit before generation. See
+[`--common-import-flavor`](command_line_flags). **JSON is the deliberately lossy side**: `any`
 renders as a *JSON representation of CBOR* (single-key tagged objects, encodings dropped, non-finite
 floats and NaN payload bits not round-tripped) rather than natural JSON — see the
 [output-format JSON table](output_format#the-any-type-anycbor-runtime-value). One runtime limitation

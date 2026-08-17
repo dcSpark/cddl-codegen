@@ -24,6 +24,7 @@ pub(crate) mod intermediate;
 pub(crate) mod log;
 pub(crate) mod parsing;
 pub(crate) mod recursion_boundary;
+pub(crate) mod runtime_flavor;
 pub(crate) mod rust_reserved;
 pub(crate) mod utils;
 pub(crate) mod wrapper_requests;
