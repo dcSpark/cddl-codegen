@@ -5570,7 +5570,7 @@ one schema name and asserts the injectivity guard names the consumer's row.
 
 ## Design rules (review-owned; each with a shipped exemplar)
 
-Six rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
+Seven rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
 Review is their current owner; the conditional mechanical layers (built only if a class recurs) are a
 `tests/testing-roadmap.toml` item.
 
@@ -5582,6 +5582,16 @@ Review is their current owner; the conditional mechanical layers (built only if 
   equivalent — it cannot distinguish "kept loud" from "absorbed"). Shipped exemplar:
   `set_rep_if_plain_group`'s multi-rep match in intermediate/mod.rs (conflicting-rep = graceful
   rejection; non-Record/non-GroupChoice materialization = still `unreachable!`).
+- **A graceful refusal's advice is an executable contract, per message and triggering construct
+  class.** Every advice-shaped spelling in a new refusal — a rename, directive placement or
+  removal, rewrite, compatible replacement shape, or named supported placement — gets a
+  generates-green vector from the same construct class that receives the message. One happy-path
+  vector does not prove shared wording is true at another triggering site. Spell every profile
+  coordinate the conclusion needs, including `--wasm=true` or `--wasm=false`; an unspelled default
+  is not a tested coordinate. A diagnostic that names an unrepairable boundary instead must say so
+  plainly and pin that boundary rather than inventing an in-generator remedy. Shipped exemplar:
+  `robustness_tests`' B5-307 remedy sweep, including tagged anonymous composites, plain-group
+  occurrence sites, and wasm wrapper-name collisions.
 - **Vacuity floors witness the guarded artifact, not a proxy for it.** A floor whose count derives
   from an INPUT correlated with the guarded behavior — rather than from the behavior's own
   artifact — is satisfied by any regression that preserves the input (a floor counting catalog

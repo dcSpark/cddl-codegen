@@ -589,9 +589,9 @@ fn standalone_fixed_and_fixed_null_generate_nominal_type_choices() {
 
 /// A keyless map entry (`{ bytes, uint }`) is rejected BY DESIGN — each map field needs a key — but
 /// via a GRACEFUL `Err` (deferred through `IntermediateTypes::record_rejection` → drained by
-/// `finalize`), never a `panic!`. This pins that the error is real and its message is actionable:
-/// it names the offending rule and tells the user what to do. The catalog fixtures
-/// (`map_entry_no_key`, `map_entry_no_key_single`) pin the OUTCOME category; this pins the message.
+/// `finalize`), never a `panic!`. This pins the actionable message: maps require keys, and it names
+/// the three supported keyed forms. The catalog fixtures (`map_entry_no_key`,
+/// `map_entry_no_key_single`) pin the OUTCOME category; this pins the message and its remedies.
 #[test]
 fn keyless_map_entry_rejects_gracefully() {
     let path = std::env::temp_dir().join(format!(
@@ -605,6 +605,7 @@ fn keyless_map_entry_rejects_gracefully() {
         path.to_str().unwrap(),
         "--output",
         "keyless_map_unused",
+        "--wasm=true",
     ]);
     let result = crate::api::generated_strings(&cli);
     std::fs::remove_file(&path).ok();
@@ -614,13 +615,21 @@ fn keyless_map_entry_rejects_gracefully() {
     let msg = err.to_string();
     assert!(
         msg.contains("needs a key"),
-        "rejection message should be actionable (mention that each map field needs a key), got: {msg}"
+        "rejection message should state the map-field boundary (each field needs a key), got: {msg}"
     );
     // The message cites the SOURCE spelling (`m`), not the camel-cased RustIdent (`M`).
     assert!(
         msg.contains("rule `m`"),
         "rejection message should name the offending rule, got: {msg}"
     );
+    // Every keyed spelling the message advertises is executable in the same map-record class.
+    for (tag, cddl) in [
+        ("colon", "m = { a: bytes, b: uint }\n"),
+        ("arrow", "m = { 1 => bytes, 2 => uint }\n"),
+        ("table", "m = { * uint => bytes }\n"),
+    ] {
+        expect_generates(&format!("keyless_map_entry_keyed_remedy_{tag}"), cddl, &[]);
+    }
 }
 
 /// An inline MAP carrying group choices (`{ x: uint // y: tstr }`) used as a member/element type is
@@ -652,10 +661,15 @@ fn inline_map_group_choice_member_rejects_gracefully() {
         msg.contains("inline map") && msg.contains("group choices"),
         "rejection message should name the inline-map-group-choices construct, got: {msg}"
     );
-    // ...and gives the real remedy (name it as its own rule, then reference it).
+    // Executable advice: name it as its own rule, then reference it.
     assert!(
         msg.contains("name it as its own rule") && msg.contains("reference"),
         "rejection message should point at the supported named-rule remedy, got: {msg}"
+    );
+    expect_generates(
+        "inline_map_group_choice_named_rule_remedy",
+        "entry = { x: uint // y: tstr }\na = [entry]\n",
+        &[],
     );
 }
 
@@ -674,6 +688,7 @@ fn inline_array_group_choice_member_rejects_gracefully() {
         path.to_str().unwrap(),
         "--output",
         "arr_gc_unused",
+        "--wasm=true",
     ]);
     let result = crate::api::generated_strings(&cli);
     std::fs::remove_file(&path).ok();
@@ -690,6 +705,21 @@ fn inline_array_group_choice_member_rejects_gracefully() {
         msg.contains("name it as its own rule") && msg.contains("reference"),
         "rejection message should point at the supported named-rule remedy, got: {msg}"
     );
+    expect_generates(
+        "inline_array_group_choice_named_rule_remedy",
+        "entry = [ 0 // 1 ]\nbar = { x: entry }\n",
+        &[],
+    );
+}
+
+/// Put the default profile coordinate in an argv only when its caller did not provide one.
+fn append_default_wasm_coordinate<'a>(argv: &mut Vec<&'a str>, extra: &[&'a str]) {
+    if !extra
+        .iter()
+        .any(|arg| *arg == "--wasm" || arg.starts_with("--wasm="))
+    {
+        argv.push("--wasm=true");
+    }
 }
 
 /// Generate `spec` and return the graceful rejection message, asserting the run neither succeeded
@@ -705,6 +735,9 @@ fn expect_graceful_rejection(tag: &str, spec: &str, extra: &[&str]) -> String {
         "--output",
         "reject_unused",
     ];
+    // The generic helpers' default profile is deliberately spelled. An explicit split
+    // `--wasm false` coordinate must not be doubled with the default.
+    append_default_wasm_coordinate(&mut argv, extra);
     argv.extend_from_slice(extra);
     let cli = Cli::parse_from(argv);
     let result = crate::api::generated_strings(&cli);
@@ -994,6 +1027,38 @@ fn inline_map_member_rejects_gracefully() {
         }
     }
 
+    // Executable named-rule advice for every enclosing construct whose anonymous map can be
+    // replaced without changing its role. The keyless spelling is intentionally absent: after
+    // naming it reaches the separate "map field needs a key" boundary above.
+    for (tag, spec) in [
+        ("elem", "inner = {x: int, y: uint}\na = [inner]\n"),
+        ("value", "inner = {a: int, c: uint}\nm = {outer: inner}\n"),
+        ("cbor", "inner = {a: int, c: uint}\nb = bytes .cbor inner\n"),
+        (
+            "choice",
+            "left = {a: int, c: uint}\nright = {b: tstr, d: uint}\nt = left / right\n",
+        ),
+        (
+            "generic",
+            "inner = {x: int, y: uint}\nfoo<a> = [a]\nbar = foo<inner>\n",
+        ),
+        ("occurrence", "inner = {x: int, y: uint}\na = [* inner]\n"),
+        (
+            "group_choice_arm",
+            "inner = {a: int, b: uint}\nt = [inner // tstr]\n",
+        ),
+    ] {
+        expect_generates(&format!("anon_map_named_rule_remedy_{tag}"), spec, &[]);
+    }
+
+    // The diagnostic explicitly scopes `@name` to the member's own type slot. This is its
+    // executable form; the route-equivalence test below exercises tag-wrapped maps too.
+    expect_generates(
+        "anon_map_member_name_remedy",
+        "t = {\n  inner: {x: uint} ; @name Inner\n  , y: uint\n}\n",
+        &[],
+    );
+
     // Taking the naming door does not make an invalid record body valid: a keyless map member now
     // gets far enough to receive the record path's own precise no-key refusal.
     let keyless_named = expect_graceful_rejection(
@@ -1011,7 +1076,10 @@ fn inline_map_member_rejects_gracefully() {
 /// An inline GROUP as the sole entry of a group-choice arm (`t = [ (uint, tstr) // bytes ]`, and
 /// the map-rep spelling `t = { (a: uint) // b: tstr }`) is rejected BY DESIGN, via a GRACEFUL
 /// `Err`, never a `panic!`. Naming the group (`pair = (uint, tstr)`, then `t = [ pair // bytes ]`)
-/// IS the supported spelling under both profiles, so the message points at it.
+/// IS the supported spelling under both profiles, so the unmarked message points at it. An optional
+/// inline group needs a different remedy: `? pair` retains the marker and reaches the occurrence
+/// refusal, so the diagnostic instead gives the type-choice count rewrite that preserves the empty
+/// wire form.
 /// `tests/robustness/inline_group_choice_arm_map.cddl` pins the map rep's outcome category.
 ///
 /// The `?`-marked vector matters on its own: the arm reads the entry's TYPE without consulting its
@@ -1022,6 +1090,7 @@ fn inline_group_choice_arm_rejects_gracefully() {
         ("inline_garm_arr", "t = [ (uint, tstr) // bytes ]\n"),
         ("inline_garm_map", "t = { (a: uint) // b: tstr }\n"),
         ("inline_garm_opt", "t = [ ? (uint, tstr) // bytes ]\n"),
+        ("inline_garm_many", "t = [ * (uint, tstr) // bytes ]\n"),
         ("inline_garm_both", "t = [ (uint, tstr) // (bytes, int) ]\n"),
     ];
     for (tag, spec) in vectors {
@@ -1031,12 +1100,60 @@ fn inline_group_choice_arm_rejects_gracefully() {
                 msg.contains("inline group"),
                 "rejection should name the inline-group construct ({tag}, {extra:?}), got: {msg}"
             );
-            assert!(
-                msg.contains("Name the group instead"),
-                "rejection should point at the named-group spelling ({tag}, {extra:?}), got: {msg}"
-            );
+            if tag == "inline_garm_opt" {
+                assert!(
+                    msg.contains("Naming it and writing `? pair` does not repair")
+                        && msg.contains(
+                            "`pair_one = [uint, tstr]`, `pair_empty = []`, `bytes_one = [bytes]`"
+                        ),
+                    "the optional inline group must name its count-preserving TYPE-choice remedy ({extra:?}), got: {msg}"
+                );
+            } else if tag == "inline_garm_many" {
+                assert!(
+                    msg.contains("Naming it alone does not repair a repeated flat group")
+                        && !msg.contains("Name the group instead"),
+                    "the repeated inline group must state its present flat-wire boundary ({extra:?}), got: {msg}"
+                );
+            } else {
+                assert!(
+                    msg.contains("Name the group instead"),
+                    "rejection should point at the named-group spelling ({tag}, {extra:?}), got: {msg}"
+                );
+            }
         }
     }
+
+    // Executable named-group advice for both representations and the two-arm spelling.
+    for (tag, spec) in [
+        ("array", "pair = (uint, tstr)\nt = [pair // bytes]\n"),
+        ("map", "pair = (a: uint)\nt = {pair // b: tstr}\n"),
+        (
+            "both",
+            "left = (uint, tstr)\nright = (bytes, int)\nt = [left // right]\n",
+        ),
+    ] {
+        expect_generates(
+            &format!("inline_group_choice_arm_named_remedy_{tag}"),
+            spec,
+            &[],
+        );
+    }
+    // Red-probe boundary: the old exact textual substitution preserves `?` and reaches the arm
+    // occurrence refusal, so it cannot be offered as a repair for this class.
+    let naive = expect_graceful_rejection(
+        "inline_group_choice_arm_optional_named_group_still_refuses",
+        "pair = (uint, tstr)\nt = [ ? pair // bytes ]\n",
+        &[],
+    );
+    assert!(
+        naive.contains("single-entry arm") && naive.contains("occurrence marker"),
+        "the named optional group must prove why the old rewrite is dead, got: {naive}"
+    );
+    expect_generates(
+        "inline_group_choice_arm_optional_count_remedy",
+        "pair_one = [uint, tstr]\npair_empty = []\nbytes_one = [bytes]\nt = pair_one / pair_empty / bytes_one\n",
+        &[],
+    );
 }
 
 /// Every `type2` construct with no member/element representation is rejected BY DESIGN, via a
@@ -1049,7 +1166,8 @@ fn inline_group_choice_arm_rejects_gracefully() {
 /// `any` is supported in exactly the position the grammar sigil is refused in.
 #[test]
 fn unsupported_member_type2_rejects_gracefully() {
-    // (tag, spec, a substring naming the construct, a substring of the honest remedy)
+    // (tag, spec, a substring naming the construct, an advice fragment; empty means an
+    // explanatory permanent boundary with no advertised rewrite)
     let vectors = [
         (
             "t2_unwrap",
@@ -1101,6 +1219,19 @@ fn unsupported_member_type2_rejects_gracefully() {
             );
         }
     }
+
+    // Execute the two advertised fixes in their member/element role. The major-type and
+    // choice-from-group forms deliberately have no advice beyond the boundary above.
+    expect_generates(
+        "member_type2_unwrap_manual_inline_remedy",
+        "foo = [v: uint, x: uint]\n",
+        &[],
+    );
+    expect_generates(
+        "member_type2_any_prelude_remedy",
+        "a = [v: any, x: uint]\n",
+        &[],
+    );
 }
 
 /// Bare byte literals use the same unstored fixed-member path as `true`/`5`: exactly one member
@@ -1120,6 +1251,8 @@ fn bare_fixed_byte_member_generates_and_occurrence_rejects_gracefully() {
                 && msg.contains("count-permitting occurrence"),
             "the occurrence refusal must name the byte singleton and its unsupported cardinality ({extra:?}), got: {msg}"
         );
+        // Explanatory boundary only: an occurrence needs a stored element carrier. The adjacent
+        // singleton (above) is not advertised as a rewrite for the repeated wire shape.
     }
 }
 /// The CDDL prelude constant `undefined` (major type 7, simple value 23) is a fixed, unit-valued
@@ -2031,6 +2164,7 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "rbf_misuse_unused",
+            "--wasm=true",
         ]);
         let result = crate::api::generated_strings(&cli);
         std::fs::remove_file(&path).ok();
@@ -2048,6 +2182,23 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
             "rejection for {seam} should carry its seam-specific wording ({seam_fragment:?}), got: {msg}"
         );
     }
+
+    // Every rule/entry message's removal advice is executable in the same construct class.
+    for (seam, cddl) in [
+        ("single", "foo = uint\n"),
+        ("choice", "foo = uint / text\n"),
+        ("option", "foo = uint / null\n"),
+        ("field", "s = [x: uint]\n"),
+    ] {
+        expect_generates(&format!("raw_bytes_flavor_remove_remedy_{seam}"), cddl, &[]);
+    }
+    // The other advertised placement is a generic extern definition; this spelling makes the
+    // flavor live by instantiating it once with a raw-bytes marker.
+    expect_generates(
+        "raw_bytes_flavor_extern_rule_remedy",
+        "pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_\next_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor\nbase = ext_set<pub_key>\n",
+        &[],
+    );
 }
 
 /// `@copy` (Copy-ness channel for extern / raw-bytes types) is valid ONLY on a
@@ -2093,6 +2244,7 @@ fn copy_misuse_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "copy_misuse_unused",
+            "--wasm=true",
         ]);
         let result = crate::api::generated_strings(&cli);
         std::fs::remove_file(&path).ok();
@@ -2109,6 +2261,19 @@ fn copy_misuse_rejects_gracefully() {
             msg.contains(seam_fragment),
             "rejection for {seam} should carry its seam-specific wording ({seam_fragment:?}), got: {msg}"
         );
+    }
+
+    // The removal remedy is executable at each rejected grammar seam; the positive marker forms
+    // exercise the diagnostic's two permitted rule definitions.
+    for (seam, cddl) in [
+        ("single", "foo = uint\n"),
+        ("choice", "foo = uint / text\n"),
+        ("option", "foo = uint / null\n"),
+        ("field", "s = [x: uint]\n"),
+        ("extern", "foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @copy\n"),
+        ("raw_bytes", "foo = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy\n"),
+    ] {
+        expect_generates(&format!("copy_remedy_{seam}"), cddl, &[]);
     }
 }
 
@@ -2203,17 +2368,16 @@ fn no_json_schema_export_misuse_rejects_gracefully() {
             seam.len()
         ));
         std::fs::write(&path, cddl).unwrap();
-        let mut args = vec![
+        let args = vec![
             "cddl-codegen".to_owned(),
             "--input".to_owned(),
             path.to_str().unwrap().to_owned(),
             "--output".to_owned(),
             "no_json_schema_export_misuse_unused".to_owned(),
+            "--wasm=false".to_owned(),
+            format!("--json-serde-derives={json}"),
+            format!("--json-schema-export={json}"),
         ];
-        if json {
-            args.push("--json-serde-derives=true".to_owned());
-            args.push("--json-schema-export=true".to_owned());
-        }
         let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli);
         std::fs::remove_file(&path).ok();
@@ -2243,6 +2407,31 @@ fn no_json_schema_export_misuse_rejects_gracefully() {
             );
         }
     }
+    // The shared diagnostic also says removal repairs each structural seam. Keep those rewrite
+    // legs here, beside the rejecting source shapes, rather than relying on an unrelated alias.
+    for (seam, cddl) in [
+        ("transparent_alias", "foo = uint\nroot = [a: foo]\n"),
+        ("no_alias", "foo = uint ; @no_alias\nroot = [a: foo]\n"),
+        (
+            "generic_definition",
+            "foo<T> = [a: T]\ninst = foo<uint>\nroot = [a: inst]\n",
+        ),
+        (
+            "set_binding",
+            "gset<T> = #6.258([* T]) / [* T]\nfoo = gset<uint>\nroot = [a: foo]\n",
+        ),
+        (
+            "unspliced_group",
+            "foo = (a: uint, b: uint)\nroot = [z: uint]\n",
+        ),
+    ] {
+        for json in [false, true] {
+            assert!(
+                run(seam, cddl, json).is_ok(),
+                "removing @no_json_schema_export repairs {seam} (json={json})"
+            );
+        }
+    }
 }
 
 /// `@duplicates` rejection classes that remain after phase 2 made table `preserve` fully live on
@@ -2255,7 +2444,7 @@ fn no_json_schema_export_misuse_rejects_gracefully() {
 #[test]
 fn duplicates_directive_rejects_gracefully() {
     // (seam, cddl, must-contain fragments) — the fragments prove the vector reached ITS seam and
-    // carries the class-correct wording. The default CLI leaves `--wasm` ON.
+    // carries the class-correct wording. The profile explicitly selects wasm.
     let permanent = "only applies to";
     let vectors = [
         // --- non-collection rules: permanent placement rejection ---
@@ -2284,6 +2473,7 @@ fn duplicates_directive_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "dup_misuse_unused",
+            "--wasm=true",
         ]);
         let result = crate::api::generated_strings(&cli);
         std::fs::remove_file(&path).ok();
@@ -2300,6 +2490,23 @@ fn duplicates_directive_rejects_gracefully() {
             msg.contains(fragment),
             "rejection for {seam} should carry its class-specific wording ({fragment:?}), got: {msg}"
         );
+    }
+
+    // Execute every advice-shaped part of the common message: the two array spellings, table
+    // spelling, remove-directive route, and named-table route for a union arm.
+    for (tag, cddl) in [
+        ("star_array", "foo = [* text] ; @duplicates reject\n"),
+        ("nonempty_array", "foo = [+ text] ; @duplicates reject\n"),
+        ("table", "foo = { * uint => text } ; @duplicates preserve\n"),
+        ("remove_alias", "foo = text\n"),
+        ("remove_record", "foo = {a: uint, b: text}\n"),
+        ("remove_union", "foo = uint / text\n"),
+        (
+            "named_union_arm",
+            "arm = { * uint => text } ; @duplicates preserve\nfoo = arm / uint\n",
+        ),
+    ] {
+        expect_generates(&format!("duplicates_directive_remedy_{tag}"), cddl, &[]);
     }
 }
 
@@ -2327,6 +2534,7 @@ fn float_set_element_rejects_gracefully() {
                 path.to_str().unwrap(),
                 "--output",
                 "float_set_unused",
+                "--wasm=true",
             ]);
             let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
             std::fs::remove_file(&path).ok();
@@ -2358,6 +2566,58 @@ fn float_set_element_rejects_gracefully() {
     // Control: no uniqueness requirement ⇒ a float element stays supported (plain Vec inner).
     run("plain_array", "foo = [* float64]\n")
         .expect("a plain float array without @duplicates reject must keep generating");
+    // Red probe against the former lie: tag-258 preserves duplicate wire encodings, but its nominal
+    // wrapper still demands `Ord`/`Hash`, so this remains rejected. The message must make that
+    // boundary explicit instead of advertising preserve as a repair.
+    let preserve_msg = run(
+        "set_nominal_preserve_still_rejects",
+        "foo = #6.258([* float64]) / [* float64] ; @duplicates preserve\n",
+    )
+    .expect_err("tag-258 preserve must still reject a float element");
+    assert!(
+        preserve_msg.contains("even with `@duplicates preserve`")
+            && preserve_msg.contains("preserve cannot repair it"),
+        "the tag-258 float message must explicitly bound preserve, got: {preserve_msg}"
+    );
+
+    // Execute each class-correct repair at the four triggering shapes. The plain reject arrays can
+    // drop the directive; the tag nominal must change its element; and the nested case proves that
+    // the recursive float predicate accepts a repaired member rule.
+    for (tag, cddl) in [
+        ("reject_array_drop", "foo = [* float64]\n"),
+        ("reject_ne_array_drop", "foo = [+ float64]\n"),
+        (
+            "nested_elem_drop",
+            "has_float = [uint, float64]\nfoo = [* has_float]\n",
+        ),
+    ] {
+        run(tag, cddl).unwrap_or_else(|err| {
+            panic!("{tag}: dropping reject on a plain array must generate: {err}")
+        });
+    }
+    for (tag, cddl) in [
+        (
+            "reject_array_non_float",
+            "foo = [* uint] ; @duplicates reject\n",
+        ),
+        (
+            "reject_ne_array_non_float",
+            "foo = [+ uint] ; @duplicates reject\n",
+        ),
+        (
+            "set_nominal_non_float",
+            "foo = #6.258([* uint]) / [* uint]\n",
+        ),
+        ("set_nominal_plain_array_rewrite", "foo = [* float64]\n"),
+        (
+            "nested_elem_non_float",
+            "has_float = [uint, uint]\nfoo = [* has_float] ; @duplicates reject\n",
+        ),
+    ] {
+        run(tag, cddl).unwrap_or_else(|err| {
+            panic!("{tag}: the class-correct float-set remedy must generate: {err}")
+        });
+    }
 }
 
 /// The `@duplicates` placements generate cleanly (no rejection) and select the right twin. For a
@@ -3407,6 +3667,18 @@ fn preserve_pair_map_loose_wrapper_ident_collision_rejects_gracefully() {
         "the message must name the claimed ident and the pair-map twin (distinct from the \
          NonEmpty/reject siblings), got: {msg}"
     );
+    // The diagnostic's two executable alternatives: rename the unrelated claimant, or make it
+    // the compatible preserve table that is itself this wasm wrapper.
+    expect_generates(
+        "preserve_pair_map_loose_collision_rename_remedy",
+        "other = [x: uint]\nholder = {1: uint, * uint => text ; @duplicates preserve\n}\nuser = [p: other]\n",
+        &["--wasm=true"],
+    );
+    expect_generates(
+        "preserve_pair_map_loose_collision_compatible_remedy",
+        "pair_map_u64_to_text = { * uint => text } ; @duplicates preserve\nholder = {1: uint, * uint => text ; @duplicates preserve\n}\nuser = [p: pair_map_u64_to_text]\n",
+        &["--wasm=true"],
+    );
 }
 
 /// The second mint source of the same name family: a `@newtype`/TAG-forced WRAPPER over an inline
@@ -3445,6 +3717,18 @@ fn preserve_pair_map_wrapper_inner_ident_collision_rejects_gracefully() {
             && msg.contains("wrapped by rule 'TaggedPt'"),
         "the message must name the claimed ident, the pair-map twin and the WRAPPER rule that \
          mints it, got: {msg}"
+    );
+    // Same pair-map message: a renamed claimant removes the collision, and a matching preserve
+    // table is the one compatible replacement shape it explicitly advertises.
+    expect_generates(
+        "preserve_pair_map_wrapper_collision_rename_remedy",
+        "other = [x: uint]\ntagged_pt = #6.24({ * uint => text }) ; @duplicates preserve\nholder = [t: tagged_pt, p: other]\n",
+        &["--wasm=true"],
+    );
+    expect_generates(
+        "preserve_pair_map_wrapper_collision_compatible_remedy",
+        "pair_map_u64_to_text = { * uint => text } ; @duplicates preserve\ntagged_pt = #6.24({ * uint => text }) ; @duplicates preserve\nholder = [t: tagged_pt, p: pair_map_u64_to_text]\n",
+        &["--wasm=true"],
     );
 }
 
@@ -3486,6 +3770,18 @@ fn default_rest_row_loose_map_wrapper_ident_collision_rejects_gracefully() {
             && msg.contains("loose map wrapper"),
         "the message must name the claimed ident, the rest row that mints it, and the DEFAULT \
          (non-PairMap) flavor, got: {msg}"
+    );
+    // The default loose-map detector advertises both a rename and a compatible plain `{* …}`
+    // table of the same key/value; execute both at the rest-row source.
+    expect_generates(
+        "default_rest_row_collision_rename_remedy",
+        "other = [x: uint]\nholder = {1: uint, * uint => text}\nuser = [p: other]\n",
+        &["--wasm=true"],
+    );
+    expect_generates(
+        "default_rest_row_collision_compatible_remedy",
+        "map_u64_to_text = { * uint => text }\nholder = {1: uint, * uint => text}\nuser = [p: map_u64_to_text]\n",
+        &["--wasm=true"],
     );
     assert!(
         !msg.contains("duplicate top-level ident"),
@@ -3530,6 +3826,12 @@ fn rest_row_loose_map_need_vs_self_named_non_empty_rule_rejects_gracefully() {
         ),
         "the self-named leg must name the rest row as the use that needs the loose builder, got: \
          {msg}"
+    );
+    // This self-named restricted-table message advertises a rename only.
+    expect_generates(
+        "rest_row_loose_map_self_named_rename_remedy",
+        "non_empty = {+ uint => text}\nholder = {1: uint, * uint => text}\nuser = [p: non_empty]\n",
+        &["--wasm=true"],
     );
 }
 
@@ -3662,6 +3964,65 @@ fn loose_list_direct_claim_rejects_gracefully_per_source() {
         msg.contains("an open struct-map rest row's keys() wrapper of the same element"),
         "the rest-row leg must name the row's keys wrapper as the use, got: {msg}"
     );
+
+    // The shared source-specific diagnostic offers a rename or the compatible `[* md]` rule.
+    // Exercise the latter at every source that emitted the claim, including the table-order twin.
+    for (tag, cddl) in [
+        (
+            "table",
+            "md = [a: uint, b: uint]\nmd_list = [* md]\ntbl = {* md => text}\nholder = [m: md_list]\n",
+        ),
+        (
+            "table_rule_last",
+            "md = [a: uint, b: uint]\ntbl = {* md => text}\nmd_list = [* md]\nholder = [m: md_list]\n",
+        ),
+        (
+            "restrow",
+            "md = [a: uint, b: uint]\nmd_list = [* md]\nholder = {1: uint, * md => text}\nuser = [m: md_list]\n",
+        ),
+        (
+            "tail",
+            "md = [a: uint, b: uint]\nmd_list = [* md]\nholder = [1: uint, * md]\nuser = [m: md_list]\n",
+        ),
+        (
+            "plain",
+            "md = [a: uint, b: uint]\nmd_list = [* md]\nholder = {xs: [* md]}\nuser = [m: md_list]\n",
+        ),
+    ] {
+        expect_generates(
+            &format!("loose_list_direct_compatible_remedy_{tag}"),
+            cddl,
+            &["--wasm=true"],
+        );
+    }
+
+    // The other advertised alternative is renaming the incompatible claimant. Source-order twins
+    // reach the same table construct class, so one table vector is sufficient; the rest-row, tail,
+    // and plain array classes each keep their own executable rename.
+    for (tag, cddl) in [
+        (
+            "table",
+            "md = [a: uint, b: uint]\nother = [x: uint, y: text]\ntbl = {* md => text}\nholder = [m: other]\n",
+        ),
+        (
+            "restrow",
+            "md = [a: uint, b: uint]\nother = [x: uint, y: text]\nholder = {1: uint, * md => text}\nuser = [m: other]\n",
+        ),
+        (
+            "tail",
+            "md = [a: uint, b: uint]\nother = [x: uint, y: text]\nholder = [1: uint, * md]\nuser = [m: other]\n",
+        ),
+        (
+            "plain",
+            "md = [a: uint, b: uint]\nother = [x: uint, y: text]\nholder = {xs: [* md]}\nuser = [m: other]\n",
+        ),
+    ] {
+        expect_generates(
+            &format!("loose_list_direct_rename_remedy_{tag}"),
+            cddl,
+            &["--wasm=true"],
+        );
+    }
 
     // (c) an open array `* …` rest tail
     let msg = run(
@@ -3799,6 +4160,43 @@ fn loose_map_direct_claim_rejects_gracefully_per_source() {
         "the table leg must name the table rule as the use, got: {msg}"
     );
 
+    // Both source classes share the compatible-table alternative in their messages.
+    for (tag, cddl) in [
+        (
+            "table",
+            "md = [a: uint, b: uint]\nmap_md_to_text = {* md => text}\ntbl = {* md => text}\nholder = [m: map_md_to_text]\n",
+        ),
+        (
+            "plain",
+            "map_u64_to_text = {* uint => text}\nholder = {xs: {* uint => text}}\nuser = [m: map_u64_to_text]\n",
+        ),
+    ] {
+        expect_generates(
+            &format!("loose_map_direct_compatible_remedy_{tag}"),
+            cddl,
+            &["--wasm=true"],
+        );
+    }
+
+    // The diagnostic also advertises renaming the claimant; keep one executable vector per source
+    // construct class alongside the compatible-table alternatives above.
+    for (tag, cddl) in [
+        (
+            "table",
+            "md = [a: uint, b: uint]\nother = [x: uint, y: text]\ntbl = {* md => text}\nholder = [m: other]\n",
+        ),
+        (
+            "plain",
+            "other = [x: uint, y: text]\nholder = {xs: {* uint => text}}\nuser = [m: other]\n",
+        ),
+    ] {
+        expect_generates(
+            &format!("loose_map_direct_rename_remedy_{tag}"),
+            cddl,
+            &["--wasm=true"],
+        );
+    }
+
     let msg = run(
         "map_u64_to_text = [x: uint, y: text]\n\
          holder = { xs: {* uint => text} }\n\
@@ -3841,6 +4239,12 @@ fn preserve_pair_map_non_empty_wrapper_ident_collision_rejects_gracefully() {
     assert!(
         msg.contains("NonEmptyPairMapU64ToText") && msg.contains("NonEmptyPairMap wrapper"),
         "the message must name the claimed ident and the restricted pair-map twin, got: {msg}"
+    );
+    // The anonymous restricted preserve-table collision advertises renaming the claimant.
+    expect_generates(
+        "preserve_pair_map_non_empty_collision_rename_remedy",
+        "pnetbl<k, v> = { + k => v } ; @duplicates preserve\nother = [x: uint]\nholder = [t: pnetbl<uint, tstr>, c: other]\n",
+        &["--wasm=true"],
     );
 }
 
@@ -3984,6 +4388,12 @@ fn bounded_preserve_pair_map_wrapper_ident_collision_rejects_gracefully() {
     assert!(
         owner["wasm/src/generated/mod.rs"].contains("pub struct PairMapU64ToTextMin2Max3"),
         "the authored same-shape owner must retain its bounded preserve class"
+    );
+    // The bounded preserve diagnostic's only advertised repair is to rename the unrelated rule.
+    expect_generates(
+        "bounded_preserve_pair_map_collision_rename_remedy",
+        "bounded = {2*3 uint => tstr} ; @duplicates preserve\nother = [x: uint]\nholder = [p: bounded]\n",
+        &["--wasm=true"],
     );
 }
 
@@ -4938,6 +5348,13 @@ fn duplicates_reject_structural_wrapper_name_collision_rejects_gracefully() {
         msg.contains("U64OrderedSet") && msg.contains("OrderedSet wrapper"),
         "the collision message must name the reject twin (distinct from NonEmptyVec/Map), got: {msg}"
     );
+    // The collision message asks for a renamed claimant; its generic anonymous-instance source
+    // stays intact in the positive vector.
+    expect_generates(
+        "duplicates_reject_wrapper_collision_rename_remedy",
+        "oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nother = uint\nholder = [g: oset<uint>, h: other]\n",
+        &["--wasm=true"],
+    );
 }
 
 /// `@duplicates` at a field/member position is per-rule-only, so it is a graceful placement
@@ -4955,6 +5372,7 @@ fn duplicates_directive_on_field_rejects_gracefully() {
         path.to_str().unwrap(),
         "--output",
         "dup_field_unused",
+        "--wasm=true",
     ]);
     let result = crate::api::generated_strings(&cli);
     std::fs::remove_file(&path).ok();
@@ -4965,6 +5383,12 @@ fn duplicates_directive_on_field_rejects_gracefully() {
     assert!(
         msg.contains("@duplicates") && msg.contains("per-rule"),
         "field rejection should name the directive and its per-rule nature, got: {msg}"
+    );
+    // The message's one repair is to name the collection rule, then place its policy there.
+    expect_generates(
+        "duplicates_field_named_collection_remedy",
+        "items = [* uint] ; @duplicates reject\ns = [x: items]\n",
+        &[],
     );
 }
 
@@ -5047,6 +5471,15 @@ fn dotted_rule_name_rejects_gracefully() {
         err.contains('.') && err.contains("does not support"),
         "rejection must explain that dotted rule names are unsupported, got: {err}"
     );
+    assert!(
+        err.contains("rename the rule to a dot-free identifier"),
+        "the dotted-name refusal must advertise its executable rename, got: {err}"
+    );
+    expect_generates(
+        "dotted_rule_name_dot_free_rename_remedy",
+        "cose_label = int\n",
+        &[],
+    );
 }
 
 /// An unsupported `type2` construct as a rule body (`foo = #1.2`, a bare major-type constraint;
@@ -5065,6 +5498,7 @@ fn unsupported_type2_rule_body_rejects_gracefully() {
         path.to_str().unwrap(),
         "--output",
         "major_unused",
+        "--wasm=false",
     ]);
     let result = crate::api::generated_strings(&cli);
     std::fs::remove_file(&path).ok();
@@ -5272,6 +5706,7 @@ fn lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites() {
             path.to_str().unwrap(),
             "--output",
             "armname_unused",
+            "--wasm=false",
         ]);
         let result = crate::api::generated_strings(&cli);
         std::fs::remove_file(&path).ok();
@@ -5398,6 +5833,7 @@ fn unsupported_control_operator_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "ctlop_unused",
+            "--wasm=false",
         ]);
         let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
         std::fs::remove_file(&path).ok();
@@ -5417,6 +5853,7 @@ fn unsupported_control_operator_rejects_gracefully() {
         and.contains("rule `X`") && and.contains(".and"),
         "`.and` rejection should name the rule and the operator, got: {and}"
     );
+    // Both diagnostics state an unsupported operator boundary and deliberately offer no rewrite.
 }
 
 /// A zero-permitting occurrence (`*` / `0*n` / `*n`) on a unique keyed struct-map field has the
@@ -6009,6 +6446,15 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
     run("m = [* bytes]\n", "homogeneous").expect(
         "a single-entry `[* bytes]` takes the homogeneous Vec path — no narrowing to guard",
     );
+    // Total remedy map for the graceful middle-segment diagnostics above: final `*`/`+`/bounded
+    // tails execute "move it final"; `leading`/`middle_plus` execute a mandatory major-disjoint
+    // suffix; `exact_same_major` executes the count-delimited exact-window boundary; and this leg
+    // executes the remaining advertised wire rewrite, framing the repeated part as its own array.
+    run(
+        "repeated = [* bytes]\nm = [uint, repeated, bytes]\n",
+        "framed_repeated_part_remedy",
+    )
+    .expect("framing the repeated part as its own array must generate");
 }
 
 /// Open-array occurrence segment (`[a, * t]`, final or safely middle) front-end: every recognition
@@ -6557,6 +7003,7 @@ fn occurrence_marker_on_inline_group_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "inline_occur_unused",
+            "--wasm=true",
         ]);
         let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
         std::fs::remove_file(&path).ok();
@@ -6662,6 +7109,7 @@ fn plain_group_table_domain_rejects_gracefully_at_both_spellings() {
             "--output",
             "grouptable_unused",
         ];
+        append_default_wasm_coordinate(&mut args, extra);
         args.extend_from_slice(extra);
         let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli);
@@ -6871,6 +7319,7 @@ fn plain_group_keyed_map_member_rejects_gracefully_at_every_spelling() {
             "--output",
             "groupmapmember_unused",
         ];
+        append_default_wasm_coordinate(&mut args, extra);
         args.extend_from_slice(extra);
         let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli);
@@ -7286,6 +7735,7 @@ fn optional_plain_group_array_field_rejects_gracefully_at_every_spelling() {
             "--output",
             "optgrouparr_unused",
         ];
+        append_default_wasm_coordinate(&mut args, extra);
         args.extend_from_slice(extra);
         let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli);
@@ -7484,6 +7934,7 @@ fn plain_group_array_rest_tail_rejects_gracefully_at_every_spelling() {
             "--output",
             "grouptail_unused",
         ];
+        append_default_wasm_coordinate(&mut args, extra);
         args.extend_from_slice(extra);
         let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli);
@@ -7744,6 +8195,7 @@ fn plain_group_map_rest_row_rejects_gracefully_at_every_spelling() {
             "--output",
             "grouprow_unused",
         ];
+        append_default_wasm_coordinate(&mut args, extra);
         args.extend_from_slice(extra);
         let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli);
@@ -8056,6 +8508,7 @@ fn plain_group_type_choice_arm_rejects_gracefully_at_every_spelling() {
             "--output",
             "grouparm_unused",
         ];
+        append_default_wasm_coordinate(&mut args, extra);
         args.extend_from_slice(extra);
         let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli);
@@ -8388,6 +8841,7 @@ fn multi_choice_group_rule_body_rejects_gracefully_at_every_placement() {
             "--output",
             "multichoicegrp_unused",
         ];
+        append_default_wasm_coordinate(&mut args, extra);
         args.extend_from_slice(extra);
         let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli);
@@ -8624,6 +9078,7 @@ fn occurrence_on_single_entry_group_choice_arm_rejects_gracefully() {
             "--output",
             "armoccur_unused",
         ];
+        append_default_wasm_coordinate(&mut args, extra);
         args.extend_from_slice(extra);
         let cli = Cli::parse_from(args);
         let result = crate::api::generated_strings(&cli);
@@ -9806,6 +10261,7 @@ fn unsupported_fixed_map_key_on_record_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "rec_map_key_unused",
+            "--wasm=false",
         ];
         if preserve {
             args.push("--preserve-encodings=true");
@@ -9822,21 +10278,32 @@ fn unsupported_fixed_map_key_on_record_rejects_gracefully() {
     // A nint/float fixed key on a record map must reject gracefully, naming the rule and pointing at
     // the uint/text keys and the table remedy (formerly `unsupported map key type` panic at
     // generation, or `key_encoding_field`'s `unimplemented!` under --preserve-encodings).
-    for (spec, tag, rule) in [
-        ("neg = { -1: uint }\n", "neg", "neg"),
-        ("flt = { 1.5: uint }\n", "flt", "flt"),
-        ("m = { -1: uint, 1: uint }\n", "mixed", "m"),
-        ("m = { ? -1: uint }\n", "opt", "m"),
+    for (spec, tag, rule, table_remedy) in [
+        ("neg = { -1: uint }\n", "neg", "neg", true),
+        ("flt = { 1.5: uint }\n", "flt", "flt", false),
+        ("m = { -1: uint, 1: uint }\n", "mixed", "m", true),
+        ("m = { ? -1: uint }\n", "opt", "m", true),
     ] {
         let msg = run(spec, tag)
             .expect_err("a nint/float fixed map key on a record must reject gracefully, not panic");
         assert!(
-            msg.contains(&format!("rule `{rule}`"))
-                && msg.contains("uint")
-                && msg.contains("text")
-                && msg.contains("table"),
-            "rejection should name the rule, cite uint/text, and offer the table remedy, got: {msg}"
+            msg.contains(&format!("rule `{rule}`")) && msg.contains("uint") && msg.contains("text"),
+            "rejection should name the rule and the fixed-key boundary, got: {msg}"
         );
+        if table_remedy {
+            assert!(
+                msg.contains("table") && msg.contains("in its own rule"),
+                "{tag}: nint-style message must advertise the executable table remedy, got: {msg}"
+            );
+        } else {
+            // Floats cannot be keys even in a table, so this is an explicit explanatory boundary,
+            // not advice to try the otherwise-valid nint-table rewrite.
+            assert!(
+                msg.contains("float table key domain is rejected too")
+                    && !msg.contains("in its own rule"),
+                "{tag}: float message must not advertise the dead-end table form, got: {msg}"
+            );
+        }
     }
 
     // Arrow spellings that used to panic at field naming (parsing.rs:1278) BEFORE the key match
@@ -10221,6 +10688,7 @@ fn run_incremental_extension_spec(
         path.to_str().unwrap(),
         "--output",
         "incr_choice_unused",
+        "--wasm=false",
     ]);
     let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
     std::fs::remove_file(&path).ok();
@@ -10510,6 +10978,7 @@ fn bareword_keyword_field_name_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "kw_field_unused",
+            "--wasm=false",
         ]);
         let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
         std::fs::remove_file(&path).ok();
@@ -10549,6 +11018,9 @@ fn bareword_keyword_field_name_rejects_gracefully() {
         lib.contains("branch"),
         "the @name remedy must emit a field named `branch`, got generated/mod.rs without it"
     );
+    // The message fires in both representations, so its `@name` spelling is executed in both.
+    run("a = [if: uint ; @name branch\n]\n", "array_remedy")
+        .expect("the array-representation @name remedy must generate");
 
     // Boundary: an ordinary bareword field still generates.
     run("m = { foo: uint }\n", "ordinary")
@@ -10637,6 +11109,7 @@ fn generated_local_field_name_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "genloc_remedy_unused",
+            "--wasm=true",
         ]);
         let out = crate::api::generated_strings(&cli);
         std::fs::remove_file(&path).ok();
@@ -10650,6 +11123,17 @@ fn generated_local_field_name_rejects_gracefully() {
     assert!(
         ser.contains("write_text(\"raw\")") && ser.contains("payload"),
         "the @name remedy must rename the Rust field while keeping the `raw` wire key, got: {ser}"
+    );
+    let array_remedy = expect_generates(
+        "generated_local_array_name_remedy",
+        "a = [pre: uint, raw: bytes ; @name payload\n]\n",
+        &[],
+    );
+    assert!(
+        array_remedy
+            .values()
+            .any(|source| source.contains("payload")),
+        "the array-representation @name remedy must rename the reserved field"
     );
 
     // The ACCEPT side of the scope rule, and the reason it exists: `tag` is reserved only inside a
@@ -10679,6 +11163,7 @@ fn generated_local_field_name_rejects_gracefully() {
                 "--output",
                 "genloc_scope_unused",
             ];
+            append_default_wasm_coordinate(&mut argv, extra);
             argv.extend_from_slice(extra);
             let cli = Cli::parse_from(argv);
             let result = crate::api::generated_strings(&cli);
@@ -10738,6 +11223,37 @@ fn encoding_companion_field_collision_rejects_gracefully() {
             );
         }
     }
+    // Every shared diagnostic says `@name` repairs the exact collision. Execute the renamed member
+    // in every source class, with companion generation both disabled and enabled.
+    for (tag, spec) in [
+        (
+            "arr",
+            "a = [foo: bytes, foo_encoding: uint ; @name value_encoding\n]\n",
+        ),
+        (
+            "map",
+            "m = {1: uint, foo: bytes, foo_encoding: uint ; @name value_encoding\n}\n",
+        ),
+        (
+            "key",
+            "m = {foo: bytes, foo_key: uint ; @name key_value\n}\n",
+        ),
+        (
+            "key_encoding",
+            "m = {foo: bytes, foo_key_encoding: uint ; @name key_encoding_value\n}\n",
+        ),
+    ] {
+        for (profile, flags) in [
+            ("plain", &[][..]),
+            ("preserve", &["--preserve-encodings=true"][..]),
+        ] {
+            expect_generates(
+                &format!("encoding_companion_name_remedy_{tag}_{profile}"),
+                spec,
+                flags,
+            );
+        }
+    }
     // Accept side — the shapes that mint no colliding companion must still generate.
     for (tag, spec) in [
         // a lone `<x>_encoding` with no `<x>` sibling
@@ -10755,6 +11271,7 @@ fn encoding_companion_field_collision_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "enc_pair_unused",
+            "--wasm=true",
             "--preserve-encodings",
             "true",
         ]);
@@ -10942,6 +11459,9 @@ fn expect_generates(
         "--output",
         "recursion_boundary_unused",
     ];
+    // Keep the helper's default WASM coordinate explicit while allowing callers to select the
+    // Rust-only profile with either Clap spelling.
+    append_default_wasm_coordinate(&mut argv, extra);
     argv.extend_from_slice(extra);
     let result = crate::api::generated_strings(&Cli::parse_from(argv));
     std::fs::remove_file(&path).ok();
@@ -11219,6 +11739,7 @@ fn bounded_map_wrapper_name_collision_and_named_owner_are_distinct() {
 /// boundary replaced.
 #[test]
 fn out_of_range_bounded_array_endpoint_rejects_gracefully() {
+    // Explanatory representability boundary: no CDDL spelling can retain an endpoint outside u64.
     let path = std::env::temp_dir().join(format!(
         "cddl_codegen_bounded_endpoint_{}.cddl",
         std::process::id()
@@ -11310,6 +11831,11 @@ fn positive_minimum_self_named_bounded_rule_rejects_gracefully() {
             && msg.contains("loose 'BarList' list-builder ident")
             && msg.contains("rename the rule"),
         "the self-named bounded rejection must explain the missing loose source and remedy, got: {msg}"
+    );
+    expect_generates(
+        "positive_minimum_self_named_bounded_rename_remedy",
+        "bar = {a: uint}\nbounded_bar_list = [2*5 bar]\n",
+        &["--wasm=true"],
     );
 }
 
@@ -11424,6 +11950,7 @@ fn size_on_signed_int_rejects_gracefully() {
             path.to_str().unwrap(),
             "--output",
             "size_int_unused",
+            "--wasm=false",
         ]);
         let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
         std::fs::remove_file(&path).ok();
@@ -11455,6 +11982,8 @@ fn size_on_signed_int_rejects_gracefully() {
     // boundary: the uint half of `.size` stays supported.
     run("u = uint .size 2\n", "uint_ok")
         .expect("`uint .size N` is spec-defined and supported — must keep generating");
+    run("my_int = -255..255\n", "signed_range_remedy")
+        .expect("the explicit signed-range alternative in the diagnostic must generate");
 }
 
 /// Stacked tag encodings (a tag applied to an already-tagged value, reached by writing the outer tag
@@ -13607,6 +14136,11 @@ fn open_table_catch_all_named_for_a_flattened_accessor_rejects_gracefully() {
     );
     run("--wasm=false")
         .expect("without wasm bindings there is no class to collide on, so the name is free");
+    expect_generates(
+        "open_table_catch_all_accessor_rename_remedy",
+        "pid = bytes .size 4\nmd = uint / text\nclash = {\n  * pid => uint\n  ,\n  * md => md ; @name extra\n}\n",
+        &["--wasm=true"],
+    );
 }
 
 /// A rest row's per-entry VALUE encoding sidecar is populated from the LOCAL vars the value's
@@ -13719,6 +14253,41 @@ fn group_choice_arm_ident_collision_rejects_gracefully() {
         assert!(
             err.contains("Two types cannot share one name"),
             "[{tag}] rejection must explain the conflict, got:\n{err}"
+        );
+        assert!(
+            err.contains("Rename the arm with `; @name <new_name>`"),
+            "[{tag}] rejection must advertise its executable arm-rename remedy, got:\n{err}"
+        );
+    }
+    // Apply the advertised arm rename at each collision source class. These remain deliberately
+    // non-embeddable, so success proves the actual struct-ident remedy rather than the embeddable
+    // neighbour's different namespace.
+    for (tag, spec) in [
+        (
+            "arm_vs_rule",
+            "target = [ ; @name a\n m: uint, tag: 0 //\n ; @name b\n n: uint, tag: 1 ]\nholder = [t: target]\nsecond = [ ; @name second_target\n x: uint, z: uint, tag: 0 //\n ; @name other\n y: holder, tag: 1 ]\n",
+        ),
+        (
+            "arm_vs_arm",
+            "alpha = [ ; @name shared\n a: uint, b: uint, tag: 0 //\n ; @name alpha_other\n c: uint, tag: 1 ]\nholder = [t: alpha]\nbeta = [ ; @name beta_shared\n p: text, q: text, tag: 2 //\n ; @name beta_other\n r: holder, tag: 3 ]\n",
+        ),
+        (
+            "same_rule",
+            "foo = [ ; @name a\n x: uint, z: uint, tag: 0 //\n ; @name b\n y: text, w: uint, tag: 1 ]\n",
+        ),
+        (
+            "own_rule",
+            "foo = [ ; @name foo_arm\n x: uint, z: uint, tag: 0 //\n ; @name other\n y: uint, tag: 1 ]\n",
+        ),
+        (
+            "default_arm",
+            "second0 = [ ; @name a\n m: uint, tag: 9 //\n ; @name b\n n: uint, tag: 8 ]\nholder = [t: second0]\nsecond = [ ; @name second_arm\n x: uint, z: uint, tag: 0 //\n ; @name second_other\n y: holder, w: uint, tag: 1 ]\n",
+        ),
+    ] {
+        expect_generates(
+            &format!("group_choice_arm_ident_rename_remedy_{tag}"),
+            spec,
+            &[],
         );
     }
 }
@@ -14087,6 +14656,39 @@ fn group_choice_arm_variant_name_collision_rejects_gracefully() {
             err.contains("rule `foo`"),
             "[{tag}] rejection must name the owning rule, got:\n{err}"
         );
+        assert!(
+            err.contains("Rename one of them with `; @name <new_name>`."),
+            "[{tag}] rejection must advertise its executable distinct-name remedy, got:\n{err}"
+        );
+    }
+    // The remedy is per variant-namespace trigger class, including the camel-case convergence.
+    for (tag, spec) in [
+        (
+            "embeddable",
+            "foo = [ ; @name a\n x: uint, tag: 0 //\n ; @name b\n y: text, tag: 1 ]\n",
+        ),
+        (
+            "single_entry",
+            "foo = [ ; @name a\n uint //\n ; @name b\n text ]\n",
+        ),
+        (
+            "mixed",
+            "foo = [ ; @name a\n x: uint, tag: 0 //\n ; @name b\n y: text, w: uint ]\n",
+        ),
+        (
+            "identical",
+            "foo = [ ; @name a\n x: uint, z: text //\n ; @name b\n x: uint, z: text ]\n",
+        ),
+        (
+            "camel_case",
+            "foo = [ ; @name my_arm\n uint //\n ; @name my_arm_two\n text ]\n",
+        ),
+    ] {
+        expect_generates(
+            &format!("group_choice_arm_variant_distinct_name_remedy_{tag}"),
+            spec,
+            &[],
+        );
     }
 }
 
@@ -14289,6 +14891,7 @@ fn expect_custom_codec_source(tag: &str, spec: &str) -> String {
         path.to_str().unwrap(),
         "--output",
         "custom_codec_unused",
+        "--wasm=true",
     ]));
     std::fs::remove_file(&path).ok();
     out.unwrap_or_else(|e| panic!("[{tag}] spec must generate, got a rejection: {e}\n{spec}"))
@@ -14471,6 +15074,28 @@ fn custom_codec_pair_in_row_entry_slot_rejects_gracefully() {
         src.contains("my_ser(") && src.contains("my_deser("),
         "the advertised key-rule spelling must emit both custom call sites, got:\n{src}"
     );
+    // The row messages name key OR value for tables/rest rows and the element for a tail. Execute
+    // every named type-rule placement, not merely the key example above.
+    for (tag, spec) in [
+        (
+            "custom_row_entry_value_rule_remedy",
+            "v = uint ; @custom_serialize my_ser @custom_deserialize my_deser\nopn = {1: uint, * text => v}\n",
+        ),
+        (
+            "custom_row_entry_table_value_rule_remedy",
+            "v = uint ; @custom_serialize my_ser @custom_deserialize my_deser\nt = {* text => v}\nholder = [f: t]\n",
+        ),
+        (
+            "custom_row_entry_tail_element_rule_remedy",
+            "e = uint ; @custom_serialize my_ser @custom_deserialize my_deser\nopa = [a: uint, * e]\n",
+        ),
+    ] {
+        let src = expect_custom_codec_source(tag, spec);
+        assert!(
+            src.contains("my_ser(") && src.contains("my_deser("),
+            "{tag}: the advertised type-rule placement must emit both calls, got:\n{src}"
+        );
+    }
     // CONTROL 2: the SAME comment placement in the FIELD slot is honored, so the rejection is about
     // the row entry, not about a comment the DSL never sees.
     let src = expect_custom_codec_source(
@@ -14593,6 +15218,14 @@ fn custom_codec_pair_with_newtype_rejects_gracefully() {
         src.contains("my_ser(") && src.contains("my_deser("),
         "the same rule without @newtype must emit both custom call sites, got:\n{src}"
     );
+    // The second alternative is intentionally external: `generated_strings` can prove that the
+    // marker declaration itself is accepted, while the required hand-written full type belongs to
+    // the consuming crate and cannot be emitted by this generator.
+    expect_generates(
+        "custom_newtype_extern_boundary",
+        "nt = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [f: nt]\n",
+        &[],
+    );
 }
 
 /// The custom (de)serializer pair on an ENUM rule — a type choice, a group choice, or the
@@ -14688,6 +15321,13 @@ fn custom_codec_pair_on_enum_rule_rejects_gracefully() {
         src.contains("Ch::B(b) => my_ser(serializer, b)") && src.contains("Ch::B(my_deser(raw)?)"),
         "the variant-rule spelling must route both directions inside the enum arms, got:\n{src}"
     );
+    // As with the `@newtype` sibling, the external full-handwrite alternative crosses the
+    // generator boundary; the marker declaration is the executable in-generator half.
+    expect_generates(
+        "custom_enum_extern_boundary",
+        "ch = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [f: ch]\n",
+        &[],
+    );
 }
 
 /// A SINGLE HALF of the custom (de)serializer pair on a named RECORD rule is rejected BY DESIGN, via
@@ -14764,6 +15404,14 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
             "both single-half rejections must offer the same two remedies, got:\n{err}"
         );
     }
+
+    // The hand-written alternative crosses the generator boundary; accept its marker declaration
+    // here, while the consuming crate supplies the full record implementation.
+    expect_generates(
+        "custom_record_extern_boundary",
+        "myrec = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [f: myrec]\n",
+        &[],
+    );
 
     // CONTROL 1: BOTH halves on a record rule are NOT rejected; both thin trait impls delegate to
     // the named pair and the ordinary record field walk is absent.
@@ -14901,6 +15549,18 @@ fn single_half_custom_codec_on_record_rule_rejects_gracefully() {
         "a plain group's trailing pair is a field-level directive on its last member and must stay \
          honored in both directions, got:\n{src}"
     );
+    // Execute both local alternatives in the record message: a complete pair on the member, and
+    // a complete pair on that member's named type rule.
+    let src = expect_custom_codec_source(
+        "custom_record_field_pair_remedy",
+        "myrec = [f: bytes ; @custom_serialize my_ser @custom_deserialize my_deser\n]\n",
+    );
+    assert!(src.contains("my_ser(") && src.contains("my_deser("));
+    let src = expect_custom_codec_source(
+        "custom_record_member_type_pair_remedy",
+        "inner = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nmyrec = [f: inner]\n",
+    );
+    assert!(src.contains("my_ser(") && src.contains("my_deser("));
 }
 
 /// A SINGLE HALF of the custom (de)serializer pair at a FIELD/MEMBER slot is rejected BY DESIGN, via
@@ -15034,6 +15694,27 @@ fn single_half_custom_codec_on_record_field_rejects_gracefully() {
                  generated code, got:\n{src}"
             );
         }
+    }
+    // The second local alternative is the member's type rule (rather than this field's slot), and
+    // must be executable in both field representations just like the entry-local pair above.
+    for (tag, spec) in [
+        (
+            "array",
+            "inner = bytes ; @custom_serialize ws_only @custom_deserialize rd_only\nt = [f: inner]\n",
+        ),
+        (
+            "map",
+            "inner = bytes ; @custom_serialize ws_only @custom_deserialize rd_only\nt = {f: inner}\n",
+        ),
+    ] {
+        let src = expect_custom_codec_source(
+            &format!("custom_field_member_type_pair_remedy_{tag}"),
+            spec,
+        );
+        assert!(
+            src.contains("ws_only(") && src.contains("rd_only("),
+            "{tag}: the member-type pair remedy must route both directions, got:\n{src}"
+        );
     }
 }
 
@@ -15207,6 +15888,7 @@ fn generic_plain_group_def_rejects_gracefully() {
                 "--output",
                 "gpg_ctl_unused",
             ];
+            append_default_wasm_coordinate(&mut argv, extra);
             argv.extend_from_slice(extra);
             let cli = Cli::parse_from(argv);
             let result = crate::api::generated_strings(&cli);
@@ -16571,6 +17253,30 @@ fn non_literal_default_operand_rejects_gracefully() {
     assert!(
         !err.contains("cannot be applied to"),
         "a non-value must NOT also produce the head-check message, got:\n{err}"
+    );
+    // Execute every literal spelling enumerated by the diagnostic, plus its removal advice. `null`
+    // is intentionally absent: it is a literal (so it reaches the separate head check) but no
+    // primitive-backed default head can hold it, and must not be advertised as this remedy.
+    for (tag, spec) in [
+        ("uint", "m = {a: uint, ? f: uint .default 0}\n"),
+        (
+            "signed",
+            "signed = -128..127\nm = {a: uint, ? f: signed .default -2}\n",
+        ),
+        ("float", "m = {a: uint, ? f: float64 .default 1.5}\n"),
+        ("text", "m = {a: uint, ? f: tstr .default \"hi\"}\n"),
+        ("bytes", "m = {a: uint, ? f: bytes .default h'CAFE'}\n"),
+        ("true", "m = {a: uint, ? f: bool .default true}\n"),
+        ("false", "m = {a: uint, ? f: bool .default false}\n"),
+        ("remove", "other = uint\nm = {a: uint, ? f: uint}\n"),
+    ] {
+        run_spec(spec, &format!("nonliteral_default_remedy_{tag}")).unwrap_or_else(|err| {
+            panic!("{tag}: advertised default remedy must generate: {err}\n{spec}")
+        });
+    }
+    assert!(
+        !err.contains("or `null`"),
+        "the non-literal remedy must not advertise null: no primitive default head accepts it, got:\n{err}"
     );
 }
 

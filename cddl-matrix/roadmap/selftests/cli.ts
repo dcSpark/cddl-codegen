@@ -869,7 +869,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const watches = dashboards.get("watches")!;
       const liveWatches = watches.live as readonly Record<string, unknown>[];
       const history = watches.attributed_history as readonly Record<string, unknown>[];
-      assert(liveWatches.length === 2 && history.length === 10 && liveWatches.every((row) =>
+      assert(liveWatches.length === 2 && history.length === 8 && liveWatches.every((row) =>
         "payload_kind" in row && "signature_md" in row && ("capture_steps" in row || "evidence_ids" in row)) &&
         history.every((row) => row.payload_kind === "testing_incident" && "signature_md" in row &&
           "attribution_md" in row && "evidence_ids" in row && "operating_rule_reference_id" in row),
@@ -937,7 +937,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const testing = liveTestingV3Document();
       for (const [name, document, expectedSlots, expectedParts] of [
         ["matrix", matrix, 4, 9],
-        ["testing", testing, 0, 24],
+        ["testing", testing, 0, 10],
       ] as const) {
         assert(document.parts.every((part) => part.body_md.byteLength > 0),
           `${name} part prose is empty`);

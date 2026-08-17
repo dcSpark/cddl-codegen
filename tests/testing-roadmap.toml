@@ -91,21 +91,6 @@ entries = [
   "testing.generated-local-collision.general-mangling-remedy",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
   "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim",
-  "testing.rejection-message-s-remedy-string-executable-claim-pin",
-  "part-remedy-string-executable-wherever-lives-emitted-message-gets",
-  "part-advice-shaped-spelling-message-prints-remedy-string-strings",
-  "part-remedy-pin-per-message-per-triggering-construct-class",
-  "part-findings-couples-carriers-least-carrier-executes-s-headline",
-  "part-refusal-s-first-predicate-refused-exact-remedy-own",
-  "part-tagged-remedy-spelling-was-imprecise-coords-faithful-coords",
-  "part-findings-s-recommended-remedy-c-kv-keyed-plain",
-  "part-findings-s-description-claimed-shape-s-standalone-codec",
-  "part-both-ignore-rejections-printed-k-v-ignore-valid",
-  "part-inline-group-choice-rejection-s-remedy-g-b",
-  "part-anonymous-group-rejection-s-give-name-using-name",
-  "part-default-head-refusal-s-remedy-list-offered-bare",
-  "part-generics-repeat-refusal-s-first-drafted-remedy-advertised",
-  "part-bare-fixed-table-value-refusal-continued-say-named",
   "testing.verify-ts-elapsed-time-covers-startup-activity",
 ]
 
@@ -348,18 +333,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof", "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"]
 incident_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one", "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"]
-
-[[record]]
-id = "testing.admission-path.rejection-message-s-remedy-string-executable-claim-pin"
-title = "Admission for testing.rejection-message-s-remedy-string-executable-claim-pin."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "independent_recurrence"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-evidence_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof", "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"]
-incident_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one", "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"]
 
 [[record]]
 id = "testing.admission-path.scoped-symbol-provenance-grid"
@@ -4065,72 +4038,6 @@ unprobed_remainder_md = '''The evidence proves this admitted class only; it does
 surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
 
 [[record]]
-id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one"
-title = "Independent admitted incident one for testing.rejection-message-s-remedy-string-executable-claim-pin."
-
-[record.payload]
-kind = "testing_incident"
-incident_posture = "attributed"
-signature_md = '''The anonymous tagged-group remedy was dead for one triggering construct class.
-'''
-evidence_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"]
-attribution_md = '''The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
-'''
-operating_rule_reference_id = "testing-roadmap-next-work-n35"
-
-[[record]]
-id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
-title = "Incident evidence for testing.rejection-message-s-remedy-string-executable-claim-pin."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''The anonymous tagged-group remedy was dead for one triggering construct class.
-'''
-freshness = "as_of"
-reference_ids = ["testing-rejection-message-s-remedy-string-executable", "testing-roadmap-next-work-n36"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
-
-[[record]]
-id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"
-title = "Independent admitted incident two for testing.rejection-message-s-remedy-string-executable-claim-pin."
-
-[record.payload]
-kind = "testing_incident"
-incident_posture = "attributed"
-signature_md = '''The bare fixed-table-value refusal retained a stale named-rule remedy.
-'''
-evidence_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"]
-attribution_md = '''The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
-'''
-operating_rule_reference_id = "testing-roadmap-next-work-n37"
-
-[[record]]
-id = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
-title = "Incident evidence for testing.rejection-message-s-remedy-string-executable-claim-pin."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''The bare fixed-table-value refusal retained a stale named-rule remedy.
-'''
-freshness = "as_of"
-reference_ids = ["testing-rejection-message-s-remedy-string-executable-n2", "testing-roadmap-next-work-n38"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
-
-[[record]]
 id = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group"
 title = "Authored-group claimant independently reproduced the scoped-symbol provenance failure."
 
@@ -5649,37 +5556,6 @@ capture_md = '''Record the full untruncated log or consumer report, command, ful
 '''
 
 [[record]]
-id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "A rejection message's remedy string is an executable claim — pin each one with a generates-green vector, and execute a findings entry's operative claims at pickup."
-legacy_aliases = ["Next work 15"]
-
-[record.payload]
-kind = "work"
-body_md = '''15. **A rejection message's remedy string is an executable claim — pin each one with a
-    generates-green vector, and execute a findings entry's operative claims at pickup.** The
-    `*_rejects_gracefully` family already pins message TEXT; this extends the convention so the
-    remedy half of the contract is executed, not just spelled. Sweep the existing family for
-    remedies that are only text-pinned and add the generate leg where one is missing; new refusals
-    adopt the pattern from the start (the table-domain and tagged-domain tests are the templates,
-    and `plain_group_keyed_map_member_rejects_gracefully_at_every_spelling`'s "the remedy must
-    actually work" legs are the pattern applied from day one). Four working rules bound what the
-    sweep has to cover:
-
-    **Status: pending family-wide sweep.** The ten individual pins below prove instances and the
-    day-one convention, but they do not complete the sweep of existing refusal remedies.
-
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "misleading_docs"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.rejection-message-s-remedy-string-executable-claim-pin's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-admission_ids = ["testing.admission-path.rejection-message-s-remedy-string-executable-claim-pin"]
-
-[[record]]
 id = "testing.representation-changing-directive-goes-live-new-container-ship"
 title = "A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its extern-interface projection — the cross-crate skew class, invisible to every single-crate gate."
 
@@ -7010,49 +6886,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[part]]
-part_id = "part-advice-shaped-spelling-message-prints-remedy-string-strings"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "EVERY advice-shaped spelling a message prints is a remedy string, not only the strings"
-body_md = '''    - EVERY advice-shaped spelling a message prints is a remedy string, not only the strings
-      introduced by "instead" or "remedy": an advertised VALID PLACEMENT is advice a reader copies
-      verbatim.
-'''
-
-[[part]]
-part_id = "part-anonymous-group-rejection-s-give-name-using-name"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "The anonymous-group rejection's \"give it a name using the `@name` notation\" was true for the"
-body_md = '''    - The anonymous-group rejection's "give it a name using the `@name` notation" was true for the
-      bare inline array and dead advice for the tag-wrapped trigger (`f: #6.42([x: uint]) ; @name Foo`),
-      because the name reader's parent-chain walk stopped at the interposed `TaggedData` node — one
-      message, two trigger classes, and the hand-chosen untagged vector stayed green throughout. The
-      reader now walks tag layers, pinned by
-      `tagged_anon_array_member_name_emits_the_named_rule_remedy`, so what that instance leaves is
-      the sweep's shape rather than the shape itself.
-'''
-
-[[part]]
-part_id = "part-bare-fixed-table-value-refusal-continued-say-named"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "The bare fixed-table-VALUE refusal continued to say a named fixed rule was rejected after"
-body_md = '''    - The bare fixed-table-VALUE refusal continued to say a named fixed rule was rejected after
-      B3-024A made it a nominal singleton. Reading found the stale sentence; its corrected
-      `five = 5` / `{ * uint => five }` advice is now executed under default and preserve by
-      `fixed_table_value_rejection_advertises_executable_nominal_remedy`.
-
-'''
-
-[[part]]
-part_id = "part-both-ignore-rejections-printed-k-v-ignore-valid"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "Both `@ignore` rejections printed \"`{ 1: a, * k => v } ; @ignore`\" as the one valid placement,"
-body_md = '''    - Both `@ignore` rejections printed "`{ 1: a, * k => v } ; @ignore`" as the one valid placement,
-      and that exact spelling itself refuses (a type rule's after-brace comment binds to the RULE
-      slot, where `@ignore` is rejected) — the working entry-line spelling was documented correctly
-      in `comment_dsl.mdx` all along, so only the messages lied.
-'''
-
-[[part]]
 part_id = "part-cheap-system-matrix-shape-pairs-compiled-wasm-side"
 parent_record_id = "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial"
 title = "The cheap system is a matrix of shape PAIRS compiled wasm-side"
@@ -7062,19 +6895,6 @@ body_md = '''    - **The cheap system is a matrix of shape PAIRS compiled wasm-s
       shapes only; a construct that exists only INSIDE a record has no row it can occupy, which is
       why the two above are hand cells. Extending that axis to record-embedded shapes is the
       concrete build.
-'''
-
-[[part]]
-part_id = "part-default-head-refusal-s-remedy-list-offered-bare"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "The `.default` head-refusal's remedy list offered bare `int` — a head that very check"
-body_md = '''    - The `.default` head-refusal's remedy list offered bare `int` — a head that very check
-      refuses (`int` resolves to the bignum `Int` extern struct, not a rust primitive), so the
-      advice was dead for the exact value kind (signed) most likely to send a reader to it. Caught
-      by executing the advertised remedy at pickup, not by any gate; the corrected message (now
-      naming `nint` and the signed-RANGE spelling) adopted the pattern day-one via
-      `default_head_remedy_does_not_name_the_head_it_refuses`, whose generate leg emits the
-      printed range remedy so the message cannot go stale against it.
 '''
 
 [[part]]
@@ -7106,60 +6926,6 @@ body_md = '''  + the emitted name guard)" — and neither closes the holes above
 '''
 
 [[part]]
-part_id = "part-findings-couples-carriers-least-carrier-executes-s-headline"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "When a findings entry couples to carriers, at least one carrier executes the entry's HEADLINE"
-body_md = '''    - When a findings entry couples to carriers, at least one carrier executes the entry's HEADLINE
-      claim — for a claims-the-API-does-X sentence that means calling X (a compile-fail probe is an
-      execution too) — so the entry cannot drift from the code while its carriers stay green.
-
-    Pickup re-probe remains the enforcement of last resort, not the plan. Ten proven instances,
-    each caught only by executing the claim rather than reading it:
-'''
-
-[[part]]
-part_id = "part-findings-s-description-claimed-shape-s-standalone-codec"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "A findings entry's DESCRIPTION claimed the shape's standalone codec \"writes/accepts a bare"
-body_md = '''    - A findings entry's DESCRIPTION claimed the shape's standalone codec "writes/accepts a bare
-      map" when no standalone codec existed at all (`to_cbor_bytes` failed E0599 for the `PairMap`
-      instantiation; `from_cbor_bytes` was absent), while both of the entry's coupled test carriers
-      pinned an adjacent structural fact rather than executing the operative sentence.
-'''
-
-[[part]]
-part_id = "part-findings-s-recommended-remedy-c-kv-keyed-plain"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "A findings entry's recommended remedy (`{ c: [kv] }` for the keyed plain-group map member) was"
-body_md = '''    - A findings entry's recommended remedy (`{ c: [kv] }` for the keyed plain-group map member) was
-      itself refused — as a conflicting representation, a different wall — caught by the pickup
-      re-probe before the refusal message shipped naming it.
-'''
-
-[[part]]
-part_id = "part-generics-repeat-refusal-s-first-drafted-remedy-advertised"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "The generics-repeat refusal's first drafted remedy advertised `a<t> = <arm1> / <arm2>` — a"
-body_md = '''    - The generics-repeat refusal's first drafted remedy advertised `a<t> = <arm1> / <arm2>` — a
-      choice-bodied generic definition, which is itself refused — and was caught BEFORE shipping
-      by the day-one adoption of this item's pattern: the new refusal's test asserted every
-      advertised remedy generates, and the assert went red on the drafted message (B3-021 cycle,
-      2026-08-08). The instance is recorded because it is the pattern working as designed
-      pre-ship — the first refusal family authored since this item whose remedy defect never
-      reached a commit — which is the evidence the day-one half of the convention pays for
-      itself, not only the sweep half.
-'''
-
-[[part]]
-part_id = "part-inline-group-choice-rejection-s-remedy-g-b"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "The inline group-choice rejection's remedy (\"`g = (a // b)`, then reference `g`\") named a"
-body_md = '''    - The inline group-choice rejection's remedy ("`g = (a // b)`, then reference `g`") named a
-      spelling that PANICKED the pre-registration assert (now a refusal). That instance and the
-      `@ignore` pair were fixed with the messages' pins in the same commits.
-'''
-
-[[part]]
 part_id = "part-md-mdmap"
 parent_record_id = "testing.duplicates-policy-residuals"
 title = "md] / …`, `mdmap = {"
@@ -7185,33 +6951,6 @@ title = "The pre-cache remedies stay valid if the UNCACHED path ever bites (a to
 body_md = '''  - The pre-cache remedies stay valid if the UNCACHED path ever bites (a touch-everything change
     pays full price): batch cells into fewer crates, or adopt `cargo-nextest` as the suite runner
     (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 144 at HEAD).
-'''
-
-[[part]]
-part_id = "part-refusal-s-first-predicate-refused-exact-remedy-own"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "A refusal's first predicate refused the exact remedy its own message named"
-body_md = '''    - A refusal's first predicate refused the exact remedy its own message named
-      (`{ * uint => [coords] }` — the registry keeps materialized plain groups, so the lookup
-      over-matched).
-'''
-
-[[part]]
-part_id = "part-remedy-pin-per-message-per-triggering-construct-class"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "A remedy pin is per message PER TRIGGERING CONSTRUCT CLASS, or the message must name the"
-body_md = '''    - A remedy pin is per message PER TRIGGERING CONSTRUCT CLASS, or the message must name the
-      boundary itself. This is the half a generates-green vector alone cannot deliver: one message
-      reachable from two construct classes can be sound for the class whose vector someone
-      hand-picked and dead advice for the other.
-'''
-
-[[part]]
-part_id = "part-remedy-string-executable-wherever-lives-emitted-message-gets"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "A remedy string is executable wherever it lives — in an emitted message it gets a pinned"
-body_md = '''    - A remedy string is executable wherever it lives — in an emitted message it gets a pinned
-      generate leg, in a findings entry it gets executed at pickup.
 '''
 
 [[part]]
@@ -7254,14 +6993,6 @@ body_md = '''  - **Surfaces still online**: standalone script/gate runs outside 
     and the shared TS-toolchain install's FIRST run per manifest+lock hash (`npm`, not cargo — an
     `npm ci` under `/.ts-toolchain/` that needs the network once, then serves every
     TypeScript-side leg offline; unprobed against a fully-offline tier run).
-'''
-
-[[part]]
-part_id = "part-tagged-remedy-spelling-was-imprecise-coords-faithful-coords"
-parent_record_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-title = "A tagged remedy spelling was imprecise (`[#6.5(coords)]` for the faithful `#6.5([coords])`)"
-body_md = '''    - A tagged remedy spelling was imprecise (`[#6.5(coords)]` for the faithful `#6.5([coords])`)
-      until a pin asserted the printed remedy generates.
 '''
 
 [[part]]
@@ -7574,16 +7305,6 @@ kind = "parent_of"
 target = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
 
 [[relation]]
-source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one"
-kind = "parent_of"
-target = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
-
-[[relation]]
-source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"
-kind = "parent_of"
-target = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
-
-[[relation]]
 source = "testing.lint-doc-citations-accepts-docs-heading-durable-citation"
 kind = "parent_of"
 target = "testing.guard.lint-doc-citations-accepts-docs-heading-durable-citation"
@@ -7722,31 +7443,6 @@ target = "testing.guard.reason-keyed-rejection-evidence-reject-catalogs-proven-n
 source = "testing.referencing-context-measured-wrapping-deep-honored-base-shape"
 kind = "parent_of"
 target = "testing.guard.referencing-context-measured-wrapping-deep-honored-base-shape"
-
-[[relation]]
-source = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-kind = "parent_of"
-target = "testing.admission-path.rejection-message-s-remedy-string-executable-claim-pin"
-
-[[relation]]
-source = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-kind = "parent_of"
-target = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one"
-
-[[relation]]
-source = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-kind = "parent_of"
-target = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
-
-[[relation]]
-source = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-kind = "parent_of"
-target = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"
-
-[[relation]]
-source = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-kind = "parent_of"
-target = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
 
 [[relation]]
 source = "testing.representation-changing-directive-goes-live-new-container-ship"
@@ -8345,46 +8041,6 @@ id = "testing-minted-identifier-spellability-floor-identifier-n2"
 source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
 kind = "roadmap"
 target_id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-
-[[reference]]
-id = "testing-roadmap-next-work-n35"
-source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n36"
-source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-rejection-message-s-remedy-string-executable"
-source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof"
-kind = "roadmap"
-target_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
-
-[[reference]]
-id = "testing-roadmap-next-work-n37"
-source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n38"
-source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-rejection-message-s-remedy-string-executable-n2"
-source = "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"
-kind = "roadmap"
-target_id = "testing.rejection-message-s-remedy-string-executable-claim-pin"
 
 [[reference]]
 id = "testing-current-capacities-types-scoped-provenance"

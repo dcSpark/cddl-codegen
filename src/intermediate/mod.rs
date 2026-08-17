@@ -4436,11 +4436,13 @@ impl<'a> IntermediateTypes<'a> {
                 "rule `{rule}`: open struct-map rest-row key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
             )
         }
-        // The set-side twin of `float_key_msg`: a set's uniqueness door and always-on comparison
-        // derives need `Ord` on the element, which floats don't have.
+        // The set-side twin of `float_key_msg`: a set's uniqueness door and (for a tag-258
+        // nominal) always-on comparison derives need `Ord` on the element, which floats don't
+        // have. A named tag-258 set stays a comparison-bearing wrapper even under `preserve`, so
+        // that policy can never be offered as a float repair.
         fn float_set_elem_msg(rule: &RustIdent) -> String {
             format!(
-                "rule `{rule}`: set element type contains a float (floats have no total order, so set elements cannot be compared for uniqueness) — use a non-float element type, or drop the uniqueness requirement (`@duplicates preserve` on a tag-258 set rule; no directive on a plain array rule)"
+                "rule `{rule}`: set element type contains a float (floats have no total order, so set elements cannot be compared for uniqueness) — use a non-float element type. A tag-258 set nominal always requires comparison derives, even with `@duplicates preserve`, so preserve cannot repair it; to keep float elements, rewrite that tag-258 set as a plain array (`foo = [* float64]`). A plain `@duplicates reject` array can instead drop that directive and use normal Vec semantics"
             )
         }
         // do a recursive check on the ones explicitly tagged as keys using @used_as_key: each tagged

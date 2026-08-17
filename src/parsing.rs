@@ -2901,7 +2901,7 @@ fn non_literal_default_operand_rejection(rule_name: Option<&RustIdent>, operand:
     format!(
         "{}`.default {operand}` is not a default VALUE — a default substitutes for an absent value \
          at deserialization, so it must be a literal the head can hold: an integer (`0`, `-2`), a \
-         float (`1.5`), a text string (`\"hi\"`), a byte string (`h'CAFE'`), `true`/`false`, or `null`. Spell the value \
+         float (`1.5`), a text string (`\"hi\"`), a byte string (`h'CAFE'`), or `true`/`false`. Spell the value \
          literally, or remove the control.",
         reject_rule_prefix(rule_name)
     )
@@ -6775,15 +6775,35 @@ fn group_entry_to_type(
         // one-entry variant branch) is the only path that can deliver an `InlineGroup` here: the
         // record path rejects every inline group before calling us, and an open-array rest tail
         // never selects one (an inline group carries no `ge.occur`, so it is never a candidate).
-        // Reject gracefully and name the group; the remedy is probed to generate under BOTH the
-        // default and the `--preserve-encodings` profile for the array-rep, map-rep, `?`-marked and
-        // both-arms spellings.
-        GroupEntry::InlineGroup { .. } => {
-            types.record_rejection(
-                "an inline group (`(uint, tstr)`) in entry position is unsupported. Name the group \
-                 instead (e.g. `pair = (uint, tstr)`, then reference `pair`)."
-                    .to_string(),
-            );
+        // Reject gracefully and name the group. A count marker is different: merely naming the
+        // group preserves it (`? pair`), which reaches the single-entry-arm occurrence refusal.
+        // Optional has an executable type-choice count rewrite; the other count forms have no
+        // equivalent supported flat-wire carrier yet, so they must be an explicit boundary rather
+        // than share the unmarked group's dead `pair = (...)` advice.
+        GroupEntry::InlineGroup { occur, .. } => {
+            let message = if matches!(
+                occur.as_ref().map(|o| &o.occur),
+                Some(Occur::Optional { .. })
+            ) {
+                "an optional inline group (`? (uint, tstr)`) in entry position is unsupported. \
+                 Naming it and writing `? pair` does not repair the empty-wire case. Give the \
+                 one-count, empty, and bytes forms their own array rules and select them with a \
+                 TYPE choice (`pair_one = [uint, tstr]`, `pair_empty = []`, `bytes_one = [bytes]`, \
+                 then `t = pair_one / pair_empty / bytes_one`)."
+            } else {
+                match occur {
+                    Some(_) => {
+                        "a count-marked inline group (`* (uint, tstr)`) in entry position is \
+                         unsupported. Naming it alone does not repair a repeated flat group, and \
+                         cddl-codegen has no equivalent supported carrier for that wire shape yet."
+                    }
+                    None => {
+                        "an inline group (`(uint, tstr)`) in entry position is unsupported. Name \
+                         the group instead (e.g. `pair = (uint, tstr)`, then reference `pair`)."
+                    }
+                }
+            };
+            types.record_rejection(message.to_string());
             ConceptualRustType::Fixed(FixedValue::Null).into()
         }
     }
