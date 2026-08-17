@@ -129,7 +129,7 @@ sha2 = "0.10"
 # accepted from wit-parser 0.247 on. Since these crates ARE the gate's oracle, a floating version
 # would let the oracle drift off the floor the generated WIT is written against. Bump all three
 # together, and only with a re-probe of the keyword set (`generation::wit::WIT_KEYWORDS`).
-wit-parser = "=0.247.0"
+wit-parser = "=0.256.0"
 # Deliberately default-features: the `dummy-module` feature gates a `ComponentEncoder` path that is a
 # FALSE ORACLE for worlds exporting resources (it fails a package that resolves, encodes, validates
 # and builds).
