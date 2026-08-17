@@ -1361,13 +1361,21 @@ title = "Real support for an inline group as a group-choice arm's sole entry"
 
 [record.payload]
 kind = "work"
-body_md = '''- **Real support for an inline group as a group-choice arm's sole entry**
+body_md = '''- **Real support for an unmarked inline group as a group-choice arm's sole entry**
   (`t = [ (uint, tstr) // bytes ]`, and the map-rep `t = { (a: uint) // b: tstr }`). Both reject
   gracefully, pointing at the equivalent named form
   (`pair = (uint, tstr)`, then `t = [ pair // bytes ]`) — pinned by
   `inline_group_choice_arm_rejects_gracefully`, with the map rep's outcome category held by
   `tests/robustness/inline_group_choice_arm_map.cddl`. Support means minting the arm's struct from
-  the parenthesized group the way a named plain group already is. Lower value than the
+  the parenthesized group the way a named plain group already is.
+
+  Occurrence-marked arms are a distinct boundary. Naming `? (uint, tstr)` as `? pair` preserves the
+  marker and still reaches the single-entry-arm occurrence refusal; the faithful supported spelling
+  splits the three outer-array wire forms into named array rules (`pair_one = [uint, tstr]`,
+  `pair_empty = []`, `bytes_one = [bytes]`) and selects them with a type choice. A repeated
+  `* (uint, tstr)` arm needs flat group repetition, so naming it alone is not a remedy and the carrier
+  architecture remains `matrix.inline-group-occurrence-carrier`. This row's reopening count is for
+  the unmarked class only. Lower value than the
   anonymous-nested-MAP entry because the remedy is fully equivalent here (naming the group changes nothing on the
   wire), so the reopening signal is the same magnitude one on a higher threshold: the count of
   inline group-choice arms a consumer must name to compile ONE committed spec reaches 10.

@@ -442,7 +442,9 @@ large adversarial input cannot buy quadratic decode work). Every generated and s
 satisfies this automatically **except floats**: a float-containing element under `reject` (or in any
 tag-258 set nominal, whose always-on comparison derives need `Ord` too) is rejected at generation
 time with a clear error, mirroring the float-map-key rejection. Floats stay fully supported in
-collections without the uniqueness requirement.
+collections without the uniqueness requirement. `@duplicates preserve` changes a tag-258 nominal's
+inner carrier but does not remove the nominal wrapper's comparison derives, so it cannot make a
+float-containing tag-258 set valid; to keep float elements, rewrite that set as a plain array.
 
 **Defaults depend on the tag.** Tag 258 is the IANA set tag, so a **tag-258 set** rule — the
 `#6.258([* a]) / [* a]` idiom, a single-arm `#6.258([* a])`, or an inline `#6.258` occurrence —
