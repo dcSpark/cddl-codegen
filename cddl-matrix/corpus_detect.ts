@@ -94,9 +94,10 @@ function scan(text: string): { code: string; comment: string } {
 const codeOf = (t: string) => scan(t).code;
 
 // The DSL has no TypeScript grammar duplicate. A trailing comment has its own rule/entry owner;
-// contiguous standalone comment lines are one owner block. This is the smallest lexical boundary
-// matching the cddl AST comment attachment model that matters to the matrix: `@used_as_key hash`
-// + `ord` in one block merge, while two trailing rule-local `@name`s never collide.
+// standalone comment lines uninterrupted by code are one owner block (blank lines do not split a
+// cddl `Comments` value). This is the smallest lexical boundary matching the cddl AST comment
+// attachment model that matters to the matrix: `@used_as_key hash` + `ord` in one block merge,
+// while two trailing rule-local `@name`s never collide.
 function commentOwnerBlocks(text: string): string[] {
   const { code, comment } = scan(text);
   const codeLines = code.split(/\r?\n/);
@@ -108,7 +109,13 @@ function commentOwnerBlocks(text: string): string[] {
     standalone = [];
   };
   for (const [i, line] of commentLines.entries()) {
-    if (!line.trim()) { flushStandalone(); continue; }
+    // `cddl`'s collect_comments crosses any number of NEWLINE tokens. Only real code ends a
+    // standalone owner; flushing on a physically blank line would parse `hash` and `ord` in two
+    // metadata values and falsely credit both narrow siblings instead of the merged `hash_ord`.
+    if (!line.trim()) {
+      if (codeLines[i]!.trim()) flushStandalone();
+      continue;
+    }
     if (codeLines[i]!.trim()) {
       flushStandalone();
       blocks.push(line);
@@ -325,6 +332,7 @@ function selfCheck() {
     "x = uint ; @extern_companions", "x = uint ; @extern_companions @newtype", "x = uint ; @extern_companions dep_wasm",
     "x = uint ; @extern_companions =XList", "x = uint ; @extern_companions dep-wasm=XList", "x = uint ; @extern_companions dep_wasm=XList,",
     "x = 'ab\n;@newtype cd'", "; @used_as_key hash\n; @used_as_key ord\nx = uint",
+    "; @used_as_key hash\n\n; @used_as_key ord\nx = uint",
     "; @duplicates broken\n; @newtype\nx = uint",
   ]);
   const a = featuresIn("arr = [uint, text, bytes]");
@@ -399,6 +407,9 @@ function selfCheck() {
     const merged = featuresIn("; @used_as_key hash\n; @used_as_key ord\nx = uint").dsl;
     if (!merged.has("dsl.used_as_key.hash_ord") || merged.has("dsl.used_as_key.hash") || merged.has("dsl.used_as_key.ord"))
       throw new Error("selfCheck: one multiline owner must merge key-demand flavors before sibling-id credit");
+    const mergedAcrossBlank = featuresIn("; @used_as_key hash\n\n; @used_as_key ord\nx = uint").dsl;
+    if (!mergedAcrossBlank.has("dsl.used_as_key.hash_ord") || mergedAcrossBlank.has("dsl.used_as_key.hash") || mergedAcrossBlank.has("dsl.used_as_key.ord"))
+      throw new Error("selfCheck: blank lines must not split one cddl Comments owner");
     const malformed = featuresIn("; @duplicates broken\n; @newtype\nx = uint").dsl;
     if (malformed.size) throw new Error("selfCheck: a malformed directive invalidates its whole owner block");
   }
