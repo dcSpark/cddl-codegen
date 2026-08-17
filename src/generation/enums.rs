@@ -43,7 +43,15 @@ impl GenerationScope {
                 // an infallible rust ctor.
                 let can_fail = variant.rust_type().has_value_bounds();
                 if !variant.rust_type().is_fixed_value() {
-                    new_func.arg(&variant_arg, variant.rust_type().for_wasm_param(types));
+                    new_func.arg(
+                        &variant_arg,
+                        self.wasm_param_type(
+                            types,
+                            variant.rust_type(),
+                            name,
+                            "type-choice constructor parameter",
+                        ),
+                    );
                 }
                 let ctor = if variant.rust_type().is_fixed_value() {
                     format!(
@@ -75,7 +83,16 @@ impl GenerationScope {
                 }
                 wrapper.s_impl.push_fn(new_func);
             }
-            add_wasm_enum_getters(&mut wrapper.s_impl, types, name, variants, None, tag, cli);
+            add_wasm_enum_getters(
+                self,
+                &mut wrapper.s_impl,
+                types,
+                name,
+                variants,
+                None,
+                tag,
+                cli,
+            );
             wrapper.push(self, types);
         }
     }
@@ -172,7 +189,15 @@ pub(super) fn codegen_group_choices(
                                 // arm filters `!f.optional`), where it wraps as Option via
                                 // `to_embedded_rust_type`
                                 let wasm_param_type = field.to_embedded_rust_type();
-                                new_func.arg(&field.name, wasm_param_type.for_wasm_param(types));
+                                new_func.arg(
+                                    &field.name,
+                                    gen_scope.wasm_param_type(
+                                        types,
+                                        &wasm_param_type,
+                                        name,
+                                        "group-choice constructor field parameter",
+                                    ),
+                                );
                                 ctor.push_str(&ToWasmBoundaryOperations::format(
                                     wasm_param_type
                                         .from_wasm_boundary_clone(types, &field.name, false)
@@ -211,7 +236,15 @@ pub(super) fn codegen_group_choices(
                                     .into_iter()
                             )
                         );
-                        new_func.arg(&field_name, variant.rust_type().for_wasm_param(types));
+                        new_func.arg(
+                            &field_name,
+                            gen_scope.wasm_param_type(
+                                types,
+                                variant.rust_type(),
+                                name,
+                                "group-choice constructor parameter",
+                            ),
+                        );
                         if variant.rust_type().has_value_bounds() {
                             new_func
                                 .ret(format!("Result<{name}, JsError>"))
@@ -226,6 +259,7 @@ pub(super) fn codegen_group_choices(
         }
         // enum-getters
         add_wasm_enum_getters(
+            gen_scope,
             &mut wrapper.s_impl,
             types,
             name,
@@ -238,7 +272,9 @@ pub(super) fn codegen_group_choices(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Generation context plus the enum's independently-needed shape fields.
 fn add_wasm_enum_getters(
+    gen_scope: &mut GenerationScope,
     s_impl: &mut codegen::Impl,
     types: &IntermediateTypes<'_>,
     name: &RustIdent,
@@ -302,7 +338,7 @@ fn add_wasm_enum_getters(
                     );
                 } else {
                     as_variant
-                        .ret(ty.for_wasm_return(types))
+                        .ret(gen_scope.wasm_return_type(types, ty, name, "enum arm getter return"))
                         .doc(format!("Returns None if not {} variant OR it is but it's set to None\nThis is to get around wasm_bindgen not supporting Option<Option<T>>", variant.name));
                     variant_match.line(format!(
                         "{}::{}{} => {},",
@@ -314,7 +350,10 @@ fn add_wasm_enum_getters(
                     true
                 }
             } else {
-                as_variant.ret(format!("Option<{}>", ty.for_wasm_return(types)));
+                as_variant.ret(format!(
+                    "Option<{}>",
+                    gen_scope.wasm_return_type(types, ty, name, "enum arm getter return")
+                ));
                 variant_match.line(format!(
                     "{}::{}{} => Some({}),",
                     rust_crate_struct_from_wasm(types, name, cli),

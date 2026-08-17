@@ -149,7 +149,10 @@ impl GenerationScope {
         // different rule name (criterion 8 #3, hard error), or must emit it.
         let mut to_emit: Vec<(String, RustType, String, Vec<String>)> = Vec::new();
         for (canonical, u) in &union {
-            match self.own_wrapper_shapes.get(canonical) {
+            match self
+                .wasm_collection_wrapper_registry
+                .own_wrapper_shape(canonical)
+            {
                 // Own spec already produces this shape under the STRUCTURAL name => request satisfied
                 // by the existing indexed wrapper; emit nothing.
                 Some(existing) if existing.as_ref() == u.structural => {}
@@ -183,7 +186,10 @@ impl GenerationScope {
         for (canonical, rt, _, _) in &to_emit {
             for inner in inner_collection_shapes(rt) {
                 let requested = union.contains_key(&inner);
-                let own = self.own_wrapper_shapes.contains_key(&inner);
+                let own = self
+                    .wasm_collection_wrapper_registry
+                    .own_wrapper_shape(&inner)
+                    .is_some();
                 if !requested && !own {
                     panic!(
                         "--wrapper-requests: requested shape {canonical:?} nests the collection \
@@ -314,7 +320,11 @@ impl GenerationScope {
             // An explicit request is only a hosted body when its emitter actually minted it in this
             // scope. Recursive support mints can pre-empt a later explicit row, and a future emitter
             // may decline a candidate; keep this walk list truthful rather than predicting ownership.
-            if self.wasm_collection_wrappers.get(&ident) == Some(&requested_scope) {
+            if self
+                .wasm_collection_wrapper_registry
+                .local_class_scope(&ident)
+                == Some(&requested_scope)
+            {
                 self.requested_wrapper_types.push((ident, rt.clone()));
             }
         }

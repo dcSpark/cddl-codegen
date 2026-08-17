@@ -89,7 +89,6 @@ entries = [
   "part-cheap-system-matrix-shape-pairs-compiled-wasm-side",
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
-  "testing.synthesized-name-referenced-never-minted-e0425-flavor",
   "testing.generated-json-schema.partition-cardinality-position-semantics",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
   "testing.fixture-shape-evicted-over-known-defect-stale-guard",
@@ -376,17 +375,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one-proof", "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two-proof"]
 incident_ids = ["testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.one", "testing.incident-observation.rejection-message-s-remedy-string-executable-claim-pin.two"]
-
-[[record]]
-id = "testing.admission-path.synthesized-name-referenced-never-minted-e0425-flavor"
-title = "Admission for testing.synthesized-name-referenced-never-minted-e0425-flavor."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "silent_corruption"
-claim_md = '''The preserved owner detail records a reproducible generation-green/emitted-wasm-crate-red class that the proposed system would detect.
-'''
-evidence_ids = ["testing.proof.synthesized-name-referenced-never-minted-e0425-flavor"]
 
 [[record]]
 id = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
@@ -3770,20 +3758,6 @@ boundary_md = '''This control owns current containment only. It does not claim t
 '''
 
 [[record]]
-id = "testing.guard.synthesized-name-referenced-never-minted-e0425-flavor"
-title = "Current control for testing.synthesized-name-referenced-never-minted-e0425-flavor."
-
-[record.payload]
-kind = "control"
-control_kind = "test"
-control_state = "live"
-reference_ids = ["test-synthesized-name-interaction-sweep"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.synthesized-name-referenced-never-minted-e0425-flavor's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
 id = "testing.guard.tag-set-non-idiom-generic-boundary"
 title = "Current control for testing.tag-set.non-idiom-generic-boundary."
 
@@ -5412,25 +5386,6 @@ faces = ["json"]
 profiles = ["json", "preserve"]
 
 [[record]]
-id = "testing.proof.synthesized-name-referenced-never-minted-e0425-flavor"
-title = "Cycle 4 and Cycle 21 evidence for the referenced-but-never-minted (E0425) flavor."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "regression_pin"
-claim_md = '''B5-403 reproduced a requested bounded-map wrapper whose emitted keys method referenced a companion list wrapper absent from that scope's mint path. Cycle 21 independently reproduced the same reference-before-mint class in an own-spec restricted open-table: its wasm `keys()` accessor referenced `MdList` although no local path had minted it.
-'''
-freshness = "live"
-reference_ids = ["test-cycle21-shared-open-table-key-list-reference", "test-cycle4-workspace-key-requests-rest-row-contract"]
-unprobed_remainder_md = '''The two residents prove requested-wrapper and own-spec restricted-open-table key-list companions only; they do not establish the reference-set-subset invariant for every emitter, wrapper family, deferred import, or output face.
-'''
-refresh_reference_id = "test-cycle4-workspace-key-requests-rest-row-contract"
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "requested and own-spec wrapper companion minting"]
-faces = ["cross-crate", "wasm"]
-
-[[record]]
 id = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 title = "Historical execution proof for the warm-up dep-universe lock-trust gap."
 
@@ -6371,50 +6326,6 @@ action_on_fire_md = '''Set testing.std-generated-crates to ready and execute onl
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.std-generated-crates's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
-title = "Synthesized-name residual: the referenced-but-never-minted (E0425) flavor."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Synthesized-name residual: the referenced-but-never-minted (E0425) flavor.** The generator mints
-  structural wasm idents (loose `{Elem}List` / `Map{K}To{V}` builders, restricted `NonEmpty*`
-  wrappers, table `keys()` list wrappers) whose interactions with USER rule names and with EACH OTHER
-  are a NAME-shaped axis the shape catalogs (wasm-ABI matrix, corpus, recombination) never spell. The
-  two flavors of the "generation exits 0 but the wasm crate doesn't compile" class that live at
-  generation time are owned by standing gates: the duplicate-ident (E0428) redefinition flavor by the
-  generation-time backstop at the `generated_files` seam, and the dedup/shape-mismatch (E0277) flavor
-  by `synthesized_name_interaction_sweep` (families × interactions → graceful rejection with the
-  colliding ident named, or a compiling batched wasm crate; see tests/README.md § "Synthesized-name
-  interaction sweep + duplicate-ident backstop"). The remaining flavor is E0425: an emitter that
-  REFERENCES a synthesized wrapper name no mint path emits.
-
-  **Triggers fired during B5-403 and B5-323 (2026-08-15/17).** A dependency-side requested bounded map wrapper
-  emitted its `keys()` method referencing `<Key>List`, while the requested-wrapper path minted only
-  the map class; the own-spec walk that normally mints the companion list had no IR owner in that
-  scope. Separately, an own-spec restricted open-table accessor referenced `MdList` before its
-  companion mint path ran. The focused repairs explicitly close requested and exported-own-spec
-  map wrappers over their key-list companion; non-exported extern-dependency stubs remain
-  dependency-owned and must not mint a consumer-side companion. The promised reference-set ⊆
-  minted-set invariant remains absent. Build that scoped
-  generation-time invariant — "every synthesized wrapper name an emitter references must be in the
-  minted set" — as the reference-side complement of the emission-side duplicate-ident backstop.
-  (A fourth, CROSS-CRATE flavor — duplicate symbols at link under
-  `--extern-wrapper-index`, invisible to any in-crate layer — is owned by the wrapper-participation
-  grid's per-mode wasm32 link floors, `tests/README.md`
-  § "The wrapper-participation grid".)
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "compile_failure"
-acceptance_md = '''At the finalized wasm generated-file seam, derive the synthesized-name reference set and minted-definition set from the same wrapper registry, fail generation with the missing name plus referencing owner/door whenever references are not a subset, and cover own-spec, requested-host, deferred cross-crate, loose, NonEmpty, Bounded, and pair-map flavors. The B5-403 requested bounded-map `keys()` companion and Cycle 21's own-spec restricted open-table `MdList` companion are red-first residents; ownership must preserve the boundary that an emitted/exported owner mints its local companion while a non-exported extern-dependency stub remains dependency-owned.
-'''
-priority_rationale_md = '''Two independent scopes (requested cross-crate and own-spec restricted open-table) produced E0425 after otherwise successful generation, and a broad compile matrix caught the latter only after an overbroad repair also broke an extern-dependency ownership boundary. A reference/mint invariant is the durable way to make both absence and wrong-owner mints reviewable before rustc.
-'''
-control_ids = ["testing.guard.synthesized-name-referenced-never-minted-e0425-flavor"]
-admission_ids = ["testing.admission-path.synthesized-name-referenced-never-minted-e0425-flavor"]
 
 [[record]]
 id = "testing.tag-set.inline-anonymous-choice-boundary"
@@ -8004,16 +7915,6 @@ kind = "parent_of"
 target = "testing.guard.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 
 [[relation]]
-source = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
-kind = "parent_of"
-target = "testing.admission-path.synthesized-name-referenced-never-minted-e0425-flavor"
-
-[[relation]]
-source = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
-kind = "parent_of"
-target = "testing.guard.synthesized-name-referenced-never-minted-e0425-flavor"
-
-[[relation]]
 source = "testing.tag-set.non-idiom-generic-boundary"
 kind = "parent_of"
 target = "testing.guard.tag-set-non-idiom-generic-boundary"
@@ -8759,20 +8660,6 @@ test_id = "rust-test:cddl-codegen#tests::integration_tests::open_table_json_e2e"
 symbol = "tests::integration_tests::open_table_json_e2e"
 
 [[reference]]
-id = "test-cycle21-shared-open-table-key-list-reference"
-source = "testing.proof.synthesized-name-referenced-never-minted-e0425-flavor"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::identifier_hazard_tests::shared_open_table_key_list_reference_mints_its_wasm_companion"
-symbol = "tests::identifier_hazard_tests::shared_open_table_key_list_reference_mints_its_wasm_companion"
-
-[[reference]]
-id = "test-cycle4-workspace-key-requests-rest-row-contract"
-source = "testing.proof.synthesized-name-referenced-never-minted-e0425-flavor"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::workspace_key_requests_rest_row_contract"
-symbol = "tests::integration_tests::workspace_key_requests_rest_row_contract"
-
-[[reference]]
 id = "test-check-ts-warmup-refresh-plan"
 source = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 kind = "test_symbol"
@@ -8898,13 +8785,6 @@ id = "gate-lint-doc-citations-n5"
 source = "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered"
 kind = "gate"
 gate_id = "lint_doc_citations"
-
-[[reference]]
-id = "test-synthesized-name-interaction-sweep"
-source = "testing.synthesized-name-referenced-never-minted-e0425-flavor"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::synthesized_name_interaction_sweep"
-symbol = "tests::integration_tests::synthesized_name_interaction_sweep"
 
 [[reference]]
 id = "testing-roadmap-deferred-features-build-when-a-real"

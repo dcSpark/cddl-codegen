@@ -69,7 +69,15 @@ pub(super) fn generate_wrapper_struct(
         }
         let mut wasm_new = codegen::Function::new("new");
         wasm_new
-            .arg("inner", field_type.for_wasm_param(types))
+            .arg(
+                "inner",
+                gen_scope.wasm_param_type(
+                    types,
+                    field_type,
+                    type_name,
+                    "wrapper constructor parameter",
+                ),
+            )
             .vis("pub");
 
         // Delegate to the rust wrapper's `new`, mirroring the enum-variant wasm ctor: convert the
@@ -137,7 +145,12 @@ pub(super) fn generate_wrapper_struct(
                 .s_impl
                 .new_fn("get")
                 .vis("pub")
-                .ret(element_type.for_wasm_return(types))
+                .ret(gen_scope.wasm_return_type(
+                    types,
+                    &element_type,
+                    type_name,
+                    "set-nominal get return",
+                ))
                 .arg_ref_self()
                 .arg("index", "usize")
                 .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
@@ -149,7 +162,15 @@ pub(super) fn generate_wrapper_struct(
                 .vis("pub")
                 .ret("Result<(), JsError>")
                 .arg_mut_self()
-                .arg("elem", element_type.for_wasm_param(types))
+                .arg(
+                    "elem",
+                    gen_scope.wasm_param_type(
+                        types,
+                        &element_type,
+                        type_name,
+                        "set-nominal add parameter",
+                    ),
+                )
                 .line(format!(
                     "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
                     from_elem("elem")
@@ -161,7 +182,15 @@ pub(super) fn generate_wrapper_struct(
                     .vis("pub")
                     .ret("bool")
                     .arg_mut_self()
-                    .arg("elem", element_type.for_wasm_param(types))
+                    .arg(
+                        "elem",
+                        gen_scope.wasm_param_type(
+                            types,
+                            &element_type,
+                            type_name,
+                            "set-nominal insert parameter",
+                        ),
+                    )
                     .line(format!("self.0.insert({})", from_elem("elem")));
             }
             wrapper
@@ -170,7 +199,15 @@ pub(super) fn generate_wrapper_struct(
                 .vis("pub")
                 .ret("bool")
                 .arg_ref_self()
-                .arg("elem", element_type.for_wasm_param(types))
+                .arg(
+                    "elem",
+                    gen_scope.wasm_param_type(
+                        types,
+                        &element_type,
+                        type_name,
+                        "set-nominal contains parameter",
+                    ),
+                )
                 .line(format!("self.0.contains(&{})", from_elem("elem")));
             // A list-taking construction door + the empty-means-absent `try_opt_from` (the wasm
             // mirror of the rust nominal's inherent constructor — its landing removes the matching
@@ -184,12 +221,24 @@ pub(super) fn generate_wrapper_struct(
             // A nested non-empty-array element has no clean loose source, so no list door is emitted
             // for it — the sole residual, uncovered by any fixture; a future one re-reds parity on
             // `<Nominal>::try_opt_from` (loud, local) rather than silently miscompiling here.
-            let elem_wasm = element_type.for_wasm_member(types);
+            let elem_wasm = gen_scope.wasm_member_type(
+                types,
+                &element_type,
+                type_name,
+                "set-nominal try_from element type",
+            );
             let list_door: Option<(&str, String, Option<String>)> =
                 if element_type.vec_of_self_directly_wasm_exposable(types) {
                     Some(("elements", format!("Vec<{elem_wasm}>"), None))
                 } else if !element_type.is_non_empty_array() {
-                    let loose = element_type.name_as_wasm_array(types);
+                    let loose_type =
+                        RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())));
+                    let loose = gen_scope.wasm_member_type(
+                        types,
+                        &loose_type,
+                        type_name,
+                        "set-nominal try_from loose-list source",
+                    );
                     let inner_vec = element_type.name_as_rust_array(types, true, cli);
                     Some((
                         "list",
@@ -236,7 +285,12 @@ pub(super) fn generate_wrapper_struct(
                     .new_fn(getter_name)
                     .vis("pub")
                     .arg_ref_self()
-                    .ret(field_type.for_wasm_return(types))
+                    .ret(gen_scope.wasm_return_type(
+                        types,
+                        field_type,
+                        type_name,
+                        "wrapper custom getter return",
+                    ))
                     .line(field_type.to_wasm_boundary(types, &getter_body, false));
             }
         } else if set_nominal {
@@ -260,7 +314,12 @@ pub(super) fn generate_wrapper_struct(
             let mut get = codegen::Function::new(getter_name);
             get.vis("pub")
                 .arg_ref_self()
-                .ret(field_type.for_wasm_return(types))
+                .ret(gen_scope.wasm_return_type(
+                    types,
+                    field_type,
+                    type_name,
+                    "wrapper set getter return",
+                ))
                 .line(field_type.to_wasm_boundary(types, &getter_body, false));
             wrapper.s_impl.push_fn(get);
         } else if emit_getter {
@@ -269,7 +328,12 @@ pub(super) fn generate_wrapper_struct(
             let mut get = codegen::Function::new(getter_name);
             get.vis("pub")
                 .arg_ref_self()
-                .ret(field_type.for_wasm_return(types))
+                .ret(gen_scope.wasm_return_type(
+                    types,
+                    field_type,
+                    type_name,
+                    "wrapper getter return",
+                ))
                 .line(field_type.to_wasm_boundary(types, &getter_body, false));
             wrapper.s_impl.push_fn(get);
         }

@@ -1,10 +1,10 @@
 use super::*;
 
 impl GenerationScope {
-    /// Record that a collection-wrapper class `ident` was just emitted, for the
+    /// Record that a collection-wrapper class `ident` was just emitted, for the exported
     /// `wasm/src/generated/collections.rs` re-export index. Called from each of the four wrapper
     /// emitters right after their shared `already_generated` guard admits the mint, so the index
-    /// captures every wrapper class exactly once and never a suppressed one. The recorded
+    /// captures every exported wrapper class exactly once and never a suppressed one. The recorded
     /// `ModuleScope` is `types.scope(ident)` — the SAME scope `wasm(types, ident)` places the class
     /// in — so the index path derives from the class's real emission location.
     fn record_collection_wrapper(
@@ -19,17 +19,26 @@ impl GenerationScope {
             Some(scope) => scope.clone(),
             None => types.scope(ident).clone(),
         };
-        self.wasm_collection_wrappers.insert(ident.clone(), scope);
-        // W2 (`--wrapper-requests`): index this crate's OWN collection-wrapper shapes (main walk only,
-        // never the requested wrappers being minted under the override) so a dep can tell whether it
-        // already produces a requested shape, and under what name.
-        if self.requested_scope_override.is_none() {
-            self.own_wrapper_shapes
-                .insert(shape.to_owned(), ident.clone());
+        if scope.export() {
+            self.wasm_collection_wrapper_registry.record_local_class(
+                ident.clone(),
+                scope.clone(),
+                shape.to_owned(),
+                self.requested_scope_override.is_none(),
+            );
+        } else {
+            // The generation walk visits extern-dependency rules so their inner collection
+            // occurrences can be understood, but `merge_scopes_to_strings` never emits those
+            // scopes into this crate. The named class is supplied by that dependency and imported
+            // through ordinary scope routing, not by the structural-wrapper deferral map.
+            self.wasm_collection_wrapper_registry
+                .record_dependency_class(ident.clone(), scope.clone(), shape.to_owned());
         }
         // The one seam every LOCAL wrapper mint passes, which is why the index-shadowing honesty
         // check lives here rather than on any individual `try_defer_wrapper` decline.
-        self.warn_local_mint_shadows_index(ident, shape);
+        if scope.export() {
+            self.warn_local_mint_shadows_index(ident, shape);
+        }
     }
 
     /// Record that structural wrapper `ident` was deferred to workspace dependency `dep` this run
@@ -61,7 +70,7 @@ impl GenerationScope {
     ///
     /// Returns `true` when the wrapper is deferred — the caller must emit NO local class and skip
     /// `record_collection_wrapper`, so the deferred wrapper leaves the crate's own `collections.rs`
-    /// index (R3e). The ident is recorded in `deferred_wrappers` mapped to the dependency's
+    /// index (R3e). The ident is recorded in the registry's deferred-provider map, mapped to the dependency's
     /// `collections` module scope, so `scope_references` routes a plain
     /// `use <dep_wasm>::collections::<Name>;` into every referencing module (R3b) and the keys()
     /// accessors construct via `.into()` cross-crate (R3d). Returns `false` (mint locally) when: the
@@ -140,8 +149,8 @@ impl GenerationScope {
             // rather than special-cased away (documented on the directive).
             let mut components = vec![crate::parsing::EXTERN_DEPS_DIR.to_owned()];
             components.extend(prefix.split("::").map(str::to_owned));
-            self.deferred_wrappers
-                .insert(wrapper_ident.clone(), ModuleScope::from(components));
+            self.wasm_collection_wrapper_registry
+                .record_deferred(wrapper_ident.clone(), ModuleScope::from(components));
             return true;
         }
         // Fast out only when NEITHER deferral mechanism is active. (Flag-off byte-identity: with both
@@ -198,8 +207,8 @@ impl GenerationScope {
                     dep,
                     "collections".to_owned(),
                 ]);
-                self.deferred_wrappers
-                    .insert(wrapper_ident.clone(), dep_scope);
+                self.wasm_collection_wrapper_registry
+                    .record_deferred(wrapper_ident.clone(), dep_scope);
                 return true;
             }
         }
@@ -336,8 +345,8 @@ impl GenerationScope {
             dep,
             "collections".to_owned(),
         ]);
-        self.deferred_wrappers
-            .insert(wrapper_ident.clone(), dep_scope);
+        self.wasm_collection_wrapper_registry
+            .record_deferred(wrapper_ident.clone(), dep_scope);
         true
     }
 
@@ -479,7 +488,12 @@ impl GenerationScope {
                 let macro_name = list_macro.split("::").last().unwrap();
                 let args = [
                     element_type.for_rust_member(types, true, cli),
-                    element_type.for_wasm_return(types),
+                    self.wasm_return_type(
+                        types,
+                        &element_type,
+                        array_type_ident,
+                        "list-macro element return",
+                    ),
                     array_type_ident.to_string(),
                     needs_into.to_string(),
                     element_type.is_copy(types).to_string(),
@@ -502,7 +516,7 @@ impl GenerationScope {
             new_func.line("Self(Vec::new())");
             wrapper.s_impl.push_fn(new_func);
             // TODO: range check stuff? where do we want to put this? or do we want to get rid of this like before?
-            push_list_accessors(&mut wrapper, types, &element_type);
+            push_list_accessors(self, &mut wrapper, types, array_type_ident, &element_type);
             wrapper.add_conversion_methods(&inner_type, cli);
             wrapper.push(self, types);
         }
@@ -560,10 +574,22 @@ impl GenerationScope {
         // (a self-named rule like `bar_list = [+ bar]`), the loose builder cannot exist — the rule
         // legitimately owns the ident for its restricted class (collision-checked in finalize), so
         // the wrapper emits WITHOUT `try_from` and is built incrementally (`new(first)` + `add`).
-        let elem_wasm = element_type.for_wasm_member(types);
+        let elem_wasm = self.wasm_member_type(
+            types,
+            &element_type,
+            wrapper_ident,
+            "non-empty list try_from element type",
+        );
         let loose_list = (!element_type.vec_of_self_directly_wasm_exposable(types)
             && !element_type.is_non_empty_array())
-        .then(|| element_type.name_as_wasm_array(types));
+        .then(|| {
+            self.wasm_member_type(
+                types,
+                &RustType::new(ConceptualRustType::Array(Box::new(element_type.clone()))),
+                wrapper_ident,
+                "non-empty list try_from loose-list source",
+            )
+        });
         let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
         // Decision 11 (two-type design doc): quote the originating CDDL occurrence so the type
@@ -589,7 +615,15 @@ impl GenerationScope {
         new_func
             .vis("pub")
             .ret("Self")
-            .arg("first", element_type.for_wasm_param(types))
+            .arg(
+                "first",
+                self.wasm_param_type(
+                    types,
+                    &element_type,
+                    wrapper_ident,
+                    "non-empty list constructor parameter",
+                ),
+            )
             .line(format!(
                 "Self(NonEmptyVec::new({}))",
                 ToWasmBoundaryOperations::format(
@@ -600,7 +634,7 @@ impl GenerationScope {
             ));
         wrapper.s_impl.push_fn(new_func);
         // add stays infallible: a push can never violate the >= 1 lower bound
-        push_list_accessors(&mut wrapper, types, &element_type);
+        push_list_accessors(self, &mut wrapper, types, wrapper_ident, &element_type);
         // try_from: the single checked door from the loose form to the restricted wrapper. It
         // BORROWS (and clones) so the source loose list/Vec remains valid on the JS side, and the
         // throw happens here — right at the conversion, not inside a parent constructor.
@@ -711,13 +745,24 @@ impl GenerationScope {
         self.record_collection_wrapper(types, wrapper_ident, &shape);
         let elem_rust = element_type.for_rust_member(types, true, cli);
         let inner_type = format!("BoundedVec<{elem_rust}, {min}, {max_token}>");
-        let elem_wasm = element_type.for_wasm_member(types);
+        let elem_wasm = self.wasm_member_type(
+            types,
+            &element_type,
+            wrapper_ident,
+            "bounded list try_from element type",
+        );
         // A bounded OUTER needs a loose list source even when its element is itself constrained:
         // that source's generated accessors restore the inner boundary, then this wrapper's
         // `try_from` restores the outer window. Unlike the NonEmpty/reject twins, positive-minimum
         // BoundedVec has no `new(first)` constructor to fall back to.
-        let loose_list = (!element_type.vec_of_self_directly_wasm_exposable(types))
-            .then(|| element_type.name_as_wasm_array(types));
+        let loose_list = (!element_type.vec_of_self_directly_wasm_exposable(types)).then(|| {
+            self.wasm_member_type(
+                types,
+                &RustType::new(ConceptualRustType::Array(Box::new(element_type.clone()))),
+                wrapper_ident,
+                "bounded list try_from loose-list source",
+            )
+        });
         let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
         // Requested wrappers set their own discovery docs, so retain the request attribution that
@@ -758,7 +803,12 @@ impl GenerationScope {
             .s_impl
             .new_fn("get")
             .vis("pub")
-            .ret(element_type.for_wasm_return(types))
+            .ret(self.wasm_return_type(
+                types,
+                &element_type,
+                wrapper_ident,
+                "bounded list get return",
+            ))
             .arg_ref_self()
             .arg("index", "usize")
             .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
@@ -768,7 +818,15 @@ impl GenerationScope {
             .vis("pub")
             .ret("Result<(), JsError>")
             .arg_mut_self()
-            .arg("elem", element_type.for_wasm_param(types))
+            .arg(
+                "elem",
+                self.wasm_param_type(
+                    types,
+                    &element_type,
+                    wrapper_ident,
+                    "bounded list add parameter",
+                ),
+            )
             .line(format!(
                 "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
                 ToWasmBoundaryOperations::format(
@@ -920,7 +978,12 @@ impl GenerationScope {
         } else {
             format!("{twin}<{elem_rust}>")
         };
-        let elem_wasm = element_type.for_wasm_member(types);
+        let elem_wasm = self.wasm_member_type(
+            types,
+            &element_type,
+            wrapper_ident,
+            "ordered-set try_from element type",
+        );
         // LOCKSTEP: a `@duplicates reject` rule of ANY bounds enters through `try_from(&<Elem>List)`
         // whenever this `loose_list` is `Some` (non-exposable, non-nested, not self-named element), so
         // the import tracker's struct-walk Array arm (`scope_references`/`mark_refs`, intermediate/mod.rs)
@@ -930,7 +993,14 @@ impl GenerationScope {
         // dependency's class together with its `try_from` door, so it names no loose source at all.
         let loose_list = (!element_type.vec_of_self_directly_wasm_exposable(types)
             && !element_type.is_non_empty_array())
-        .then(|| element_type.name_as_wasm_array(types));
+        .then(|| {
+            self.wasm_member_type(
+                types,
+                &RustType::new(ConceptualRustType::Array(Box::new(element_type.clone()))),
+                wrapper_ident,
+                "ordered-set try_from loose-list source",
+            )
+        });
         let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
         let attr_prefix = self.requested_attribution_prefix(wrapper_ident);
@@ -960,7 +1030,15 @@ impl GenerationScope {
             new_func
                 .vis("pub")
                 .ret("Self")
-                .arg("first", element_type.for_wasm_param(types))
+                .arg(
+                    "first",
+                    self.wasm_param_type(
+                        types,
+                        &element_type,
+                        wrapper_ident,
+                        "ordered-set constructor parameter",
+                    ),
+                )
                 .line(format!(
                     "Self({twin}::new({}))",
                     ToWasmBoundaryOperations::format(
@@ -990,7 +1068,12 @@ impl GenerationScope {
             .s_impl
             .new_fn("get")
             .vis("pub")
-            .ret(element_type.for_wasm_return(types))
+            .ret(self.wasm_return_type(
+                types,
+                &element_type,
+                wrapper_ident,
+                "ordered-set get return",
+            ))
             .arg_ref_self()
             .arg("index", "usize")
             .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
@@ -1000,7 +1083,15 @@ impl GenerationScope {
             .vis("pub")
             .ret("Result<(), JsError>")
             .arg_mut_self()
-            .arg("elem", element_type.for_wasm_param(types))
+            .arg(
+                "elem",
+                self.wasm_param_type(
+                    types,
+                    &element_type,
+                    wrapper_ident,
+                    "ordered-set add parameter",
+                ),
+            )
             .line(format!(
                 "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
                 ToWasmBoundaryOperations::format(
@@ -1018,7 +1109,15 @@ impl GenerationScope {
                 .vis("pub")
                 .ret("bool")
                 .arg_mut_self()
-                .arg("elem", element_type.for_wasm_param(types))
+                .arg(
+                    "elem",
+                    self.wasm_param_type(
+                        types,
+                        &element_type,
+                        wrapper_ident,
+                        "ordered-set insert parameter",
+                    ),
+                )
                 .line(format!(
                     "self.0.insert({})",
                     ToWasmBoundaryOperations::format(
@@ -1035,7 +1134,15 @@ impl GenerationScope {
             .vis("pub")
             .ret("bool")
             .arg_ref_self()
-            .arg("elem", element_type.for_wasm_param(types))
+            .arg(
+                "elem",
+                self.wasm_param_type(
+                    types,
+                    &element_type,
+                    wrapper_ident,
+                    "ordered-set contains parameter",
+                ),
+            )
             .line(format!(
                 "self.0.contains(&{})",
                 ToWasmBoundaryOperations::format(
@@ -1193,6 +1300,19 @@ impl GenerationScope {
         let loose_key_type = key_type.loosened_for_wasm_table_boundary_key();
         let key_needs_restriction = key_type.for_rust_member(types, true, cli)
             != loose_key_type.for_rust_member(types, true, cli);
+        let loose_reference_type = RustType::new(ConceptualRustType::Map(
+            Box::new(loose_key_type.clone()),
+            Box::new(value_type.clone()),
+        ))
+        .with_duplicates_policy(
+            preserve_pair_map.then_some(crate::comment_ast::DuplicatesPolicy::Preserve),
+        );
+        self.record_wasm_type_reference(
+            types,
+            &loose_reference_type,
+            wrapper_ident,
+            "bounded map try_from loose-map source",
+        );
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
         wrapper.s.doc(format!(
             "`{shape}`: inclusive entry window enforced by core `{core}`; use `try_from` on the loose `{loose_ident}` builder. `insert` returns an error before an entry could exceed the maximum."
@@ -1419,8 +1539,24 @@ impl GenerationScope {
         new_func
             .vis("pub")
             .ret("Self")
-            .arg("first_key", key_type.for_wasm_param(types))
-            .arg("first_value", value_type.for_wasm_param(types))
+            .arg(
+                "first_key",
+                self.wasm_param_type(
+                    types,
+                    &key_type,
+                    wrapper_ident,
+                    "non-empty map constructor key parameter",
+                ),
+            )
+            .arg(
+                "first_value",
+                self.wasm_param_type(
+                    types,
+                    &value_type,
+                    wrapper_ident,
+                    "non-empty map constructor value parameter",
+                ),
+            )
             .line(format!(
                 "Self({core_ctor}::new({}, {}))",
                 ToWasmBoundaryOperations::format(
@@ -1461,6 +1597,19 @@ impl GenerationScope {
         // It BORROWS (and clones) so the source loose `MapKToV` remains valid on the JS side, and the
         // throw happens here — right at the conversion, not inside a parent constructor.
         if !self_named {
+            let loose_reference_type = RustType::new(ConceptualRustType::Map(
+                Box::new(key_type.clone()),
+                Box::new(value_type.clone()),
+            ))
+            .with_duplicates_policy(
+                preserve_pair_map.then_some(crate::comment_ast::DuplicatesPolicy::Preserve),
+            );
+            self.record_wasm_type_reference(
+                types,
+                &loose_reference_type,
+                wrapper_ident,
+                "non-empty map try_from loose-map source",
+            );
             // ensure the loose builder exists as the `try_from` source. Inline maps already mint the
             // structural `MapKToV` via the visitor (idempotent with our mint through
             // `already_generated`), and a named `{+ …}` rule may not have — so mint it here. EXCEPT
@@ -1653,8 +1802,10 @@ impl GenerationScope {
 /// once. Only `new` differs between the twins (loose: `Self(Vec::new())`; NonEmpty: `new(first)`),
 /// so it stays at each call site (along with any site-specific rationale) and is emitted before this.
 fn push_list_accessors(
+    gen_scope: &mut GenerationScope,
     wrapper: &mut WasmWrapper,
     types: &IntermediateTypes,
+    owner: &RustIdent,
     element_type: &RustType,
 ) {
     wrapper
@@ -1668,7 +1819,7 @@ fn push_list_accessors(
         .s_impl
         .new_fn("get")
         .vis("pub")
-        .ret(element_type.for_wasm_return(types))
+        .ret(gen_scope.wasm_return_type(types, element_type, owner, "list get return"))
         .arg_ref_self()
         .arg("index", "usize")
         .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
@@ -1677,7 +1828,10 @@ fn push_list_accessors(
         .new_fn("add")
         .vis("pub")
         .arg_mut_self()
-        .arg("elem", element_type.for_wasm_param(types))
+        .arg(
+            "elem",
+            gen_scope.wasm_param_type(types, element_type, owner, "list add parameter"),
+        )
         .line(format!(
             "self.0.push({});",
             ToWasmBoundaryOperations::format(
@@ -1727,11 +1881,12 @@ pub(super) fn push_table_accessors(
         value_type.conceptual_type.resolve_alias_shallow(),
         ConceptualRustType::Optional(_)
     );
+    let value_return = gen_scope.wasm_return_type(types, value_type, owner, "table value return");
     let map_value_ret = || {
         if value_nullable {
-            value_type.for_wasm_return(types)
+            value_return.clone()
         } else {
-            format!("Option<{}>", value_type.for_wasm_return(types))
+            format!("Option<{value_return}>")
         }
     };
     let value_flatten = if value_nullable { ".flatten()" } else { "" };
@@ -1750,8 +1905,14 @@ pub(super) fn push_table_accessors(
     insert_func
         .vis("pub")
         .arg_mut_self()
-        .arg("key", key_type.for_wasm_param(types))
-        .arg("value", value_type.for_wasm_param(types))
+        .arg(
+            "key",
+            gen_scope.wasm_param_type(types, key_type, owner, "table insert key parameter"),
+        )
+        .arg(
+            "value",
+            gen_scope.wasm_param_type(types, value_type, owner, "table insert value parameter"),
+        )
         .ret(if checked_insert {
             format!("Result<{}, JsError>", map_value_ret())
         } else {
@@ -1828,7 +1989,10 @@ pub(super) fn push_table_accessors(
     let mut getter = codegen::Function::new("get");
     getter
         .arg_ref_self()
-        .arg("key", key_type.for_wasm_param(types))
+        .arg(
+            "key",
+            gen_scope.wasm_param_type(types, key_type, owner, "table get key parameter"),
+        )
         .ret(map_value_ret())
         .vis("pub");
     if value_nullable {
@@ -1881,7 +2045,10 @@ pub(super) fn push_table_accessors(
         let mut has_func = codegen::Function::new("has");
         has_func
             .arg_ref_self()
-            .arg("key", key_type.for_wasm_param(types))
+            .arg(
+                "key",
+                gen_scope.wasm_param_type(types, key_type, owner, "table has key parameter"),
+            )
             .ret("bool")
             .vis("pub")
             .doc("Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).");
@@ -1910,7 +2077,7 @@ pub(super) fn push_table_accessors(
         != keys_element_type.for_rust_member(types, false, cli);
     let mut keys = codegen::Function::new("keys");
     keys.arg_ref_self()
-        .ret(keys_type.for_wasm_return(types))
+        .ret(gen_scope.wasm_return_type(types, &keys_type, owner, "table keys return"))
         .vis("pub");
     let key_clone = if key_type.is_copy(types) {
         ".keys().copied()"
@@ -1923,7 +2090,7 @@ pub(super) fn push_table_accessors(
         ""
     };
     // R3d: decide the keys-list wrapper's deferral BEFORE emitting keys() — the keys-list emitter
-    // (`generate_array_type`) may run AFTER this map class, so consulting `deferred_wrappers` alone
+    // (`generate_array_type`) may run AFTER this map class, so consulting the registry's deferred map alone
     // would miss it. `try_defer_wrapper` is idempotent, so this both records the decision (the later
     // emitter re-runs it, suppresses, and the import is routed) and drives the `.into()` here.
     let keys_deferred = !keys_type.directly_wasm_exposable(types)
@@ -1964,7 +2131,7 @@ pub(super) fn push_table_accessors(
         }
         keys.line(format!(
             "{}({receiver}{key_clone}{key_loosen}.collect::<Vec<_>>())",
-            keys_type.for_wasm_return(types)
+            gen_scope.wasm_return_type(types, &keys_type, owner, "table keys return")
         ));
     }
     wrapper.s_impl.push_fn(keys);
@@ -2248,6 +2415,19 @@ pub(super) fn mint_sole_owner_table(
     // Structural alias in the SAME module as the class (`owner`'s scope). Skip a self-alias when the
     // rule ident already equals the structural name.
     if *structural_ident != *owner && generated.insert(structural_ident.to_string()) {
+        let target = RustType::new(ConceptualRustType::Rust(owner.clone()));
+        gen_scope.record_wasm_collection_alias_definition(
+            types,
+            structural_ident,
+            &target,
+            types.scope(owner).clone(),
+        );
+        gen_scope.record_wasm_type_reference(
+            types,
+            &target,
+            owner,
+            "sole-owner structural alias target",
+        );
         gen_scope
             .wasm(types, owner)
             .push_type_alias(TypeAlias::new(structural_ident, owner).vis("pub").clone());

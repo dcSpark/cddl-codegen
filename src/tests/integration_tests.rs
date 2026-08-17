@@ -12323,7 +12323,7 @@ fn comment_dsl() {
 
 /// `@used_as_elem` (comment DSL): a struct rule tagged `@used_as_elem` makes the generator mint the
 /// loose-list wasm wrapper (`<Elem>List`, the `[* elem]` equivalent) exactly as an inline `[* elem]`
-/// usage would — structural name, `collections.rs` index entry, `own_wrapper_shapes` membership.
+/// usage would — structural name, `collections.rs` index entry, own-spec shape-projection membership.
 /// This replaces a downstream crate's hand-maintained fake structural-named rules. Asserts:
 /// (a) the tag ALONE (no inline usage) mints the wrapper under its structural name and indexes it;
 /// (b) the tag + an inline `[* elem]` usage define the class exactly ONCE (dedup, no wasm

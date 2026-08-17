@@ -3182,7 +3182,15 @@ pub(super) fn codegen_struct(
                     let mut setter = codegen::Function::new(format!("set_{}", field.name));
                     setter
                         .arg_mut_self()
-                        .arg(&field.name, field.rust_type.for_wasm_param(types))
+                        .arg(
+                            &field.name,
+                            gen_scope.wasm_param_type(
+                                types,
+                                &field.rust_type,
+                                name,
+                                "record optional setter parameter",
+                            ),
+                        )
                         .vis("pub");
                     // don't call needs_bounds_check_if_inlined() since if it's a RustType it's checked during that ctor
                     if field.rust_type.has_value_bounds() {
@@ -3227,13 +3235,18 @@ pub(super) fn codegen_struct(
                     let mut getter = codegen::Function::new(&field.name);
                     getter.arg_ref_self().vis("pub");
                     if field.rust_type.config.default.is_some() {
-                        getter.ret(field.rust_type.for_wasm_return(types)).line(
-                            field.rust_type.to_wasm_boundary(
+                        getter
+                            .ret(gen_scope.wasm_return_type(
+                                types,
+                                &field.rust_type,
+                                name,
+                                "record optional getter return",
+                            ))
+                            .line(field.rust_type.to_wasm_boundary(
                                 types,
                                 &format!("self.0.{}", field.name),
                                 false,
-                            ),
-                        );
+                            ));
                     } else if field.is_double_option() {
                         // A nullable optional field is stored as `Option<Option<T>>`, which
                         // wasm-bindgen can't return. Flatten the presence-`Option` into the value's
@@ -3244,7 +3257,7 @@ pub(super) fn codegen_struct(
                         field_getter_flattens = true;
                         getter
                             .doc("Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).")
-                            .ret(field.rust_type.for_wasm_return(types))
+                            .ret(gen_scope.wasm_return_type(types, &field.rust_type, name, "record optional getter return"))
                             .line(format!(
                                 "self.0.{}{}.flatten()",
                                 field.name,
@@ -3258,7 +3271,12 @@ pub(super) fn codegen_struct(
                         getter
                             .ret(format!(
                                 "Option<{}>",
-                                field.rust_type.for_wasm_return(types)
+                                gen_scope.wasm_return_type(
+                                    types,
+                                    &field.rust_type,
+                                    name,
+                                    "record optional getter return"
+                                )
                             ))
                             .line(field.rust_type.to_wasm_boundary_optional(
                                 types,
@@ -3309,7 +3327,15 @@ pub(super) fn codegen_struct(
                     }
                 } else {
                     // new
-                    wasm_new.arg(&field.name, field.rust_type.for_wasm_param(types));
+                    wasm_new.arg(
+                        &field.name,
+                        gen_scope.wasm_param_type(
+                            types,
+                            &field.rust_type,
+                            name,
+                            "record constructor parameter",
+                        ),
+                    );
                     wasm_new_args.push(ToWasmBoundaryOperations::format(
                         field
                             .rust_type
@@ -3324,7 +3350,12 @@ pub(super) fn codegen_struct(
                     let mut getter = codegen::Function::new(&field.name);
                     getter
                         .arg_ref_self()
-                        .ret(field.rust_type.for_wasm_return(types))
+                        .ret(gen_scope.wasm_return_type(
+                            types,
+                            &field.rust_type,
+                            name,
+                            "record getter return",
+                        ))
                         .vis("pub")
                         .line(field.rust_type.to_wasm_boundary(
                             types,
@@ -3373,8 +3404,24 @@ pub(super) fn codegen_struct(
                     std::iter::once(first_key.clone()),
                 );
                 wasm_new
-                    .arg(&first_key, typed.domain().for_wasm_param(types))
-                    .arg(&first_value, typed.range().for_wasm_param(types));
+                    .arg(
+                        &first_key,
+                        gen_scope.wasm_param_type(
+                            types,
+                            typed.domain(),
+                            name,
+                            "open-table constructor key parameter",
+                        ),
+                    )
+                    .arg(
+                        &first_value,
+                        gen_scope.wasm_param_type(
+                            types,
+                            typed.range(),
+                            name,
+                            "open-table constructor value parameter",
+                        ),
+                    );
                 wasm_new_args.push(ToWasmBoundaryOperations::format(
                     typed
                         .domain()
@@ -3403,7 +3450,15 @@ pub(super) fn codegen_struct(
                     typed.field_name
                 ));
                 let builder = typed.staging_container_type();
-                wasm_new.arg(&builder_name, builder.for_wasm_param(types));
+                wasm_new.arg(
+                    &builder_name,
+                    gen_scope.wasm_param_type(
+                        types,
+                        &builder,
+                        name,
+                        "open-table bounded constructor builder parameter",
+                    ),
+                );
                 // The wrapper-to-loose-map `Into` must be given its native source type before it
                 // enters the bounded carrier's `TryFrom` door. A bare
                 // `entries_builder.clone().into().try_into()` leaves both conversions inferred
@@ -3472,7 +3527,15 @@ pub(super) fn codegen_struct(
                 first_arg = format!("first_{}_element_{suffix}", rest.field_name);
                 suffix += 1;
             }
-            wasm_new.arg(&first_arg, rest.element().for_wasm_param(types));
+            wasm_new.arg(
+                &first_arg,
+                gen_scope.wasm_param_type(
+                    types,
+                    rest.element(),
+                    name,
+                    "open-array constructor first parameter",
+                ),
+            );
             wasm_new_args.push(ToWasmBoundaryOperations::format(
                 rest.element()
                     .from_wasm_boundary_clone(types, &first_arg, false)
@@ -3495,7 +3558,15 @@ pub(super) fn codegen_struct(
             row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail()
         }) {
             let rest_ty = rest_member_type(rest);
-            wasm_new.arg(&rest.field_name, rest_ty.for_wasm_param(types));
+            wasm_new.arg(
+                &rest.field_name,
+                gen_scope.wasm_param_type(
+                    types,
+                    &rest_ty,
+                    name,
+                    "open-array bounded constructor parameter",
+                ),
+            );
             wasm_new_args.push(ToWasmBoundaryOperations::format(
                 rest_ty
                     .from_wasm_boundary_clone(types, &rest.field_name, false)
@@ -3532,7 +3603,15 @@ pub(super) fn codegen_struct(
                     || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
         }) {
             let rest_ty = rest_member_type(rest);
-            wasm_new.arg(&rest.field_name, rest_ty.for_wasm_param(types));
+            wasm_new.arg(
+                &rest.field_name,
+                gen_scope.wasm_param_type(
+                    types,
+                    &rest_ty,
+                    name,
+                    "open-map restricted constructor parameter",
+                ),
+            );
             wasm_new_args.push(ToWasmBoundaryOperations::format(
                 rest_ty
                     .from_wasm_boundary_clone(types, &rest.field_name, false)
@@ -3562,7 +3641,7 @@ pub(super) fn codegen_struct(
             let mut getter = codegen::Function::new(&rest.field_name);
             getter
                 .arg_ref_self()
-                .ret(rest_ty.for_wasm_return(types))
+                .ret(gen_scope.wasm_return_type(types, &rest_ty, name, "open-rest getter return"))
                 .vis("pub")
                 .doc(if rest.is_array_tail() && !array_segment_is_final(record, rest) {
                     if rest.is_non_empty_array_tail() {
@@ -3638,8 +3717,24 @@ pub(super) fn codegen_struct(
             let mut insert = codegen::Function::new(&method_name);
             insert
                 .arg_mut_self()
-                .arg("key", rest.domain().for_wasm_param(types))
-                .arg("value", rest.range().for_wasm_param(types))
+                .arg(
+                    "key",
+                    gen_scope.wasm_param_type(
+                        types,
+                        rest.domain(),
+                        name,
+                        "open-rest insert key parameter",
+                    ),
+                )
+                .arg(
+                    "value",
+                    gen_scope.wasm_param_type(
+                        types,
+                        rest.range(),
+                        name,
+                        "open-rest insert value parameter",
+                    ),
+                )
                 .ret("Result<(), JsError>")
                 .vis("pub")
                 .doc(if record.has_protected_rest_keys(types) {

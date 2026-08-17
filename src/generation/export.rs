@@ -1198,6 +1198,18 @@ impl GenerationScope {
         cli: &Cli,
     ) -> std::io::Result<BTreeMap<String, String>> {
         self.component_collision_check()?;
+        // Reference-side synthesized-name closure: unlike the duplicate-ident backstop below
+        // (which inspects finished source for E0428), this validates the emission-time registry
+        // before either the in-process producer or disk export receives a source map.  A missing
+        // provider is therefore one deterministic graceful generator error rather than rustc's
+        // downstream E0425, while dependency-owned extern references remain deliberately local-free.
+        // The alias-building walk also prepares dormant wasm scopes for rust/component-only runs,
+        // while their collection-class mint walk is deliberately disabled. Those scopes never
+        // reach an output file, so only a run that actually emits the wasm crate has a wrapper
+        // namespace to close.
+        if cli.wasm {
+            self.wasm_collection_wrapper_registry.closure_check()?;
+        }
         let mut out = BTreeMap::new();
 
         // rust generated/mod.rs (merged ROOT_SCOPE content + module decls + inner crate attrs) /
@@ -1690,7 +1702,7 @@ impl GenerationScope {
 
             // Collection-wrapper index: one `pub use crate::…::<Wrapper>;` per collection wrapper
             // CLASS this crate minted this run (recorded at each emitter's actual-mint point in
-            // `wasm_collection_wrappers`). Because these are `pub use` lines compiled as part of
+            // the registry's local-class map). Because these are `pub use` lines compiled as part of
             // THIS crate, the index cannot drift: a line naming a removed wrapper fails this crate's
             // own build. A downstream crate points `--extern-wrapper-index <dep>=<this file>` at it
             // to skip re-minting the same wrappers (a wasm duplicate-symbol link error otherwise).
@@ -1707,7 +1719,8 @@ impl GenerationScope {
                  // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to\n\
                  // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).\n",
             );
-            for (ident, scope) in &self.wasm_collection_wrappers {
+            for (ident, definition) in self.wasm_collection_wrapper_registry.local_classes() {
+                let scope = &definition.scope;
                 let path = if *scope == *ROOT_SCOPE {
                     format!("crate::generated::{ident}")
                 } else if scope.export() {

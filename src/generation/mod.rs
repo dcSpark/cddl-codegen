@@ -156,6 +156,549 @@ const EXTERN_REEXPORT_CONTRACT_COMMENT: &str = "\
 // each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the\n\
 // user-owned definition. See the extern types section of docs/output_format.";
 
+/// One collection-wrapper definition which makes a wasm type name resolvable.  Classes are kept
+/// separate from aliases because only a class is a wasm-bindgen value export and belongs in the
+/// `collections.rs` cross-crate index.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg(test)]
+#[allow(dead_code)] // Inspected by the bin-only registry test module.
+pub(crate) enum WasmCollectionWrapperDefinition {
+    LocalClass,
+    LocalAlias,
+    Deferred,
+    /// A named collection class declared in a non-exported extern-dependency scope. Its normal
+    /// scope import (rather than the structural-wrapper deferred-import path) resolves it from the
+    /// dependency's wasm crate.
+    DependencyClass,
+    /// A named collection alias declared in a non-exported extern-dependency scope. Like a
+    /// dependency class, it is supplied through the dependency's normal scope import and is never
+    /// a local `collections.rs` class.
+    DependencyAlias,
+}
+
+/// One collection class, whether this run emits it locally or observes it in an extern dependency.
+/// The local-own-spec bit makes wrapper-request shape ownership a projection of these definitions,
+/// rather than a parallel mutable index.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WasmCollectionWrapperClassDefinition {
+    scope: ModuleScope,
+    shape: String,
+    own_spec: bool,
+}
+
+/// The exact collection name selected by one wasm type renderer, plus the dependency provider it
+/// selected by semantic ownership (if any). A structural spelling does not become dependency-owned
+/// merely because an unrelated dependency rule happens to have that spelling.
+struct WasmCollectionWrapperResolution {
+    wrapper: RustIdent,
+    dependency_provider_scope: Option<ModuleScope>,
+}
+
+/// An actual spelling of a collection-wrapper name in emitted wasm source.  The ordered fields
+/// deliberately make the graceful closure error deterministic: wrapper name, then its emitting
+/// owner, then the method/alias door that wrote it.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct WasmCollectionWrapperReference {
+    wrapper: RustIdent,
+    owner: RustIdent,
+    door: String,
+    /// A reference emitted by a non-exported extern-dependency scope is dependency owned. It has
+    /// no locally emitted provider and must never provoke a consumer-side mint; target ownership
+    /// alone is deliberately not enough to classify a reference this way.
+    dependency_owned: bool,
+    /// The dependency scope which owns the named collection provider this local source explicitly
+    /// resolves to (a class or alias).
+    /// This differs from `dependency_owned`: the latter is classified from the emitting owner,
+    /// while this fact is a provider selected by the rendered wrapper ident. A dependency class
+    /// must never satisfy a local reference which did not resolve to that exact dependency scope.
+    dependency_provider_scope: Option<ModuleScope>,
+}
+
+#[cfg(test)]
+#[allow(dead_code)] // The bin-only test suite consumes these accessors.
+impl WasmCollectionWrapperReference {
+    pub(crate) fn wrapper(&self) -> &RustIdent {
+        &self.wrapper
+    }
+
+    pub(crate) fn door(&self) -> &str {
+        &self.door
+    }
+
+    pub(crate) fn dependency_owned(&self) -> bool {
+        self.dependency_owned
+    }
+
+    pub(crate) fn dependency_provider_scope(&self) -> Option<&ModuleScope> {
+        self.dependency_provider_scope.as_ref()
+    }
+}
+
+/// The complete generated-run registry for the wasm collection-wrapper namespace.
+///
+/// This folds the former local-class and deferred-provider maps into one deterministic ledger and
+/// adds the facts the old maps could not express: aliases which resolve a collection name but are
+/// not wasm classes, named collection classes and aliases supplied through ordinary extern imports,
+/// and every emitted reference. The index, import routing, and sidecars deliberately read the same
+/// maps below rather than carrying parallel state.
+#[derive(Debug, Default)]
+pub(crate) struct WasmCollectionWrapperRegistry {
+    local_classes: BTreeMap<RustIdent, WasmCollectionWrapperClassDefinition>,
+    local_aliases: BTreeMap<RustIdent, ModuleScope>,
+    deferred: BTreeMap<RustIdent, ModuleScope>,
+    dependency_classes: BTreeMap<RustIdent, WasmCollectionWrapperClassDefinition>,
+    dependency_aliases: BTreeMap<RustIdent, ModuleScope>,
+    references: BTreeSet<WasmCollectionWrapperReference>,
+}
+
+impl WasmCollectionWrapperRegistry {
+    pub(crate) fn record_local_class(
+        &mut self,
+        ident: RustIdent,
+        scope: ModuleScope,
+        shape: String,
+        own_spec: bool,
+    ) {
+        self.local_classes.insert(
+            ident.clone(),
+            WasmCollectionWrapperClassDefinition {
+                scope,
+                shape,
+                own_spec,
+            },
+        );
+    }
+
+    pub(crate) fn record_local_alias(&mut self, ident: RustIdent, scope: ModuleScope) {
+        self.local_aliases.insert(ident, scope);
+    }
+
+    pub(crate) fn record_deferred(&mut self, ident: RustIdent, scope: ModuleScope) {
+        self.deferred.insert(ident, scope);
+    }
+
+    pub(crate) fn record_dependency_class(
+        &mut self,
+        ident: RustIdent,
+        scope: ModuleScope,
+        shape: String,
+    ) {
+        debug_assert!(
+            !scope.export(),
+            "a dependency collection class must live in a non-exported scope"
+        );
+        self.dependency_classes.insert(
+            ident,
+            WasmCollectionWrapperClassDefinition {
+                scope,
+                shape,
+                own_spec: false,
+            },
+        );
+    }
+
+    pub(crate) fn record_dependency_alias(&mut self, ident: RustIdent, scope: ModuleScope) {
+        debug_assert!(
+            !scope.export(),
+            "a dependency collection alias must live in a non-exported scope"
+        );
+        self.dependency_aliases.insert(ident, scope);
+    }
+
+    pub(crate) fn record_reference(
+        &mut self,
+        wrapper: RustIdent,
+        owner: RustIdent,
+        door: impl Into<String>,
+        dependency_owned: bool,
+        dependency_provider_scope: Option<ModuleScope>,
+    ) {
+        self.references.insert(WasmCollectionWrapperReference {
+            wrapper,
+            owner,
+            door: door.into(),
+            dependency_owned,
+            dependency_provider_scope,
+        });
+    }
+
+    pub(crate) fn local_classes(
+        &self,
+    ) -> &BTreeMap<RustIdent, WasmCollectionWrapperClassDefinition> {
+        &self.local_classes
+    }
+
+    pub(crate) fn local_class_scope(&self, ident: &RustIdent) -> Option<&ModuleScope> {
+        self.local_classes
+            .get(ident)
+            .map(|definition| &definition.scope)
+    }
+
+    /// Return the own-spec class for this canonical collection shape, if any. Requested wrappers
+    /// and dependency classes intentionally do not participate: only this crate's authored source
+    /// can satisfy a consumer wrapper request without a new requested-scope mint.
+    pub(crate) fn own_wrapper_shape(&self, shape: &str) -> Option<&RustIdent> {
+        self.local_classes.iter().find_map(|(ident, definition)| {
+            (definition.own_spec && definition.shape == shape).then_some(ident)
+        })
+    }
+
+    pub(crate) fn deferred(&self) -> &BTreeMap<RustIdent, ModuleScope> {
+        &self.deferred
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)] // Inspected by the bin-only registry test module.
+    pub(crate) fn definition_kind(
+        &self,
+        ident: &RustIdent,
+    ) -> Option<WasmCollectionWrapperDefinition> {
+        if self.local_classes.contains_key(ident) {
+            Some(WasmCollectionWrapperDefinition::LocalClass)
+        } else if self.local_aliases.contains_key(ident) {
+            Some(WasmCollectionWrapperDefinition::LocalAlias)
+        } else if self.deferred.contains_key(ident) {
+            Some(WasmCollectionWrapperDefinition::Deferred)
+        } else if self.dependency_classes.contains_key(ident) {
+            Some(WasmCollectionWrapperDefinition::DependencyClass)
+        } else if self.dependency_aliases.contains_key(ident) {
+            Some(WasmCollectionWrapperDefinition::DependencyAlias)
+        } else {
+            None
+        }
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)] // The bin-only test suite inspects the registered references.
+    pub(crate) fn references(&self) -> &BTreeSet<WasmCollectionWrapperReference> {
+        &self.references
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)] // The bin-only test suite removes providers to exercise closure errors.
+    pub(crate) fn remove_local_class_for_test(&mut self, ident: &RustIdent) -> Option<ModuleScope> {
+        self.local_classes
+            .remove(ident)
+            .map(|definition| definition.scope)
+    }
+
+    /// Require every actual emitted collection-wrapper reference to have an honest provider before
+    /// a source map reaches either output producer.  Dependency-owned extern references are the one
+    /// intentionally provider-less class: their source belongs to the dependency, not this crate.
+    pub(crate) fn closure_check(&self) -> std::io::Result<()> {
+        let missing = self
+            .references
+            .iter()
+            .filter(|reference| {
+                if reference.dependency_owned {
+                    return false;
+                }
+                if let Some(scope) = &reference.dependency_provider_scope {
+                    // A renderer-selected ordinary dependency provider is exact: a local class,
+                    // alias, or structural-index deferral sharing its spelling must not silently
+                    // replace the dependency class/alias selected by semantic ownership.
+                    return self
+                        .dependency_classes
+                        .get(&reference.wrapper)
+                        .map(|definition| &definition.scope)
+                        != Some(scope)
+                        && self.dependency_aliases.get(&reference.wrapper) != Some(scope);
+                }
+                !self.local_classes.contains_key(&reference.wrapper)
+                    && !self.local_aliases.contains_key(&reference.wrapper)
+                    && !self.deferred.contains_key(&reference.wrapper)
+            })
+            .map(|reference| {
+                format!(
+                    "missing wasm collection wrapper `{}` referenced by `{}` via {}",
+                    reference.wrapper, reference.owner, reference.door
+                )
+            })
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(std::io::Error::other(missing.join("\n")))
+        }
+    }
+}
+
+impl GenerationScope {
+    /// The collection-wrapper name a wasm type renderer writes directly into a signature or alias,
+    /// if any.  This is intentionally a rendering twin, not an IR pre-walk: optional recurses
+    /// because its spelling embeds the inner type, while arrays/maps stop at their outer wrapper
+    /// because a nested wrapper is named by that wrapper's own emitted methods instead.
+    fn wasm_collection_reference_ident(
+        &self,
+        types: &IntermediateTypes,
+        ty: &RustType,
+    ) -> Option<RustIdent> {
+        self.wasm_collection_reference(types, ty)
+            .map(|resolution| resolution.wrapper)
+    }
+
+    fn wasm_collection_reference(
+        &self,
+        types: &IntermediateTypes,
+        ty: &RustType,
+    ) -> Option<WasmCollectionWrapperResolution> {
+        self.wasm_collection_reference_inner(types, ty, &mut BTreeSet::new())
+    }
+
+    /// Alias-aware implementation of [`Self::wasm_collection_reference_ident`]. A named alias's
+    /// conceptual inner intentionally omits its serialization/configuration facts, so follow the
+    /// registered `AliasInfo::base_type` instead. In particular, `[+ T]`, bounded lists, and
+    /// `@duplicates reject` sets must remain collection-bearing when their authored alias spelling
+    /// appears in a wasm field or method signature. The path set is a conservative recursive-alias
+    /// guard: a repeated alias cannot establish a wrapper name by itself.
+    fn wasm_collection_reference_inner(
+        &self,
+        types: &IntermediateTypes,
+        ty: &RustType,
+        aliases_being_followed: &mut BTreeSet<AliasIdent>,
+    ) -> Option<WasmCollectionWrapperResolution> {
+        if let Some((ident, _)) =
+            types.wasm_collection_wrapper(ty, &self.wasm_collection_reference_sole_owners)
+        {
+            let dependency_provider_scope =
+                self.raw_collection_dependency_provider_scope(types, ty, &ident);
+            return Some(WasmCollectionWrapperResolution {
+                wrapper: ident,
+                dependency_provider_scope,
+            });
+        }
+        match &ty.conceptual_type {
+            ConceptualRustType::Optional(inner) => {
+                self.wasm_collection_reference_inner(types, inner, aliases_being_followed)
+            }
+            ConceptualRustType::Rust(ident) => types.rust_struct(ident).and_then(|rust_struct| {
+                matches!(
+                    rust_struct.variant(),
+                    RustStructType::Array { .. } | RustStructType::Table { .. }
+                )
+                .then(|| WasmCollectionWrapperResolution {
+                    wrapper: ident.clone(),
+                    dependency_provider_scope: (!types.scope(ident).export())
+                        .then(|| types.scope(ident).clone()),
+                })
+            }),
+            ConceptualRustType::Alias(AliasIdent::Reserved(_), inner) => {
+                // Reserved aliases have no AliasInfo entry. Preserve the outer RustType facts
+                // while peeling just the conceptual spelling, rather than reconstructing a fresh
+                // bounds/policy-free type.
+                let mut resolved = ty.clone();
+                resolved.conceptual_type = (**inner).clone();
+                self.wasm_collection_reference_inner(types, &resolved, aliases_being_followed)
+            }
+            ConceptualRustType::Alias(AliasIdent::Rust(ident), inner) => {
+                let alias_ident = AliasIdent::Rust(ident.clone());
+                let Some(alias_info) = types.type_aliases().get(&alias_ident) else {
+                    // Keep the historical fallback for an unregistered forward placeholder, but
+                    // retain any facts carried on this occurrence while peeling its conceptual
+                    // alias node.
+                    let mut resolved = ty.clone();
+                    resolved.conceptual_type = (**inner).clone();
+                    return self.wasm_collection_reference_inner(
+                        types,
+                        &resolved,
+                        aliases_being_followed,
+                    );
+                };
+                if !aliases_being_followed.insert(alias_ident.clone()) {
+                    return None;
+                }
+                // `base_type` is the configured source of truth; its bounds and duplicates
+                // policy do not survive in the Alias conceptual inner.
+                let target = self.wasm_collection_reference_inner(
+                    types,
+                    &alias_info.base_type,
+                    aliases_being_followed,
+                );
+                aliases_being_followed.remove(&alias_ident);
+                if types.alias_projection_suppressed(ident) {
+                    return target;
+                }
+                // A non-suppressed alias is itself the spelling emitted by all three wasm type
+                // renderers.  It belongs to the collection namespace exactly when its target does.
+                target.map(|_| WasmCollectionWrapperResolution {
+                    wrapper: ident.clone(),
+                    dependency_provider_scope: (!types.scope(ident).export())
+                        .then(|| types.scope(ident).clone()),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Raw structural spellings may select an ordinary dependency import only when the IR chose an
+    /// exact named owner for that shape. Looking up the synthesized spelling in `types.scope` is not
+    /// enough: an unrelated dependency collection is allowed to have the same Rust ident. Loose
+    /// lists and ordered sets have no named-owner route and therefore require declared deferral.
+    fn raw_collection_dependency_provider_scope(
+        &self,
+        types: &IntermediateTypes,
+        ty: &RustType,
+        wrapper: &RustIdent,
+    ) -> Option<ModuleScope> {
+        let (owner, structural_alias) = match &ty.conceptual_type {
+            ConceptualRustType::Array(element) if ty.is_non_empty_array() => {
+                (types.non_empty_named_owner(element)?, false)
+            }
+            ConceptualRustType::Array(element) if ty.is_bounded_array() => (
+                types.bounded_array_named_owner(
+                    element,
+                    ty.config
+                        .bounds
+                        .expect("bounded array reference carries its bounds"),
+                )?,
+                false,
+            ),
+            ConceptualRustType::Map(key, value) if ty.is_non_empty_map() => {
+                (types.non_empty_map_named_owner(key, value)?, false)
+            }
+            ConceptualRustType::Map(key, value) if ty.is_bounded_map() => (
+                types.bounded_map_named_owner(
+                    key,
+                    value,
+                    ty.config
+                        .bounds
+                        .expect("bounded map reference carries its bounds"),
+                    ty.is_preserve_pair_map(),
+                )?,
+                false,
+            ),
+            ConceptualRustType::Map(_, _) => {
+                let structural = ty.wasm_structural_map_name(types);
+                let owner = (structural == *wrapper)
+                    .then(|| {
+                        self.wasm_collection_reference_sole_owners
+                            .get(&structural.to_string())
+                    })
+                    .flatten()?;
+                (owner, true)
+            }
+            _ => return None,
+        };
+        let owner_scope = types.scope(owner);
+        let exact_owner = structural_alias || owner == wrapper;
+        (exact_owner && !owner_scope.export()).then(|| owner_scope.clone())
+    }
+
+    /// Record the real collection-wrapper reference a wasm signature/alias just rendered. A
+    /// reference emitted from a non-exported extern scope is dependency-owned: it has no local
+    /// provider, does not enter the class index, and must not trigger a companion mint. Requested
+    /// wrappers classify from their active emitted scope rather than their IR-ident lookup.
+    fn record_wasm_type_reference(
+        &mut self,
+        types: &IntermediateTypes,
+        ty: &RustType,
+        owner: &RustIdent,
+        door: &str,
+    ) {
+        let Some(resolution) = self.wasm_collection_reference(types, ty) else {
+            return;
+        };
+        // Requested wrappers are deliberately IR-ownerless: their structural ident can collide
+        // with a dependency rule, but while the override is active their source is emitted in this
+        // crate's exported `requested_collections` module. Classify ownership from that actual
+        // emission scope rather than `types.scope(owner)`, which describes the colliding IR rule.
+        let emission_scope = self
+            .requested_scope_override
+            .as_ref()
+            .unwrap_or_else(|| types.scope(owner));
+        let dependency_owned = !emission_scope.export();
+        self.wasm_collection_wrapper_registry.record_reference(
+            resolution.wrapper,
+            owner.clone(),
+            door,
+            dependency_owned,
+            resolution.dependency_provider_scope,
+        );
+    }
+
+    /// Record a wasm `pub type` alias definition which resolves a collection-wrapper spelling. It
+    /// remains out of `collections.rs`: wasm-bindgen exports values only for wrapper classes, while
+    /// this alias is a Rust source-level provider for signatures and other aliases. Its target
+    /// reference is recorded by the exact rendering branch that wrote the target spelling.
+    fn record_wasm_collection_alias_definition(
+        &mut self,
+        types: &IntermediateTypes,
+        alias: &RustIdent,
+        target: &RustType,
+        scope: ModuleScope,
+    ) {
+        if self
+            .wasm_collection_reference_ident(types, target)
+            .is_none()
+        {
+            return;
+        }
+        if scope.export() {
+            self.wasm_collection_wrapper_registry
+                .record_local_alias(alias.clone(), scope);
+        } else {
+            // Extern-dependency scopes are not emitted into this crate, but an authored alias can
+            // still be the exact name a local consumer signature imports from the dependency's wasm
+            // crate (`DepAlias = DepMap`). It is an honest provider at that dependency scope, never
+            // a local source alias or a collections-index row.
+            self.wasm_collection_wrapper_registry
+                .record_dependency_alias(alias.clone(), scope);
+        }
+    }
+
+    pub(super) fn wasm_member_type(
+        &mut self,
+        types: &IntermediateTypes,
+        ty: &RustType,
+        owner: &RustIdent,
+        door: &str,
+    ) -> String {
+        let rendered = ty.for_wasm_member(types);
+        self.record_wasm_type_reference(types, ty, owner, door);
+        rendered
+    }
+
+    pub(super) fn wasm_param_type(
+        &mut self,
+        types: &IntermediateTypes,
+        ty: &RustType,
+        owner: &RustIdent,
+        door: &str,
+    ) -> String {
+        let rendered = ty.for_wasm_param(types);
+        self.record_wasm_type_reference(types, ty, owner, door);
+        rendered
+    }
+
+    pub(super) fn wasm_return_type(
+        &mut self,
+        types: &IntermediateTypes,
+        ty: &RustType,
+        owner: &RustIdent,
+        door: &str,
+    ) -> String {
+        let rendered = ty.for_wasm_return(types);
+        self.record_wasm_type_reference(types, ty, owner, door);
+        rendered
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)] // The bin-only test suite inspects the completed registry.
+    pub(crate) fn wasm_collection_wrapper_registry(&self) -> &WasmCollectionWrapperRegistry {
+        &self.wasm_collection_wrapper_registry
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)] // The bin-only test suite removes providers to exercise closure errors.
+    pub(crate) fn remove_wasm_collection_local_class_for_test(
+        &mut self,
+        ident: &RustIdent,
+    ) -> Option<ModuleScope> {
+        self.wasm_collection_wrapper_registry
+            .remove_local_class_for_test(ident)
+    }
+}
+
 pub struct GenerationScope {
     rust_lib_scope: codegen::Scope,
     rust_scopes: BTreeMap<ModuleScope, codegen::Scope>,
@@ -175,28 +718,19 @@ pub struct GenerationScope {
     cbor_encodings_scopes: BTreeMap<ModuleScope, codegen::Scope>,
     json_lines: BlocksOrLines,
     already_generated: BTreeSet<RustIdent>,
-    /// Every collection-wrapper CLASS the wasm crate actually minted this run, mapped to the
-    /// `ModuleScope` it was emitted into. Recorded at the point of actual emission (inside each of
-    /// the four wrapper emitters' `already_generated` success paths), so it equals EXACTLY the set
-    /// of wrapper classes the crate owns — no more, no less. Materialized into
-    /// `wasm/src/generated/collections.rs` (a `pub use` re-export index) by `generated_files`. A
-    /// `BTreeMap` keeps the index deterministic (sorted by class name). Only populated under
-    /// `--wasm`; unused otherwise.
-    wasm_collection_wrappers: BTreeMap<RustIdent, ModuleScope>,
+    /// The one deterministic registry for wasm collection-wrapper classes, aliases, deferred
+    /// providers, dependency-owned extern references, and actual emitted references.  Its local
+    /// class map is projected into `collections.rs`; aliases intentionally stay out of that index.
+    wasm_collection_wrapper_registry: WasmCollectionWrapperRegistry,
+    /// Per-generation cache of the immutable IR's sole table-shape owners. Every wasm rendering
+    /// door consults it while identifying its wrapper spelling; caching avoids an O(renders ×
+    /// tables) rewalk without creating another wrapper-provider registry.
+    wasm_collection_reference_sole_owners: BTreeMap<String, RustIdent>,
     /// Parsed `--extern-wrapper-index` inventories: extern-deps dependency name -> the set of
     /// collection-wrapper class names that dependency's own wasm crate already emits (read from its
     /// committed `generated/collections.rs`). Consulted when deciding whether a wrapper the consumer
     /// would mint should instead be deferred to the dependency. Empty unless the flag is passed.
     extern_wrapper_index: BTreeMap<String, BTreeSet<String>>,
-    /// Collection wrappers the consumer is NOT minting this run because a mapped dependency already
-    /// owns them (`--extern-wrapper-index`), keyed by the structural wrapper ident and mapped to the
-    /// dependency's `collections` module scope (`_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/collections`,
-    /// non-exported) the reference is imported from. Populated at each emitter's mint point during the
-    /// wasm struct walk (before imports are computed), so `scope_references` can route a plain
-    /// `use <dep_wasm>::collections::<Name>;` into every referencing module and the two keys()
-    /// accessors know to construct via `.into()` cross-crate (R3d). Never records a wrapper into
-    /// `wasm_collection_wrappers`, so a deferred wrapper stays out of the consumer's own index (R3e).
-    deferred_wrappers: BTreeMap<RustIdent, ModuleScope>,
     /// Wrapper idents already named in a `--extern-wrapper-index` "candidate not in the dep's index"
     /// stderr warning, so the diagnostic fires at most once per wrapper across the walk.
     deferred_warned: BTreeSet<RustIdent>,
@@ -207,18 +741,11 @@ pub struct GenerationScope {
     workspace_deps: BTreeSet<String>,
     /// Collection wrappers deferred to a workspace dep this run (`--workspace-dep`), keyed by the
     /// structural wrapper ident and mapped to `(dep rust-crate name, canonical CDDL shape)`. The
-    /// mirror image of `wasm_collection_wrappers` ("what I provide" ↔ "what I borrow, from whom"),
+    /// mirror image of the registry's local-class map ("what I provide" ↔ "what I borrow, from whom"),
     /// materialized into `wasm/src/generated/borrowed_collections.rs` for the dep's own generation to
     /// read. Recording is idempotent (the same wrapper is probed from several sites); two DISTINCT
     /// shapes deriving the SAME structural name is a hard error (the `MapAToBToC` reverse-ambiguity).
     borrowed_wrappers: BTreeMap<RustIdent, (String, String)>,
-    /// W2 dep side (`--wrapper-requests`): the canonical CDDL shape (`render_wrapper_shape` output) of
-    /// every collection wrapper this crate produces from its OWN spec, mapped to that wrapper's ident.
-    /// Recorded at each emitter's actual mint point during the main walk (guarded off during requested
-    /// emission). Answers "does the dep already produce this requested shape, and under what name?": a
-    /// requested shape whose canonical form is a key here is own-spec-produced — satisfied when the
-    /// ident is the structural name, a hard error when it is a different (rule-declared) name.
-    own_wrapper_shapes: BTreeMap<String, RustIdent>,
     /// W2 dep side: while `Some`, `wasm()` / `record_collection_wrapper` route the wrapper being
     /// emitted into this scope (the `requested_collections` module) instead of `types.scope(ident)` —
     /// the requested wrappers are not in the dep's IR, so they have no natural scope. Set only around
@@ -320,13 +847,12 @@ impl GenerationScope {
             cbor_encodings_scopes: BTreeMap::new(),
             json_lines: BlocksOrLines::default(),
             already_generated: BTreeSet::new(),
-            wasm_collection_wrappers: BTreeMap::new(),
+            wasm_collection_wrapper_registry: WasmCollectionWrapperRegistry::default(),
+            wasm_collection_reference_sole_owners: BTreeMap::new(),
             extern_wrapper_index: BTreeMap::new(),
-            deferred_wrappers: BTreeMap::new(),
             deferred_warned: BTreeSet::new(),
             workspace_deps: BTreeSet::new(),
             borrowed_wrappers: BTreeMap::new(),
-            own_wrapper_shapes: BTreeMap::new(),
             requested_scope_override: None,
             requested_wrapper_types: Vec::new(),
             requested_attribution: BTreeMap::new(),
@@ -377,6 +903,10 @@ impl GenerationScope {
     /// Generates, i.e. populates the state, based on `types`.
     /// this does not create any files, call export() after.
     pub fn generate(&mut self, types: &IntermediateTypes, cli: &Cli) -> Result<(), String> {
+        // `wasm_collection_reference_ident` is reached once per emitted wasm type door. The IR is
+        // finalized and immutable for this run, so take its deterministic sole-owner projection
+        // once rather than rebuilding it for every signature/alias reference.
+        self.wasm_collection_reference_sole_owners = types.table_shape_sole_owners();
         // `--workspace-dep` and `--extern-wrapper-index` both LOAD AND VALIDATE mode-independently, so
         // every documented startup malformation aborts generation whether or not `--wasm` is set; their
         // DEFERRAL EFFECTS differ in scope. `--workspace-dep`'s primary sidecar
@@ -634,10 +1164,31 @@ impl GenerationScope {
                         // cross-module import cannot drift). Maps are never directly exposable, so this
                         // covers `passthrumap` while leaving `passthru` (exposable arrays) on the
                         // transparent `for_wasm_member` path.
-                        let wasm_target = alias_info
-                            .resolved_wasm_alias_target(types)
-                            .map(|target| target.to_string())
-                            .unwrap_or_else(|| alias_info.base_type.for_wasm_member(types));
+                        // Build a RustType for the exact spelling the alias line uses. In the
+                        // stripped-named branch that is the resolved wrapper target, NOT the
+                        // transparent base shape; registering the latter would check a different
+                        // name than `pub type {ident} = {wasm_target}` actually writes.
+                        let alias_target = match alias_info.resolved_wasm_alias_target(types) {
+                            Some(target) => RustType::new(ConceptualRustType::Rust(target.clone())),
+                            None => alias_info.base_type.clone(),
+                        };
+                        let wasm_target = self.wasm_member_type(
+                            types,
+                            &alias_target,
+                            ident,
+                            "wasm pub type alias target",
+                        );
+                        // A wasm `pub type` alias is a real Rust-source provider for an authored
+                        // collection alias or a structural sole-owner alias, but is not a
+                        // wasm-bindgen class and therefore must not enter `collections.rs`.
+                        // Register its definition at the same emission seam as the alias line.
+                        // `wasm_member_type` above registered the exact target reference.
+                        self.record_wasm_collection_alias_definition(
+                            types,
+                            ident,
+                            &alias_target,
+                            types.scope(ident).clone(),
+                        );
                         // A rule-name alias BINDING a set nominal (`required_signers =
                         // nonempty_set<...>` → `pub type RequiredSigners = NonemptySetEd25519KeyHash;`)
                         // gets NO wasm-bindgen class of its own — wasm-bindgen exports no type aliases,
@@ -1042,7 +1593,7 @@ impl GenerationScope {
                         // STRUCTURAL one (`KeyHashList`), emitted through the flipped-on
                         // `gen_wasm_alias` passthrough + base-type walk exactly like an inline
                         // `[* key_hash]`. Skipping the mint (and its `record_collection_wrapper`) is
-                        // what keeps the synthesized name out of `own_wrapper_shapes`, so a
+                        // what keeps the synthesized name out of the own-spec shape projection, so a
                         // `--wrapper-requests` consumer's structural import resolves via own-spec.
                         if cli.wasm && !types.is_anonymous_collection_instance(rust_ident) {
                             let reject = rust_struct.config().duplicates
@@ -1287,7 +1838,7 @@ impl GenerationScope {
         // for each tagged element, exactly as an inline `[* elem]` usage would. Runs AFTER the
         // own-spec wasm walk (so a real inline usage that already minted the wrapper dedups via the
         // shared `already_generated`) and BEFORE `emit_requested_collections` (so the wrapper is
-        // recorded in `own_wrapper_shapes`, letting a consumer's request for the same shape be
+        // recorded in the own-spec shape projection, letting a consumer's request for the same shape be
         // satisfied by this crate's own spec instead of re-emitted into requested_collections). The
         // mark set is a `BTreeSet`, so this walks idents in sorted order — deterministic output. A
         // directly-wasm-exposable element has no wrapper and is rejected in `finalize`, so nothing
@@ -1303,7 +1854,7 @@ impl GenerationScope {
         }
 
         // W2 dep side (`--wrapper-requests`): now that the OWN-spec wasm wrapper walk is complete
-        // (`wasm_collection_wrappers` / `own_wrapper_shapes` fully populated), read the consumer
+        // (the wrapper registry's local classes and own-spec shape projection fully populated), read the consumer
         // sidecars, union the requested shapes, and emit each requested wrapper the dep does not
         // already produce into the `requested_collections` module. Wasm-only, and a no-op (byte
         // identical) with no `--wrapper-requests` flag.
@@ -2058,7 +2609,7 @@ impl GenerationScope {
             .wasm_lib()
             .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]");
             // wasm imports
-            // `deferred_wrappers` was fully populated during the wasm struct walk above (every
+            // The registry's deferred-provider map was fully populated during the wasm struct walk above (every
             // deferred wrapper's mint point recorded it), so referencing modules now get a plain
             // `use <dep_wasm>::collections::<Name>;` for each instead of a local class.
             // The `requested_collections` host module (`--wrapper-requests`) hosts wrappers that are not
@@ -2070,14 +2621,15 @@ impl GenerationScope {
             // Same-file references to any of them must stay bare rather than importing a nonexistent
             // crate-root class. `record_collection_wrapper` is the shared actual-mint seam.
             let requested_hosted: BTreeSet<RustIdent> = self
-                .wasm_collection_wrappers
+                .wasm_collection_wrapper_registry
+                .local_classes()
                 .iter()
-                .filter(|(_, scope)| **scope == requested_scope)
+                .filter(|(_, definition)| definition.scope == requested_scope)
                 .map(|(ident, _)| ident.clone())
                 .collect();
             let wasm_scope_references = types.scope_references(
                 true,
-                &self.deferred_wrappers,
+                self.wasm_collection_wrapper_registry.deferred(),
                 &self.requested_wrapper_types,
                 &requested_hosted,
                 Some(&requested_scope),
@@ -2850,6 +3402,7 @@ impl WasmDoorMember {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)] // `wasm_parity_tests` is bin-only.
     pub(crate) const fn is_cbor(self) -> bool {
         matches!(
             self,

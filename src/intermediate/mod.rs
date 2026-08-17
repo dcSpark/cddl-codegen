@@ -248,7 +248,7 @@ pub struct IntermediateTypes<'a> {
     // untouched (the transparent `pub type SetKeyHash = Vec<KeyHash>` alias stays). This is what makes
     // an anonymous collapsed-set instance and its inline equivalent ONE wasm concept, so a
     // `--wrapper-requests` consumer's request for the structural shape resolves via own-spec (the
-    // synthesized name never reaches `own_wrapper_shapes`). Determinism: `BTreeSet`.
+    // synthesized name never reaches the own-spec shape projection). Determinism: `BTreeSet`.
     anonymous_collection_instances: BTreeSet<RustIdent>,
     // Every base ident of a GENERIC extern rule (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`), recorded at
     // parse time from `generic_params.is_some()`. A generic extern is registered as a plain `Extern`
@@ -1264,7 +1264,7 @@ impl<'a> IntermediateTypes<'a> {
     /// `None` for an occurrence that crosses the wasm boundary bare (an exposable `Vec<..>` array, or
     /// a non-collection type) — nothing to import. Callers must be in the wasm pass; the rust pass
     /// names no such wrappers.
-    fn wasm_collection_wrapper(
+    pub(crate) fn wasm_collection_wrapper(
         &self,
         ty: &RustType,
         sole_owners: &BTreeMap<String, RustIdent>,
@@ -3058,13 +3058,13 @@ impl<'a> IntermediateTypes<'a> {
     /// That is wrong for a synthesized name: the equivalent inline `[* key_hash]` field mints its
     /// wrapper under the STRUCTURAL name (`KeyHashList`). Two spellings of one anonymous shape then
     /// define two wasm classes for one concept — and a `--wrapper-requests` consumer importing the
-    /// structural name hard-errors (the synthesized name sits in `own_wrapper_shapes`).
+    /// structural name hard-errors (the synthesized name sits in the own-spec shape projection).
     ///
     /// Fix: flip the instance alias's `gen_wasm_alias` to `true` and record the ident here. The alias
     /// loop then emits `pub type SetKeyHash = KeyHashList;` (`for_wasm_member` on the alias base is
     /// bounds-aware, so `[+ …]` yields the `NonEmpty…List` name and a directly-exposable element
     /// yields the bare `Vec<…>`), the base-type walk mints the STRUCTURAL wrapper (recording it in
-    /// `own_wrapper_shapes` under the structural name), and the struct walk is told to SKIP the
+    /// the own-spec shape projection under the structural name), and the struct walk is told to SKIP the
     /// rule-named class mint (via `is_anonymous_collection_instance`). The rust side is untouched — the
     /// transparent `pub type SetKeyHash = Vec<KeyHash>;` alias and every rust reference to it stay
     /// byte-identical. NAMED instance rules (`named_set = set<key_hash>`, ident from the author's rule)

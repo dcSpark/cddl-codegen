@@ -2058,11 +2058,11 @@ survive:
   `open_table_json_e2e` execute each row's below/in/above window, duplicate-preserving pair count,
   and schema silence; `component_glue_reenters_bounded_dynamic_map_row_doors` and
   `workspace_key_requests_rest_row_contract` pin component and cross-crate wrapper hosting.
-  These are focused residents, not four generalized negative claims. The remaining systems are
-  tracked explicitly in `tests/testing-roadmap.toml`: the scope-wide generated-local product
-  (`testing.generated-local-collision.scope-wide-probe`), synthesized-wrapper reference-set closure
-  (`testing.synthesized-name-referenced-never-minted-e0425-flavor`), a registry-derived generated
-  JSON-Schema position oracle
+  These are focused residents, not four generalized negative claims. The wasm collection-wrapper
+  registry now closes every rendered reference over a locally minted class/alias, declared provider,
+  or dependency-owned extern source before a source map escapes. The remaining systems are tracked
+  explicitly in `tests/testing-roadmap.toml`: the scope-wide generated-local product
+  (`testing.generated-local-collision.scope-wide-probe`) and a registry-derived generated JSON-Schema position oracle
   (`testing.generated-json-schema.partition-cardinality-position-semantics`).
 - **Acceptance** — `tests/open-table-cip25-acceptance`
   (`integration_tests::open_table_cip25_acceptance`, compiled, preserve + canonical; extern
@@ -4320,7 +4320,7 @@ loose `{Elem}List` / `Map{K}To{V}` builders, the restricted `NonEmpty*` wrappers
 `keys()` list wrappers. How those names interact with USER rule names (and with each other) is a
 NAME-shaped axis the shape catalogs never reach: they mint one rule per shape and never spell a
 colliding user name or a named+inline coexistence, so a bug in this class ships as **generation exits
-0 but the wasm crate doesn't compile**. Two standing layers own it:
+0 but the wasm crate doesn't compile**. Three standing layers own it:
 
 - **Duplicate-ident backstop** (`generation/export.rs::top_level_type_ident` + the scan in
   `generated_files`). Before export, every generated `src/generated/**` file (all three crates) is
@@ -4344,6 +4344,13 @@ colliding user name or a named+inline coexistence, so a bug in this class ships 
   can't mask across cells) into ONE crate whose wasm binding is `cargo check`ed (the
   `feature_corpus_compiles` shared-target pattern), with per-cell `present`/`absent` assertions
   pinning the dedup semantics (dedup target defined once, the deduped-away twin never emitted).
+- **Wasm collection-wrapper registry closure** (`generation/mod.rs` +
+  `synthesized_name_registry_tests`). Each real wasm member/parameter/return render door records
+  the collection wrapper it writes, its owner, and its door. Before either source producer returns,
+  the registry requires a local class/alias or declared dependency provider; a reference emitted
+  inside a non-exported extern-dependency scope remains deliberately dependency-owned. This is the
+  reference-side E0425 invariant, so a missing mint is a deterministic generator error naming the
+  wrapper and owner/door before rustc.
 
 `table_keys_list_syntheses_share_the_established_loose_boundary_carrier`
 (`robustness_tests.rs`) is the cheap minimized cross-composition pin for the batch-19/batch-33
@@ -4373,8 +4380,8 @@ Expectations are seeded by the **probe-then-pin** rule: run the generator on the
 the outcome, then pin the observed-AND-correct behavior. A cell that lands exit-0 + non-compiling is a
 NEW instance of the class — fix it if the fix is small and clearly correct, otherwise pin it in a
 cited, vacuity-guarded known-bad ledger and REPORT it; never bless it by loosening the row to `Ok`.
-The E0425 flavor (an emitter that references a wrapper name no mint path emits) stays owned by the
-compile gates (`wasm_matrix_compiles` + the full-tier recombination wasm leg), not this sweep.
+The compile gates still provide broad whole-crate confirmation, but the E0425 flavor is now rejected
+at generation time by the registry closure rather than waiting for a downstream rustc error.
 
 ### rust↔wasm API-surface parity (`wasm_parity_tests::wasm_api_parity`)
 

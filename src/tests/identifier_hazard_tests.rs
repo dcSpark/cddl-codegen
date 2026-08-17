@@ -696,6 +696,32 @@ fn emitted_bindings(lit: &str) -> Vec<String> {
 
 /// The full emitter-local vocabulary: the bindings above, plus the `codegen`-builder fn parameter
 /// names (`.arg("serializer", …)`), which are spelled in Rust source rather than in a literal.
+fn codegen_arg_name(chars: &[char], content_at: usize, literal: &str) -> Option<String> {
+    let literal_chars: Vec<char> = literal.chars().collect();
+    let name = ident_at(&literal_chars, 0)?;
+    if name.chars().count() != literal_chars.len() {
+        return None;
+    }
+
+    // `content_at` points just after the opening quote. Walk back over rustfmt's optional
+    // line-breaking whitespace and require this literal to be the first argument of `.arg(...)`.
+    // Keying on the lexical scanner's real literals keeps `.arg(` examples in comments or emitted
+    // strings out of the denominator.
+    let mut at = content_at.checked_sub(1)?;
+    while at > 0 && chars[at - 1].is_whitespace() {
+        at -= 1;
+    }
+    if at == 0 || chars[at - 1] != '(' {
+        return None;
+    }
+    at -= 1;
+    while at > 0 && chars[at - 1].is_whitespace() {
+        at -= 1;
+    }
+    let marker: Vec<char> = ".arg".chars().collect();
+    (at >= marker.len() && chars[at - marker.len()..at] == marker).then_some(name)
+}
+
 fn scan_emitter_locals() -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
     let mut found: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
         Default::default();
@@ -703,15 +729,13 @@ fn scan_emitter_locals() -> std::collections::BTreeMap<String, std::collections:
         let path = format!("{}/src/generation/{file}", env!("CARGO_MANIFEST_DIR"));
         let src = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("cannot read emitter source {path}: {e}"));
-        for (_, lit) in scan_rust(&src).literals {
+        let scanned = scan_rust(&src);
+        let chars: Vec<char> = src.chars().collect();
+        for (content_at, lit) in scanned.literals {
             for name in emitted_bindings(&lit) {
                 found.entry(name).or_default().insert((*file).to_owned());
             }
-        }
-        let chars: Vec<char> = src.chars().collect();
-        for (i, _) in src.match_indices(".arg(\"") {
-            let at = src[..i].chars().count() + ".arg(\"".chars().count();
-            if let Some(name) = ident_at(&chars, at) {
+            if let Some(name) = codegen_arg_name(&chars, content_at, &lit) {
                 found
                     .entry(name)
                     .or_default()
