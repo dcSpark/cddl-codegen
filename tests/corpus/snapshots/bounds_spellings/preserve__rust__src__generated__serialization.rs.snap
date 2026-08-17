@@ -21,7 +21,12 @@ impl cbor_event::se::Serialize for BoundsMembers {
                 .as_ref()
                 .map(|encs| encs.len_encoding)
                 .unwrap_or_default()
-                .to_len_sz(5),
+                .to_len_sz(
+                    5 + match &self.m_optional_size {
+                        Some(_) => 1,
+                        None => 0,
+                    },
+                ),
         )?;
         serializer.write_bytes_sz(
             &self.m_exact_size,
@@ -69,6 +74,16 @@ impl cbor_event::se::Serialize for BoundsMembers {
                     .unwrap_or_default(),
             ),
         )?;
+        if let Some(field) = &self.m_optional_size {
+            serializer.write_bytes_sz(
+                field,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.m_optional_size_encoding.clone())
+                    .unwrap_or_default()
+                    .to_str_len_sz(field.len() as u64),
+            )?;
+        }
         self.encodings
             .as_ref()
             .map(|encs| encs.len_encoding)
@@ -84,7 +99,6 @@ impl Deserialize for BoundsMembers {
             let len_encoding: LenEncoding = len.into();
             let mut read_len = CBORReadLen::new(len);
             read_len.read_elems(5)?;
-            read_len.finish()?;
             let (m_exact_size, m_exact_size_encoding) = raw
                 .bytes_sz()
                 .map_err(Into::<DeserializeError>::into)
@@ -165,10 +179,39 @@ impl Deserialize for BoundsMembers {
                     }
                 })
                 .map_err(|e: DeserializeError| e.annotate("m_nint_range"))?;
+            let (m_optional_size, m_optional_size_encoding) = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::Bytes)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    raw.bytes_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(bytes, enc)| {
+                            if bytes.len() != 3 {
+                                Err(DeserializeFailure::RangeCheck {
+                                    found: bytes.len() as i128,
+                                    min: Some(3),
+                                    max: Some(3),
+                                }
+                                .into())
+                            } else {
+                                Ok((bytes, StringEncoding::from(enc)))
+                            }
+                        })
+                })()
+                .map_err(|e| e.annotate("m_optional_size"))
+                .map(|(m_optional_size, m_optional_size_encoding)| {
+                    (Some(m_optional_size), m_optional_size_encoding)
+                })
+            } else {
+                Ok((None, StringEncoding::default()))
+            }?;
             match len {
-                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
                 cbor_event::LenSz::Indefinite => match raw.special()? {
-                    cbor_event::Special::Break => (),
+                    cbor_event::Special::Break => read_len.finish()?,
                     _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
                 },
             }
@@ -178,6 +221,7 @@ impl Deserialize for BoundsMembers {
                 m_int_range,
                 m_zero_exact,
                 m_nint_range,
+                m_optional_size,
                 encodings: Some(BoundsMembersEncoding {
                     len_encoding,
                     m_exact_size_encoding,
@@ -185,6 +229,7 @@ impl Deserialize for BoundsMembers {
                     m_int_range_encoding,
                     m_zero_exact_encoding,
                     m_nint_range_encoding,
+                    m_optional_size_encoding,
                 }),
             })
         })()

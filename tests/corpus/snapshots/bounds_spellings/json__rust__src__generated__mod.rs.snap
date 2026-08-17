@@ -30,6 +30,7 @@ pub struct BoundsMembers {
     pub m_int_range: u64,
     pub m_zero_exact: u64,
     pub m_nint_range: u64,
+    pub m_optional_size: Option<Vec<u8>>,
 }
 
 impl BoundsMembers {
@@ -86,6 +87,7 @@ impl BoundsMembers {
             m_int_range,
             m_zero_exact,
             m_nint_range,
+            m_optional_size: None,
         })
     }
 }

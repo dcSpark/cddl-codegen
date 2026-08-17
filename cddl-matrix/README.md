@@ -913,35 +913,33 @@ records the ORDER (walked empirically for the `@used_as_elem` registration):
    registration (an index shift can also strand a `LAYER2_KNOWN_BAD` pin whose composition
    disappears).
 
-If the directive is a comment-DSL tag, `corpus_detect.ts`'s `MIRRORED_DIRECTIVES` lockstep
-tripwire also fires until the mirror (plus selfCheck vectors for any new grammar) is extended —
-or better, move the dsl channel onto the AST floor instead (`tests/testing-roadmap.toml`, the
-twin-implementation drift entry).
+If the feature is a comment-DSL tag, `corpus_detect.ts` batches its comment-owner blocks through
+`examples/comment_dsl.rs`. That helper calls the real `comment_ast::metadata_from_comments` grammar
+and projects the accepted `RuleMetadata` through an exhaustive field match, so neither directive
+vocabulary nor argument grammar is reimplemented in TypeScript. Add parser/self-check vectors for a
+new semantic flavor, but do not add a scanner table.
 
-The mirror and the feature registry are **independent mechanisms with different triggers**, so
-extending one never implies the other — but both are due in the SAME cycle as the directive, for
-different reasons. `MIRRORED_DIRECTIVES` is a set-equality tripwire against `comment_ast.rs`'s tag
-vocabulary, so it fires the moment the directive exists. The `features/*.toml` row is gated by
-*documentation* instead: `verify.ts`'s forward completeness lint treats a directive documented in
-`docs/docs/comment_dsl.mdx` as surveyed surface and HARD-FAILS
+The parser-backed detector and the feature registry are **independent mechanisms with different
+triggers**, so extending one never implies the other. The detector follows accepted metadata; the
+`features/*.toml` row is gated by *documentation* instead: `verify.ts`'s forward completeness lint
+treats a directive documented in `docs/docs/comment_dsl.mdx` as surveyed surface and HARD-FAILS
 (`missing_cddl_codegen_feature`) while it has no row. A documented directive therefore cannot sit
-in the mirror with no row, even though the row costs a multi-minute verdict mint against the
-external ruby/rust oracles — deferring just the mint leaves the `verify` gate red, and since
-`verify` is full-tier while CI runs `fast` only, nothing else reports it. The corpus FIXTURE is the
-one genuinely optional piece: with a row but no fixture the id renders ➕ supported-untested, which
-`project_corpus`'s check D accepts (it demands a cover only for an id the corpus actually
-exercises).
+without a row, even though the row costs a multi-minute verdict mint against the external ruby/rust
+oracles — deferring just the mint leaves the `verify` gate red, and since `verify` is full-tier while
+CI runs `fast` only, nothing else reports it. The corpus FIXTURE is the one genuinely optional piece:
+with a row but no fixture the id renders ➕ supported-untested, which `project_corpus`'s check D
+accepts (it demands a cover only for an id the corpus actually exercises).
 
 A FLAVORED sibling row — a multi-token `alt` (`@used_as_key hash`: an existing directive plus
-argument words) — engages two more recognition surfaces without tripping `MIRRORED_DIRECTIVES`
-(the directive set is unchanged), walked empirically for the `dsl.used_as_key.{hash,ord,hash_ord}`
-registration: `verify.ts`'s backward (FABRICATED) lint resolves the alt only when every trailing
-word is in the flavor vocabulary extracted from `comment_ast.rs`'s match arms (two arm shapes:
+argument words) — engages two recognition surfaces, walked empirically for the
+`dsl.used_as_key.{hash,ord,hash_ord}` registration: `verify.ts`'s backward (FABRICATED) lint resolves
+the alt only when every trailing word is in the flavor vocabulary extracted from `comment_ast.rs`'s
+match arms (two arm shapes:
 the DemandSet flag form `"hash" => demand.hash = true` and the enum-value form
 `"preserve" => DuplicatesPolicy::Preserve`; a fabricated flavor word still flags, and a vacuity
-guard fails loud if the extraction pattern rots), and `corpus_detect.ts`'s directive mirror must
-credit the narrowed sibling id per flavor set (with matching selfCheck vectors) or
-`project_corpus`'s coverage floors drift.
+guard fails loud if the extraction pattern rots). Separately, the parser-backed `comment_dsl`
+projection must credit the narrowed sibling id from the merged semantic value (`DemandSet` or
+`DuplicatesPolicy`), with matching self-check vectors, or `project_corpus`'s coverage floors drift.
 
 An ARGUMENT-REQUIRED directive (`@duplicates`: the bare spelling is a parse-time panic) registers
 as flavored sibling rows ONLY — no bare base row, and the vendor-count pin moves by the number of

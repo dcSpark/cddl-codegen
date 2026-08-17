@@ -270,6 +270,25 @@ pub struct RuleMetadata {
     pub comment: Option<String>,
 }
 
+/// The matrix-facing projection of comment metadata.  This deliberately lives beside the parser:
+/// a matrix feature id is credited only after the real grammar has accepted and merged a directive.
+///
+/// The exhaustive [`RuleMetadata`] destructure in [`RuleMetadata::matrix_dsl_facts`] is intentional.
+/// Adding a metadata field makes the compiler force its author to decide whether that field has a
+/// matrix feature, rather than leaving a second hand-maintained directive table quietly stale.
+#[allow(dead_code)] // consumed by the library-linked `comment_dsl` example, not the bin crate
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MatrixDslFacts {
+    pub ids: Vec<&'static str>,
+    pub key_demand: Option<DemandSet>,
+    pub newtype_getter: Option<Option<String>>,
+    pub duplicates: Option<DuplicatesPolicy>,
+    pub custom_encodings: Option<Vec<EncodingKind>>,
+    pub custom_wire_major: Option<WireMajor>,
+    pub extern_companions: Option<ExternCompanions>,
+    pub doc: Option<String>,
+}
+
 macro_rules! merge_metadata_fields {
     ($lhs:expr, $rhs:expr, $field_name:literal) => {
         match ($lhs.as_ref(), $rhs.as_ref()) {
@@ -538,6 +557,109 @@ impl RuleMetadata {
         }
         found.sort_unstable();
         found
+    }
+
+    /// Project accepted metadata into the cddl-matrix DSL feature ids and the argument-bearing
+    /// facts whose spelling used to be duplicated by `corpus_detect.ts`.  This is an authority
+    /// boundary, not another parser: callers receive facts only after `metadata_from_comments`
+    /// has run the real `nom` grammar and its merge/verification rules.
+    #[allow(dead_code)] // see MatrixDslFacts: examples link lib.rs while tests compile main.rs too
+    pub fn matrix_dsl_facts(&self) -> MatrixDslFacts {
+        // Keep this exhaustive.  A new metadata field must be consciously classified here.
+        let Self {
+            name,
+            rust_name,
+            newtype,
+            no_alias,
+            key_demand,
+            used_as_elem,
+            copy,
+            raw_bytes_flavor,
+            ignore,
+            duplicates,
+            custom_json,
+            no_json_schema_export,
+            custom_serialize,
+            custom_deserialize,
+            custom_encodings,
+            custom_wire_major,
+            extern_companions,
+            comment,
+        } = self;
+        let mut ids = Vec::new();
+        if name.is_some() {
+            ids.push("dsl.name");
+        }
+        if rust_name.is_some() {
+            ids.push("dsl.rust_name");
+        }
+        if newtype.is_some() {
+            ids.push("dsl.newtype");
+        }
+        if *no_alias {
+            ids.push("dsl.no_alias");
+        }
+        if let Some(demand) = key_demand {
+            ids.push(match (demand.hash, demand.ord) {
+                (true, true) => "dsl.used_as_key.hash_ord",
+                (true, false) => "dsl.used_as_key.hash",
+                (false, true) => "dsl.used_as_key.ord",
+                (false, false) => "dsl.used_as_key",
+            });
+        }
+        if *used_as_elem {
+            ids.push("dsl.used_as_elem");
+        }
+        if *copy {
+            ids.push("dsl.copy");
+        }
+        if *raw_bytes_flavor {
+            ids.push("dsl.raw_bytes_flavor");
+        }
+        if *ignore {
+            ids.push("dsl.ignore");
+        }
+        if let Some(policy) = duplicates {
+            ids.push(match policy {
+                DuplicatesPolicy::Preserve => "dsl.duplicates.preserve",
+                DuplicatesPolicy::Reject => "dsl.duplicates.reject",
+            });
+        }
+        if *custom_json {
+            ids.push("dsl.custom_json");
+        }
+        if *no_json_schema_export {
+            ids.push("dsl.no_json_schema_export");
+        }
+        if custom_serialize.is_some() {
+            ids.push("dsl.custom_serialize");
+        }
+        if custom_deserialize.is_some() {
+            ids.push("dsl.custom_deserialize");
+        }
+        if custom_encodings.is_some() {
+            ids.push("dsl.custom_encodings");
+        }
+        if custom_wire_major.is_some() {
+            ids.push("dsl.custom_wire_major");
+        }
+        if extern_companions.is_some() {
+            ids.push("dsl.extern_companions");
+        }
+        if comment.is_some() {
+            ids.push("dsl.doc");
+        }
+        ids.sort_unstable();
+        MatrixDslFacts {
+            ids,
+            key_demand: *key_demand,
+            newtype_getter: newtype.clone(),
+            duplicates: *duplicates,
+            custom_encodings: custom_encodings.clone(),
+            custom_wire_major: *custom_wire_major,
+            extern_companions: extern_companions.clone(),
+            doc: comment.clone(),
+        }
     }
 }
 
@@ -906,9 +1028,10 @@ fn rule_metadata(input: &str) -> IResult<&str, RuleMetadata> {
 /// `whitespace_then_tag`'s `alt`, surfaced as data for the extern-interface strict `@`-scan
 /// (`api::scan_extern_import_seam`), which hard-errors on any `@`-token outside this set. Because the
 /// tags prefix-match (nom `tag`), the scan treats a known tag as a PREFIX of the scanned token —
-/// `@namefoo` credits `@name` in both places. Keep in lockstep with the `tag_*` fns above (and
-/// `cddl-matrix/corpus_detect.ts`'s `MIRRORED_DIRECTIVES` mirror). Not `tag("@…")`-wrapped, so it does
-/// NOT feed corpus_detect's `tag("@…")`-literal drift tripwire.
+/// `@namefoo` credits `@name` in both places. Keep in lockstep with the `tag_*` fns above. The
+/// matrix detector now consumes parsed [`RuleMetadata`] through [`RuleMetadata::matrix_dsl_facts`];
+/// its exhaustive destructure is the compile-time prompt for a new metadata field, with no second
+/// directive-vocabulary table or `tag("@…")`-literal tripwire.
 ///
 /// Adding a directive here is the START of a checklist, not the whole of it: once the directive is
 /// also DOCUMENTED in `docs/docs/comment_dsl.mdx`, `cddl-matrix/verify.ts`'s forward completeness

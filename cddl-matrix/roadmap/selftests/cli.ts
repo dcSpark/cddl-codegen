@@ -937,7 +937,7 @@ function positiveServiceCase(id: RequiredCliSelfTestCaseId, context: SelfTestCon
       const testing = liveTestingV3Document();
       for (const [name, document, expectedSlots, expectedParts] of [
         ["matrix", matrix, 4, 9],
-        ["testing", testing, 0, 25],
+        ["testing", testing, 0, 24],
       ] as const) {
         assert(document.parts.every((part) => part.body_md.byteLength > 0),
           `${name} part prose is empty`);

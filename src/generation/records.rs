@@ -3193,16 +3193,19 @@ pub(super) fn codegen_struct(
                         )
                         .vis("pub");
                     // don't call needs_bounds_check_if_inlined() since if it's a RustType it's checked during that ctor
-                    if field.rust_type.has_value_bounds() {
+                    let setter_can_fail = field.rust_type.has_value_bounds();
+                    if setter_can_fail {
                         setter.ret("Result<(), JsError>");
-                        if let Some(line) =
-                            value_bounds_check_line(&field.rust_type, &field.name, true)
-                        {
+                        if let Some(line) = wasm_bounds_check_line(
+                            &field.rust_type,
+                            &field.name,
+                            &cli.common_import_wasm(),
+                        ) {
                             setter.line(&line);
                         }
                     }
-                    if field.rust_type.config.default.is_some() {
-                        setter.line(format!(
+                    let assignment = if field.rust_type.config.default.is_some() {
+                        format!(
                             "self.0.{} = {}",
                             field.name,
                             ToWasmBoundaryOperations::format(
@@ -3211,9 +3214,9 @@ pub(super) fn codegen_struct(
                                     .from_wasm_boundary_clone(types, &field.name, false)
                                     .into_iter()
                             )
-                        ));
+                        )
                     } else {
-                        setter.line(format!(
+                        format!(
                             "self.0.{} = Some({})",
                             field.name,
                             ToWasmBoundaryOperations::format(
@@ -3222,7 +3225,12 @@ pub(super) fn codegen_struct(
                                     .from_wasm_boundary_clone(types, &field.name, false)
                                     .into_iter()
                             )
-                        ));
+                        )
+                    };
+                    if setter_can_fail {
+                        setter.line(format!("{assignment};")).line("Ok(())");
+                    } else {
+                        setter.line(assignment);
                     }
 
                     wrapper.s_impl.push_fn(setter);

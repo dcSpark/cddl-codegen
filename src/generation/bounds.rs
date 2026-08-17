@@ -293,34 +293,42 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
     }
 }
 
-/// The value bounds check line a COMPONENT-face parameter emits, or `None` when the type carries no
-/// value window — or enforces it in its own type system (the `[+ T]` early-out, whose single
-/// `TryFrom` door IS the check, exactly as in [`value_bounds_check_line`]).
-///
-/// The same decision tree as [`value_bounds_check_line`], reached through the SAME condition owners
-/// (`reject_cond`, `bounds_check_expr_rust_type`, `bounds_check_expr_non_negative`,
-/// `nint_bounds_to_u64`, `canonical_range_check_payload`, `float_accept_cond`, `float_literal`):
-/// only the `Err(..)` construction forks. Two things force that fork and nothing else does — the component guest reports every
-/// failure as the `String` of the rust error's `Display` (through its own `err` helper), and it
-/// spells the error types through the generated crate's path (`runtime`) rather than bare, because
-/// the guest file imports nothing from that crate. A second CONDITION spelling is precisely the
-/// drift this module was consolidated to prevent, so nothing here re-derives one.
-///
-/// Note the wrap: `DeserializeFailure` derives `Debug` but implements no `Display` — only
-/// `DeserializeError` does — so the failure is lifted through `DeserializeError::from` before it
-/// reaches a `Display`-bounded helper.
+/// The value bounds check line a COMPONENT-face parameter emits. `DeserializeFailure` derives
+/// `Debug` but implements no `Display`, so lift it through `DeserializeError` before the guest's
+/// `err` helper turns the failure into a string.
 pub(super) fn component_bounds_check_line(ty: &RustType, e: &str, runtime: &str) -> Option<String> {
+    externally_wrapped_bounds_check_line(ty, e, |failure| {
+        format!(
+            "return Err(err({runtime}::error::DeserializeError::from({runtime}::error::DeserializeFailure::{failure})));"
+        )
+    })
+}
+
+/// The wasm-face twin of [`component_bounds_check_line`]. A wasm setter writes the native field
+/// directly, so it cannot delegate its value window to a native constructor. Lift the shared
+/// failure into the runtime's `DeserializeError`, then use wasm-bindgen's error conversion.
+pub(super) fn wasm_bounds_check_line(ty: &RustType, e: &str, runtime: &str) -> Option<String> {
+    externally_wrapped_bounds_check_line(ty, e, |failure| {
+        format!(
+            "return Err({runtime}::error::DeserializeError::from({runtime}::error::DeserializeFailure::{failure}).into());"
+        )
+    })
+}
+
+/// Shared condition/payload owner for the component and wasm boundary setters. The type-system
+/// early-outs and every integer/float spelling are the same as [`value_bounds_check_line`]; only
+/// the face-specific `Err(..)` wrapper is supplied by the caller.
+fn externally_wrapped_bounds_check_line(
+    ty: &RustType,
+    e: &str,
+    wrap: impl Fn(String) -> String,
+) -> Option<String> {
     if ty.is_type_enforced_non_empty()
         || ty.is_type_enforced_bounded_array()
         || ty.is_type_enforced_bounded_map()
     {
         return None;
     }
-    let wrap = |failure: String| {
-        format!(
-            "return Err(err({runtime}::error::DeserializeError::from({runtime}::error::DeserializeFailure::{failure})));"
-        )
-    };
     if let Some(window) = &ty.config.float_bounds {
         let cast_f64 = matches!(
             ty.resolve_alias_shallow(),
@@ -773,6 +781,19 @@ mod tests {
         assert_eq!(
             render(&bounded(Primitive::U64, (Some(0), Some(-2)))),
             "if value == -1 { return Err(err(runtime::error::DeserializeError::from(runtime::error::DeserializeFailure::RangeCheck{ found: value as i128, min: Some(0), max: Some(-2) }))); }"
+        );
+
+        let render_wasm = |ty: &RustType| {
+            wasm_bounds_check_line(ty, "value", "runtime")
+                .expect("bounded primitive must require a wasm check")
+        };
+        assert_eq!(
+            render_wasm(&bounded(Primitive::U64, (Some(0), Some(100)))),
+            "if value > 100 { return Err(runtime::error::DeserializeError::from(runtime::error::DeserializeFailure::RangeCheck{ found: value as i128, min: None, max: Some(100) }).into()); }"
+        );
+        assert_eq!(
+            render_wasm(&bounded(Primitive::I64, (Some(0), Some(100)))),
+            "if value < 0 || value > 100 { return Err(runtime::error::DeserializeError::from(runtime::error::DeserializeFailure::RangeCheck{ found: value as i128, min: Some(0), max: Some(100) }).into()); }"
         );
     }
 }

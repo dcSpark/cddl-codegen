@@ -15,6 +15,8 @@ interface types {
     m-int-range: func() -> u64;
     m-zero-exact: func() -> u64;
     m-nint-range: func() -> u64;
+    m-optional-size: func() -> option<list<u8>>;
+    set-m-optional-size: func(m-optional-size: list<u8>) -> result<_, string>;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<bounds-members, string>;
   }

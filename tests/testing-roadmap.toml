@@ -174,8 +174,6 @@ entries = [
   "testing.add-profile-wrapper-participation-grid-participation-differs-across",
   "testing.extern-deps-wasm-boundary-surface-packaging-json-gen",
   "testing.generic-raw-bytes-base-refused-generic-extern-base",
-  "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings",
-  "part-non-recorded-isn-t-re-litigated-coverage-gap",
   "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count",
   "testing.run-local-values-gate-cache-key-material-proven",
   "testing.gate-script-health-cache-staleness-key-fresh-worktree",
@@ -1237,7 +1235,7 @@ body_md = '''- **A directive's documented sentence can stay true while its consu
   promise is checked where a consumer reads it. Mechanical layer, on the second instance: for each
   directive that names a SHIPPED artifact in its documentation, require one pin on that artifact
   rather than on the emitted source — the directive inventory already exists
-  (`KNOWN_RULE_METADATA_TAGS`, mirrored by `corpus_detect.ts`), so the addition is a per-directive
+  (`KNOWN_RULE_METADATA_TAGS`), so the addition is a per-directive
   datum naming its shipped surface, alongside the witness-profile datum the reachability sweep
   needs. Trigger: a second directive whose meaning shifts under an artifact-shape change, or a
   consumer reporting that a directive did not do what its documentation says while every gate stayed
@@ -1263,7 +1261,7 @@ control_ids = ["testing.guard.directive-s-documented-sentence-stay-true-consumer
 [record.payload.promotion_trigger]
 observer = "fresh-evidence submitter for testing.directive-s-documented-sentence-stay-true-consumer-visible"
 dimension = "A directive's documented sentence can stay true while its consumer-visible MEANING changes underneath it, because the artifact it controls changed shape."
-observable = "- **A directive's documented sentence can stay true while its consumer-visible MEANING changes underneath it, because the artifact it controls changed shape.** `@no_json_schema_export` shipped meaning \"no registration row for this type\", pinned at the row level by `snapshot_tests::json_gen_extern_schema_rows` and the accepted/rejected table in `robustness_tests::no_json_schema_export_misuse_rejects_gracefully`. Both pins still pass verbatim after the JSON surface became one document per crate — and yet the directive now means something materially different to a consumer: it drops the ROOT DECLARATION, not the definition, so a suppressed type that a published type references is now DECLARED in the shipped `.d.ts` where it was previously a dangling `TS2304`. Nothing could have caught that, because every pin was on the emitted intermediate and none was on the surface the directive's own documentation names (\"not part of the published JSON-schema surface\"). The gap generalizes past this directive and past JSON: a pin on generated source answers \"did the emitter branch\", never \"does the shipped artifact say what the directive promises\". Note this is a DIFFERENT class from the directive×rule-shape reachability product entry, whose verdict is {effect visible, loudly rejected} on a byte-compare of generated source — that sweep reads \"effect visible\" for this directive both before and after the change. Owned meanwhile by the end-to-end pin in `integration_tests::package_json_pipeline` (a `@no_json_schema_export` rule that a row'd type embeds, asserted `$defs`-present and `.d.ts`-declared), which exists precisely so the directive's promise is checked where a consumer reads it. Mechanical layer, on the second instance: for each directive that names a SHIPPED artifact in its documentation, require one pin on that artifact rather than on the emitted source — the directive inventory already exists (`KNOWN_RULE_METADATA_TAGS`, mirrored by `corpus_detect.ts`), so the addition is a per-directive datum naming its shipped surface, alongside the witness-profile datum the reachability sweep needs. Trigger: a second directive whose meaning shifts under an artifact-shape change, or a consumer reporting that a directive did not do what its documentation says while every gate stayed green. **Scope note, from a near-miss in a different flavor:** this entry and its mechanical layer are DIRECTIVE-scoped, and the same \"documented promise nobody pins\" class reaches CLI flags and the emitted runtime too, where no equivalent inventory exists to hang a per-item datum on. The near-miss (review-caught before shipping, so no instance is on record): the `--json-schema-export` docs stated that a document failing the closure check \"never reaches `schemas/`\", which is true of the failing document and false about the directory — `export_schemas()` creates `schemas/` before the check and, on failure, writes nothing, so an EARLIER export's document stays on disk and a pipeline ignoring the non-zero exit compiles it. Fixed in the prose rather than by a pin, because a filesystem-effect claim has no artifact inventory to enumerate. If a flag-level instance actually ships, the layer to build is the same shape one rung out: a per-flag datum naming the artifact its documentation makes claims about."
+observable = "- **A directive's documented sentence can stay true while its consumer-visible MEANING changes underneath it, because the artifact it controls changed shape.** `@no_json_schema_export` shipped meaning \"no registration row for this type\", pinned at the row level by `snapshot_tests::json_gen_extern_schema_rows` and the accepted/rejected table in `robustness_tests::no_json_schema_export_misuse_rejects_gracefully`. Both pins still pass verbatim after the JSON surface became one document per crate — and yet the directive now means something materially different to a consumer: it drops the ROOT DECLARATION, not the definition, so a suppressed type that a published type references is now DECLARED in the shipped `.d.ts` where it was previously a dangling `TS2304`. Nothing could have caught that, because every pin was on the emitted intermediate and none was on the surface the directive's own documentation names (\"not part of the published JSON-schema surface\"). The gap generalizes past this directive and past JSON: a pin on generated source answers \"did the emitter branch\", never \"does the shipped artifact say what the directive promises\". Note this is a DIFFERENT class from the directive×rule-shape reachability product entry, whose verdict is {effect visible, loudly rejected} on a byte-compare of generated source — that sweep reads \"effect visible\" for this directive both before and after the change. Owned meanwhile by the end-to-end pin in `integration_tests::package_json_pipeline` (a `@no_json_schema_export` rule that a row'd type embeds, asserted `$defs`-present and `.d.ts`-declared), which exists precisely so the directive's promise is checked where a consumer reads it. Mechanical layer, on the second instance: for each directive that names a SHIPPED artifact in its documentation, require one pin on that artifact rather than on the emitted source — the directive inventory already exists (`KNOWN_RULE_METADATA_TAGS`), so the addition is a per-directive datum naming its shipped surface, alongside the witness-profile datum the reachability sweep needs. Trigger: a second directive whose meaning shifts under an artifact-shape change, or a consumer reporting that a directive did not do what its documentation says while every gate stayed green. **Scope note, from a near-miss in a different flavor:** this entry and its mechanical layer are DIRECTIVE-scoped, and the same \"documented promise nobody pins\" class reaches CLI flags and the emitted runtime too, where no equivalent inventory exists to hang a per-item datum on. The near-miss (review-caught before shipping, so no instance is on record): the `--json-schema-export` docs stated that a document failing the closure check \"never reaches `schemas/`\", which is true of the failing document and false about the directory — `export_schemas()` creates `schemas/` before the check and, on failure, writes nothing, so an EARLIER export's document stays on disk and a pipeline ignoring the non-zero exit compiles it. Fixed in the prose rather than by a pin, because a filesystem-effect claim has no artifact inventory to enumerate. If a flag-level instance actually ships, the layer to build is the same shape one rung out: a per-flag datum naming the artifact its documentation makes claims about."
 action_on_fire_md = '''Set testing.directive-s-documented-sentence-stay-true-consumer-visible to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
@@ -3752,20 +3750,6 @@ control_kind = "review_rule"
 control_state = "live"
 reference_ids = ["testing-roadmap-next-work-n57"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-title = "Current control for testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings."
-
-[record.payload]
-kind = "control"
-control_kind = "gate"
-control_state = "live"
-reference_ids = ["gate-project-corpus-n2"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -6565,97 +6549,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-title = "Twin in-repo implementations of one semantic decision drifting apart (emission spellings, detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix pattern; only the directive-SET flavor has a firing detector so far."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Twin in-repo implementations of one semantic decision drifting apart (emission spellings,
-  detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix
-  pattern; only the directive-SET flavor has a firing detector so far.** The in-repo sibling of
-  the parallel-constructor residual's predicate lesson above ("when a fix needs the same decision
-  an existing function already makes, extract the decision, never mirror it"): two implementations
-  of one decision, both living in this repo, drift apart while every behavioral oracle stays
-  green — semantically-equivalent drift has no oracle but reading (decode conformance sees equal
-  accept/reject sets, the mutation sweep sees no behavioral delta, the compile gates stay green;
-  pending-system coverage check done at recording time: the grammar-fuzzer escalations own only
-  the ACTIVE missing-import flavor of the walker instance — a recombination shape table extended
-  to nested container positions would compile-fail it, E0433 — and NO pending item sees the
-  semantically-equivalent flavor). Three read-caught instances, each fixed by single-owner
-  extraction and pinned: (1) `generate_wrapper_struct` hand-built its range-check
-  `cond`/`failure_expr` beside the shared helpers and drifted three spellings apart (`!= N`
-  collapse, zero-min lower-leg elision, an inline float-payload duplicate) —
-  `bounds_check_if_block` + `range_check_err` (`non_negative`/`location` params) are now the
-  single owner, pinned by the `bounds_spellings` corpus fixture; (2) `uses_non_empty_{vec,map}`
-  hand-walked the `RustStructType` variants, mirroring `visit_all_rust_types`' position
-  enumeration, and drifted two legs short (named-array `element_type`, table `domain`) — masked
-  by the transparent alias every top-level array/table rule co-registers; now folded onto the
-  canonical visitor, pinned by `nonempty_nested_positions`; (3) cross-language:
-  `corpus_detect.ts`'s `DSL_TAGS` scanner is a documented hand mirror of `comment_ast.rs`'s
-  directive grammar and drifted twice (no `@used_as_elem`; pre-flavor `@used_as_key` grammar),
-  with its hand-picked selfCheck vectors drifting WITH it — the layers that fired
-  (`verify.ts`'s docs-lint, `project_corpus`'s content-drift check A) trigger only via adjacent
-  artifacts (a docs mention, a `[[cover]]` entry), not the mirror itself. A fourth, BYTE-COUPLED
-  flavor was read-caught before it fired (D1's core/alloc rewrite, 2026-07-29):
-  `composed_runtime_static_files`' preserve flavoring `.replace()`s a byte-exact import line that
-  lives in `static/non_empty_map.rs`, so rewriting that line's path would have silently no-op'd
-  the substitution — distinct from the instances above in failure mode: not silent (the mangled
-  flavor is an E0432 in every preserve corpus-compile cell, `local` tier) but loud-LATE and far
-  from the causing edit, and invisible to any grep of either file alone. Fixed as a synchronized
-  edit with a move-together comment on BOTH sides; the instance-level tripwire, due on the next
-  touch of that composition code, is a must-hit replace (assert the pattern occurred before
-  substituting — the selfCheck-lockstep analog for byte mirrors, turning the no-op into a
-  generation-time panic that every snapshot regeneration sees at `fast` tier). Directive-SET
-  drift now has a firing detector: `corpus_detect.ts`'s selfCheck lockstep tripwire demands set equality
-  between the mirror's `MIRRORED_DIRECTIVES` and the authority's `tag("@…")` literals at import
-  time, so `project_corpus` (fast tier, CI) fires the moment a directive is added or removed on
-  either side. Remaining work, each piece behind its trigger:
-  - *On the next read-caught instance of the class:* build the mechanical layer — a
-    same-construct differential sweep (emit one bounded/flagged construct per site class — member
-    ctor/setter, wrapper `new()`/deserialize, primitive-deserialize `.and_then`, collection len
-    check — and diff the check conditions + failure payloads, ledgering deliberate site-specific
-    differences), plus the cheap grep half: a snapshot-wide wart scan (same-N `< N || > N`, dead
-    `< 0` over unsigned/`len()` exprs), following the tracked-text lint's current snapshot-scan
-    posture (`lint_tracked_text`, documented in `tests/README.md` § "Running everything").
-  - *On the next `comment_ast` grammar change of ANY form (not just a new directive):* do the AST
-    floor instead of hand-extending `DSL_TAGS` again — parse the comments with the real
-    `comment_ast` via a small `examples/` binary, as the role floor already does with
-    `ast_roles.rs`. The floor is the only fix for the tripwire's blind spot, ARG-GRAMMAR drift
-    within an unchanged directive set (the proven `@used_as_key` flavor shape: no set delta,
-    changed consumption, a new panic path), because hand-picked selfCheck vectors drift WITH the
-    mirror by construction. The floor's scope also includes the mirror's flavor-set→sibling-id
-    crediting (`dsl.used_as_key.{hash,ord,hash_ord}`, mirroring `DemandSet`'s bare/flavored
-    exclusivity) — hand-mirrored consumption accreted without any `comment_ast` grammar change,
-    which is why this trigger has correctly not fired yet.
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "silent_wrong_bytes"
-control_ids = ["testing.guard.twin-repo-implementations-semantic-drifting-apart-emission-spellings"]
-
-[record.payload.promotion_trigger]
-observer = "reviewer finding semantic drift between twin implementations"
-dimension = "read-caught twin-implementation drift instances"
-action_on_fire_md = '''Build the same-construct differential sweep and snapshot-wide wart scan exactly scoped in the preserved detail.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "event"
-event_md = '''a fresh read-caught instance of the class recorded by the parent
-'''
-
-[record.payload.cadence]
-owner_reference_id = "testing-twin-repo-implementations-semantic-drifting"
-event_source = "comment_ast grammar authority"
-period_or_event_md = '''Run on the next comment_ast grammar change of any form, including argument grammar with no directive-set delta.
-'''
-checklist_md = '''Replace the hand-extended DSL_TAGS mirror with a small examples binary parsing through the real comment_ast; cover flavor-set to sibling-id crediting and unchanged-directive-set argument grammar.
-'''
-missed_action_md = '''Block the grammar change from landing with another hand-mirrored extension; the AST floor is due in the same delivery.
-'''
-
-[[record]]
 id = "testing.unused-imports-generated-crates-trait-import-class-name"
 title = "`unused_imports` on generated crates — residual trait-import class the name-scan model cannot reach."
 
@@ -7224,16 +7117,6 @@ body_md = '''   - (The per-role wasm-ABI/multifile grid rows for both flavors ar
      rootings hold a compile-and-wire floor in the `key_`/`ukey_`/`upres_` blocks of
      `tests/recursive-collection-ref/input.cddl`.)
 
-'''
-
-[[part]]
-part_id = "part-non-recorded-isn-t-re-litigated-coverage-gap"
-parent_record_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-title = "Non-item, recorded so it isn't re-litigated as a coverage gap:"
-body_md = '''  - *Non-item, recorded so it isn't re-litigated as a coverage gap:*
-    `bounds_check_expr_non_negative`'s Array/Map leg and the member-side zero-min elision are
-    defensive-only — every zero lower bound is dropped upstream by the owners above before
-    emission, so the corner is unreachable end-to-end and a fixture cannot pin it.
 '''
 
 [[part]]
@@ -7890,11 +7773,6 @@ target = "testing.tag-set.non-idiom-generic-boundary"
 source = "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 kind = "parent_of"
 target = "testing.guard.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
-
-[[relation]]
-source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-kind = "parent_of"
-target = "testing.guard.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 
 [[relation]]
 source = "testing.unused-imports-generated-crates-trait-import-class-name"
@@ -8797,18 +8675,6 @@ source = "testing.tree-wide-sweeps-over-gitignored-regeneration-targets-count"
 kind = "file_heading"
 path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
-
-[[reference]]
-id = "gate-project-corpus-n2"
-source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-kind = "gate"
-gate_id = "project_corpus"
-
-[[reference]]
-id = "testing-twin-repo-implementations-semantic-drifting"
-source = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
-kind = "roadmap"
-target_id = "testing.twin-repo-implementations-semantic-drifting-apart-emission-spellings"
 
 [[reference]]
 id = "test-extern-deps-n2"

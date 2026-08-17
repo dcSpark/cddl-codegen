@@ -34,6 +34,8 @@
 use super::{ALL_PROFILES, Profile};
 use crate::cli::Cli;
 use clap::Parser;
+use quote::ToTokens;
+use syn::visit::Visit;
 
 /// Build a `Cli` for in-process generation. `--output` is unused (`generated_strings` does no disk
 /// I/O) but clap requires it; `--static-dir` defaults to `static/`, read for Cargo.toml/prelude.
@@ -48,6 +50,599 @@ fn cli_for(input: &std::path::Path, extra: &[&str]) -> Cli {
     ];
     args.extend_from_slice(extra);
     Cli::parse_from(args)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum SiteKind {
+    MemberCtor,
+    MemberSetter,
+    WrapperNew,
+    WrapperDeserialize,
+    PrimitiveAndThen,
+    CollectionLength,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RangePayload {
+    variant: String,
+    found: String,
+    min: String,
+    max: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Observation {
+    kind: SiteKind,
+    file: String,
+    context: String,
+    condition: String,
+    payload: RangePayload,
+    wrapper_location: bool,
+    returns_error: bool,
+}
+
+fn compact(tokens: impl ToTokens) -> String {
+    tokens.to_token_stream().to_string().replace(' ', "")
+}
+
+fn range_payload(expr: &syn::Expr) -> Option<RangePayload> {
+    let syn::Expr::Struct(value) = expr else {
+        return None;
+    };
+    let mut segments = value.path.segments.iter().rev();
+    let variant_name = segments.next()?.ident.to_string();
+    let failure_name = segments.next()?.ident.to_string();
+    if failure_name != "DeserializeFailure"
+        || (variant_name != "RangeCheck" && variant_name != "RangeCheckFloat")
+    {
+        return None;
+    }
+    // The wasm face qualifies this through its native runtime crate while the rust face imports
+    // the same enum. Compare the semantic enum/variant pair, not that transport-path difference.
+    let variant = format!("{failure_name}::{variant_name}");
+    let variant_for_error = variant.clone();
+    let field = |name| {
+        value
+            .fields
+            .iter()
+            .find(|field| field.member.to_token_stream().to_string() == name)
+            .map(|field| compact(&field.expr))
+            .unwrap_or_else(|| panic!("{variant_for_error} lacks `{name}`: {}", compact(value)))
+    };
+    Some(RangePayload {
+        variant,
+        found: field("found"),
+        min: field("min"),
+        max: field("max"),
+    })
+}
+
+/// Finds a RangeCheck only along the immediate error expression. In particular, nested `if`s in
+/// the branch do not count as the parent check's failure payload.
+fn direct_range_failure(expr: &syn::Expr) -> Option<(RangePayload, bool, bool)> {
+    match expr {
+        syn::Expr::Return(ret) => {
+            direct_range_failure(ret.expr.as_deref()?).map(|(p, l, _)| (p, l, true))
+        }
+        syn::Expr::Call(call) => {
+            let name = compact(&call.func);
+            if name.ends_with("Err") {
+                direct_range_failure(call.args.first()?)
+            } else if name.ends_with("DeserializeError::new") {
+                direct_range_failure(call.args.last()?).map(|(p, _, r)| (p, true, r))
+            } else if name.ends_with("DeserializeError::from") {
+                direct_range_failure(call.args.last()?).map(|(p, _, r)| (p, false, r))
+            } else {
+                None
+            }
+        }
+        syn::Expr::MethodCall(call) => direct_range_failure(&call.receiver),
+        _ => range_payload(expr).map(|payload| (payload, false, false)),
+    }
+}
+
+struct SiteWalk {
+    out: Vec<Observation>,
+    file: String,
+    imp: String,
+    fun: String,
+    local: String,
+    closure_depth: usize,
+}
+
+impl<'ast> Visit<'ast> for SiteWalk {
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        let old = std::mem::replace(&mut self.imp, compact(&item.self_ty));
+        syn::visit::visit_item_impl(self, item);
+        self.imp = old;
+    }
+
+    fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+        let old = std::mem::replace(&mut self.fun, item.sig.ident.to_string());
+        syn::visit::visit_impl_item_fn(self, item);
+        self.fun = old;
+    }
+
+    fn visit_local(&mut self, node: &'ast syn::Local) {
+        let old = std::mem::replace(&mut self.local, compact(&node.pat));
+        syn::visit::visit_local(self, node);
+        self.local = old;
+    }
+
+    fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
+        self.closure_depth += 1;
+        syn::visit::visit_expr_closure(self, node);
+        self.closure_depth -= 1;
+    }
+
+    fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
+        let failure = node.then_branch.stmts.iter().find_map(|stmt| match stmt {
+            syn::Stmt::Expr(expr, _) => direct_range_failure(expr),
+            _ => None,
+        });
+        if let Some((payload, wrapper_location, returns_error)) = failure {
+            let condition = compact(&node.cond);
+            let kind = if self.imp == "BoundsMembers" && self.fun == "new" {
+                SiteKind::MemberCtor
+            } else if self.imp == "BoundsMembers" && self.fun.starts_with("set_") {
+                SiteKind::MemberSetter
+            } else if self.imp.starts_with('W') && self.fun == "new" {
+                SiteKind::WrapperNew
+            } else if self.imp.starts_with('W') && self.fun == "deserialize" {
+                SiteKind::WrapperDeserialize
+            } else if condition.contains(".len()") {
+                SiteKind::CollectionLength
+            } else if self.closure_depth > 0 {
+                SiteKind::PrimitiveAndThen
+            } else {
+                return syn::visit::visit_expr_if(self, node);
+            };
+            self.out.push(Observation {
+                kind,
+                file: self.file.clone(),
+                context: format!(
+                    "{}::{}{}",
+                    self.imp,
+                    self.fun,
+                    if !self.local.is_empty() {
+                        format!("::{}", self.local)
+                    } else {
+                        String::new()
+                    }
+                ),
+                condition,
+                payload,
+                wrapper_location,
+                returns_error,
+            });
+        }
+        syn::visit::visit_expr_if(self, node);
+    }
+}
+
+fn observe(file: &str, source: &str) -> Vec<Observation> {
+    let parsed = syn::parse_file(source).unwrap_or_else(|err| panic!("{file}: {err}"));
+    let mut walk = SiteWalk {
+        out: vec![],
+        file: file.into(),
+        imp: String::new(),
+        fun: String::new(),
+        local: String::new(),
+        closure_depth: 0,
+    };
+    walk.visit_file(&parsed);
+    walk.out
+}
+
+fn exactly<'a>(
+    all: &'a [Observation],
+    kind: SiteKind,
+    file: &str,
+    context: &str,
+    condition: &str,
+) -> &'a Observation {
+    let matches: Vec<_> = all
+        .iter()
+        .filter(|site| {
+            site.kind == kind
+                && site.file == file
+                && site.context == context
+                && site.condition == condition
+        })
+        .collect();
+    assert_eq!(
+        matches.len(),
+        1,
+        "site {kind:?}/{file}/{context}/{condition}: {all:#?}"
+    );
+    matches[0]
+}
+
+fn canonical(site: &Observation) -> (String, String, bool, String, String) {
+    let (found_expression, widened_to_i128) = site
+        .payload
+        .found
+        .strip_suffix("asi128")
+        .map_or((site.payload.found.as_str(), false), |found| (found, true));
+    let condition = site.condition.replacen(found_expression, "$found", 1);
+    assert_ne!(
+        condition, site.condition,
+        "RangeCheck payload `found` is not the checked expression: {site:#?}"
+    );
+    (
+        condition,
+        site.payload.variant.clone(),
+        widened_to_i128,
+        site.payload.min.clone(),
+        site.payload.max.clone(),
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum DeliberateDifference {
+    WrapperErrorLocation,
+    ReturnVsExpression,
+    SignedWireVsStoredMagnitude,
+}
+
+struct DifferenceLedgerEntry<'a> {
+    difference: DeliberateDifference,
+    left: &'a Observation,
+    right: &'a Observation,
+}
+
+struct WartWalk {
+    found: bool,
+    typed_scopes: Vec<std::collections::BTreeMap<String, bool>>,
+}
+
+fn typed_integer_name(pat: &syn::Pat, ty: &syn::Type) -> Option<(String, bool)> {
+    let ty = compact(ty);
+    match ty.as_str() {
+        "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => Some((compact(pat), true)),
+        "i8" | "i16" | "i32" | "i64" | "i128" | "isize" => Some((compact(pat), false)),
+        _ => None,
+    }
+}
+
+impl WartWalk {
+    fn unsigned_in_scope(&self, name: &str) -> bool {
+        self.typed_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn push_arguments<'ast>(&mut self, inputs: impl Iterator<Item = &'ast syn::FnArg>) {
+        let mut scope = std::collections::BTreeMap::new();
+        for input in inputs {
+            if let syn::FnArg::Typed(arg) = input
+                && let Some((name, unsigned)) = typed_integer_name(&arg.pat, &arg.ty)
+            {
+                scope.insert(name, unsigned);
+            }
+        }
+        self.typed_scopes.push(scope);
+    }
+}
+
+impl<'ast> Visit<'ast> for WartWalk {
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+        self.push_arguments(item.sig.inputs.iter());
+        self.visit_block(&item.block);
+        self.typed_scopes.pop();
+    }
+
+    fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+        self.push_arguments(item.sig.inputs.iter());
+        self.visit_block(&item.block);
+        self.typed_scopes.pop();
+    }
+
+    fn visit_block(&mut self, block: &'ast syn::Block) {
+        self.typed_scopes.push(Default::default());
+        syn::visit::visit_block(self, block);
+        self.typed_scopes.pop();
+    }
+
+    fn visit_local(&mut self, local: &'ast syn::Local) {
+        if let syn::Pat::Type(pat) = &local.pat
+            && let Some((name, unsigned)) = typed_integer_name(&pat.pat, &pat.ty)
+        {
+            self.typed_scopes.last_mut().unwrap().insert(name, unsigned);
+        }
+        syn::visit::visit_local(self, local);
+    }
+
+    fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
+        if matches!(node.op, syn::BinOp::Or(_))
+            && let (syn::Expr::Binary(lower), syn::Expr::Binary(upper)) =
+                (&*node.left, &*node.right)
+            && matches!(lower.op, syn::BinOp::Lt(_))
+            && matches!(upper.op, syn::BinOp::Gt(_))
+            && compact(&lower.left) == compact(&upper.left)
+            && compact(&lower.right) == compact(&upper.right)
+        {
+            self.found = true;
+        }
+        if matches!(node.op, syn::BinOp::Lt(_)) && compact(&node.right) == "0" {
+            let left = compact(&node.left);
+            if matches!(&*node.left, syn::Expr::MethodCall(call) if call.method == "len")
+                || self.unsigned_in_scope(&left)
+            {
+                self.found = true;
+            }
+        }
+        syn::visit::visit_expr_binary(self, node);
+    }
+}
+
+fn has_bounds_wart(source: &str) -> bool {
+    let source = if source.starts_with("---\n") {
+        let Some((_, body)) = source.split_once("\n---\n") else {
+            return false;
+        };
+        body
+    } else {
+        source
+    };
+    let parsed = syn::parse_file(source).unwrap();
+    let mut walk = WartWalk {
+        found: false,
+        typed_scopes: vec![],
+    };
+    walk.visit_file(&parsed);
+    walk.found
+}
+
+#[test]
+fn emitted_bounds_site_differential_and_wart_scan() {
+    let bounded = crate::api::generated_strings(&cli_for(
+        std::path::Path::new("tests/corpus/bounds_spellings.cddl"),
+        &[],
+    ))
+    .unwrap();
+    let rust_mod = "rust/src/generated/mod.rs";
+    let rust_ser = "rust/src/generated/serialization.rs";
+    let wasm_mod = "wasm/src/generated/mod.rs";
+    let mut all = observe(rust_mod, bounded.get(rust_mod).unwrap());
+    all.extend(observe(rust_ser, bounded.get(rust_ser).unwrap()));
+    all.extend(observe(wasm_mod, bounded.get(wasm_mod).unwrap()));
+
+    let ctor = exactly(
+        &all,
+        SiteKind::MemberCtor,
+        rust_mod,
+        "BoundsMembers::new",
+        "m_exact_size.len()!=3",
+    );
+    let setter = exactly(
+        &all,
+        SiteKind::MemberSetter,
+        wasm_mod,
+        "BoundsMembers::set_m_optional_size",
+        "m_optional_size.len()!=3",
+    );
+    let wrapper_new = exactly(
+        &all,
+        SiteKind::WrapperNew,
+        rust_mod,
+        "WExactSize::new",
+        "inner.len()!=3",
+    );
+    let wrapper_deserialize = exactly(
+        &all,
+        SiteKind::WrapperDeserialize,
+        rust_ser,
+        "WExactSize::deserialize",
+        "inner.len()!=3",
+    );
+    let exact_collection = exactly(
+        &all,
+        SiteKind::CollectionLength,
+        rust_ser,
+        "BoundsMembers::deserialize::m_exact_size",
+        "bytes.len()!=3",
+    );
+    let int_ctor = exactly(
+        &all,
+        SiteKind::MemberCtor,
+        rust_mod,
+        "BoundsMembers::new",
+        "m_int_range>100",
+    );
+    let int_wrapper_new = exactly(
+        &all,
+        SiteKind::WrapperNew,
+        rust_mod,
+        "WIntRange::new",
+        "inner>100",
+    );
+    let int_wrapper_deserialize = exactly(
+        &all,
+        SiteKind::WrapperDeserialize,
+        rust_ser,
+        "WIntRange::deserialize",
+        "inner>100",
+    );
+    let uint_primitive = exactly(
+        &all,
+        SiteKind::PrimitiveAndThen,
+        rust_ser,
+        "BoundsMembers::deserialize::m_int_range",
+        "x>100",
+    );
+    let nint_primitive = exactly(
+        &all,
+        SiteKind::PrimitiveAndThen,
+        rust_ser,
+        "BoundsMembers::deserialize::m_nint_range",
+        "x<-100",
+    );
+    let zero_upper_collection = exactly(
+        &all,
+        SiteKind::CollectionLength,
+        rust_ser,
+        "BoundsMembers::deserialize::m_zero_len",
+        "bytes.len()>32",
+    );
+    let nint_ctor = exactly(
+        &all,
+        SiteKind::MemberCtor,
+        rust_mod,
+        "BoundsMembers::new",
+        "m_nint_range>99",
+    );
+
+    // These six coordinates are deliberately disjoint even where a site happens to be both a
+    // collection check and one of the constructor/wrapper families.
+    let kinds: std::collections::BTreeSet<_> = [
+        ctor.kind,
+        setter.kind,
+        wrapper_new.kind,
+        wrapper_deserialize.kind,
+        uint_primitive.kind,
+        exact_collection.kind,
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        kinds.len(),
+        6,
+        "one range-check observation satisfied multiple coordinates"
+    );
+
+    for site in [
+        ctor,
+        setter,
+        wrapper_new,
+        wrapper_deserialize,
+        uint_primitive,
+        exact_collection,
+    ] {
+        assert!(
+            !site.payload.found.is_empty()
+                && !site.payload.min.is_empty()
+                && !site.payload.max.is_empty(),
+            "incomplete RangeCheck payload: {site:#?}"
+        );
+    }
+    for site in [
+        ctor,
+        setter,
+        wrapper_new,
+        wrapper_deserialize,
+        exact_collection,
+    ] {
+        assert_eq!(
+            canonical(site),
+            canonical(ctor),
+            "exact-size sites drifted: {site:#?}"
+        );
+    }
+    for site in [
+        int_ctor,
+        int_wrapper_new,
+        int_wrapper_deserialize,
+        uint_primitive,
+    ] {
+        assert_eq!(
+            canonical(site),
+            canonical(int_ctor),
+            "unsigned-integer sites drifted: {site:#?}"
+        );
+    }
+    assert_eq!(
+        canonical(zero_upper_collection),
+        (
+            "$found>32".into(),
+            "DeserializeFailure::RangeCheck".into(),
+            true,
+            "None".into(),
+            "Some(32)".into(),
+        )
+    );
+
+    let ledger = [
+        DifferenceLedgerEntry {
+            difference: DeliberateDifference::WrapperErrorLocation,
+            left: wrapper_new,
+            right: wrapper_deserialize,
+        },
+        DifferenceLedgerEntry {
+            difference: DeliberateDifference::ReturnVsExpression,
+            left: int_ctor,
+            right: uint_primitive,
+        },
+        DifferenceLedgerEntry {
+            difference: DeliberateDifference::SignedWireVsStoredMagnitude,
+            left: nint_ctor,
+            right: nint_primitive,
+        },
+    ];
+    let ledger_kinds: std::collections::BTreeSet<_> =
+        ledger.iter().map(|entry| entry.difference).collect();
+    assert_eq!(ledger_kinds.len(), 3, "difference ledger is incomplete");
+    for entry in ledger {
+        match entry.difference {
+            DeliberateDifference::WrapperErrorLocation => {
+                assert_eq!(canonical(entry.left), canonical(entry.right));
+                assert!(entry.left.wrapper_location && !entry.right.wrapper_location);
+            }
+            DeliberateDifference::ReturnVsExpression => {
+                assert_eq!(canonical(entry.left), canonical(entry.right));
+                assert!(entry.left.returns_error && !entry.right.returns_error);
+            }
+            DeliberateDifference::SignedWireVsStoredMagnitude => {
+                assert_eq!(entry.left.condition, "m_nint_range>99");
+                assert_eq!(entry.left.payload.found, "m_nint_rangeasi128");
+                assert_eq!(entry.left.payload.min, "None");
+                assert_eq!(entry.left.payload.max, "Some(99)");
+                assert_eq!(entry.right.condition, "x<-100");
+                assert_eq!(entry.right.payload.found, "x");
+                assert_eq!(entry.right.payload.min, "Some(-100)");
+                assert_eq!(entry.right.payload.max, "None");
+            }
+        }
+    }
+
+    assert!(has_bounds_wart("fn f(x:i64){if x<47||x>47{}}"));
+    assert!(has_bounds_wart(
+        "fn f(v:Vec<u8>){if v.len()<0||v.len()>3{}}"
+    ));
+    assert!(has_bounds_wart("fn f(x:usize){if x<0||x>3{}}"));
+    assert!(has_bounds_wart("fn f(){let x:u32=1;if x<0{}}"));
+    for source in [
+        "fn f(x:i64){if x<47||x>48{}}",
+        "fn f(a:i64,b:i64){if a<3||b>3{}}",
+        "fn f(x:i64){if x<0||x>3{}}",
+        "fn a(x:u64){} fn b(x:i64){if x<0{}}",
+        "fn f(x:u64){{let x:i64=0;if x<0{}}}",
+        "fn f(unsigned_alias:u64ish){if unsigned_alias<0{}}",
+        "fn f(){let _=\"x<3||x>3\";/*v.len()<0*/}",
+    ] {
+        assert!(!has_bounds_wart(source), "{source}");
+    }
+    for dir in std::fs::read_dir("tests/corpus/snapshots")
+        .unwrap()
+        .flatten()
+    {
+        for entry in std::fs::read_dir(dir.path()).unwrap().flatten() {
+            let path = entry.path();
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(".rs.snap"))
+            {
+                let snapshot = std::fs::read_to_string(&path).unwrap();
+                if snapshot.starts_with("---\n") {
+                    assert!(!has_bounds_wart(&snapshot), "{}", path.display());
+                }
+            }
+        }
+    }
 }
 
 /// Near-constant generated files skipped by the per-feature corpus (they don't vary by construct).

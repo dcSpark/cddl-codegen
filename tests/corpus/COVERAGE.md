@@ -363,7 +363,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `ctl.le` |  | · | · |  | · |  |  |  |  |  |
 | `ctl.lt` |  | · |  |  |  |  |  |  |  |  |
 | `ctl.ne` |  | · |  |  | · |  |  |  | · |  |
-| `ctl.size` | · | · |  |  |  |  |  |  |  |  |
+| `ctl.size` | · | · |  |  |  |  |  | · |  |  |
 | `ext.extern` | · |  |  |  |  |  |  |  |  |  |
 | `ext.raw_bytes` | · |  |  |  |  |  |  |  |  |  |
 | `genericarg.type` | · | · |  |  |  |  |  |  |  |  |
@@ -430,7 +430,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Modelled `(role × feature)` cells: **71** (over 150 shape-granular containment rows).
 - Exercised by the corpus **and** modelled: **37**.
-- Exercised by the corpus, modelled by **nothing**: **172** (the `·` cells).
+- Exercised by the corpus, modelled by **nothing**: **173** (the `·` cells).
 - Modelled but not exercised by any corpus fixture: **34**.
 
 ## Notable findings

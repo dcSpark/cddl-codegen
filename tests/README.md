@@ -832,6 +832,20 @@ The module also carries non-snapshot **invariant gates** — each sweeps every f
 `whole_program` inputs generate and asserts a property snapshots can't judge (snapshots pin that
 emitted bytes don't *change*, not that they satisfy an invariant; a violation just gets blessed):
 
+- `emitted_bounds_site_differential_and_wart_scan` — freshly generates the bounded fixture, parses
+  its emitted Rust with `syn`, and selects one labelled record constructor, optional-member WASM
+  setter, wrapper `new`/decode, primitive `.and_then`, and collection-length site by file and
+  enclosing context. It canonically compares their condition shapes and complete `RangeCheck`
+  payloads, while an explicit ledger consumes only wrapper location, return framing, and signed-wire
+  nint versus stored-magnitude differences. The same fast test syntax-scans every tracked Rust corpus
+  snapshot for the two canonicalization warts: `< N || > N` with the same bound and a dead unsigned
+  or `.len() < 0` leg; seeded positive and negative controls protect the detector itself.
+- `comment_dsl` / `corpus_detect.ts` — the matrix's DSL feature floor batches comment attachments
+  through `examples/comment_dsl.rs`, which calls public `comment_ast::metadata_from_comments` and
+  projects accepted metadata into matrix ids and argument facts. TypeScript retains the RFC text scan
+  and comment lexer but no directive grammar mirror; malformed strict arguments are uncreditable
+  authority rows, while separate rule attachments (including duplicate `@name` spellings) never
+  merge into one metadata owner.
 - `generated_files_start_with_header` — every generated `.rs` in the tool-owned trees
   (`rust/src/generated/**`, `wasm/src/generated/**`) must LEAD with the codegen provenance banner;
   only blank lines, `//` comments, and crate `#![…]` attributes may precede it. It asserts with the
@@ -1578,9 +1592,9 @@ back via `--extern-import` in place of a hand-stub tree (user docs:
   read-back contract).
 - **`@rust_name` floor**: `comment_ast.rs` unit vectors plus `src/tests/rust_name_tests.rs`
   (import-seam aliasing, the wasm full-path bypass site, exported-rule rejection, reserved-name
-  pin rejection); the directive is lockstep-mirrored in `cddl-matrix/corpus_detect.ts` and
-  registered as the `dsl.rust_name` matrix feature row (compile-exempt: it pins a dependency-crate
-  type name, so it cannot compile standalone).
+  pin rejection); `cddl-matrix/corpus_detect.ts` obtains its `dsl.rust_name` credit from the
+  parser-backed `comment_dsl` authority helper, and the matrix feature row is compile-exempt because
+  it pins a dependency-crate type name that cannot compile standalone.
 
 `flag_value_smoke` generate + `cargo check`s a rich extern-free input (`tests/canonical`) under each
 documented flag *value* that no named profile exercises (`--annotate-fields=false`,

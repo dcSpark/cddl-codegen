@@ -37,7 +37,7 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import { annotationsHeaderLines } from "./lib";
-import { featuresIn, rolesIn, NO_DETECTOR } from "./corpus_detect.ts";
+import { featuresIn, prepareDslFeatures, rolesIn, NO_DETECTOR } from "./corpus_detect.ts";
 import overlay from "./annotations/corpus/cddl_codegen.toml";
 
 const HERE = import.meta.dir;
@@ -90,6 +90,7 @@ const PROFILE_ORDER = ["RFC8610", "RFC9682", "CDDL_CODEGEN"];
 // detected floor: every construct that syntactically appears anywhere in the corpus
 import { Glob } from "bun";
 const files = [...new Glob("*.cddl").scanSync({ cwd: CORPUS })].sort();
+prepareDslFeatures(files.map(f => readFileSync(`${CORPUS}/${f}`, "utf8")));
 const detected = new Set<string>();
 for (const f of files) { const d = featuresIn(readFileSync(`${CORPUS}/${f}`, "utf8")); for (const id of [...d.rfc, ...d.ctl, ...d.dsl]) detected.add(id); }
 

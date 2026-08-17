@@ -104,7 +104,8 @@ use bounds::{
     CONVERT_ERR_TO_OURS, SignArm, SignArmBounds, bounds_check_expr, bounds_check_expr_non_negative,
     bounds_check_if_block, bounds_check_if_block_float, classify_sign_arm, float_fixed_literal,
     nint_arm_needs_width, non_preserve_bounds_fn, prim_window, primitive_non_negative,
-    sign_arm_if_block, uint_arm_needs_width, upper_caps, value_bounds_check_line, width_reject,
+    sign_arm_if_block, uint_arm_needs_width, upper_caps, value_bounds_check_line,
+    wasm_bounds_check_line, width_reject,
 };
 pub(crate) use bounds::{bounds_check_expr_rust_type, bounds_reject_value, nint_bounds_to_u64};
 

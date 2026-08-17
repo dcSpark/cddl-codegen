@@ -81,6 +81,28 @@ impl wit_types::GuestBoundsMembers for WitBoundsMembers {
         me.m_nint_range
     }
 
+    fn m_optional_size(&self) -> Option<Vec<u8>> {
+        let me = self.0.borrow();
+        me.m_optional_size
+            .as_ref()
+            .map(|x| x.iter().map(|x| *x).collect())
+    }
+
+    fn set_m_optional_size(&self, m_optional_size: Vec<u8>) -> Result<(), String> {
+        if m_optional_size.len() != 3 {
+            return Err(err(cddl_lib::error::DeserializeError::from(
+                cddl_lib::error::DeserializeFailure::RangeCheck {
+                    found: m_optional_size.len() as i128,
+                    min: Some(3),
+                    max: Some(3),
+                },
+            )));
+        }
+        let m_optional_size = m_optional_size.into_iter().collect();
+        self.0.borrow_mut().m_optional_size = Some(m_optional_size);
+        Ok(())
+    }
+
     fn to_cbor_bytes(&self) -> Vec<u8> {
         <cddl_lib::BoundsMembers as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
             &self.0.borrow(),

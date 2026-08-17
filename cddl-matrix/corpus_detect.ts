@@ -11,21 +11,19 @@
  *
  *   bun run corpus_detect.ts
  *
- * text-scan detection (comment-stripped for RFC constructs, comment-only for the @-DSL), not a
- * real parse. Consistent with verify.ts, which also hand-scans CDDL text. The upgrade path EXISTS in this
- * file (`rolesIn` shells `examples/ast_roles.rs`, the real cddl-crate parse, and project_corpus already
- * uses it for role-keyed covers); if text-scan precision bites again, move the feature-axis evidence onto
- * that floor rather than growing the regexes. Prelude and control-op ids are matched by NAME token
- * (auto-covers ~90 ids); structural constructs use a small hand table. Supported ids with no possible
- * text detector are declared in NO_DETECTOR (exported), not silently treated as absent.
+ * RFC/control-op detection is a comment-stripped text scan, consistent with verify.ts; the @-DSL
+ * channel lexes comment ownership here and delegates grammar to the Rust parser authority below.
+ * The RFC upgrade path EXISTS in this file (`rolesIn` shells `examples/ast_roles.rs`, the real
+ * cddl-crate parse, and project_corpus already uses it for role-keyed covers); if text-scan precision
+ * bites again, move the feature-axis evidence onto that floor rather than growing the regexes.
+ * Prelude and control-op ids are matched by NAME token (auto-covers ~90 ids); structural constructs
+ * use a small hand table. Supported ids with no possible text detector are declared in NO_DETECTOR
+ * (exported), not silently treated as absent.
  *
- * The @-DSL channel is the ONE exception to the recall-first contract: `scanDslDirectives` is a
- * PRECISE sequential mirror of comment_ast.rs (not a regex approximation), because the dsl set backs
- * check A's cover drift-check where a FALSE CREDIT — not a miss — is the failure mode. The mirror's
- * directive VOCABULARY is lockstep-gated: selfCheck compares `MIRRORED_DIRECTIVES` against
- * comment_ast.rs's `tag("@…")` literals, so adding/removing a directive on either side fails every
- * importer (project_corpus = fast tier). ARG-GRAMMAR drift within an unchanged set has no detector —
- * that residual is why the AST-floor upgrade below wins over growing this mirror.
+ * The @-DSL channel is the precision exception to the recall-first contract: it batches comment
+ * attachments through `examples/comment_dsl.rs` and the public `comment_ast` authority. TypeScript
+ * retains only the CDDL lexical code/comment split; it no longer duplicates directive vocabulary or
+ * argument grammar.
  *
  * Known-approximate cases audited and accepted under the above (each would be fixed by the AST-floor
  * upgrade, not by more regex): hyphenated rule names; ctl-name credit from dotted ids / range bounds;
@@ -94,7 +92,64 @@ function scan(text: string): { code: string; comment: string } {
   return { code, comment };
 }
 const codeOf = (t: string) => scan(t).code;
-const commentsOf = (t: string) => scan(t).comment;
+
+// The DSL has no TypeScript grammar duplicate. A trailing comment has its own rule/entry owner;
+// contiguous standalone comment lines are one owner block. This is the smallest lexical boundary
+// matching the cddl AST comment attachment model that matters to the matrix: `@used_as_key hash`
+// + `ord` in one block merge, while two trailing rule-local `@name`s never collide.
+function commentOwnerBlocks(text: string): string[] {
+  const { code, comment } = scan(text);
+  const codeLines = code.split(/\r?\n/);
+  const commentLines = comment.split(/\r?\n/);
+  const blocks: string[] = [];
+  let standalone: string[] = [];
+  const flushStandalone = () => {
+    if (standalone.length) blocks.push(standalone.join("\x1e"));
+    standalone = [];
+  };
+  for (const [i, line] of commentLines.entries()) {
+    if (!line.trim()) { flushStandalone(); continue; }
+    if (codeLines[i]!.trim()) {
+      flushStandalone();
+      blocks.push(line);
+    } else {
+      standalone.push(line);
+    }
+  }
+  flushStandalone();
+  return blocks;
+}
+
+interface DslAuthorityRow { ok: boolean; ids?: string[] }
+const dslCache = new Map<string, Set<string>>();
+
+/// Batch the real comment_ast authority. Callers that know their fixture set (project_corpus and
+/// this file's direct diagnostic) warm it once; ad-hoc featuresIn callers pay one bounded batch.
+export function prepareDslFeatures(cddls: readonly string[]): void {
+  const unique = [...new Set(cddls.filter(cddl => !dslCache.has(cddl)))];
+  if (!unique.length) return;
+  const pending = unique.map(cddl => ({ cddl, attachments: commentOwnerBlocks(cddl) }));
+  for (const { cddl, attachments } of pending)
+    if (!attachments.length) dslCache.set(cddl, new Set());
+  const parsed = pending.filter(({ attachments }) => attachments.length);
+  if (!parsed.length) return;
+  const records = parsed.flatMap(({ attachments }) => attachments);
+  const batch = records.join("\0");
+  const run = Bun.spawnSync(["cargo", "run", "-q", "--example", "comment_dsl"], {
+    cwd: CODEGEN, stdin: Buffer.from(batch), stdout: "pipe", stderr: "inherit",
+  });
+  if ((run.exitCode ?? 1) !== 0) throw new Error(`comment_dsl authority helper exited ${run.exitCode ?? 1}`);
+  const rows = JSON.parse(run.stdout.toString("utf8")) as DslAuthorityRow[];
+  if (rows.length !== records.length) throw new Error(`comment_dsl authority returned ${rows.length} rows for ${records.length} attachments`);
+  let offset = 0;
+  for (const { cddl, attachments } of parsed) {
+    const count = attachments.length;
+    const ids = new Set<string>();
+    for (const row of rows.slice(offset, offset + count)) if (row.ok) for (const id of row.ids ?? []) ids.add(id);
+    offset += count;
+    dslCache.set(cddl, ids);
+  }
+}
 
 // rule LHS names (so a reference to one is a type2.typename "appears"); strip generics on the LHS.
 const ruleNames = (code: string): string[] =>
@@ -149,203 +204,12 @@ const STRUCT: { id: string; hit: (code: string) => boolean }[] = [
 // grpent.groupname / grpent.member correctly — the gap is only in the text-scan channel.
 export const NO_DETECTOR = new Set(["grpchoice.sequence", "grpent.groupname", "grpent.member"]);
 
-// --- @-DSL directive scanner: a faithful mirror of comment_ast.rs's
-//     `rule_metadata = many0(whitespace_then_tag)` (comment_ast.rs:200-221).
-//
-// Fed PER COMMENT LINE: in the cddl crate a `Comments` is `Vec<&str>` with one element per `;`-line
-// (parser.rs pushes each comment line separately), and `metadata_from_comments` runs `rule_metadata`
-// on EACH element independently then merges. So a directive cannot span two comment lines, and @doc
-// prose on one line does not run into the next line's directives — the per-line split here matches.
-//
-// The scanner replaces a `matchAll(/@\w+/g)` that credited every `@word` on a directive-leading line:
-// that over-credited a real directive id buried in trailing prose, which could keep a dsl cover green
-// in check A. many0 instead parses SEQUENTIALLY and STOPS at the first token that isn't a recognized
-// directive (an unknown leading `@foo …` therefore credits nothing and kills the rest of the line).
-//
-// Each tag is nom `tag(..)` = PREFIX match (comment_ast has no word boundary): `@namefoo` parses as
-// `@name` + arg `foo`, exactly as comment_ast credits it. The table below is in comment_ast's `alt`
-// order; arg grammars mirror each tag_* fn:
-//   @name / @custom_serialize / @custom_deserialize : ws* then take_while1(!ws) — arg REQUIRED (fails if absent)
-//   @newtype                                         : OPTIONAL ws* then take_while1(!ws && !@), which must
-//                                                      be a rust identifier (comment_ast PANICS otherwise, so a
-//                                                      fixture with e.g. a trailing `;` there cannot generate —
-//                                                      the mirror credits nothing)
-//   @no_alias / @used_as_elem / @custom_json
-//     / @no_json_schema_export                       : none
-//   @used_as_key                                     : optional flavor words `hash`/`ord` up to the next `@`/EOL
-//                                                      (comment_ast PANICS on any other word, so a fixture with
-//                                                      prose there cannot generate — the mirror credits nothing)
-//   @duplicates                                      : ws* then ONE required arg from {preserve, reject}
-//                                                      (comment_ast PANICS on a missing/unknown arg — mirror credits nothing)
-//   @doc                                             : take_while1(c != '@') — prose runs to the next `@` (arg REQUIRED)
-type TagParse = (s: string) => { id: string; rest: string } | null;
-// The directive VOCABULARY DSL_TAGS models, kept beside it so the selfCheck lockstep tripwire can
-// demand set equality with comment_ast.rs's `tag("@…")` literals. Adding a directive to either
-// side without the other fails every importer's selfCheck (project_corpus runs in the fast tier).
-const MIRRORED_DIRECTIVES = new Set([
-  "@name", "@rust_name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
-  "@copy", "@raw_bytes_flavor", "@ignore", "@duplicates", "@custom_json", "@no_json_schema_export",
-  "@custom_serialize", "@custom_deserialize", "@custom_encodings", "@custom_wire_major",
-  "@extern_companions", "@doc",
-]);
-const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
-const argRequired = (id: string, tag: string): TagParse => s => {
-  if (!s.startsWith(tag)) return null;
-  const after = ws(s.slice(tag.length));
-  const m = after.match(/^\S+/); // take_while1(!ws) — must consume ≥1
-  return m ? { id, rest: after.slice(m[0].length) } : null;
-};
-const noArg = (id: string, tag: string): TagParse => s => (s.startsWith(tag) ? { id, rest: s.slice(tag.length) } : null);
-const DSL_TAGS: TagParse[] = [
-  argRequired("dsl.name", "@name"),
-  // @rust_name: grammar-identical to @name in comment_ast.rs (tag then ws then take_while1(!ws)),
-  // and sequenced directly after it, mirroring the alt() order.
-  argRequired("dsl.rust_name", "@rust_name"),
-  // @newtype: optional getter arg (chars that are neither ws nor `@`); on no arg, comment_ast returns
-  // NewType(None) with the input trim_start()'d (so a following directive is still reachable). The arg
-  // is emitted verbatim as a method name, so comment_ast bounds it to a rust identifier and PANICS
-  // otherwise (the trap being a trailing `; prose` on the same line, whose `;` an unbounded read takes
-  // as the getter): such a fixture cannot generate, so the mirror refuses the credit rather than
-  // false-crediting, exactly as for @used_as_key/@duplicates.
-  s => {
-    if (!s.startsWith("@newtype")) return null;
-    const after = s.slice("@newtype".length);
-    const m = ws(after).match(/^[^\s@]+/);
-    if (!m) return { id: "dsl.newtype", rest: ws(after) };
-    if (!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(m[0])) return null;
-    return { id: "dsl.newtype", rest: ws(after).slice(m[0].length) };
-  },
-  noArg("dsl.no_alias", "@no_alias"),
-  // @used_as_key: consumes the optional flavor words (`hash`/`ord`) so a directive AFTER them is
-  // still reachable, mirroring tag_used_as_key's loop. On any OTHER word comment_ast panics (the
-  // fixture couldn't have generated), so the mirror refuses the credit rather than false-crediting.
-  // The credited id mirrors comment_ast's DemandSet, whose `bare`/`hash`/`ord` flags are mutually
-  // exclusive between bare and flavored (`demand.bare` is set only when NO flavor word followed):
-  // no flavor -> dsl.used_as_key; otherwise the narrowed sibling id for the OR-merged flavor set
-  // present (hash / ord / hash_ord — order- and duplicate-insensitive, exactly like the flags).
-  s => {
-    if (!s.startsWith("@used_as_key")) return null;
-    let rest = s.slice("@used_as_key".length);
-    let hash = false, ord = false;
-    while (true) {
-      const afterWs = ws(rest);
-      if (afterWs === "" || afterWs.startsWith("@")) {
-        const id = hash && ord ? "dsl.used_as_key.hash_ord"
-          : hash ? "dsl.used_as_key.hash"
-            : ord ? "dsl.used_as_key.ord"
-              : "dsl.used_as_key";
-        return { id, rest: afterWs };
-      }
-      const m = afterWs.match(/^[^\s@]+/)!;
-      if (m[0] === "hash") hash = true;
-      else if (m[0] === "ord") ord = true;
-      else return null; // comment_ast panics here — no credit
-      rest = afterWs.slice(m[0].length);
-    }
-  },
-  noArg("dsl.used_as_elem", "@used_as_elem"),
-  // @copy: bare no-arg tag (valid only on a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
-  // rule — the Copy-ness channel that drops boundary clones).
-  noArg("dsl.copy", "@copy"),
-  // @raw_bytes_flavor: bare no-arg tag (valid only on a `_CDDL_CODEGEN_EXTERN_TYPE_` generic).
-  noArg("dsl.raw_bytes_flavor", "@raw_bytes_flavor"),
-  // @ignore: bare no-arg tag (the open struct-map tolerate-and-drop rest-row flavor — valid only on
-  // a recognized `* k => v` rest row after fixed keys; a graceful rejection anywhere else).
-  noArg("dsl.ignore", "@ignore"),
-  // @duplicates: one REQUIRED argument from a strict vocabulary (`preserve`/`reject`), consumed as
-  // the arg so a directive after it is still reachable. On a missing/unknown argument comment_ast
-  // PANICS (the fixture couldn't have generated), so — like @used_as_key's non-flavor word — the
-  // mirror refuses the credit rather than false-crediting. The credited id is the per-flavor
-  // FEATURE row id (`dsl.duplicates.reject` / `dsl.duplicates.preserve` — the registered flavored
-  // siblings); there is no bare `dsl.duplicates` feature because the bare directive has no valid
-  // spelling (comment_ast panics on the missing arg), unlike `@used_as_key`'s bare form.
-  s => {
-    if (!s.startsWith("@duplicates")) return null;
-    const after = ws(s.slice("@duplicates".length));
-    const m = after.match(/^[^\s@]+/);
-    if (!m || (m[0] !== "preserve" && m[0] !== "reject")) return null; // comment_ast panics — no credit
-    return { id: `dsl.duplicates.${m[0]}`, rest: after.slice(m[0].length) };
-  },
-  noArg("dsl.custom_json", "@custom_json"),
-  // @no_json_schema_export: bare no-arg tag (suppresses the rule's schema-registration row in the
-  // json-gen crate under `--json-schema-export`, and nothing else). No prefix relation with
-  // `@no_alias` (they diverge at `a` vs `j`), so the two are order-free in the alt.
-  noArg("dsl.no_json_schema_export", "@no_json_schema_export"),
-  argRequired("dsl.custom_serialize", "@custom_serialize"),
-  argRequired("dsl.custom_deserialize", "@custom_deserialize"),
-  // @custom_encodings: one REQUIRED argument from a strict vocabulary — a comma-separated list of
-  // `sz`/`str`/`len` with NO whitespace, or the keyword `none`. comment_ast PANICS on a missing arg
-  // or an unknown kind token (a trailing comma and a space after a comma both reach it as an unknown
-  // kind), so such a fixture could not have generated — the mirror refuses the credit rather than
-  // false-crediting, exactly as the @duplicates and @extern_companions parsers do.
-  s => {
-    if (!s.startsWith("@custom_encodings")) return null;
-    const after = ws(s.slice("@custom_encodings".length));
-    const m = after.match(/^[^\s@]+/);
-    if (!m) return null; // missing required argument — comment_ast panics
-    const arg = m[0];
-    if (arg !== "none" && !arg.split(",").every(k => k === "sz" || k === "str" || k === "len")) return null;
-    return { id: "dsl.custom_encodings", rest: after.slice(arg.length) };
-  },
-  // @custom_wire_major: one REQUIRED argument from a strict vocabulary — exactly one of the eight
-  // CBOR major-type tokens. comment_ast PANICS on a missing arg or an unknown token, so such a
-  // fixture could not have generated — the mirror refuses the credit rather than false-crediting,
-  // exactly as the @duplicates and @custom_encodings parsers do.
-  s => {
-    if (!s.startsWith("@custom_wire_major")) return null;
-    const after = ws(s.slice("@custom_wire_major".length));
-    const m = after.match(/^[^\s@]+/);
-    if (!m) return null; // missing required argument — comment_ast panics
-    const arg = m[0];
-    if (!["uint", "nint", "bytes", "text", "array", "map", "tag", "simple"].includes(arg)) return null;
-    return { id: "dsl.custom_wire_major", rest: after.slice(arg.length) };
-  },
-  // @extern_companions: one REQUIRED argument in a strict SHAPE — `<rust_path>=<Class>[,<Class>…]`,
-  // consumed as the arg so a directive after it is still reachable. Unlike @duplicates the argument
-  // has no closed vocabulary, so the mirror models the shape instead: comment_ast PANICS on a missing
-  // arg, a missing `=`, a non-rust-path prefix, or an empty/non-ident class name, and such a fixture
-  // could not have generated — so the mirror refuses the credit rather than false-crediting.
-  s => {
-    if (!s.startsWith("@extern_companions")) return null;
-    const after = ws(s.slice("@extern_companions".length));
-    const m = after.match(/^[^\s@]+/);
-    if (!m) return null; // missing required argument — comment_ast panics
-    const eq = m[0].indexOf("=");
-    if (eq < 0) return null; // malformed argument — comment_ast panics
-    const ident = /^[\p{L}_][\p{L}\p{N}_]*$/u;
-    const prefix = m[0].slice(0, eq);
-    if (prefix === "" || !prefix.split("::").every(seg => ident.test(seg))) return null;
-    if (!m[0].slice(eq + 1).split(",").every(c => ident.test(c))) return null;
-    return { id: "dsl.extern_companions", rest: after.slice(m[0].length) };
-  },
-  // @doc: take_while1(c != '@') — prose (incl. leading ws) runs to the next `@` or EOL; fails if the
-  // very next char is `@` (so `@doc@newtype` credits nothing, matching comment_ast).
-  s => {
-    if (!s.startsWith("@doc")) return null;
-    const after = s.slice("@doc".length);
-    const m = after.match(/^[^@]+/);
-    return m ? { id: "dsl.doc", rest: after.slice(m[0].length) } : null;
-  },
-];
-function scanDslDirectives(line: string): string[] {
-  const out: string[] = [];
-  let s = line;
-  while (true) {
-    s = ws(s); // whitespace_then_tag skips leading whitespace before the alt
-    let hit: { id: string; rest: string } | null = null;
-    for (const p of DSL_TAGS) if ((hit = p(s))) break; // alt: first full match wins
-    if (!hit) break; // many0 stops at the first token that isn't a recognized directive
-    out.push(hit.id);
-    s = hit.rest;
-  }
-  return out;
-}
-
+// --- @-DSL authority bridge. Comment ownership is represented by the lexical attachment
+// blocks below; directive vocabulary and argument grammar remain solely in comment_ast.
 export interface Detected { rfc: Set<string>; ctl: Set<string>; dsl: Set<string> }
 
 export function featuresIn(cddl: string): Detected {
   const code = codeOf(cddl);
-  const comments = commentsOf(cddl);
   const rfc = new Set<string>();
   const ctl = new Set<string>();
   const dsl = new Set<string>();
@@ -364,12 +228,10 @@ export function featuresIn(cddl: string): Detected {
     const defs = [...code.matchAll(new RegExp(`^[ \\t]*${reEsc(n)}\\s*(?:<[^>]*>)?\\s*=`, "gm"))].length;
     if (refs > defs) rfc.add("type2.typename");
   }
-  // CDDL_CODEGEN profile: @-DSL directives (in comments) -> dsl.<name>; sentinel typenames -> ext.<name>.
-  // Precision channel (the file's one RECALL exception, justified in the header): the dsl set must
-  // PREDICT exactly what comment_ast credits, because it backs check A's cover drift-check where a
-  // FALSE CREDIT is the failure mode. So we run scanDslDirectives — a faithful mirror of
-  // comment_ast.rs's `rule_metadata = many0(whitespace_then_tag)` — per comment line.
-  for (const line of comments.split(/\r?\n/)) for (const id of scanDslDirectives(line)) dsl.add(id);
+  // CDDL_CODEGEN profile: real comment_ast facts, never duplicated argument grammar. A malformed
+  // strict directive is intentionally uncreditable (the helper catches its per-attachment panic).
+  prepareDslFeatures([cddl]);
+  for (const id of dslCache.get(cddl)!) dsl.add(id);
   if (code.includes("_CDDL_CODEGEN_EXTERN_TYPE_")) dsl.add("ext.extern");
   if (code.includes("_CDDL_CODEGEN_RAW_BYTES_TYPE_")) dsl.add("ext.raw_bytes");
 
@@ -443,6 +305,28 @@ export function rolesInStr(cddl: string): Set<string> {
 
 // --- self-check (one runnable check on the non-trivial logic) ---
 function selfCheck() {
+  // One authority process for every DSL self-check vector. Keep the grammar cases here as INPUTS
+  // only — their interpretation is exclusively the Rust parser helper.
+  prepareDslFeatures([
+    "x = bytes ; @custom_serialize s @custom_deserialize d @custom_encodings sz,str",
+    "x = bytes ; @custom_encodings sz,", "x = bytes ; @custom_encodings bogus", "x = bytes ; @custom_encodings none",
+    "x = uint ; @custom_wire_major uint @no_alias", "x = uint ; @custom_wire_major bogus",
+    "x = uint ; @newtype @custom_json", 'x = "\\\"" ; @newtype', "x = uint ; unlike @newtype, this is plain",
+    "x = uint ; ask user@example about it", "left = uint ; @name left_field\nright = uint ; @name right_field",
+    "x = uint ; @used_as_key see @newtype for the alternative", "x = uint ; @used_as_key hash ord @newtype",
+    "x = uint ; @used_as_key", "x = uint ; @used_as_key hash", "x = uint ; @used_as_key ord", "x = uint ; @used_as_key ord hash",
+    "x = uint ; @used_as_elem @newtype", "x = [a: uint] ; @custom_json @no_json_schema_export",
+    "x = uint ; @no_json_schema_export @no_alias", "x = uint ; @doc explains things then @newtype",
+    "x = uint ; @newtype my_getter @used_as_key", "x = uint ; @rust_name Foo @no_alias",
+    "x = [* uint] ; @duplicates reject @no_alias", "x = { * uint => text } ; @duplicates preserve",
+    "x = uint ; @duplicates", "x = uint ; @duplicates allow", "x = uint ; @duplicates @newtype",
+    "x = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=XList,MapXToY @no_alias",
+    "x = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm::sub=XList",
+    "x = uint ; @extern_companions", "x = uint ; @extern_companions @newtype", "x = uint ; @extern_companions dep_wasm",
+    "x = uint ; @extern_companions =XList", "x = uint ; @extern_companions dep-wasm=XList", "x = uint ; @extern_companions dep_wasm=XList,",
+    "x = 'ab\n;@newtype cd'", "; @used_as_key hash\n; @used_as_key ord\nx = uint",
+    "; @duplicates broken\n; @newtype\nx = uint",
+  ]);
   const a = featuresIn("arr = [uint, text, bytes]");
   for (const id of ["type2.array", "prelude.uint", "prelude.text", "prelude.bytes"])
     if (!a.rfc.has(id)) throw new Error(`selfCheck: expected ${id} in array.cddl`);
@@ -458,14 +342,16 @@ function selfCheck() {
   const s = featuresIn("hash = bytes .size (0..32)");
   if (!s.ctl.has("ctl.size")) throw new Error("selfCheck: missing ctl.size");
   if (!s.rfc.has("rangeop.inclusive")) throw new Error("selfCheck: missing rangeop.inclusive");
-  // @custom_encodings: the strict-vocabulary argument, and the two refusals that keep the mirror
-  // from crediting a spelling comment_ast would have panicked on.
+  // @custom_encodings: strict arguments are accepted or rejected exclusively by comment_ast.
   const ce = featuresIn("x = bytes ; @custom_serialize s @custom_deserialize d @custom_encodings sz,str");
   if (!ce.dsl.has("dsl.custom_encodings")) throw new Error("selfCheck: missing dsl.custom_encodings");
   if (!ce.dsl.has("dsl.custom_serialize")) throw new Error("selfCheck: @custom_encodings swallowed a preceding directive's credit");
   if (featuresIn("x = bytes ; @custom_encodings sz,").dsl.has("dsl.custom_encodings")) throw new Error("selfCheck: trailing comma credited @custom_encodings (comment_ast panics)");
   if (featuresIn("x = bytes ; @custom_encodings bogus").dsl.has("dsl.custom_encodings")) throw new Error("selfCheck: unknown kind credited @custom_encodings (comment_ast panics)");
   if (!featuresIn("x = bytes ; @custom_encodings none").dsl.has("dsl.custom_encodings")) throw new Error("selfCheck: `none` keyword not credited");
+  const wire = featuresIn("x = uint ; @custom_wire_major uint @no_alias").dsl;
+  if (!wire.has("dsl.custom_wire_major") || !wire.has("dsl.no_alias")) throw new Error("selfCheck: @custom_wire_major <major> @no_alias must credit BOTH");
+  if (featuresIn("x = uint ; @custom_wire_major bogus").dsl.has("dsl.custom_wire_major")) throw new Error("selfCheck: unknown major credited @custom_wire_major (comment_ast panics)");
   const d = featuresIn("x = uint ; @newtype @custom_json");
   if (!d.dsl.has("dsl.newtype") || !d.dsl.has("dsl.custom_json")) throw new Error("selfCheck: missing DSL id");
   if (d.rfc.has("type1.ctlop")) throw new Error("selfCheck: DSL `@custom...` leaked into code as a ctlop");
@@ -502,18 +388,32 @@ function selfCheck() {
   if (featuresIn("x = 1e+9").rfc.has("occur.one_or_more")) throw new Error("selfCheck: exponent `+` false-credited occur.one_or_more");
   if (featuresIn("x = uint ; unlike @newtype, this is plain").dsl.has("dsl.newtype")) throw new Error("selfCheck: prose comment mention credited a dsl directive");
   if (featuresIn("x = uint ; ask user@example about it").dsl.size) throw new Error("selfCheck: mid-prose @word invented a dsl id");
-  // dsl-prose residual: the sequential scanner mirrors comment_ast's many0(whitespace_then_tag) —
+  // Authority boundary: same directive on two owners is two independent comment parses, not an
+  // accidental duplicate-key merge. This was the failure mode a fixture-wide metadata call would
+  // introduce while replacing the old scanner.
+  {
+    const r = featuresIn("left = uint ; @name left_field\nright = uint ; @name right_field").dsl;
+    if (!r.has("dsl.name")) throw new Error("selfCheck: two independently attached @name directives must remain creditable");
+  }
+  {
+    const merged = featuresIn("; @used_as_key hash\n; @used_as_key ord\nx = uint").dsl;
+    if (!merged.has("dsl.used_as_key.hash_ord") || merged.has("dsl.used_as_key.hash") || merged.has("dsl.used_as_key.ord"))
+      throw new Error("selfCheck: one multiline owner must merge key-demand flavors before sibling-id credit");
+    const malformed = featuresIn("; @duplicates broken\n; @newtype\nx = uint").dsl;
+    if (malformed.size) throw new Error("selfCheck: a malformed directive invalidates its whole owner block");
+  }
+  // DSL-prose residual: comment_ast's sequential many0(whitespace_then_tag) parser —
   // a real directive id buried in trailing prose after a NON-@doc directive must NOT be credited
   // (comment_ast's many0 stops at the first non-directive token). @used_as_key goes further: its
   // flavor loop PANICS on a non-flavor word, so trailing prose there kills the whole credit (the
-  // fixture couldn't have generated) — the mirror must credit NOTHING, not stop-after-crediting.
+  // fixture couldn't have generated) — the authority must credit NOTHING, not stop-after-crediting.
   {
     const r = featuresIn("x = uint ; @used_as_key see @newtype for the alternative").dsl;
     if (r.has("dsl.used_as_key")) throw new Error("selfCheck: @used_as_key with trailing prose was credited (comment_ast panics on a non-flavor word — no credit)");
     if (r.has("dsl.newtype")) throw new Error("selfCheck: @newtype in trailing prose after @used_as_key was over-credited (the dsl-prose residual)");
   }
   // @used_as_key flavor words are consumed as its ARGS, so a directive after them is still parsed;
-  // the credited id narrows to the flavor set (mirroring DemandSet), and bare @used_as_elem chains
+  // the credited id narrows to the flavor set (following DemandSet), and bare @used_as_elem chains
   // like any no-arg directive.
   {
     const r = featuresIn("x = uint ; @used_as_key hash ord @newtype").dsl;
@@ -542,25 +442,6 @@ function selfCheck() {
     const n = featuresIn("x = uint ; @no_json_schema_export @no_alias").dsl;
     if (!n.has("dsl.no_json_schema_export") || !n.has("dsl.no_alias")) throw new Error("selfCheck: @no_json_schema_export must not shadow (or be shadowed by) the @no_alias prefix sibling");
   }
-  // LOCKSTEP tripwire (directive-SET drift): DSL_TAGS is a hand mirror of comment_ast.rs's
-  // directive grammar, and its `@used_as_elem` gap shipped invisibly because nothing compared the
-  // two vocabularies (the selfCheck vectors above are hand-picked, so they drift WITH the mirror).
-  // Extract the authority's `tag("@…")` literals and demand set equality with MIRRORED_DIRECTIVES;
-  // this fires in every importer (project_corpus = fast tier) the moment a directive is added or
-  // removed on either side. ARG-GRAMMAR drift within an unchanged set is NOT catchable here — the
-  // AST floor is that residual's fix (tests/testing-roadmap.toml, the twin-implementation drift entry).
-  {
-    const rust = readFileSync(`${CODEGEN}/src/comment_ast.rs`, "utf8");
-    const rustSet = new Set([...rust.matchAll(/\btag\("(@[a-z_]+)"\)/g)].map(m => m[1]));
-    const missing = [...rustSet].filter(d => !MIRRORED_DIRECTIVES.has(d)).sort();
-    const extra = [...MIRRORED_DIRECTIVES].filter(d => !rustSet.has(d)).sort();
-    if (missing.length || extra.length)
-      throw new Error(
-        `selfCheck: DSL_TAGS drifted from comment_ast.rs's directive set — in authority but not mirrored: ` +
-        `[${missing.join(", ")}] · mirrored but not in authority: [${extra.join(", ")}]. Update DSL_TAGS + ` +
-        `MIRRORED_DIRECTIVES (+ selfCheck vectors for the new grammar), or better, move the dsl channel onto the AST floor.`,
-      );
-  }
   // the asymmetric @doc grammar: @doc's prose runs to the next `@`, so a directive AFTER @doc prose
   // IS still parsed (comment_ast.rs tag_comment = take_while1(c != '@')). A naive stop-at-first rule
   // would miss the @newtype here.
@@ -569,19 +450,19 @@ function selfCheck() {
     if (!r.has("dsl.doc") || !r.has("dsl.newtype")) throw new Error("selfCheck: @doc prose then @newtype must credit BOTH (asymmetric @doc grammar)");
   }
   // a @newtype getter token is consumed as its ARG, so the following directive is still parsed
-  // (mirrors comment_ast.rs parse_comment_newtype_getter_before).
+  // (the parser's parse_comment_newtype_getter_before order).
   {
     const r = featuresIn("x = uint ; @newtype my_getter @used_as_key").dsl;
     if (!r.has("dsl.newtype") || !r.has("dsl.used_as_key")) throw new Error("selfCheck: @newtype <getter> @used_as_key must credit BOTH");
   }
   // @rust_name consumes its (required) ident arg, so a following directive is still parsed — and
-  // the longer tag must not be shadowed by any prefix (grammar mirrors @name exactly).
+  // the longer tag must not be shadowed by any prefix (the parser accepts it exactly).
   {
     const r = featuresIn("x = uint ; @rust_name Foo @no_alias").dsl;
     if (!r.has("dsl.rust_name") || !r.has("dsl.no_alias")) throw new Error("selfCheck: @rust_name <ident> @no_alias must credit BOTH");
   }
   // @duplicates consumes its one required arg (preserve/reject), so a following directive is still
-  // parsed; a missing/unknown arg makes comment_ast panic, so the mirror credits nothing (no
+  // parsed; a missing/unknown arg makes comment_ast panic, so the authority credits nothing (no
   // over-credit of the trailing prose either). The credit is the PER-FLAVOR feature id
   // (`dsl.duplicates.reject` / `dsl.duplicates.preserve`); no bare `dsl.duplicates` id exists (the
   // bare directive has no valid spelling), and each flavor must credit exactly its own id.
@@ -645,20 +526,23 @@ function roleSelfCheck() {
     throw new Error("roleSelfCheck: null wrongly credited at top-level (the text-scan lie the role-aware floor fixes)");
 }
 
-// Pure-regex regression suite, ~ms: run on EVERY import (not just the CLI), so the CI drift job —
-// which consumes featuresIn via project_corpus.ts — executes it too. A detector regression then
-// fails the gate itself instead of waiting for someone to run the CLI diagnostic by hand.
-// (roleSelfCheck stays CLI-only below: it shells cargo.)
+// Lexical/parser regression suite: run on EVERY import (not just the CLI), so the CI drift job —
+// which consumes featuresIn via project_corpus.ts — executes it too. DSL vectors share the one
+// prewarmed Rust-authority batch above; comment-free RFC vectors stay local. A detector regression
+// then fails the gate itself instead of waiting for someone to run the CLI diagnostic by hand.
+// (roleSelfCheck stays CLI-only below: it needs a separate cddl-AST helper invocation.)
 selfCheck();
 
 if (import.meta.main) {
   roleSelfCheck();
   const files = [...new Glob("*.cddl").scanSync({ cwd: CORPUS })].sort();
+  const corpusTexts = files.map(f => readFileSync(`${CORPUS}/${f}`, "utf8"));
+  prepareDslFeatures(corpusTexts);
   const allFeatureIds = new Set(matrix.features.map(f => f.id));
   const allCtlIds = new Set(matrix.control_operators.map(c => c.id));
 
-  const perFixture = files.map(f => {
-    const det = featuresIn(readFileSync(`${CORPUS}/${f}`, "utf8"));
+  const perFixture = files.map((f, i) => {
+    const det = featuresIn(corpusTexts[i]!);
     return { f, ...det, count: det.rfc.size + det.ctl.size + det.dsl.size };
   });
 
