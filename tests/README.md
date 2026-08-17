@@ -4352,6 +4352,19 @@ colliding user name or a named+inline coexistence, so a bug in this class ships 
   reference-side E0425 invariant, so a missing mint is a deterministic generator error naming the
   wrapper and owner/door before rustc.
 
+  Provider identity is scope-exact rather than name-only. An unrelated dependency class or alias
+  with the same synthesized spelling cannot close a local structural reference, and a local class,
+  alias, or declared deferral cannot stand in for a renderer-selected dependency provider from a
+  different scope. Alias references follow the exact target the emitted `pub type` line writes;
+  configured aliases resolve through `AliasInfo::base_type`, because their conceptual inner has
+  already lost occurrence bounds and `@duplicates` policy. Requested wrappers are classified from
+  the exported `requested_collections` emission scope rather than from a same-spelling IR rule's
+  scope. `unrelated_dependency_class_with_structural_spelling_does_not_close_local_reference`,
+  `emitted_collection_aliases_register_the_target_spelling_they_write`,
+  `named_restricted_list_and_set_alias_fields_register_their_emitted_providers`, the exact-provider
+  cases in `synthesized_name_registry_provider_kinds_and_missing_rows_are_deterministic`, and the
+  collision-bearing requested bounded-map resident pin these review-discovered distinctions.
+
 `table_keys_list_syntheses_share_the_established_loose_boundary_carrier`
 (`robustness_tests.rs`) is the cheap minimized cross-composition pin for the batch-19/batch-33
 failures found by the full-tier wasm recombination leg. It combines loose, non-empty, bounded,

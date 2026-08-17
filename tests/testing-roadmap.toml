@@ -4597,14 +4597,19 @@ body_md = '''14. **A minted-identifier spellability floor: every identifier the 
     a name is unspellable, so the next bad minter is a diagnosed refusal rather than a rustfmt
     autopsy. Enumerate the name families from the IR types (`RustIdent`, `VariantIdent`, field
     name storage) rather than grepping for minters — a negative claim ("no other minter emits bad
-    names") needs the registry, not a keyword search. That enumeration is shared surface: the
-    remaining pre-registration mint-claim and synthesized-name referenced-but-never-minted (E0425)
-    predicates want the same emitted-name registry, so whichever is built first makes the others
-    added predicates rather than fresh enumerations. The global `RustStruct` registration seam now
+    names") needs the registry, not a keyword search. That enumeration remains shared surface with
+    the pre-registration mint-claim and variant-provenance predicates below. The once-adjacent
+    synthesized-name referenced-but-never-minted (E0425) predicate is delivered for wasm collection
+    wrappers by `WasmCollectionWrapperRegistry`: the real rendering doors record references and
+    scope-exact providers, then `generated_files` checks closure. It deliberately is not the
+    finalized-IR name enumeration proposed here, because emitted aliases, declared deferrals,
+    dependency ownership, and requested-wrapper emission scope are generation facts the finalized
+    IR name set cannot express. The global `RustStruct` registration seam now
     retains the first owner and rejects a structurally incompatible later owner, but it begins
     only after a claim reaches that seam: it does not recover a semantic claim discarded before
     registration, prove
-    an emitted name spellable, retain variant provenance, or prove a referenced name was minted.
+    an emitted name spellable, or retain variant provenance. Collection-wrapper reference closure
+    is the separate delivered generation registry above.
     **Activated by B3-024A (2026-08-09):** its synthesized
     fixed-singleton owner is the third minting site and initially deduplicated `true` with
     `#6.7(true)` by `FixedValue` alone, making parse order choose the wrong wire codec. The local
