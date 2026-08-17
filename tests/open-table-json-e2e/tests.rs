@@ -221,69 +221,128 @@ mod open_table_json {
     }
 
     #[test]
-    fn bounded_dynamic_rows_stage_then_check_each_json_partition() {
-        // Open struct: declared `key_1` does not count toward its flattened text-key rest window.
-        for (json, label) in [
-            (r#"{"key_1":0,"a":1}"#, "below"),
-            (r#"{"key_1":0,"a":1,"b":2,"c":3,"d":4}"#, "above"),
-        ] {
-            let err = serde_json::from_str::<BoundedStruct>(json).unwrap_err();
-            assert!(
-                err.to_string().contains("not in range 2 - 3"),
-                "the open-struct {label}-window JSON must fail after rest staging: {err}"
-            );
+    fn bounded_row_position_grid_drives_runtime_and_schema_contracts() {
+        struct Position {
+            label: &'static str,
+            schema_for: fn() -> schemars::Schema,
+            parse: fn(&str) -> Result<(), serde_json::Error>,
+            parse_and_serialize: fn(&str) -> Result<serde_json::Value, serde_json::Error>,
+            in_window: &'static str,
+            below: &'static str,
+            above: &'static str,
+            root_property_bounds: (Option<u64>, Option<u64>),
+            range_error: &'static str,
         }
-        let open: BoundedStruct = serde_json::from_str(r#"{"key_1":0,"a":1,"b":2}"#).unwrap();
-        assert_eq!(open.rest.len(), 2);
 
-        // The typed region owns its 2*3 window. `zz` is deliberately a non-hex policy id, so it
-        // travels through the text-capable catch-all and proves it does not contribute to entries.
-        for (json, label) in [
-            (r#"{"zz":1}"#, "below"),
-            (r#"{"aa":1,"bb":2,"cc":3,"dd":4,"zz":5}"#, "above"),
-        ] {
-            let err = serde_json::from_str::<BoundedTyped>(json).unwrap_err();
-            assert!(
-                err.to_string().contains("not in range 2 - 3"),
-                "the typed-row {label}-window JSON must fail after typed staging: {err}"
-            );
+        fn parse_and_serialize<T>(json: &str) -> Result<serde_json::Value, serde_json::Error>
+        where
+            T: serde::de::DeserializeOwned + serde::Serialize,
+        {
+            serde_json::from_str::<T>(json).and_then(serde_json::to_value)
         }
-        let typed: BoundedTyped =
-            serde_json::from_str(r#"{"aa":1,"bb":2,"zz":3}"#).unwrap();
-        assert_eq!(typed.entries.len(), 2);
-        assert_eq!(typed.rest.len(), 1);
 
-        // The catch-all's window is independent in the other direction: a typed policy-id member
-        // is present in each vector but neither rescues a below-min rest nor consumes its maximum.
-        for (json, label) in [
-            (r#"{"aa":1,"zz":2}"#, "below"),
-            (r#"{"aa":1,"z":2,"y":3,"x":4,"w":5}"#, "above"),
-        ] {
-            let err = serde_json::from_str::<BoundedCatchAll>(json).unwrap_err();
-            assert!(
-                err.to_string().contains("not in range 2 - 3"),
-                "the catch-all {label}-window JSON must fail after captured staging: {err}"
-            );
+        fn parse<T>(json: &str) -> Result<(), serde_json::Error>
+        where
+            T: serde::de::DeserializeOwned,
+        {
+            serde_json::from_str::<T>(json).map(|_| ())
         }
-        let captured: BoundedCatchAll =
-            serde_json::from_str(r#"{"aa":1,"z":2,"y":3}"#).unwrap();
-        assert_eq!(captured.entries.len(), 1);
-        assert_eq!(captured.rest.len(), 2);
-    }
 
-    #[test]
-    fn bounded_dynamic_row_schema_stays_silent_about_per_partition_counts() {
-        // `minProperties` / `maxProperties` would count BOTH dynamic rows (and, for the open
-        // struct, the declared key), so every bounded dynamic row keeps that truth at runtime.
-        for schema in [
-            serde_json::to_value(schemars::schema_for!(BoundedStruct)).unwrap(),
-            serde_json::to_value(schemars::schema_for!(BoundedTyped)).unwrap(),
-            serde_json::to_value(schemars::schema_for!(BoundedCatchAll)).unwrap(),
-        ] {
-            assert!(
-                schema.get("minProperties").is_none() && schema.get("maxProperties").is_none(),
-                "a per-row count must not become an object-wide schema claim: {schema}"
+        // This is the one position registry: the standalone map is the positive control, while a
+        // flattened row's count belongs to its partition rather than the whole JSON object. Every
+        // partition-positive vector deliberately has FOUR object members but only THREE bounded-row
+        // members, so an accidental root maxProperties=3 would make schema validation fail.
+        let positions = [
+            Position {
+                label: "standalone bounded map",
+                schema_for: || schemars::schema_for!(BoundedStandalone),
+                parse: parse::<BoundedStandalone>,
+                parse_and_serialize: parse_and_serialize::<BoundedStandalone>,
+                in_window: r#"{"a":1,"b":2,"c":3}"#,
+                below: r#"{"a":1}"#,
+                above: r#"{"a":1,"b":2,"c":3,"d":4}"#,
+                root_property_bounds: (Some(2), Some(3)),
+                range_error: "not in range 2 - 3",
+            },
+            Position {
+                label: "open-struct rest partition",
+                schema_for: || schemars::schema_for!(BoundedStruct),
+                parse: parse::<BoundedStruct>,
+                parse_and_serialize: parse_and_serialize::<BoundedStruct>,
+                in_window: r#"{"key_1":0,"a":1,"b":2,"c":3}"#,
+                below: r#"{"key_1":0,"a":1}"#,
+                above: r#"{"key_1":0,"a":1,"b":2,"c":3,"d":4}"#,
+                root_property_bounds: (None, None),
+                range_error: "not in range 2 - 3",
+            },
+            Position {
+                label: "open-table typed partition",
+                schema_for: || schemars::schema_for!(BoundedTyped),
+                parse: parse::<BoundedTyped>,
+                parse_and_serialize: parse_and_serialize::<BoundedTyped>,
+                in_window: r#"{"aa":1,"bb":2,"cc":3,"zz":4}"#,
+                below: r#"{"aa":1,"zz":2}"#,
+                above: r#"{"aa":1,"bb":2,"cc":3,"dd":4,"zz":5}"#,
+                root_property_bounds: (None, None),
+                range_error: "not in range 2 - 3",
+            },
+            Position {
+                label: "open-table catch-all partition",
+                schema_for: || schemars::schema_for!(BoundedCatchAll),
+                parse: parse::<BoundedCatchAll>,
+                parse_and_serialize: parse_and_serialize::<BoundedCatchAll>,
+                in_window: r#"{"aa":1,"z":2,"y":3,"x":4}"#,
+                below: r#"{"aa":1,"z":2}"#,
+                above: r#"{"aa":1,"z":2,"y":3,"x":4,"w":5}"#,
+                root_property_bounds: (None, None),
+                range_error: "not in range 2 - 3",
+            },
+        ];
+
+        for position in positions {
+            let schema = serde_json::to_value((position.schema_for)()).unwrap();
+            assert_eq!(
+                schema.get("minProperties").and_then(serde_json::Value::as_u64),
+                position.root_property_bounds.0,
+                "{} root minProperties: {schema}",
+                position.label
             );
+            assert_eq!(
+                schema.get("maxProperties").and_then(serde_json::Value::as_u64),
+                position.root_property_bounds.1,
+                "{} root maxProperties: {schema}",
+                position.label
+            );
+
+            let serialized = (position.parse_and_serialize)(position.in_window)
+                .unwrap_or_else(|error| panic!("{} must parse in-window JSON: {error}", position.label));
+            assert_eq!(
+                serialized,
+                serde_json::from_str::<serde_json::Value>(position.in_window).unwrap(),
+                "{} must retain its fixed/sibling object members through serde",
+                position.label
+            );
+            let validator = jsonschema::validator_for(&schema).unwrap_or_else(|error| {
+                panic!("{} emitted an invalid JSON Schema: {error}", position.label)
+            });
+            let errors: Vec<String> = validator
+                .iter_errors(&serialized)
+                .map(|error| error.to_string())
+                .collect();
+            assert!(
+                errors.is_empty(),
+                "{} serialized {serialized} does not validate against its schema: {errors:?}",
+                position.label
+            );
+
+            for (window, json) in [("below", position.below), ("above", position.above)] {
+                let error = (position.parse)(json).expect_err("the out-of-window parser must reject");
+                assert!(
+                    error.to_string().contains(position.range_error),
+                    "{} {window} JSON must fail specifically for its row-local range: {error}",
+                    position.label
+                );
+            }
         }
     }
 }

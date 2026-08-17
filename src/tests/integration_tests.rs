@@ -12131,7 +12131,24 @@ fn open_table_json_e2e() {
         &[],
         &[],
         false,
+        &["jsonschema = { version = \"0.46\", default-features = false }"],
+    );
+    // The fixture's one registry lives in tests.rs, so both default and preserve JSON execute the
+    // identical position/schema/runtime grid. Keep the document/TypeScript assertions below on the
+    // default export only.
+    run_test(
+        "open-table-json-e2e",
+        &[
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+            "--preserve-encodings=true",
+            "--wasm=false",
+        ],
+        Some("preserve"),
         &[],
+        &[],
+        false,
+        &["jsonschema = { version = \"0.46\", default-features = false }"],
     );
     // The published SCHEMA of the minted struct — a genuine ADDITION to the schema surface (a
     // CLOSED table is a transparent `pub type` alias and publishes nothing). One open object over

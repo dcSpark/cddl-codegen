@@ -89,7 +89,6 @@ entries = [
   "part-cheap-system-matrix-shape-pairs-compiled-wasm-side",
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
-  "testing.generated-json-schema.partition-cardinality-position-semantics",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
   "testing.fixture-shape-evicted-over-known-defect-stale-guard",
   "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim",
@@ -340,17 +339,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof", "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"]
 incident_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one", "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"]
-
-[[record]]
-id = "testing.admission-path.generated-json-schema.partition-cardinality-position-semantics"
-title = "Admission for testing.generated-json-schema.partition-cardinality-position-semantics."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "silent_corruption"
-claim_md = '''The preserved owner detail records a reproducible generated-schema false-contract class that the proposed system would detect.
-'''
-evidence_ids = ["testing.proof.generated-json-schema.partition-cardinality-position-semantics"]
 
 [[record]]
 id = "testing.admission-path.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
@@ -2731,37 +2719,6 @@ action_on_fire_md = '''Set testing.gate-script-health-cache-staleness-key-fresh-
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.gate-script-health-cache-staleness-key-fresh-worktree's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.generated-json-schema.partition-cardinality-position-semantics"
-title = "Generated JSON Schema needs a position-semantics oracle for row-local cardinality inside aggregate objects."
-
-[record.payload]
-kind = "work"
-body_md = '''B5-403 review found that delegating a restricted flattened dynamic row to
-`BoundedMap`'s standalone `JsonSchema` lifts that map's `minProperties`/`maxProperties` onto the
-containing object. The keywords then count fixed fields and sibling dynamic rows, not the row-local
-partition the CDDL occurrence constrains, so the published schema can reject valid JSON while every
-runtime Rust/CBOR/serde door remains correct. No pending roadmap item owned this: the hand-authored
-schema assertion record is specifically about consumer-supplied schemas, and the JSON-to-TypeScript
-gates consume whatever generated schema they receive without judging its accepted value set.
-
-Focused B5-403 tests now require schema silence for bounded open-struct rest, typed open-table, and
-catch-all positions, while runtime JSON tests execute below/in/above each row window. The missing
-system is a cross-position schema-semantics oracle: standalone bounded maps are the positive control
-that must retain property counts; partitioned/flattened rows must not claim object-wide counts; and
-minted in-window values with unrelated fixed/sibling properties must validate against the emitted
-schema while below/above runtime values remain rejected by the row's checked door.
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "wrong_public_api"
-acceptance_md = '''Extend the generated-schema validation harness with a registry-derived position grid covering standalone bounded maps, flattened open-struct rows, and both open-table partitions under default and preserve JSON profiles. For each position, validate minted in-window serializations against `schema_for!(T)`, include unrelated fixed/sibling properties that would distinguish partition-local from object-wide counts, assert below/above runtime rejection, and pin whether `minProperties`/`maxProperties` are present or deliberately absent. A newly added bounded aggregate position must join the grid through the same registry rather than a hand-only fixture list.
-'''
-priority_rationale_md = '''The shipped-schema contract could have become silently stricter than the CDDL/runtime contract; code review, not an existing systematic oracle, caught the first instance.
-'''
-admission_ids = ["testing.admission-path.generated-json-schema.partition-cardinality-position-semantics"]
 
 [[record]]
 id = "testing.generated-local-collision-class-refused-mangled-refusal-s"
@@ -5371,26 +5328,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.proof.generated-json-schema.partition-cardinality-position-semantics"
-title = "Cycle 4 incident evidence for testing.generated-json-schema.partition-cardinality-position-semantics."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "regression_pin"
-claim_md = '''B5-403 review reproduced row-local bounds being projected as object-wide JSON Schema property counts before the focused repair removed that false contract.
-'''
-freshness = "live"
-reference_ids = ["test-cycle4-open-table-json-e2e"]
-unprobed_remainder_md = '''The evidence proves the admitted flattened-row class only; it does not establish a closed denominator over future aggregate positions.
-'''
-refresh_reference_id = "test-cycle4-open-table-json-e2e"
-
-[record.payload.scope]
-surfaces = ["generated JSON Schema", "owner-recorded-failure-class"]
-faces = ["json"]
-profiles = ["json", "preserve"]
-
-[[record]]
 id = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
 title = "Historical execution proof for the warm-up dep-universe lock-trust gap."
 
@@ -7620,11 +7557,6 @@ kind = "parent_of"
 target = "testing.guard.gate-script-health-cache-staleness-key-fresh-worktree"
 
 [[relation]]
-source = "testing.generated-json-schema.partition-cardinality-position-semantics"
-kind = "parent_of"
-target = "testing.admission-path.generated-json-schema.partition-cardinality-position-semantics"
-
-[[relation]]
 source = "testing.generated-local-collision-class-refused-mangled-refusal-s"
 kind = "parent_of"
 target = "testing.generated-local-collision.general-mangling-remedy"
@@ -8656,13 +8588,6 @@ id = "gate-no-std-check"
 source = "testing.profile-driven-compile-gate-covers-compositions-profiles-specs"
 kind = "gate"
 gate_id = "no_std_check"
-
-[[reference]]
-id = "test-cycle4-open-table-json-e2e"
-source = "testing.proof.generated-json-schema.partition-cardinality-position-semantics"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::open_table_json_e2e"
-symbol = "tests::integration_tests::open_table_json_e2e"
 
 [[reference]]
 id = "test-check-ts-warmup-refresh-plan"

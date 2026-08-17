@@ -2056,14 +2056,16 @@ survive:
   catch-all rows (including a zero-minimum typed row keyed by a generated record) through the wasm
   boundary; `open_table_e2e` and
   `open_table_json_e2e` execute each row's below/in/above window, duplicate-preserving pair count,
-  and schema silence; `component_glue_reenters_bounded_dynamic_map_row_doors` and
+  and a single registry-derived JSON-schema position oracle: standalone bounded maps retain root
+  property counts while flattened open-struct/open-table partitions remain silent, serialize their
+  four-property local-window values through `schema_for!(T)`, and reject below/above values at
+  runtime under both default and preserve JSON profiles; `component_glue_reenters_bounded_dynamic_map_row_doors` and
   `workspace_key_requests_rest_row_contract` pin component and cross-crate wrapper hosting.
   These are focused residents, not four generalized negative claims. The wasm collection-wrapper
   registry now closes every rendered reference over a locally minted class/alias, declared provider,
-  or dependency-owned extern source before a source map escapes. The remaining systems are tracked
+  or dependency-owned extern source before a source map escapes. The remaining system is tracked
   explicitly in `tests/testing-roadmap.toml`: the scope-wide generated-local product
-  (`testing.generated-local-collision.scope-wide-probe`) and a registry-derived generated JSON-Schema position oracle
-  (`testing.generated-json-schema.partition-cardinality-position-semantics`).
+  (`testing.generated-local-collision.scope-wide-probe`).
 - **Acceptance** — `tests/open-table-cip25-acceptance`
   (`integration_tests::open_table_cip25_acceptance`, compiled, preserve + canonical; extern
   definitions `tests/external_rust_raw_bytes_cip25`, hand codecs

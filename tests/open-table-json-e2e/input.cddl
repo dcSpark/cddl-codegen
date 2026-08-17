@@ -43,6 +43,7 @@ ne_labels = { + policy_id => uint, * md => uint }
 
 ; B5-403 boundary vectors. Each cardinality belongs to its OWN dynamic region; object-wide schema
 ; keywords would misstate that fact, so serde enforces them after staging the matching row.
+bounded_standalone = { 2*3 text => uint }
 bounded_struct = { 1: uint, 2*3 text => uint }
 bounded_typed = { 2*3 policy_id => uint, * md => uint }
 bounded_catch_all = { * policy_id => uint, 2*3 md => uint }
