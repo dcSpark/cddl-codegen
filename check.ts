@@ -64,7 +64,7 @@
  * CHECK_ONLINE=1 skips the offline forcing; a pre-set CARGO_NET_OFFLINE=true skips the fetch.
  * The fast tier (CI) is untouched.
  *
- * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs seven meta-checks
+ * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs eight meta-checks
  * so a new gate that nobody registers fails the run rather than silently not existing:
  *   1. ignored-test classification — every `#[ignore]` test must be registered here as either a
  *      manual gate (run it) or a known-failing stub (never run it, shown as STUB).
@@ -81,6 +81,8 @@
  *   7. ignored-draft index ban — Git's index must contain no `draft/` path. `.gitignore` protects
  *      ordinary adds but not `git add -f`; checking the index catches both staged and committed
  *      violations before they can become another history-rewrite incident.
+ *   8. new-fixture advisory — a Git-added direct `tests/<dir>/input.cddl` names the known
+ *      local-tier corpus-parity verdict while the author can still add its registry row.
  *
  * Meta-checks mutation-verified red-first at landing (repo idiom):
  *   - adding a throwaway `#[ignore]` test           -> meta-check 1 FAILED (unclassified ignore)
@@ -203,6 +205,100 @@ export interface Gate {
    * reads only committed files or owns its scratch root. Meta-check 5 keeps the field honest.
    */
   requires?: { gate: string; why: string }[];
+}
+
+const CORPUS_PARITY_OWNER_TEST = "wasm_api_parity_axes_and_pins_are_live";
+const CORPUS_PARITY_OWNER_GATE = "test";
+
+/** A Git discovery candidate, kept explicit so self-tests pin the added-only boundary. */
+export interface NewFixtureCandidate {
+  status: "added" | "modified" | "deleted";
+  path: string;
+}
+
+/**
+ * The one proven new-file advisory. This deliberately names the known enumerating test rather than
+ * pretending `check.ts` can infer arbitrary test ownership from a path. The registry remains the
+ * single source of truth for the owning gate's tier.
+ */
+export function corpusParityNewFixtureAdvisories(
+  candidates: readonly NewFixtureCandidate[],
+  registry: readonly Pick<Gate, "id" | "tier">[],
+): string[] {
+  const owner = registry.find(g => g.id === CORPUS_PARITY_OWNER_GATE);
+  if (!owner)
+    throw new Error(
+      `new-fixture advisory owner gate '${CORPUS_PARITY_OWNER_GATE}' for ` +
+      `'${CORPUS_PARITY_OWNER_TEST}' is missing from the live registry`,
+    );
+
+  const paths = [...new Set(
+    candidates
+      .filter(c => c.status === "added")
+      .map(c => c.path)
+      .filter(path => /^tests\/[^/]+\/input\.cddl$/.test(path)),
+  )].sort();
+  return paths.map(path =>
+    `new-fixture advisory: '${path}' must be added to CORPUS_PARITY_INPUTS or ` +
+    `CORPUS_PARITY_EXCLUDED; then run '${CORPUS_PARITY_OWNER_TEST}' ` +
+    `(gate '${owner.id}', ${owner.tier} tier) or the complete ${owner.tier} tier — ` +
+    `fast does not execute this verdict`,
+  );
+}
+
+/** Pure controls for the advisory's event boundary, ordering, and registry-derived tier. */
+export function corpusParityNewFixtureAdvisoriesSelftest(): void {
+  const localOwner = [{ id: CORPUS_PARITY_OWNER_GATE, tier: "local" as Tier }];
+  const expected =
+    "new-fixture advisory: 'tests/new-fixture/input.cddl' must be added to " +
+    "CORPUS_PARITY_INPUTS or CORPUS_PARITY_EXCLUDED; then run " +
+    "'wasm_api_parity_axes_and_pins_are_live' (gate 'test', local tier) or the complete " +
+    "local tier — fast does not execute this verdict";
+  const one = corpusParityNewFixtureAdvisories(
+    [{ status: "added", path: "tests/new-fixture/input.cddl" }], localOwner,
+  );
+  if (one.length !== 1 || one[0] !== expected)
+    throw new Error(`new-fixture advisory self-test produced ${JSON.stringify(one)}, expected exactly ${JSON.stringify([expected])}`);
+
+  const stable = corpusParityNewFixtureAdvisories([
+    { status: "added", path: "tests/zeta/input.cddl" },
+    { status: "added", path: "tests/alpha/input.cddl" },
+    { status: "added", path: "tests/zeta/input.cddl" },
+  ], localOwner);
+  if (stable.length !== 2 || !stable[0]!.includes("tests/alpha/input.cddl") || !stable[1]!.includes("tests/zeta/input.cddl"))
+    throw new Error(`new-fixture advisory self-test did not deduplicate and sort: ${JSON.stringify(stable)}`);
+
+  const ignored = corpusParityNewFixtureAdvisories([
+    { status: "modified", path: "tests/modified/input.cddl" },
+    { status: "deleted", path: "tests/deleted/input.cddl" },
+    { status: "added", path: "tests/input.cddl" },
+    { status: "added", path: "tests/nested/child/input.cddl" },
+    { status: "added", path: "tests/other/not-input.cddl" },
+    { status: "added", path: "elsewhere/input.cddl" },
+  ], localOwner);
+  if (ignored.length)
+    throw new Error(`new-fixture advisory self-test accepted a non-added or near-miss path: ${JSON.stringify(ignored)}`);
+
+  const fullTier = corpusParityNewFixtureAdvisories(
+    [{ status: "added", path: "tests/tier-proof/input.cddl" }],
+    [{ id: CORPUS_PARITY_OWNER_GATE, tier: "full" }],
+  );
+  if (
+    fullTier.length !== 1 ||
+    !fullTier[0]!.includes("(gate 'test', full tier)") ||
+    !fullTier[0]!.includes("complete full tier") ||
+    fullTier[0]!.includes("local tier")
+  )
+    throw new Error(`new-fixture advisory self-test did not derive the owner tier: ${JSON.stringify(fullTier)}`);
+
+  let missingOwner = false;
+  try {
+    corpusParityNewFixtureAdvisories([{ status: "added", path: "tests/missing/input.cddl" }], []);
+  } catch (error) {
+    missingOwner = String(error).includes("owner gate 'test'");
+  }
+  if (!missingOwner)
+    throw new Error("new-fixture advisory self-test did not reject a missing owner gate");
 }
 
 /** The registry fields the README-integrity check owns; kept small for synthetic self-tests. */
@@ -1254,7 +1350,36 @@ function ignoredTestsFromCargo(): string[] {
   return names;
 }
 
-// ---- the seven self-completeness meta-checks (first gate) ----------------------------------------
+/**
+ * Git-visible additions relative to HEAD plus untracked, non-ignored paths. Separate worktree and
+ * index comparisons preserve a staged addition even when its worktree copy has been removed.
+ */
+function newFixtureCandidatesFromGit(): NewFixtureCandidate[] {
+  const worktreeAdded = Bun.spawnSync(
+    ["git", "diff", "--name-only", "-z", "--diff-filter=A", "HEAD", "--"],
+    { cwd: ROOT, stdout: "pipe", stderr: "pipe" },
+  );
+  if (worktreeAdded.exitCode !== 0)
+    throw new Error(`Git HEAD-to-worktree addition query failed: ${worktreeAdded.stderr.toString().trim()}`);
+  const indexAdded = Bun.spawnSync(
+    ["git", "diff", "--cached", "--name-only", "-z", "--diff-filter=A", "HEAD", "--"],
+    { cwd: ROOT, stdout: "pipe", stderr: "pipe" },
+  );
+  if (indexAdded.exitCode !== 0)
+    throw new Error(`Git HEAD-to-index addition query failed: ${indexAdded.stderr.toString().trim()}`);
+  const untracked = Bun.spawnSync(
+    ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+    { cwd: ROOT, stdout: "pipe", stderr: "pipe" },
+  );
+  if (untracked.exitCode !== 0)
+    throw new Error(`Git untracked-path query failed: ${untracked.stderr.toString().trim()}`);
+  const paths = (result: ReturnType<typeof Bun.spawnSync>): string[] =>
+    (result.stdout?.toString() ?? "").split("\0").filter(Boolean);
+  return [...paths(worktreeAdded), ...paths(indexAdded), ...paths(untracked)]
+    .map(path => ({ status: "added", path }));
+}
+
+// ---- the eight self-completeness meta-checks (first gate) ----------------------------------------
 function runSelfChecks(): Outcome {
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -1360,6 +1485,15 @@ function runSelfChecks(): Outcome {
       );
   }
 
+  // 8. A new direct fixture input has one proven registration obligation. This stays an advisory:
+  //    the named whole-axis test is authoritative, while the early warning reaches a fast-only
+  //    author before a local-tier run. Git inspection and the owner-gate lookup fail closed.
+  try {
+    warnings.push(...corpusParityNewFixtureAdvisories(newFixtureCandidatesFromGit(), REGISTRY));
+  } catch (error) {
+    problems.push(`meta-8: could not discover new fixture inputs or resolve their owner: ${String(error)}`);
+  }
+
   for (const w of warnings) console.log("  WARN " + w);
   if (problems.length) {
     for (const p of problems) console.log("  FAIL " + p);
@@ -1371,7 +1505,7 @@ function runSelfChecks(): Outcome {
       `${scripts.length} matrix script(s) covered, CI runs the fast tier only, ` +
       `${groups.size} concurrency group(s) well-formed, ` +
       `${REGISTRY.reduce((n, g) => n + (g.requires?.length ?? 0), 0)} requires-edge(s) well-formed, ` +
-      `tests/README.md covers every registry gate, draft/ index empty`,
+      `tests/README.md covers every registry gate, draft/ index empty, new-fixture advisory armed`,
   );
   return { status: "PASS" };
 }
@@ -1623,7 +1757,7 @@ const MANUAL_HEAVY = "manual_heavy";
 
 export const REGISTRY: Gate[] = [
   { id: "self_checks", tier: "fast", kind: "fn", run: runSelfChecks,
-    desc: "self-completeness meta-checks (ignored-test + matrix-script + CI + registry/README + draft-index coverage)" },
+    desc: "self-completeness meta-checks (ignored-test + matrix-script + CI + registry/README + draft-index + new-fixture advisory)" },
 
   // --- fast tier (CI + the inner loop) ---
   { id: "fmt", tier: "fast", kind: "cmd", cmd: ["cargo", "fmt", "--all", "--", "--check"],
@@ -3020,7 +3154,8 @@ if (import.meta.main) {
   if (process.argv.includes("--selftest")) {
     warmupCommandsSelftest();
     registryReadmeIntegritySelftest();
-    console.log("check.ts self-test OK (warm-up refresh/fetch command order + README-integrity controls)");
+    corpusParityNewFixtureAdvisoriesSelftest();
+    console.log("check.ts self-test OK (warm-up refresh/fetch command order + README-integrity + new-fixture advisory controls)");
     process.exit(0);
   }
   // --help prints and exits; no evidence to preserve, so no log file for it.

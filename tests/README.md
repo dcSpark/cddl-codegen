@@ -377,14 +377,18 @@ runs, cached vs `GATE_CACHE=0`, asserted byte-identical — see the gate-cache s
 > `bun run check.ts fast` before committing; this exact miss has produced a red-on-HEAD CI drift
 > gate twice.
 
-The runner's **first gate runs seven self-completeness meta-checks**: every `#[ignore]` test must be
+The runner's **first gate runs eight self-completeness meta-checks**: every `#[ignore]` test must be
 registered as a manual gate or a known-failing stub; every `cddl-matrix/*.ts` (minus `lib.ts`) must
 be wired to a tier; `build.yml` must invoke `bun run check.ts fast` with no other run step;
 concurrency declarations must be command-shaped and contiguous; every `requires:` edge must name an
 earlier runnable gate available in the same tier; and every registry gate must appear as an exact
 inline-code id in this README, with no authored cardinal count beside a named concurrency group.
 The seventh check queries Git's index and fails if any `draft/` path is tracked or staged, closing
-the `git add -f` hole that `.gitignore` cannot close by itself.
+the `git add -f` hole that `.gitignore` cannot close by itself. The eighth query combines Git-added
+paths relative to `HEAD` with untracked, non-ignored paths: each new direct
+`tests/<dir>/input.cddl` prints a non-failing reminder of its named corpus-parity test, owning gate,
+and registry-derived tier. A failed Git query or missing owner gate fails `self_checks`; the
+fixture itself remains an advisory because the named test owns the authoritative verdict.
 Together these are the systematic catch for the disease the runner cures — a gate that exists but
 is in nobody's habit — so a new manual gate or IOU stub is a conscious registry edit, not a silent
 omission.
@@ -1478,6 +1482,11 @@ its corpus table or its exclusion table; the guard lives in
 **local** tier. `fast`'s only cargo test invocation is `cargo test --bin cddl-codegen snapshot_tests`,
 so `fast` catches a new `#[test]` that fails to COMPILE and never one that FAILS — adding a fixture
 dir under a `fast`-only workflow will not surface the missing row.
+
+While the fixture is new in Git, `self_checks` prints this same non-failing authoring reminder,
+naming `wasm_api_parity_axes_and_pins_are_live`, its `test` gate, and the gate's live tier. Add the
+fixture to `CORPUS_PARITY_INPUTS` or `CORPUS_PARITY_EXCLUDED`, then run that local-tier test or the
+complete local tier; `fast` does not execute the verdict.
 
 ### Workspace mode (`--workspace-dep` / `--wrapper-requests` / `--key-requests`)
 

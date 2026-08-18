@@ -117,14 +117,6 @@ a premise too: two entries named `all_supported_constructs_generate_all_profiles
 gate their remedy would extend, and it writes nothing — it drives `api::generated_strings` in-process
 over `tests/matrix_supported/`. Probe the mechanism of any gate a remedy is built on, not its name.
 
-**Entries whose trigger has FIRED are work items, not deferrals, and they are listed here so the
-section's recur-first premise stays honest.** Cited count-free and by exact title, because a
-hand-maintained tally of this list is itself the rot class `cddl-matrix/roadmap.toml` § Maintenance
-records — this one went stale twice in a single day of deliveries before the number came out. The
-full record stays in place below: "A "no gate demands this" premise probed against ONE gate
-is not evidence about a gate in another TIER" (the mechanical half is a maintainer call — it edits
-`check.ts` itself).
-
 '''
 entries = [
   "testing.lint-doc-citations-accepts-docs-heading-durable-citation",
@@ -135,7 +127,6 @@ entries = [
   "testing.corpus-wide-regen-over-prior-output-sweep-reaches",
   "testing.stale-known-limitation-prose-surviving-fix-finding-ledgered",
   "testing.finding-s-defect-side-attribution-recorded-narrative-plausibility",
-  "testing.gate-demands-premise-probed-against-gate-evidence-about",
   "testing.ruling-premise-gate-x-stays-green-must-probed",
   "testing.observed-baseline-comments-beside-gate-floors-rot-silently",
   "testing.extreme-value-boundary-correctness-generation-time-encode-paths",
@@ -296,18 +287,6 @@ action_on_fire_md = '''Create only the specifically demanded work without wideni
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.add-profile-wrapper-participation-grid-participation-differs-across's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.admission-path.gate-demands-premise-probed-against-gate-evidence-about"
-title = "Admission for testing.gate-demands-premise-probed-against-gate-evidence-about."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "independent_recurrence"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-evidence_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof", "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"]
-incident_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one", "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"]
 
 [[record]]
 id = "testing.admission-path.scoped-symbol-provenance-grid"
@@ -2521,83 +2500,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
-title = "A \"no gate demands this\" premise probed against ONE gate is not evidence about a gate in another TIER — and a full-tier gate is where such a premise survives longest, because CI runs `fast` only."
-
-[record.payload]
-kind = "work"
-body_md = '''- **A "no gate demands this" premise probed against ONE gate is not evidence about a gate in
-  another TIER — and a full-tier gate is where such a premise survives longest, because CI runs
-  `fast` only.** Proven instance: the `@no_json_schema_export` delivery deferred its cddl-matrix
-  feature row on a premise probed against `project_corpus` (fast tier), where it genuinely holds —
-  check D demands a cover only for an id the corpus actually exercises, and an unregistered id has
-  no universe entry at all, so it cannot be demanded. The same premise is FALSE for
-  `cddl-matrix/verify.ts`'s forward completeness lint, which treats any directive documented in
-  `docs/docs/comment_dsl.mdx` as surveyed surface and hard-fails (`missing_cddl_codegen_feature`)
-  while it carries no `features/cddl_codegen.toml` row. `verify` is full-tier; no tier run that
-  cycle reached it, so the directive shipped over a red gate from the commit that introduced it
-  (`9ae0e552` — tag and docs both present, row absent) through four successors, surfaced by
-  orchestrator code-read rather than by any run. The standing system that owns this already exists
-  and was simply not run (AGENTS.md § "Build & verify": `check.ts full` before shipping a feature);
-  what is missing is the AUTHORING half. Working rule meanwhile: **a "no gate covers X" premise
-  names the gates it was probed against AND their tiers**, so the unprobed remainder is visible in
-  the claim itself instead of implied — the same scope-the-claim-to-its-evidence discipline the
-  point-in-time-inventory-claim entry in this section prescribes. Mechanical layer, on a SECOND
-  instance: a `check.ts` listing mode that prints the gates a given tier does NOT run, so a
-  deferral rationale can enumerate what it is not evidence about instead of asserting a universal.
-  **That trigger has FIRED — second instance, cycle 3 Lane B**, in a new tier pair and a new
-  direction: not a deferral rationale but a DELEGATION. A lane restricted to `fast` (heavy tiers
-  being serialized centrally) added `tests/emit-tests-bounded-key/`, whose registry is enforced by
-  `wasm_api_parity_axes_and_pins_are_live` — a plain `#[test]`, hence `local`. `fast`'s only cargo
-  TEST invocation is `cargo test --bin cddl-codegen snapshot_tests`, a SUBSTRING filter, so every
-  `#[test]` outside that module is invisible to it. (`fast` does run `cargo fmt`/`cargo clippy`;
-  since `clippy --all-targets` type-checks test code, the precise asymmetry is that `fast` catches a
-  new `#[test]` that fails to COMPILE and never one that FAILS.) The implementer had no signal and
-  shipped the
-  fixture without its registry row, costing a fail-fast `local` run that skipped twelve later gates.
-  That one fact is now current state where an author will meet it — `tests/README.md` § "Hand-vector
-  suites" ends with the fixture-dir obligation, the enforcing test, and its tier — which retires the
-  instance without retiring the class.
-  Two corrections to this entry's own sketch, measured while the trigger fired: (a) the tier pair
-  that bites is `fast`/`local`, not only `fast`/`full`, and the `fast`/`local` gap is the one an
-  agent-delegation protocol runs into daily; (b) the sketched layer is PARTLY BUILT already — every
-  tier run's summary already prints its `not-in-tier` rows — so what is actually missing is
-  narrower than "a listing mode": a way to answer "which tier enforces the registry governing THIS
-  PATH" without running anything, which is the question a delegation needs answered before it
-  starts. The AUTHORING half is now in force (AGENTS.md § delegation: name the enforcing tier for
-  any registry-governed tree a delegation writes into); the mechanical half is a maintainer call,
-  deliberately not taken mid-cycle because it edits `check.ts` itself.
-  **DEAD END, recorded with its proof, because it is the move anyone reaches for first: do NOT add
-  a hand-authored path-glob per registry gate.** The data needed splits in two, and only one half
-  exists. `gate -> tier` is already machine-readable in `check.ts`'s registry. `gate -> governed
-  paths` exists NOWHERE — `wasm_api_parity_axes_and_pins_are_live` governs `tests/*/input.cddl`, but
-  nothing declares that; it is implicit in a `read_dir` inside the test body. Declaring it by hand
-  manufactures a SECOND registry describing the first, which can drift from the gate it describes
-  while every path in it still resolves — a fresh instance of the precise class this section
-  already records four times over (the `KNOWN_PANIC_CLASSES` citation entry and the
-  point-in-time-inventory entry). A layer built that way would be a new instance of the failure it
-  is meant to prevent, and the drift would be invisible to any resolution check. Deriving the map
-  instead of declaring it does not rescue the approach either: the gates that govern a tree
-  enumerate it AT RUNTIME, so deriving means running them, which is what the layer exists to avoid.
-  UNBUILT SKETCH, not a validated design — offered only so the next attempt starts past the dead
-  end: invert the question. The risk materialises only when a NEW FILE appears under a governed
-  tree, which is a git-visible event, so a new-file trigger ("you added `tests/<newdir>/input.cddl`;
-  the registries enumerating that tree are X, Y, tier Z") needs only the LIST of enumerating gates —
-  no per-gate glob, hence no second registry to drift — and fires exactly when the delegation risk
-  is real rather than requiring someone to think to ask. Nothing about this was prototyped; its own
-  premise (that the set of tree-enumerating gates is small and stable enough to list) is unprobed.
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.gate-demands-premise-probed-against-gate-evidence-about's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The preserved Standing detail records that its second-instance trigger fired; the due system is now pickup work.
-'''
-admission_ids = ["testing.admission-path.gate-demands-premise-probed-against-gate-evidence-about"]
-
-[[record]]
 id = "testing.gate-s-own-stdout-print-column-result-pass"
 title = "A gate's own stdout can print a column-0 `RESULT: PASS (...)` line, so a log poll that greps for `RESULT:` (even line-anchored) reads a sub-check's verdict as the tier's."
 
@@ -3790,74 +3692,6 @@ action_on_fire_md = '''Set testing.hand-enumerated-ban-pattern-list-authority-li
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
-title = "Independent admitted incident one for testing.gate-demands-premise-probed-against-gate-evidence-about."
-
-[record.payload]
-kind = "testing_incident"
-incident_posture = "attributed"
-signature_md = '''The no-json-schema-export premise was probed against fast project_corpus but falsified by full-tier verify.
-'''
-evidence_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"]
-attribution_md = '''The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
-'''
-operating_rule_reference_id = "testing-roadmap-next-work-n23"
-
-[[record]]
-id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
-title = "Incident evidence for testing.gate-demands-premise-probed-against-gate-evidence-about."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''The no-json-schema-export premise was probed against fast project_corpus but falsified by full-tier verify.
-'''
-freshness = "as_of"
-reference_ids = ["testing-gate-demands-premise-probed-against-gate", "testing-roadmap-next-work-n24"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:standing-system"]
-tiers = ["fast", "full", "local"]
-
-[[record]]
-id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"
-title = "Independent admitted incident two for testing.gate-demands-premise-probed-against-gate-evidence-about."
-
-[record.payload]
-kind = "testing_incident"
-incident_posture = "attributed"
-signature_md = '''A fast-only delegation missed the local-tier fixture-registry test.
-'''
-evidence_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"]
-attribution_md = '''The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
-'''
-operating_rule_reference_id = "testing-roadmap-next-work-n25"
-
-[[record]]
-id = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
-title = "Incident evidence for testing.gate-demands-premise-probed-against-gate-evidence-about."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''A fast-only delegation missed the local-tier fixture-registry test.
-'''
-freshness = "as_of"
-reference_ids = ["testing-gate-demands-premise-probed-against-gate-n2", "testing-roadmap-next-work-n26"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:standing-system"]
-tiers = ["fast", "full", "local"]
 
 [[record]]
 id = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one"
@@ -6997,31 +6831,6 @@ kind = "parent_of"
 target = "testing.gate-cache.coverage-extensions"
 
 [[relation]]
-source = "testing.gate-demands-premise-probed-against-gate-evidence-about"
-kind = "parent_of"
-target = "testing.admission-path.gate-demands-premise-probed-against-gate-evidence-about"
-
-[[relation]]
-source = "testing.gate-demands-premise-probed-against-gate-evidence-about"
-kind = "parent_of"
-target = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
-
-[[relation]]
-source = "testing.gate-demands-premise-probed-against-gate-evidence-about"
-kind = "parent_of"
-target = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
-
-[[relation]]
-source = "testing.gate-demands-premise-probed-against-gate-evidence-about"
-kind = "parent_of"
-target = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"
-
-[[relation]]
-source = "testing.gate-demands-premise-probed-against-gate-evidence-about"
-kind = "parent_of"
-target = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
-
-[[relation]]
 source = "testing.gate-script-health-cache-staleness-key-fresh-worktree"
 kind = "parent_of"
 target = "testing.guard.gate-script-health-cache-staleness-key-fresh-worktree"
@@ -7050,16 +6859,6 @@ target = "testing.grammar-fuzzer.real-world-corpus-differential"
 source = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 kind = "parent_of"
 target = "testing.guard.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
-
-[[relation]]
-source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
-kind = "parent_of"
-target = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
-
-[[relation]]
-source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"
-kind = "parent_of"
-target = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
 
 [[relation]]
 source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.one"
@@ -7665,46 +7464,6 @@ id = "gate-lint-doc-citations-n3"
 source = "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored"
 kind = "gate"
 gate_id = "lint_doc_citations"
-
-[[reference]]
-id = "testing-roadmap-next-work-n23"
-source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n24"
-source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-gate-demands-premise-probed-against-gate"
-source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof"
-kind = "roadmap"
-target_id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
-
-[[reference]]
-id = "testing-roadmap-next-work-n25"
-source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n26"
-source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-gate-demands-premise-probed-against-gate-n2"
-source = "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"
-kind = "roadmap"
-target_id = "testing.gate-demands-premise-probed-against-gate-evidence-about"
 
 [[reference]]
 id = "testing-roadmap-next-work-n27"
